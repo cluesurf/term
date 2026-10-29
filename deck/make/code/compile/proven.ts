@@ -1,18 +1,19 @@
-// The integer operations an emitter may write unchecked, the same on every backend: a counted loop's step and the
-// other shapes ir/facts/range.ts proves, and every `+`, `-` and `*` the interval fact bounds inside the safe integers
-// (ir/facts/interval.ts), which reads the record lists their records own (`ownedFields`) for what their slots hold
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
-import { nativeForms, ownedFields, type Lend } from '@term/make/code/compile/backend'
-import { privateForms } from '@term/make/code/compile/place'
-import { provenIncrements } from '@term/make/code/ir/facts/range'
-import { boundedArithmetic } from '@term/make/code/ir/facts/interval'
+// The integer operations the TypeScript emitter writes unchecked: a counted loop's step and the other shapes
+// ir/facts/steps.tree proves, and every `+`, `-` and `*` the interval fact bounds inside the safe integers.
+//
+// THE FACE (item term-self-host-001-0354, decision 056): the answer is compile/ts-program.tree's own, `proven-rows`,
+// the rows the emitter reads, over the program stamped as the emitter stamps it (decision 011). A node is asked by its
+// place-row, so a caller visits the stamped program this answers. Before: tmp/retired/make/compile/proven-face.ts.
+import type { Expression, Statement } from '@term/make/code/compile/node'
+import { provenRows } from '@term/make/code/compile/ts-program'
 
-export type Proven = { has(node: Expression): boolean }
+export type Proven = { program: Statement[]; has(node: Expression): boolean }
 
-export function provenArithmetic(program: Statement[], lend: Map<string, Map<number, Lend>>, fresh: Set<string>): Proven {
-  const steps = provenIncrements(program as Program)
-  const owned = ownedFields(program, fresh, lend, privateForms(program, lend, fresh))
-  const bounded = boundedArithmetic(program as Program, owned, lend, nativeForms(program))
+export function provenArithmetic(program: Statement[]): Proven {
+  const answer = provenRows(program as never) as unknown as { program: Statement[]; rows: Map<number, boolean> }
 
-  return { has: node => steps.has(node) || bounded.has(node) }
+  return {
+    program: answer.program,
+    has: node => answer.rows.has((node as { placeRow?: number }).placeRow ?? 0),
+  }
 }

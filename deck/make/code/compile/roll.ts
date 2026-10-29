@@ -3,28 +3,16 @@
 // `term make` writes it beside the output as `host/roll.json`, and the hive wakes with it at boot.
 // See note/project/term/hive/02-roll.md. Pure over the program.
 //
-// The roll is Term, compile/rolling.tree (self-hosting, 2026-10-06), its entries an ordered JSON value so that what a
-// build writes, what a merge reads back from disk and what `term roll` prints keep their keys in order. This face
-// converts between that value and plain objects, asks check/effects for the raise sets, and hands in `===` for the
-// supervision walk, which keys its trees by the call that made each. Why each field is there:
-//   - `site` is relative to the deck that owns the file, else to the project root, and counted from one, as every
-//     error frame counts (it printed zero-based numbers until 2026-10-04)
-//   - a type and a task's name are written without the suffix a split by file or by arity gives them (`__in0_1`,
-//     `__3__0`), which depends on what else the program holds, so the roll printed one definition two ways
-//   - `failure` is always asked for: a native shim raises it by construction, and the program holds its form only when
-//     the closure kept it (task/term/roll-cover.ts, 2026-10-05)
-//   - a unit (`own`) lists only its own definitions and counts no deck, and `ids` marks what a merge reads and then
-//     drops: `__def`, a definition's identity, `__ends`, the definition each raise path ends at, and a deck's `__files`
-//   - THE SUPERVISION TREES: every `make-supervisor` with its strategy, limits, children and WORST CASE, the workers
-//     under a supervisor restarting `intensity × Π (ancestor intensity + 1)` times before the root stops. OTP computes
-//     this nowhere (note/project/term/research/beam-otp-lessons.md, design 4)
-//   - a merge keys an entry by host, kind, name AND site, since a name is scoped to its module
-//     (task/term/roll-cover.ts, 2026-10-05), counts a deck's files as their union, continues a path a unit ended at
-//     another unit's task, and sorts each kind by host, name and site so a pool's merge reads like a single thread's
+// The roll is Term, compile/rolling.tree, its entries an ordered JSON value so that what a build writes, what a merge
+// reads back from disk and what `term roll` prints keep their keys in order. compile/rolling-plain.tree turns that value
+// into plain objects and back (item term-self-host-001-0080). This face asks check/effects for the raise sets, and hands
+// in `===` for the supervision walk, which keys its trees by the call that made each, and the host's `undefined`, the
+// value a key holding nothing reads back as. Why each field is there: compile/rolling.tree's header.
 
 import type { Expression, Program, Statement } from '@term/make/code/compile/node'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import * as rolling from '@term/make/code/compile/rolling'
+import * as plain from '@term/make/code/compile/rolling-plain'
 
 export type RollEntry = {
   host: string
@@ -64,78 +52,9 @@ export type RollOptions = {
   docks?: Statement[]
 }
 
-// ---- the value, both ways ----
+const toRoll = (roll: Roll): rolling.RollKind[] => plain.rollKindsOf(roll)
 
-function toValue(value: unknown): rolling.RollValue {
-  if (value === undefined) {
-    return { form: 'no-value' }
-  }
-
-  if (value === null) {
-    return { form: 'null-value' }
-  }
-
-  if (typeof value === 'string') {
-    return { form: 'text-value', value }
-  }
-
-  if (typeof value === 'number') {
-    return { form: 'number-value', value }
-  }
-
-  if (typeof value === 'boolean') {
-    return { form: 'flag-value', value }
-  }
-
-  if (Array.isArray(value)) {
-    return { form: 'item-values', values: value.map(toValue) }
-  }
-
-  return {
-    form: 'pair-values',
-    pairs: Object.entries(value as Record<string, unknown>).map(([key, inner]) => ({ key, value: toValue(inner) })),
-  }
-}
-
-function fromValue(value: rolling.RollValue): unknown {
-  switch (value.form) {
-    case 'no-value':
-      return undefined
-    case 'null-value':
-      return null
-    case 'text-value':
-    case 'number-value':
-    case 'flag-value':
-      return value.value
-    case 'item-values':
-      return value.values.map(fromValue)
-    case 'pair-values': {
-      const out: Record<string, unknown> = {}
-
-      for (const pair of value.pairs) {
-        out[pair.key] = fromValue(pair.value)
-      }
-
-      return out
-    }
-  }
-}
-
-function toRoll(roll: Roll): rolling.RollKind[] {
-  return Object.entries(roll).map(([name, entries]) => ({ name, entries: (entries ?? []).map(toValue) }))
-}
-
-function fromRoll(kinds: rolling.RollKind[]): Roll {
-  const out: Record<string, RollEntry[]> = {}
-
-  for (const kind of kinds) {
-    out[kind.name] = kind.entries.map(fromValue) as RollEntry[]
-  }
-
-  return out as Roll
-}
-
-// ---- the roll ----
+const fromRoll = (kinds: rolling.RollKind[]): Roll => plain.plainRoll(kinds, undefined) as Roll
 
 // a definition's identity across builds: its file and where it starts, which no other definition shares
 export function definitionOf(s: Program[number], file: string): string {
@@ -147,11 +66,7 @@ export function deckFromPath(file: string): string {
   return rolling.deckFromPath(file)
 }
 
-export function buildRoll(
-  program: Program,
-  file: string,
-  options?: RollOptions,
-): Roll {
+export function buildRoll(program: Program, file: string, options?: RollOptions): Roll {
   const deckOf = options?.deckOf
   const kinds = rolling.buildRoll(
     program,
@@ -187,8 +102,7 @@ export function mergeRolls(rolls: Roll[]): Roll {
 }
 
 // the merge one roll at a time, the first entry of each name kept, so a caller holds the merged roll and never every
-// roll at once. Every entry's roll covers its whole closure, and @term/bind's 3,091 of them held together ran the
-// main thread out of its 4 GB heap after a cold build (2026-10-05)
+// roll at once: @term/bind's 3,091 rolls held together ran the main thread out of its 4 GB heap (2026-10-05)
 export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll } {
   const merger = rolling.makeRollMerger()
 
@@ -198,13 +112,8 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
   }
 }
 
-// the roll as a tree, the way `term roll` prints it
-export function showRoll(
-  roll: Roll,
-  kind?: string,
-  // `path`: under each exception, one call path per task that can raise it (`term roll exception --path`), and
-  // under each task the path to each exception it raises
-  options?: { path?: boolean },
-): string {
+// the roll as a tree, the way `term roll` prints it. `path`: under each exception, one call path per task that can
+// raise it (`term roll exception --path`), and under each task the path to each exception it raises
+export function showRoll(roll: Roll, kind?: string, options?: { path?: boolean }): string {
   return rolling.showRoll(toRoll(roll), kind ?? '', options?.path === true)
 }

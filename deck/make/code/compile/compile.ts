@@ -43,9 +43,8 @@ import type {
   DriverMilled,
   GraphBuilt,
 } from '@term/make/code/compile/program-driver'
-import type { WakeGroup as WakeGroupTerm } from '@term/make/code/compile/program-warnings'
+import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 import type { RollKind, RollValue } from '@term/make/code/compile/rolling'
-import type { WakeEntry, WakeGroup } from '@term/make/code/compile/wake'
 import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
@@ -102,7 +101,8 @@ export type CompileResult =
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
       // what wakes the hive, when the program holds `hive-wake`: every emitter's wake chain reads it, so a native
-      // driver passes it as `{ wake: result.wake }` (term/hive decision 002, compile/wake.ts)
+      // driver passes it as `{ wake: result.wake }` (term/hive decision 002). compile/program-warnings.tree's groups as
+      // the warnings made them, each entry a roll value (decision 058)
       wake?: WakeGroup[]
       // the `twin` declarations of the closure, checked (check/twin.ts). Beside the program, never in it: nothing
       // here emits one yet, so every build runs the reference (note/project/term/optimize/archive/optimize-readme.md)
@@ -590,18 +590,6 @@ function rollOfKinds(kinds: RollKind[]): Roll {
   return out as Roll
 }
 
-// a wake group of compile/program-warnings.tree, its entries roll values, as the plain group compile/wake.ts names
-// (decision 040)
-function plainWakeGroup(group: WakeGroupTerm): WakeGroup {
-  const entries = (values: RollValue[]): WakeEntry[] => values.map(value => plainValue(value) as WakeEntry)
-
-  return {
-    deck: group.deck,
-    entries: entries(group.entries),
-    typed: { exceptions: entries(group.typed.exceptions), tells: entries(group.typed.tells), docks: entries(group.typed.docks) },
-  }
-}
-
 // THE RESULT OF A PENDING EMIT, in the order the original spelled each: the per-module result carries the modules and
 // an empty TypeScript, the raw one its TypeScript emitted at once, and the optimized one the hive's wake and its
 // TypeScript built when it is first read.
@@ -616,10 +604,10 @@ function emitResult(answer: DriverAnswer, pending: PendingEmit, env: string | un
     obligations: Tally
     kernel: NonNullable<Extract<CompileResult, { ok: true }>['kernel']>
     roll?: RollKind[]
-    wake?: WakeGroupTerm[]
+    wake?: WakeGroup[]
   }
   const roll = run.roll ? rollOfKinds(run.roll) : undefined
-  const wake = run.wake ? run.wake.map(plainWakeGroup) : undefined
+  const wake = run.wake
   const options = { env, wake, ...(library ? { library: true } : {}) }
   const result: Record<string, unknown> = { ok: true, program: pending.program }
 

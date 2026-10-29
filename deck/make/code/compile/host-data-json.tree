@@ -1,0 +1,158 @@
+# Term data to JSON and back, for compile/host.ts (item 0075). Keys are kebab in the file and snake in JSON, changed
+# here and nowhere else (`keep` leaves them alone). A whole number past 2^53 travels as its text, since a JSON number
+# that wide has already lost digits. The JSON value is the host's own (`like dynamic`), built and read through
+# @term/base/json. A text is parsed by the host's parser, so a text that is not JSON raises what that parser raises,
+# as compile/host.ts's `JSON.parse` did.
+
+load @term/base/json
+  find stringify
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find from-number
+  find from-boolean
+  find make-null
+  find is-null
+  find as-number
+  find as-text
+  find as-boolean
+  find get-field
+  find is-array
+  find is-object
+  find is-text
+  find is-boolean
+  find array-size
+  find array-item
+  find object-keys
+
+load @term/base/native/{platform}/json
+  find json-parse
+
+load @term/base/float
+  find to-decimal
+  find to-number
+
+load ./host-data
+  find host-value
+  find host-entry
+  find host-snake
+  find host-kebab
+  find number-text
+
+# a value as JSON text, written as `JSON.stringify` writes it: no space anywhere
+task host-json
+  take given, like host-value
+  take keep, like boolean
+  like text
+
+  back stringify(host-json-value(given, keep))
+
+# a value as the host's JSON value. A map's keys go snake unless `keep`, a void and an unexpanded fuse are null
+task host-json-value
+  take given, like host-value
+  take keep, like boolean
+  like dynamic
+
+  sift given
+    case hash
+      link entries
+      save out, make-object()
+      walk entries
+        take entry
+        save key, entry/name
+        fork test, not(keep)
+          hold
+            save key, host-snake(entry/name)
+        save out, set-field(out, key, host-json-value(entry/base, keep))
+      back out
+    case list
+      link items
+      save out, make-array()
+      walk items
+        take item
+        save out, push-item(out, host-json-value(item, keep))
+      back out
+    case text
+      back from-text(value)
+    case number
+      save wide, to-decimal(value)
+      fork test, or(is-minimum(wide, 9007199254740992.0), is-maximum(wide, -9007199254740992.0))
+        hold
+          back from-text(number-text(value))
+      back from-number(wide)
+    case decimal
+      back from-number(value)
+    case flag
+      back from-boolean(value)
+    miss
+      back make-null()
+
+# JSON text as a value. Keys go kebab
+task host-from-json
+  take input, like text
+  like host-value
+
+  back host-from-json-value(json-parse(input))
+
+# the host's JSON value as a value: null is void, a whole number is a number and any other number a decimal
+task host-from-json-value
+  take given, like dynamic
+  like host-value
+
+  fork test, is-null(given)
+    hold
+      back make blank
+  fork test, is-array(given)
+    hold
+      save items, make list
+      save at, 0
+      save count, array-size(given)
+      walk test
+        hook test, is-below(at, count)
+        hook hold
+          push(items, host-from-json-value(array-item(given, at)))
+          save at, add(at, 1)
+      back
+        make list
+          bind list, items
+  fork test, is-object(given)
+    hold
+      save entries, make list
+      walk object-keys(given)
+        take key
+        save entry
+          make host-entry
+            bind name, host-kebab(key)
+            bind base, host-from-json-value(get-field(given, key))
+        push(entries, entry)
+      back
+        make hash
+          bind list, entries
+  fork test, is-text(given)
+    hold
+      back
+        make text
+          bind value, as-text(given)
+  fork test, is-boolean(given)
+    hold
+      back
+        make flag
+          bind value, as-boolean(given)
+  save wide, as-number(given)
+  fork test, is-whole(wide)
+    hold
+      back
+        make number
+          bind value, to-number(wide)
+  back
+    make decimal
+      bind value, wide
+
+task is-whole
+  take value, like float
+  like boolean
+  mark private
+
+  back is-equal(modulo(value, 1.0), 0.0)

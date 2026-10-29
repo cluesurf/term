@@ -8,8 +8,8 @@
 #     `bitwise-and`, a truncated quotient and a remainder. Each of the last four is a fresh atom with its bounds as side
 #     facts, and what its sign depends on kept as a SNAPSHOT, decided at the goal (`signed-remainders`)
 #   - a number past 2^53 rounds, so a form holding one is declined (`within`), which is sound: the goal is left unproven
-#   - a goal is proven by its inequalities from the facts (check/refine.ts, through `proves`), by products of the facts
-#     (check/product.ts, through `product-proves`), or as a nonlinear non-negativity (check/nonlinear.tree). A
+#   - a goal is proven by its inequalities from the facts (check/eliminate.tree `proves-in`), by products of the facts
+#     (check/products.tree `product-proves`), or as a nonlinear non-negativity (check/nonlinear.tree). A
 #     disequality by strict separation or the integer gcd test, and any goal at all from facts with no integer solution
 #   - a theorem with universal hypotheses is decided by instantiating them, over an ordered field (check/universal.tree)
 #
@@ -17,8 +17,11 @@
 #   - the translation's tables and counters are the shared `hold-state`'s, never cleared, as they never were
 #   - a goal's three answers (proven, unproven, outside the fragment) are `goal-verdict`, where the original returned
 #     `true`, `false` and `null`
-#   - the memoized linear prover, the product prover under its budget, the widths and the counter of uncertified answers
-#     stay with their faces, handed in through `hold-calls`
+#   - the memoized linear prover (check/eliminate.tree `proves-in`), the product prover under its budget
+#     (check/products.tree `product-proves`) and the counter of uncertified answers are called here on the records
+#     `hold-calls` carries, the one instance of each that check/refine.ts and check/product.ts hold. `hold-calls-over`
+#     builds that record, with this file's tasks universal.tree calls back (item 0356, decision 057 rule 5). A width's
+#     range as facts is `width-facts` here, over check/checker-switches.tree's `width-limits` (item 0071, decision 057)
 #   - JavaScript's `Math.abs`, `Math.round`, `%`, `Number.isInteger` and its JSON are asked through binds, so every
 #     coefficient decides as it did
 
@@ -58,11 +61,23 @@ load ./eliminate
   find at-most
   find above
   find below
+  find refine-state
+  find proves-in
+  find note-uncertified
 
 load ./products
   find fact
   find rational
   find rational-of
+  find work-budget
+  find product-profile
+  find product-proves
+  find budget-spent
+  find spend-work
+
+load @term/base/environment
+  find variable
+  find has-variable
 
 load ./nonlinear
   find monomial-vars
@@ -76,6 +91,7 @@ load ./nonlinear
 
 load ./universal
   find hold-calls
+  find hold-provers
   find rule-parts
   find polynomial-linear
   find or-polynomial
@@ -85,6 +101,12 @@ load ./hold-state
   find hold-state
   find quotient
   find extremum-pair
+
+load ./checker-switches
+  find width-limits
+
+load @term/base/text/number
+  find host-parse-float
 
 # a goal's answer: PROVEN, in the linear fragment but UNPROVEN, or OUTSIDE it (an unchecked hold, not a failure)
 form goal-verdict
@@ -381,6 +403,38 @@ task constant-linear
     make linear
       bind terms, number-terms()
       bind constant, constant
+
+# whether a width's bound is a number held exactly: inside 2^53, as `9007199254740991` is and `u64`'s high bound is not.
+# Read off the bound's digits as a float, which rounds monotonically, so a bound past 2^53 - 1 never reads inside it
+task exact-bound
+  take bound, like float
+  like boolean
+  mark private
+
+  back and(is-maximum(bound, 9007199254740991.0), is-minimum(bound, -9007199254740991.0))
+
+# A WIDTH-TYPED VALUE'S RANGE AS FACTS: each bound a number holds exactly (inside 2^53), so `u64` keeps its 0 and `i64`
+# says nothing a number does not. A text that names no width says nothing either
+task width-facts
+  take name, like text
+  take width, like text
+  like list, like inequality
+
+  save out, facts()
+  walk width-limits()
+    take limit
+    fork test, is-equal(limit/width, width)
+      hold
+        save low, host-parse-float(limit/low)
+        save high, host-parse-float(limit/high)
+        save self, atom-linear(name)
+        fork test, exact-bound(low)
+          hold
+            push(out, at-least(self, constant-linear(low)))
+        fork test, exact-bound(high)
+          hold
+            push(out, at-most(self, constant-linear(high)))
+  back out
 
 # ---- linear forms ----
 
@@ -794,7 +848,7 @@ task called-linear
       sift width-read
         case some
           link width
-          walk calls/width-facts(applied, width)
+          walk width-facts(applied, width)
             take q
             push(side, q)
         case none
@@ -809,7 +863,7 @@ task called-linear
       link width
       save atom, <__width#{state/width-atoms}>
       save state/width-atoms, add(state/width-atoms, 1)
-      walk calls/width-facts(atom, width)
+      walk width-facts(atom, width)
         take q
         push(side, q)
       save made, atom-linear(atom)
@@ -1071,7 +1125,7 @@ task signed-remainders
       save m, atom-linear(key)
       fork test, state/mod-dividends/has(key)
         hold
-          fork test, calls/proves(all, at-least(state/mod-dividends/get(key), zero))
+          fork test, proves-in(calls/provers/refine, all, at-least(state/mod-dividends/get(key), zero))
             hold
               push(extra, at-least(m, zero))
       fork test, state/quotients/has(key)
@@ -1079,24 +1133,24 @@ task signed-remainders
           save found, state/quotients/get(key)
           save kq, scale-linear(m, found/k)
           save slack, constant-linear(subtract(found/k, 1.0))
-          fork test, calls/proves(all, at-least(found/dividend, zero))
+          fork test, proves-in(calls/provers/refine, all, at-least(found/dividend, zero))
             hold
               push(extra, at-most(kq, found/dividend))
               push(extra, at-most(found/dividend, add-linear(kq, slack)))
             miss
-              fork test, calls/proves(all, at-most(found/dividend, zero))
+              fork test, proves-in(calls/provers/refine, all, at-most(found/dividend, zero))
                 hold
                   push(extra, at-least(kq, found/dividend))
                   push(extra, at-least(found/dividend, add-linear(kq, scale-linear(slack, -1.0))))
       fork test, state/mod-divisors/has(key)
         hold
           save divisor, state/mod-divisors/get(key)
-          fork test, calls/proves(all, at-least(divisor, one))
+          fork test, proves-in(calls/provers/refine, all, at-least(divisor, one))
             hold
               push(extra, at-most(m, add-linear(divisor, constant-linear(-1.0))))
               push(extra, at-least(m, add-linear(scale-linear(divisor, -1.0), one)))
             miss
-              fork test, calls/proves(all, at-most(divisor, constant-linear(-1.0)))
+              fork test, proves-in(calls/provers/refine, all, at-most(divisor, constant-linear(-1.0)))
                 hold
                   push(extra, at-most(m, add-linear(scale-linear(divisor, -1.0), constant-linear(-1.0))))
                   push(extra, at-least(m, add-linear(divisor, one)))
@@ -1220,9 +1274,9 @@ task extremum-bounds
         save both, false
         fork test, is-min
           hold
-            save both, and(calls/proves(all, at-least(pair/a, bound)), calls/proves(all, at-least(pair/b, bound)))
+            save both, and(proves-in(calls/provers/refine, all, at-least(pair/a, bound)), proves-in(calls/provers/refine, all, at-least(pair/b, bound)))
           miss
-            save both, and(calls/proves(all, at-most(pair/a, bound)), calls/proves(all, at-most(pair/b, bound)))
+            save both, and(proves-in(calls/provers/refine, all, at-most(pair/a, bound)), proves-in(calls/provers/refine, all, at-most(pair/b, bound)))
         fork test, both
           hold
             fork test, is-min
@@ -1525,6 +1579,19 @@ task difference-of
     save out/{key}, subtract(had, right/get(key))
   back out
 
+# check/products.tree, under the work budget `calls` carries: does the goal polynomial follow from the facts, `>= 0` or
+# `> 0`, combined linearly with the equations multiplied by `multipliers` when there are any
+task products-prove
+  take calls, like hold-calls
+  take facts, like list, like fact
+  take goal, like hash, like text, like rational
+  take strict, like boolean
+  take multipliers, like maybe, like list, like text
+  like boolean
+  mark private
+
+  back product-proves(facts, goal, strict, multipliers, calls/provers/work, calls/provers/profile, calls/provers/profiling, hold-clock)
+
 # the goal by its comparison: `>=` and `>` of the exact difference, `<=` and `<` of its negation, an equation both
 task proved-by-products
   take calls, like hold-calls
@@ -1537,18 +1604,18 @@ task proved-by-products
 
   sift op
     case at-least
-      back calls/product-proves(kept, exact, false, multipliers)
+      back products-prove(calls,kept, exact, false, multipliers)
     case above
-      back calls/product-proves(kept, exact, true, multipliers)
+      back products-prove(calls,kept, exact, true, multipliers)
     case at-most
-      back calls/product-proves(kept, negative-of(exact), false, multipliers)
+      back products-prove(calls,kept, negative-of(exact), false, multipliers)
     case below
-      back calls/product-proves(kept, negative-of(exact), true, multipliers)
+      back products-prove(calls,kept, negative-of(exact), true, multipliers)
     miss
-      fork test, not(calls/product-proves(kept, exact, false, multipliers))
+      fork test, not(products-prove(calls,kept, exact, false, multipliers))
         hold
           back false
-      back calls/product-proves(kept, negative-of(exact), false, multipliers)
+      back products-prove(calls,kept, negative-of(exact), false, multipliers)
 
 # the goal from the facts by linear combination alone (check/product.ts linear mode), over an ordered field. An equation
 # may be multiplied by any plain variable the facts or the goal read, never by an application
@@ -1794,12 +1861,21 @@ task product-search-of
     miss
       back make none
 
-# the facts refute -1 >= 0 with products of them
+# the facts refute -1 >= 0 with products of them. A REFUTATION IS PAID FOR: the case split asks this once per way of
+# every instance at every level, and each call builds the products of its facts, n facts making about n^2 rows that a
+# pivot sweeps, about n^3 cells, the units the exact search counts (check/products.tree, THE BUDGET). Unpaid, a goal the
+# prover refuses split its cases past every timeout with the budget untouched (test/check/universal.ts "a tighter limit
+# is refused", 2026-10-07). Once the budget is spent the answer is "not refuted", which only keeps a case open, so a
+# refusal stays a refusal and nothing false is proven
 task refuted-by-products
   take calls, like hold-calls
   take known, like list, like inequality
   like boolean
 
+  fork test, budget-spent(calls/provers/work)
+    hold
+      back false
+  spend-work(calls/provers/work, literal-float(multiply(multiply(known/length, known/length), known/length)))
   save given, fact-list()
   sift product-facts(known)
     case some
@@ -1811,7 +1887,7 @@ task refuted-by-products
   save constant-key, <>
   save minus-one/{constant-key}, rational-of(big-subtract(big-from-number(0), big-from-number(1)), big-from-number(1))
   save no-multipliers, texts()
-  back calls/product-proves(given, minus-one, false, make(some, no-multipliers))
+  back products-prove(calls, given, minus-one, false, make(some, no-multipliers))
 
 # ---- integer contradiction ----
 
@@ -1925,7 +2001,10 @@ task is-linear-goal
   take expr, like expression
   like boolean
 
-  fork test, nonlinear-proves(state, expr, calls/note-uncertified)
+  save on-uncertified
+    task
+      note-uncertified(calls/provers/refine)
+  fork test, nonlinear-proves(state, expr, on-uncertified)
     hold
       back true
   sift expr
@@ -2071,8 +2150,8 @@ task field-provable
           fork test, or(field-provable(state, calls, left-expr, known), field-provable(state, calls, right-expr, known))
             hold
               back true
-          save not-left, or-polynomial(calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
-          save not-right, or-polynomial(calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
+          save not-left, or-polynomial(state, calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
+          save not-right, or-polynomial(state, calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
           fork test, and(is-above(not-left/length, 0), field-provable(state, calls, right-expr, both-facts(known, not-left)))
             hold
               back true
@@ -2199,13 +2278,13 @@ task goal-provable
             hold
               back make proven
           # a disjunctive TAUTOLOGY: assuming one side false proves the other
-          save not-left, or-polynomial(calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
+          save not-left, or-polynomial(state, calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
           fork test, is-above(not-left/length, 0)
             hold
               fork test, is-proven(goal-provable(state, calls, right-expr, both-facts(available, not-left)))
                 hold
                   back make proven
-          save not-right, or-polynomial(calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
+          save not-right, or-polynomial(state, calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
           fork test, is-above(not-right/length, 0)
             hold
               fork test, is-proven(goal-provable(state, calls, left-expr, both-facts(available, not-right)))
@@ -2221,7 +2300,10 @@ task goal-provable
       save nothing, 0
 
   # a nonlinear non-negativity goal holds for every assignment, no assumptions needed
-  fork test, nonlinear-proves(state, expr, calls/note-uncertified)
+  save on-uncertified
+    task
+      note-uncertified(calls/provers/refine)
+  fork test, nonlinear-proves(state, expr, on-uncertified)
     hold
       back make proven
 
@@ -2247,7 +2329,7 @@ task goal-provable
       save every, true
       walk goals
         take goal
-        fork test, not(calls/proves(all, goal))
+        fork test, not(proves-in(calls/provers/refine, all, goal))
           hold
             save every, false
             halt
@@ -2284,7 +2366,7 @@ task disequality-provable
           link right
           save known, both-facts(available, dside)
           save all, both-facts(known, signed-remainders(state, calls, known, one-fact(below(left, right))))
-          fork test, or(calls/proves(all, below(left, right)), calls/proves(all, above(left, right)))
+          fork test, or(proves-in(calls/provers/refine, all, below(left, right)), proves-in(calls/provers/refine, all, above(left, right)))
             hold
               back make proven
           save diff, add-linear(left, scale-linear(right, -1.0))
@@ -2479,11 +2561,11 @@ task condition-facts
                 case some
                   link right
                   save all, both-facts(known, side)
-                  fork test, calls/proves(all, at-least(left, right))
+                  fork test, proves-in(calls/provers/refine, all, at-least(left, right))
                     hold
                       push(found, at-least(left, add-linear(right, constant-linear(1.0))))
                     miss
-                      fork test, calls/proves(all, at-most(left, right))
+                      fork test, proves-in(calls/provers/refine, all, at-most(left, right))
                         hold
                           push(found, at-most(left, add-linear(right, constant-linear(-1.0))))
                 case none
@@ -2522,3 +2604,120 @@ task binding-equalities
           back two-facts(at-most(lhs, value-linear), at-least(lhs, value-linear))
         case none
           back facts()
+
+# ---- the prover's calls (item term-self-host-001-0356, decision 057 rule 5) ----
+
+# the wall clock in milliseconds, which check/product.ts handed the product search for its profile's spans (the
+# original's `Date.now()`); only the difference of two readings means anything
+bind hold-clock-ms
+  like float
+  case node
+    text <Date.now()>
+  case browser
+    text <Date.now()>
+  case rust
+    text <(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0))>
+  case swift
+    text <(Date().timeIntervalSince1970 * 1000.0).rounded(.down)>
+  case kotlin
+    text <(System.currentTimeMillis().toDouble())>
+
+task hold-clock
+  like float
+
+  back hold-clock-ms()
+
+# `TERM_PRODUCT_PROFILE=1`: the product search counts where its time goes, and each theorem goal prints its share
+# (check/hold-walk.tree `profile-end`). Read once, when the calls are built, as check/product.ts read it when it loaded
+task product-profiling
+  like boolean
+  mark private
+
+  fork test, has-variable(<TERM_PRODUCT_PROFILE>)
+    hold
+      back is-unequal(variable(<TERM_PRODUCT_PROFILE>), <>)
+  back false
+
+# THE CALLS every part of the prover is handed: the one instance of each prover's record, and this file's tasks that
+# check/universal.tree calls back, which it cannot load (this file loads it). Built once, by the face, which is when
+# TERM_PRODUCT_PROFILE is read
+task hold-calls-over
+  take refine, like refine-state
+  take work, like work-budget
+  take profile, like product-profile
+  like hold-calls
+
+  save provers
+    make hold-provers
+      bind refine, refine
+      bind work, work
+      bind profile, profile
+      bind profiling, product-profiling()
+  back hold-calls-of(provers)
+
+# the calls over the provers' records. A callback universal.tree makes is handed the provers, not the calls (a form
+# named in its own field's parameter is refused by positivity), and builds the calls again here (decision 062)
+task hold-calls-of
+  take provers, like hold-provers
+  like hold-calls
+
+  back
+    make hold-calls
+      bind provers, provers
+      bind to-linear, to-linear-with
+      bind assumption-inequalities, assumption-inequalities-with
+      bind polynomial-facts, polynomial-facts
+      bind product-goal-linear, product-goal-linear-with
+      bind product-goal, product-goal-with
+      bind refuted-by-products, refuted-by-products-with
+      bind theorem-parts, theorem-parts
+
+# the callbacks: each of this file's tasks, given the provers in place of the calls
+task to-linear-with
+  take state, like hold-state
+  take provers, like hold-provers
+  take expr, like expression
+  take side, like list, like inequality
+  like maybe, like linear
+  mark private
+
+  back to-linear(state, hold-calls-of(provers), expr, side)
+
+task assumption-inequalities-with
+  take state, like hold-state
+  take provers, like hold-provers
+  take expr, like expression
+  take negated, like boolean
+  take side, like list, like inequality
+  like list, like inequality
+  mark private
+
+  back assumption-inequalities(state, hold-calls-of(provers), expr, negated, side)
+
+task product-goal-linear-with
+  take state, like hold-state
+  take provers, like hold-provers
+  take expr, like expression
+  take available, like list, like inequality
+  like boolean
+  mark private
+
+  back product-goal-linear(state, hold-calls-of(provers), expr, available)
+
+task product-goal-with
+  take state, like hold-state
+  take provers, like hold-provers
+  take expr, like expression
+  take available, like list, like inequality
+  like boolean
+  mark private
+
+  back product-goal(state, hold-calls-of(provers), expr, available)
+
+task refuted-by-products-with
+  take provers, like hold-provers
+  take known, like list, like inequality
+  like boolean
+  mark private
+
+  back refuted-by-products(hold-calls-of(provers), known)

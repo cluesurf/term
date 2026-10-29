@@ -19,7 +19,8 @@ import { compile } from '@term/make/code/compile/compile'
 import { emitTarget } from '@term/make/code/compile/emit-target'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
-import type { WakeGroup } from '@term/make/code/compile/wake'
+import type { WakeGroup } from '@term/make/code/compile/program-warnings'
+import type { RollValue } from '@term/make/code/compile/rolling'
 import type { Program } from '@term/make/code/compile/node'
 
 type Env = 'rust' | 'swift' | 'kotlin'
@@ -191,15 +192,23 @@ function built(env: Env): { source: string; wake: WakeGroup[] } {
   return { source, wake: result.wake ?? [] }
 }
 
+// an entry's name: the entry is a roll value (decision 058), its `name` a text in its pair-values
+function nameOf(entry: RollValue): string | undefined {
+  if (entry.form !== 'pair-values') return undefined
+  const found = entry.pairs.find(pair => pair.key === 'name')
+
+  return found?.value.form === 'text-value' ? found.value.value : undefined
+}
+
 // the compile's wake names this deck, with its exception and its tell in the typed groups
 function judgeWake(env: Env, wake: WakeGroup[]): void {
   const own = wake.find(group => group.deck === '@probe/hive')
   ok(
     `${env}: the compile's wake holds the deck, its static exception and its tell`,
     own !== undefined &&
-      own.typed.exceptions.some(one => one.name === 'user-absence') &&
-      own.typed.tells.some(one => one.name === '@probe/hive/user-absence'),
-    JSON.stringify(wake.map(group => ({ deck: group.deck, exceptions: group.typed.exceptions.map(one => one.name), tells: group.typed.tells.map(one => one.name) }))),
+      own.typed.exceptions.some(one => nameOf(one) === 'user-absence') &&
+      own.typed.tells.some(one => nameOf(one) === '@probe/hive/user-absence'),
+    JSON.stringify(wake.map(group => ({ deck: group.deck, exceptions: group.typed.exceptions.map(nameOf), tells: group.typed.tells.map(nameOf) }))),
   )
 }
 

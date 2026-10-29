@@ -1,0 +1,185 @@
+# What compile/load.ts held beside compile/loading.tree (item 0082): the parse memo, one parse per module per build,
+# and the refusal of a `{platform}` load the build's env answers with no file.
+#
+# The memo is a record the caller makes once and shares across a build (spec 4.8): keyed by file, holding the text it
+# was parsed from, so a resolver that hands back a changed file re-parses rather than serving a stale tree. A memo is a
+# pure function of (file, text), so eviction can only cost a re-parse, never a wrong answer: past `cap` entries the one
+# used least recently goes, a hit moving its entry to the newest end. A hit hands back the same parse result it kept.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+  find split
+  find last-index-of
+  find substring
+
+load ../parser/diagnostic
+  find span
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find parse
+  find parse-result
+
+load ./loading
+  find source
+  find scan-parsed
+
+form parse-kept
+  link text, like text
+  link result, like parse-result
+
+form parse-memo
+  mark shared
+  link kept, like hash, like text, like parse-kept
+  link cap, like number
+
+# a memo holding nothing, keeping at most `cap` parses
+task fresh-parse-memo
+  take cap, like number
+  like parse-memo
+
+  back
+    make parse-memo
+      bind kept, make hash
+      bind cap, cap
+
+# the parse of `given`, from the memo when it holds one of this very text
+task parse-remembered
+  take memo, like parse-memo
+  take given, like source
+  like parse-result
+
+  save file, given/file
+  fork test, memo/kept/has(file)
+    hold
+      save hit, memo/kept/get(file)
+      fork test, is-equal(hit/text, given/text)
+        hold
+          memo/kept/remove(file)
+          memo/kept/set(file, hit)
+          back hit/result
+  save read
+    make token-source
+      bind file, file
+      bind text, given/text
+  save result, parse(read)
+  save fresh
+    make parse-kept
+      bind text, given/text
+      bind result, result
+  memo/kept/set(file, fresh)
+  walk test
+    hook test, is-above(memo/kept/length(), memo/cap)
+    hook hold
+      save files, memo/kept/keys()
+      fork test, is-equal(files/length, 0)
+        hold
+          halt
+      memo/kept/remove(get(files, 0))
+  back result
+
+# The `{platform}` loads of a closure the build's env answers with no file: a module this env has no native for
+# (`network/server` or `file/directory` in a page), each refused AT THE LOAD, naming the module and the env. A module
+# whose text has no `{platform}` is not scanned again
+task platform-refusals
+  take sources, like list, like source
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      like maybe, like source
+  take env, like text
+  take parse-of
+    like task
+      take given, like source
+      like parse-result
+  like list, like diagnostic
+
+  save out, make list
+  walk sources
+    take given
+    fork test, not(contains(given/text, <\{platform\}>))
+      hold
+        turn next
+    save scan, scan-parsed(parse-of(given))
+    walk scan/finds
+      take entry
+      fork test, not(contains(entry/path, <\{platform\}>))
+        hold
+          turn next
+      sift entry/base
+        case some
+          turn next
+        case none
+          save nothing, 0
+      sift resolve(entry/path, given/file)
+        case some
+          turn next
+        case none
+          save nothing, 0
+      save at, entry/at
+      sift at
+        case none
+          fork test, is-above(entry/spans/length, 0)
+            hold
+              save first-span, get(entry/spans, 0)
+              save at, make(some, first-span)
+        case some
+          save nothing, 0
+      sift at
+        case some
+          link written
+          save module, after-native-slot(entry/path)
+          save input
+            make diagnostic-input
+              bind file, given/file
+              bind span, written
+              bind message, make(some, <{module} has no {env} native: {entry/path} names no file a {env} build can load>)
+          save refusal, make unresolved-load
+          push(out, diagnose(refusal, input))
+        case none
+          save nothing, 0
+  back out
+
+# a `{platform}` path with everything through its last `/native/{platform}/` cut, as the original's
+# `replace(/^.*\/native\/\{platform\}\//, '')`: `.` stops at a line break, so only the first line is looked in
+task after-native-slot
+  take path, like text
+  like text
+  mark private
+
+  save first, path
+  walk split(path, <\n>)
+    take line
+    save first, line
+    halt
+  walk split(first, <\r>)
+    take line
+    save first, line
+    halt
+  walk split(first, < >)
+    take line
+    save first, line
+    halt
+  walk split(first, < >)
+    take line
+    save first, line
+    halt
+  save slot, </native/\{platform\}/>
+  save at, last-index-of(first, slot)
+  fork test, is-below(at, 0)
+    hold
+      back path
+  back substring(path, add(at, slot/length))

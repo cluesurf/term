@@ -43,6 +43,7 @@ load ./certificate
 load ./eliminate
   find at-least
   find at-most
+  find proves-in
 
 load ./inequality
   find to-linear
@@ -598,7 +599,7 @@ task bound-invariant
                     hold
                       save ceiling, add-linear(right, constant-linear(1.0))
                   save fact, at-most(left, ceiling)
-                  fork test, calls/proves(current, fact)
+                  fork test, proves-in(calls/provers/refine, current, fact)
                     hold
                       save out, facts()
                       push(out, fact)

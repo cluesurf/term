@@ -15,7 +15,8 @@
 # pass reads the stamped program as it was handed: the face's first pass renamed the module's `host` data trees in
 # place, so its second pass wrote none of their structs. The `host` data trees are named here on a copy.
 #
-# The wake chain reads the roll's entries as roll values (decision 040).
+# The wake chain reads compile/program-warnings.tree's `wake-group` as the warnings made it, its entries roll values
+# (decisions 040 and 058).
 
 load @term/base/list
   find list
@@ -136,6 +137,9 @@ load ./rolling
   find roll-pair
   find string-of
 
+load ./program-warnings
+  find wake-group
+
 load ./rust-names
   find rust-type-context
   find rust-type
@@ -182,14 +186,6 @@ load ./unit-split
   find unmarked
 
 # ---- what crosses ----
-
-# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
-form rust-wake-group
-  link deck, like text
-  link entries, like list, like roll-value
-  link exceptions, like list, like roll-value
-  link tells, like list, like roll-value
-  link docks, like list, like roll-value
 
 # what one pass cloned (item 0029): the forms named in any cloned type, and whether a clone was of a type not known or
 # generic, which could be any form
@@ -1131,12 +1127,12 @@ task wake-list-of
   back <std::rc::Rc::new(std::cell::RefCell::new(vec![{join-with(items, <, >)}]))>
 
 task wake-typed-call
-  take group, like rust-wake-group
+  take group, like wake-group
   like text
   mark private
 
   save exceptions, make list
-  walk group/exceptions
+  walk group/typed/exceptions
     take entry
     save roll, wake-record(entry, <base>)
     save links, make list
@@ -1162,13 +1158,13 @@ task wake-typed-call
     save base, <ExceptionRoll \{ like: {wake-text-of(roll, <like>)}, chain: {wake-texts-of(roll, <chain>)}, note: {wake-text-of(roll, <note>)}, link: vec![{join-with(links, <, >)}] \}>
     push(exceptions, wake-typed-entry(<ExceptionRoll>, entry, base))
   save tells, make list
-  walk group/tells
+  walk group/typed/tells
     take entry
     save roll, wake-record(entry, <base>)
     save base, <TellRoll \{ note: {wake-text-of(roll, <note>)}, hint: {wake-text-of(roll, <hint>)}, link: {wake-texts-of(roll, <link>)}, alias: {wake-text-of(roll, <alias>)} \}>
     push(tells, wake-typed-entry(<TellRoll>, entry, base))
   save docks, make list
-  walk group/docks
+  walk group/typed/docks
     take entry
     save roll, wake-record(entry, <base>)
     push(docks, wake-typed-entry(<DockRoll>, entry, <DockRoll \{ halt: {wake-texts-of(roll, <halt>)} \}>))
@@ -1192,7 +1188,7 @@ task is-typed-kind
 # compile driver handed over the roll. See note/project/term/hive/05-hive.md, and THE TYPED WAKE (seam spec §3.3)
 task wake-chain
   take program, like list, like statement
-  take wake, like list, like rust-wake-group
+  take wake, like list, like wake-group
   take st, like rust-state
   take facts, like rust-facts
   like list, like text
@@ -1243,7 +1239,7 @@ task wake-chain
 # children this pass holds in a `Box`, and `record` is filled with what it clones
 task emit-rust-pass
   take handed, like list, like statement
-  take wake, like list, like rust-wake-group
+  take wake, like list, like wake-group
   take boxed-forms, like hash, like text, like boolean
   take record, like rust-clone-record
   take context, like rust-type-context
@@ -2512,7 +2508,7 @@ task statement-span-of
 # per module (compile/unit-split.tree)
 task emit-rust
   take handed, like list, like statement
-  take wake, like list, like rust-wake-group
+  take wake, like list, like wake-group
   take units, like boolean
   take fail
     like task

@@ -183,6 +183,13 @@ form rewrite-rule
     link aliases, like hash, like text, like text
     link targets, like hash, like text, like boolean
     link fresh, like fresh-count
+  # ONE NAME, TWO KINDS, on the kernel's own copy of the program (check/elaborate.ts `kindsApart`, decision 055): a
+  # form named in `forms` takes `<name>__form` wherever it stands as a form (a named type, a construction, a raise, its
+  # definition, a method's owner), and a task named in `tasks` takes `<name>__task` at its definition (a task that is
+  # no method) and at every call whose callee is a variable of the name. A task passed as a value keeps its name
+  case kinds-apart
+    link forms, like list, like text
+    link tasks, like list, like text
 
 # the fresh names a rewrite has made so far, shared by every step of one walk
 form fresh-count
@@ -877,6 +884,9 @@ task rewrites-types
       back true
     case apply-aliases
       back true
+    # elaborate.ts's kindsApart walked every key but `span`
+    case kinds-apart
+      back true
     miss
       back false
 
@@ -896,7 +906,8 @@ task enters-type-key
     miss
       back true
 
-# whether a rule enters the type a match arm tests for: mint-bridge.ts's applyAliases walked every key
+# whether a rule enters the type a match arm tests for: mint-bridge.ts's applyAliases and elaborate.ts's kindsApart
+# walked every key
 task enters-arm-types
   take rule, like rewrite-rule
   like boolean
@@ -904,6 +915,8 @@ task enters-arm-types
 
   sift rule
     case apply-aliases
+      back true
+    case kinds-apart
       back true
     miss
       back false
@@ -1538,6 +1551,8 @@ task rule-type
       back bind-type(given, binding)
     case apply-aliases
       back aliased-type(given, aliases)
+    case kinds-apart
+      back kinds-apart-type(given, forms)
     miss
       back given
 
@@ -1576,6 +1591,8 @@ task rule-expression
       back renamed-variable(given, from, to)
     case apply-aliases
       back aliased-expression(given, aliases)
+    case kinds-apart
+      back kinds-apart-expression(given, forms, tasks)
     miss
       back given
 
@@ -1700,8 +1717,89 @@ task rule-statement
       back apart-statement(one, apart)
     case bind-forms
       back bind-statement(one, binding)
+    case kinds-apart
+      back kinds-apart-statement(one, forms, tasks)
     miss
       back one
+
+# ---- one name, two kinds (check/elaborate.ts `kindsApart`) ----
+
+# a named type of a form in `forms`
+task kinds-apart-type
+  take given, like type
+  take forms, like list, like text
+  like type
+  mark private
+
+  sift given
+    case named
+      fork test, has-text(forms, name)
+        hold
+          save given/name, <{name}__form>
+    miss
+      save nothing, 0
+  back given
+
+# a construction of a form in `forms`, and a call whose callee is a variable naming a task in `tasks`
+task kinds-apart-expression
+  take given, like expression
+  take forms, like list, like text
+  take tasks, like list, like text
+  like expression
+  mark private
+
+  sift given
+    case record
+      fork test, has-text(forms, name)
+        hold
+          save given/name, <{name}__form>
+    case call
+      save target, callee
+      sift target
+        case variable
+          fork test, has-text(tasks, name)
+            hold
+              save target/name, <{name}__task>
+              save given/callee, target
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back given
+
+# a raise of a form in `forms`, its definition and a method's owner, and the definition of a task in `tasks` that is
+# no method
+task kinds-apart-statement
+  take one, like statement
+  take forms, like list, like text
+  take tasks, like list, like text
+  like statement
+  mark private
+
+  sift one
+    case throw
+      fork test, has-text(forms, raise)
+        hold
+          save one/raise, <{raise}__form>
+    case record-type
+      fork test, has-text(forms, name)
+        hold
+          save one/name, <{name}__form>
+    case function
+      sift method
+        case some
+          link owner
+          fork test, has-text(forms, owner/form)
+            hold
+              save owner/form, <{owner/form}__form>
+              save one/method, make(some, owner)
+        case none
+          fork test, has-text(tasks, name)
+            hold
+              save one/name, <{name}__task>
+    miss
+      save nothing, 0
+  back one
 
 # a reference the checker bound to a renamed task, and a call's callee of that name: a dock is reached only through a
 # member (`log/write-warn`), never called itself, and a callee does not always carry its binding

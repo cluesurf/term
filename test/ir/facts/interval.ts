@@ -6,7 +6,6 @@
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { gatedTasks, listFacts } from '@term/make/code/compile/backend'
 import { provenArithmetic } from '@term/make/code/compile/proven'
 import type { Expression } from '@term/make/code/compile/node'
 
@@ -32,10 +31,9 @@ function proven(text: string, by: number, op = '*', divisor?: string): boolean |
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
-  const program = built.program
-  const masks = new Set(program.flatMap(n => (n.form === 'mask' ? n.methods : [])))
-  const { lend, fresh } = listFacts(program, gatedTasks(program, masks))
-  const facts = provenArithmetic(program, lend, fresh)
+  // the program stamped as the TypeScript emitter stamps it, and the rows it writes unchecked (decision 056): every
+  // node is asked on that stamped program, by its place-row
+  const facts = provenArithmetic(built.program)
   const found: boolean[] = []
   const visit = (value: unknown): void => {
     if (typeof value !== 'object' || value === null) {
@@ -64,7 +62,7 @@ function proven(text: string, by: number, op = '*', divisor?: string): boolean |
     }
   }
 
-  visit(program)
+  visit(facts.program)
 
   return found.length ? found.every(Boolean) : undefined
 }

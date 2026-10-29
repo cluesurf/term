@@ -14,7 +14,7 @@
 # Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
 #   - a row's text (`row-key`) and every number in it are JavaScript's, through binds, so two rows the original took
 #     for one are one here
-#   - the linear prover is the face's (`proves`, memoized), handed in through `hold-calls`
+#   - the linear prover is check/eliminate.tree `proves-in`, memoized on the `refine-state` that `hold-calls` carries
 
 load @term/base/list
   find list
@@ -44,6 +44,7 @@ load ./certificate
 load ./eliminate
   find at-least
   find at-most
+  find proves-in
 
 load ./nonlinear
   find monomial-vars
@@ -719,10 +720,10 @@ task pinned
   fork test, not(whole-float(candidate))
     hold
       back false
-  fork test, not(calls/proves(known, at-most(atom, constant-linear(candidate))))
+  fork test, not(proves-in(calls/provers/refine, known, at-most(atom, constant-linear(candidate))))
     hold
       back false
-  back calls/proves(known, at-least(atom, constant-linear(candidate)))
+  back proves-in(calls/provers/refine, known, at-least(atom, constant-linear(candidate)))
 
 task floats
   like list, like float
@@ -790,7 +791,7 @@ task every-path-proves
 
   walk paths
     take path
-    fork test, not(calls/proves(path, q))
+    fork test, not(proves-in(calls/provers/refine, path, q))
       hold
         back false
   back true

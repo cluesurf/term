@@ -865,6 +865,57 @@ task infinity
 
   back divide(1.0, 0.0)
 
+# ---- the budget and the profile, one instance each (item term-self-host-001-0355, decision 057 rule 3) ----
+
+# THE BUDGET: the exact simplex's work for one goal, deterministic, so the same goal stops at the same place on every
+# machine and every run. check/product.ts makes the one instance, holds.ts opens one per goal and asks whether it ran
+# out. Infinite until a caller opens one
+task fresh-work-budget
+  like work-budget
+
+  back
+    make work-budget
+      bind budget, infinity()
+      bind spent, 0.0
+
+# WHERE THE TIME GOES, counted for `TERM_PRODUCT_PROFILE=1` and read by holds.ts per goal. Counting changes nothing a
+# search decides
+task fresh-product-profile
+  like product-profile
+
+  back
+    make product-profile
+      bind refutes, 0.0
+      bind rows, 0.0
+      bind cells, 0.0
+      bind float-declined, 0.0
+      bind exact-pivots, 0.0
+      bind exact-work, 0.0
+      bind build-ms, 0.0
+      bind exact-ms, 0.0
+
+task open-budget
+  take work, like work-budget
+  take cells, like float
+
+  save work/budget, cells
+  save work/spent, 0.0
+
+task budget-spent
+  take work, like work-budget
+  like boolean
+
+  back is-minimum(work/spent, work/budget)
+
+# work done OUTSIDE the exact simplex that the budget must still see: the case split's product refutations
+# (check/universal.tree `by-cases`), each building products of its facts before any pivot. Counted only, never timed, so
+# a goal still stops at the same place on every machine
+task spend-work
+  take work, like work-budget
+  take units, like float
+
+  save work/spent, add(work/spent, units)
+
 # THE FAST REFUSAL. Phase one in floating point, run before the exact search: when it ends at an optimum whose sum of
 # artificials is clearly above zero, no x >= 0 solves A x = b, and the exact search is skipped. This can only DECLINE.
 task plainly-infeasible

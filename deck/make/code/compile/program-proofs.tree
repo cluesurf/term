@@ -6,8 +6,11 @@
 # term/self-host/change/001, decision 031 part F), which stay as the face. The decisions:
 #   - the passes that are Term are loaded by their `.tree` names (check/claim, check/effects, check/async-resolve,
 #     check/contracts); the ones with no port yet are docks, each named for its module (decision 031 section 3):
-#     check/elaborate, check/holds, check/facts, and check/totality.ts, the face that hands check/termination.tree the
-#     linear prover, a task Term cannot hand in
+#     check/elaborate, check/holds, and check/totality.ts, the face that hands check/termination.tree the linear prover,
+#     a task Term cannot hand in
+#   - the program's facts (which tasks are pure, state free, fresh-returning, length keeping) are one record,
+#     check/program-facts.tree, made here once for the program the holds check and handed to check/holds.ts (item 0368,
+#     spec 4.8), where check/facts.ts kept the answer per program by identity
 #   - check/contract.ts's `lowerContracts` read the width switch off check/width-range.ts; here the contracts' port takes
 #     it off the checker-switches record, as it takes the await switch (spec.md section 4.8)
 #   - `safeTerminating`'s try/catch is a `mark unsafe` fork, a failed analysis answering no task
@@ -54,10 +57,16 @@ load ../check/async-resolve
 load ../check/contracts
   find lower-contracts
 
+load ../check/purity
+  find purity
+
+load ../check/program-facts
+  find program-facts
+  find program-facts-of
+
 dock load
   load <@term/make/code/check/elaborate>, name program-proofs-elaborate
   load <@term/make/code/check/holds>, name program-proofs-holds
-  load <@term/make/code/check/facts>, name program-proofs-facts
   load <@term/make/code/check/totality>, name program-proofs-totality
 
 # what the proofs read that the run does not hold: the checker's switches
@@ -108,16 +117,14 @@ form proofs-obligations
 form holds-skip-options
   link skip, like list, like text
   link kernel-proven, like list, like text
+  link facts, like program-facts
 
-# the holds' options for the checker's copy
+# the holds' options for the checker's copy: the facts are the program's as written, not the copy's
 form holds-copy-options
   link kernel-proven, like list, like text
   link tally, like proofs-tally
   link only, like list, like text
-  link pure, like dynamic
-  link state-free, like dynamic
-  link keeping, like dynamic
-  link returning, like dynamic
+  link facts, like program-facts
 
 # ---- small helpers ----
 
@@ -310,7 +317,7 @@ task program-proofs
         bind name, reason/name
         bind reason, reason/reason
     push(declined, task)
-  save pure-names, proofs-set-list(program-proofs-facts/pure-functions(run/program))
+  save pure-names, once-each(purity(run/program)/pure)
   save evidence
     make claim-evidence
       bind verified, once-each(elaboration/proven)
@@ -370,10 +377,13 @@ task program-proofs
   # follows its call; every other task here, as written
   save checked, lower-contracts(run/program, make(some, file), true, given/switches/widths)
   save kernel-proven, proven-by-kernel(run/program, kernel-discharged)
+  # the program's facts, once, for the program as stamped: both hold checks read them
+  save known-facts, program-facts-of(run/program)
   save skip-options
     make holds-skip-options
       bind skip, checked/lowered
       bind kernel-proven, kernel-proven
+      bind facts, known-facts
   save hold-diagnostics, make list
   walk as-diagnostics(program-proofs-holds/check-holds(run/program, file, skip-options))
     take one
@@ -464,10 +474,7 @@ task program-proofs
       bind kernel-proven, kernel-proven
       bind tally, tally
       bind only, checked/lowered
-      bind pure, program-proofs-facts/pure-functions(run/program)
-      bind state-free, program-proofs-facts/state-free-functions(run/program)
-      bind keeping, program-proofs-facts/length-keeping-functions(run/program)
-      bind returning, program-proofs-facts/returns-fresh-functions(run/program)
+      bind facts, known-facts
   walk as-diagnostics(program-proofs-holds/check-holds(checked/program, file, copy-options))
     take one
     fork test, not(marked-at(one, kernel-discharged))

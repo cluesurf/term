@@ -1,53 +1,19 @@
-// F4 (note/project/term/compiler/codegen/readme.md): a record in a list, updated IN PLACE. The value semantics (D1) say
+// F4 (note/project/term/compiler/codegen/readme.md): a record in a list, updated IN PLACE, the write assigning the
+// changed fields of the object already in the slot when no one can see the difference. Two facts decide it: a form's
+// values are SLOT-PRIVATE (`privateForms`, fact 1) and a write is IN PLACE (`placeWrites`, fact 2). RECORD REUSE
+// (`recordReuse`, Perceus's in-place update) lets a task build its answer in the record it was handed, and SLOT LOCALS
+// (`valuePlaces`, Swift) read a record through its slot with no copy. Rust and Swift do not read the writes. Why each
+// rule is shaped as it is: compile/places.tree's header and its tasks.
 //
-//   save b, call get(bodies, i)
-//   save bodies/{i}, make body / bind x, read b/x / bind vx, <new> / ...
-//
-// builds a new record and puts it in the slot. On TypeScript and Kotlin, where a record is an object, that is one
-// allocation per write: n-body writes 25 per step, and ran at 4.5 times its hand-written twin on TypeScript, which
-// writes `b.vx -= ...`. The write may assign the changed fields of the object already in the slot instead, when no
-// one can see the difference: nothing else holds that object, and nothing reads the old value of a changed field
-// after the write. Two facts decide it.
-//
-// 1. A form's values are SLOT-PRIVATE (`privateForms`): a value of the form only ever lives in one place. It is made
-//    fresh (a `make`, or a task every return of which is one), enters a list only fresh (a push, a slot write, a list
-//    literal), leaves one only into a local, a field read or a `send back`, and is never copied to a second name,
-//    passed (unless fresh), captured, nested in another type or written field by field. And every list of the form is
-//    an owned local or a lent parameter (F1's facts), so no list of it is ever copied either: a copy would share its
-//    elements. Then an element of a list is held by that list's slot and by locals read out of it, and by nothing else.
-//
-// 2. A write is IN PLACE (`placeWrites`): `bodies/{i}` gets a `make` of the form, and an earlier local in the same
-//    block, `b`, was read from `bodies/{i}` with the same index, with nothing between that could have changed the
-//    slot, the list or the index. The `make`'s fields that are `b/<same field>` are unchanged; the rest are assigned
-//    on `b`. After the write, `b` may be read only for an unchanged field, and so may any other local read from the
-//    same list, unless its index is provably a different one (`j` made as `i + 1` and only ever counted up, with `i`
-//    not written meanwhile: the pair loop of every n-body). Otherwise the write stays a `make`.
-//
-// RECORD REUSE (`recordReuse`, Perceus's in-place update, for the backends whose records are objects): AWFY's Bounce
-// writes every ball back through a task that answers a new one (`host moved, call move-ball(balls/{k})` / `save
-// balls/{k}, read moved/ball`), and on Kotlin each new ball stored into the list was the cost, 614 ms against 198 with
-// the ball changed in place (the hand version 151, `tmp/kotlin-bounce-ab.ts`). An ELIGIBLE task takes one record of a
-// plain form F (the others scalars), reads it only by field, and every return is a `make F`, or a `make G` of a CARRIER
-// form whose one field of type F is a `make F` and whose other fields are scalars. A REUSE SITE passes `xs/{i}` there and
-// writes `xs/{i}` with the result at once, in the same statement or the next one from the carrier's field. F, and the
-// carrier, must still be slot-private with those places allowed. A site calls the task's reusing copy (`<task>-reuse`).
-//
-// SLOT LOCALS (`valuePlaces`, Swift, where a record is a value and holding one copies it): a `let` read from a slot
-// whose every later use is a field read the slot itself answers the same is read through the slot, no copy made
-// (n-body on Swift: 202 ms to 161, the hand version 155, `tmp/swift-nbody-variants.ts`).
-//
-// Rust and Swift do not read the writes: a Rust or Swift record is a value already, and a slot write allocates nothing.
-//
-// The analyses are Term, compile/places.tree over compile/place-walk.tree's table of places (self-hosting, 2026-10-06),
-// and its header says how a node stands in for its identity there. This face walks the program once per answer,
-// numbers each place by the object it holds (a compiled program shares nodes, and the original kept facts by object),
-// hands F1's facts in as the port's tables, and makes the `Map`s, `WeakMap`s and `WeakSet`s of the nodes the port
-// answers, which are the program's own objects.
+// The analyses are Term, compile/places.tree over compile/place-walk.tree's table of places. They run on the program
+// STAMPED (compile/places-stamped.tree, item term-self-host-001-0081, decision 011): every place is a node of its own,
+// so a node's identity is its `place-row`. The statements these answers key are the stamped program's, and the nodes
+// record reuse names are place rows, where this face answered `WeakSet`s of the program's own objects.
 
 import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
 import type { Lend } from '@term/make/code/compile/backend'
-import { walkProgram } from '@term/make/code/compile/place-walk'
 import * as places from '@term/make/code/compile/places'
+import { stampedScope, rowsOfReuse } from '@term/make/code/compile/places-stamped'
 
 // one write made in place: the local that holds the slot's object, and the fields it assigns, in the `make`'s order.
 // `temps` when a value reads something an earlier assignment of the same write changes, so every value is computed
@@ -58,48 +24,21 @@ export type PlaceWrite = { local: string; fields: { name: string; value: Express
 export type SlotLocal = { list: Expression; index: Expression }
 
 export type Reuse = {
-  // each reusing task: the parameter position, its form, and the record nodes of its returns the copy builds in place.
-  // With a carrier of two fields, `keep` is the other one (a scalar) and `carriers` its returned records: the copy
-  // answers that field alone, since the record it built is already back in the caller's slot
-  tasks: Map<string, { param: number; form: string; builds: WeakSet<object>; keep?: { field: string; type: Type }; carriers?: WeakSet<object> }>
-  // with a kept field: each carrier `let` at a site, to the field it now holds alone, and each write-back, which the
-  // copy has already made
-  locals: WeakMap<object, string>
-  writeBacks: WeakSet<object>
-  // each call made at a reuse site
-  sites: WeakSet<object>
+  // each reusing task: the parameter position, its form, and the place rows of the records its returns build in place.
+  // With a carrier of two fields, `keep` is the other one (a scalar) and `carriers` the rows of its returned records:
+  // the copy answers that field alone, since the record it built is already back in the caller's slot
+  tasks: Map<string, { param: number; form: string; builds: Set<number>; keep?: { field: string; type: Type }; carriers?: Set<number> }>
+  // with a kept field: the row of each carrier `let` at a site, to the field it now holds alone, and of each
+  // write-back, which the copy has already made
+  locals: Map<number, string>
+  writeBacks: Set<number>
+  // the row of each call made at a reuse site
+  sites: Set<number>
   // the forms some copy assigns in place (Kotlin declares their fields `var`)
   forms: Set<string>
 }
 
 const flags = (names: Iterable<string>): Map<string, boolean> => new Map([...names].map(name => [name, true]))
-
-// the program as compile/place-walk.tree's table of places, each numbered by the first place holding the same object.
-// compile/backend.ts `ownedElements` reads the same
-export function numberedWalk(program: Program): { w: ReturnType<typeof walkProgram>; ids: number[] } {
-  const w = walkProgram(program as never)
-  const first = new Map<object, number>()
-  const ids = w.handles.map((handle, row) => {
-    const node = handle.node as object
-    const id = first.get(node)
-
-    if (id !== undefined) {
-      return id
-    }
-
-    first.set(node, row)
-
-    return row
-  })
-
-  return { w, ids }
-}
-
-function scopeOf(program: Program): places.PlaceScope {
-  const { w, ids } = numberedWalk(program)
-
-  return places.scopeOf(w, ids)
-}
 
 const writesOf = (written: places.Written[]): Map<Statement, PlaceWrite> =>
   new Map(written.map(one => [one.node as Statement, one.write as unknown as PlaceWrite]))
@@ -107,7 +46,7 @@ const writesOf = (written: places.Written[]): Map<Statement, PlaceWrite> =>
 // both facts for a whole program, as an emitter reads them: the writes made in place, and the forms some write
 // updates (Kotlin declares their fields `var`)
 export function recordPlaces(program: Program): { writes: Map<Statement, PlaceWrite>; forms: Set<string> } {
-  const answer = places.recordPlaces(scopeOf(program))
+  const answer = places.recordPlaces(stampedScope(program as never))
 
   return { writes: writesOf(answer.writes), forms: new Set(answer.forms) }
 }
@@ -115,7 +54,7 @@ export function recordPlaces(program: Program): { writes: Map<Statement, PlaceWr
 // the same for a backend whose records are VALUES (Swift's structs): no form needs to be slot-private, since a copy
 // held elsewhere cannot see a write, so every plain record form is read for its writes and its slot locals
 export function valuePlaces(program: Program): { writes: Map<Statement, PlaceWrite>; locals: Map<Statement, SlotLocal> } {
-  const answer = places.valuePlaces(scopeOf(program))
+  const answer = places.valuePlaces(stampedScope(program as never))
 
   return {
     writes: writesOf(answer.writes),
@@ -130,67 +69,46 @@ export function privateForms(
   fresh: Set<string>,
   // told each refusal, with the task it is in and the rule that refused, for a test or a probe to say why
   explain?: (form: string, where: string) => void,
-  // the places a record reuse needs: nodes judged as allowed where they stand, and the CARRIER forms, whose field of a
-  // candidate form does not make that form nested
-  allow?: { nodes: WeakSet<object>; carriers: Set<string> },
+  // the places a record reuse needs: the place rows judged as allowed where they stand, and the CARRIER forms, whose
+  // field of a candidate form does not make that form nested
+  allow?: { rows: Set<number>; carriers: Set<string> },
 ): Set<string> {
-  const scope = scopeOf(program)
-  const allowed = new Map<number, boolean>()
+  // a place row is its walk row plus one, and the scope numbers each place by its walk row
+  const allowed = new Map([...(allow?.rows ?? [])].map(row => [row - 1, true]))
+  const answer = places.privateForms(stampedScope(program as never), lend as never, flags(fresh), allowed, flags(allow?.carriers ?? []))
 
-  if (allow) {
-    scope.w.handles.forEach((handle, row) => {
-      if (allow.nodes.has(handle.node as object)) {
-        allowed.set(scope.ids[row]!, true)
-      }
-    })
-  }
-
-  const answer = places.privateForms(scope, lend as never, flags(fresh), allowed, flags(allow?.carriers ?? []))
-
-  if (explain) {
-    for (let at = 0; at + 1 < answer.told.length; at += 2) {
-      explain(answer.told[at]!, answer.told[at + 1]!)
-    }
+  for (let at = 0; explain && at + 1 < answer.told.length; at += 2) {
+    explain(answer.told[at]!, answer.told[at + 1]!)
   }
 
   return new Set(answer.forms)
 }
 
 export function recordReuse(program: Program): Reuse {
-  const answer = places.recordReuse(scopeOf(program))
+  const answer = rowsOfReuse(places.recordReuse(stampedScope(program as never)))
   const tasks: Reuse['tasks'] = new Map()
 
   for (const task of answer.tasks) {
     tasks.set(task.name, {
       param: task.param,
       form: task.form,
-      builds: new WeakSet(task.builds as object[]),
-      ...(task.keepField ? { keep: { field: task.keepField, type: task.keepType as Type }, carriers: new WeakSet(task.carriers as object[]) } : {}),
+      builds: new Set(task.builds),
+      ...(task.keepField ? { keep: { field: task.keepField, type: task.keepType as Type }, carriers: new Set(task.carriers) } : {}),
     })
-  }
-
-  const locals = new WeakMap<object, string>()
-
-  for (const local of answer.locals) {
-    locals.set(local.node as object, local.field)
   }
 
   return {
     tasks,
-    sites: new WeakSet(answer.sites as object[]),
+    sites: new Set(answer.sites),
     forms: new Set(answer.forms),
-    locals,
-    writeBacks: new WeakSet(answer.writeBacks as object[]),
+    locals: new Map(answer.locals.map(one => [one.row, one.field])),
+    writeBacks: new Set(answer.writeBacks),
   }
 }
 
 // the slot writes made in place (fact 2), for the forms `privateForms` answers. With `locals`, also the SLOT LOCALS
-export function placeWrites(
-  program: Program,
-  forms: Set<string>,
-  locals?: Map<Statement, SlotLocal>,
-): Map<Statement, PlaceWrite> {
-  const answer = places.placeWrites(scopeOf(program), [...forms], locals !== undefined)
+export function placeWrites(program: Program, forms: Set<string>, locals?: Map<Statement, SlotLocal>): Map<Statement, PlaceWrite> {
+  const answer = places.placeWrites(stampedScope(program as never), [...forms], locals !== undefined)
 
   for (const one of answer.locals) {
     locals?.set(one.node as Statement, one.local as unknown as SlotLocal)

@@ -12,13 +12,19 @@
 #     its module state), holds.ts's `isLinearGoal` (another session's), `etaPair` (a construction rebuilt by spread,
 #     its keys as the source had them) and `diagnose`, which builds a diagnostic from exactly the input the original
 #     wrote, a `hint` only where it wrote one
-#   - `seek` deduplicated the rewritten terms by `JSON.stringify`, key order and a lambda's name included: a host bind
+#   - `seek` deduplicated the rewritten terms by `JSON.stringify`, key order and a lambda's name included. Its key is
+#     `kernel-term-key` since item 0070 (decision 055), which writes a level's variables where the host's `{}` did not
 #   - each bare `catch` is an `attempt`, covering what its `try` covered
 #   - the report's diagnostics and discharged spans are the face's own lists, written in place
 
 load @term/base/list
   find list
   find get
+  find join
+  find sort
+
+load @term/base/ordering
+  find from-texts
 
 load @term/base/maybe
   find maybe
@@ -105,19 +111,99 @@ load ./elaborating-induction
 load ../parser/diagnostic
   find span
 
-bind json-key
+# A KERNEL TERM'S KEY, for `seek`'s seen set (decision 055 section 2 of term/self-host/change/001-finish-self-host):
+# every case and every field of `kernel-term` in declared order, a text by its length and then itself, a number as it
+# is, a lam's name only when it has one, a level as its constant and its variables sorted by name. Two terms share a
+# key only when they are the same term. A key is compared within one run, never stored. It was `JSON.stringify` on
+# TypeScript, which writes a level's variables (a `Map`) as `{}`, so `Type u` and `Type v` shared a key there and one
+# was dropped, and a different text on every native backend
+task kernel-term-key
   take term, like kernel-term
   like text
-  case node
-    text <JSON.stringify($term)>
-  case browser
-    text <JSON.stringify($term)>
-  case rust
-    text <format!("\{:?\}", $term)>
-  case swift
-    text <String(describing: $term)>
-  case kotlin
-    text <$term.toString()>
+  mark private
+
+  sift term
+    case var
+      back <var({index})>
+    case meta
+      back <meta({id})>
+    case const
+      back <const({text-key(name)})>
+    case type
+      back <type({level-key(level)})>
+    case pi
+      back <pi({mult-key(mult)},{kernel-term-key(domain)},{kernel-term-key(codomain)})>
+    case lam
+      link lam-body
+      link lam-name
+      sift lam-name
+        case some
+          link written
+          back <lam({kernel-term-key(lam-body)},{text-key(written)})>
+        case none
+          back <lam({kernel-term-key(lam-body)})>
+    case app
+      back <app({kernel-term-key(fun)},{kernel-term-key(arg)})>
+    case ann
+      link annotated
+      link annotation
+      back <ann({kernel-term-key(annotated)},{kernel-term-key(annotation)})>
+    case id
+      link id-type
+      link id-left
+      link id-right
+      back <id({kernel-term-key(id-type)},{kernel-term-key(id-left)},{kernel-term-key(id-right)})>
+    case refl
+      link refl-type
+      link refl-value
+      back <refl({kernel-term-key(refl-type)},{kernel-term-key(refl-value)})>
+    case j
+      link j-proof
+      link j-motive
+      link j-base
+      link j-level
+      back <j({kernel-term-key(j-proof)},{kernel-term-key(j-motive)},{kernel-term-key(j-base)},{level-key(j-level)})>
+    case sigma
+      back <sigma({mult-key(mult)},{kernel-term-key(domain)},{kernel-term-key(codomain)})>
+    case pair
+      back <pair({kernel-term-key(first)},{kernel-term-key(second)})>
+    case fst
+      link fst-pair
+      back <fst({kernel-term-key(fst-pair)})>
+    case snd
+      link snd-pair
+      back <snd({kernel-term-key(snd-pair)})>
+    case self
+      link self-body
+      back <self({kernel-term-key(self-body)})>
+
+# a text no other text's key can be read as a part of: its length, then itself
+task text-key
+  take value, like text
+  like text
+  mark private
+
+  back <{value/length}:{value}>
+
+# a multiplicity: 0, 1 or `many`, each its own text
+task mult-key
+  take m, like unknown
+  like text
+  mark private
+
+  back <{m}>
+
+# a level: its constant, then each variable and its offset, by name
+task level-key
+  take level, like level
+  like text
+  mark private
+
+  save parts, make list
+  walk sort(level/vars/keys(), from-texts)
+    take name
+    push(parts, <{text-key(name)}={level/vars/get(name)}>)
+  back <level({level/constant};{join(parts, <,>)})>
 
 form hold-host
   link calls-impure-expression
@@ -411,7 +497,7 @@ task seek
           sift rewrite-once(term, rule)
             case some
               link rewritten
-              save key, json-key(rewritten)
+              save key, kernel-term-key(rewritten)
               fork test, is-equal(seen/has(key), false)
                 hold
                   seen/set(key, true)

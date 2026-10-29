@@ -18,7 +18,8 @@
 # The program is stamped after docks are kept apart (swift.ts did the same), so every fact reads the stamped copy.
 # The `host` data trees are named on a copy, which the emission reads, where the face renamed them in place.
 #
-# The wake chain reads the roll's entries as roll values (decision 040).
+# The wake chain reads compile/program-warnings.tree's `wake-group` as the warnings made it, its entries roll values
+# (decisions 040 and 058).
 
 load @term/base/list
   find list
@@ -135,6 +136,9 @@ load ./rolling
   find roll-value
   find string-of
 
+load ./program-warnings
+  find wake-group
+
 load ./unit-split
   find mark-unit
   find unmarked
@@ -164,14 +168,6 @@ load ./swift-emit
   find place-write
 
 # ---- what crosses ----
-
-# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
-form swift-wake-group
-  link deck, like text
-  link entries, like list, like roll-value
-  link exceptions, like list, like roll-value
-  link tells, like list, like roll-value
-  link docks, like list, like roll-value
 
 # what each task's emission reads by node, by the task's row, worked out the first time it is asked
 form swift-task-facts
@@ -935,25 +931,25 @@ task link-pairs
   back out
 
 task wake-typed-call
-  take group, like swift-wake-group
+  take group, like wake-group
   like text
   mark private
 
   save exceptions, make list
-  walk group/exceptions
+  walk group/typed/exceptions
     take entry
     save roll, wake-record(entry, <base>)
     save links, link-pairs(wake-record(roll, <link>))
     save base, <ExceptionRoll(like: {wake-text-of(roll, <like>)}, chain: {wake-texts-of(roll, <chain>)}, note: {wake-text-of(roll, <note>)}, link: [{join-with(links, <, >)}] as [Pair\<String, String\>])>
     push(exceptions, wake-typed-entry(<ExceptionRoll>, entry, base))
   save tells, make list
-  walk group/tells
+  walk group/typed/tells
     take entry
     save roll, wake-record(entry, <base>)
     save base, <TellRoll(note: {wake-text-of(roll, <note>)}, hint: {wake-text-of(roll, <hint>)}, link: {wake-texts-of(roll, <link>)}, alias: {wake-text-of(roll, <alias>)})>
     push(tells, wake-typed-entry(<TellRoll>, entry, base))
   save docks, make list
-  walk group/docks
+  walk group/typed/docks
     take entry
     save roll, wake-record(entry, <base>)
     push(docks, wake-typed-entry(<DockRoll>, entry, <DockRoll(halt: {wake-texts-of(roll, <halt>)})>))
@@ -979,7 +975,7 @@ task is-typed-kind
 # (seam spec §3.3), as typescript.ts and kotlin.ts write it
 task wake-chain
   take program, like list, like statement
-  take wake, like list, like swift-wake-group
+  take wake, like list, like wake-group
   like list, like text
   mark private
 
@@ -2012,7 +2008,7 @@ task owns-inner-row
 # per module (compile/unit-split.tree)
 task emit-swift
   take written, like list, like statement
-  take wake, like list, like swift-wake-group
+  take wake, like list, like wake-group
   take units, like boolean
   like text
 

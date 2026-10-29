@@ -1154,5 +1154,3 @@ task module-completions
       case none
         turn next
   back out
-
-# probe comment of term-self-host-001-0074, removed at once

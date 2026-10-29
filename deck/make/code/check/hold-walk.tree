@@ -12,8 +12,13 @@
 #     break the goal, that it is false there (check/explain.tree)
 #
 # Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
-#   - what the face still holds is handed in as `walk-calls`: the proof budget of check/product.ts, the width switch,
-#     the counter of uncertified answers, the replay counter the tests read, and the profile a run may ask for
+#   - the work budget, the counter of uncertified answers and the profile a run may ask for are the provers' records
+#     `hold-calls` carries (check/products.tree, check/eliminate.tree), read and written here since item 0356, where the
+#     face handed them in as `walk-calls`. The proof budget (TERM_PROOF_BUDGET), the width switch (the program's
+#     `checker-switches`), the width-typed fields (check/contracts.tree `field-widths-of`) and the replay count
+#     (hold-state's `holds-replayed`) are Term since item 0071 (decision 057)
+#   - the caller's tally is `hold-tally` itself, its `seen` and `kinds` absent until something was counted, and the
+#     program's tables are forgotten before and after a check (`check-holds`)
 #   - the program's sets the caller already knows (pure, state-free, length-keeping, fresh-returning, the functions) are
 #     the face's, cached per program by check/facts.ts, and arrive as hashes
 #   - a memo key is JSON text, written part by part and hashed by term/hash.tree. A statement in it (the task, a cited
@@ -73,6 +78,25 @@ load ./eliminate
   find at-least
   find at-most
   find utf16-order
+  find proves-in
+  find note-uncertified
+
+load ./products
+  find product-profile
+  find open-budget
+  find budget-spent
+
+load ./unfolding
+  find unfold-over
+
+load @term/base/log
+  find error, name log-error
+
+load ./holding
+  find owed-kinds
+  find owed-count-of
+  find owed-kinds-counted
+  find owed-kind-count
 
 load ./explain
   find print-expression
@@ -120,12 +144,28 @@ load ./inequality
   find written-alike
   find element-width-of
   find constant-of
+  find width-facts
+  find hold-clock
+
+load ./checker-switches
+  find checker-switches
+
+load ./contracts
+  find field-widths-of
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/base/text/number
+  find host-parse-float
 
 load ./hold-state
   find hold-state
   find hold-delta
   find delta-count
   find binder-fact
+  find reset-hold-program
 
 load ./hold-facts
   find forget
@@ -148,7 +188,6 @@ load ./hold-facts
 load ./hold-reach
   find hold-walk
   find hold-tally
-  find kind-count
   find failed-obligation
   find handles
   find flags
@@ -194,43 +233,75 @@ load ./purity
   find read-only-list-methods
   find root-name
 
-# ---- what the face still holds ----
+# ---- the profile a run may ask for ----
 
-form walk-calls
-  # THE PROOF BUDGET: the exact search's work one goal may spend, read per goal
-  link proof-budget
-    like task
-      like float
-  link open-budget
-    like task
-      take units, like float
-  link budget-spent
-    like task
-      like boolean
-  # whether width-typed values are checked (check/width-range.ts)
-  link width-ranges
-    like task
-      like boolean
-  # each width-typed field, `<form>/<field>` to its width (holds.ts `fieldWidthsOf`)
-  link field-widths
-    like task
-      take program, like list, like statement
-      like hash, like text, like text
-  link uncertified-count
-    like task
-      like number
-  # a kept walk was answered from the memo
-  link replayed
-    like task
-  # `TERM_PRODUCT_PROFILE=1`: a theorem goal's time and its share of the product search
-  link profile-begin
-    like task
-      like unknown
-  link profile-end
-    like task
-      take began, like unknown
-      take name, like text
-      take verdict, like text
+# `TERM_PRODUCT_PROFILE=1`: when a theorem goal began, and the product search's counts then
+form profile-began
+  link at, like float
+  link counts, like product-profile
+
+task profile-begin
+  take calls, like hold-calls
+  like maybe, like profile-began
+  mark private
+
+  fork test, not(calls/provers/profiling)
+    hold
+      back make none
+  save from, calls/provers/profile
+  save counts
+    make product-profile
+      bind refutes, from/refutes
+      bind rows, from/rows
+      bind cells, from/cells
+      bind float-declined, from/float-declined
+      bind exact-pivots, from/exact-pivots
+      bind exact-work, from/exact-work
+      bind build-ms, from/build-ms
+      bind exact-ms, from/exact-ms
+  save began
+    make profile-began
+      bind at, hold-clock()
+      bind counts, counts
+  back make(some, began)
+
+# a theorem goal's time and its share of the product search, on standard error
+task profile-end
+  take calls, like hold-calls
+  take began, like maybe, like profile-began
+  take name, like text
+  take verdict, like text
+  mark private
+
+  sift began
+    case some
+      link start
+      save current, calls/provers/profile
+      save was, start/counts
+      save line, <profile {name}: {verdict} in {subtract(hold-clock(), start/at)} ms, {subtract(current/refutes, was/refutes)} searches, >
+      save line, <{line}{subtract(current/rows, was/rows)} rows, {subtract(current/cells, was/cells)} cells, {subtract(current/float-declined, was/float-declined)} declined in floating point, >
+      save line, <{line}{subtract(current/exact-pivots, was/exact-pivots)} exact pivots, {subtract(current/exact-work, was/exact-work)} work, {calls/provers/work/spent} spent, >
+      save line, <{line}build {subtract(current/build-ms, was/build-ms)} ms, exact {subtract(current/exact-ms, was/exact-ms)} ms>
+      log-error(line)
+    case none
+      save nothing, 0
+
+# THE PROOF BUDGET: the exact search's work one goal may spend, in check/product.ts's units (rows times the pivot row's
+# bits, THE BUDGET). Set from the library: the costliest proof measured on 2026-10-05 is in
+# note/project/term/math-foundations/handoff-math-and-proof.md, and this is far above it, so it costs no proof there and
+# stops a refusal where one used to search for half an hour. `TERM_PROOF_BUDGET=<units>` changes it for one run
+# (`Infinity` removes it). Read per goal, so a run (or a test) may set it between compiles
+task proof-budget
+  like float
+  mark private
+
+  fork test, has-variable(<TERM_PROOF_BUDGET>)
+    hold
+      save units, variable(<TERM_PROOF_BUDGET>)
+      fork test, is-unequal(units, <>)
+        hold
+          back host-parse-float(units)
+  back 10000000000.0
 
 # what one program's check is handed: the program, its file, the sets the caller knows, and what to check
 form hold-program
@@ -247,6 +318,8 @@ form hold-program
   link returning, like hash, like text, like boolean
   link functions, like hash, like text, like boolean
   link kernel-proven, like list, like text
+  # the checker's switches: `widths` decides whether width-typed values are facts and owed
+  link switches, like checker-switches
 
 # what a rule that did not hold was asked, whether it is false, and what to try
 form told
@@ -701,7 +774,6 @@ task is-tier-zero
 task holds-in-expression
   take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take expression, like expression
   take walk, like hold-walk
 
@@ -722,7 +794,7 @@ task holds-in-expression
           take name
           add-text(local, name)
         save inner, walk-with(walk, flags-of(local), flags-of(volatile-names(closure-body)), walk/fresh, walk/params)
-        walk-holds(state, calls, wc, closure-body, facts(), inner)
+        walk-holds(state, calls, closure-body, facts(), inner)
       miss
         save nothing, 0
 
@@ -1114,7 +1186,7 @@ task cited-facts
       walk found-names
         take found-name
         save goal, substitute-name(goal, found-name, found/get(found-name))
-      back instance-facts(calls, goal, available)
+      back instance-facts(state, calls, goal, available)
     case none
       back refuse-cite(walk, name, at, <only a rule stated as hypotheses and one goal, with no find, can be cited>)
 
@@ -1232,7 +1304,6 @@ task unsplit-message
 task check-hold
   take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take statement, like statement
   take current, like list, like inequality
   take walk, like hold-walk
@@ -1286,8 +1357,8 @@ task check-hold
           save nothing, 0
       save refused-before, walk/diagnostics/length
       # one budget for this goal, its citations included
-      save budget, wc/proof-budget()
-      wc/open-budget(budget)
+      save budget, proof-budget()
+      open-budget(calls/provers/work, budget)
       save given, current
       save equation, false
       sift expr
@@ -1344,7 +1415,7 @@ task check-hold
                     bind message, make(some, message)
                 push(walk/diagnostics, diagnose(unproven-name(), input))
       save citations-held, is-equal(walk/diagnostics/length, refused-before)
-      save began, wc/profile-begin()
+      save began, profile-begin(calls)
       save impure, impure-outside-masks(state, calls, expr, walk)
       # a theorem with no universal hypothesis of its own inducts with its other number marks generalized
       save general, make none
@@ -1393,7 +1464,7 @@ task check-hold
       # AND ONCE MORE THROUGH THE DEFINITIONS, when the goal names a task the provers read as an atom
       fork test, and(and(not(is-proven(verdict)), not(impure)), not(inducts))
         hold
-          save unfolded, calls/unfold(expr)
+          save unfolded, unfold-over(expr, state/program)
           fork test, is-unequal(print-expression(unfolded, 0), print-expression(expr, 0))
             hold
               fork test, is-proven(decide-goal(state, calls, theorem, unfolded, given))
@@ -1422,15 +1493,15 @@ task check-hold
                   save verdict, make goal-verdict/proven
       fork test, theorem
         hold
-          wc/profile-end(began, rule-name, verdict-text(verdict))
+          profile-end(calls, began, rule-name, verdict-text(verdict))
       # whether the search stopped at the budget, read before the classification below opens its own
-      save stopped, and(not(is-proven(verdict)), wc/budget-spent())
+      save stopped, and(not(is-proven(verdict)), budget-spent(calls/provers/work))
       sift origin
         case none
           fork test, and(and(theorem, is-proven(verdict)), citations-held)
             hold
               # how it holds: decided over an ordered field alone, or with integer reasoning too, measured
-              wc/open-budget(budget)
+              open-budget(calls/provers/work, budget)
               save how, <integer>
               fork test, is-above(state/universal-hypotheses/length, 0)
                 hold
@@ -1463,21 +1534,13 @@ task check-hold
                 case some
                   link known-origin
                   save kind-key, <{task-name} {to-text(known-origin)}>
-                  save tally/has-seen, true
-                  fork test, tally/seen/has(kind-key)
+                  save seen, tally-seen(tally)
+                  fork test, seen/has(kind-key)
                     hold
-                      save ordinal, tally/seen/get(kind-key)
-                  save tally/seen/{kind-key}, add(ordinal, 1)
-                  save tally/has-kinds, true
-                  save origin-key, to-text(known-origin)
-                  fork test, not(tally/kinds/has(origin-key))
-                    hold
-                      save fresh
-                        make kind-count
-                          bind total, 0
-                          bind proven, 0
-                      save tally/kinds/{origin-key}, fresh
-                  save kind, tally/kinds/get(origin-key)
+                      save ordinal, seen/get(kind-key)
+                  save seen/{kind-key}, add(ordinal, 1)
+                  save tally/seen, make(some, seen)
+                  save kind, owed-count-of(tally-kinds-made(tally), to-text(known-origin))
                   save tally/total, add(tally/total, 1)
                   save kind/total, add(kind/total, 1)
                   fork test, is-proven(verdict)
@@ -1600,7 +1663,7 @@ task check-hold
               push(walk/diagnostics, diagnostic-made)
         case none
           save nothing, 0
-      wc/open-budget(infinity())
+      open-budget(calls/provers/work, infinity())
     miss
       save nothing, 0
 
@@ -1703,7 +1766,6 @@ task leaves
 task walk-holds
   take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take body, like list, like statement
   take assumptions, like list, like inequality
   take walk, like hold-walk
@@ -1720,7 +1782,7 @@ task walk-holds
           hold
             save current, both-facts(current, given-facts(state, calls, statement, walk))
           miss
-            check-hold(state, calls, wc, statement, current, walk)
+            check-hold(state, calls, statement, current, walk)
       case let
         link let-name
         link init
@@ -1728,7 +1790,7 @@ task walk-holds
         save defining, defining-equalities(state, calls, let-name, init, walk)
         save aliased, binding-aliases(current, let-name, init, walk)
         save current, both-facts(both-facts(current, defining), aliased)
-        holds-in-expression(state, calls, wc, init, walk)
+        holds-in-expression(state, calls, init, walk)
       case assign
         link target
         link op
@@ -1790,7 +1852,7 @@ task walk-holds
                 push(gathered, at-most(now, new-value))
                 push(gathered, at-least(now, new-value))
                 save current, forget(gathered, one-name(old))
-                holds-in-expression(state, calls, wc, value, walk)
+                holds-in-expression(state, calls, value, walk)
                 save done, true
               case none
                 save nothing, 0
@@ -1820,16 +1882,16 @@ task walk-holds
             fork test, and(and(not-shifted, is-set), is-variable)
               hold
                 save current, both-facts(current, defining-equalities(state, calls, root, value, walk))
-            holds-in-expression(state, calls, wc, value, walk)
+            holds-in-expression(state, calls, value, walk)
       case expression
         link expr
-        holds-in-expression(state, calls, wc, expr, walk)
+        holds-in-expression(state, calls, expr, walk)
       case return
         link value
         sift value
           case some
             link returned
-            holds-in-expression(state, calls, wc, returned, walk)
+            holds-in-expression(state, calls, returned, walk)
           case none
             save nothing, 0
       case if
@@ -1847,7 +1909,7 @@ task walk-holds
           take branch
           save side, facts()
           save conditions, walk-conditions(state, calls, branch/cond, false, side, walk, both-facts(current, negations))
-          sift walk-holds(state, calls, wc, branch/body, both-facts(both-facts(both-facts(current, negations), side), conditions), walk)
+          sift walk-holds(state, calls, branch/body, both-facts(both-facts(both-facts(current, negations), side), conditions), walk)
             case some
               link end
               push(ends, end)
@@ -1859,7 +1921,7 @@ task walk-holds
         sift otherwise
           case some
             link else-body
-            sift walk-holds(state, calls, wc, else-body, both-facts(current, negations), walk)
+            sift walk-holds(state, calls, else-body, both-facts(current, negations), walk)
               case some
                 link end
                 push(ends, end)
@@ -1896,7 +1958,7 @@ task walk-holds
                   save every, true
                   walk augmented
                     take path
-                    fork test, not(calls/proves(path, q))
+                    fork test, not(proves-in(calls/provers/refine, path, q))
                       hold
                         save every, false
                         halt
@@ -1915,7 +1977,7 @@ task walk-holds
         save loop-before, both-facts(kept, bound-invariant(state, calls, current, statement, walk))
         save side, facts()
         save conditions, walk-conditions(state, calls, cond, false, side, walk, facts())
-        walk-holds(state, calls, wc, loop-body, both-facts(both-facts(loop-before, side), conditions), walk)
+        walk-holds(state, calls, loop-body, both-facts(both-facts(loop-before, side), conditions), walk)
         # a walk that never leaves a turn early ends only when its condition is false
         save ended, facts()
         fork test, not(exits-early(loop-body))
@@ -1939,7 +2001,7 @@ task walk-holds
         # an item of a list of a width is inside the width, as a parameter of that width is: every way into such a
         # list owes it (width-0004). Not when the body writes the item, which then holds whatever was written
         save in-loop, loop-before
-        fork test, wc/width-ranges()
+        fork test, state/switches/widths
           hold
             sift element-width-of(iterable)
               case some
@@ -1947,13 +2009,13 @@ task walk-holds
                 fork test, not(has-text(written-in-block(loop-body), item))
                   hold
                     save item-facts, facts()
-                    walk calls/width-facts(item, item-width)
+                    walk width-facts(item, item-width)
                       take q
                       push(item-facts, q)
                     save in-loop, both-facts(loop-before, item-facts)
               case none
                 save nothing, 0
-        walk-holds(state, calls, wc, loop-body, in-loop, walk)
+        walk-holds(state, calls, loop-body, in-loop, walk)
         save current, loop-before
       case match
         link subject
@@ -1963,7 +2025,7 @@ task walk-holds
         save reached, false
         walk cases
           take branch
-          save end, walk-holds(state, calls, wc, branch/body, forget(current, match-binds(branch)), walk)
+          save end, walk-holds(state, calls, branch/body, forget(current, match-binds(branch)), walk)
           sift end
             case some
               link end-facts
@@ -1975,7 +2037,7 @@ task walk-holds
             link else-body
             fork test, not(reached)
               hold
-                sift walk-holds(state, calls, wc, else-body, current, walk)
+                sift walk-holds(state, calls, else-body, current, walk)
                   case some
                     link end-facts
                     save reached, true
@@ -1995,12 +2057,12 @@ task walk-holds
         link handler
         # the body may stop at any statement and land in the handler, which knows only what was true before less
         # whatever the body may have written
-        walk-holds(state, calls, wc, guard-body, current, walk)
+        walk-holds(state, calls, guard-body, current, walk)
         save after, forget-writes(current, block-handles(guard-body))
         sift handler
           case some
             link clause
-            walk-holds(state, calls, wc, clause/body, forget(after, one-name(clause/name)), walk)
+            walk-holds(state, calls, clause/body, forget(after, one-name(clause/name)), walk)
           case none
             save nothing, 0
         save start, handles()
@@ -2022,7 +2084,7 @@ task walk-holds
           save widened/{key}, own/get(key)
         save state/param-forms, widened
         save inner, walk-with(walk, flags-of(local-names(statement)), flags-of(volatile-names(fn-body)), fresh-of(statement, walk), steady-params(fn-params, fn-body))
-        walk-holds(state, calls, wc, fn-body, facts(), inner)
+        walk-holds(state, calls, fn-body, facts(), inner)
         save state/param-forms, outer
       miss
         save nothing, 0
@@ -2031,7 +2093,7 @@ task walk-holds
       case some
         link shrunk
         save shrunk-key, <{length-prefix()}{shrunk}>
-        fork test, calls/proves(before, at-least(atom-linear(shrunk-key), constant-linear(1.0)))
+        fork test, proves-in(calls/provers/refine, before, at-least(atom-linear(shrunk-key), constant-linear(1.0)))
           hold
             save moved, facts()
             walk current
@@ -3040,7 +3102,6 @@ task reached-definitions
 # a name it mentions, and the text of every definition those names reach
 task hold-key
   take state, like hold-state
-  take wc, like walk-calls
   take statement, like statement
   take given, like hold-program
   take tables, like list, like inequality
@@ -3114,7 +3175,7 @@ task hold-key
     case none
       save nothing, 0
   push(parts, boolean-json(has-tally))
-  push(parts, json-number(wc/proof-budget()))
+  push(parts, json-number(proof-budget()))
   back hash-text(json-list(parts))
 
 task two-texts
@@ -3144,15 +3205,27 @@ task kinds-copy
   mark private
 
   save out, delta-table()
-  walk tally/kinds/keys()
-    take kind
-    save count, tally/kinds/get(kind)
+  walk tally-counted(tally)
+    take one
     save made
       make delta-count
-        bind total, count/total
-        bind proven, count/proven
-    save out/{kind}, made
+        bind total, one/count/total
+        bind proven, one/count/proven
+    save out/{one/kind}, made
   back out
+
+# the tally's counts per kind, in the order the kinds were first counted, none before anything was
+task tally-counted
+  take tally, like hold-tally
+  like list, like owed-kind-count
+  mark private
+
+  sift tally/kinds
+    case some
+      link kinds
+      back owed-kinds-counted(kinds)
+    case none
+      back make list
 
 task delta-table
   like hash, like text, like delta-count
@@ -3168,9 +3241,10 @@ task kinds-added
   mark private
 
   save out, delta-table()
-  walk tally/kinds/keys()
-    take kind
-    save count, tally/kinds/get(kind)
+  walk tally-counted(tally)
+    take one
+    save kind, one/kind
+    save count, one/count
     save was-total, 0
     save was-proven, 0
     fork test, before/has(kind)
@@ -3188,17 +3262,17 @@ task kinds-added
 
 # what a kept walk added, added again
 task replay-holds
+  take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take delta, like hold-delta
   take given, like hold-program
 
-  wc/replayed()
+  save state/holds-replayed, add(state/holds-replayed, 1)
   save at, 0
   walk test
     hook test, is-below(at, delta/uncertified)
     hook hold
-      calls/note-uncertified()
+      note-uncertified(calls/provers/refine)
       save at, add(at, 1)
   sift given/tally
     case some
@@ -3208,15 +3282,7 @@ task replay-holds
       walk delta/kinds/keys()
         take kind
         save count, delta/kinds/get(kind)
-        save tally/has-kinds, true
-        fork test, not(tally/kinds/has(kind))
-          hold
-            save fresh
-              make kind-count
-                bind total, 0
-                bind proven, 0
-            save tally/kinds/{kind}, fresh
-        save into, tally/kinds/get(kind)
+        save into, owed-count-of(tally-kinds-made(tally), kind)
         save into/total, add(into/total, count/total)
         save into/proven, add(into/proven, count/proven)
     case none
@@ -3305,6 +3371,40 @@ task tally-kinds
     case none
       back delta-table()
 
+# the tally's running count per `<task> <kind>`, made the first time something is counted
+task tally-seen
+  take tally, like hold-tally
+  like hash, like text, like number
+  mark private
+
+  sift tally/seen
+    case some
+      link seen
+      back seen
+    case none
+      back seen-table()
+
+task seen-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# the tally's counts per kind, made the first time something is counted
+task tally-kinds-made
+  take tally, like hold-tally
+  like owed-kinds
+  mark private
+
+  sift tally/kinds
+    case some
+      link kinds
+      back kinds
+    case none
+      save kinds, make owed-kinds
+      save tally/kinds, make(some, kinds)
+      back kinds
+
 task small-tasks-of
   take program, like list, like statement
   like hash, like text, like small-task
@@ -3389,14 +3489,30 @@ task result-kind
     miss
       back <>
 
+# every `hold` of a program checked, and the program's tables forgotten afterwards (hold-state.tree
+# `reset-hold-program`), as the face's `finally` did until item 0356. Term cannot raise a caught value again (decision
+# 050, term-compiler-0076), so the tables are also forgotten BEFORE the check starts: no check reads what a raised or
+# stopped one left. Between a raised check and the next one the kernel's `is-linear-goal` and `order-follows` could
+# read them, where the original's were empty
+task check-holds
+  take state, like hold-state
+  take calls, like hold-calls
+  take given, like hold-program
+  like list, like diagnostic
+
+  reset-hold-program(state)
+  save found, check-program-holds(state, calls, given)
+  reset-hold-program(state)
+  back found
+
 # every `hold` of a program checked, each task's body walked from its parameters' facts
 task check-program-holds
   take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take given, like hold-program
   like list, like diagnostic
 
+  save state/switches, given/switches
   save diagnostics, diagnostic-list()
   save program, given/program
   save tables, constant-table-lengths(state, calls, program, given/pure, given/functions)
@@ -3435,7 +3551,7 @@ task check-program-holds
   save state/program, program
   # the tasks whose result is width-typed, under the switch: a call to one is a value inside the width
   save widths, text-table()
-  fork test, wc/width-ranges()
+  fork test, state/switches/widths
     hold
       walk program
         take s
@@ -3451,9 +3567,9 @@ task check-program-holds
   save state/result-widths, widths
   # and the width-typed fields: a read of one is a value inside the width, as every construction owes
   save state/field-widths, text-table()
-  fork test, wc/width-ranges()
+  fork test, state/switches/widths
     hold
-      save state/field-widths, wc/field-widths(program)
+      save state/field-widths, field-widths-of(program, false)
   # a pure task that returns a NUMBER: arithmetic is about numbers
   save pure-tasks, flags()
   walk program
@@ -3533,7 +3649,7 @@ task check-program-holds
         fork test, given/skip/has(fn-name)
           hold
             turn next
-        check-task(state, calls, wc, given, statement, tables, globals, constants, diagnostics, defs)
+        check-task(state, calls, given, statement, tables, globals, constants, diagnostics, defs)
       case hold
         # a top-level `hold`, proven with no assumptions
         fork test, given/limited
@@ -3560,7 +3676,7 @@ task check-program-holds
             bind scalars, flags()
         save one, statements()
         push(one, statement)
-        walk-holds(state, calls, wc, one, facts(), module-walk)
+        walk-holds(state, calls, one, facts(), module-walk)
       miss
         save nothing, 0
   back diagnostics
@@ -3580,7 +3696,6 @@ task proven-table
 task check-task
   take state, like hold-state
   take calls, like hold-calls
-  take wc, like walk-calls
   take given, like hold-program
   take statement, like statement
   take tables, like list, like inequality
@@ -3604,11 +3719,11 @@ task check-task
         fork test, is-natural-param(p)
           hold
             push(base, at-least(atom-linear(p/name), constant-linear(0.0)))
-      fork test, wc/width-ranges()
+      fork test, state/switches/widths
         hold
           walk fn-params
             take p
-            walk calls/width-facts(p/name, param-width(p))
+            walk width-facts(p/name, param-width(p))
               take q
               push(base, q)
       save shadowed, names-of-params(fn-params)
@@ -3695,17 +3810,17 @@ task check-task
       save key, <>
       fork test, not(theorem)
         hold
-          save key, hold-key(state, wc, statement, given, tables, globals, constants, defs)
+          save key, hold-key(state, statement, given, tables, globals, constants, defs)
           fork test, state/memo/has(key)
             hold
-              replay-holds(calls, wc, state/memo/get(key), given)
+              replay-holds(state, calls, state/memo/get(key), given)
               back
       save before-diagnostics, diagnostics/length
       save before-failed, tally-failed(given)
       save before-total, tally-total(given)
       save before-proven, tally-proven(given)
       save before-kinds, tally-kinds(given)
-      save before-uncertified, wc/uncertified-count()
+      save before-uncertified, calls/provers/refine/uncertified
       # a theorem's quantified functions are pure applications, not locals that may hold anything
       save local, flags()
       walk local-names(statement)
@@ -3737,7 +3852,7 @@ task check-task
           bind params, steady-params(fn-params, fn-body)
           bind constants, constants
           bind scalars, scalar-locals(fn-body, fn-params)
-      walk-holds(state, calls, wc, fn-body, base, task-walk)
+      walk-holds(state, calls, fn-body, base, task-walk)
       # kept only when the walk refused nothing: its answer is then counts alone
       fork test, and(is-unequal(key, <>), and(is-equal(diagnostics/length, before-diagnostics), is-equal(tally-failed(given), before-failed)))
         hold
@@ -3753,7 +3868,7 @@ task check-task
               bind total, subtract(tally-total(given), before-total)
               bind proven, subtract(tally-proven(given), before-proven)
               bind kinds, delta-kinds
-              bind uncertified, subtract(wc/uncertified-count(), before-uncertified)
+              bind uncertified, subtract(calls/provers/refine/uncertified, before-uncertified)
           remember-holds(state, key, delta)
     miss
       save nothing, 0

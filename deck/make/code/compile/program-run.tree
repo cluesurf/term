@@ -6,7 +6,8 @@
 # empty.
 #
 # Where the TypeScript field has no Term form yet, the field is `like unknown`, and the line above it names the module
-# whose port gives it one: `obligations` (check/holds.ts `Tally`) and `wake` (compile/wake.ts `WakeGroup`, item 0247).
+# whose port gives it one: `obligations` (check/holds.ts `Tally`). `wake` holds compile/program-warnings.tree's list of
+# `wake-group`, which program-warnings writes and this module cannot load (program-warnings loads it).
 # Where the TypeScript shape is a host shape, the field is the Term one its readers already take: the import scope is
 # compile/import-scope.tree's list of `file-scope`, a set of names is a hash of them to `true`, the twin choices are
 # ir/selection.tree's `task-choice` list, and the roll is compile/rolling.tree's list of `roll-kind`.
@@ -170,7 +171,7 @@ form program-run
   link roll
     like list, like roll-kind
     need false
-  # what wakes the hive (warnings). compile/wake.ts `WakeGroup` list until item 0247 ports it
+  # what wakes the hive (warnings): compile/program-warnings.tree's list of `wake-group` (decision 058)
   link wake
     like unknown
     need false

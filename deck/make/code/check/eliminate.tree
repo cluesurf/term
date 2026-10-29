@@ -3,8 +3,9 @@
 # condition: do the assumptions imply the goal? It is discharged with a sound, self-contained linear-arithmetic
 # decision procedure (Fourier-Motzkin elimination), so no external SMT solver and it runs in the browser.
 #
-# Ported from check/refine.ts (self-hosting, 2026-10-06), which stays as the face: it holds the satisfiability memo and
-# the count of answers whose certificate did not replay, both module state, and asks this for everything else. A
+# Ported from check/refine.ts (self-hosting, 2026-10-06), which stays as the face: it holds the one `refine-state` (the
+# satisfiability memo and the count of answers whose certificate did not replay, module state until item 0355) and asks
+# this for everything else. A
 # constraint is check/certificate.tree's `inequality`, the same shape the original's was, every coefficient a double as
 # the original's numbers were, so the elimination grows and rounds them as it did. Every order the original's maps and
 # sorts gave is kept: a hash keeps the order its keys were first set in, and a constraint deduplicated keeps the place
@@ -515,3 +516,92 @@ task certified
     hold
       back false
   back check-refutation(system, derivation/step)
+
+# ---- the prover's state (item term-self-host-001-0355, decision 057 rule 3) ----
+
+# THE LINEAR PROVER'S STATE, one per process, which check/refine.ts makes and exports and holds.ts, twin.ts and
+# totality.ts share, as they shared its module state:
+#   - `sat-cache`: THE SATISFIABILITY MEMO. The same canonical constraint system recurs often across a compile (many
+#     holds share one shape, `n >= 0 |- n*n >= 0`), so the verdict is kept by the REDUCED system's key, and two systems
+#     that normalize to the same constraints share it. A long-running language server would keep every system it ever
+#     saw, so at 50,000 entries (`sat-cache-most`) it starts over: a verdict is a function of its key, and forgetting
+#     one costs only the time to decide it again (term-compiler-0028, decision 005). `sat-entries` counts its keys
+#   - `uncertified`: how often the search said "proven" and its refutation then failed to replay through the
+#     certificate checker, and how often a polynomial prover's Gram certificate did not confirm its answer. Each is a
+#     goal reported unproven rather than trusted, and a nonzero count is a bug in the search worth chasing
+form refine-state
+  mark shared
+  link sat-cache, like hash, like text, like boolean
+  link sat-entries, like number
+  link uncertified, like number
+
+task verdict-table
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task fresh-refine-state
+  like refine-state
+
+  back
+    make refine-state
+      bind sat-cache, verdict-table()
+      bind sat-entries, 0
+      bind uncertified, 0
+
+task sat-cache-most
+  like number
+  mark private
+
+  back 50000
+
+# is the system of constraints unsatisfiable? A contradiction already manifest is; otherwise the reduced system is
+# decided once per key
+task unsatisfiable
+  take state, like refine-state
+  take ineqs, like list, like inequality
+  like boolean
+  mark private
+
+  sift reduce-system(tighten-strict(ineqs))
+    case none
+      back true
+    case some
+      link reduced
+      save cache-key, system-key(reduced)
+      fork test, state/sat-cache/has(cache-key)
+        hold
+          back state/sat-cache/get(cache-key)
+      save verdict, decide(reduced)
+      fork test, is-minimum(state/sat-entries, sat-cache-most())
+        hold
+          save state/sat-cache, verdict-table()
+          save state/sat-entries, 0
+      save state/sat-cache/{cache-key}, verdict
+      save state/sat-entries, add(state/sat-entries, 1)
+      back verdict
+
+# DOES THE CONJUNCTION OF ASSUMPTIONS IMPLY THE GOAL? Valid iff the assumptions and the goal's negation are
+# unsatisfiable, and only a refutation that replays through the certificate checker counts (proof-by-default-0022)
+task proves-in
+  take state, like refine-state
+  take assumptions, like list, like inequality
+  take goal, like inequality
+  like boolean
+
+  save system, refutable(assumptions, goal)
+  fork test, not(unsatisfiable(state, system))
+    hold
+      back false
+  fork test, certified(system)
+    hold
+      back true
+  save state/uncertified, add(state/uncertified, 1)
+  back false
+
+# a polynomial prover's answer that its Gram certificate did not confirm (check/nonlinear.tree), counted the same way
+task note-uncertified
+  take state, like refine-state
+
+  save state/uncertified, add(state/uncertified, 1)

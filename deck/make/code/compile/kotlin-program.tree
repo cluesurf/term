@@ -14,7 +14,8 @@
 # The reflective count of a task's nodes an inline task is measured by (every object with a `form`, past `type` and
 # `span`) is read from the body's node-json (decision 034), which writes each such object's `form` once.
 #
-# The wake chain reads the roll's entries as roll values (decision 040).
+# The wake chain reads compile/program-warnings.tree's `wake-group` as the warnings made it, its entries roll values
+# (decisions 040 and 058).
 
 load @term/base/list
   find list
@@ -131,6 +132,9 @@ load ./rolling
   find roll-value
   find string-of
 
+load ./program-warnings
+  find wake-group
+
 load ./unit-split
   find mark-unit
   find unmarked
@@ -169,14 +173,6 @@ load ./kotlin-emit
   find reusing
 
 # ---- what crosses ----
-
-# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
-form kotlin-wake-group
-  link deck, like text
-  link entries, like list, like roll-value
-  link exceptions, like list, like roll-value
-  link tells, like list, like roll-value
-  link docks, like list, like roll-value
 
 # what each task's emission reads by node, by the task's row, worked out the first time it is asked
 form kotlin-task-facts
@@ -830,12 +826,12 @@ task wake-typed-list
   back <mutableListOf\<HiveEntry\<{form-name}\>\>({join-with(entries, <, >)})>
 
 task wake-typed-call
-  take group, like kotlin-wake-group
+  take group, like wake-group
   like text
   mark private
 
   save exceptions, make list
-  walk group/exceptions
+  walk group/typed/exceptions
     take entry
     save roll, wake-record(entry, <base>)
     save links, make list
@@ -850,13 +846,13 @@ task wake-typed-call
     save base, <ExceptionRoll(like = {wake-text-of(roll, <like>)}, chain = {wake-texts-of(roll, <chain>)}, note = {wake-text-of(roll, <note>)}, link = mutableListOf\<Pair\<String, String\>\>({join-with(links, <, >)}))>
     push(exceptions, wake-typed-entry(entry, base))
   save tells, make list
-  walk group/tells
+  walk group/typed/tells
     take entry
     save roll, wake-record(entry, <base>)
     save base, <TellRoll(note = {wake-text-of(roll, <note>)}, hint = {wake-text-of(roll, <hint>)}, link = {wake-texts-of(roll, <link>)}, alias = {wake-text-of(roll, <alias>)})>
     push(tells, wake-typed-entry(entry, base))
   save docks, make list
-  walk group/docks
+  walk group/typed/docks
     take entry
     save roll, wake-record(entry, <base>)
     push(docks, wake-typed-entry(entry, <DockRoll(halt = {wake-texts-of(roll, <halt>)})>))
@@ -881,7 +877,7 @@ task is-typed-kind
 # typescript.ts writes it
 task wake-chain
   take program, like list, like statement
-  take wake, like list, like kotlin-wake-group
+  take wake, like list, like wake-group
   like list, like text
   mark private
 
@@ -1437,7 +1433,7 @@ task hoist-kotlin-imports
 # per module (compile/unit-split.tree)
 task emit-kotlin
   take written, like list, like statement
-  take wake, like list, like kotlin-wake-group
+  take wake, like list, like wake-group
   take units, like boolean
   take fail
     like task

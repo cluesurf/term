@@ -11,8 +11,8 @@
 #   - the roll is compile/rolling.tree's `build-roll`, as compile/roll.ts's face calls it, with the raise sets from
 #     check/effects.tree's `raise-sets-of` and node identity handed in by the face (`same-node`, `===` on TypeScript).
 #     The run holds the roll as rolling.tree's list of `roll-kind`, and the face turns it into a plain roll
-#   - a wake entry is a `roll-value` (decision 040): a group is its deck, its entries and its typed entries, and the face
-#     turns each entry into the plain object compile/wake.ts names
+#   - a wake entry is a `roll-value` (decision 040): a group is its deck, its entries and its typed entries, and every
+#     emitter's wake chain reads the group as made here (decision 058)
 #   - a diagnostic re-filed under its span's file, or made a warning, is a shallow copy holding every field the original
 #     held, as the original's spread made one, so the diagnostics the run already holds are never written
 
@@ -111,13 +111,14 @@ form warnings-given
 form warnings-answer
   link refused, like maybe, like list, like diagnostic
 
-# a deck's static exception, tell and dock entries, for `hive-wake-typed` (compile/wake.ts `WakeGroup`'s `typed`)
+# a deck's static exception, tell and dock entries, for `hive-wake-typed`
 form wake-typed
   link exceptions, like list, like roll-value
   link tells, like list, like roll-value
   link docks, like list, like roll-value
 
-# one deck of what wakes the hive: its name, its entries and its typed entries (compile/wake.ts `WakeGroup`)
+# one deck of what wakes the hive: its name, its entries and its typed entries. The one form every emitter's wake chain
+# takes (decision 058)
 form wake-group
   link deck, like text
   link entries, like list, like roll-value

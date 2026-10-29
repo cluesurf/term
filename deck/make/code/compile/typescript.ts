@@ -6,11 +6,12 @@
 // a node's place and the wake chain's entries (compile/ts-program.tree), the tables and the module around the
 // statements (compile/ts-assemble.tree), the helpers that read no emitter state (compile/ts-names.tree), the runtime a
 // module carries (compile/ts-preludes.tree), and every statement and expression (compile/ts-emit.tree). This face keeps
-// the names callers import, hands the port a failure as a thrown `Error`, and hands the wake chain the roll values the
-// port reads (decision 040) while compile.ts still hands it plain groups.
+// the names callers import and hands the port a failure as a thrown `Error`. The wake arrives as the warnings made it,
+// compile/program-warnings.tree's `wake-group` (decision 058), and goes to the port unchanged (item 0361).
 // The emitter before the collapse is tmp/retired/make/compile/typescript-face.ts.
 
 import type { Program, Type } from '@term/make/code/compile/node'
+import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 import * as tsNames from '@term/make/code/compile/ts-names'
 import * as tsPreludes from '@term/make/code/compile/ts-preludes'
 import * as port from '@term/make/code/compile/ts-program'
@@ -18,41 +19,6 @@ import * as port from '@term/make/code/compile/ts-program'
 type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 const unbox = <T>(value: Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
 const boxed = <T>(value: T | undefined): Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
-
-type RollValue =
-  | { form: 'no-value' }
-  | { form: 'null-value' }
-  | { form: 'text-value'; value: string }
-  | { form: 'number-value'; value: number }
-  | { form: 'flag-value'; value: boolean }
-  | { form: 'item-values'; values: RollValue[] }
-  | { form: 'pair-values'; pairs: { key: string; value: RollValue }[] }
-
-// a plain wake entry as the roll value it was made from (compile.ts `plainValue` read backwards)
-function rollValue(value: unknown): RollValue {
-  if (value === undefined) return { form: 'no-value' }
-  if (value === null) return { form: 'null-value' }
-  if (typeof value === 'string') return { form: 'text-value', value }
-  if (typeof value === 'number') return { form: 'number-value', value }
-  if (typeof value === 'boolean') return { form: 'flag-value', value }
-  if (Array.isArray(value)) return { form: 'item-values', values: value.map(rollValue) }
-
-  return { form: 'pair-values', pairs: Object.entries(value as object).map(([key, one]) => ({ key, value: rollValue(one) })) }
-}
-
-type WakeGroup = {
-  deck: string
-  entries: Record<string, unknown>[]
-  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
-}
-
-const wakeGroupOf = (group: WakeGroup): unknown => ({
-  deck: group.deck,
-  entries: group.entries.map(rollValue),
-  exceptions: (group.typed?.exceptions ?? []).map(rollValue),
-  tells: (group.typed?.tells ?? []).map(rollValue),
-  docks: (group.typed?.docks ?? []).map(rollValue),
-})
 
 const fail = (reason: string): boolean => {
   throw new Error(reason)
@@ -127,7 +93,7 @@ export function emitTypeScript(
     options?.env ?? 'node',
     options?.hmr ?? false,
     options?.exportConstants === true,
-    (options?.wake ?? []).map(wakeGroupOf) as never,
+    (options?.wake ?? []) as never,
     (options?.runtime ?? []) as never,
     fail,
   )

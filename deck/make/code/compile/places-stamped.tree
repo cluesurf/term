@@ -1,0 +1,121 @@
+# The place analyses of compile/places.tree over a STAMPED program, and their answers as place rows (item
+# term-self-host-001-0081, decision 011). compile/place.ts numbered each place by the first place holding the same object
+# and answered `WeakSet`s and `WeakMap`s of the nodes. Here the program is stamped first (compile/place-stamp.tree), so
+# every place is a node of its own, its identity is its row, and a fact about a node is its `place-row` (its row plus
+# one), which a caller reads off the stamped node. On a program that shares no node the two numberings are one; where
+# the original shared a node the facts are per place, decision 011's Diverges.
+
+load @term/base/list
+  find list
+
+load ./node
+  find statement
+  find expression
+  find type
+
+load ./place-stamp
+  find stamp-places
+
+load ./place-walk
+  find walk-program
+
+load ./places
+  find place-scope
+  find scope-of
+  find reuse-answer
+
+load ./node-rebuild
+  find place-row-of-expression
+  find place-row-of-statement
+
+# a program stamped, as the place analyses read it: each place its own identity, its row
+task stamped-scope
+  take program, like list, like statement
+  like place-scope
+
+  save w, walk-program(stamp-places(program))
+  save ids, make list
+  walk w/handles
+    take handle
+    take row
+    push(ids, row)
+  back scope-of(w, ids)
+
+# a reusing task, its record nodes as place rows
+form reuse-task-rows
+  link name, like text
+  link param, like number
+  link form, like text
+  link builds, like list, like number
+  link keep-field, like text
+  link keep-type
+    like maybe, like type
+    need false
+  link carriers, like list, like number
+
+form reuse-local-row
+  link row, like number
+  link field, like text
+
+# record reuse's answer with every node a place row
+form reuse-rows
+  link tasks, like list, like reuse-task-rows
+  link sites, like list, like number
+  link forms, like list, like text
+  link locals, like list, like reuse-local-row
+  link write-backs, like list, like number
+
+task expression-rows
+  take nodes, like list, like expression
+  like list, like number
+  mark private
+
+  save rows, make list
+  walk nodes
+    take one
+    push(rows, place-row-of-expression(one))
+  back rows
+
+task statement-rows
+  take nodes, like list, like statement
+  like list, like number
+  mark private
+
+  save rows, make list
+  walk nodes
+    take one
+    push(rows, place-row-of-statement(one))
+  back rows
+
+task rows-of-reuse
+  take answer, like reuse-answer
+  like reuse-rows
+
+  save tasks, make list
+  walk answer/tasks
+    take one
+    save made
+      make reuse-task-rows
+        bind name, one/name
+        bind param, one/param
+        bind form, one/form
+        bind builds, expression-rows(one/builds)
+        bind keep-field, one/keep-field
+        bind keep-type, one/keep-type
+        bind carriers, expression-rows(one/carriers)
+    push(tasks, made)
+  save locals, make list
+  walk answer/locals
+    take one
+    save local
+      make reuse-local-row
+        bind row, place-row-of-statement(one/node)
+        bind field, one/field
+    push(locals, local)
+  back
+    make reuse-rows
+      bind tasks, tasks
+      bind sites, expression-rows(answer/sites)
+      bind forms, answer/forms
+      bind locals, locals
+      bind write-backs, statement-rows(answer/write-backs)

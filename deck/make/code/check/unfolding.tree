@@ -8,8 +8,8 @@
 # never unfolded, because its `subtract` truncates at zero. A task that recurses (directly or through another),
 # branches, has more than one statement, or reads a name that is not one of its parameters is left as a call.
 #
-# Ported from check/unfold.ts (self-hosting, 2026-10-06), which stays as the face: it keeps the table of the last
-# program asked about, module state. The original copied a node with a spread (`{ ...e, left }`), which keeps every
+# Ported from check/unfold.ts (self-hosting, 2026-10-06), which stays as the face. It kept the table of the last
+# program asked about, module state, until item 0355 dropped that identity memo (`unfold-over`). The original copied a node with a spread (`{ ...e, left }`), which keeps every
 # field as present or absent as it was; Term cannot tell an absent list from an empty one, so the copy is a bind
 # (`shallow-copy`, the spread on TypeScript and the value itself natively, where a value is already a copy), and the
 # fields that change are written onto it.
@@ -427,6 +427,15 @@ task unfold-definitions
   like expression
 
   back unfold-walk(e, table, 0)
+
+# the same over a program, its table built for this call: check/unfold.ts kept the last program's table by the program's
+# identity, an identity memo, which item 0355 dropped (spec 4.11)
+task unfold-over
+  take e, like expression
+  take program, like list, like statement
+  like expression
+
+  back unfold-walk(e, unfold-table(program), 0)
 
 task unfold-walk
   take x, like expression

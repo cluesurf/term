@@ -352,11 +352,13 @@ export function dispatch(
 
   // CHOICES FIRST, EVERY ONE: a value outside its take's choices is collected for each take, in the order the takes
   // are declared (the program's, then each group's on the way down, then the command's own), as yargs listed one
-  // `Argument:` line each (decision cli-in-term/016 part 2). `error` stays the first one's text
+  // `Argument:` line each (decision cli-in-term/016 part 2). `error` stays the first one's text. A take whose choices
+  // are absent or empty allows any value, as work/hook/parsing.tree reads it (decision 060 of
+  // term/self-host/change/001: the mill writes `choices` only from a `pick`)
   const outside = (take: DockTake): boolean => {
     const value = args[take.name]
 
-    return typeof value === 'string' && take.choices !== undefined && !take.choices.includes(value)
+    return typeof value === 'string' && Boolean(take.choices?.length) && !take.choices!.includes(value)
   }
   const first = reachable.find(outside)
 
@@ -473,7 +475,8 @@ export function renderHelp(
         meta.push(`default ${JSON.stringify(take.fallback.value)}`)
       }
 
-      if (take.choices) {
+      // an empty list is no choices (decision 060)
+      if (take.choices?.length) {
         meta.push(`one of ${take.choices.join('|')}`)
       }
 

@@ -28,6 +28,7 @@ load @term/base/text
   find contains
   find starts-with
   find substring
+  find split
 
 load ./node
   find statement
@@ -46,6 +47,7 @@ load ./bind
 
 load ./ts-names
   find to-camel
+  find to-member
   find identity-cases
 
 load ./ts-preludes
@@ -93,8 +95,8 @@ form wake-group
   link entries, like list, like text
   link typed, like text
 
-# what the emitter raised while it wrote the module: the preludes its code needs, the field-less constants by case, and
-# the identity guards by case
+# what the emitter raised while it wrote the module: the preludes its code needs, the field-less constants and the
+# identity guards, each by its form and case (`<owner>/<case>`, decision 061)
 form emit-flags
   link form-walk-used, like boolean
   link inspect-used, like boolean
@@ -560,6 +562,37 @@ task target-for
         miss
           back make none
 
+# the case of a field-less constant's key, `<owner>/<case>` (decision 061)
+task case-of-key
+  take key, like text
+  like text
+  mark private
+
+  save parts, split(key, </>)
+  back get(parts, 1)
+
+# the tag field of a field-less constant's key: its form's own, `form` for an untagged form, and the case's by name
+# only when no form was resolved
+task key-tag
+  take key, like text
+  take tables, like ts-tables
+  take tag-of
+    like task
+      take variant, like text
+      like text
+  like text
+  mark private
+
+  save parts, split(key, </>)
+  save owner, get(parts, 0)
+  fork test, is-equal(owner, <>)
+    hold
+      back tag-of(case-of-key(key))
+  fork test, tables/tag-by-owner/has(owner)
+    hold
+      back to-member(tables/tag-by-owner/get(owner))
+  back to-member(<form>)
+
 # A TypeScript module from a program read into `tables`: its imports, its statements (the last of each declared name),
 # the fast and reusing copies the emitter asked for, the preludes its code needs, the field-less constants and guards,
 # and the wake chain
@@ -721,22 +754,25 @@ task assemble-type-script
     hold
       push(prelude, list-prelude(has-text(prelude, class-prelude)))
 
-  # the field-less variants' constants, ahead of every use
+  # the field-less variants' constants, ahead of every use, each keyed `<owner>/<case>` and tagged as its own form
+  # declares (decision 061)
   save fieldless, flags/fieldless
   walk fieldless/keys()
-    take name
-    push(prelude, <const {fieldless/get(name)} = Object.freeze(\{ {tag-of(name)}: {json-quote(name)} as const \})>)
+    take key
+    save name, case-of-key(key)
+    push(prelude, <const {fieldless/get(key)} = Object.freeze(\{ {key-tag(key, tables, tag-of)}: {json-quote(name)} as const \})>)
 
   # the identity tests of field-less cases, each a type guard so the other branch still narrows
   save guards, flags/guards
   walk guards/keys()
-    take name
-    save tag, tag-of(name)
+    take key
+    save name, case-of-key(key)
+    save tag, key-tag(key, tables, tag-of)
     save constant, <undefined>
-    fork test, fieldless/has(name)
+    fork test, fieldless/has(key)
       hold
-        save constant, fieldless/get(name)
-    push(prelude, <function {guards/get(name)}(value: \{ {tag}: string \}): value is \{ {tag}: {json-quote(name)} \} \{ return value === {constant} \}>)
+        save constant, fieldless/get(key)
+    push(prelude, <function {guards/get(key)}(value: \{ {tag}: string \}): value is \{ {tag}: {json-quote(name)} \} \{ return value === {constant} \}>)
 
   # the wake chain: one `hiveWake` per deck with its entries, then the raise hook, when the program has the hive
   save woken, make list

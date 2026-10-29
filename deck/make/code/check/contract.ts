@@ -1,10 +1,10 @@
 // Contracts, lowered into `hold`s, in a COPY of the program that only the checker reads. The pass is Term,
-// check/contracts.tree (self-hosting, 2026-10-06), and its header says what each contract line becomes. This face keeps
-// what Term cannot hold: the width switch (module state in check/width-range.ts), and whether a node carries a contract
-// at all, which is a field present or absent, and an absent list and an empty one read alike in Term.
+// check/contracts.tree (self-hosting, 2026-10-06), and its header says what each contract line becomes. This face holds
+// no logic since item 0071: whether a node carries a contract is Term (`has-contracts`), and the width switch is the
+// `widths` field of the one `checker-switches` record check/strict.ts holds.
 
 import type { Expression, Program } from '@term/make/code/compile/node'
-import { widthRanges } from '@term/make/code/check/width-range'
+import { checkerSwitches } from '@term/make/code/check/strict'
 import {
   hasContracts as hasContractsIn,
   lowerContracts as lowerContractsIn,
@@ -13,11 +13,7 @@ import {
 
 // does any task or walk in the program carry a contract (if not, there is nothing to lower and no copy to make)
 export function hasContracts(program: Program): boolean {
-  return hasContractsIn(program, node => {
-    const record = node as { have?: unknown; must?: unknown; down?: unknown }
-
-    return record.have !== undefined || record.must !== undefined || record.down !== undefined
-  })
+  return hasContractsIn(program)
 }
 
 // replace every read of a name by an expression, without entering a closure (whose parameters may shadow it)
@@ -32,7 +28,7 @@ export function lowerContracts(
   options: { file?: string; tier0?: boolean } = {},
 ): { program: Program; lowered: Set<string> } {
   const file = options.file === undefined ? ({ form: 'none' } as const) : ({ form: 'some', value: options.file } as const)
-  const result = lowerContractsIn(program, file, options.tier0 === true, widthRanges())
+  const result = lowerContractsIn(program, file, options.tier0 === true, checkerSwitches.widths)
 
   return { program: result.program, lowered: new Set(result.lowered) }
 }

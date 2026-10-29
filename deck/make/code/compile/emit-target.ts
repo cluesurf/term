@@ -19,7 +19,7 @@ import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import * as source from '@term/make/code/compile/target-source'
-import type { WakeGroup } from '@term/make/code/compile/wake'
+import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 
 export type EmitTarget = 'node' | 'rust' | 'swift' | 'kotlin'
 

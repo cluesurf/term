@@ -34,9 +34,16 @@
 #     read by. `kernel-only`: the rules only the kernel proved. `cased-forms`: the forms with cases, which `fold`
 #     splits. `small-tasks`: the tasks whose whole body is one `back`, which the counterexample search runs
 #   - `memo`: what each task's walk added to the tally, by everything the walk reads, for a task asked again
+#   - `switches`: the checker's switches the program being checked was handed (check/checker-switches.tree), whose
+#     `widths` decides whether width-typed values are facts. `holds-replayed`: how many tasks' walks were answered from
+#     the memo, which test/check/hold-memo.ts reads. Both moved here from check/holds.ts by item 0071 (decision 057)
 
 load @term/base/list
   find list
+
+load ./checker-switches
+  find checker-switches
+  find switches-from-env
 
 load ../compile/node
   find expression
@@ -107,6 +114,8 @@ form hold-state
   link cased-forms, like hash, like text, like boolean
   link small-tasks, like hash, like text, like small-task
   link memo, like hash, like text, like hold-delta
+  link switches, like checker-switches
+  link holds-replayed, like number
 
 # what a kept walk added to the tally: replayed when the same task is asked the same question
 form hold-delta
@@ -176,6 +185,47 @@ task fresh-hold-state
       bind cased-forms, flag-table()
       bind small-tasks, small-table()
       bind memo, memo-table()
+      bind switches, switches-from-env()
+      bind holds-replayed, 0
+
+# THE RULES THIS PASS HAS PROVEN SO FAR, and how: the measurement behind "every certificate holds over any ordered
+# field", which is true of a rule marked `field` and not known of one marked `integer`. Not the rules the kernel proved,
+# which this pass only knows of (`kernel-only`): a stub records how its unit's provers proved a rule, and a dependent
+# reads a carried rule with no such record as the kernel's (compile/stub.ts)
+task proven-rules
+  take state, like hold-state
+  like hash, like text, like text
+
+  save out, proven-table()
+  walk state/proven-theorems/keys()
+    take name
+    fork test, not(state/kernel-only/has(name))
+      hold
+        save out/{name}, state/proven-theorems/get(name)
+  back out
+
+# THE PROVERS' TABLES OF ONE PROGRAM LIVE ONLY WHILE ITS HOLDS ARE CHECKED. The pure tasks, the recurrences, the aliases
+# and the program itself decide what an atom is, and the kernel asks `is-linear-goal` before the hold pass runs: left
+# set, they answered the next program's kernel with the last program's tasks, so a goal's verdict depended on what had
+# been built before it in the same process (a false set law was accepted after a true one, test/check/truth-table.ts).
+# Run once the pass ends, by a raise too
+task reset-hold-program
+  take state, like hold-state
+
+  save state/program, statements()
+  save state/result-widths, text-table()
+  save state/field-widths, text-table()
+  save state/pure-tasks, flag-table()
+  save state/recurrences, recurrence-table()
+  save state/aliases, alias-table()
+  save state/integer-tasks, flag-table()
+  save state/integer-names, flag-table()
+
+# forget every kept walk, so a test can ask the provers afresh
+task clear-hold-memo
+  take state, like hold-state
+
+  save state/memo, memo-table()
 
 task statements
   like list, like statement

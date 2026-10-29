@@ -1,0 +1,1172 @@
+# Elaboration, the run: one program handed to the kernel, every part of the elaborator set up over it, and the report
+# of what the kernel verified, proved, declined and discharged. This is check/elaborate.ts `elaborateReport`, whose
+# face it was until item term-self-host-001-0070 collapsed it (decision 055).
+#
+# The kernel's own copy of the program comes first (ONE NAME, TWO KINDS, module-scope-0005): a form named like a task,
+# a parameter, a top-level host value or `type` becomes `<name>__form` wherever it stands as a form, and a task named
+# like one of the kernel's own constants `<name>__task` at its definition and every call of it, through
+# compile/node-rewrite.tree's `kinds-apart` rule on a copy, so the program handed in is never written. The emitted
+# program never sees that copy. test/check/form-parameter.ts, builtin-name.ts and form-named-type.ts hold it.
+#
+# What the face still answers is one `report-host`: the TypeScript modules no item has made Term yet (check/totality.ts,
+# check/effects.ts, check/unfold.ts, check/induct.ts, check/holds.ts's `isLinearGoal` and `orderFollows`), the
+# diagnostic builder, and the `TERM_KERNEL_TRACE` line. The rest the face held by reflection is a node-reach walk here:
+# the numeric literals, a task calling itself, a member write, a member read, the names a closure reads, the stubs whose
+# carried body the unit reaches (by every text a statement holds, read off its node-json), and a value-index argument
+# list compared as node-json, as written.
+#
+# A hold checked under a task's commands ran through check/judge.ts's `kernel` and the face's `Decline`: the unfold fuel
+# put back on a raise, and a `decline:` reaching check-task as a plain error, whose reason is then `the kernel failed
+# on it: <reason>`. `checked-hold` keeps both: the fuel is put back here, and a decline is raised again as a plain
+# failure holding its reason.
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+  find char-at
+
+load @term/base/exception
+  find exception
+  find failure
+
+load ../compile/node
+  find statement
+  find expression
+  find field-value
+  find span
+
+load ../compile/node-json
+  find expression-json
+  find statement-json
+
+load ../compile/node-reach
+  find reach-statements
+  find reach-expression
+
+load ../compile/node-rewrite
+  find rewrite-program
+  find rewrite-rule
+  find copy-program
+  find copy-statement
+  find copy-expression
+
+load ../compile/type-text
+  find integer-text
+
+load ./purity
+  find subtree
+  find calls-impure
+  find reads-state
+  find reads-any
+  find read-names
+  find written-names
+  find root-name
+  find everything
+  find volatile-names
+  find local-names
+  find function-names
+  find purity
+
+load ./alias
+  find transparent-aliases
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find infer
+  find define-constant
+  find register-truncation
+  find reset-definitions
+  find reset-metas
+  find context-with-signature
+
+load ./elaborating-data
+  find base-signature
+  find type-zero
+  find new-alias-state
+  find elaboration-data-of
+  find elaboration-data
+  find named-term
+
+load ./elaborating-terms
+  find new-term-state
+
+load ./elaborating-cases
+  find new-case-state
+
+load ./elaborating-proof
+  find new-lemma-state
+
+load ./elaborating-induction
+  find new-induction-state
+
+load ./elaborating-commands
+  find command-host
+  find expression-pair
+
+load ./elaborating-holds
+  find hold-host
+  find hold-state
+  find check-hold
+
+load ./elaborating-main
+  find main-host
+  find main-state
+  find declined-task
+  find check-program
+
+# what the face answers: the TypeScript modules not yet Term, the diagnostic, and the trace line
+form report-host
+  # check/totality.ts `terminatingFunctions`, none when it throws
+  link terminating-functions
+    like task
+      take program, like list, like statement
+      like list, like text
+  # check/effects.ts `effectRows`, none when it throws
+  link effect-rows
+    like task
+      take program, like list, like statement
+      like hash, like text, like list, like text
+  link unfold-definitions
+    like task
+      take expression, like expression
+      take program, like list, like statement
+      like expression
+  link check-fold
+    like task
+      take program, like list, like statement
+      take goal, like expression
+      take induct-var, like text
+      like boolean
+  link check-fold-order
+    like task
+      take program, like list, like statement
+      take goal, like expression
+      take induct-var, like text
+      take guards, like list, like expression
+      like boolean
+  link is-linear-goal
+    like task
+      take goal, like expression
+      like boolean
+  link order-follows
+    like task
+      take goal, like expression
+      take facts, like list, like expression
+      like boolean
+  link diagnose
+    like task
+      take name, like text
+      take span, like span
+      take message, like text
+      take hint, like text
+      like unknown
+  link trace
+    like task
+      take name, like text
+      take message, like text
+      like boolean
+
+# the elaboration's answer, in the order the face's report was written
+form elaboration-report
+  link diagnostics, like list, like unknown
+  link verified, like list, like text
+  link proven, like list, like text
+  link declined, like list, like declined-task
+  link statementwise, like list, like declined-task
+  link discharged, like list, like span
+
+# the names the command checker reads for the task being checked: its own names, the names a closure inside it may
+# write at any time, and its parameters when it is a rule (a task-typed mark ranges over the kernel's pure functions)
+form task-facts
+  mark shared
+  link local, like hash, like text, like boolean
+  link volatile, like list, like text
+  link rule-marks, like hash, like text, like boolean
+
+# the span of an expression the kernel builds for the ring from its own terms, which no source wrote
+bind no-span
+  like span
+  case node
+    text <(\{ start: \{ line: 0, column: 0, offset: 0 \}, end: \{ line: 0, column: 0, offset: 0 \} \} as any)>
+  case browser
+    text <(\{ start: \{ line: 0, column: 0, offset: 0 \}, end: \{ line: 0, column: 0, offset: 0 \} \} as any)>
+  case rust
+    text <Span \{ start: Position \{ line: 0.0, column: 0.0 \}, end: Position \{ line: 0.0, column: 0.0 \}, file: None \}>
+  case swift
+    text <Span(start: Position(line: 0, column: 0), end: Position(line: 0, column: 0), file: nil)>
+  case kotlin
+    text <Span(start = Position(line = 0.0, column = 0.0), end = Position(line = 0.0, column = 0.0), file = null)>
+
+# ---- the kernel's own copy ----
+
+task keep-kinds-apart
+  take program, like list, like statement
+  like list, like statement
+
+  save task-names, make hash
+  save param-names, make hash
+  save constant-names, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            save nothing, 0
+          case none
+            task-names/set(name, true)
+        walk params
+          take param
+          param-names/set(param/name, true)
+      case let
+        constant-names/set(name, true)
+      miss
+        save nothing, 0
+  save apart, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, or(task-names/has(name), or(param-names/has(name), or(constant-names/has(name), is-equal(name, <type>))))
+          hold
+            push(apart, name)
+      miss
+        save nothing, 0
+  save kernel-names, make hash
+  walk base-signature()
+    take entry
+    kernel-names/set(entry/name, true)
+  save clashing, make list
+  walk task-names/keys()
+    take task-name
+    fork test, kernel-names/has(task-name)
+      hold
+        push(clashing, task-name)
+  fork test, and(is-equal(apart/length, 0), is-equal(clashing/length, 0))
+    hold
+      back program
+  save rule
+    make kinds-apart
+      bind forms, apart
+      bind tasks, clashing
+  back rewrite-program(copy-program(program), rule)
+
+# ---- what the face walked by reflection ----
+
+# every integer and float literal the program holds, each once, by its exact text (`integer-text`: past 2^53 its value
+# is the rounded number, so registering that left `numberValue#9007199254740993` unknown)
+task number-literals
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  push(out, <0>)
+  seen/set(<0>, true)
+  push(out, <1>)
+  seen/set(<1>, true)
+  save reached, reach-statements(program, make list)
+  walk reached/expressions
+    take one
+    save literal, <>
+    save found, false
+    sift one
+      case integer
+        save literal, integer-text(one)
+        save found, true
+      case float
+        link float-value
+        save literal, <{float-value}>
+        save found, true
+      miss
+        save nothing, 0
+    fork test, and(found, is-equal(seen/has(literal), false))
+      hold
+        seen/set(literal, true)
+        push(out, literal)
+  back out
+
+# the fields a value-index argument is compared without: spans, resolved types, bindings, call sites and places
+task as-written
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <binding>)
+  push(skip, <site>)
+  push(skip, <placeRow>)
+  back skip
+
+# a named type's value arguments as written (node-json, decision 034)
+task value-args-text
+  take given, like type
+  like text
+  mark private
+
+  save parts, <>
+  sift given
+    case named
+      walk value-args
+        take arg
+        take i
+        fork test, is-above(i, 0)
+          hold
+            save parts, <{parts},>
+        save parts, <{parts}{expression-json(as-written(), arg)}>
+    miss
+      save nothing, 0
+  back <[{parts}]>
+
+task same-value-args
+  take left, like type
+  take right, like type
+  like boolean
+  mark private
+
+  back is-equal(value-args-text(left), value-args-text(right))
+
+# a task whose body holds a call of its own name, anywhere
+task calls-itself
+  take statement, like statement
+  like boolean
+  mark private
+
+  sift statement
+    case function
+      save own-name, name
+      save skip, make list
+      push(skip, <span>)
+      walk reach-statements(body, skip)/expressions
+        take one
+        sift one
+          case call
+            link target
+            sift target
+              case variable
+                link callee-name
+                fork test, is-equal(callee-name, own-name)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+      back false
+    miss
+      back false
+
+# a save through a member anywhere in a body, types, spans and bindings left out
+task contains-member-write
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  push(skip, <binding>)
+  walk reach-statements(body, skip)/statements
+    take one
+    sift one
+      case assign
+        link written
+        sift written
+          case member
+            back true
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
+
+# a member read anywhere in an expression, types and spans left out
+task reads-member
+  take given, like expression
+  like boolean
+  mark private
+
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk reach-expression(given, skip)/expressions
+    take one
+    sift one
+      case member
+        back true
+      miss
+        save nothing, 0
+  back false
+
+# EVERY NAME A CLOSURE IN THE BODY READS OR WRITES. A closure reads a variable when it runs, not when it is made, so a
+# later save to one of these is seen by the closure, and the pure lowering, which gives each save a new name, cannot
+# say which version a call of the closure reads (check/elaborating-terms.tree `assign-term`)
+task closure-names
+  take body, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <binding>)
+  save names, make hash
+  walk reach-statements(body, skip)/expressions
+    take one
+    sift one
+      case closure
+        walk reach-expression(one, skip)/expressions
+          take inner
+          sift inner
+            case variable
+              link inner-name
+              names/set(inner-name, true)
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  back names
+
+# every text a statement's node-json holds as a value (a JSON text followed by `:` is a key), read where it holds no
+# escape: a task's name never does
+task statement-texts
+  take one, like statement
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  save json, statement-json(skip, one)
+  save out, make list
+  save at, 0
+  save size, json/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      fork test, is-equal(char-at(json, at), <">)
+        hold
+          save start, add(at, 1)
+          save at, start
+          save escaped, false
+          walk test
+            hook test, and(is-below(at, size), is-unequal(char-at(json, at), <">))
+            hook hold
+              fork test, is-equal(char-at(json, at), <\\>)
+                hold
+                  save escaped, true
+                  save at, add(at, 1)
+              save at, add(at, 1)
+          save value, substring(json, start, at)
+          save at, add(at, 1)
+          save key, and(is-below(at, size), is-equal(char-at(json, at), <:>))
+          fork test, and(not(escaped), not(key))
+            hold
+              push(out, value)
+        miss
+          save at, add(at, 1)
+  back out
+
+# THE STUBS WHOSE CARRIED BODY THIS UNIT REACHES: named by one of its own statements, or by a body reached so. A unit
+# reaches a few tasks of its dependency closure, so elaborating every carried body of the closure in every unit would
+# pay for thousands to use a handful. Read by name, every text in a statement, as compile/stub.ts `namesUsed` does,
+# which may take a few more than are called and never fewer
+task carried-bodies
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save bodies, make hash
+  save any-body, false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(is-equal(stub, true), is-above(stub-body/length, 0))
+          hold
+            # walked into a list of its own: a need-false list handed on would be written `[]` into the program
+            save carried, make list
+            walk stub-body
+              take inner
+              push(carried, inner)
+            bodies/set(name, carried)
+            save any-body, true
+      miss
+        save nothing, 0
+  save reached, make hash
+  fork test, not(any-body)
+    hold
+      back reached
+  save queue, make list
+  walk program
+    take one
+    save is-stub, false
+    sift one
+      case function
+        save is-stub, is-equal(stub, true)
+      miss
+        save nothing, 0
+    fork test, not(is-stub)
+      hold
+        push(queue, one)
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save next, queue/pop()
+      walk statement-texts(next)
+        take name
+        fork test, and(bodies/has(name), is-equal(reached/has(name), false))
+          hold
+            reached/set(name, true)
+            walk bodies/get(name)
+              take inner
+              push(queue, inner)
+  back reached
+
+# RECORD ETA, for the ring normalizer: a value of a form with no cases IS the construction of its fields. So when one
+# side of an equation unfolds to `make vector-two(...)` and the other is a name, the name is read as
+# `make vector-two(v/x, v/y)`, each field an unknown of its own, spelled as check/unfold.ts spells a field read
+task eta-expanded
+  take named, like expression
+  take record, like expression
+  take record-fields, like hash, like text, like list, like text
+  like expression
+  mark private
+
+  sift record
+    case record
+      save record-name, name
+      save record-span, span
+      fork test, is-equal(record-fields/has(record-name), false)
+        hold
+          back named
+      sift named
+        case variable
+          link named-name
+          save made, make list
+          walk record-fields/get(record-name)
+            take field
+            save field-read
+              make variable
+                bind name, <{named-name}/{field}>
+                bind span, record-span
+            save field-made
+              make field-value
+                bind name, field
+                bind value, field-read
+            push(made, field-made)
+          save copy, copy-expression(record)
+          sift copy
+            case record
+              save copy/fields, made
+            miss
+              save nothing, 0
+          back copy
+        miss
+          back named
+    miss
+      back named
+
+task eta-pair
+  take left, like expression
+  take right, like expression
+  take record-fields, like hash, like text, like list, like text
+  like expression-pair
+  mark private
+
+  save left-record, is-record(left)
+  save right-record, is-record(right)
+  save out-left, left
+  save out-right, right
+  fork test, and(left-record, not(right-record))
+    hold
+      save out-right, eta-expanded(right, left, record-fields)
+  fork test, and(right-record, not(left-record))
+    hold
+      save out-left, eta-expanded(left, right, record-fields)
+  back
+    make expression-pair
+      bind left, out-left
+      bind right, out-right
+
+task is-record
+  take given, like expression
+  like boolean
+  mark private
+
+  sift given
+    case record
+      back true
+    miss
+      back false
+
+# ---- the command checker's questions, over the task being checked ----
+
+task statement-part
+  take one, like statement
+  like list, like subtree
+  mark private
+
+  save parts, make list
+  save part
+    make in-statement
+      bind node, one
+  push(parts, part)
+  back parts
+
+task body-part
+  take body, like list, like statement
+  like list, like subtree
+  mark private
+
+  save parts, make list
+  save part
+    make in-block
+      bind node, body
+  push(parts, part)
+  back parts
+
+task expression-part
+  take one, like expression
+  like list, like subtree
+  mark private
+
+  save parts, make list
+  save part
+    make in-expression
+      bind node, one
+  push(parts, part)
+  back parts
+
+# the names once each, in the order first met
+task unique-texts
+  take names, like list, like text
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk names
+    take name
+    fork test, is-equal(seen/has(name), false)
+      hold
+        seen/set(name, true)
+        push(out, name)
+  back out
+
+task hash-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take name
+    out/set(name, true)
+  back out
+
+# does a subtree call something impure: the pure tasks, the program's tasks, and the task's own names less a rule's
+# marks
+task impure-in
+  take parts, like list, like subtree
+  take pure, like hash, like text, like boolean
+  take functions, like hash, like text, like boolean
+  take facts, like task-facts
+  like boolean
+  mark private
+
+  save is-pure
+    task
+      take name, like text
+      like boolean
+      back pure/has(name)
+  save is-function
+    task
+      take name, like text
+      like boolean
+      back functions/has(name)
+  save is-local
+    task
+      take name, like text
+      like boolean
+      back and(facts/local/has(name), is-equal(facts/rule-marks/has(name), false))
+  back calls-impure(parts, is-pure, is-function, is-local)
+
+# the task about to be checked, its stub's carried body in place of its own body when it is a stub
+task enter-task
+  take facts, like task-facts
+  take ts-captured, like hash, like text, like boolean
+  take statement, like statement
+  take stub, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save checked, statement
+  fork test, stub
+    hold
+      save checked, copy-statement(statement)
+      sift checked
+        case function
+          # walked into a list of its own, so the copy's absent `stub-body` stays absent (traps.md T003)
+          save carried, make list
+          walk stub-body
+            take inner
+            push(carried, inner)
+          save checked/body, carried
+        miss
+          save nothing, 0
+  save captured, make hash
+  sift checked
+    case function
+      save facts/local, hash-of(local-names(checked))
+      save facts/volatile, unique-texts(volatile-names(body))
+      save captured, closure-names(body)
+      save marks, make hash
+      fork test, is-equal(theorem, true)
+        hold
+          walk params
+            take param
+            marks/set(param/name, true)
+      save facts/rule-marks, marks
+    miss
+      save nothing, 0
+  back captured
+
+# A HOLD UNDER A TASK'S COMMANDS, as the face's `kernel` call ran it: on a raise the unfold fuel is put back, and a
+# `decline:` comes back a plain failure holding its reason, which check-task reads as any other error
+task checked-hold
+  take hs, like hold-state
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take assumptions, like list, like expression-pair
+  like boolean
+
+  save st, hs/is/ts/st
+  save fuel, st/unfold-fuel
+  save message, <>
+  fork
+    mark unsafe
+    check-hold(hs, statement, scope, ctx, assumptions)
+    back true
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    sift problem
+      case failure
+        link note
+        save message, note
+      miss
+        save message, raise-text(problem)
+  fork test, starts-with(message, <decline:>)
+    hold
+      halt <{substring(message, 8, message/length)}>
+  halt <{message}>
+
+bind raise-text
+  take raised, like unknown
+  like text
+  case node
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case browser
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# ---- the run ----
+
+task elaborate-report
+  take st, like judge-state
+  take written, like list, like statement
+  take file, like text
+  take host, like report-host
+  like elaboration-report
+
+  reset-metas(st)
+  reset-definitions(st)
+  save program, keep-kinds-apart(written)
+
+  # transparent aliases, read through wherever the kernel reads a type, as the checker reads them when it unifies
+  save alias-state, new-alias-state(transparent-aliases(program))
+
+  # gate for transparent definitions: none when it fails, a sound fallback
+  save terminating, hash-of(host/terminating-functions(program))
+
+  # which tasks are pure, and for the task being checked its own names, the names a closure inside it may write, and
+  # its marks when it is a rule
+  save pure-names, purity(program)/pure
+  save pure, hash-of(pure-names)
+  save functions, hash-of(function-names(program))
+  save facts
+    make task-facts
+      bind local, make hash
+      bind volatile, make list
+      bind rule-marks, make hash
+
+  # the tasks with a `natural-number` parameter, whose subtraction truncates: never unfolded for the ring
+  save truncating, make list
+  save theorems, make hash
+  walk program
+    take one
+    sift one
+      case function
+        save natural, false
+        walk params
+          take param
+          sift param/refine
+            case some
+              save natural, true
+            case none
+              save nothing, 0
+        fork test, natural
+          hold
+            push(truncating, name)
+        fork test, is-equal(theorem, true)
+          hold
+            theorems/set(name, true)
+      miss
+        save nothing, 0
+
+  save diagnostics, make list
+  save verified, make list
+  save proven, make list
+  save declined, make list
+  save statementwise, make list
+  save discharged, make list
+  save lemma-state, new-lemma-state(theorems)
+
+  # the program's types and data as the kernel reads them
+  save elaborated, elaboration-data-of(program, alias-state, number-literals(program), same-value-args)
+
+  # a PROPOSITIONAL TRUNCATION's constructors are registered for proof irrelevance and kept rigid, each with its arity
+  walk elaborated/truncations
+    take entry
+    register-truncation(st, entry/name, entry/arity)
+
+  save record-fields, elaborated/record-fields
+  save base-context, context-with-signature(st, elaborated/signature)
+  save no-env, make list
+
+  # each enum transparently equal to its derived self-type encoding, when that encoding is a well-formed type, else the
+  # postulated opaque type
+  walk elaborated/enum-encodings
+    take encoding
+    define-encoding(st, base-context, encoding)
+
+  # the computing constructor and eliminator definitions, so the kernel REDUCES a match on a constructor
+  walk elaborated/enum-defs
+    take definition
+    define-term(st, definition)
+
+  save ts, new-term-state(st, elaborated, alias-state, program, evaluate(st, no-env, type-zero()))
+
+  # THE TASKS A CALL OF WHICH MAY RAISE: a raise in the task's effect row, a task with no body, or a separately compiled
+  # stub, whose body this unit does not see
+  save rows, host/effect-rows(program)
+  save raising, make hash
+  save shared-forms, make hash
+  walk program
+    take one
+    sift one
+      case function
+        save may-raise, or(is-equal(stub, true), is-equal(body/length, 0))
+        fork test, and(not(may-raise), rows/has(name))
+          hold
+            save may-raise, contains(rows/get(name), <throw>)
+        fork test, may-raise
+          hold
+            raising/set(name, true)
+      case record-type
+        fork test, is-equal(shared, true)
+          hold
+            shared-forms/set(name, true)
+      miss
+        save nothing, 0
+  save ts/raising, raising
+  save ts/shared, shared-forms
+
+  save case-state, new-case-state()
+  save order-follows
+    task
+      take goal, like expression
+      take known, like list, like expression
+      like boolean
+      back host/order-follows(goal, known)
+  save induction, new-induction-state(ts, lemma-state, case-state, truncating, no-span(), order-follows)
+
+  save calls-impure-expression
+    task
+      take expression, like expression
+      like boolean
+      back impure-in(expression-part(expression), pure, functions, facts)
+  save unfold-definitions
+    task
+      take expression, like expression
+      like expression
+      back host/unfold-definitions(expression, program)
+  save check-fold
+    task
+      take goal, like expression
+      take induct-var, like text
+      like boolean
+      back host/check-fold(program, goal, induct-var)
+  save check-fold-order
+    task
+      take goal, like expression
+      take induct-var, like text
+      take guards, like list, like expression
+      like boolean
+      back host/check-fold-order(program, goal, induct-var, guards)
+  save is-linear-goal
+    task
+      take goal, like expression
+      like boolean
+      back host/is-linear-goal(goal)
+  save eta
+    task
+      take left, like expression
+      take right, like expression
+      like expression-pair
+      back eta-pair(left, right, record-fields)
+  save diagnose
+    task
+      take name, like text
+      take span, like span
+      take message, like text
+      take hint, like text
+      like unknown
+      back host/diagnose(name, span, message, hint)
+  save calls-itself-host
+    task
+      take statement, like statement
+      like boolean
+      back calls-itself(statement)
+  save hold-answers
+    make hold-host
+      bind calls-impure-expression, calls-impure-expression
+      bind unfold-definitions, unfold-definitions
+      bind check-fold, check-fold
+      bind check-fold-order, check-fold-order
+      bind is-linear-goal, is-linear-goal
+      bind eta-pair, eta
+      bind diagnose, diagnose
+      bind calls-itself, calls-itself-host
+  save hs
+    make hold-state
+      bind is, induction
+      bind host, hold-answers
+      bind program, program
+      bind within, make none
+      bind diagnostics, diagnostics
+      bind discharged, discharged
+
+  # what the effect layer and a hold ask of the task being checked
+  save calls-impure-statement
+    task
+      take statement, like statement
+      like boolean
+      back impure-in(statement-part(statement), pure, functions, facts)
+  save calls-impure-body
+    task
+      take body, like list, like statement
+      like boolean
+      back impure-in(body-part(body), pure, functions, facts)
+  save reads-state-of
+    task
+      take expression, like expression
+      like boolean
+      back reads-state(expression-part(expression))
+  save reads-any-of
+    task
+      take expression, like expression
+      take names, like list, like text
+      like boolean
+      save wanted, hash-of(names)
+      save is-wanted
+        task
+          take name, like text
+          like boolean
+          back wanted/has(name)
+      back reads-any(expression-part(expression), is-wanted)
+  save reads-name
+    task
+      take expression, like expression
+      take name, like text
+      like boolean
+      back contains(read-names(expression-part(expression)), name)
+  save written-names-of
+    task
+      take statement, like statement
+      like list, like text
+      back unique-texts(written-names(statement-part(statement)))
+  save written-names-body
+    task
+      take body, like list, like statement
+      like list, like text
+      back unique-texts(written-names(body-part(body)))
+  save root-name-of
+    task
+      take expression, like expression
+      like text
+      sift root-name(expression)
+        case some
+          link root
+          back root
+        case none
+          back everything()
+  save volatile-of
+    task
+      like list, like text
+      back facts/volatile
+  save member-write
+    task
+      take body, like list, like statement
+      like boolean
+      back contains-member-write(body)
+  save member-read
+    task
+      take expression, like expression
+      like boolean
+      back reads-member(expression)
+  save hold-under-commands
+    task
+      take statement, like statement
+      take scope, like hash, like text, like number
+      take ctx, like context
+      take assumptions, like list, like expression-pair
+      like boolean
+      back checked-hold(hs, statement, scope, ctx, assumptions)
+  save commands
+    make command-host
+      bind calls-impure-statement, calls-impure-statement
+      bind calls-impure-body, calls-impure-body
+      bind calls-impure-expression, calls-impure-expression
+      bind reads-state, reads-state-of
+      bind reads-any, reads-any-of
+      bind reads-name, reads-name
+      bind written-names, written-names-of
+      bind written-names-body, written-names-body
+      bind root-name, root-name-of
+      bind everything, everything()
+      bind volatile-names, volatile-of
+      bind contains-member-write, member-write
+      bind reads-member, member-read
+      bind check-hold, hold-under-commands
+
+  # the loop over the tasks and the top-level holds: each task's fact names set as it is entered
+  save enter
+    task
+      take statement, like statement
+      take stub, like boolean
+      like boolean
+      save ts/captured, enter-task(facts, ts/captured, statement, stub)
+      back true
+  save leave
+    task
+      like boolean
+      save ts/captured, make hash
+      save facts/local, make hash
+      save facts/volatile, make list
+      save facts/rule-marks, make hash
+      back true
+  save trace
+    task
+      take name, like text
+      take raised, like unknown
+      like boolean
+      back host/trace(name, raise-text(raised))
+  save loop-host
+    make main-host
+      bind enter-task, enter
+      bind leave-task, leave
+      bind trace, trace
+  save ms
+    make main-state
+      bind ts, ts
+      bind hs, hs
+      bind commands, commands
+      bind host, loop-host
+      bind base-context, base-context
+      bind terminating, terminating
+      bind pure, pure
+      bind carried, carried-bodies(program)
+      bind verified, verified
+      bind proven, proven
+      bind declined, declined
+      bind statementwise, statementwise
+
+  check-program(ms, program, file)
+
+  # read back from the states the parts wrote, which natively hold their own lists
+  back
+    make elaboration-report
+      bind diagnostics, ms/hs/diagnostics
+      bind verified, ms/verified
+      bind proven, ms/proven
+      bind declined, ms/declined
+      bind statementwise, ms/statementwise
+      bind discharged, ms/hs/discharged
+
+# an enum's encoding as its definition, when the kernel types it as a type; a refusal leaves the postulate
+task define-encoding
+  take st, like judge-state
+  take base-context, like context
+  take encoding, like named-term
+  like boolean
+  mark private
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save inferred, infer(st, base-context, encoding/term)
+    sift inferred/type
+      case type
+        save no-env, make list
+        define-constant(st, encoding/name, evaluate(st, no-env, encoding/term))
+      miss
+        save nothing, 0
+    back true
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back false
+  back false
+
+# a constructor or eliminator as a closed definition; a malformed one stays an opaque postulate
+task define-term
+  take st, like judge-state
+  take definition, like named-term
+  like boolean
+  mark private
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save no-env, make list
+    define-constant(st, definition/name, evaluate(st, no-env, definition/term))
+    back true
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back false
+  back false

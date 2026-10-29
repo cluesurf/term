@@ -15,8 +15,8 @@
 #   - the walk's sets are hashes of flags, and a set the original left out (`fresh`, `params`, `constants`, `scalars`)
 #     is an empty hash, which every test the original made of it answers the same way
 #   - check/purity.tree answers what is impure, what a subtree writes and what it reads, as check/facts.ts handed it
-#   - the tally a caller owns is `hold-tally`, converted by the face both ways: the original created its `seen` and its
-#     `kinds` the first time it counted, so the record says whether they exist
+#   - the tally a caller owns is `hold-tally`, declared so its TypeScript emission IS the caller's `Tally`: the original
+#     created its `seen` and its `kinds` the first time it counted, so both are `need false` (item 0356, decision 057)
 
 load @term/base/list
   find list
@@ -73,6 +73,9 @@ load ./hold-facts
 load ./hold-state
   find hold-state
 
+load ./holding
+  find owed-kinds
+
 load ./purity
   find subtree
   find calls-impure
@@ -85,12 +88,6 @@ load ./purity
 
 # ---- the walk ----
 
-# how many obligations of one tier-0 kind, and how many proven
-form kind-count
-  mark shared
-  link total, like number
-  link proven, like number
-
 # one tier-0 obligation that was not proven: the task, what it was owed for, its ordinal among that task's of that kind
 form failed-obligation
   link task, like text
@@ -98,16 +95,20 @@ form failed-obligation
   link ordinal, like number
   link diagnostic, like diagnostic
 
-# the tier-0 count of one compile, as the caller's `Tally`: `seen` and `kinds` exist once something was counted
+# the tier-0 count of one compile, IS the caller's `Tally` (check/holds.ts): `seen` (the running count per
+# `<task> <kind>`, for the ordinal) and `kinds` (check/holding.tree's counts per kind) are absent until something was
+# counted, as the original created them then
 form hold-tally
   mark shared
   link total, like number
   link proven, like number
   link failed, like list, like failed-obligation
-  link has-seen, like boolean
-  link seen, like hash, like text, like number
-  link has-kinds, like boolean
-  link kinds, like hash, like text, like kind-count
+  link seen
+    like maybe, like hash, like text, like number
+    need false
+  link kinds
+    like maybe, like owed-kinds
+    need false
 
 # what a walk needs besides its facts: where to report, which tasks are pure, which names the task binds itself, which
 # names a closure may write behind the walk's back, and what the whole program says of the rest

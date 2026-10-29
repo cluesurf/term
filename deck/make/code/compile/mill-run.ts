@@ -1,31 +1,9 @@
-// The mill executor (mill-self-hosting-0004): read a `mine` grammar into rules, run it against a parse tree to
-// fill sites, and run its `mint` to build the target values — the machinery that makes a dialect cost a grammar
-// file instead of a hand-written reader. Proven on the host role against compile/host.ts on every fixture
-// (test/compile/mill-run.ts).
-//
-// The mine dialect (deck/mill/code/tree/mill/mine.tree is its own grammar):
-//   mine term, term <w>   match a group headed <w>; inner rules consume its remaining nodes in order
-//   mine term / site s    consume one word (a bare name, or a group wrapping one) into site s
-//   mine text / site s    consume a text literal
-//   mine code / site s    consume a number literal (integer, decimal or radix), tagged with which it was
-//   mine path / site s    consume a path or glob word (`@/book/**/*.tree` is one word to the parser)
-//   mine node             consume any one node, capturing nothing (the skip for a mixed file)
-//   mine word / site s    consume a word with NOTHING under it (`mine term` takes a group's head and drops
-//                         whatever it holds, which in value position turns a call into a name)
-//   mine maybe [r]        the rule, or nothing
-//   mine list [r]         the rule, zero or more times
-//   mine any [r...]       the first alternative that matches
-//   mine form, like <m> / site s   match the named rule against the current node, capture into s
-//
-// The mint dialect: one mint per mine. `case <field> [, mint <sub>]` maps the site's captures (each minted
-// through <sub> when named); `hook make / make <form> / bind f, read <case>` builds a record. A mint with no
-// make passes through: a single matched case's value rides out as it is (a literal keeps its own data kind, a
-// word rides as its text), which is what a pure alternation (host-entry, host-scalar) wants.
-//
-// The executor is compile/mill-running.tree (self-hosting, 2026-10-06). This face keeps the shapes the bridge and
-// the deck readers hold: a missing word or span is `undefined`, the lean rules are a `Set`, and a minted form's fields
-// are a `Record`. A capture and a match are the port's own, field for field what they were. A grammar is the port's
-// too, and nothing outside reads its rules, whose `maybe` is spelled `optional` there.
+// The mill executor (mill-self-hosting-0004): read a `mine` grammar into rules, run it against a parse tree to fill
+// sites, and run its `mint` to build the target values, so a dialect costs a grammar file instead of a hand-written
+// reader. The mine and mint dialects are deck/mill/code/tree/mill/mine.tree's, and the executor is
+// compile/mill-running.tree. This face keeps the shapes the deck readers and the tests hold: a missing word or span is
+// `undefined`, the lean rules are a `Set`, and a minted form's fields are a `Record`. A capture and a match are the
+// port's own. A grammar is the port's too, whose `maybe` is spelled `optional` there.
 
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
@@ -33,36 +11,17 @@ import type { Span } from '@term/make/code/parser/diagnostic'
 import * as port from '@term/make/code/compile/mill-running'
 import * as lowering from '@term/make/code/compile/find-lower'
 
-// a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node it
-// came from, so a consumer's diagnostic points at the line in the file, and the CST `node` itself, so a built AST
-// node can point back at the exact surface syntax it was read from (mint-bridge-0001). An integer literal is a
-// number while that is exact, and a bigint read from its own text past 2^53, where the parsed number has already
-// rounded to a different integer. `at` is the node's index among the nodes the mine enumerated it from (a group's
-// children, or the root's nodes at the top level), which the bridge orders by instead of the node's identity
-// (decision 033 section 3). A minted value carries the `at` of the capture it came from. `within` is the `at` of the
-// group a capture was enumerated inside when that is a callee's parentheses (compile/mill-running.tree `mill-capture`).
+type Placed = { span?: Span; node?: Node; at?: number; within?: number }
+
+// a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN and the CST `node` it
+// came from (mint-bridge-0001). An integer literal is a number while that is exact, and a bigint read from its own text
+// past 2^53. `at` is the node's index among the nodes the mine enumerated it from, which the bridge orders by (decision
+// 033 section 3), and `within` the `at` of a callee's parentheses it was enumerated inside (mill-running.tree `mill-capture`)
 export type MillCapture =
-  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number; within?: number }
-  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number; within?: number }
-  | {
-      kind: 'number'
-      // a bigint only for an integer past 2^53, where a number would round to a different value
-      value: number | bigint
-      decimal: boolean
-      span?: Span
-      node?: Node
-      at?: number
-      within?: number
-    }
-  | {
-      kind: 'match'
-      rule: string
-      match: MillMatch
-      span?: Span
-      node?: Node
-      at?: number
-      within?: number
-    }
+  | ({ kind: 'word'; value: string } & Placed)
+  | ({ kind: 'text'; value: string } & Placed)
+  | ({ kind: 'number'; value: number | bigint; decimal: boolean } & Placed)
+  | ({ kind: 'match'; rule: string; match: MillMatch } & Placed)
 
 // one rule's fill: site name -> the captures that landed there, in order
 export type MillMatch = Map<string, MillCapture[]>
@@ -78,59 +37,32 @@ export const ZERO_SPAN: Span = {
 
 const unbox = <T>(value: port.Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
 
-// The EXTENT a node covers: head through the last child, so a diagnostic underlines the whole construct and a
-// source-slice autofix captures the exact surface syntax. This is the span every AST node carries (mint-bridge-0001).
-//
-// Distinct from `spanOfNode` below, which answers a different question: where to point a caret. Keep both.
-export function spanOfWhole(node: Node): Span {
-  return port.spanOfWhole(node as never)
-}
+// The EXTENT a node covers, head through the last child: the span every AST node carries (mint-bridge-0001). Distinct
+// from `spanOfNode`, which says where to point a caret
+export const spanOfWhole = (node: Node): Span => port.spanOfWhole(node as never)
 
 // the source span a node covers (its first token's), so a consumer's diagnostic can point at the line
-export function spanOfNode(node: Node | undefined): Span | undefined {
-  return node ? unbox(port.spanOfNode(node as never)) : undefined
-}
+export const spanOfNode = (node: Node | undefined): Span | undefined => (node ? unbox(port.spanOfNode(node as never)) : undefined)
 
-// exported for reuse by other tree-CST-reading compilers (feed-mill.ts's grammar reader among them) — these four
-// are generic ".tree node -> word/phrase/text" readers, nothing here is mill's own rule vocabulary specifically
-export function wordOf(node: Node | undefined): string | undefined {
-  return node ? unbox(port.wordOf(node as never)) : undefined
-}
+// generic ".tree node -> word/phrase/text" readers, for any tree-CST-reading compiler (feed-mill.ts's grammar reader)
+export const wordOf = (node: Node | undefined): string | undefined => (node ? unbox(port.wordOf(node as never)) : undefined)
 
-// the full word chain a node denotes: a multi-word value parses as nested heads (`vitest run` is
-// vitest > run), so a phrase reconstructs by walking head plus terms recursively, space-joined
-export function phraseOf(node: Node | undefined): string | undefined {
-  return node ? unbox(port.phraseOf(node as never)) : undefined
-}
+// the full word chain a node denotes: `vitest run` parses as vitest > run, so a phrase is head plus terms, space-joined
+export const phraseOf = (node: Node | undefined): string | undefined => (node ? unbox(port.phraseOf(node as never)) : undefined)
 
-export function headWord(group: GroupNode): string | undefined {
-  return unbox(port.headWord(group as never))
-}
+export const headWord = (group: GroupNode): string | undefined => unbox(port.headWord(group as never))
 
-// the VALUE of a text literal: its chunks, with the escape sequences resolved. A reader that skips the
-// unescaping gets `\n` as two characters, which is a different string from the one the source wrote.
-export function textOf(node: Node): string {
-  return port.textOf(node as never)
-}
+// the VALUE of a text literal: its chunks, with the escape sequences resolved
+export const textOf = (node: Node): string => port.textOf(node as never)
 
-export function readMineGrammar(tree: RootNode): MineGrammar {
-  return port.readMineGrammar(tree as never)
-}
+export const readMineGrammar = (tree: RootNode): MineGrammar => port.readMineGrammar(tree as never)
 
-// The `mine` rules that carry a `mark lean` child: the constructs that take the lean surface, where a bare-head
-// argument becomes a NAMED argument in a file whose role is marked lean. Declared per rule and read here, never
-// derived from the rule's shape. The shape-derived version ("a rule with a `bind` site") was measured on
-// 2026-09-12 and refused: thirty rules have one, and at least seven must never take labels. note/project/term/mill/lean.md.
-export function readLeanRules(tree: RootNode): Set<string> {
-  return new Set(port.readLeanRules(tree as never))
-}
+// The `mine` rules that carry a `mark lean` child: the constructs that take the lean surface, declared per rule and
+// never derived from the rule's shape (note/project/term/mill/lean.md)
+export const readLeanRules = (tree: RootNode): Set<string> => new Set(port.readLeanRules(tree as never))
 
 // run a grammar's start rule over a whole parse tree (the root's groups)
-export function runMine(
-  grammar: MineGrammar,
-  start: string,
-  tree: RootNode,
-): { ok: true; match: MillMatch } | { ok: false; at?: Node } {
+export function runMine(grammar: MineGrammar, start: string, tree: RootNode): { ok: true; match: MillMatch } | { ok: false; at?: Node } {
   const run = port.runMine(grammar, start, tree as never)
 
   if (run.ok) {
@@ -140,8 +72,6 @@ export function runMine(
   return run.started ? { ok: false, at: run.at as Node | undefined } : { ok: false }
 }
 
-// ---- the mint grammar ----
-
 export type MintCase = port.MintCase
 export type MintBind = port.MintBind
 export type MintMake = port.MintMake
@@ -149,69 +79,28 @@ export type Mint = port.MintRule
 
 export type MintGrammar = Map<string, Mint>
 
-export function readMintGrammar(tree: RootNode): MintGrammar {
-  return port.readMintGrammar(tree as never)
-}
+export const readMintGrammar = (tree: RootNode): MintGrammar => port.readMintGrammar(tree as never)
 
-// ---- minting ----
-
-// A minted value keeps the CST node it was built from (and that node's extent), so the bridge that turns these
-// into compiler AST nodes can carry an exact span onto every one of them.
+// A minted value keeps the CST node it was built from (and that node's extent), so the bridge can span every node
 export type Minted =
-  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number; within?: number }
-  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number; within?: number }
-  | {
-      kind: 'number'
-      value: number | bigint
-      decimal: boolean
-      span?: Span
-      node?: Node
-      at?: number
-      within?: number
-    }
-  | {
-      kind: 'form'
-      form: string
-      fields: Record<string, Minted[]>
-      span?: Span
-      node?: Node
-      at?: number
-      within?: number
-    }
+  | ({ kind: 'word'; value: string } & Placed)
+  | ({ kind: 'text'; value: string } & Placed)
+  | ({ kind: 'number'; value: number | bigint; decimal: boolean } & Placed)
+  | ({ kind: 'form'; form: string; fields: Record<string, Minted[]> } & Placed)
 
-// a minted form's fields as the `Record` the bridge reads. The port hands back the same list wherever minting was
-// remembered, so each list and form is converted once and shared as it was
-function mintedOf(values: port.Minted[], seen: WeakMap<object, unknown>): Minted[] {
-  const known = seen.get(values)
-
-  if (known) {
-    return known as Minted[]
-  }
-
-  const out = values.map(value => mintedValue(value, seen))
-  seen.set(values, out)
-
-  return out
-}
-
-function mintedValue(value: port.Minted, seen: WeakMap<object, unknown>): Minted {
+// a minted form's fields as the `Record` the readers take
+function mintedValue(value: port.Minted): Minted {
   if (value.kind !== 'form') {
     return value as Minted
-  }
-
-  const known = seen.get(value)
-
-  if (known) {
-    return known as Minted
   }
 
   const fields: Record<string, Minted[]> = {}
 
   for (const [name, list] of value.fields) {
-    fields[name] = mintedOf(list, seen)
+    fields[name] = list.map(mintedValue)
   }
 
-  const out: Minted = {
+  return {
     kind: 'form',
     form: value.form,
     fields,
@@ -220,44 +109,25 @@ function mintedValue(value: port.Minted, seen: WeakMap<object, unknown>): Minted
     ...(value.at === undefined ? {} : { at: value.at }),
     ...(value.within === undefined ? {} : { within: value.within }),
   }
-  seen.set(value, out)
-
-  return out
 }
 
-const maybeAt = (at: number | undefined): port.Maybe<number> =>
-  at === undefined ? { form: 'none' } : { form: 'some', value: at }
+const maybeOf = <T>(value: T | undefined): port.Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
 
-export function runMint(
-  mints: MintGrammar,
-  name: string,
-  match: MillMatch,
-  // the CST node this match was read from: it becomes the built form's own node, so the bridge can span it
-  node?: Node,
-  // that node's index among the nodes the mine enumerated it from (the capture's at): the built form's own at
-  at?: number,
-): Minted[] {
-  const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
+// a node is some when it is there at all, as the original asked it (`node ? ... : ...`)
+const nodeOf = (node: Node | undefined): port.Maybe<never> => (node ? { form: 'some', value: node as never } : { form: 'none' })
 
-  return mintedOf(port.runMint(mints, name, match as never, from, maybeAt(at)), new WeakMap())
-}
+// `node` is the CST node this match was read from and `at` its index among the nodes the mine enumerated it from: the
+// built form's own node and at
+export const runMint = (mints: MintGrammar, name: string, match: MillMatch, node?: Node, at?: number): Minted[] =>
+  port.runMint(mints, name, match as never, nodeOf(node), maybeOf(at)).map(mintedValue)
 
 // what the lowering of a find could not do: a code and a message, at the span of the find (decision 005)
 export type FindProblem = { code: string; message: string; span?: Span }
 
-// `runMint` for the CODE role, with every `find` in what it minted lowered to the core forms the bridge builds
-// (compile/find-lower.tree `lower-finds`, note/project/term/find/decision/005). The one place a find is lowered: the
-// find mint passes its slots through, and this pass runs over the minted values before anything reads them. A value
-// with no find in it comes back as the same object it was, so a program without a find mints as it always did.
-export function runCodeMint(
-  mints: MintGrammar,
-  name: string,
-  match: MillMatch,
-  node?: Node,
-  at?: number,
-): { values: Minted[]; problems: FindProblem[] } {
-  const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
-  const lowered = lowering.lowerFinds(port.runMint(mints, name, match as never, from, maybeAt(at)) as never)
+// `runMint` for the CODE role, with every `find` in what it minted lowered to the base forms the bridge builds
+// (compile/find-lower.tree `lower-finds`, note/project/term/find/decision/005)
+export function runCodeMint(mints: MintGrammar, name: string, match: MillMatch, node?: Node, at?: number): { values: Minted[]; problems: FindProblem[] } {
+  const lowered = lowering.lowerFinds(port.runMint(mints, name, match as never, nodeOf(node), maybeOf(at)) as never)
 
-  return { values: mintedOf(lowered.values as never, new WeakMap()), problems: lowered.problems as FindProblem[] }
+  return { values: (lowered.values as port.Minted[]).map(mintedValue), problems: lowered.problems as FindProblem[] }
 }

@@ -1,0 +1,353 @@
+# Loading one ROLE's mill from disk, for the compile/mill-load.ts face (item 0076): follow the `load` graph out of
+# `<role>/mine.tree` and `<role>/mint.tree`, strip each file's import block (mill-files.tree `strip-imports`), and read
+# the concatenation as one grammar. Rule names are role-global (test/compile/mill-grammar.ts holds them unique per
+# role), so concatenation is the merge, and a name two reachable files define is reported as a collision, since the
+# last definition wins without a word.
+#
+# Every read reaches the platform through @term/base/file/blocking (spec 4.23). A file is asked for before it is read,
+# as the original's `existsSync` did, so port-build's trace sees the same paths. A `@term/mill/<p>` load resolves by
+# the package path rule every resolver calls (package-paths.tree `resolve-package-path`), with the code root the face
+# hands in (resolve.ts's cache).
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+  find contains
+
+load @term/base/file/blocking
+  find read, name disk-read
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find parse
+  find root-node
+
+load ../package-paths
+  find join-paths
+  find join-two
+  find join-three
+  find dirname-of
+  find resolve-package-path
+
+load ../package-paths-disk
+  find path-exists
+
+load ../deck/resolve
+  find package-rest
+
+load ./mill-files
+  find grammar-file
+  find strip-imports
+  find grammar-rules
+  find rules-defined
+
+load ./mill-running
+  find mine-rule
+  find mint-rule
+  find read-mine-grammar
+  find read-mint-grammar
+
+# a rule name defined in more than one reachable file of one half
+form grammar-collision
+  link half, like text
+  link name, like text
+  link files, like list, like text
+
+# a role's mill: each half read, the merged source of each (so a generator can bake it in), the files reached, what
+# could not be read, and the collisions
+form loaded-grammar
+  link mine, like hash, like text, like list, like mine-rule
+  link mint, like hash, like text, like mint-rule
+  link mine-text, like text
+  link mint-text, like text
+  link files, like list, like text
+  link problems, like list, like text
+  link collisions, like list, like grammar-collision
+
+form grammar-text
+  link text, like text
+  link files, like list, like text
+  link problems, like list, like text
+
+# one half's closure: its texts joined, and the files in the order they were reached
+form collected-part
+  link text, like text
+  link files, like list, like text
+
+# a path holding a line break, which a `.` of a pattern never crosses
+task has-line-break
+  take given, like text
+  like boolean
+  mark private
+
+  back or(or(contains(given, <\n>), contains(given, <\r>)), or(contains(given, < >), contains(given, < >)))
+
+# the @term/mill package folder: the nearest folder at or above `mill-root` holding a `deck.tree`
+task mill-package-of
+  take mill-root, like text
+  like text
+  mark private
+
+  save dir, mill-root
+  walk test
+    hook test, is-unequal(dir, dirname-of(dir))
+    hook hold
+      fork test, path-exists(join-two(dir, <deck.tree>))
+        hold
+          back dir
+      save dir, dirname-of(dir)
+  back dirname-of(mill-root)
+
+# one `load` path resolved against the mill: `@term/mill/<p>` by the package path rule (the mill's code root, then its
+# package root), or a `./<p>` relative to the importer, `<p>.tree` before `<p>/base.tree`
+task resolve-mill-import
+  take mill-root, like text
+  take from, like text
+  take path, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like maybe, like text
+
+  save named, package-rest(path)
+  fork test, named/found
+    hold
+      fork test, is-unequal(named/pkg, <@term/mill>)
+        hold
+          back make none
+      save no-base, make none
+      save hit, resolve-package-path(mill-package-of(mill-root), named/rest, no-base, path-exists, code-root-of)
+      sift hit/file
+        case some
+          link found
+          back make(some, found)
+        case none
+          back make none
+  fork test, not(starts-with(path, <./>))
+    hold
+      back make none
+  save near, substring(path, 2)
+  fork test, or(is-equal(near/length, 0), has-line-break(near))
+    hold
+      back make none
+  save joined, join-three(from, <..>, near)
+  save plain, <{joined}.tree>
+  fork test, path-exists(plain)
+    hold
+      back make(some, plain)
+  save parts, make list
+  push(parts, from)
+  push(parts, <..>)
+  push(parts, near)
+  push(parts, <base.tree>)
+  save based, join-paths(parts)
+  fork test, path-exists(based)
+    hold
+      back make(some, based)
+  back make none
+
+task collect-from
+  take mill-root, like text
+  take file, like text
+  take problems, like list, like text
+  take half, like text
+  take defines, like hash, like text, like list, like text
+  take seen, like hash, like text, like boolean
+  take parts, like list, like text
+  take files, like list, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  mark private
+
+  fork test, seen/has(file)
+    hold
+      back
+  fork test, not(path-exists(file))
+    hold
+      push(problems, <{file}: no such grammar file>)
+      back
+  save seen/{file}, true
+  push(files, file)
+  save part, strip-imports(file, disk-read(file))
+  sift part/problem
+    case some
+      link said
+      push(problems, said)
+    case none
+      save nothing, 0
+  push(parts, part/text)
+  walk rules-defined(part/text, file, half)
+    take rule-name
+    fork test, defines/has(rule-name)
+      hold
+        push(defines/get(rule-name), file)
+      miss
+        save where, make list
+        push(where, file)
+        save defines/{rule-name}, where
+  walk part/imports
+    take imported
+    sift resolve-mill-import(mill-root, file, imported, code-root-of)
+      case some
+        link resolved
+        collect-from(mill-root, resolved, problems, half, defines, seen, parts, files, code-root-of)
+      case none
+        # an unresolvable import is not a problem here: a mill loads stdlib forms (`@term/base/lang`) for its `like`
+        # annotations, and those are not grammar files. test/compile/mill-grammar.ts checks every load names something
+        save nothing, 0
+
+# one half's load closure from its entry file, every import block removed, the texts joined by a blank line
+task collect-part
+  take mill-root, like text
+  take entry, like text
+  take problems, like list, like text
+  take half, like text
+  take defines, like hash, like text, like list, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like collected-part
+
+  save seen, make hash
+  save parts, make list
+  save files, make list
+  collect-from(mill-root, entry, problems, half, defines, seen, parts, files, code-root-of)
+  back
+    make collected-part
+      bind text, join(parts, <\n\n>)
+      bind files, files
+
+# ONE grammar file with its load closure inlined and every import block removed: the text a generator bakes into a
+# package that cannot read the mill at run time. The same walk and resolver `load-role-grammar` uses
+task grammar-text-of
+  take mill-root, like text
+  take entry, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like grammar-text
+
+  save problems, make list
+  save defines, make hash
+  save part, collect-part(mill-root, entry, problems, <mine>, defines, code-root-of)
+  back
+    make grammar-text
+      bind text, part/text
+      bind files, part/files
+      bind problems, problems
+
+task collisions-of
+  take half, like text
+  take defines, like hash, like text, like list, like text
+  take out, like list, like grammar-collision
+  mark private
+
+  walk defines/keys()
+    take rule-name
+    save where, defines/get(rule-name)
+    fork test, is-above(where/length, 1)
+      hold
+        save one
+          make grammar-collision
+            bind half, half
+            bind name, rule-name
+            bind files, where
+        push(out, one)
+
+# a merged half parsed, none when it does not parse, the first diagnostic's message (or `did not parse`) a problem
+task read-merged
+  take role, like text
+  take label, like text
+  take merged, like text
+  take problems, like list, like text
+  like maybe, like root-node
+  mark private
+
+  save source
+    make token-source
+      bind file, <{role}-{label}.tree>
+      bind text, merged
+  save parsed, parse(source)
+  fork test, parsed/ok
+    hold
+      back make(some, parsed/tree)
+  save said, <did not parse>
+  fork test, is-above(parsed/diagnostics/length, 0)
+    hold
+      save first, get(parsed/diagnostics, 0)
+      save said, first/message
+  push(problems, <{role} {label}: {said}>)
+  back make none
+
+task load-role-grammar
+  take mill-root, like text
+  take role, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like loaded-grammar
+
+  save problems, make list
+  save mine-defines, make hash
+  save mint-defines, make hash
+  save mine-part, collect-part(mill-root, join-three(mill-root, role, <mine.tree>), problems, <mine>, mine-defines, code-root-of)
+  save mint-part, collect-part(mill-root, join-three(mill-root, role, <mint.tree>), problems, <mint>, mint-defines, code-root-of)
+  save collisions, make list
+  collisions-of(<mine>, mine-defines, collisions)
+  collisions-of(<mint>, mint-defines, collisions)
+  save mine, make hash
+  sift read-merged(role, <mine>, mine-part/text, problems)
+    case some
+      link mine-tree
+      save mine, read-mine-grammar(mine-tree)
+    case none
+      save nothing, 0
+  save mint, make hash
+  sift read-merged(role, <mint>, mint-part/text, problems)
+    case some
+      link mint-tree
+      save mint, read-mint-grammar(mint-tree)
+    case none
+      save nothing, 0
+  save files, make list
+  walk mine-part/files
+    take one
+    push(files, one)
+  walk mint-part/files
+    take one
+    push(files, one)
+  back
+    make loaded-grammar
+      bind mine, mine
+      bind mint, mint
+      bind mine-text, mine-part/text
+      bind mint-text, mint-part/text
+      bind files, files
+      bind problems, problems
+      bind collisions, collisions
+
+# one grammar file's rules with the lines each occupies, none for a path that is not there or does not parse
+task grammar-file-on-disk
+  take file, like text
+  like maybe, like grammar-file
+
+  fork test, not(path-exists(file))
+    hold
+      back make none
+  back grammar-rules(file, disk-read(file))

@@ -1,35 +1,31 @@
 // Module loading: the entry file plus every module it (transitively) loads, collected in dependency order and compiled
-// as one merged program. The import scan and the walk are Term, compile/loading.tree (self-hosting, 2026-10-06), and its
-// header says what each part reads. This face keeps what Term cannot hold: the parse memo (module state, one per
-// build), the build cache's hook that hands back a module's scan without parsing it, and the shapes its callers hold,
-// where an absent alias is `undefined` rather than `none`. Browser-safe: file reading is delegated to a resolver.
+// as one merged program. The import scan and the walk are compile/loading.tree, the parse memo and the `{platform}`
+// refusals compile/loading-parses.tree (item 0082). This face keeps the shapes its callers hold, where an absent alias
+// is `undefined` rather than `none`, and hands the port a resolver, a parse and the build cache's scan as tasks.
+// Browser-safe: file reading is delegated to a resolver.
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
-import { diagnose } from '@term/make/code/parser/diagnostic'
-import { parse } from '@term/make/code/parser/tree'
 import type { ParseResult } from '@term/make/code/parser/tree'
 import * as port from '@term/make/code/compile/loading'
+import * as parses from '@term/make/code/compile/loading-parses'
 
-// `shadowed` is set by a resolver when a package path named a file in the package's code root AND one in its package
-// root: `file` is the code root's, and the other is what `term lint` names in `ambiguous-load`
+// `shadowed`: a package path named a file in the package's code root AND one in its package root. `file` is the code
+// root's, and the other is what `term lint` names in `ambiguous-load`
 export type Source = { file: string; text: string; shadowed?: string }
 
-// what a module's text imports, read from its parse tree (compile/loading.tree `import-scan`)
+// what a module's text imports, read from its parse tree (compile/loading.tree `import-scan`). `bits` absent in a scan
+// kept from before they were built in reads as none
 export type ImportScan = {
   paths: string[]
   hasZone: boolean
-  // a top-level web route (`hook /path`), whose lowering calls the route runtime
   hasRoute: boolean
-  // the built-in bit words the module names, which reach @term/base/bit with no `load`. Absent in a scan kept from
-  // before they were built in, which is read as none
   bits?: string[]
-  // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for, with where each
-  // `find` line is, and the name each is bound under here when the line aliases it (`find x, name y` -> `y`)
   finds: {
     path: string
     bear: boolean
     names: string[]
     spans: Span[]
+    // the name each `find` is bound under here when the line aliases it (`find x, name y` -> `y`)
     aliases: (string | undefined)[]
     // `base <dir>` under the load: resolve from the package root (it imports nothing)
     base?: string
@@ -38,147 +34,67 @@ export type ImportScan = {
   }[]
 }
 
-// What each module imports BY NAME, resolved to files (compile/loading.tree `module-scope`). Read by check/overload.ts
-// and check/private.ts
+// What each module imports BY NAME, resolved to files (compile/loading.tree `module-scope`)
 export type ImportScope = Map<
   string,
   { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span>; aliases?: Map<string, string[]>; plain?: Map<string, string[]> }
 >
 
-// one entry of a file's finds, as a Term pass takes it (compile/import-scope.tree)
+// a file's import scope as a Term pass takes it (compile/import-scope.tree), each map a list in its order. `hasPlain`:
+// whether the scope kept a `plain` map at all, which check/overload reads apart from an empty one
 export type ScopeFind = { name: string; targets: string[]; at?: Span }
-
-// a file's import scope as a Term pass takes it: each map a list, in the map's order
-// `hasPlain`: whether the scope kept a `plain` map at all, which check/overload reads apart from an empty one
 export type FileScope = { file: string; finds: ScopeFind[]; bears: string[]; aliases?: ScopeFind[]; plain?: ScopeFind[]; hasPlain?: boolean }
 
-// the import scope as the ported passes take it (check/private.tree, check/scope.tree), none for none
-export function scopeList(scope: ImportScope | undefined): FileScope[] {
-  return port.scopeList((scope ?? new Map()) as Map<string, port.ModuleScope>) as FileScope[]
-}
+export const scopeList = (scope: ImportScope | undefined): FileScope[] =>
+  port.scopeList((scope ?? new Map()) as Map<string, port.ModuleScope>) as FileScope[]
 
-// One parse per module per build. Keyed by file, holding the text it was parsed from, so a resolver that hands back
-// a changed file re-parses rather than serving a stale tree.
+// One parse per module per build (compile/loading-parses.tree `parse-remembered`). SHARE ONE ACROSS THE BUILD: a
+// project build calls `compile()` once per file, and the dependency walk runs before the output cache is consulted
 export type ParseMemo = (source: Source) => ParseResult
 
-// The default cap. A memo is a pure function of (file, text), so eviction can only ever cost a re-parse, never a
-// wrong answer; the cap exists so a memo SHARED ACROSS A WHOLE BUILD cannot grow without bound.
 export const PARSE_MEMO_CAP = 2048
 
-// SHARE ONE ACROSS THE BUILD, not one per entry: a project build calls `compile()` once per file, and the dependency
-// walk runs BEFORE the output cache can be consulted, so a memo per entry re-parses every file's whole closure.
 export function makeParseMemo(cap: number = PARSE_MEMO_CAP): ParseMemo {
-  const seen = new Map<string, { text: string; result: ParseResult }>()
-
-  return source => {
-    const hit = seen.get(source.file)
-
-    if (hit && hit.text === source.text) {
-      // least-recently-used: re-insert so the hot closure survives eviction
-      seen.delete(source.file)
-      seen.set(source.file, hit)
-
-      return hit.result
-    }
-
-    const result = parse(source)
-
-    seen.set(source.file, { text: source.text, result })
-
-    while (seen.size > cap) {
-      const oldest = seen.keys().next()
-
-      if (oldest.done) {
-        break
-      }
-
-      seen.delete(oldest.value)
-    }
-
-    return result
-  }
+  const memo = parses.freshParseMemo(cap)
+  return source => parses.parseRemembered(memo, source as never) as ParseResult
 }
 
 type PortFind = port.ImportScan['finds'][number]
 
-function fromPortScan(scan: port.ImportScan): ImportScan {
-  return {
+const fromPortScan = (scan: port.ImportScan): ImportScan =>
+  ({
     ...scan,
-    finds: scan.finds.map((find: PortFind) => ({
-      ...find,
-      aliases: find.aliases.map(alias => (alias.form === 'some' ? alias.value : undefined)),
-    })),
-  } as ImportScan
-}
+    finds: scan.finds.map((find: PortFind) => ({ ...find, aliases: find.aliases.map(alias => (alias.form === 'some' ? alias.value : undefined)) })),
+  }) as ImportScan
 
 // a scan read back from the build cache's JSON has a hole where an alias was absent (its reviver deletes the `null`),
 // which `Array.from` visits and `map` would skip
-function toPortScan(scan: ImportScan): port.ImportScan {
-  return {
+const toPortScan = (scan: ImportScan): port.ImportScan =>
+  ({
     ...scan,
     finds: scan.finds.map(find => ({
       ...find,
       aliases: Array.from(find.aliases, alias => (alias === undefined ? { form: 'none' } : { form: 'some', value: alias })),
     })),
-  } as port.ImportScan
-}
+  }) as port.ImportScan
 
-// the `load` / `bear` paths a module names, read from its tree. The ONE way to ask that question: `collectModules`
-// walks the graph with it and `separate.ts` orders the graph with it
-export function importPathsOf(source: Source, parsed: ParseMemo): string[] {
-  return port.scanParsed(parsed(source)).paths
-}
+// the `load` / `bear` paths a module names, read from its tree: the ONE way to ask that question
+export const importPathsOf = (source: Source, parsed: ParseMemo): string[] => port.scanParsed(parsed(source)).paths
 
-// the `load` / `bear` blocks a module declares, each with the names its `find` lines ask for and where each `find`
-// line is: the scan the dependency walk reads, so the language server's workspace references cannot disagree with it
-export function importFindsOf(source: Source, parsed: ParseMemo): ImportScan['finds'] {
-  return fromPortScan(port.scanParsed(parsed(source))).finds
-}
-
-// The `{platform}` loads of a closure that the build's env answers with no file: a module this env has no native for
-// (`network/server` or `file/directory` in a page). Each is refused AT THE LOAD, naming the module and the env, where
-// until 2026-10-22 it was left to the checker and met further on as names nothing defines (term-stdlib-parity-0006).
-// A module whose text has no `{platform}` is not scanned again
-export function platformRefusals(sources: Source[], resolve: Resolver, env: string, parsed: ParseMemo): Diagnostic[] {
-  const out: Diagnostic[] = []
-
-  for (const source of sources) {
-    if (!source.text.includes('{platform}')) {
-      continue
-    }
-
-    for (const find of importFindsOf(source, parsed)) {
-      if (!find.path.includes('{platform}') || find.base !== undefined || resolve(find.path, source.file)) {
-        continue
-      }
-
-      const module = find.path.replace(/^.*\/native\/\{platform\}\//, '')
-      const span = find.at ?? find.spans[0]
-
-      if (span) {
-        out.push(
-          diagnose('unresolved-load', {
-            file: source.file,
-            span,
-            message: `${module} has no ${env} native: ${find.path} names no file a ${env} build can load`,
-          }),
-        )
-      }
-    }
-  }
-
-  return out
-}
+// the `load` / `bear` blocks a module declares, each with the names its `find` lines ask for and where each is
+export const importFindsOf = (source: Source, parsed: ParseMemo): ImportScan['finds'] => fromPortScan(port.scanParsed(parsed(source))).finds
 
 // how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root
 export type LoadHow = { base?: string }
 
 // resolve an import path (e.g. `@term/base/maybe`) from the importing file to its source, or undefined
-export type Resolver = (
-  importPath: string,
-  fromFile: string,
-  how?: LoadHow,
-) => Source | undefined
+export type Resolver = (importPath: string, fromFile: string, how?: LoadHow) => Source | undefined
+
+const some = <T>(value: T | undefined): port.Maybe<T> => (value ? { form: 'some', value } : { form: 'none' })
+
+// The `{platform}` loads of a closure that the build's env answers with no file, each refused AT THE LOAD
+export const platformRefusals = (sources: Source[], resolve: Resolver, env: string, parsed: ParseMemo): Diagnostic[] =>
+  parses.platformRefusals(sources as never, (path, from) => some(resolve(path, from)) as never, env, source => parsed(source) as never) as Diagnostic[]
 
 // One module's own part of an import walk (compile/loading.tree `walked-module`)
 export type WalkedModule = {
@@ -192,29 +108,22 @@ export type WalkedModule = {
 
 export type WalkMemo = Map<string, WalkedModule>
 
-// the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
+// the entry plus every module it transitively loads, dependencies first (so forms are defined before use). `parsed`
+// omitted (the editor and the tests) makes a private memo, `scanOf` is the build cache's scan of an unchanged module,
+// and `walked` keeps each module's own part across walks
 export function collectModules(
   entry: Source,
   resolve: Resolver,
-  // the build's shared parse memo. Omitted (the editor and the tests), a private one is made.
   parsed: ParseMemo = makeParseMemo(),
-  // where a module's import scan comes from: the build cache's (`CompileCache.scanned`), so a module whose text is
-  // unchanged is not parsed to find its loads. Omitted, it is computed here
   scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (_source, compute) => compute(),
-  // what each module's own part of the walk found, kept across walks
   walked?: WalkMemo,
 ): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope; edges: Map<string, string[]> } {
   const result = port.collectModules(
     entry,
-    (path, from, how) => {
-      const found = resolve(path, from, how.form === 'some' ? how.value : undefined)
-
-      return found ? { form: 'some', value: found } : { form: 'none' }
-    },
+    (path, from, how) => some(resolve(path, from, how.form === 'some' ? how.value : undefined)),
     source => toPortScan(scanOf(source, () => fromPortScan(port.scanParsed(parsed(source))))),
     (walked ?? new Map()) as Map<string, port.WalkedModule>,
     walked !== undefined,
   )
-
   return { sources: result.sources, diagnostics: result.diagnostics, scope: result.scope as ImportScope, edges: result.edges }
 }

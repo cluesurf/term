@@ -1,0 +1,177 @@
+# The roll's values as the plain values they stand for, and back (item term-self-host-001-0080): what compile/roll.ts
+# held as `toValue` and `fromValue`. A plain value is the host's own (`like dynamic`), read and built through the host's
+# JSON accessors (@term/base/native/{platform}/json), as compile/host-data-json.tree reads one. The decisions:
+#   - a key that is there and holds `undefined` is `no-value` both ways (compile/rolling.tree's header). The host's JSON
+#     accessors read `undefined` as null, so `is-absent` asks the host first. Only JavaScript has such a value, so on
+#     the native backends nothing is absent. The face hands in the host's `undefined` as `absent`, the value a
+#     `no-value` reads back as, as it hands in `===` for the supervision walk
+#   - a value that is no JSON value (a function, a bigint, a symbol) reads as the number the host's accessor answers,
+#     0, where the original read it as a record of its own keys. Nothing passes one: every roll is made of JSON values
+#   - a kind whose entries are absent or null holds none, as `entries ?? []` did
+
+load @term/base/native/{platform}/json
+  find json-is-null
+  find json-is-text
+  find json-is-boolean
+  find json-is-array
+  find json-is-object
+  find json-as-text
+  find json-as-number
+  find json-as-boolean
+  find json-array-size
+  find json-array-item
+  find json-object-keys
+  find json-get-field
+  find json-make-object
+  find json-set-field
+  find json-make-array
+  find json-push-item
+  find json-from-text
+  find json-from-number
+  find json-from-boolean
+  find json-make-null
+
+load ./rolling
+  find roll-value
+  find roll-pair
+  find roll-kind
+  find pair-of
+
+# whether a value is the host's `undefined`, which no backend but JavaScript has
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+  case browser
+    text <($value === undefined)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# a plain value as a roll value, its keys in their order
+task roll-value-of
+  take given, like dynamic
+  like roll-value
+
+  fork test, is-absent(given)
+    hold
+      back make no-value
+  fork test, json-is-null(given)
+    hold
+      back make null-value
+  fork test, json-is-text(given)
+    hold
+      back
+        make text-value
+          bind value, json-as-text(given)
+  fork test, json-is-boolean(given)
+    hold
+      back
+        make flag-value
+          bind value, json-as-boolean(given)
+  fork test, json-is-array(given)
+    hold
+      save values, make list
+      save size, json-array-size(given)
+      save at, 0
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          push(values, roll-value-of(json-array-item(given, at)))
+          save at, add(at, 1)
+      back
+        make item-values
+          bind values, values
+  fork test, json-is-object(given)
+    hold
+      save pairs, make list
+      walk json-object-keys(given)
+        take key
+        push(pairs, pair-of(key, roll-value-of(json-get-field(given, key))))
+      back
+        make pair-values
+          bind pairs, pairs
+  back
+    make number-value
+      bind value, json-as-number(given)
+
+# a roll value as the plain value it stands for: a `no-value` is `absent`, so a key holding one is there
+task plain-of
+  take value, like roll-value
+  take absent, like dynamic
+  like dynamic
+
+  sift value
+    case no-value
+      back absent
+    case null-value
+      back json-make-null()
+    case text-value
+      link text
+      back json-from-text(text)
+    case number-value
+      link number
+      back json-from-number(number)
+    case flag-value
+      link flag
+      back json-from-boolean(flag)
+    case item-values
+      link values
+      save out, json-make-array()
+      walk values
+        take one
+        save out, json-push-item(out, plain-of(one, absent))
+      back out
+    case pair-values
+      link pairs
+      save out, json-make-object()
+      walk pairs
+        take pair
+        save out, json-set-field(out, pair/key, plain-of(pair/value, absent))
+      back out
+
+# a plain roll as its kinds, in the order of its keys
+task roll-kinds-of
+  take roll, like dynamic
+  like list, like roll-kind
+
+  save kinds, make list
+  walk json-object-keys(roll)
+    take name
+    save given, json-get-field(roll, name)
+    save entries, make list
+    fork test, json-is-array(given)
+      hold
+        save size, json-array-size(given)
+        save at, 0
+        walk test
+          hook test, is-below(at, size)
+          hook hold
+            push(entries, roll-value-of(json-array-item(given, at)))
+            save at, add(at, 1)
+    save made
+      make roll-kind
+        bind name, name
+        bind entries, entries
+    push(kinds, made)
+  back kinds
+
+# the kinds as a plain roll, each kind a key holding its entries
+task plain-roll
+  take kinds, like list, like roll-kind
+  take absent, like dynamic
+  like dynamic
+
+  save out, json-make-object()
+  walk kinds
+    take kind
+    save entries, json-make-array()
+    walk kind/entries
+      take entry
+      save entries, json-push-item(entries, plain-of(entry, absent))
+    save out, json-set-field(out, kind/name, entries)
+  back out

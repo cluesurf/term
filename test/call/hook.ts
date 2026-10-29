@@ -6,6 +6,8 @@ import { compile } from '@term/make/code/compile/compile'
 import { commandRoutes, dispatch, programOf } from '@term/call/code/work/hook/parsing'
 import { runCommandLine } from '@term/call/code/work/hook/running'
 import { projectResolver } from '@term/call/code/make'
+// the TypeScript dispatcher boot.ts still reads, for decision 060's empty choices (item 0363)
+import { commandRoutes as hookCommandRoutes, dispatch as hookDispatch, renderHelp } from '@term/call/code/hook-dispatch'
 
 let pass = 0
 let fail = 0
@@ -509,7 +511,7 @@ hook tool
     .then(code => {
       expect('--help after a literal -- is not the console\'s help', [code, shown.some(line => line.startsWith('tool build'))], [0, false])
 
-      return maybes()
+      return maybes().then(emptyChoices)
     })
     .then(() => {
       console.log(`\nhook: ${pass} pass, ${fail} fail`)
@@ -572,6 +574,41 @@ task probe
   expect('a maybe take given reads its item: --runs=3', (await run(['probe', 'x', '--runs=3'])), [{ form: 'some', value: 'x' }, { form: 'some', value: 3 }, false])
   const refused = dispatch(routes, ['probe', '--runs', 'many'])
   expect('a maybe number take refuses a word that is no number', refused.ok, false)
+}
+
+// AN EMPTY `choices` IS NO CHOICES (decision 060 of term/self-host/change/001, item 0363): the mill writes `choices`
+// only from a `pick`, so no source spells an empty list, but the Term mill port writes [] where the original left the
+// key out. call/code/hook-dispatch.ts reads the two alike, as call/code/work/hook/parsing.tree does: a take whose
+// choices is [] accepts any text, and its help line names no choices
+function emptyChoices(): void {
+  const PICKED = `task paint
+  take tone, like text
+  send back
+    code 0
+
+hook paint
+  take tone
+    like text
+    pick soft
+    pick loud
+  task paint
+`
+  const built = compile({ file: 'picked.tree', text: PICKED }, {})
+
+  if (!built.ok) {
+    console.log('FAIL compile picked', JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)))
+    process.exit(1)
+  }
+
+  const picked = hookCommandRoutes(built.program)
+  const given = hookDispatch(picked, ['paint', '--tone', 'bright'])
+  expect('hook-dispatch: a take with choices refuses a value outside them', given.ok, false)
+  expect('hook-dispatch: its help line names them', renderHelp(picked[0]!, 'tool').includes('one of soft|loud'), true)
+
+  const emptied = picked.map(route => ({ ...route, takes: route.takes.map(take => (take.name === 'tone' ? { ...take, choices: [] } : take)) }))
+  const any = hookDispatch(emptied, ['paint', '--tone', 'bright'])
+  expect('hook-dispatch: a take whose choices is [] accepts any text', [any.ok, any.ok && any.args.tone], [true, 'bright'])
+  expect('hook-dispatch: and its help line names no choices', renderHelp(emptied[0]!, 'tool').includes('one of'), false)
 }
 
 main()

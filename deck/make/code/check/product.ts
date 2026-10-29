@@ -1,9 +1,10 @@
 // NONLINEAR ARITHMETIC BY PRODUCTS OF HYPOTHESES, the Positivstellensatz of degree two (Lean's `nlinarith`). The
 // procedure is Term, check/products.tree (self-hosting, 2026-10-06), and its header says how it decides and why a wrong
 // search can cost a proof and never forge one. This face converts the TypeScript shapes (bigint rationals, polynomials
-// as maps, a certificate's row recipes) to and from the port's, and holds the two pieces of module state the port
-// mutates: the work budget of the current goal, and the profile counters. `fromNumbers` reads a number map into
-// rationals at the boundary.
+// as maps, a certificate's row recipes) to and from the port's, and holds the one instance of each record the port
+// mutates (item 0355, decision 057): the work budget of the current goal (`productWork`, products.tree `work-budget`,
+// opened, spent and read by Term tasks), and the profile counters (`productProfile`). `fromNumbers` reads a number map
+// into rationals at the boundary.
 
 import * as port from '@term/make/code/check/products'
 
@@ -71,44 +72,31 @@ export function replay(facts: Fact[], certificate: Certificate): boolean {
   return port.replay(facts.map(toFact), { rows: certificate.rows.map(toFrom), multipliers: certificate.multipliers.map(toRational) })
 }
 
-// WHERE THE TIME GOES, counted for `TERM_PRODUCT_PROFILE=1`, read by holds.ts per goal. Counting changes nothing a
-// search decides
-export const productProfile = {
-  refutes: 0,
-  rows: 0,
-  cells: 0,
-  floatDeclined: 0,
-  exactPivots: 0,
-  // the cells an exact pivot rewrites, summed: the deterministic measure of the search's work (see THE BUDGET)
-  exactWork: 0,
-  buildMs: 0,
-  exactMs: 0,
-}
+// WHERE THE TIME GOES, counted for `TERM_PRODUCT_PROFILE=1`, read by holds.ts per goal (products.tree
+// `product-profile`, the one instance)
+export const productProfile: port.ProductProfile = port.freshProductProfile()
 
 const profiling = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
 
-// THE BUDGET: the exact simplex's work for one goal, deterministic, so the same goal stops at the same place on every
-// machine and every run. holds.ts opens one per goal and asks whether it ran out. Infinite until a caller opens one
-const work = { budget: Infinity, spent: 0 }
+// THE BUDGET of the current goal (products.tree `work-budget`, the one instance): infinite until a caller opens one
+export const productWork: port.WorkBudget = port.freshWorkBudget()
+const work = productWork
 
 export function openBudget(cells: number): void {
-  work.budget = cells
-  work.spent = 0
+  port.openBudget(work, cells)
 }
 
 export function budgetSpent(): boolean {
-  return work.spent >= work.budget
+  return port.budgetSpent(work)
 }
 
 export function workSpent(): number {
   return work.spent
 }
 
-// work done OUTSIDE the exact simplex that the budget must still see: the case split's product refutations
-// (check/universal.tree `by-cases`), each building products of its facts before any pivot. Counted only, never timed, so
-// a goal still stops at the same place on every machine
+// work the budget must see that the exact simplex did not do (products.tree `spend-work`)
 export function spendWork(units: number): void {
-  work.spent += units
+  port.spendWork(work, units)
 }
 
 const now = (): number => Date.now()

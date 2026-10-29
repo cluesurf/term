@@ -11,9 +11,12 @@
 # has no fact. The per-task facts the face kept in `WeakMap`s by the task (its text cursors, its redeclared `let`s) are
 # kept by the task's row, and a copy of a task (`name-fast`, `name-reuse`) stands at its row and reads the same.
 #
-# compile/proven.ts's union (the counted steps and the interval fact) is computed here, as the other emitters do.
+# compile/proven.ts's union (the counted steps and the interval fact) is computed here, as the other emitters do, by
+# `proven-facts-of`, which compile/proven.ts asks through `proven-rows` (decision 056).
 #
-# The wake chain reads the roll's entries as roll values (decision 040), each written as `JSON.stringify` wrote it.
+# The wake chain reads compile/program-warnings.tree's `wake-group` as the warnings made it (decision 058, item 0361),
+# its entries roll values (decision 040), each written as `JSON.stringify` wrote it. ts-assemble.tree's own
+# `wake-group` (the texts it writes) is a different form, so the warnings' one is imported as `warnings-wake-group`.
 
 load @term/base/list
   find list
@@ -71,6 +74,7 @@ load ./backend-reads
   find tail-tasks-of
 
 load ./places
+  find place-scope
   find scope-of
   find private-forms-of
   find record-places
@@ -127,15 +131,11 @@ load ./ts-assemble
   find emit-flags
   find assemble-type-script
 
-# ---- what crosses ----
+# one deck of what wakes the hive, as the warnings made it (decision 058): its entries and typed lists roll values
+load ./program-warnings
+  find wake-group, name warnings-wake-group
 
-# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
-form ts-wake-group
-  link deck, like text
-  link entries, like list, like roll-value
-  link exceptions, like list, like roll-value
-  link tells, like list, like roll-value
-  link docks, like list, like roll-value
+# ---- what crosses ----
 
 # what each task's emission reads by node, by the task's row, worked out the first time it is asked
 form ts-task-facts
@@ -624,22 +624,22 @@ task typed-entry
 # THE TYPED WAKE (seam spec §3.3): a deck's static exceptions, tells and routes go to `hiveWakeTyped` as `hive-entry`
 # records whose `base` is a record of `exception-roll`, `tell-roll` or `dock-roll` with every field present
 task typed-text
-  take group, like ts-wake-group
+  take group, like warnings-wake-group
   like text
   mark private
 
   save exceptions, make list
-  walk group/exceptions
+  walk group/typed/exceptions
     take entry
     save roll, wake-record(entry, <base>)
     push(exceptions, typed-entry(entry, <\{ like: {text-of(wake-at(roll, <like>))}, chain: {texts-of(wake-at(roll, <chain>))}, note: {text-of(wake-at(roll, <note>))}, link: {field-pairs(wake-at(roll, <link>))} \}>))
   save tells, make list
-  walk group/tells
+  walk group/typed/tells
     take entry
     save roll, wake-record(entry, <base>)
     push(tells, typed-entry(entry, <\{ note: {text-of(wake-at(roll, <note>))}, hint: {text-of(wake-at(roll, <hint>))}, link: {texts-of(wake-at(roll, <link>))}, alias: {text-of(wake-at(roll, <alias>))} \}>))
   save docks, make list
-  walk group/docks
+  walk group/typed/docks
     take entry
     save roll, wake-record(entry, <base>)
     push(docks, typed-entry(entry, <\{ halt: {texts-of(wake-at(roll, <halt>))} \}>))
@@ -672,6 +672,96 @@ task is-typed-kind
 
 # a program as one TypeScript module. `variants` and `exceptions` are the whole program's (per-module emit), `context`
 # the whole program read and never emitted, `library` a program host code also builds values of
+# what the emitter's analyses answer before it emits: the lists' lending, the place scope, and the `+`, `-` and `*`
+# nodes proven not to overflow, by place-row
+form proven-facts
+  link lend, like hash, like text, like hash, like number, like text
+  link scope, like place-scope
+  link proven, like hash, like number, like boolean
+
+# THE ARITHMETIC THE TYPESCRIPT EMITTER WRITES UNCHECKED, over a stamped program: the counted steps, and every `+`, `-`
+# and `*` the interval fact bounds inside the safe integers, which reads the record lists their records own for what
+# their slots hold (decision 056: compile/proven.ts asks this, the one implementation)
+task proven-facts-of
+  take lowered, like list, like statement
+  like proven-facts
+  mark private
+
+  # F1's facts, which the interval fact and the guards read: this backend keys no list representation by them
+  save mask-methods, make hash
+  walk lowered
+    take one
+    sift one
+      case mask
+        link methods
+        walk methods
+          take method-name
+          save mask-methods/{method-name}, true
+      miss
+        save idle, 0
+  save gated, gated-tasks(lowered, keys-of(mask-methods))
+  save list-facts, list-facts-of(lowered, gated)
+  save lend, list-facts/lend
+  save fresh, flags-of(list-facts/fresh)
+  # the place table and its places' identities: on a stamped program every place is a node of its own
+  save walked, walk-program(lowered)
+  save ids, make list
+  save row-at, 0
+  walk walked/handles
+    take handle
+    push(ids, row-at)
+    save row-at, add(row-at, 1)
+  save scope, scope-of(walked, ids)
+  # the `+`, `-` and `*` nodes proven not to overflow: the counted steps, and every one the interval fact bounds inside
+  # the safe integers
+  save proven, expression-rows(proven-increments(lowered))
+  save private, private-forms-of(scope, lend, fresh)
+  save owned-all, owned-fields(lowered, fresh, lend, flags-of(private/forms))
+  save task-ids, make list
+  save next-id, 0
+  save reach-skip, ts-program-skip()
+  walk lowered
+    take one
+    sift one
+      case function
+        link body
+        save reached, reach-statements(body, reach-skip)
+        save one-ids, make list
+        walk reached/order
+          take ignored
+          push(one-ids, next-id)
+          save next-id, add(next-id, 1)
+        push(task-ids, one-ids)
+      miss
+        save idle, 0
+  walk bounded-arithmetic(lowered, flags-of(owned-all), lend, flags-of(native-forms(lowered)), task-ids)
+    take bounded
+    save bounded-row, place-row-of-expression(bounded)
+    fork test, is-above(bounded-row, 0)
+      hold
+        save proven/{bounded-row}, true
+  back
+    make proven-facts
+      bind lend, lend
+      bind scope, scope
+      bind proven, proven
+
+# a program stamped (decision 011 rules 3 and 4), and the rows of its arithmetic the emitter writes unchecked
+form proven-rows-answer
+  link program, like list, like statement
+  link rows, like hash, like number, like boolean
+
+task proven-rows
+  take program, like list, like statement
+  like proven-rows-answer
+
+  save stamped, stamp-places(program)
+  save analysed, proven-facts-of(stamped)
+  back
+    make proven-rows-answer
+      bind program, stamped
+      bind rows, analysed/proven
+
 task emit-type-script
   take given, like list, like statement
   take context, like maybe, like list, like statement
@@ -682,7 +772,7 @@ task emit-type-script
   take env, like text
   take hmr, like boolean
   take export-constants, like boolean
-  take wake, like list, like ts-wake-group
+  take wake, like list, like warnings-wake-group
   take runtime, like list, like runtime-bound
   take fail
     like task
@@ -711,59 +801,11 @@ task emit-type-script
     fork test, is-above(raise-sets/raises/get(raiser)/length, 0)
       hold
         save raising/{raiser}, true
-  # F1's facts, which the interval fact and the guards read: this backend keys no list representation by them
-  save mask-methods, make hash
-  walk lowered
-    take one
-    sift one
-      case mask
-        link methods
-        walk methods
-          take method-name
-          save mask-methods/{method-name}, true
-      miss
-        save idle, 0
-  save gated, gated-tasks(lowered, keys-of(mask-methods))
-  save list-facts, list-facts-of(lowered, gated)
-  save lend, list-facts/lend
-  save fresh, flags-of(list-facts/fresh)
-  # the place table and its places' identities: on a stamped program every place is a node of its own
-  save walked, walk-program(lowered)
-  save ids, make list
-  save row-at, 0
-  walk walked/handles
-    take handle
-    push(ids, row-at)
-    save row-at, add(row-at, 1)
-  save scope, scope-of(walked, ids)
-  # the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): the counted steps, and every one the interval
-  # fact bounds inside the safe integers
-  save proven, expression-rows(proven-increments(lowered))
-  save private, private-forms-of(scope, lend, fresh)
-  save owned-all, owned-fields(lowered, fresh, lend, flags-of(private/forms))
-  save task-ids, make list
-  save next-id, 0
-  save reach-skip, ts-program-skip()
-  walk lowered
-    take one
-    sift one
-      case function
-        link body
-        save reached, reach-statements(body, reach-skip)
-        save one-ids, make list
-        walk reached/order
-          take ignored
-          push(one-ids, next-id)
-          save next-id, add(next-id, 1)
-        push(task-ids, one-ids)
-      miss
-        save idle, 0
-  walk bounded-arithmetic(lowered, flags-of(owned-all), lend, flags-of(native-forms(lowered)), task-ids)
-    take bounded
-    save bounded-row, place-row-of-expression(bounded)
-    fork test, is-above(bounded-row, 0)
-      hold
-        save proven/{bounded-row}, true
+  # the lists' facts, the place scope, and the arithmetic proven not to overflow
+  save analysed, proven-facts-of(lowered)
+  save lend, analysed/lend
+  save scope, analysed/scope
+  save proven, analysed/proven
   # the counted loops whose list indexes a guard before the loop can prove in bounds, by the loop's row
   save lent, make hash
   walk lend/keys()

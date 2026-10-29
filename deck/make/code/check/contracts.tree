@@ -1388,11 +1388,12 @@ task note-width
     miss
       save table/{key}, width
 
-# a form's width-typed fields, by name and, for a `slot`, by position
+# a form's width-typed fields, by name and, for a `slot` when `slots` is set, by position
 task note-field-widths
   take table, like hash, like text, like text
   take form, like text
   take fields, like list, like form-field
+  take slots, like boolean
   like void
   mark private
 
@@ -1404,7 +1405,7 @@ task note-field-widths
     sift width-range-of(field/width)
       case some
         note-width(table, <{form}/{field/name}>, field/width)
-        fork test, field/positional
+        fork test, and(slots, field/positional)
           hold
             note-width(table, <{form}#{slot}>, field/width)
       case none
@@ -1418,6 +1419,7 @@ task note-variant-widths
   take table, like hash, like text, like text
   take variant, like text
   take fields, like list, like variant-field
+  take slots, like boolean
   like void
   mark private
 
@@ -1427,7 +1429,7 @@ task note-variant-widths
     sift width-range-of(field/width)
       case some
         note-width(table, <{variant}/{field/name}>, field/width)
-        fork test, field/positional
+        fork test, and(slots, field/positional)
           hold
             note-width(table, <{variant}#{slot}>, field/width)
       case none
@@ -1435,6 +1437,30 @@ task note-variant-widths
     fork test, field/positional
       hold
         save slot, add(slot, 1)
+
+# EACH WIDTH-TYPED FIELD of the program, `<form>/<field>` to its width: a form's own fields under the form's name, a
+# case's under the case's, which is the name a construction of it carries. Two definitions that give one key different
+# widths leave it the empty text, which says nothing (`note-width`). With `slots`, a `slot` field is keyed by position
+# too (`<form>#<n>`), which a positional construction owes; the hold walk reads a field by its name only, so it asks
+# without them (check/hold-walk.tree, holds.ts `fieldWidthsOf` until item 0071)
+task field-widths-of
+  take program, like list, like statement
+  take slots, like boolean
+  like hash, like text, like text
+
+  save table, like hash, like text, like text
+    make hash
+  walk program
+    take s
+    sift s
+      case record-type
+        note-field-widths(table, name, fields, slots)
+        walk variants
+          take variant
+          note-variant-widths(table, variant/name, variant/fields, slots)
+      miss
+        save nothing, 0
+  back table
 
 # a value put in a width-typed field is inside the width, as one passed to a width-typed parameter is (width-owed). A
 # literal is refused outright by check/literals.ts and owes nothing here
@@ -2441,6 +2467,9 @@ task lower-contracts
   save functions, make hash
   save field-widths, like hash, like text, like text
     make hash
+  fork test, widths
+    hold
+      save field-widths, field-widths-of(program, true)
   save at, 0
   walk program
     take s
@@ -2452,13 +2481,6 @@ task lower-contracts
     sift s
       case function
         save functions/{name}, at
-      case record-type
-        fork test, widths
-          hold
-            note-field-widths(field-widths, name, fields)
-            walk variants
-              take variant
-              note-variant-widths(field-widths, variant/name, variant/fields)
       miss
         save nothing, 0
     save at, add(at, 1)
@@ -2520,14 +2542,12 @@ task lower-contracts
       bind program, out
       bind lowered, lowered
 
-# does any task or walk in the program carry a contract (if not, there is nothing to lower and no copy to make).
-# `carries` says whether one node does, since an absent list and an empty one read alike here
+# does any task or walk in the program carry a contract (if not, there is nothing to lower and no copy to make). A
+# contract is carried when its list holds a clause or its `down` is there: the mill writes a contract's list only when
+# the source wrote a clause, so an absent list and an empty one never meant two things (item 0071, where check/contract.ts
+# asked each node whether the field was present)
 task has-contracts
   take program, like list, like statement
-  take carries
-    like task
-      take node, like statement
-      like boolean
   like boolean
 
   save seen, reach-statements(program, make list)
@@ -2535,20 +2555,38 @@ task has-contracts
     take one
     sift one
       case function
-        fork test, carries(one)
+        link have
+        link must
+        link down
+        fork test, or(or(is-above(have/length, 0), is-above(must/length, 0)), is-down(down))
           hold
             back true
       case while
-        fork test, carries(one)
+        link must
+        link down
+        fork test, or(is-above(must/length, 0), is-down(down))
           hold
             back true
       case for-each
-        fork test, carries(one)
+        link must
+        fork test, is-above(must/length, 0)
           hold
             back true
       miss
         save nothing, 0
   back false
+
+# whether a walk's or a task's `down` is written
+task is-down
+  take down, like maybe, like expression
+  like boolean
+  mark private
+
+  sift down
+    case some
+      back true
+    case none
+      back false
 
 load ../compile/node-reach
   find reach-statements

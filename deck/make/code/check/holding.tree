@@ -1,0 +1,238 @@
+# THE TIER-0 OBLIGATIONS A BUILD REPORTS: each file's count summed over the build, and the build line that names each
+# kind owed with its denominator (`12 of 12 list reads in bounds, 2 of 3 walks shown to end`). Moved here from
+# check/holds.ts (`Owed`, `OWED_KINDS`, `addOwed`, `describeOwed`) by item term-self-host-001-0071, decision 057.
+#
+#   - the forms are declared so their TypeScript emission IS the face's types: `kinds`, and each kind under it, is a
+#     `need false` field, absent until something of that kind was counted, as the original's optional keys were
+#   - a sum is written into the record the caller holds, so `owed` and the records under it are `mark shared`
+
+load @term/base/list
+  find list
+  find join
+
+# one kind's count: how many owed, how many proven
+form owed-count
+  mark shared
+  link total, like number
+  link proven, like number
+
+# the count of each kind of tier-0 obligation, each present once one of that kind was counted
+form owed-kinds
+  mark shared
+  link index
+    like maybe, like owed-count
+    need false
+  link zero
+    like maybe, like owed-count
+    need false
+  link ends
+    like maybe, like owed-count
+    need false
+  link width
+    like maybe, like owed-count
+    need false
+
+# tier-0 obligations summed over files, as a build reports them
+form owed
+  mark shared
+  link total, like number
+  link proven, like number
+  link kinds
+    like maybe, like owed-kinds
+    need false
+
+# a kind of tier-0 obligation and what the build line calls it
+form owed-kind
+  link kind, like text
+  link what, like text
+
+task owed-kind-of
+  take kind, like text
+  take what, like text
+  like owed-kind
+  mark private
+
+  back
+    make owed-kind
+      bind kind, kind
+      bind what, what
+
+# what each kind of tier-0 obligation is, as the build line names it, in the line's order
+task owed-kinds-named
+  like list, like owed-kind
+  mark private
+
+  save named, make list
+  push(named, owed-kind-of(<index>, <list reads in bounds>))
+  push(named, owed-kind-of(<zero>, <divisions by something other than zero>))
+  push(named, owed-kind-of(<ends>, <walks shown to end>))
+  push(named, owed-kind-of(<width>, <values inside their width>))
+  back named
+
+# one kind's count, none when nothing of that kind was counted
+task owed-count-at
+  take kinds, like owed-kinds
+  take kind, like text
+  like maybe, like owed-count
+
+  fork test, is-equal(kind, <index>)
+    hold
+      back kinds/index
+  fork test, is-equal(kind, <zero>)
+    hold
+      back kinds/zero
+  fork test, is-equal(kind, <ends>)
+    hold
+      back kinds/ends
+  back kinds/width
+
+task owed-count-put
+  take kinds, like owed-kinds
+  take kind, like text
+  take count, like owed-count
+  mark private
+
+  fork test, is-equal(kind, <index>)
+    hold
+      save kinds/index, make(some, count)
+    miss
+      fork test, is-equal(kind, <zero>)
+        hold
+          save kinds/zero, make(some, count)
+        miss
+          fork test, is-equal(kind, <ends>)
+            hold
+              save kinds/ends, make(some, count)
+            miss
+              save kinds/width, make(some, count)
+
+# one kind's count, put in at zero the first time that kind is counted (check/hold-walk.tree's tally)
+task owed-count-of
+  take kinds, like owed-kinds
+  take kind, like text
+  like owed-count
+
+  sift owed-count-at(kinds, kind)
+    case some
+      link known
+      back known
+    case none
+      save fresh
+        make owed-count
+          bind total, 0
+          bind proven, 0
+      owed-count-put(kinds, kind, fresh)
+      back fresh
+
+# the kinds counted so far, in the order they were first counted: on TypeScript the record's own keys, which the
+# original's object of kinds kept in that order. A native record has no order of its own, so there it is the build
+# line's order
+bind owed-kinds-order
+  take kinds, like owed-kinds
+  like list, like text
+  case node
+    text <Object.keys($kinds).filter(k =\> ($kinds as any)[k] !== undefined)>
+  case browser
+    text <Object.keys($kinds).filter(k =\> ($kinds as any)[k] !== undefined)>
+  case rust
+    text <vec!["index".to_string(), "zero".to_string(), "ends".to_string(), "width".to_string()]>
+  case swift
+    text <["index", "zero", "ends", "width"]>
+  case kotlin
+    text <listOf("index", "zero", "ends", "width")>
+
+# the kinds counted so far, each with its count
+task owed-kinds-counted
+  take kinds, like owed-kinds
+  like list, like owed-kind-count
+
+  save out, make list
+  walk owed-kinds-order(kinds)
+    take kind
+    sift owed-count-at(kinds, kind)
+      case some
+        link count
+        save one
+          make owed-kind-count
+            bind kind, kind
+            bind count, count
+        push(out, one)
+      case none
+        save nothing, 0
+  back out
+
+form owed-kind-count
+  link kind, like text
+  link count, like owed-count
+
+# add one file's obligations into a running total
+task add-owed
+  take into, like owed
+  take from, like owed
+
+  save into/total, add(into/total, from/total)
+  save into/proven, add(into/proven, from/proven)
+  sift from/kinds
+    case some
+      link from-kinds
+      walk owed-kinds-named()
+        take named
+        sift owed-count-at(from-kinds, named/kind)
+          case some
+            link added
+            sift into/kinds
+              case none
+                save fresh-kinds, make owed-kinds
+                save into/kinds, make(some, fresh-kinds)
+              case some
+                link known-kinds
+                save nothing, 0
+            sift into/kinds
+              case some
+                link into-kinds
+                sift owed-count-at(into-kinds, named/kind)
+                  case none
+                    save fresh-count
+                      make owed-count
+                        bind total, 0
+                        bind proven, 0
+                    owed-count-put(into-kinds, named/kind, fresh-count)
+                  case some
+                    link known-count
+                    save nothing, 0
+                sift owed-count-at(into-kinds, named/kind)
+                  case some
+                    link sum
+                    save sum/total, add(sum/total, added/total)
+                    save sum/proven, add(sum/proven, added/proven)
+                  case none
+                    save nothing, 0
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+    case none
+      save nothing, 0
+
+# `12 of 12 list reads in bounds, 2 of 3 walks shown to end`: each kind that was owed, with its denominator
+task describe-owed
+  take owed, like owed
+  like text
+
+  save said, make list
+  sift owed/kinds
+    case some
+      link kinds
+      walk owed-kinds-named()
+        take named
+        sift owed-count-at(kinds, named/kind)
+          case some
+            link one
+            fork test, is-above(one/total, 0)
+              hold
+                push(said, <{one/proven} of {one/total} {named/what}>)
+          case none
+            save nothing, 0
+    case none
+      save nothing, 0
+  back join(said, <, >)

@@ -16,8 +16,10 @@
 #
 # Ported from check/holds.ts (self-hosting, 2026-10-06), part two. The decisions:
 #   - the tables are the shared `hold-state`, as part one's are
-#   - what is still TypeScript in holds.ts (the linear translation, the polynomial facts, the product goals, the
-#     memoized linear prover and the definitions' unfolding) is handed in as `hold-calls`, each a task the face builds
+#   - check/inequality.tree's tasks this layer calls back (the linear translation, the polynomial facts, the product
+#     goals) are handed in as `hold-calls`, beside the provers' records, built in Term (inequality.tree
+#     `hold-calls-over`, decision 057 rule 5). The memoized linear prover is eliminate.tree `proves-in` and the
+#     definitions' unfolding unfolding.tree `unfold-over`, called here directly
 #   - a node's spread copy is `shallow-copy`, the bind check/unfolding.tree uses, so a rebuilt node keeps every field
 #   - `made.filter(other => other !== instance)` asked object identity. Each instance is carried with its index in
 #     `made` (`instance-ways`), and the rest is every other index, the same on every backend (D011 rule 7). They differ
@@ -58,13 +60,18 @@ load ./eliminate
   find at-least
   find above
   find below
+  find refine-state
+  find proves-in
 
 load ./explain
   find print-expression
 
 load ./products
-  find fact
-  find rational
+  find work-budget
+  find product-profile
+
+load ./unfolding
+  find unfold-over
 
 load ./ring
   find equation
@@ -85,23 +92,42 @@ load ./hold-state
   find recurrence
   find binder-fact
 
-# ---- what holds.ts still answers ----
+# ---- what the prover is handed ----
 
 # a rule's hypotheses and its goal, as check/holds.ts `theoremParts` reads them
 form rule-parts
   link hypotheses, like list, like expression
   link goal, like expression
 
+# THE PROVERS' RECORDS (decision 057 rule 5, decision 062): the one instance of each prover's state, which
+# check/refine.ts and check/product.ts hold and export. No field names `hold-calls`, so the callbacks below can take it
+# and the positivity check holds
+form hold-provers
+  # the linear prover's memo and its count of answers whose certificate did not replay (check/eliminate.tree)
+  link refine, like refine-state
+  # the product prover's work budget of the current goal, its profile, and whether a run counts it (check/products.tree)
+  link work, like work-budget
+  link profile, like product-profile
+  link profiling, like boolean
+
+# THE PROVER'S CALLS: the provers' records, and check/inequality.tree's tasks this file calls back, put here by
+# `hold-calls-over` there, since inequality.tree loads this file. Each callback takes the provers, never the calls (a
+# form named in its own field's parameter is refused by positivity), and rebuilds the calls from them (decision 062)
 form hold-calls
+  link provers, like hold-provers
   # an expression as a linear form, its side facts pushed onto `side`, or none outside the linear fragment
   link to-linear
     like task
+      take state, like hold-state
+      take provers, like hold-provers
       take expr, like expression
       take side, like list, like inequality
       like maybe, like linear
   # the facts a condition assumes, or its negation's
   link assumption-inequalities
     like task
+      take state, like hold-state
+      take provers, like hold-provers
       take expr, like expression
       take negated, like boolean
       take side, like list, like inequality
@@ -109,59 +135,36 @@ form hold-calls
   # the facts a polynomial comparison contributes
   link polynomial-facts
     like task
+      take state, like hold-state
       take cond, like expression
       take negated, like boolean
       like list, like inequality
   # the goal from the facts by linear combination alone, over an ordered field
   link product-goal-linear
     like task
+      take state, like hold-state
+      take provers, like hold-provers
       take expr, like expression
       take facts, like list, like inequality
       like boolean
   # and with products of the facts
   link product-goal
     like task
+      take state, like hold-state
+      take provers, like hold-provers
       take expr, like expression
       take facts, like list, like inequality
       like boolean
-  # do the facts refute -1 >= 0 with products of them
+  # do the facts refute -1 >= 0 with products of them, paid for from the work budget
   link refuted-by-products
     like task
+      take provers, like hold-provers
       take facts, like list, like inequality
-      like boolean
-  # check/refine.ts `proves`, memoized
-  link proves
-    like task
-      take facts, like list, like inequality
-      take goal, like inequality
       like boolean
   link theorem-parts
     like task
       take rule, like statement
       like maybe, like rule-parts
-  # check/unfold.ts `unfoldDefinitions` over the program being checked
-  link unfold
-    like task
-      take expr, like expression
-      like expression
-  # check/product.ts, under its work budget: does the goal polynomial follow from the facts, `>= 0` or `> 0`, combined
-  # linearly with the equations multiplied by `multipliers` when there are any
-  link product-proves
-    like task
-      take facts, like list, like fact
-      take goal, like hash, like text, like rational
-      take strict, like boolean
-      take multipliers, like maybe, like list, like text
-      like boolean
-  # a polynomial prover's answer that its Gram certificate did not confirm, counted (check/refine.ts)
-  link note-uncertified
-    like task
-  # a width-typed value's range as facts (check/width-range.ts)
-  link width-facts
-    like task
-      take name, like text
-      take width, like text
-      like list, like inequality
 
 # the theorem's other number marks and its `have` guards, for a generalized induction
 form generalized
@@ -513,6 +516,7 @@ task polynomial-linear
 
 # the negation of a disjunct as facts: the linear ones when it has them, else its polynomial ones
 task or-polynomial
+  take state, like hold-state
   take calls, like hold-calls
   take linear-facts, like list, like inequality
   take disjunct, like expression
@@ -521,7 +525,7 @@ task or-polynomial
   fork test, is-above(linear-facts/length, 0)
     hold
       back linear-facts
-  back calls/polynomial-facts(disjunct, true)
+  back calls/polynomial-facts(state, disjunct, true)
 
 # ---- substitution ----
 
@@ -1340,19 +1344,19 @@ task visit-recurrences
               save cases, expressions()
               walk r/steps
                 take one
-                save acc, binary-node(<==>, step/call, calls/unfold(bound(one/value, step/given)), goal)
+                save acc, binary-node(<==>, step/call, unfold-over(bound(one/value, step/given), state/program), goal)
                 save at, one/guards/length
                 walk test
                   hook test, is-above(at, 0)
                   hook hold
                     save at, subtract(at, 1)
-                    save acc, binary-node(<&&>, calls/unfold(bound(get(one/guards, at), step/given)), acc, goal)
+                    save acc, binary-node(<&&>, unfold-over(bound(get(one/guards, at), step/given), state/program), acc, goal)
                 push(cases, acc)
               save base-key, <{print-expression(zero/call, 0)} base>
               save base-fact
                 make binder-fact
                   bind binders, texts()
-                  bind expr, binary-node(<==>, zero/call, calls/unfold(bound(r/base, zero/given)), goal)
+                  bind expr, binary-node(<==>, zero/call, unfold-over(bound(r/base, zero/given), state/program), goal)
               save out/{base-key}, base-fact
               save step-key, <{print-expression(step/call, 0)} step>
               save chained, get(cases, subtract(cases/length, 1))
@@ -1572,6 +1576,7 @@ task flatten-either
 
 # the one disjunct of `a || b || ...` the facts do not refute, when exactly one is left, else none
 task open-disjunct
+  take state, like hold-state
   take calls, like hold-calls
   take e, like expression
   take available, like list, like inequality
@@ -1588,21 +1593,21 @@ task open-disjunct
         link op
         sift op
           case unequal
-            save kept, not(calls/product-goal-linear(with-op(part, <==>), available))
+            save kept, not(calls/product-goal-linear(state, calls/provers, with-op(part, <==>), available))
           case equal
-            save kept, not(or(calls/product-goal-linear(with-op(part, <\<>), available), calls/product-goal-linear(with-op(part, <\>>), available)))
+            save kept, not(or(calls/product-goal-linear(state, calls/provers, with-op(part, <\<>), available), calls/product-goal-linear(state, calls/provers, with-op(part, <\>>), available)))
           case below
             save negation, negated-condition(part)
-            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+            save kept, not(or(calls/product-goal-linear(state, calls/provers, negation, available), calls/product-goal(state, calls/provers, negation, available)))
           case at-most
             save negation, negated-condition(part)
-            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+            save kept, not(or(calls/product-goal-linear(state, calls/provers, negation, available), calls/product-goal(state, calls/provers, negation, available)))
           case above
             save negation, negated-condition(part)
-            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+            save kept, not(or(calls/product-goal-linear(state, calls/provers, negation, available), calls/product-goal(state, calls/provers, negation, available)))
           case at-least
             save negation, negated-condition(part)
-            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+            save kept, not(or(calls/product-goal-linear(state, calls/provers, negation, available), calls/product-goal(state, calls/provers, negation, available)))
           miss
             save nothing, 0
       miss
@@ -1619,6 +1624,7 @@ task open-disjunct
 # the facts an instance contributes: a conjunction both sides, a disjunction its one disjunct the others are refuted
 # for, and a comparison its linear or polynomial facts, AS STATED
 task instance-facts
+  take state, like hold-state
   take calls, like hold-calls
   take e, like expression
   take available, like list, like inequality
@@ -1631,12 +1637,12 @@ task instance-facts
       link right
       sift op
         case both
-          back both-facts(instance-facts(calls, left, available), instance-facts(calls, right, available))
+          back both-facts(instance-facts(state, calls, left, available), instance-facts(state, calls, right, available))
         case either
-          sift open-disjunct(calls, e, available)
+          sift open-disjunct(state, calls, e, available)
             case some
               link open
-              back instance-facts(calls, open, available)
+              back instance-facts(state, calls, open, available)
             case none
               back facts()
         miss
@@ -1644,11 +1650,11 @@ task instance-facts
     miss
       save nothing, 0
   save side, facts()
-  save linear-facts, calls/assumption-inequalities(e, false, side)
+  save linear-facts, calls/assumption-inequalities(state, calls/provers, e, false, side)
   fork test, is-above(linear-facts/length, 0)
     hold
       back both-facts(side, linear-facts)
-  back calls/polynomial-facts(e, false)
+  back calls/polynomial-facts(state, e, false)
 
 form ring-atoms
   mark shared
@@ -1735,7 +1741,7 @@ task collect-equations
           collect-equations(state, calls, left, available, table, equations)
           collect-equations(state, calls, right, available, table, equations)
         case either
-          sift open-disjunct(calls, e, available)
+          sift open-disjunct(state, calls, e, available)
             case some
               link open
               collect-equations(state, calls, open, available, table, equations)
@@ -1889,8 +1895,8 @@ task universal-goal
           fork test, or(universal-goal(state, calls, left, available, seeds), universal-goal(state, calls, right, available, seeds))
             hold
               back true
-          save not-left, or-polynomial(calls, calls/assumption-inequalities(left, true, facts()), left)
-          save not-right, or-polynomial(calls, calls/assumption-inequalities(right, true, facts()), right)
+          save not-left, or-polynomial(state, calls, calls/assumption-inequalities(state, calls/provers, left, true, facts()), left)
+          save not-right, or-polynomial(state, calls, calls/assumption-inequalities(state, calls/provers, right, true, facts()), right)
           fork test, and(is-above(not-left/length, 0), universal-goal(state, calls, right, both-facts(available, not-left), seeds))
             hold
               back true
@@ -1937,13 +1943,13 @@ task universal-goal
           back true
       walk made
         take instance
-        walk instance-facts(calls, instance, available)
+        walk instance-facts(state, calls, instance, available)
           take fact
           push(known, fact)
-      fork test, calls/product-goal-linear(expr, known)
+      fork test, calls/product-goal-linear(state, calls/provers, expr, known)
         hold
           back true
-      fork test, calls/product-goal(expr, known)
+      fork test, calls/product-goal(state, calls/provers, expr, known)
         hold
           back true
       fork test, product-goal-bridged(state, calls, expr, known)
@@ -2045,7 +2051,7 @@ task integer-goal
   like boolean
 
   save side, facts()
-  save goal, calls/assumption-inequalities(expr, false, side)
+  save goal, calls/assumption-inequalities(state, calls/provers, expr, false, side)
   fork test, is-equal(goal/length, 0)
     hold
       back false
@@ -2062,7 +2068,7 @@ task integer-goal
         push(over-integers, q)
   walk goal
     take g
-    fork test, not(calls/proves(over-integers, g))
+    fork test, not(proves-in(calls/provers/refine, over-integers, g))
       hold
         back false
   back true
@@ -2117,6 +2123,7 @@ task fact-ways
 
 # the ways one conjunct may hold, each a set of facts. A comparison holds one way. `a != b`, or `!(a == b)`, holds two
 task conjunct-ways
+  take state, like hold-state
   take calls, like hold-calls
   take c, like expression
   like list, like list, like inequality
@@ -2160,8 +2167,8 @@ task conjunct-ways
           link left
           link right
           save side, facts()
-          save left-read, calls/to-linear(left, side)
-          save right-read, calls/to-linear(right, side)
+          save left-read, calls/to-linear(state, calls/provers, left, side)
+          save right-read, calls/to-linear(state, calls/provers, right, side)
           sift left-read
             case some
               link l
@@ -2180,12 +2187,12 @@ task conjunct-ways
       push(out, facts())
       back out
   save side, facts()
-  save stated, calls/assumption-inequalities(c, false, side)
+  save stated, calls/assumption-inequalities(state, calls/provers, c, false, side)
   fork test, is-above(stated/length, 0)
     hold
       push(out, both-facts(side, stated))
     miss
-      push(out, both-facts(side, calls/polynomial-facts(c, false)))
+      push(out, both-facts(side, calls/polynomial-facts(state, c, false)))
   back out
 
 form way
@@ -2194,6 +2201,7 @@ form way
 
 # the ways a disjunct may hold: every combination of its conjuncts' ways, each with the equations the disjunct states
 task disjunct-ways
+  take state, like hold-state
   take calls, like hold-calls
   take d, like expression
   like list, like way
@@ -2220,7 +2228,7 @@ task disjunct-ways
     save next, fact-ways()
     walk ways
       take one-way
-      walk conjunct-ways(calls, c)
+      walk conjunct-ways(state, calls, c)
         take more
         push(next, both-facts(one-way, more))
     save ways, next
@@ -2258,10 +2266,10 @@ task contradictory
     make inequality
       bind linear, constant-linear(1.0)
       bind strict, false
-  fork test, calls/proves(over-integers, one)
+  fork test, proves-in(calls/provers/refine, over-integers, one)
     hold
       back true
-  back calls/refuted-by-products(known)
+  back calls/refuted-by-products(calls/provers, known)
 
 # the application atoms a fact reads, alone or inside a monomial
 task fact-applications
@@ -2332,7 +2340,7 @@ task by-cases
     save ways, way-list()
     walk disjuncts(instance)
       take d
-      walk disjunct-ways(calls, d)
+      walk disjunct-ways(state, calls, d)
         take one
         push(ways, one)
     save one-instance
@@ -2420,7 +2428,7 @@ task decided
 
   save here, both-facts(known, one-way/facts)
   save saying-more, both-expressions(said, one-way/said)
-  fork test, calls/product-goal-linear(expr, here)
+  fork test, calls/product-goal-linear(state, calls/provers, expr, here)
     hold
       back true
   fork test, integer-goal(state, calls, expr, here)
@@ -2521,7 +2529,7 @@ task product-goal-bridged
   like boolean
 
   save goal-apps, texts()
-  save goal-facts, or-polynomial(calls, calls/assumption-inequalities(expr, true, facts()), expr)
+  save goal-facts, or-polynomial(state, calls, calls/assumption-inequalities(state, calls/provers, expr, true, facts()), expr)
   walk goal-facts
     take q
     walk fact-applications(state, q)
@@ -2577,7 +2585,7 @@ task product-goal-bridged
       fork test, inside
         hold
           push(chosen, q)
-    fork test, and(is-maximum(chosen/length, 13), calls/product-goal(expr, chosen))
+    fork test, and(is-maximum(chosen/length, 13), calls/product-goal(state, calls/provers, expr, chosen))
       hold
         back true
   back false
@@ -2694,7 +2702,7 @@ task guards-at
         fork test, has-text(names-in(h), n)
           hold
             save side, facts()
-            save stated, calls/assumption-inequalities(substitute-name(h, n, value), false, side)
+            save stated, calls/assumption-inequalities(state, calls/provers, substitute-name(h, n, value), false, side)
             walk side
               take q
               push(out, q)
@@ -2758,7 +2766,7 @@ task universal-induction
     push(before-next, q)
   walk counter-guards
     take g
-    fork test, not(calls/proves(before-next, g))
+    fork test, not(proves-in(calls/provers/refine, before-next, g))
       hold
         save downward, false
         halt
@@ -2786,7 +2794,7 @@ task universal-induction
     hold
       back false
 
-  save hypothesis, instance-facts(calls, goal, both-facts(with-fact(fixed, range), guards-at-next))
+  save hypothesis, instance-facts(state, calls, goal, both-facts(with-fact(fixed, range), guards-at-next))
   save step-facts, both-facts(both-facts(with-fact(fixed, range), guards-at-next), hypothesis)
   save step-goal, substitute-name(goal, n, next)
   save seeds, expressions()

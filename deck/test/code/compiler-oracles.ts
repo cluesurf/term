@@ -34,7 +34,7 @@ import { emitRust } from '@term/make/code/compile/rust'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
 import { emitSwift } from '@term/make/code/compile/swift'
 import type { Resolver } from '@term/make/code/compile/load'
-import type { WakeGroup } from '@term/make/code/compile/wake'
+import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 
 type Resolve = Resolver
 

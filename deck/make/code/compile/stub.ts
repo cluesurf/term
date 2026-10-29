@@ -11,12 +11,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import {
-  lengthKeepingFunctions,
-  purity,
-  returnsFreshFunctions,
-  stateFreeFunctions,
-} from '@term/make/code/check/facts'
+import { programFacts } from '@term/make/code/check/facts'
 import { terminatingFunctions } from '@term/make/code/check/totality'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import { provenRules } from '@term/make/code/check/holds'
@@ -135,7 +130,9 @@ function carried<T>(node: T, written: ReadonlyMap<string, string>): T | undefine
 }
 
 export function stubKnown(program: Program): StubKnown {
-  const pure = purity(program)
+  // the program's facts, each computed once (check/program-facts.tree, item 0368)
+  const facts = programFacts(program)
+  const impure = new Set(facts.impure)
   const exceptions = new Set<string>()
 
   for (const s of program) {
@@ -150,17 +147,17 @@ export function stubKnown(program: Program): StubKnown {
   const clean = new Set<string>()
 
   for (const s of program) {
-    if (s.form === 'function' && !pure.impure.has(s.name)) {
+    if (s.form === 'function' && !impure.has(s.name)) {
       clean.add(s.name)
     }
   }
 
   return {
     clean,
-    writes: pure.writes,
-    stateFree: stateFreeFunctions(program),
-    lengthKeeping: lengthKeepingFunctions(program),
-    returnsFresh: returnsFreshFunctions(program),
+    writes: new Map([...facts.writes].map(([name, at]) => [name, new Set(at)])),
+    stateFree: new Set(facts.stateFree),
+    lengthKeeping: new Set(facts.lengthKeeping),
+    returnsFresh: new Set(facts.returnsFresh),
     ends: terminatingFunctions(program),
     raises: new Map([...sets.raises].map(([name, raised]) => [name, new Set(raised)])),
     native: new Set(sets.native),

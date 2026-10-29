@@ -1,0 +1,32 @@
+# The simplifier over a whole program as ir/simplify.ts calls it (item term-self-host-001-0086, spec 4.9): whether a
+# `let` is a host global is read here, where the face handed ir/simplifying.tree a TypeScript closure
+# (`statement.foreign !== undefined`). The mill writes `foreign` only as a host's written or own name, never empty
+# (compile/minting-flow.tree, `text-else`), and node-json leaves an empty one out (decision 034 section 2), so a `let`
+# whose `foreign` is not empty is exactly one whose `foreign` was set.
+
+load ../compile/node
+  find statement
+
+load ./simplifying
+  find simplify
+
+# whether a statement is a `let` of a host global
+task let-is-host-global
+  take given, like statement
+  like boolean
+  mark private
+
+  sift given
+    case let
+      link foreign
+      back is-unequal(foreign, <>)
+    miss
+      back false
+
+# run the simplifier over a whole program, `roots` the entry module's public functions when given
+task simplify-program
+  take program, like list, like statement
+  take roots, like maybe, like list, like text
+  like list, like statement
+
+  back simplify(program, roots, let-is-host-global)

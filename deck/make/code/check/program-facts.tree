@@ -1,0 +1,43 @@
+# THE PROGRAM'S FACTS: which tasks are pure, which write through which parameters, which are state free, which hand back
+# only what they made, and which keep a list's length, each answered once for one program (check/purity.tree, whose
+# header says what each means). Item term-self-host-001-0368, spec 4.8: the four per-program identity memos of
+# check/facts.ts became this one record, made once by the proofs phase (compile/program-proofs.tree) and handed to the
+# hold checker (check/holds.ts), and made once by a unit's stub facts (compile/stub.ts). The same record on every
+# backend, where no identity memo exists.
+
+load ../compile/node
+  find statement
+
+load ./purity
+  find purity
+  find state-free-functions
+  find returns-fresh-functions
+  find length-keeping-functions
+
+form program-facts
+  # the pure tasks and the impure ones, as check/purity.tree `purity` answers them
+  link pure, like list, like text
+  link impure, like list, like text
+  # the parameters each task writes through, by position
+  link writes, like hash, like text, like list, like number
+  link state-free, like list, like text
+  link returns-fresh, like list, like text
+  link length-keeping, like list, like text
+
+# every fact of the program, each asked once: the later answers read the earlier ones
+task program-facts-of
+  take program, like list, like statement
+  like program-facts
+
+  save answer, purity(program)
+  save fresh, returns-fresh-functions(program)
+  save state-free, state-free-functions(program, answer/pure, fresh)
+  save keeping, length-keeping-functions(program, answer/pure, state-free, fresh)
+  back
+    make program-facts
+      bind pure, answer/pure
+      bind impure, answer/impure
+      bind writes, answer/writes
+      bind state-free, state-free
+      bind returns-fresh, fresh
+      bind length-keeping, keeping
