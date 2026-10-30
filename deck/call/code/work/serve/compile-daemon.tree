@@ -185,11 +185,7 @@ task start-daemon
   like daemon
 
   save project-root, find-project-root(options/root)
-  save resolve, face-project-resolver(make-project-resolver(project-root, daemon-or(options/env, <node>)))
-  save reader, make-role-reader(project-root)
-  save role-of, face-role-reader(reader)
-  save lean-of, face-lean-reader(reader)
-  save deck-of, face-deck-finder(make-deck-finder())
+  save env, daemon-or(options/env, <node>)
   save port, daemon-or(options/port, 5179)
   # one compile cache for every document: a second question about a file reads again only what changed
   save cache, daemon-new-cache(cache-module)
@@ -217,6 +213,15 @@ task start-daemon
       # a file named relative to the project, as a client in it writes one
       save file, node-path/resolve(project-root, body/file)
       daemon-set-add(warm, file)
+      # a resolver, role reader and deck finder per question: each keeps every file it read for its life ("files do
+      # not change during a compile"), so one kept for the daemon's life answered a loaded module edited on disk by
+      # its first text (item term-self-host-001-0431: a renamed task read as unknown in its caller). The compile cache
+      # is keyed by the texts, so it still reads again only what changed
+      save resolve, face-project-resolver(make-project-resolver(project-root, env))
+      save reader, make-role-reader(project-root)
+      save role-of, face-role-reader(reader)
+      save lean-of, face-lean-reader(reader)
+      save deck-of, face-deck-finder(make-deck-finder())
       save result, compiling-module/compile(make(daemon-source, bind(file, file), bind(text, body/text)), make(daemon-options, bind(resolve, resolve), bind(cache, cache), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(optimize, false)))
       save diagnostics, result/diagnostics
       # the document's OWN warnings, as the build reports them (separate-build.tree `is-own-warning`): a loaded

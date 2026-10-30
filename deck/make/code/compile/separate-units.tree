@@ -344,6 +344,14 @@ form separate-given
       take reasons, like list, like text
       like boolean
   link keep-program, like boolean
+  # TERM_CACHE_VERIFY (decision 077 section 5): whether a unit the store answered is built again from nothing and
+  # compared byte for byte (`hits`, sampled by its key), and whether every unit built is built a second time and
+  # compared (`twice`). A difference raises, naming the unit
+  link verify-hit
+    like task
+      take key, like text
+      like boolean
+  link verify-twice, like boolean
 
 # WHAT THE SEPARATE BUILD CAME TO: a refusal, or what the result is built from
 form separate-answer
@@ -1352,7 +1360,50 @@ task built-now
       give-reasons(state/label, reasons)
       save remember, given/remember
       remember(checked-as, now)
-  back make-unit(run, state, checked-as)
+  save answer, make-unit(run, state, checked-as)
+  # `twice`: the same unit built again in this process must answer the same bytes, so no state a build leaves behind
+  # reaches the next (the class of T-0317)
+  fork test, given/verify-twice
+    hold
+      save store, given/store
+      verify-same(<twice>, state/label, store(answer), store(make-unit(run, state, checked-as)))
+  back answer
+
+# A CACHE VERIFY CHECK (decision 077 section 5): two answers of one unit that must be the same bytes. A difference
+# raises with the first place they part
+task verify-same
+  take what, like text
+  take label, like text
+  take first, like text
+  take second, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(first, second)
+    hold
+      back true
+  # the longest common prefix by halving (a text read per character costs the whole text on TypeScript, T-0105)
+  save at, 0
+  save high, first/length
+  fork test, is-below(second/length, high)
+    hold
+      save high, second/length
+  walk test
+    hook test, is-below(at, high)
+    hook hold
+      save middle, divide(add(add(at, high), 1), 2)
+      fork test, is-equal(substring(first, 0, middle), substring(second, 0, middle))
+        hold
+          save at, middle
+        miss
+          save high, subtract(middle, 1)
+  save from, 0
+  fork test, is-above(at, 60)
+    hold
+      save from, subtract(at, 60)
+  save one, substring(first, from, add(at, 120))
+  save two, substring(second, from, add(at, 120))
+  halt <cache verify {what}: unit {label} answered differently at character {at} of {first/length} and {second/length}: ...{one}... against ...{two}...>
 
 # A STORED ANSWER, read back with this machine's roots. One that does not read back as a unit's answer is built again
 task from-store
@@ -1397,8 +1448,20 @@ task answer-unit
       fork test, given/has-cache
         hold
           save cached-unit, given/cached-unit
-          save stored, cached-unit(named-key-of(run, state, checked-as, key), job-of(run, state, checked-as))
+          # whether the store answered without building: `ran` is set by a build in this lookup alone
+          save ran-before, state/ran
+          save state/ran, false
+          save named, named-key-of(run, state, checked-as, key)
+          save stored, cached-unit(named, job-of(run, state, checked-as))
           save answer, from-store(run, state, stored)
+          save hit, not(state/ran)
+          save state/ran, or(ran-before, state/ran)
+          # `hits`: a stored answer built again from nothing must be the bytes the store held (rustc's verify-ich)
+          save verify-hit, given/verify-hit
+          fork test, and(hit, verify-hit(named))
+            hold
+              save store, given/store
+              verify-same(<hits>, state/label, stored, portable-write(run/portable, store(make-unit(run, state, checked-as))))
         miss
           save answer, built-now(run, state, checked-as)
   fork test, given/has-units

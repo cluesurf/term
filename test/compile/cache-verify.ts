@@ -131,11 +131,17 @@ ok('a stored unit answer holds the name to plant', planted > 0, `${units.length}
 const stale = build('')
 ok('without the check the planted answer is served', stale.failed === 0 && emitted().includes('PLANTED-NAME'), stale.errors.join(' | '))
 
-// with it the build refuses, naming the unit and the check
-const checked = build('hits')
-const said = checked.errors.join(' | ')
-ok('under hits the planted answer is refused', checked.failed > 0 && said.includes('cache verify hits'), said)
-ok('naming the unit', said.includes('base.tree'), said)
+// with it the build stops, naming the check, the unit and the place the two answers part
+let said = ''
+try {
+  const checked = build('hits')
+  said = `no raise: ${checked.failed} failed, ${checked.errors.join(' | ')}`
+} catch (problem) {
+  said = String((problem as { note?: string }).note ?? problem)
+}
+ok('under hits the planted answer is refused', said.startsWith('cache verify hits'), said.slice(0, 300))
+ok('naming the unit', said.includes('/code/base.tree answered differently'), said.slice(0, 300))
+ok('and showing both answers where they part', said.includes('PLANTED-NAME') && said.includes('against') && said.includes('planted-name'), said.slice(0, 300))
 
 rmSync(root, { recursive: true, force: true })
 rmSync(store, { recursive: true, force: true })

@@ -186,6 +186,46 @@ function restored(
   }
 }
 
+// TERM_CACHE_VERIFY (decision 077 section 5), a comma list, off by default: `hits` (or `hits:<rate>`, a share from 0 to
+// 1) builds a unit the store answered again from nothing and compares the bytes, the share chosen by the unit's key so
+// a rerun checks the same units; `twice` builds every unit built a second time and compares. A difference raises,
+// naming the unit (separate-units.tree `verify-same`). Neither changes a key or an answer, so neither is in a key
+type CacheVerify = { hit: (key: string) => boolean; twice: boolean }
+
+const verifyModes = new Map<string, CacheVerify>()
+
+export function cacheVerifyOf(text: string): CacheVerify {
+  const known = verifyModes.get(text)
+
+  if (known !== undefined) return known
+
+  let rate = 0
+  let twice = false
+
+  for (const mode of text.split(',').map(one => one.trim()).filter(Boolean)) {
+    if (mode === 'twice') twice = true
+    else if (mode === 'hits') rate = 1
+    else if (mode.startsWith('hits:')) {
+      rate = Number(mode.slice(5))
+      if (!(rate >= 0 && rate <= 1)) throw new Error(`TERM_CACHE_VERIFY: ${mode} wants a share from 0 to 1`)
+    } else throw new Error(`TERM_CACHE_VERIFY: ${mode} is not a verify mode (hits, hits:<rate>, twice)`)
+  }
+
+  // FNV-1a of the key, as a share of 2^32: the same units are chosen on every run
+  const chosen = (key: string): boolean => {
+    if (rate >= 1) return true
+    if (rate <= 0) return false
+    let h = 0x811c9dc5
+    for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0
+
+    return h / 4294967296 < rate
+  }
+  const verify = { hit: chosen, twice }
+  verifyModes.set(text, verify)
+
+  return verify
+}
+
 export function compileSeparate(
   source: { file: string; text: string },
   options: {
@@ -208,6 +248,7 @@ export function compileSeparate(
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
   const { cache, explain } = options
+  const verify = cacheVerifyOf(globalThis.process?.env?.TERM_CACHE_VERIFY ?? '')
   const [role, lean] = [
     (file: string) => options.roleOf?.(file) ?? undefined,
     (file: string) => options.leanOf?.(file) ?? false,
@@ -325,6 +366,8 @@ export function compileSeparate(
       true
     ),
     keepProgram: options.keepProgram === true,
+    verifyHit: verify.hit,
+    verifyTwice: verify.twice,
   } as never)
 
   if (answer.refused.form === 'some')
