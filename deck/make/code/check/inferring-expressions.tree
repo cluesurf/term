@@ -4926,13 +4926,28 @@ task infer-target
     miss
       back infer-expression(st, node, env)
 
+# what a call calls, inferred: a member there is a method of its target, never a map's key (`m/get-or-default(k, v)`
+# on a hash names the method)
+task infer-callee
+  take st, like infer-state
+  take node, like expression
+  take env, like hash, like text, like scheme
+  like inferred
+  mark private
+
+  sift node
+    case member
+      back infer-member(st, node, env, <callee>)
+    miss
+      back infer-expression(st, node, env)
+
 # A MEMBER READ: a narrowed case subject's variant field, a host handle refused, a form's tag, a record's field or
 # method, a list's or text's length, a map's size, an element or value read by index, a task refused, a host value's
 task infer-member
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
-  # where the member stands: <target> what an assignment writes, <value> anything else (a read, a call's callee)
+  # where the member stands: <target> what an assignment writes, <callee> what a call calls, <value> anything else
   take use, like text
   like inferred
   mark private
@@ -5099,12 +5114,18 @@ task infer-member
               # the key read or written is the map's key: a `make hash` local first written as `save seen/{w}, 1`
               # learns its key from `w` (item 0052: it stayed free and was emitted `Map<number, ...>`)
               expect(st, index-found/type, target-key, expression-span(index-found/node), <map key>)
+              # AN INDEX READ ON A MAP IS ITS `get` (item 0426): `m/{k}` reads the key `k` as `m/get(k)` does. Until
+              # then every emitter wrote it as a list read: TypeScript stopped, rustc could not index a TermMap
+              fork test, is-equal(use, <value>)
+                hold
+                  back infer-expression(st, map-get-call(current-target, index-found/node, member-span), env)
               back inferred-of(target-value, with-type(node, target-value))
             case none
               # A PLAIN SEGMENT WRITTEN ON A MAP IS A LITERAL KEY, as `xs/0` is a literal index: `save st/needs/exception,
               # true` writes the key "exception", so a `has` or a `get` finds it. Until item 0054 it set a property of
-              # the map object on TypeScript, which no map read ever found, and named no member natively. A read is
-              # left as it was (a key is read with `get`)
+              # the map object on TypeScript, which no map read ever found, and named no member natively. A READ of one
+              # reads the key too, as `m/get(<key>)` (item 0426): the name of a map's own method stays that method, the
+              # callee of `m/get(k)`, so a key named like one is read with `get`
               fork test, and(is-equal(use, <target>), not(is-digits(member-name)))
                 hold
                   save key-literal
@@ -5115,6 +5136,15 @@ task infer-member
                   expect(st, string-type(), target-key, member-span, <map key>)
                   save node/index, make(some, key-literal)
                   back inferred-of(target-value, with-type(node, target-value))
+              fork test, and(and(is-equal(use, <value>), not(is-digits(member-name))), not(is-map-method(member-name)))
+                hold
+                  save read-key
+                    make expression/string
+                      bind value, member-name
+                      bind span, member-span
+                      bind type, make(some, string-type())
+                  expect(st, string-type(), target-key, member-span, <map key>)
+                  back infer-expression(st, map-get-call(current-target, read-key, member-span), env)
         case function
           # a task has no fields: `read make-box/size` read a member off the task itself
           save named, <>
@@ -5146,6 +5176,53 @@ task infer-member
       back infer-expression(st, node, env)
 
 # ---- a call ----
+
+# a map's own method by its name, as the host spells it: a plain segment of that name is the method, never a key
+task is-map-method
+  take name, like text
+  like boolean
+  mark private
+
+  save op, host-method(name)
+  save known, make list
+  push(known, <get>)
+  push(known, <has>)
+  push(known, <set>)
+  push(known, <delete>)
+  push(known, <keys>)
+  push(known, <values>)
+  push(known, <entries>)
+  push(known, <clear>)
+  push(known, <forEach>)
+  push(known, <size>)
+  push(known, <length>)
+  walk known
+    take one
+    fork test, is-equal(one, op)
+      hold
+        back true
+  back false
+
+# `target/get(key)`, the read of a map's key every emitter lowers (item 0426)
+task map-get-call
+  take target, like expression
+  take key, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save given, make list
+  push(given, key)
+  save getter
+    make expression/member
+      bind target, target
+      bind name, <get>
+      bind span, at
+  back
+    make expression/call
+      bind callee, getter
+      bind args, given
+      bind span, at
 
 # a call's callee, the node itself for anything else
 task callee-of
@@ -5850,7 +5927,7 @@ task infer-call
     miss
       save nothing, 0
   # calling a first-class task value (a local of task type, a parameter), its type read through a transparent alias
-  save callee-found, infer-expression(st, callee-of(current), env)
+  save callee-found, infer-callee(st, callee-of(current), env)
   save current, with-callee(current, callee-found/node)
   save callee-type, unfold-held(st, resolve-held(st, callee-found/type))
   sift callee-type

@@ -35,10 +35,6 @@ export function startDaemon(options: {
   env?: NativeEnv
 }): Daemon {
   const projectRoot = findProjectRoot(options.root)
-  const resolve = projectResolver(projectRoot, options.env ?? 'node')
-  const roleOf = projectRoleOf(projectRoot)
-  const leanOf = projectLeanOf(projectRoot)
-  const deckOf = projectDeckOf()
   const port = options.port ?? 5179
   // one compile cache for every document: a second question about a file reads again only what changed
   const cache = new CompileCache()
@@ -65,14 +61,29 @@ export function startDaemon(options: {
     const file = path.resolve(projectRoot, body.file)
     warm.add(file)
 
+    // a resolver, role reader and deck finder per question: each keeps every file it read for its life, so one kept
+    // for the daemon's life answered a loaded module edited on disk by its first text (item term-self-host-001-0431).
+    // The compile cache is keyed by the texts, so it still reads again only what changed
+    const resolve = projectResolver(projectRoot, options.env ?? 'node')
+    const roleOf = projectRoleOf(projectRoot)
+    const leanOf = projectLeanOf(projectRoot)
+    const deckOf = projectDeckOf()
     const result = compile(
       { file, text: body.text },
       { resolve, cache, roleOf, leanOf, deckOf, optimize: false },
     )
 
+    // the document's OWN warnings, as the build reports them (make.ts `compileProjectSeparate`, warning.file === file):
+    // a loaded module's warnings carry that module's file and no span file, and were answered as this document's
+    // (item term-self-host-001-0424)
     const diagnostics: Diagnostic[] = result.ok
-      ? result.warnings
+      ? result.warnings.filter(warning => warning.file === file)
       : result.diagnostics
+
+    // one connection per question. A kept-alive socket is closed by the server after 5 s idle, and a client whose own
+    // thread was busy past that (the language server mid-build) writes its next question into the closed socket and
+    // reads ECONNRESET (item 0424, tmp/self-host/0424/reset.ts: 2 of 12). A local connect costs well under a ms
+    context.header('connection', 'close')
 
     return context.json({ diagnostics })
   })

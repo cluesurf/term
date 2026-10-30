@@ -119,6 +119,21 @@ bind daemon-diagnostics
   case node
     text <(\{ diagnostics: $diagnostics \})>
 
+# the answer closes its connection
+bind daemon-close-after
+  take context, like dynamic
+  like void
+  case node
+    text <void $context.header("connection", "close")>
+
+# the warnings whose file is `file`
+bind daemon-own-warnings
+  take warnings, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$warnings.filter((one) =\> one.file === $file)>
+
 bind daemon-json
   take context, like dynamic
   take value, like dynamic
@@ -204,9 +219,16 @@ task start-daemon
       daemon-set-add(warm, file)
       save result, compiling-module/compile(make(daemon-source, bind(file, file), bind(text, body/text)), make(daemon-options, bind(resolve, resolve), bind(cache, cache), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(optimize, false)))
       save diagnostics, result/diagnostics
+      # the document's OWN warnings, as the build reports them (separate-build.tree `is-own-warning`): a loaded
+      # module's warnings carry that module's file and no span file, and were answered as this document's (item
+      # term-self-host-001-0424)
       fork test, result/ok
         hold
-          save diagnostics, result/warnings
+          save diagnostics, daemon-own-warnings(result/warnings, file)
+      # one connection per question. A kept-alive socket is closed by the server after 5 s idle, and a client whose
+      # own thread was busy past that (the language server mid-build) writes its next question into the closed socket
+      # and reads ECONNRESET (item 0424, tmp/self-host/0424/reset.ts: 2 of 12). A local connect costs well under a ms
+      daemon-close-after(context)
       back daemon-json(context, daemon-diagnostics(diagnostics))
   app/post(</analyze>, analyze)
 
