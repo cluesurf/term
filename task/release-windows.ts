@@ -2,7 +2,7 @@
 // Windows machine and smoke-run in the same session). release.ts stages windows-x64 as it stages every platform, all
 // but its native part, and runs this under `zone load cluesurf/bench` for the EC2 key. This:
 //
-//   1  rents a machine (task/term/cask/ec2-windows.ts) with Node, Go, the MSVC build tools and Rust, ending itself
+//   1  rents a machine (task/machine, windows-x64, use release) with Node, Go, the MSVC build tools and Rust, ending itself
 //      after --hours whatever happens here
 //   2  says the toolchain's versions, and builds and runs a one-file Rust crate there: MSVC links on this machine
 //   3  BUILDS THE PAYLOAD'S NATIVE PART THERE: bin\term.exe (task/launcher/term.go) by Windows' own Go, brought back
@@ -26,11 +26,11 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import * as ec2Module from '../../../../../task/term/cask/ec2-windows'
+import * as machineModule from '../../../../../task/machine/machine'
 import { packPayload } from './release-pack'
 
-// task/term/cask is CommonJS, whose exports Node hands an ES module on `default`
-const ec2 = ((ec2Module as { default?: typeof ec2Module }).default ?? ec2Module) as typeof ec2Module
+// task/machine is CommonJS, whose exports Node hands an ES module on `default`
+const ec2 = ((machineModule as { default?: typeof machineModule }).default ?? machineModule) as typeof machineModule
 
 const TERM = path.resolve(import.meta.dirname, '..')
 const LAUNCHER = path.join(TERM, 'task', 'launcher')
@@ -90,7 +90,9 @@ async function main(): Promise<void> {
     stdio: ['ignore', 'ignore', 'pipe'],
   })
 
-  const { answer, minutes } = await ec2.session({
+  const { answer, minutes, dollars } = await ec2.session({
+    platform: 'windows-x64',
+    use: 'release',
     needs: ['node', 'go', 'build'],
     hours,
     work: async (machine, stopped) => {
@@ -181,7 +183,7 @@ async function main(): Promise<void> {
     },
   })
 
-  say({ form: 'built', platform: 'windows-x64', file: out, digest: answer.packed.digest, bytes: answer.packed.bytes, minutes, dollars: (minutes / 60) * ec2.RATE, instance: answer.instance })
+  say({ form: 'built', platform: 'windows-x64', file: out, digest: answer.packed.digest, bytes: answer.packed.bytes, minutes, dollars, instance: answer.instance ?? '' })
 }
 
 try {
