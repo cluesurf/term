@@ -770,6 +770,11 @@ form diagnostic-name
   case dock-member-spelling, text <dock-member-spelling>
   case label-or-call, text <label-or-call>
   case parallel-walk-mode, text <parallel-walk-mode>
+  case parallel-write, text <parallel-write>
+  case parallel-slot-read, text <parallel-slot-read>
+  case parallel-crossing, text <parallel-crossing>
+  case parallel-await, text <parallel-await>
+  case parallel-escape, text <parallel-escape>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -995,6 +1000,17 @@ task entry-of
     # can run side by side (decision 021 of term/self-host/change/001)
     case parallel-walk-mode
       back error-entry(0x45, <a parallel walk walks a list>, <write `walk xs, mark parallel` over a list, or drop the mark>)
+    # what a parallel walk's turn may write, hold and do (decision 021 sections 3 to 5, check/parallel.tree)
+    case parallel-write
+      back error-entry(0x46, <a parallel walk's turn writes a name declared outside it>, <write the turn's answer into a slot indexed by its index, `save out/\{index\}, value`, into a list declared before the walk>)
+    case parallel-slot-read
+      back error-entry(0x47, <a parallel walk's turn reads or writes its slot list other than by its own slot>, <write the list only as `save out/\{index\}, value` in the turn, and read it after the walk>)
+    case parallel-crossing
+      back error-entry(0x48, <a value a parallel walk's turn holds cannot cross to another thread>, <hand the turn text, numbers, booleans, lists and forms of those, or drop `mark parallel`>)
+    case parallel-await
+      back error-entry(0x49, <a parallel walk's turn waits>, <make the waited call before or after the walk, or drop `mark parallel`>)
+    case parallel-escape
+      back error-entry(0x4a, <a parallel walk's turn leaves the walk early>, <a parallel walk runs every turn: raise an exception to stop it, or drop `mark parallel`>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1071,3 +1087,8 @@ task diagnostic-names
       make dock-member-spelling
       make label-or-call
       make parallel-walk-mode
+      make parallel-write
+      make parallel-slot-read
+      make parallel-crossing
+      make parallel-await
+      make parallel-escape

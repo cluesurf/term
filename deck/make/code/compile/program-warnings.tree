@@ -1,13 +1,14 @@
 # THE WARNINGS of `compileProgram`, steps 20 and 21: the stray saves, every warning of the build, the late refusals (the
-# tells, the dock member spelling, the raise bounds, the text forms, the lost writes, the missing backs, supervision),
-# the roll and the hive's wake. It writes the run in place and answers the refusal that stops the compile, or none to
+# tells, the dock member spelling, the raise bounds, the text forms, the lost writes, the parallel walks, the missing
+# backs, supervision), the roll and the hive's wake. It writes the run in place and answers the refusal that stops the compile, or none to
 # hand the run on to the emit.
 #
 # Ported from compile/compile.ts's `programWarnings` and `wakeGroups` (item 0267 of term/self-host/change/001, decision
 # 031 part G), which stay as the face. The decisions:
 #   - every pass here is Term and loaded by its `.tree` name (check/unused, check/private, check/deprecated,
-#     check/lost-writes, check/dock-shadow, check/builtin-shadow, check/tell, check/dock-member-spelling, check/effects,
-#     check/text-forms, check/returns, check/supervise), so the phase docks nothing
+#     check/lost-writes, check/parallel, check/dock-shadow, check/builtin-shadow, check/tell,
+#     check/dock-member-spelling, check/effects, check/text-forms, check/returns, check/supervise), so the phase docks
+#     nothing
 #   - the roll is compile/rolling.tree's `build-roll`, as compile/roll.ts's face calls it, with the raise sets from
 #     check/effects.tree's `raise-sets-of` and node identity handed in by the face (`same-node`, `===` on TypeScript).
 #     The run holds the roll as rolling.tree's list of `roll-kind`, and the face turns it into a plain roll
@@ -64,6 +65,9 @@ load ../check/deprecated
 load ../check/lost-writes
   find warn-lost-collection-writes
   find check-lost-writes
+
+load ../check/parallel
+  find check-parallel-walks
 
 load ../check/dock-shadow
   find check-dock-shadow
@@ -526,6 +530,13 @@ task program-warnings
   fork test, is-above(lost-writes/length, 0)
     hold
       back warnings-refusal(lost-writes)
+
+  # a parallel walk's turn writes only its own slot, holds only what crosses to another thread, waits for nothing and
+  # runs to its end (decision 021 sections 3 to 5)
+  save parallel-refusals, check-parallel-walks(run/program, file)
+  fork test, is-above(parallel-refusals/length, 0)
+    hold
+      back warnings-refusal(parallel-refusals)
 
   # every path through a task that promises a value sends one back
   save backs, check-missing-backs(run/program, file)

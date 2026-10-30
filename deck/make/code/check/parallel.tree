@@ -1,0 +1,1075 @@
+# What a parallel walk's turn may write, hold and do (decision 021 sections 3 to 5 of term/self-host/change/001,
+# amended by decisions 076 and 078). A program the checker accepts can run the turns of `walk xs, mark parallel` on any
+# thread and answer what the same walk without the mark answers. Five refusals, each naming the variable and the fix:
+#
+#   parallel-write      a write whose root is a name declared outside the turn, the turn's item or its index: `save x`,
+#                       `save x/field`, `save x/{k}`, a list or hash changed in place (`push`, `set`, `delete` and the
+#                       rest), and a call handing such a list or hash to a parameter its task writes (check/purity.tree
+#                       `purity`'s `writes`). A name the turn binds may be written through only when every binding of it
+#                       in the turn made a fresh value. The one write that leaves a turn is a SLOT WRITE,
+#                       `save out/{index}, value`: `out` a list declared outside the turn, `index` the turn's own index
+#   parallel-slot-read  a slot list read or written in the turn other than by its slot writes
+#   parallel-crossing   the item, a capture (a parameter or local declared outside the turn and read in it) or a slot
+#                       list's element whose type does not cross: compile/backend-shapes.tree `form-kind-of` answers a
+#                       kind with an `any` in it (decision 076 section 1), or a kind either emitter loses in the round
+#                       trip (section 3: none today, test/check/parallel-walk.ts holds it), or a task value, a
+#                       `mark shared` form, a `dock type` handle, `unknown` or `dynamic`, named. A form the turn can
+#                       raise crosses when every field of its props record crosses so, or is an exception or a list of
+#                       them (decision 078 section 2), and when the turn can raise at all, every exception form the
+#                       build raises or builds is judged the same, for the cause it may carry (section 3)
+#   parallel-await      an awaited call, a `wait`, or a `tick`
+#   parallel-escape     a bare `halt` of the walk itself, a `halt` or `turn next` naming a loop outside the turn, and a
+#                       `back`. `turn next` ends the turn
+#
+# The body's raise set is check/effects.tree `raise-sets-of`'s, read through a stand-in task per walk whose body is the
+# turn's, so it is the set the checker computes for a signature's `halt` bound. `raise-crossing` answers the forms of
+# the build a raise may carry that cross, the one list item 0421's codec fills by.
+#
+# Written for item term-self-host-001-0232. Called from compile/program-warnings.tree beside the lost writes. A program
+# with no parallel walk is answered at once, with nothing.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnostic-name
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find statement-span
+  find expression-type
+  find type
+
+load ../compile/node-reach
+  find reached
+  find reach-statements
+
+load ../compile/node-walk
+  find statements-in
+
+load ../compile/backend-shapes
+  find form-kind
+  find form-kind-of
+  find record-field
+
+load ../compile/type-text
+  find show-type
+
+load ./purity
+  find purity
+
+load ./effects
+  find raise-sets
+  find raise-sets-of
+
+# what one check of a program holds: its file, the refusals found, the record forms melt and fill can walk (a form with
+# no cases and no `mark shared`), the shared forms and `dock type` handles by name, the exception forms and the props
+# record each declares, and the parameter positions each task writes
+form parallel-scan
+  mark shared
+  link file, like text
+  link out, like list, like diagnostic
+  link records, like hash, like text, like list, like record-field
+  link shared-forms, like hash, like text, like boolean
+  link docked, like hash, like text, like boolean
+  link exceptions, like hash, like text, like boolean
+  link props-of, like hash, like text, like text
+  link writes, like hash, like text, like list, like number
+
+# a slot list a turn writes, its element's type, and where it is first written
+form slot
+  link name, like text
+  link element, like maybe, like type
+  link at, like span
+
+# a name declared outside the turn that the turn reads, its type, and where it is first read
+form capture
+  link name, like text
+  link given, like maybe, like type
+  link at, like span
+
+# what a check of one turn holds
+form turn
+  mark shared
+  link item-name, like text
+  link index-name, like text
+  link label-name, like text
+  # every name the turn binds, and those some binding of which may hold a value made outside it
+  link locals, like hash, like text, like boolean
+  link spoiled, like hash, like text, like boolean
+  # reads of each name, the slot writes into each slot list, the slot lists and the captures in order of meeting
+  link refs, like hash, like text, like number
+  link slot-writes, like hash, like text, like number
+  link slots, like list, like slot
+  link captured, like hash, like text, like boolean
+  link captures, like list, like capture
+
+# ---- small helpers ----
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the fields a reflective walk skips, as compile/node-reach.tree takes them: a type annotation is not code, and a
+# stub's carried shape and body hold another unit's names (traps.md T-0313)
+task skipped
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <result>)
+  push(out, <span>)
+  push(out, <stubShape>)
+  push(out, <stubBody>)
+  push(out, <declared>)
+  back out
+
+# the native methods that change a list or a hash in place (check/purity.tree's writes and check/lost-writes.tree's
+# mutators together)
+task is-mutator
+  take method, like text
+  like boolean
+  mark private
+
+  save known, make list
+  push(known, <push>)
+  push(known, <pop>)
+  push(known, <shift>)
+  push(known, <unshift>)
+  push(known, <splice>)
+  push(known, <sort>)
+  push(known, <reverse>)
+  push(known, <fill>)
+  push(known, <copyWithin>)
+  push(known, <set>)
+  push(known, <delete>)
+  push(known, <clear>)
+  back has-text(known, method)
+
+# a native list or hash, by its checked type
+task is-collection
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back true
+        case map
+          back true
+        case named
+          link named-name
+          back or(is-equal(named-name, <list>), is-equal(named-name, <hash>))
+        miss
+          back false
+    case none
+      back false
+
+# a list's element type, none for anything but a list
+task element-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back make(some, element)
+        case named
+          link named-name
+          fork test, is-equal(named-name, <list>)
+            hold
+              walk args
+                take one
+                back make(some, one)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# a value the expression makes afresh: a list, a hash or a form
+task is-fresh
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case array
+      back true
+    case map
+      back true
+    case record
+      back true
+    miss
+      back false
+
+# the variable a write lands in: `x` for `save x`, `x/field` and `x/{k}`, `<>` when the target is rooted in no name
+task root-of
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case member
+      back root-of(read(target))
+    case variable
+      back name
+    miss
+      back <>
+
+task is-member
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case member
+      back true
+    miss
+      back false
+
+# the task a call names, for a message, `<>` when it is not named
+task callee-text
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case call
+      sift callee
+        case variable
+          back name
+        case member
+          back name
+        miss
+          back <>
+    miss
+      back <>
+
+task count-of
+  take counts, like hash, like text, like number
+  take name, like text
+  like number
+  mark private
+
+  fork test, counts/has(name)
+    hold
+      back counts/get(name)
+  back 0
+
+# one refusal, filed under the file its span is in
+task refuse
+  take scan, like parallel-scan
+  take kind, like diagnostic-name
+  take at, like span
+  take message, like text
+  take hint, like text
+  mark private
+
+  save here, scan/file
+  sift at/file
+    case some
+      link written
+      save here, written
+    case none
+      save nothing, 0
+  save input
+    make diagnostic-input
+      bind file, here
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  push(scan/out, diagnose(kind, input))
+
+# ---- what crosses ----
+
+task new-scan
+  take program, like list, like statement
+  take file, like text
+  like parallel-scan
+  mark private
+
+  save scan
+    make parallel-scan
+      bind file, file
+      bind out, make list
+      bind records, make hash
+      bind shared-forms, make hash
+      bind docked, make hash
+      bind exceptions, make hash
+      bind props-of, make hash
+      bind writes, make hash
+  save exception-key, <exception>
+  save scan/exceptions/{exception-key}, true
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, shared
+          hold
+            save scan/shared-forms/{name}, true
+          miss
+            fork test, is-equal(variants/length, 0)
+              hold
+                save own, make list
+                walk fields
+                  take field
+                  save made
+                    make record-field
+                      bind name, field/name
+                      bind type, field/type
+                      bind optional, field/optional
+                  push(own, made)
+                save scan/records/{name}, own
+        # walked in place: a need-false list handed to a call is written into the node (traps.md T003)
+        walk read(chain)
+          take chain-name
+          fork test, is-equal(chain-name, <exception>)
+            hold
+              save scan/exceptions/{name}, true
+        fork test, is-unequal(props, <>)
+          hold
+            save scan/props-of/{name}, props
+      case native
+        sift kind
+          case some
+            link written
+            sift written
+              case type
+                save scan/docked/{alias}, true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back scan
+
+# does no part of a kind fall back to `any`: what melt and fill carry on TypeScript and Rust alike (decision 076)
+task kind-crosses
+  take kind, like form-kind
+  like boolean
+  mark private
+
+  sift kind
+    case any
+      back false
+    case list
+      link item
+      back kind-crosses(item)
+    case optional
+      link item
+      back kind-crosses(item)
+    case form
+      link spec
+      walk spec/fields
+        take field
+        fork test, not(kind-crosses(field/kind))
+          hold
+            back false
+      back true
+    miss
+      back true
+
+# why a value of a type cannot cross to another thread, `<>` when it can
+task crossing-refusal
+  take scan, like parallel-scan
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link known
+      sift known
+        case function
+          back <a task value>
+        case unknown
+          back <`unknown`>
+        case dynamic
+          back <`dynamic`>
+        case named
+          link named-name
+          fork test, scan/shared-forms/has(named-name)
+            hold
+              back <`{named-name}`, a `mark shared` form>
+          fork test, scan/docked/has(named-name)
+            hold
+              back <`{named-name}`, a `dock type` handle>
+        miss
+          save nothing, 0
+      fork test, kind-crosses(form-kind-of(given, scan/records, make list))
+        hold
+          back <>
+      back <`{show-type(known)}`>
+    case none
+      back <a type the checker did not settle>
+
+# an exception, or a list of them: a raise's props may hold one, crossed by the codec again (decision 078 section 2)
+task is-exception-type
+  take scan, like parallel-scan
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link named-name
+      fork test, scan/exceptions/has(named-name)
+        hold
+          back true
+      fork test, is-equal(named-name, <list>)
+        hold
+          walk args
+            take one
+            back is-exception-type(scan, one)
+      back false
+    case array
+      back is-exception-type(scan, element)
+    miss
+      back false
+
+# why a raise of a form cannot cross back to the caller, `<>` when it can: every field of its props record crosses, or
+# is an exception or a list of them. The envelope is the compiler's and crosses by the codec (decision 078 section 1).
+# A form with no props record raises its envelope alone, as `failure` does in a build holding no `failure` form, and
+# `exception` itself is a raise passed on, whose forms the cause rule judges
+task raise-refusal
+  take scan, like parallel-scan
+  take form-name, like text
+  like text
+
+  fork test, not(scan/props-of/has(form-name))
+    hold
+      back <>
+  save props-name, scan/props-of/get(form-name)
+  fork test, not(scan/records/has(props-name))
+    hold
+      back <its props record `{props-name}` is a form melt and fill do not walk>
+  walk scan/records/get(props-name)
+    take field
+    fork test, is-exception-type(scan, field/type)
+      hold
+        turn next
+    save judged, make(some, field/type)
+    fork test, field/optional
+      hold
+        sift field/type
+          case named
+            link named-name
+            fork test, is-equal(named-name, <maybe>)
+              hold
+                walk args
+                  take one
+                  save judged, make(some, one)
+          miss
+            save nothing, 0
+    save why, crossing-refusal(scan, judged)
+    fork test, is-unequal(why, <>)
+      hold
+        back <its props field `{field/name}` is {why}>
+  back <>
+
+# every exception form the build raises (`halt F`, a raise its tasks pass on, `failure` of a text) or builds (`make F`)
+task build-raises
+  take scan, like parallel-scan
+  take program, like list, like statement
+  take sets, like raise-sets
+  like list, like text
+  mark private
+
+  save out, make list
+  walk sets/raises/keys()
+    take task-name
+    walk sets/raises/get(task-name)
+      take raised
+      fork test, not(has-text(out, raised))
+        hold
+          push(out, raised)
+  save seen, reach-statements(program, skipped())
+  walk seen/expressions
+    take one
+    sift one
+      case record
+        fork test, and(scan/exceptions/has(name), not(has-text(out, name)))
+          hold
+            push(out, name)
+      miss
+        save nothing, 0
+  back out
+
+# the record-types of the program that are exceptions, by name, as check/effects.tree's callers hand them
+task exception-names
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        walk read(chain)
+          take chain-name
+          fork test, and(is-equal(chain-name, <exception>), not(has-text(out, name)))
+            hold
+              push(out, name)
+      miss
+        save nothing, 0
+  back out
+
+# The exception forms of the build a parallel turn's raise can carry, the raised form or its cause, that cross back to
+# the caller (decision 078 sections 2 to 4): what item 0421's codec fills by name, and the one list it reads
+task raise-crossing
+  take program, like list, like statement
+  like list, like text
+
+  save scan, new-scan(program, <>)
+  save sets, raise-sets-of(program, exception-names(program))
+  save out, make list
+  walk build-raises(scan, program, sets)
+    take raised
+    fork test, is-equal(raise-refusal(scan, raised), <>)
+      hold
+        push(out, raised)
+  back out
+
+# ---- one turn ----
+
+task new-turn
+  take item-name, like text
+  take index-name, like text
+  take label-name, like text
+  like turn
+  mark private
+
+  back
+    make turn
+      bind item-name, item-name
+      bind index-name, index-name
+      bind label-name, label-name
+      bind locals, make hash
+      bind spoiled, make hash
+      bind refs, make hash
+      bind slot-writes, make hash
+      bind slots, make list
+      bind captured, make hash
+      bind captures, make list
+
+# every name the turn binds, and those a binding of which may hold a value made outside it: a `let` of anything but a
+# fresh list, hash or form, a plain assignment of such a value, a nested walk's item, a task's or a closure's parameter,
+# a handler's caught name
+task bind-locals
+  take facts, like turn
+  take seen, like reached
+  mark private
+
+  walk seen/statements
+    take one
+    sift one
+      case let
+        save facts/locals/{name}, true
+        fork test, not(is-fresh(init))
+          hold
+            save facts/spoiled/{name}, true
+      case for-each
+        save facts/locals/{item}, true
+        save facts/spoiled/{item}, true
+        fork test, is-unequal(index, <>)
+          hold
+            save facts/locals/{index}, true
+      case function
+        walk params
+          take param
+          save facts/locals/{param/name}, true
+          save facts/spoiled/{param/name}, true
+      case guard
+        sift catch
+          case some
+            link clause
+            save facts/locals/{clause/name}, true
+            save facts/spoiled/{clause/name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          save facts/locals/{param/name}, true
+          save facts/spoiled/{param/name}, true
+      miss
+        save nothing, 0
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        sift read(target)
+          case variable
+            fork test, and(facts/locals/has(name), not(is-fresh(read(value))))
+              hold
+                save facts/spoiled/{name}, true
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# what writing to `root` (through it, when `through`) does to another turn, `<>` when the turn may
+task write-refusal
+  take facts, like turn
+  take root, like text
+  take through, like boolean
+  like text
+  mark private
+
+  fork test, is-equal(root, <>)
+    hold
+      back <>
+  fork test, is-equal(root, facts/item-name)
+    hold
+      back <its item `{root}`, the caller's own value>
+  fork test, and(is-unequal(facts/index-name, <>), is-equal(root, facts/index-name))
+    hold
+      back <its index `{root}`, which names its slot>
+  fork test, not(facts/locals/has(root))
+    hold
+      back <`{root}`, which is declared outside the turn>
+  fork test, and(through, facts/spoiled/has(root))
+    hold
+      back <through `{root}`, which may hold a value made outside the turn>
+  back <>
+
+# the slot list a write is a slot write into (`save out/{index}, value`, `out` a list declared outside the turn and
+# `index` the turn's own), `<>` for any other write
+task slot-of
+  take facts, like turn
+  take target, like expression
+  take op, like assign-op
+  like text
+  mark private
+
+  fork test, is-equal(facts/index-name, <>)
+    hold
+      back <>
+  sift op
+    case set
+      save nothing, 0
+    miss
+      back <>
+  sift target
+    case member
+      save index-is-own, false
+      sift index
+        case some
+          link at
+          sift at
+            case variable
+              save index-is-own, is-equal(name, facts/index-name)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, not(index-is-own)
+        hold
+          back <>
+      save list-value, read(target)
+      fork test, is-equal(element-of(expression-type(list-value)), make none)
+        hold
+          back <>
+      sift list-value
+        case variable
+          fork test, or(facts/locals/has(name), is-equal(name, facts/item-name))
+            hold
+              back <>
+          back name
+        miss
+          back <>
+    miss
+      back <>
+
+task note-slot
+  take facts, like turn
+  take slot-name, like text
+  take target, like expression
+  take at, like span
+  mark private
+
+  fork test, not(facts/slot-writes/has(slot-name))
+    hold
+      save made
+        make slot
+          bind name, slot-name
+          bind element, expression-type(target)
+          bind at, at
+      push(facts/slots, made)
+  save facts/slot-writes/{slot-name}, add(count-of(facts/slot-writes, slot-name), 1)
+
+task check-writes
+  take scan, like parallel-scan
+  take facts, like turn
+  take seen, like reached
+  mark private
+
+  save hint, <write the turn's answer into its own slot instead, `save out/\{index\}, value`, where `out` is a list declared before the walk and `index` the walk's index `take`>
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        save slot-name, slot-of(facts, read(target), op)
+        fork test, is-unequal(slot-name, <>)
+          hold
+            note-slot(facts, slot-name, read(target), span)
+            turn next
+        save why, write-refusal(facts, root-of(read(target)), is-member(read(target)))
+        fork test, is-unequal(why, <>)
+          hold
+            refuse(scan, make(parallel-write),span, <a parallel walk's turn writes {why}>, hint)
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case call
+        save at, span
+        sift callee
+          case member
+            fork test, and(is-mutator(name), is-collection(expression-type(read(target))))
+              hold
+                save why, write-refusal(facts, root-of(read(target)), true)
+                fork test, is-unequal(why, <>)
+                  hold
+                    refuse(scan, make(parallel-write),at, <a parallel walk's turn changes {why}, by `{name}`>, hint)
+          case variable
+            fork test, scan/writes/has(name)
+              hold
+                walk scan/writes/get(name)
+                  take position
+                  fork test, is-below(position, args/length)
+                    hold
+                      save given, get(args, position)
+                      fork test, is-collection(expression-type(given))
+                        hold
+                          save why, write-refusal(facts, root-of(given), true)
+                          fork test, is-unequal(why, <>)
+                            hold
+                              refuse(scan, make(parallel-write),at, <a parallel walk's turn hands {why}, to `{name}`, which writes it>, hint)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# an awaited call, a `wait` and a `tick`
+task check-waits
+  take scan, like parallel-scan
+  take seen, like reached
+  mark private
+
+  save hint, <make the waited call before or after the walk, or drop `mark parallel`>
+  walk seen/expressions
+    take one
+    sift one
+      case await
+        save shown, callee-text(expr)
+        save what, <a call>
+        fork test, is-unequal(shown, <>)
+          hold
+            save what, <`{shown}`>
+        refuse(scan, make(parallel-await),span, <a parallel walk's turn waits for {what}>, hint)
+      case call
+        fork test, background
+          hold
+            save shown, callee-text(one)
+            refuse(scan, make(parallel-await),span, <a parallel walk's turn starts `{shown}` with `tick`>, hint)
+      miss
+        save nothing, 0
+
+# a `back`, a bare `halt` of the walk itself, and a `halt` or `turn next` naming a loop outside the turn. A closure's
+# and a task's own statements are their own, and are not entered
+task check-escapes
+  take scan, like parallel-scan
+  take facts, like turn
+  take block, like list, like statement
+  take depth, like number
+  take inner, like list, like text
+  mark private
+
+  save hint, <a parallel walk runs every turn: raise an exception to stop it, or drop `mark parallel`>
+  walk block
+    take one
+    sift one
+      case return
+        refuse(scan, make(parallel-escape),span, <a parallel walk's turn sends a value back with `back`>, hint)
+      case break
+        fork test, is-equal(label, <>)
+          hold
+            fork test, is-equal(depth, 0)
+              hold
+                refuse(scan, make(parallel-escape),span, <a parallel walk's turn stops the walk with a bare `halt`>, hint)
+          miss
+            fork test, not(has-text(inner, label))
+              hold
+                refuse(scan, make(parallel-escape),span, <a parallel walk's turn leaves the loop `{label}` with `halt`>, hint)
+      case continue
+        fork test, and(is-unequal(label, <>), and(not(has-text(inner, label)), is-unequal(label, facts/label-name)))
+          hold
+            refuse(scan, make(parallel-escape),span, <a parallel walk's turn goes on to the next turn of `{label}`, a loop outside it>, hint)
+      case if
+        walk branches
+          take branch
+          check-escapes(scan, facts, branch/body, depth, inner)
+        sift otherwise
+          case some
+            link other
+            check-escapes(scan, facts, other, depth, inner)
+          case none
+            save nothing, 0
+      case while
+        save named, make list
+        walk inner
+          take one-name
+          push(named, one-name)
+        fork test, is-unequal(label, <>)
+          hold
+            push(named, label)
+        check-escapes(scan, facts, body, add(depth, 1), named)
+      case for-each
+        save named, make list
+        walk inner
+          take one-name
+          push(named, one-name)
+        fork test, is-unequal(label, <>)
+          hold
+            push(named, label)
+        check-escapes(scan, facts, body, add(depth, 1), named)
+      case match
+        walk cases
+          take arm
+          check-escapes(scan, facts, arm/body, depth, inner)
+        sift otherwise
+          case some
+            link other
+            check-escapes(scan, facts, other, depth, inner)
+          case none
+            save nothing, 0
+      case guard
+        check-escapes(scan, facts, body, depth, inner)
+        sift catch
+          case some
+            link clause
+            check-escapes(scan, facts, clause/body, depth, inner)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# the reads of every name, and the captures: a parameter or a local declared outside the turn that the turn reads
+task note-reads
+  take facts, like turn
+  take seen, like reached
+  mark private
+
+  walk seen/expressions
+    take one
+    sift one
+      case variable
+        save facts/refs/{name}, add(count-of(facts/refs, name), 1)
+        save outside, not(or(or(facts/locals/has(name), is-equal(name, facts/item-name)), is-equal(name, facts/index-name)))
+        save held, false
+        sift read(binding)
+          case some
+            link how
+            sift how
+              case parameter
+                save held, true
+              case local
+                save held, true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        fork test, and(and(outside, held), not(facts/captured/has(name)))
+          hold
+            save facts/captured/{name}, true
+            save made
+              make capture
+                bind name, name
+                bind given, expression-type(one)
+                bind at, span
+            push(facts/captures, made)
+      miss
+        save nothing, 0
+
+task check-holds
+  take scan, like parallel-scan
+  take facts, like turn
+  take iterable-value, like expression
+  take at, like span
+  mark private
+
+  save hint, <hand the turn text, numbers, booleans, lists and forms of those, or drop `mark parallel`>
+  save item-type, element-of(expression-type(iterable-value))
+  save why, crossing-refusal(scan, item-type)
+  fork test, is-unequal(why, <>)
+    hold
+      refuse(scan, make(parallel-crossing),at, <a parallel walk's item `{facts/item-name}` is {why}, which cannot cross to another thread>, hint)
+  save slot-names, make list
+  walk facts/slots
+    take one
+    push(slot-names, one/name)
+    fork test, is-above(count-of(facts/refs, one/name), count-of(facts/slot-writes, one/name))
+      hold
+        refuse(scan, make(parallel-slot-read),one/at, <a parallel walk's turn reads or writes its slot list `{one/name}` other than by its own slot>, <write `{one/name}` only as `save {one/name}/\{{facts/index-name}\}, value` in the turn, and read it after the walk>)
+    save slot-why, crossing-refusal(scan, one/element)
+    fork test, is-unequal(slot-why, <>)
+      hold
+        refuse(scan, make(parallel-crossing),one/at, <the slot list `{one/name}` holds {slot-why}, which cannot cross back from another thread>, hint)
+  walk facts/captures
+    take one
+    fork test, has-text(slot-names, one/name)
+      hold
+        turn next
+    save capture-why, crossing-refusal(scan, one/given)
+    fork test, is-unequal(capture-why, <>)
+      hold
+        refuse(scan, make(parallel-crossing),one/at, <a parallel walk's turn reads `{one/name}`, {capture-why}, which cannot cross to another thread>, hint)
+
+task check-turn
+  take scan, like parallel-scan
+  take walk-node, like statement
+  mark private
+
+  sift walk-node
+    case for-each
+      save facts, new-turn(item, index, label)
+      save seen, reach-statements(body, skipped())
+      bind-locals(facts, seen)
+      check-writes(scan, facts, seen)
+      check-waits(scan, seen)
+      check-escapes(scan, facts, body, 0, make list)
+      note-reads(facts, seen)
+      check-holds(scan, facts, iterable, span)
+    miss
+      save nothing, 0
+
+# the raises: each walk's body as a stand-in task, so its raise set is check/effects.tree's own
+task check-raises
+  take scan, like parallel-scan
+  take program, like list, like statement
+  take walks, like list, like statement
+  mark private
+
+  save widened, make list
+  walk program
+    take one
+    push(widened, one)
+  save names, make list
+  save at, 0
+  walk walks
+    take one
+    # a name no task can have: it holds a space
+    save stand-in-name, <parallel turn {at}>
+    sift one
+      case for-each
+        save stand-in
+          make function
+            bind name, stand-in-name
+            bind params, make list
+            bind body, body
+            bind generics, make list
+            bind span, span
+        push(widened, stand-in)
+      miss
+        save nothing, 0
+    push(names, stand-in-name)
+    save at, add(at, 1)
+  save sets, raise-sets-of(widened, exception-names(program))
+  save build-set, make list
+  save build-ready, false
+  save hint, <give the form's props text, numbers, booleans, lists and forms of those, or drop `mark parallel`>
+  save at, 0
+  walk walks
+    take one
+    save stand-in-name, get(names, at)
+    save at, add(at, 1)
+    fork test, not(sets/raises/has(stand-in-name))
+      hold
+        turn next
+    save raised, sets/raises/get(stand-in-name)
+    fork test, is-equal(raised/length, 0)
+      hold
+        turn next
+    save walk-at, statement-span(one)
+    walk raised
+      take form-name
+      save why, raise-refusal(scan, form-name)
+      fork test, is-unequal(why, <>)
+        hold
+          refuse(scan, make(parallel-crossing),walk-at, <a parallel walk's turn can raise `{form-name}`, and {why}, which cannot cross back to the caller>, hint)
+    fork test, not(build-ready)
+      hold
+        save build-set, build-raises(scan, program, sets)
+        save build-ready, true
+    walk build-set
+      take form-name
+      fork test, has-text(raised, form-name)
+        hold
+          turn next
+      save cause-why, raise-refusal(scan, form-name)
+      fork test, is-unequal(cause-why, <>)
+        hold
+          refuse(scan, make(parallel-crossing),walk-at, <a parallel walk's turn can raise, and the cause it carries can be `{form-name}`, where {cause-why}, which cannot cross back to the caller>, hint)
+
+# ---- the check ----
+
+task check-parallel-walks
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  # the narrow walk (no types), since every program pays for it
+  save walks, make list
+  walk statements-in(program)
+    take one
+    sift one
+      case for-each
+        fork test, parallel
+          hold
+            push(walks, one)
+      miss
+        save nothing, 0
+  fork test, is-equal(walks/length, 0)
+    hold
+      back make list
+  save scan, new-scan(program, file)
+  save scan/writes, purity(program)/writes
+  walk walks
+    take one
+    check-turn(scan, one)
+  check-raises(scan, program, walks)
+  back scan/out

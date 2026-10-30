@@ -9,8 +9,10 @@ import {
   readFileSync,
   realpathSync,
   existsSync,
+  rmSync,
   watch as fsWatch,
 } from 'fs'
+import { projectHome } from '@term/call/code/home'
 import {
   compile,
   isLookStylesheet,
@@ -427,13 +429,15 @@ export type BuildSession = {
 }
 
 // an entry's build, as much of it as the next build needs to replay it: its own problems, its open claims, its
-// obligations, and how many units it reached. Its artifacts are already on disk, written when it was built
+// obligations, and how many units it reached. Its artifacts are already on disk, written when it was built, and their
+// paths are kept, so a build replaying it still stands behind them (`sweepArtifacts`)
 export type EntryOutcome = {
   problems: BuildProblem[]
   open: string[]
   obligations: Parameters<typeof addOwed>[1]
   units: number
   closureKey: string
+  artifacts: string[]
 }
 
 export function buildSession(root: string): BuildSession {
@@ -1398,6 +1402,9 @@ export function compileProjectSeparate(
     }
   }
 
+  // the artifacts of every entry this build replayed: on disk already, and still this build's (`sweepArtifacts`)
+  const replayed_paths = new Set<string>()
+
   for (const file of files) {
     const replay =
       stale?.has(file) === false ? session.entries.get(file) : undefined
@@ -1406,6 +1413,7 @@ export function compileProjectSeparate(
       compiled++
       reused += replay.units
       closures.set(file, replay.closureKey)
+      replay.artifacts.forEach(one => replayed_paths.add(one))
       problems.push(...replay.problems)
       warnings.push(
         ...replay.problems.map(problem =>
@@ -1557,38 +1565,42 @@ export function compileProjectSeparate(
 
     addOwed(obligations, result.obligations)
 
+    // the roll of every unit the entry reaches, for the roll pass
+    for (const [label, roll] of result.rolls ?? []) {
+      session.rolls.set(label, roll)
+    }
+
+    const artifacts: string[] = []
+
+    for (const [mfile, emit] of result.modules) {
+      const unitPath = path.join(root, 'host', '.unit', `${slug(mfile)}.ts`)
+      artifacts.push(unitPath)
+      writeArtifact(unitPath, emit.code)
+    }
+
+    // the entry shim, written by the worker that built the entry when a parallel pass did (`shim`)
+    const shimPath = path.join(
+      root,
+      'host',
+      path.relative(root, file).replace(/\.tree$/, '.ts'),
+    )
+    artifacts.push(shimPath)
+    writeArtifact(
+      shimPath,
+      'shim' in result && typeof result.shim === 'string'
+        ? result.shim
+        : entryShim(root, file, result.exports, slug),
+    )
+
     session.entries.set(file, {
       problems: own,
       open: result.openClaims ?? [],
       obligations: result.obligations,
       units: result.built.length + result.reused.length,
       closureKey: result.closureKey,
+      artifacts,
     })
     closures.set(file, result.closureKey)
-
-    // the roll of every unit the entry reaches, for the roll pass
-    for (const [label, roll] of result.rolls ?? []) {
-      session.rolls.set(label, roll)
-    }
-
-    for (const [mfile, emit] of result.modules) {
-      writeArtifact(
-        path.join(root, 'host', '.unit', `${slug(mfile)}.ts`),
-        emit.code,
-      )
-    }
-
-    // the entry shim, written by the worker that built the entry when a parallel pass did (`shim`)
-    writeArtifact(
-      path.join(
-        root,
-        'host',
-        path.relative(root, file).replace(/\.tree$/, '.ts'),
-      ),
-      'shim' in result && typeof result.shim === 'string'
-        ? result.shim
-        : entryShim(root, file, result.exports, slug),
-    )
   }
 
   // an app's shadows of face's platform implementations take exactly face's contract, as compileProject holds them
@@ -1600,6 +1612,7 @@ export function compileProjectSeparate(
     faults.push(fault)
   }
 
+  sweepArtifacts(root, new Set([...written_paths, ...replayed_paths]))
   session.close()
 
   return {
@@ -1616,6 +1629,38 @@ export function compileProjectSeparate(
     reused,
     closures,
     rolls: liveRolls(session, closures),
+  }
+}
+
+// What the last separate build wrote under host/ is recorded beside the project's cache, one path relative to the
+// project a line, sorted. An artifact the last build wrote and this one does not stand behind (its module was
+// shelved with `mark draft`, moved or removed, or its entry failed) is removed, so host/ after an incremental build is
+// what a clean build of the same sources leaves (item term-self-host-001-0425). Only a path under host/ that a build
+// recorded is ever removed; a lost record leaves the old artifacts, as every build did before. separate-build.tree
+// `sweep-artifacts` is the Term twin, and the two read and write one record
+export function sweepArtifacts(root: string, standing: Set<string>): void {
+  const record = projectHome(root, 'artifacts.txt')
+  const now = [...standing].map(one => path.relative(root, one)).sort()
+  const kept = new Set(now)
+  let before = ''
+
+  try {
+    before = readFileSync(record, 'utf8')
+  } catch {
+    before = ''
+  }
+
+  for (const one of before.split('\n')) {
+    if (one !== '' && !kept.has(one) && one.startsWith(`host${path.sep}`)) {
+      rmSync(path.join(root, one), { force: true })
+    }
+  }
+
+  const text = `${now.join('\n')}\n`
+
+  if (before !== text) {
+    mkdirSync(path.dirname(record), { recursive: true })
+    writeFileSync(record, text)
   }
 }
 

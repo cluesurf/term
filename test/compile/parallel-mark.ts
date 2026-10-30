@@ -69,40 +69,44 @@ function walks(
   }
 }
 
-const LEAN_MARKED = `task total
+// each turn writes only its own slot of an outer list (decision 078 section 6): an outer `sum` written in the turn is
+// refused as parallel-write since item 0232
+const LEAN_MARKED = `task doubled
   take xs, like list, like number
-  like number
-  save sum, 0
+  like list, like number
+  save out, make list
   walk xs, mark parallel
     take x
-    save sum, add(sum, x)
-  back sum
+    take at
+    save out/{at}, add(x, x)
+  back out
 `
 
-const LEAN_NAMED = `task total
+const LEAN_NAMED = `task doubled
   take xs, like list, like number
-  like number
-  save sum, 0
+  like list, like number
+  save out, make list
   walk xs, name outer
     mark parallel
     take x
     take at
-    save sum, add(sum, x)
-  back sum
+    save out/{at}, add(x, x)
+  back out
 `
 
-const LONG_MARKED = `task total
+const LONG_MARKED = `task doubled
   take xs, like list, like number
-  like number
-  save sum, code 0
+  like list, like number
+  save out, make list
   walk list, read xs
     mark parallel
     take x
-    save sum
+    take at
+    save out/{at}
       call add
-        read sum
         read x
-  send back, read sum
+        read x
+  send back, read out
 `
 
 const UNMARKED = LEAN_MARKED.replace(', mark parallel', '')
@@ -210,20 +214,21 @@ const dir = mkdtempSync(join(tmpdir(), 'term-parallel-mark-'))
 const program = (marked: boolean): string => `load @term/base/list
   find list
 
-task total
+task doubled
   take xs, like list, like number
-  like number
-  save sum, 0
+  like list, like number
+  save out, make list
   walk xs${marked ? ', mark parallel' : ''}
     take x
-    save sum, add(sum, x)
-  back sum
+    take at
+    save out/{at}, add(x, x)
+  back out
 `
 
 for (const env of ['node', 'rust']) {
   const emitted = (marked: boolean): string | undefined => {
     const built = compile(
-      { file: join(dir, 'total.tree'), text: program(marked) },
+      { file: join(dir, 'doubled.tree'), text: program(marked) },
       { resolve: projectResolver(process.cwd(), env), env } as never,
     ) as {
       ok: boolean
