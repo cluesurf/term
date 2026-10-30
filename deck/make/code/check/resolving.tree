@@ -687,11 +687,14 @@ task resolve-call
       hold
         save under, texts-at(state/fields-under, label)
     # THE LEAN SURFACE: a bare word among a lean call's arguments may be a FLAG naming a boolean parameter, which only
-    # the checker can say, so an unbound word is left unresolved here
+    # the checker can say, so an unbound word is left unresolved here, but only where it can be one: a direct call of a
+    # task on record with a parameter of that name. Anywhere else (a method on a receiver, a builtin like `push`, a task
+    # value) it is resolved, and reported when it names nothing: `push(names, found)` after a sift whose every arm
+    # saved `found` compiled, while each backend scopes such a save to its arm (term-self-host-001-0430)
     fork test, and(is-lean, is-variable(arg))
       hold
         save arg-name, variable-name-of(arg)
-        fork test, and(and(not(is-bound(state, arg-name)), not(state/type-names/has(arg-name))), and(not(is-binary-builtin(arg-name)), not(is-unary-builtin(arg-name))))
+        fork test, and(and(and(not(is-bound(state, arg-name)), not(state/type-names/has(arg-name))), and(not(is-binary-builtin(arg-name)), not(is-unary-builtin(arg-name)))), may-be-flag(state, current, arg-name))
           hold
             turn next
     # a property's children arrive as an array, and the swallowed head sits among them
@@ -701,6 +704,29 @@ task resolve-call
         turn next
     save args-now/{at}, resolve-expression(state, arg)
   back with-args(current, args-now)
+
+# can this bare word be a flag of the call: only where the callee is a task on record with a parameter of that name,
+# which the checker then reads as a flag when it is boolean (check/inferring-expressions.tree lean-flagged), or a
+# form whose field it names, which the checker places or refuses as a construction's
+task may-be-flag
+  take state, like resolve-state
+  take node, like expression
+  take word, like text
+  like boolean
+  mark private
+
+  save called, callee-of(node)
+  fork test, not(is-variable(called))
+    hold
+      back false
+  save called-name, variable-name-of(called)
+  fork test, state/task-params/has(called-name)
+    hold
+      back has-text(state/task-params/get(called-name), word)
+  fork test, state/variant-fields/has(called-name)
+    hold
+      back has-text(state/variant-fields/get(called-name), word)
+  back false
 
 task is-array
   take node, like expression

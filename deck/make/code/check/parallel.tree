@@ -977,23 +977,95 @@ task check-turn
     miss
       save nothing, 0
 
-# the raises: each walk's body as a stand-in task, so its raise set is check/effects.tree's own
-task check-raises
-  take scan, like parallel-scan
+# one parallel walk's turn as the refusals above read it: its slot lists in first-write order and its captures in
+# first-read order (a slot list is among the captures too, as it is read). compile/parallel-lower.tree lifts a turn
+# from these facts, so the emitters and the checker cannot disagree about a capture or a slot (item 0233)
+task turn-facts
+  take walk-node, like statement
+  like turn
+
+  sift walk-node
+    case for-each
+      save facts, new-turn(item, index, label)
+      save seen, reach-statements(body, skipped())
+      bind-locals(facts, seen)
+      note-slots(facts, seen)
+      note-reads(facts, seen)
+      back facts
+    miss
+      back new-turn(<>, <>, <>)
+
+# the slot writes of a turn, as check-writes notes them
+task note-slots
+  take facts, like turn
+  take seen, like reached
+  mark private
+
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        save slot-name, slot-of(facts, read(target), op)
+        fork test, is-unequal(slot-name, <>)
+          hold
+            note-slot(facts, slot-name, read(target), span)
+      miss
+        save nothing, 0
+
+# each walk's raise set, in the walks' order: its body as a stand-in task, so the set is check/effects.tree's own. The
+# one reading of what a turn can raise, for the refusals below and compile/parallel-lower.tree (item 0233)
+task walk-raises
   take program, like list, like statement
   take walks, like list, like statement
+  like list, like list, like text
+
+  back raises-by-walk(widened-sets(program, walks), walks)
+
+# the name the stand-in task of the walk at this position takes, which no task can have: it holds a space
+task stand-in-name-at
+  take at, like number
+  like text
+  mark private
+
+  back <parallel turn {at}>
+
+# each walk's raise set out of the widened program's sets
+task raises-by-walk
+  take sets, like raise-sets
+  take walks, like list, like statement
+  like list, like list, like text
+  mark private
+
+  save out, make list
+  save at, 0
+  walk walks
+    take one
+    save stand-in-name, stand-in-name-at(at)
+    save at, add(at, 1)
+    save raised, make list
+    fork test, sets/raises/has(stand-in-name)
+      hold
+        walk sets/raises/get(stand-in-name)
+          take form-name
+          push(raised, form-name)
+    push(out, raised)
+  back out
+
+# check/effects.tree's raise sets over the program and one stand-in task per walk
+task widened-sets
+  take program, like list, like statement
+  take walks, like list, like statement
+  like raise-sets
   mark private
 
   save widened, make list
   walk program
     take one
     push(widened, one)
-  save names, make list
   save at, 0
   walk walks
     take one
-    # a name no task can have: it holds a space
-    save stand-in-name, <parallel turn {at}>
+    save stand-in-name, stand-in-name-at(at)
     sift one
       case for-each
         save stand-in
@@ -1006,21 +1078,26 @@ task check-raises
         push(widened, stand-in)
       miss
         save nothing, 0
-    push(names, stand-in-name)
     save at, add(at, 1)
-  save sets, raise-sets-of(widened, exception-names(program))
+  back raise-sets-of(widened, exception-names(program))
+
+# the raises: what each walk's turn can raise, judged by its props, and the cause the build may hand it
+task check-raises
+  take scan, like parallel-scan
+  take program, like list, like statement
+  take walks, like list, like statement
+  mark private
+
+  save sets, widened-sets(program, walks)
+  save raise-lists, raises-by-walk(sets, walks)
   save build-set, make list
   save build-ready, false
   save hint, <give the form's props text, numbers, booleans, lists and forms of those, or drop `mark parallel`>
   save at, 0
   walk walks
     take one
-    save stand-in-name, get(names, at)
+    save raised, get(raise-lists, at)
     save at, add(at, 1)
-    fork test, not(sets/raises/has(stand-in-name))
-      hold
-        turn next
-    save raised, sets/raises/get(stand-in-name)
     fork test, is-equal(raised/length, 0)
       hold
         turn next

@@ -1,0 +1,244 @@
+# What both emitters lift a parallel walk's turn from (decision 021 section 12 of term/self-host/change/001, decision
+# 011). `parallel-facts(program)` answers, for every `walk xs, mark parallel` of a program `stamp-places` stamped, in
+# program order:
+#
+#   place     its `place-row`, the key the TypeScript and Rust emitters read it back by (never the node's identity)
+#   key       a text unique in the program and equal on every compile of the same source: the name of the top-level
+#             task holding the walk (`main` for a walk outside every task), `#`, and the walk's ordinal there from 0
+#   item      the item's name and its type, the iterable list's element
+#   index     the index's name (`<>` when the walk takes none) and its type, a number
+#   captures  each parameter or local declared outside the turn that it reads, with its checked type, in first-read
+#             order, a slot list left out
+#   slots     each outer list the turn writes by its own slot (`save out/{index}, value`), with its element type,
+#             numbered from 0 in first-write order
+#   raises    the exception forms the turn can raise, sorted by name
+#
+# Captures and slots are check/parallel.tree's `turn-facts` and the raises its `walk-raises`: the readings the
+# refusals judge, so the emitters lift exactly what the checker accepted. The pass reads the program and writes
+# nothing into it (traps.md T042). A program with no parallel walk costs one walk and answers nothing.
+#
+# Written for item term-self-host-001-0233. Read by the TypeScript and Rust lowerings (items 0234 and 0235).
+
+load @term/base/list
+  find list
+  find get
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load ./node
+  find expression
+  find statement
+  find type
+  find expression-type
+  find number-type
+
+load ./node-walk
+  find statements-in
+
+load ./node-rebuild
+  find place-row-of-statement
+
+load ../check/parallel
+  find turn-facts
+  find walk-raises
+
+# a name read in the turn and declared outside it, with its checked type
+form parallel-capture
+  link name, like text
+  link given, like maybe, like type
+
+# an outer list the turn writes by its own slot, numbered in first-write order, with its element type
+form parallel-slot
+  link at, like number
+  link name, like text
+  link element, like maybe, like type
+
+# one parallel walk, as both emitters lift its turn
+form parallel-walk-fact
+  link place, like number
+  link key, like text
+  link item, like text
+  link item-type, like maybe, like type
+  link index, like text
+  link index-type, like maybe, like type
+  link captures, like list, like parallel-capture
+  link slots, like list, like parallel-slot
+  link raises, like list, like text
+
+# a walk found, with the key it takes
+form found-walk
+  link node, like statement
+  link key, like text
+
+# is this statement a walk marked parallel
+task is-parallel-walk
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case for-each
+      back parallel
+    miss
+      back false
+
+# the name a top-level statement keys its walks by
+task owner-name
+  take node, like statement
+  like text
+  mark private
+
+  sift node
+    case function
+      back name
+    miss
+      back <main>
+
+# a list's element type, none for anything but a list
+task element-type-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back make(some, element)
+        case named
+          link named-name
+          fork test, is-equal(named-name, <list>)
+            hold
+              walk args
+                take one
+                back make(some, one)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the walks marked parallel, each with its key, in program order
+task found-walks
+  take program, like list, like statement
+  like list, like found-walk
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    save owner, owner-name(one)
+    save ordinal, 0
+    save single, make list
+    push(single, one)
+    walk statements-in(single)
+      take inner
+      fork test, is-parallel-walk(inner)
+        hold
+          save made
+            make found-walk
+              bind node, inner
+              bind key, <{owner}#{ordinal}>
+          push(out, made)
+          save ordinal, add(ordinal, 1)
+  back out
+
+# the facts of one walk, its raise set given
+task fact-of
+  take found, like found-walk
+  take raised, like list, like text
+  like parallel-walk-fact
+  mark private
+
+  save node, found/node
+  save item-name, <>
+  save index-name, <>
+  save item-type, make none
+  sift node
+    case for-each
+      save item-name, item
+      save index-name, index
+      save item-type, element-type-of(expression-type(iterable))
+    miss
+      save nothing, 0
+  save index-type, make none
+  fork test, is-unequal(index-name, <>)
+    hold
+      save index-type, make(some, number-type())
+  save facts, turn-facts(node)
+  save slots, make list
+  save slot-names, make list
+  save at, 0
+  walk facts/slots
+    take one
+    push(slot-names, one/name)
+    save made-slot
+      make parallel-slot
+        bind at, at
+        bind name, one/name
+        bind element, one/element
+    push(slots, made-slot)
+    save at, add(at, 1)
+  save captures, make list
+  walk facts/captures
+    take one
+    fork test, has-text(slot-names, one/name)
+      hold
+        turn next
+    save made-capture
+      make parallel-capture
+        bind name, one/name
+        bind given, one/given
+    push(captures, made-capture)
+  back
+    make parallel-walk-fact
+      bind place, place-row-of-statement(node)
+      bind key, found/key
+      bind item, item-name
+      bind item-type, item-type
+      bind index, index-name
+      bind index-type, index-type
+      bind captures, captures
+      bind slots, slots
+      bind raises, sort(raised, from-texts)
+
+# every parallel walk of a stamped program, as both emitters lift its turn
+task parallel-facts
+  take program, like list, like statement
+  like list, like parallel-walk-fact
+
+  save found, found-walks(program)
+  fork test, is-equal(found/length, 0)
+    hold
+      back make list
+  save nodes, make list
+  walk found
+    take one
+    push(nodes, one/node)
+  save raise-lists, walk-raises(program, nodes)
+  save out, make list
+  save at, 0
+  walk found
+    take one
+    push(out, fact-of(one, get(raise-lists, at)))
+    save at, add(at, 1)
+  back out
