@@ -396,7 +396,9 @@ async function launchAndroid(input: {
   for (let tries = 0; tries < 50 && !pid; tries++) {
     pid = pidOf()
 
-    if (!pid) {await new Promise(done => setTimeout(done, 100))}
+    if (!pid) {
+      await new Promise(done => setTimeout(done, 100))
+    }
   }
 
   const child = spawn(

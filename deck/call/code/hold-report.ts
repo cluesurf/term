@@ -108,10 +108,14 @@ function wordsOf(value: unknown, into: Set<string>): Set<string> {
   if (typeof value === 'string') {
     into.add(value)
   } else if (Array.isArray(value)) {
-    for (const item of value) {wordsOf(item, into)}
+    for (const item of value) {
+      wordsOf(item, into)
+    }
   } else if (value && typeof value === 'object') {
     for (const [key, item] of Object.entries(value)) {
-      if (key !== 'span') {wordsOf(item, into)}
+      if (key !== 'span') {
+        wordsOf(item, into)
+      }
     }
   }
 
@@ -263,7 +267,9 @@ export function holdReport(input: {
     const text = readFileSync(file, 'utf8')
     const parsed = parse({ file, text })
 
-    if (!parsed.ok) {continue}
+    if (!parsed.ok) {
+      continue
+    }
 
     const built = mill(
       expandTemplates(parsed.tree),
@@ -272,7 +278,9 @@ export function holdReport(input: {
       leanOf(file),
     )
 
-    if (!built.ok) {continue}
+    if (!built.ok) {
+      continue
+    }
 
     for (const statement of built.program as unknown as Record<
       string,
@@ -309,13 +317,17 @@ export function holdReport(input: {
     while (stack.length > 0) {
       const one = stack.pop()!
 
-      if (seen.has(one) || !definitions.has(one)) {continue}
+      if (seen.has(one) || !definitions.has(one)) {
+        continue
+      }
 
       seen.add(one)
 
       for (const definition of definitions.get(one)!) {
         for (const word of wordsOf(definition.statement, new Set())) {
-          if (definitions.has(word) && !seen.has(word)) {stack.push(word)}
+          if (definitions.has(word) && !seen.has(word)) {
+            stack.push(word)
+          }
         }
       }
     }
@@ -334,7 +346,9 @@ export function holdReport(input: {
 
     const line = diagnostic.span?.start?.line
 
-    if (!file || line === undefined) {return undefined}
+    if (!file || line === undefined) {
+      return undefined
+    }
 
     for (const [name, list] of definitions) {
       if (
@@ -344,8 +358,9 @@ export function holdReport(input: {
             d.start <= line &&
             line <= d.end,
         )
-      )
-        {return name}
+      ) {
+        return name
+      }
     }
 
     return undefined
@@ -393,8 +408,9 @@ export function holdReport(input: {
       }
     }
 
-    if (proofs.length === 0)
-      {fail(`${LAWS} names nothing that proves it`)}
+    if (proofs.length === 0) {
+      fail(`${LAWS} names nothing that proves it`)
+    }
 
     for (const proof of proofs) {
       if (proof.kind === 'rule') {
@@ -433,7 +449,9 @@ export function holdReport(input: {
         for (const one of reached) {
           const call = outside.get(one)
 
-          if (call && !row.rests.includes(call)) {row.rests.push(call)}
+          if (call && !row.rests.includes(call)) {
+            row.rests.push(call)
+          }
         }
       } else if (proof.kind === 'tier') {
         row.english.push(

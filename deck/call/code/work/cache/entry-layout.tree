@@ -26,7 +26,7 @@ load @term/base/list
   find push
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 load @term/call/work/small/home-folder
   find project-home
@@ -177,7 +177,7 @@ task budget-interval-ms
 
   back multiply(60, multiply(60, 1000))
 
-# two characters of the key. The keys are base-36 hashes, so this spreads evenly
+# two characters of the key. The keys are hex digits of SHA-256 (`hash-key`, decision 080), so this spreads evenly
 task shard-of
   take key, like text
   like text
@@ -194,7 +194,7 @@ task version-slug
   take version, like text
   like text
 
-  back hash-text(version)
+  back hash-key(version)
 
 # THE ONE PLACE THAT KNOWS WHERE AN ENTRY LIVES. Everything that reads or writes the cache goes through this (the
 # store, the remote cache's push and pull, the report): a second implementation of a layout disagrees with it

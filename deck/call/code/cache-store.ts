@@ -53,7 +53,7 @@ import {
   CACHE_EPOCH,
   CompileCache,
 } from '@term/make/code/compile/cache'
-import { hashText } from '@term/make/code/term/hash'
+import { hashKey } from '@term/make/code/term/hash'
 import * as plan from '@term/call/code/cache-plan'
 import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 import { makeParseMemo } from '@term/make/code/compile/load'
@@ -86,11 +86,11 @@ export const SHARED_KINDS = new Set(['mill', 'unit'])
 // A version string to one filesystem-safe token. The version carries a `:` and a package version; hashing it keeps
 // the path short and makes every namespace directory the same shape, which is what lets them be compared by mtime.
 export function versionSlug(version: string): string {
-  return hashText(version)
+  return hashKey(version)
 }
 
-// two characters of the key. The keys are base-36 hashes, so this spreads evenly and bounds a directory at a few
-// hundred entries for any realistic project.
+// two characters of the key. The keys are hex digits of SHA-256 (`hashKey`, decision 080), so this spreads evenly and
+// bounds a directory at a few hundred entries for any realistic project.
 function shardOf(key: string): string {
   return key.slice(0, 2) || '__'
 }
@@ -558,7 +558,7 @@ function compilerSourceHash(kind?: string): string {
       }
     }
 
-    return parts.length > 0 ? hashText(parts.join('\n')) : ''
+    return parts.length > 0 ? hashKey(parts.join('\n')) : ''
   }
 
   const walk = (at: string): void => {
@@ -599,7 +599,7 @@ function compilerSourceHash(kind?: string): string {
     }
   }
 
-  return parts.length > 0 ? hashText(parts.join('\n')) : ''
+  return parts.length > 0 ? hashKey(parts.join('\n')) : ''
 }
 
 // Fall back to hashing the running bundle, for an installed package with no sources beside it. `.mjs` as well as
@@ -624,7 +624,7 @@ function hashRunningFile(): string {
         (file.endsWith('.js') || file.endsWith('.mjs')) &&
         existsSync(file)
       ) {
-        return hashText(readFileSync(file, 'utf8'))
+        return hashKey(readFileSync(file, 'utf8'))
       }
     } catch {
       // try the next candidate

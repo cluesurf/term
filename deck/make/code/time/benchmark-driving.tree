@@ -1,0 +1,88 @@
+# The end-to-end benchmark driver. Compiles a source file, runs every `time-*` task in it, reduces the samples to a
+# suite, and when a baseline is given compares against it and says whether any benchmark regressed past the
+# threshold. The whole flow (compile, run, stat, compare, gate) is tested in one place.
+#
+# Ported from time/benchmark.ts (item term-self-host-change-001-finish-self-host-0011, decision 029), which stays as the
+# face. The decisions:
+#   - a compile that fails is an answer (`benchmark-run`, `ok` false with the diagnostics); the face throws the
+#     original's `CompileFailure` from it
+#   - the arguments are positional: a left-out filter is the empty text, a left-out warmup and iteration count are
+#     filled by the face (10 and 100, the runner's defaults), and a left-out threshold is 10
+#   - a baseline is `compare` true with its sides, a run without one `compare` false; the comparison is a `maybe`, and
+#     the face leaves the key out on `none`, as the original did
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ./runner-harness
+  find compile-benchmarks
+  find run-benchmarks
+
+load ./output-records
+  find suite
+  find build-suite
+
+load ./compare
+  find side
+  find comparison
+  find compare-results
+  find should-fail
+
+# what a benchmark run answered: the suite, the comparison when a baseline was given, and the gate, or the compiler's
+# diagnostics
+form benchmark-run
+  link ok, like boolean
+  link diagnostics, like list, like dynamic
+  link suite, like maybe, like suite
+  link comparison, like maybe, like comparison
+  # true only when a baseline was given AND a benchmark regressed past the threshold: the CI gate signal
+  link regressed, like boolean
+
+task drive-benchmarks
+  take text, like text
+  take file, like text
+  # the original compiled the file alone: the face passes no resolver (undefined)
+  take resolve, like dynamic
+  take root, like text
+  take filter, like text
+  take warmup, like number
+  take iterations, like number
+  take compare, like boolean
+  take baseline, like list, like side
+  take max-regression-pct, like float
+  like benchmark-run
+
+  save built, compile-benchmarks(text, file, resolve, filter)
+  fork test, not(built/ok)
+    hold
+      back
+        make benchmark-run
+          bind ok, false
+          bind diagnostics, built/diagnostics
+          bind suite, make none
+          bind comparison, make none
+          bind regressed, false
+
+  save results, run-benchmarks(built/code, built/benchmarks, root, warmup, iterations)
+  save suite, build-suite(results)
+  fork test, not(compare)
+    hold
+      back
+        make benchmark-run
+          bind ok, true
+          bind diagnostics, make list
+          bind suite, make(some, suite)
+          bind comparison, make none
+          bind regressed, false
+
+  save compared, compare-results(results, baseline)
+  back
+    make benchmark-run
+      bind ok, true
+      bind diagnostics, make list
+      bind suite, make(some, suite)
+      bind comparison, make(some, compared)
+      bind regressed, should-fail(compared, max-regression-pct)

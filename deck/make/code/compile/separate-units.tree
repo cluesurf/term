@@ -103,6 +103,11 @@ load ./explain
   find unit-inputs
   find why
 
+load ./build-ledger
+  find ledger-read
+  find ledger-cover
+  find uncovered-reads
+
 dock load
   load <@term/make/code/compile/cache>, name separate-cache
   load <@term/make/code/compile/stub>, name separate-stub
@@ -352,6 +357,16 @@ form separate-given
       take key, like text
       like boolean
   link verify-twice, like boolean
+  # `ledger` (build-ledger.tree): the face records every read made from `ledger-open` to `ledger-close`, which hands
+  # them back; `separator` is the platform's path separator, the one a deck's setting file is named with
+  link ledger, like boolean
+  link ledger-open
+    like task
+      like boolean
+  link ledger-close
+    like task
+      like list, like ledger-read
+  link separator, like text
 
 # WHAT THE SEPARATE BUILD CAME TO: a refusal, or what the result is built from
 form separate-answer
@@ -408,6 +423,8 @@ form separate-run
       like list, like name-def
   # `keep-program`: the entry unit's checked program, when this run built it
   link entry-program, like maybe, like list, like statement
+  # `twice`: every unit this run built, held until the run's other units are built, then built again and compared
+  link twice-queue, like list, like twice-check
 
 # ONE UNIT'S PART OF THE RUN, kept while it is answered
 form unit-state
@@ -432,6 +449,12 @@ form unit-job
   link run, like separate-run
   link state, like unit-state
   link checked-as, like text
+
+# a unit built under `twice`: how it was asked, and the bytes its first build stored
+form twice-check
+  link state, like unit-state
+  link checked-as, like text
+  link first, like text
 
 # ---- small helpers ----
 
@@ -1175,6 +1198,10 @@ task make-unit
   save given, run/given
   save milled, given/milled
   save compile-unit, given/compile-unit
+  fork test, given/ledger
+    hold
+      save ledger-open, given/ledger-open
+      ledger-open()
 
   # the stubs of every reachable unit, dependency order preserved, copied
   save program, make list
@@ -1214,6 +1241,9 @@ task make-unit
   # keeps the entry's
   save naming, get(state/files, 0)
   save result, compile-unit(program, checked-as, scope-of(run, state/at), naming, state/files)
+  fork test, given/ledger
+    hold
+      ledger-check(run, state)
   fork test, not(result/ok)
     hold
       back refused-unit(result/diagnostics)
@@ -1306,6 +1336,68 @@ task make-unit
       bind refused, make none
       bind build, make(some, made)
 
+# `ledger` (decision 077 section 5.1): every read the unit's mill and check made since `ledger-open` must be one its key
+# covers (build-ledger.tree): its own files and those of every unit it reaches, read with the walk's bytes, their decks'
+# setting files, and the settings the key holds. An uncovered read raises, naming the unit, the reader and what it read
+task ledger-check
+  take run, like separate-run
+  take state, like unit-state
+  like boolean
+  mark private
+
+  save given, run/given
+  save ledger-close, given/ledger-close
+  save reads, ledger-close()
+  save files, make hash
+  save roots, make hash
+  save deck-of, given/deck-of
+  save reached, make list
+  walk state/files
+    take file
+    push(reached, file)
+  walk reach-sorted(run, state/at)
+    take d
+    walk get(run/order, d)
+      take file
+      push(reached, file)
+  walk reached
+    take file
+    save files/{file}, true
+    sift deck-of(file)
+      case some
+        link deck
+        save roots/{deck/root}, true
+      case none
+        save nothing, 0
+  # the checker's switches, which `switch-key` puts in every unit's key (check/checker-switches.tree), and the proof
+  # budget, which check/strict.ts `checkerSwitchKey` adds when it is set
+  save settings, make hash
+  settings/set(<TERM_PROOF_BUDGET>, true)
+  # and two that only print (the kernel's trace, the product search's profile) and change no answer, so no key holds
+  # them: a hit prints neither
+  settings/set(<TERM_KERNEL_TRACE>, true)
+  settings/set(<TERM_PRODUCT_PROFILE>, true)
+  settings/set(<TERM_UNKNOWN_SEAM>, true)
+  settings/set(<TERM_INFER_STRICT>, true)
+  settings/set(<TERM_INFER_AMBIGUOUS>, true)
+  settings/set(<TERM_WIDTH_RANGES>, true)
+  save cover
+    make ledger-cover
+      bind files, files
+      bind roots, roots
+      bind settings, settings
+      bind separator, given/separator
+  save uncovered, uncovered-reads(reads, cover)
+  fork test, is-equal(uncovered/length, 0)
+    hold
+      back true
+  save first, get(uncovered, 0)
+  save how, <>
+  fork test, and(is-equal(first/reader, <read>), files/has(first/target))
+    hold
+      save how, <, with bytes the walk did not read>
+  halt <cache verify ledger: unit {state/label} made a read its key does not cover: {first/reader} {first/target}{how} ({uncovered/length} uncovered)>
+
 # WHAT A UNIT IS CHECKED WITH IS ITS OWN, and what it reaches: the walk's import scope cut to those files, so an importer
 # never decides the unit's answer
 task scope-of
@@ -1361,13 +1453,31 @@ task built-now
       save remember, given/remember
       remember(checked-as, now)
   save answer, make-unit(run, state, checked-as)
-  # `twice`: the same unit built again in this process must answer the same bytes, so no state a build leaves behind
-  # reaches the next (the class of T-0317)
+  # `twice`: the same unit built again in this process, AFTER the run's other units, must answer the same bytes, so no
+  # state a later build leaves behind reaches an earlier one's answer (the class of T-0317). `verify-twice-all` builds
+  # it again
   fork test, given/verify-twice
     hold
       save store, given/store
-      verify-same(<twice>, state/label, store(answer), store(make-unit(run, state, checked-as)))
+      save held
+        make twice-check
+          bind state, state
+          bind checked-as, checked-as
+          bind first, store(answer)
+      push(run/twice-queue, held)
   back answer
+
+# `twice`, once the run's units are all answered: every unit it built, built again in the order it was first built
+task verify-twice-all
+  take run, like separate-run
+  like boolean
+  mark private
+
+  save store, run/given/store
+  walk run/twice-queue
+    take held
+    verify-same(<twice>, held/state/label, held/first, store(make-unit(run, held/state, held/checked-as)))
+  back true
 
 # A CACHE VERIFY CHECK (decision 077 section 5): two answers of one unit that must be the same bytes. A difference
 # raises with the first place they part
@@ -1491,13 +1601,18 @@ task job-named-key
 
 # ---- the build ----
 
-# whether a file states a top-level `rule`, read off its parse (the build's own memo)
+# whether a file states a top-level `rule`, read off its parse (the build's own memo). A group's head word is written
+# in the text as it is read, so a text without `rule` in it states none, and is not parsed: the probe of a no-op parses
+# nothing else, and most of a closure states no rule (item term-self-host-001-0437)
 task states-rule
   take given, like separate-given
   take unit, like token-source
   like boolean
   mark private
 
+  fork test, not(contains(unit/text, <rule>))
+    hold
+      back false
   save parsed, given/parsed
   save result, parsed(unit)
   fork test, not(result/ok)
@@ -1689,6 +1804,7 @@ task compile-separate
       bind name-index, make hash
       bind unit-defs, make list
       bind entry-program, make none
+      bind twice-queue, make list
 
   save built, make list
   save reused, make list
@@ -1863,6 +1979,8 @@ task compile-separate
   walk entry-warnings(source, sources, parsed, template-set/templates)
     take warned
     push(all-warnings, warned)
+
+  verify-twice-all(run)
 
   back
     make separate-answer

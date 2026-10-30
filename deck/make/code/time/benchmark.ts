@@ -1,19 +1,12 @@
-// The end-to-end benchmark driver. Compiles a source file, runs every `time-*` function in it, reduces the samples to
-// a suite, and -- when a baseline is supplied -- compares against it and reports whether any benchmark regressed past
-// the threshold. This is the single entry a `seed time` command calls: the CLI binary lives in the entrypoint package
-// and only forwards parsed options here, so the whole flow (compile, run, stat, compare, gate) is tested in one place.
-
-import {
-  compileBenchmarks,
-  runBenchmarks,
-} from '@term/make/code/time/runner'
-import { buildSuite } from '@term/make/code/time/output'
+// The end-to-end benchmark driver: compile a source file, run every `time-*` task in it, reduce the samples to a suite,
+// and when a baseline is given compare against it and say whether any benchmark regressed past the threshold. The
+// work is Term, time/benchmark-driving.tree (item term-self-host-change-001-finish-self-host-0011), whose header says
+// what changed. This face keeps the names, the object input and the defaults its callers know, and throws
+// `CompileFailure` for a file that does not compile.
 import type { Suite } from '@term/make/code/time/output'
-import {
-  compareResults,
-  shouldFail,
-} from '@term/make/code/time/compare'
 import type { Comparison, Side } from '@term/make/code/time/compare'
+import { CompileFailure } from '@term/make/code/time/execute'
+import * as driving from '@term/make/code/time/benchmark-driving'
 
 // a saved baseline is the JSON `results` array of a prior suite, each read back as one side of a comparison
 // (time/output.ts `fromSaved`)
@@ -22,7 +15,7 @@ export type Baseline = { results: Side[] }
 export type BenchmarkRun = {
   suite: Suite
   comparison?: Comparison
-  // true only when a baseline was given AND a benchmark regressed past `maxRegressionPct` -- the CI gate signal
+  // true only when a baseline was given AND a benchmark regressed past `maxRegressionPct`: the CI gate signal
   regressed: boolean
 }
 
@@ -37,27 +30,32 @@ export async function benchmark(input: {
   baseline?: Baseline
   maxRegressionPct?: number
 }): Promise<BenchmarkRun> {
-  const module = compileBenchmarks({
-    text: input.text,
-    file: input.file,
-    filter: input.filter,
-  })
+  const made = await driving.driveBenchmarks(
+    input.text,
+    input.file,
+    undefined,
+    input.root,
+    input.filter ?? '',
+    input.warmup ?? 10,
+    input.iterations ?? 100,
+    Boolean(input.baseline),
+    (input.baseline?.results ?? []) as never,
+    input.maxRegressionPct ?? 10,
+  )
 
-  const results = await runBenchmarks({
-    module,
-    root: input.root,
-    warmup: input.warmup,
-    iterations: input.iterations,
-  })
-
-  const suite = buildSuite(results)
-
-  if (!input.baseline) {
-    return { suite, regressed: false }
+  if (!made.ok) {
+    throw new CompileFailure(made.diagnostics as never)
   }
 
-  const comparison = compareResults(results, input.baseline.results)
-  const regressed = shouldFail(comparison, input.maxRegressionPct ?? 10)
+  const suite = (made.suite as { value: Suite }).value
 
-  return { suite, comparison, regressed }
+  if (made.comparison.form !== 'some') {
+    return { suite, regressed: made.regressed }
+  }
+
+  return {
+    suite,
+    comparison: made.comparison.value as Comparison,
+    regressed: made.regressed,
+  }
 }

@@ -1,0 +1,658 @@
+# THE SECOND CHECKER, RUN: find Lean 4, run it on a file check/lean-export wrote, and read its verdict per claim from
+# the `#print axioms` lines the export ends with (note/project/term/proof/lean-export/spec.md). `term hold --lean` and
+# test/assurance/lean.ts both read Lean through this, so there is one reading of its output. Nothing here decides a
+# proof: Lean does, and this only reads what it said.
+#
+# Ported from check/lean-run.ts (item term-self-host-change-001-finish-self-host-0007, decision 075), which stays as the
+# face. The decisions:
+#   - Lean runs through @term/base/process/run (spec 4.23), never a node dock, under a `limit`: 1800000 ms for a check,
+#     60000 ms for `--version`. So `run-lean` and `lean-version` are async, and their callers went async in this window
+#   - finding Lean stays synchronous: @term/base/file/blocking `exists` and `stat` over TERM_LEAN and each PATH folder
+#   - the original's regular expressions are read here by hand, to the same answer: an error or warning line is any
+#     line (split at \n, \r, U+2028 and U+2029, as `^` and `$` under the `m` flag split) holding `:<n>:<n>: error: `,
+#     the first such place on it; an axioms answer starts a line and may run on over the next ones (`[^']` and `[^\]]`
+#     match a line break); a definition head is read on lines split at \n alone, its name the run of non-space after it
+#   - Diverges (decision 075, decision 027 rows): a run its limit ended refuses its unverdicted claims with `Lean did not
+#     run: lean did not finish within <limit> ms` (Node said `spawnSync lean ETIMEDOUT`), and `lean-version` answers
+#     the empty text then; a lean that cannot start says `Lean did not run: <the runner's reason>`; there is no 256 MB
+#     output cap; the limit sends TERM, then KILL 2000 ms later
+#   - Lean's exit status is `none` where the original's was null: a child a signal ended
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find split
+  find trim
+  find starts-with
+  find substring
+  find replace-all
+  find contains
+
+load @term/base/rune
+  find scalar-to-text
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/file/blocking
+  find exists, name path-exists
+  find stat, name path-stat-of
+  find entry-kind
+
+load @term/base/process/run
+  find run, name run-process
+  find command-timeout
+  find command-absence
+
+# how to get Lean, in one line, for a run that found none
+host lean-install, <brew install elan-init, then elan default leanprover/lean4:stable>
+
+task say-install
+  like text
+
+  back lean-install
+
+# one error Lean printed: where, the line as Lean printed it with the file dropped, and the definition it fell in
+form lean-error
+  link line, like number
+  link column, like number
+  link text, like text
+  link definition, like maybe, like text
+
+# one claim's verdict: `checked` with no axiom, `axioms` resting on axioms, or `refused` (its definition, or one it
+# reaches, failed, which Lean reports as resting on `sorryAx`); `error` says why a refused one was, empty otherwise
+form lean-claim
+  link name, like text
+  link verdict, like text
+  link axioms, like list, like text
+  link error, like text
+
+# what a Lean run said: its exit status (none when a signal or the limit ended it), its output as printed, and what was
+# read from it
+form lean-run
+  link status, like maybe, like number
+  link output, like text
+  link errors, like list, like lean-error
+  link warnings, like number
+  link claims, like list, like lean-claim
+
+# a `:<line>:<column>: <word>: ` place on a line, and what follows it
+form line-place
+  link line, like number
+  link column, like number
+  link rest, like text
+
+# one `#print axioms` answer: the claim's Lean name, its axioms as Lean listed them (empty for none), and where the
+# answer ends
+form axioms-answer
+  link name, like text
+  link listed, like text
+  link end, like number
+
+# Lean's own spelling of a name: a plain identifier bare, anything else (a dash) in «»
+task lean-name
+  take name, like text
+  like text
+
+  save cs, split(name, <>)
+  save plain, is-above(cs/length, 0)
+  save at, 0
+  walk cs
+    take c
+    fork test, is-equal(at, 0)
+      hold
+        fork test, not(contains(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_>, c))
+          hold
+            save plain, false
+      miss
+        fork test, not(contains(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_>, c))
+          hold
+            save plain, false
+    save at, add(at, 1)
+  fork test, plain
+    hold
+      back name
+  back <«{name}»>
+
+# a Lean name as Term wrote it: the namespace and the quotes taken off
+task term-name
+  take lean, like text
+  like text
+
+  save bare, lean
+  fork test, starts-with(lean, <TermExport.>)
+    hold
+      save bare, substring(lean, 11, lean/length)
+  back replace-all(replace-all(bare, <«>, <>), <»>, <>)
+
+# ---- finding Lean ----
+
+task is-file
+  take path, like text
+  like boolean
+
+  fork test, not(path-exists(path))
+    hold
+      back false
+  save found, false
+  fork
+    mark unsafe
+    save stated, path-stat-of(path)
+    save file-kind, make file
+    save found, is-equal(stated/kind, file-kind)
+  halt take
+    take problem
+    save found, false
+  back found
+
+# Lean: `named` (TERM_LEAN) when it names a file, else the first `lean` in the folders of `path-list` (PATH); the empty
+# text for none. Read off the values given, never a shell
+task find-lean
+  take named, like text
+  take path-list, like text
+  like text
+
+  fork test, is-unequal(named, <>)
+    hold
+      fork test, is-file(named)
+        hold
+          back named
+  walk split(path-list, <:>)
+    take dir
+    fork test, is-equal(dir, <>)
+      hold
+        turn next
+    save candidate, join-path(dir, <lean>)
+    fork test, is-file(candidate)
+      hold
+        back candidate
+  back <>
+
+# ---- reading what Lean printed ----
+
+# the line breaks `^` and `$` know under the `m` flag
+task line-breaks
+  like list, like text
+
+  save breaks, make list
+  breaks/push(<\n>)
+  breaks/push(<\r>)
+  breaks/push(scalar-to-text(8232))
+  breaks/push(scalar-to-text(8233))
+  back breaks
+
+# what `\s` matches, one unit each
+task space-units
+  like list, like text
+
+  save units, make list
+  units/push(< >)
+  units/push(<\t>)
+  units/push(<\n>)
+  units/push(scalar-to-text(11))
+  units/push(scalar-to-text(12))
+  units/push(<\r>)
+  save codes, make list
+  codes/push(160)
+  codes/push(5760)
+  codes/push(8232)
+  codes/push(8233)
+  codes/push(8239)
+  codes/push(8287)
+  codes/push(12288)
+  codes/push(65279)
+  save code, 8192
+  walk test
+    hook test, is-maximum(code, 8202)
+    hook hold
+      codes/push(code)
+      save code, add(code, 1)
+  walk codes
+    take one
+    units/push(scalar-to-text(one))
+  back units
+
+task is-one-of
+  take unit, like text
+  take units, like list, like text
+  like boolean
+
+  walk units
+    take one
+    fork test, is-equal(unit, one)
+      hold
+        back true
+  back false
+
+# the lines of `text` as the `m` flag sees them
+task lines-of
+  take text, like text
+  like list, like text
+
+  save lines, make list
+  lines/push(text)
+  walk line-breaks()
+    take line-break
+    save next, make list
+    walk lines
+      take line
+      walk split(line, line-break)
+        take piece
+        next/push(piece)
+    save lines, next
+  back lines
+
+task is-digit
+  take unit, like text
+  like boolean
+
+  back and(is-equal(unit/length, 1), contains(<0123456789>, unit))
+
+# the end of the run of digits in `cs` from `at` (`at` itself when there is none)
+task digits-end
+  take cs, like list, like text
+  take at, like number
+  like number
+
+  save end, at
+  walk test
+    hook test, and(is-below(end, cs/length), is-digit(cs/get(end)))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+task digits-value
+  take cs, like list, like text
+  take from, like number
+  take to, like number
+  like number
+
+  save value, 0
+  save at, from
+  walk test
+    hook test, is-below(at, to)
+    hook hold
+      save value, add(multiply(value, 10), digit-of(cs/get(at)))
+      save at, add(at, 1)
+  back value
+
+task digit-of
+  take unit, like text
+  like number
+
+  save digits, split(<0123456789>, <>)
+  save at, 0
+  walk digits
+    take one
+    fork test, is-equal(one, unit)
+      hold
+        back at
+    save at, add(at, 1)
+  back 0
+
+# whether `cs` holds `word` at `at`
+task holds-at
+  take cs, like list, like text
+  take at, like number
+  take word, like text
+  like boolean
+
+  save units, split(word, <>)
+  fork test, is-above(add(at, units/length), cs/length)
+    hold
+      back false
+  save k, 0
+  walk units
+    take one
+    fork test, is-unequal(cs/get(add(at, k)), one)
+      hold
+        back false
+    save k, add(k, 1)
+  back true
+
+# `^.*?:(\d+):(\d+): <word>: (.*)$` on one line: the first place it holds
+task line-place-of
+  take line, like text
+  take word, like text
+  like maybe, like line-place
+
+  save cs, split(line, <>)
+  save tail, <: {word}: >
+  save at, 0
+  walk test
+    hook test, is-below(at, cs/length)
+    hook hold
+      fork test, is-equal(cs/get(at), <:>)
+        hold
+          save first, digits-end(cs, add(at, 1))
+          fork test, and(is-above(first, add(at, 1)), holds-at(cs, first, <:>))
+            hold
+              save second, digits-end(cs, add(first, 1))
+              fork test, and(is-above(second, add(first, 1)), holds-at(cs, second, tail))
+                hold
+                  save rest-at, add(second, tail/length)
+                  back
+                    make(some, make(line-place, bind(line, digits-value(cs, add(at, 1), first)), bind(column, digits-value(cs, add(first, 1), second)), bind(rest, join(cs/slice(rest-at, cs/length), <>))))
+      save at, add(at, 1)
+  back make none
+
+# the definition each line of the source falls in, by the `def` / `inductive` / `axiom` heads the export writes
+task definitions-by-line
+  take source, like text
+  like list, like maybe, like text
+
+  save heads, make list
+  heads/push(<def TermExport.>)
+  heads/push(<theorem TermExport.>)
+  heads/push(<inductive TermExport.>)
+  heads/push(<axiom TermExport.>)
+  heads/push(<structure TermExport.>)
+  save spaces, space-units()
+  save current, make none
+  save out, make list
+  walk split(source, <\n>)
+    take line
+    save named, false
+    walk heads
+      take head
+      fork test, and(not(named), starts-with(line, head))
+        hold
+          save cs, split(line, <>)
+          save from, head/length
+          save end, from
+          walk test
+            hook test, and(is-below(end, cs/length), not(is-one-of(cs/get(end), spaces)))
+            hook hold
+              save end, add(end, 1)
+          fork test, is-above(end, from)
+            hold
+              save defined, term-name(join(cs/slice(from, end), <>))
+              save current, make(some, defined)
+              save named, true
+    fork test, not(named)
+      hold
+        fork test, or(is-equal(line, <end>), starts-with(line, <#print>))
+          hold
+            save current, make none
+    out/push(current)
+  back out
+
+# one `'TermExport.<name>' does not depend on any axioms` or `... depends on axioms: [<list>]` at `at`
+task axioms-at
+  take cs, like list, like text
+  take at, like number
+  like maybe, like axioms-answer
+
+  fork test, not(holds-at(cs, at, <'TermExport.>))
+    hold
+      back make none
+  save from, add(at, 12)
+  save quote, from
+  walk test
+    hook test, and(is-below(quote, cs/length), is-unequal(cs/get(quote), <'>))
+    hook hold
+      save quote, add(quote, 1)
+  fork test, or(is-equal(quote, from), is-equal(quote, cs/length))
+    hold
+      back make none
+  save name, join(cs/slice(add(at, 1), quote), <>)
+  save none-said, <' does not depend on any axioms>
+  fork test, holds-at(cs, quote, none-said)
+    hold
+      back make(some, make(axioms-answer, bind(name, name), bind(listed, <>), bind(end, add(quote, none-said/length))))
+  save some-said, <' depends on axioms: [>
+  fork test, not(holds-at(cs, quote, some-said))
+    hold
+      back make none
+  save open, add(quote, some-said/length)
+  save close, open
+  walk test
+    hook test, and(is-below(close, cs/length), is-unequal(cs/get(close), <]>))
+    hook hold
+      save close, add(close, 1)
+  fork test, is-equal(close, cs/length)
+    hold
+      back make none
+  back make(some, make(axioms-answer, bind(name, name), bind(listed, join(cs/slice(open, close), <>)), bind(end, add(close, 1))))
+
+# every `#print axioms` answer in `stdout`: the claim, and the axioms it rests on (a later answer for a name wins)
+task axioms-said
+  take stdout, like text
+  like hash
+    like text
+    like list
+      like text
+
+  save said, make hash
+  save breaks, line-breaks()
+  save cs, split(stdout, <>)
+  save at, 0
+  walk test
+    hook test, is-below(at, cs/length)
+    hook hold
+      save starts, is-equal(at, 0)
+      fork test, is-above(at, 0)
+        hold
+          save starts, is-one-of(cs/get(subtract(at, 1)), breaks)
+      save moved, false
+      fork test, starts
+        hold
+          sift axioms-at(cs, at)
+            case some
+              link found
+              save axioms, make list
+              walk split(found/listed, <,>)
+                take piece
+                save named, term-name(trim(piece))
+                fork test, is-unequal(named, <>)
+                  hold
+                    axioms/push(named)
+              said/set(term-name(found/name), axioms)
+              save at, found/end
+              save moved, true
+            case none
+              save moved, false
+      fork test, not(moved)
+        hold
+          save at, add(at, 1)
+  back said
+
+# what a run printed, read: its errors, its warnings and a verdict for each of `claims`. `failed` is why Lean did not
+# run, the empty text when it did
+task read-run
+  take status, like maybe, like number
+  take stdout, like text
+  take stderr, like text
+  take failed, like text
+  take source, like text
+  take claims, like list, like text
+  like lean-run
+
+  save output, <{stdout}{stderr}>
+  save by-line, definitions-by-line(source)
+  save errors, make list
+  save warnings, 0
+  walk lines-of(output)
+    take line
+    sift line-place-of(line, <error>)
+      case some
+        link place
+        save definition, make none
+        fork test, and(is-above(place/line, 0), is-maximum(place/line, by-line/length))
+          hold
+            save definition, by-line/get(subtract(place/line, 1))
+        errors/push(make(lean-error, bind(line, place/line), bind(column, place/column), bind(text, <{place/line}:{place/column}: error: {place/rest}>), bind(definition, definition)))
+      case none
+        save nothing, 0
+    sift line-place-of(line, <warning>)
+      case some
+        link place
+        save warnings, add(warnings, 1)
+      case none
+        save nothing, 0
+
+  save said, axioms-said(stdout)
+
+  save elsewhere, <Lean printed no axioms line for it>
+  fork test, is-unequal(failed, <>)
+    hold
+      save elsewhere, <Lean did not run: {failed}>
+  fork test, is-above(errors/length, 0)
+    hold
+      save first, errors/get(0)
+      save where, <a definition>
+      sift first/definition
+        case some
+          link value
+          save where, value
+        case none
+          save where, <a definition>
+      save elsewhere, <it rests on {where}, which Lean refused: {first/text}>
+
+  save verdicts, make list
+  walk claims
+    take name
+    save own, <>
+    walk errors
+      take e
+      sift e/definition
+        case some
+          link value
+          fork test, and(is-equal(value, name), is-equal(own, <>))
+            hold
+              save own, e/text
+        case none
+          save nothing, 0
+    save reason, own
+    fork test, is-equal(reason, <>)
+      hold
+        save reason, elsewhere
+    fork test, not(said/has(name))
+      hold
+        verdicts/push(make(lean-claim, bind(name, name), bind(verdict, <refused>), bind(axioms, make list), bind(error, reason)))
+        turn next
+    save axioms, said/get(name)
+    save sorry, false
+    save kept, make list
+    walk axioms
+      take axiom
+      fork test, is-equal(axiom, <sorryAx>)
+        hold
+          save sorry, true
+        miss
+          kept/push(axiom)
+    fork test, sorry
+      hold
+        verdicts/push(make(lean-claim, bind(name, name), bind(verdict, <refused>), bind(axioms, kept), bind(error, reason)))
+        turn next
+    save verdict, <checked>
+    fork test, is-above(axioms/length, 0)
+      hold
+        save verdict, <axioms>
+    verdicts/push(make(lean-claim, bind(name, name), bind(verdict, verdict), bind(axioms, axioms), bind(error, <>)))
+
+  back make(lean-run, bind(status, status), bind(output, output), bind(errors, errors), bind(warnings, warnings), bind(claims, verdicts))
+
+# ---- running Lean ----
+
+# run Lean on `file`, the export `source` written there, for at most `limit` milliseconds, and read a verdict for each
+# of `claims`
+task run-lean
+  take lean, like text
+  take file, like text
+  take source, like text
+  take claims, like list, like text
+  take limit, like number
+  like lean-run
+
+  save arguments, make list
+  arguments/push(file)
+  save status, make none
+  save stdout, <>
+  save stderr, <>
+  save failed, <>
+  fork
+    mark unsafe
+    save done
+      run-process
+        lean
+        arguments
+        limit limit
+    save stdout, done/output
+    save stderr, done/error
+    fork test, is-equal(done/signal, 0)
+      hold
+        save status, make(some, done/code)
+  halt take
+    take problem
+    sift problem
+      case command-timeout
+        link output
+        link error
+        save stdout, output
+        save stderr, error
+        save failed, <lean did not finish within {limit} ms>
+      case command-absence
+        link reason
+        save failed, reason
+      case failure
+        link note
+        save failed, note
+  back read-run(status, stdout, stderr, failed, source, claims)
+
+# `4.35.0`, read off `lean --version`, or the empty text when it says nothing that looks like one, cannot start, or
+# does not answer within `limit` milliseconds
+task lean-version
+  take lean, like text
+  take limit, like number
+  like text
+
+  save arguments, make list
+  arguments/push(<--version>)
+  save said, <>
+  fork
+    mark unsafe
+    save done
+      run-process
+        lean
+        arguments
+        limit limit
+    save said, <{done/output}{done/error}>
+  halt take
+    take problem
+    save said, <>
+  back version-in(said)
+
+# `/version (\d+\.\d+\.\d+)/` on `said`: the first `version ` a version follows
+task version-in
+  take said, like text
+  like text
+
+  save cs, split(said, <>)
+  save at, 0
+  walk test
+    hook test, is-below(at, cs/length)
+    hook hold
+      fork test, holds-at(cs, at, <version >)
+        hold
+          save a, add(at, 8)
+          save b, digits-end(cs, a)
+          fork test, and(is-above(b, a), holds-at(cs, b, <.>))
+            hold
+              save c, digits-end(cs, add(b, 1))
+              fork test, and(is-above(c, add(b, 1)), holds-at(cs, c, <.>))
+                hold
+                  save d, digits-end(cs, add(c, 1))
+                  fork test, is-above(d, add(c, 1))
+                    hold
+                      back join(cs/slice(a, d), <>)
+      save at, add(at, 1)
+  back <>

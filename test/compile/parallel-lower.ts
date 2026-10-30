@@ -15,7 +15,10 @@ import { projectResolver } from '@term/call/code/make'
 import { stampPlaces } from '@term/make/code/compile/place-stamp'
 import { showType } from '@term/make/code/compile/type-text'
 
-type Maybe = { form: 'some'; value: unknown } | { form: 'none' } | undefined
+type Maybe =
+  | { form: 'some'; value: unknown }
+  | { form: 'none' }
+  | undefined
 type Fact = {
   place: number
   key: string
@@ -63,14 +66,23 @@ const line = (fact: Fact): string =>
     `raises [${fact.raises.join(', ')}]`,
   ].join(' | ')
 
-function factsOf(name: string, text: string): { facts: Fact[]; unchanged: boolean } {
-  const built = compile(
-    { file: join(dir, `${name}.tree`), text },
-    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' } as never,
-  ) as { ok: boolean; program: unknown[]; diagnostics?: { message: string }[] }
+function factsOf(
+  name: string,
+  text: string,
+): { facts: Fact[]; unchanged: boolean } {
+  const built = compile({ file: join(dir, `${name}.tree`), text }, {
+    resolve: projectResolver(process.cwd(), 'node'),
+    env: 'node',
+  } as never) as {
+    ok: boolean
+    program: unknown[]
+    diagnostics?: { message: string }[]
+  }
 
   if (!built.ok) {
-    throw new Error(`${name}: ${(built.diagnostics ?? []).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `${name}: ${(built.diagnostics ?? []).map(d => d.message).join(' | ')}`,
+    )
   }
 
   const stamped = stampPlaces(built.program as never) as unknown[]
@@ -181,10 +193,14 @@ for (const fixture of FIXTURES) {
   ok(
     `${fixture.name}: every walk has a place, and no two share one`,
     first.facts.every(fact => fact.place > 0) &&
-      new Set(first.facts.map(fact => fact.place)).size === first.facts.length,
+      new Set(first.facts.map(fact => fact.place)).size ===
+        first.facts.length,
     JSON.stringify(first.facts.map(fact => fact.place)),
   )
-  ok(`${fixture.name}: the pass writes nothing into the program`, first.unchanged)
+  ok(
+    `${fixture.name}: the pass writes nothing into the program`,
+    first.unchanged,
+  )
 
   const second = factsOf(`${fixture.name}-again`, fixture.text)
   ok(
@@ -203,7 +219,10 @@ task plain
   back xs/length
 `,
 )
-ok('a program with no parallel walk answers no fact', none.facts.length === 0)
+ok(
+  'a program with no parallel walk answers no fact',
+  none.facts.length === 0,
+)
 
 console.log(`\nparallel-lower: ${pass} pass, ${fail} fail`)
 

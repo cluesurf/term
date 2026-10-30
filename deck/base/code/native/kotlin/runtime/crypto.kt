@@ -7,6 +7,28 @@ object crypto {
     fun sha256(input: ByteArray): ByteArray = digestBytes("SHA-256", input)
     fun sha512(input: ByteArray): ByteArray = digestBytes("SHA-512", input)
     fun md5(input: ByteArray): ByteArray = digestBytes("MD5", input)
+    // SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits. A Kotlin String is UTF-16 and may hold a lone
+    // surrogate, which WHATWG UTF-8 encodes as U+FFFD (EF BF BD), as TextEncoder and node do: String.toByteArray would
+    // write `?`, so the encoder replaces malformed input with those three bytes. Held to the Term reference by
+    // test/compile/digest-text-native.ts
+    fun sha256Text(input: String): String {
+        val encoder = Charsets.UTF_8.newEncoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE)
+            .replaceWith(byteArrayOf(0xEF.toByte(), 0xBF.toByte(), 0xBD.toByte()))
+        val encoded = encoder.encode(java.nio.CharBuffer.wrap(input))
+        val bytes = ByteArray(encoded.remaining())
+        encoded.get(bytes)
+        val digest = digestBytes("SHA-256", bytes)
+        val hex = "0123456789abcdef"
+        val out = StringBuilder(64)
+        for (byte in digest) {
+            val value = byte.toInt() and 0xff
+            out.append(hex[value ushr 4])
+            out.append(hex[value and 15])
+        }
+        return out.toString()
+    }
     private fun mac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray {
         val instance = javax.crypto.Mac.getInstance(algorithm)
         instance.init(javax.crypto.spec.SecretKeySpec(key, algorithm))

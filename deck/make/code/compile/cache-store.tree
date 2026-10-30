@@ -35,7 +35,7 @@ load @term/base/text/unicode
   find byte-count
 
 load ../term/hash
-  find hash-text
+  find hash-key
 
 # THE HASH OF A MODULE'S TEXT, ONCE PER PROCESS, keyed by the text itself and bounded by the size of the texts it holds
 # (64 MiB). Every compile keys its graph and each module's entries by the hash of each text, and a dev loop compiles
@@ -173,7 +173,7 @@ task hash-fields
   walk fields
     take field
     save joined, <{joined}{utf16-units(field)}:{field}>
-  back hash-text(joined)
+  back hash-key(joined)
 
 task content-hash
   take memo, like text-hashes
@@ -186,7 +186,7 @@ task content-hash
       memo/known/remove(text)
       memo/known/set(text, known)
       back known
-  save made, hash-text(text)
+  save made, hash-key(text)
   memo/known/set(text, made)
   save memo/size, add(memo/size, text/length)
   walk test

@@ -1,0 +1,100 @@
+# SHA-256 of a text (decision 080 of note/project/term/self-host/change/001-finish-self-host): the FIPS 180-4 vectors
+# (the empty message, "abc", the 448-bit two-block message, one million "a"), plus a two-byte, a four-byte and a lone
+# surrogate text, each through the Term reference (native/shared/cryptography/sha256, the browser's path) AND the
+# env's own fast path (`digest-sha256-text`, node:crypto under `term test`). The native backends' fast paths are held
+# to the same vectors by test/compile/digest-text-native.ts.
+#
+# Run with: term test
+
+load @term/base/native/shared/cryptography/sha256
+  find calculate-sha256-text
+  find calculate-sha256
+
+load @term/base/cryptography/digest
+  find digest-sha256-text
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/text/unicode
+  find rune-to-text
+
+# the vector through both paths, and the two agree
+task both-say
+  take value, like text
+  take want, like text
+  like boolean
+  send back
+    call and
+      call is-equal
+        call calculate-sha256-text
+          read value
+        read want
+      call is-equal
+        call digest-sha256-text
+          read value
+        read want
+
+test sha256-empty
+  want hold
+    call both-say
+      text <>
+      text <e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
+
+test sha256-empty-bytes
+  want hold
+    call is-equal
+      call calculate-sha256
+        make list
+      text <e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
+
+test sha256-abc
+  want hold
+    call both-say
+      text <abc>
+      text <ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad>
+
+# 448 bits: the padding no longer fits the first block, so the length lands in a second
+test sha256-two-blocks
+  want hold
+    call both-say
+      text <abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq>
+      text <248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1>
+
+test sha256-one-million-a
+  want hold
+    call both-say
+      call repeat
+        text <a>
+        code 1000000
+      text <cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0>
+
+# U+00E9, two UTF-8 bytes
+test sha256-e-acute
+  want hold
+    call both-say
+      call rune-to-text
+        code 233
+      text <4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c>
+
+# U+1D11E, four UTF-8 bytes and a surrogate pair in UTF-16
+test sha256-g-clef
+  want hold
+    call both-say
+      call rune-to-text
+        code 119070
+      text <e419efd3d6046adf7662b0daadab65047e8014a523316d7ccc8710de694aa9b6>
+
+# "a", U+FFFD, "b": what a lone surrogate between them must encode as
+test sha256-replacement
+  want hold
+    call both-say
+      text <a{rune-to-text(65533)}b>
+      text <05087813392efc16fe8ff448920c6328e53af865df39419436659d9ffda90f7b>
+
+# "a", a lone high surrogate, "b": encoded as U+FFFD, so the same digest as above
+test sha256-lone-surrogate
+  want hold
+    call both-say
+      text <a{rune-to-text(55296)}b>
+      text <05087813392efc16fe8ff448920c6328e53af865df39419436659d9ffda90f7b>

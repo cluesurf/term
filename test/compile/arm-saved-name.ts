@@ -127,8 +127,15 @@ for (const backend of BACKENDS.filter(one => !only || one === only)) {
   for (const [readLabel, read] of Object.entries(READS)) {
     for (const [branch, program] of Object.entries(ARMS_ONLY(read))) {
       const result = compile(
-        { file: join(dir, `${branch}-${readLabel}.tree`), text: program },
-        { resolve: projectResolver(here, env), env, leanOf: () => true },
+        {
+          file: join(dir, `${branch}-${readLabel}.tree`),
+          text: program,
+        },
+        {
+          resolve: projectResolver(here, env),
+          env,
+          leanOf: () => true,
+        },
       )
       ok(
         `${backend}: a name saved only in the arms of a ${branch}, read by ${read}, is refused by name`,
@@ -140,7 +147,9 @@ for (const backend of BACKENDS.filter(one => !only || one === only)) {
           ),
         result.ok
           ? 'compiled'
-          : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+          : result.diagnostics
+              .map(d => `${d.name}: ${d.message}`)
+              .join(' | '),
       )
     }
   }

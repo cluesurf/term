@@ -163,7 +163,9 @@ bind was-exported
   case node
     text <<$exported.exported.some(entry_ => entry_.claim && entry_.name === $name)>>
 
+# the runner's two calls answer promises since Lean runs through @term/base/process/run under a limit (decision 075)
 bind run-lean
+  mark async
   take running, like dynamic
   take lean, like text
   take file, like text
@@ -174,6 +176,7 @@ bind run-lean
     text <$running.runLean(\{ lean: $lean, file: $file, source: $source, claims: $claims \})>
 
 bind lean-version
+  mark async
   take running, like dynamic
   take lean, like text
   like dynamic

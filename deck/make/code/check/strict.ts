@@ -70,5 +70,10 @@ export function checkerSwitchKey(
   awaitOutside: boolean,
   seam: boolean,
 ): string {
-  return switchKey({ ...checkerSwitches, awaitOutside, seam })
+  // THE PROOF BUDGET decides what the checker refuses (check/hold-walk.tree `proof-budget`, a goal past it is refused)
+  // and is read per goal from TERM_PROOF_BUDGET, so a set budget is part of the key. Unset, the budget is the compiler's
+  // own constant and the key is as it was. Found by the ledger (decision 077 section 5.1, item term-self-host-001-0407)
+  const budget = globalThis.process?.env?.TERM_PROOF_BUDGET
+
+  return `${switchKey({ ...checkerSwitches, awaitOutside, seam })}${budget === undefined ? '' : `\u0000proof-budget=${budget}`}`
 }

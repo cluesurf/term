@@ -1,12 +1,29 @@
-note <the compiler's cache key: cyrb53 over code points, spelled in base 36>
+note <the compiler's two hashes: the store key, SHA-256 cut to 32 hex digits, and cyrb53 over code points in base 36>
 
-# term/hash.tree is the cache key every cached mill and compile is addressed by, so these hold its exact output. The
-# values are cyrb53's (tmp/pair-hash.ts holds the port to cyrb53 written from its definition over 220,037 values), and
-# the native backends must give the same (test/compile/hash-native.ts, Rust).
+# term/hash.tree's `hash-key` is the key every stored mill and compile is addressed by (decision 080), and `hash-text`
+# names emitted code, so these hold both exact outputs. hash-text's values are cyrb53's (tmp/pair-hash.ts holds the port
+# to cyrb53 written from its definition over 220,037 values), and the native backends must give the same
+# (test/compile/hash-native.ts, Rust). hash-key's are the first 32 digits of the FIPS 180-4 SHA-256 of the UTF-8.
 
 load ../code/term/hash
+  find hash-key
   find hash-text
   find to-base-36
+
+test <the store key of the empty text>
+  want hold, is-equal(hash-key(<>), <e3b0c44298fc1c149afbf4c8996fb924>)
+
+test <the store key of abc>
+  want hold, is-equal(hash-key(<abc>), <ba7816bf8f01cfea414140de5dae2223>)
+
+test <the store key of a line of Term>
+  want hold, is-equal(hash-key(<task one>), <d73f343f0b0b2dd5ac50241975202a9e>)
+
+test <the store key of an accented letter, two UTF-8 bytes>
+  want hold, is-equal(hash-key(<é>), <4a99557e4033c3539de2eb65472017ca>)
+
+test <the store key of characters outside the Basic Multilingual Plane>
+  want hold, is-equal(hash-key(<𝔸😀>), <a88a9a70ee26f16246fd690fdfb8f194>)
 
 test <the empty text>
   want hold, is-equal(hash-text(<>), <wvjl67o803>)

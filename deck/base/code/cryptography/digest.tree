@@ -6,6 +6,7 @@ load @term/base/native/{platform}/cryptography/digest
   find digest-sha256
   find digest-sha512
   find digest-md5
+  find digest-sha256-text, name native-sha256-text
 
 form digest-algorithm
   case sha-256
@@ -54,6 +55,18 @@ task sha512
     call digest-sha512
       read input
       wait true
+
+# SHA-256 of a text's UTF-8 bytes (WHATWG: a lone surrogate encodes as U+FFFD), as 64 lowercase hex digits, and
+# SYNCHRONOUS on every backend (decision 080 of note/project/term/self-host/change/001-finish-self-host). Its definition
+# is the Term SHA-256 in native/shared/cryptography/sha256, which the browser runs. Node, Rust, Swift and Kotlin answer
+# from their native digest, held byte-equal to it by the FIPS 180-4 vectors and the deck/base corpus
+# (deck/base/test/sha256.tree, test/compile/digest-text-native.ts)
+task digest-sha256-text
+  take input, like text
+  like text
+  send back
+    call native-sha256-text
+      read input
 
 task md5
   mark async

@@ -4,7 +4,9 @@
 #
 # Ported from the pure half of deck/test/code/obligation-cache.ts (self-hosting, 2026-10-05): the key, and the cache
 # held in memory. The disk store (one JSON file, written atomically through a temporary file named for the process)
-# stays there. The hash is the compiler's own, @term/make's term/hash.tree.
+# stays there. The hash is the compiler's store key, @term/make's term/hash.tree `hash-key` (SHA-256 cut to 32 hex
+# digits, decision 080 of note/project/term/self-host/change/001-finish-self-host): a key a cyrb53 key can never equal,
+# so a verdict stored under the old keys is never read again.
 
 load @term/base/list
   find list
@@ -25,7 +27,7 @@ load @term/base/bit
   find unsigned-shift-right
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 # the recorded outcome of a verification: whether it held, and what was checked
 form verdict
@@ -90,13 +92,13 @@ task obligation-key
   like text
 
   host parts, make list
-  parts/push(hash-text(source))
-  parts/push(hash-text(version))
+  parts/push(hash-key(source))
+  parts/push(hash-key(version))
   walk sort(deps, by-text)
     take dep
-    parts/push(hash-text(dep))
+    parts/push(hash-key(dep))
 
-  back hash-text(join(parts, <:>))
+  back hash-key(join(parts, <:>))
 
 # a cache held in memory: verdicts by key
 task memory-cache

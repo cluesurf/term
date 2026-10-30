@@ -1,0 +1,162 @@
+# CPU profiling. Runs the compiled program once in a child node under V8's `--cpu-prof`, reads the `.cpuprofile` it
+# wrote, and hands it to time/profile.tree, which attributes each sample's time to its call frame and ranks the
+# hottest. This profiles the compiled program's own hotspots, never the compiler.
+#
+# Ported from time/cpu.ts (item term-self-host-change-001-finish-self-host-0011, decision 029), which stays as the
+# face. The decisions:
+#   - the harness is JavaScript TEXT for the child, written line by line exactly as the original's template wrote it:
+#     `performance.now()` and V8's profiler live in that text and never in Term
+#   - the child is `node` from PATH through @term/base/process/run, where the original spawned `process.execPath`
+#     (decision 029, Diverges). A child that fails raises a `failure` whose note is the original's message
+#   - a compile that fails is an answer (`cpu-run`, `ok` false with the diagnostics); the face throws the original's
+#     `CompileFailure` from it. The arguments are positional, the face filling a left-out `top` (15) and `spend` (500)
+#   - the original's `try / finally` is a guarded block: the folder is removed either way, and a failure is raised
+#     again with the same message
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/json
+  find parse
+  find stringify
+  find make-array
+  find push-item
+  find from-text
+
+load @term/base/text
+  find trim
+
+load @term/base/process/run
+  find run, name run-process
+
+load ./execute-steps
+  find prepare-module-dir
+  find cleanup-dir
+
+load ./runner-harness
+  find benchmark
+  find compile-benchmarks
+  find thrown-message
+
+load ./profile
+  find summarize
+  find cpu-result
+
+# what profiling a file answered: the profile, or the compiler's diagnostics
+form cpu-run
+  link ok, like boolean
+  link diagnostics, like list, like dynamic
+  link result, like maybe, like cpu-result
+
+# the program's `time-*` tasks, the ones `term time` times, each called over and over for `ms` milliseconds, so the
+# profile is of the work and not of node loading a module
+task build-cpu-harness
+  take benchmarks, like list, like benchmark
+  take ms, like number
+  like text
+
+  save entries, make-array()
+  walk benchmarks
+    take one
+    push-item(entries, from-text(one/entry))
+  save lines, make list
+  lines/push(<import * as M from './module.mjs'>)
+  lines/push(<const entries = {stringify(entries)}>)
+  lines/push(<for (const entry of entries) \{>)
+  lines/push(<  const fn = M[entry]>)
+  lines/push(<  if (typeof fn !== 'function') continue>)
+  lines/push(<  const until = performance.now() + {ms}>)
+  lines/push(<  // the clock is read once a thousand calls, and only a promise is awaited, so the loop's own cost stays out of the>)
+  lines/push(<  // profile>)
+  lines/push(<  while (performance.now() \< until) \{>)
+  lines/push(<    for (let i = 0; i \< 1000; i++) \{>)
+  lines/push(<      const out = fn()>)
+  lines/push(<      if (out instanceof Promise) await out>)
+  lines/push(<    \}>)
+  lines/push(<  \}>)
+  lines/push(<\}>)
+  lines/push(<>)
+  back join(lines, <\n>)
+
+# the child under the profiler, in the folder, and the profile it wrote, summarized
+task profile-in
+  take dir, like text
+  take script, like text
+  take name, like text
+  take top, like number
+  like cpu-result
+
+  write-file(join-path(dir, <harness.mjs>), script)
+  save arguments, make list
+  arguments/push(<--cpu-prof>)
+  arguments/push(<--cpu-prof-dir>)
+  arguments/push(dir)
+  arguments/push(<--cpu-prof-name>)
+  arguments/push(<run.cpuprofile>)
+  arguments/push(<harness.mjs>)
+  save done, run-process(<node>, arguments, dir)
+  fork test, is-unequal(done/code, 0)
+    hold
+      save said, trim(done/error)
+      fork test, is-equal(said, <>)
+        hold
+          halt <node exited with code {done/code}>
+      halt <{said}>
+  save raw, read-file(join-path(dir, <run.cpuprofile>))
+  back summarize(parse(raw), name, top)
+
+task run-cpu-profile
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take root, like text
+  take name, like text
+  take top, like number
+  take spend, like number
+  like cpu-run
+
+  save built, compile-benchmarks(text, file, resolve, <>)
+  fork test, not(built/ok)
+    hold
+      back
+        make cpu-run
+          bind ok, false
+          bind diagnostics, built/diagnostics
+          bind result, make none
+  fork test, is-equal(built/benchmarks/length, 0)
+    hold
+      halt <There is no `time-*` task to profile: the profile runs each one, as `term time` times them>
+
+  save dir, prepare-module-dir(root, built/code, <cpu>)
+  save failed, false
+  save said, <>
+  save result, make none
+  fork
+    mark unsafe
+    save profiled, profile-in(dir, build-cpu-harness(built/benchmarks, spend), name, top)
+    save result, make(some, profiled)
+  halt take
+    take problem
+    save failed, true
+    save said, thrown-message(problem)
+  # the folder is scratch, as the timing run's is
+  cleanup-dir(dir)
+  fork test, failed
+    hold
+      halt <{said}>
+  back
+    make cpu-run
+      bind ok, true
+      bind diagnostics, make list
+      bind result, result

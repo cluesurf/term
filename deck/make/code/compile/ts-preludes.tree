@@ -962,6 +962,72 @@ task form-walk-prelude
   push(lines, <\}>)
   back join(lines, <\n>)
 
+# THE EXCEPTION CODEC (decision 078 section 4 of term/self-host/change/001): a raise as one tree/code shape, written to
+# the same bytes as the Rust prelude's `term_melt_raise`. The envelope by name (host, form, note, code, time), `link` by
+# the declaring form's own props spec when the raise holds its props record (a `halt <text>` holds none), `base` (the
+# cause) by the codec again, `site` when it is a text, and `flow`, the Term frames. Fill dispatches on the form text over
+# `specs`, the props spec of each form check/parallel.tree `raise-crossing` answers, and answers the raise as a `halt` of
+# that form builds it. It rides with the form walk, which it fills and melts the props through
+task raise-codec-prelude
+  take specs, like text
+  like text
+
+  save lines, make list
+  push(lines, <const __termRaiseSpecs: Record\<string, any\> = {specs}>)
+  push(lines, <const __termRaiseNames = ["host", "form", "note", "code", "time", "link", "base", "site", "flow"]>)
+  push(lines, <function __termRaiseText(value: unknown): any \{>)
+  push(lines, <  return \{ form: "text", value: String(value ?? "") \}>)
+  push(lines, <\}>)
+  push(lines, <export function __termMeltRaise(raised: any): any \{>)
+  push(lines, <  const list: any[] = []>)
+  push(lines, <  list.push(\{ name: "host", base: __termRaiseText(raised.host) \})>)
+  push(lines, <  list.push(\{ name: "form", base: __termRaiseText(raised.form) \})>)
+  push(lines, <  list.push(\{ name: "note", base: __termRaiseText(raised.note) \})>)
+  push(lines, <  list.push(\{ name: "code", base: __termRaiseText(raised.code) \})>)
+  push(lines, <  list.push(\{ name: "time", base: \{ form: "number", value: Number(raised.time ?? 0) \} \})>)
+  push(lines, <  const spec = __termRaiseSpecs[raised.form]>)
+  push(lines, <  const link = raised.link>)
+  push(lines, <  if (spec !== undefined && link !== null && typeof link === "object" && spec.fields.every((f: any) =\> f.optional || link[f.member] !== undefined)) list.push(\{ name: "link", base: __termMelt(link, spec) \})>)
+  push(lines, <  const cause = raised.base>)
+  push(lines, <  if (cause !== null && typeof cause === "object" && cause.form === "some") list.push(\{ name: "base", base: __termMeltRaise(cause.value) \})>)
+  push(lines, <  const site = raised.site>)
+  push(lines, <  if (site !== null && typeof site === "object" && site.form === "some" && typeof site.value === "string") list.push(\{ name: "site", base: __termRaiseText(site.value) \})>)
+  push(lines, <  list.push(\{ name: "flow", base: \{ form: "array", list: (Array.isArray(raised.flow) ? raised.flow : []).map(__termRaiseText) \} \})>)
+  push(lines, <  return \{ form: "hash", list \}>)
+  push(lines, <\}>)
+  push(lines, <export function __termFillRaise(value: any, path = ""): any \{>)
+  push(lines, <  const at = (key: string) =\> (path ? path + "/" + key : key)>)
+  push(lines, <  if (value?.form !== "hash") __termMismatch(path, "is " + (value?.form === "array" ? "a list" : value?.form === "blank" ? "void" : "a scalar") + " where a map belongs")>)
+  push(lines, <  for (const entry of value.list) if (!__termRaiseNames.includes(entry.name)) __termMismatch(at(entry.name), "is not in the form")>)
+  push(lines, <  const present = new Map\<string, any\>(value.list.map((e: any) =\> [e.name, e.base]))>)
+  push(lines, <  const need = (name: string, kind: any): any =\> \{>)
+  push(lines, <    const found = present.get(name)>)
+  push(lines, <    if (found === undefined || found.form === "blank") __termMismatch(at(name), "is missing")>)
+  push(lines, <    return __termFillKind(found, kind, at(name))>)
+  push(lines, <  \}>)
+  push(lines, <  const host = need("host", \{ kind: "text" \})>)
+  push(lines, <  const form = need("form", \{ kind: "text" \})>)
+  push(lines, <  const note = need("note", \{ kind: "text" \})>)
+  push(lines, <  const code = need("code", \{ kind: "text" \})>)
+  push(lines, <  const time = need("time", \{ kind: "number" \})>)
+  push(lines, <  const linked = present.get("link")>)
+  push(lines, <  let link: any = \{\}>)
+  push(lines, <  if (linked !== undefined) \{>)
+  push(lines, <    const spec = __termRaiseSpecs[form]>)
+  push(lines, <    if (spec === undefined) __termMismatch(at("link"), "is not in the form")>)
+  push(lines, <    link = __termFill(linked, spec, at("link"))>)
+  push(lines, <  \}>)
+  push(lines, <  const cause = present.get("base")>)
+  push(lines, <  if (cause !== undefined && linked === undefined) __termMismatch(at("base"), "is a cause where no props record is")>)
+  push(lines, <  const base = cause === undefined ? undefined : \{ form: "some", value: __termFillRaise(cause, at("base")) \}>)
+  push(lines, <  const sited = present.get("site")>)
+  push(lines, <  const site = sited === undefined ? undefined : \{ form: "some", value: __termFillKind(sited, \{ kind: "text" \}, at("site")) \}>)
+  push(lines, <  const flowed = present.get("flow")>)
+  push(lines, <  const flow = flowed === undefined ? [] : __termFillKind(flowed, \{ kind: "list", item: \{ kind: "text" \} \}, at("flow"))>)
+  push(lines, <  return new TermException(\{ host, form, note, code, time, link, base, site, flow \} as never)>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
 # the walk a module that lowers an `inspect` carries: it dispatches on the kind the call site wrote (backend-shapes.tree
 # `inspect-kind`) and writes structure only. Every scalar's text is debug.tree's own task (`show-text` ...), so the bytes
 # are those of every backend (term/base-v1 decision 001). A record or a union is kept by its key while it is walked, so

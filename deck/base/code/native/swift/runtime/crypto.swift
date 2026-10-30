@@ -5,6 +5,18 @@ enum crypto {
     static func sha256(_ input: Data) -> Data { return Data(SHA256.hash(data: input)) }
     static func sha512(_ input: Data) -> Data { return Data(SHA512.hash(data: input)) }
     static func md5(_ input: Data) -> Data { return Data(Insecure.MD5.hash(data: input)) }
+    // SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits (a Swift String holds no lone surrogate). Held to the
+    // Term reference by test/compile/digest-text-native.ts
+    static func sha256Text(_ input: String) -> String {
+        let hex: [Character] = Array("0123456789abcdef")
+        var out = ""
+        out.reserveCapacity(64)
+        for byte in SHA256.hash(data: Data(input.utf8)) {
+            out.append(hex[Int(byte >> 4)])
+            out.append(hex[Int(byte & 15)])
+        }
+        return out
+    }
     static func hmacSha256(_ key: Data, _ data: Data) -> Data {
         let mac = HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: key))
         return Data(mac)

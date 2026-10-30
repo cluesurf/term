@@ -1,5 +1,3 @@
-mark draft
-
 # Compiled execution: we never interpret. A `.tree` file is compiled to TypeScript, its types stripped to an ES module
 # (esbuild's transform), written to a folder under the project, and run by `node` in a child process. `term time` and
 # its profiles build on this. No `eval`, no interpreter.

@@ -68,7 +68,7 @@ load ../compile/node-children
   find block-handles
 
 load ../term/hash
-  find hash-text
+  find hash-key
 
 load ./certificate
   find linear
@@ -3060,7 +3060,7 @@ task definition-found
       push(names, n)
   save found
     make key-found
-      bind text, hash-text(json-list(parts))
+      bind text, hash-key(json-list(parts))
       bind names, names
   save defs/written/{name}, found
   back found
@@ -3176,7 +3176,7 @@ task hold-key
       save nothing, 0
   push(parts, boolean-json(has-tally))
   push(parts, json-number(proof-budget()))
-  back hash-text(json-list(parts))
+  back hash-key(json-list(parts))
 
 task two-texts
   take a, like text

@@ -73,6 +73,16 @@ const KEY = process.env.TERM_DISTRO_KEY || '82273CF783C46701'
 
 const IMAGES = { debian: 'term-distro-debian', fedora: 'term-distro-fedora' } as const
 
+// how long `docker info` may take to answer before Docker counts as down: a running daemon answers in well under a
+// second, and one whose VM is stopped never does
+const DOCKER_INFO_TIMEOUT = 20_000
+
+// the bound on one `docker build` or `docker run` (an image's first build downloads its base and packages)
+const DOCKER_TIMEOUT = 30 * 60_000
+
+// the bound on any other child (zip, gpg, which may wait on a passphrase typed at the terminal)
+const RUN_TIMEOUT = 10 * 60_000
+
 // the Linux packages of one version, by file name. A version's release must hold all four to be listed
 const LINUX_PACKAGES = (version: string) => [
   { kind: 'apt', name: `term_${version}_amd64.deb` },
@@ -110,13 +120,17 @@ async function main(): Promise<void> {
     return
   }
 
+  // Docker first, with a bound: a Docker Desktop whose Linux VM is down accepts on its socket and never answers, and
+  // `docker build` then waits forever (item term-self-host-001-0444)
+  dockerAnswers()
+
   rmSync(out, { recursive: true, force: true })
   mkdirSync(path.join(out, 'packages'), { recursive: true })
 
   const imaged = Date.now()
 
   for (const [name, image] of Object.entries(IMAGES)) {
-    run('docker', ['build', '--quiet', '-t', image, '-f', path.join(TERM, 'task', 'distro', `${name}.dockerfile`), path.join(TERM, 'task', 'distro')])
+    run('docker', ['build', '--quiet', '-t', image, '-f', path.join(TERM, 'task', 'distro', `${name}.dockerfile`), path.join(TERM, 'task', 'distro')], { timeout: DOCKER_TIMEOUT })
   }
 
   output.report({ glyph: 'done', verb: 'image', subject: Object.values(IMAGES).join(', '), duration: Date.now() - imaged })
@@ -400,7 +414,39 @@ function container(input: { image: string; mounts: Record<string, string>; env: 
     ...Object.entries(input.env).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
     input.image,
     ...input.args,
-  ])
+  ], { timeout: DOCKER_TIMEOUT })
+}
+
+// Whether Docker answers at all, asked with a bound before anything is built: `docker info` reaches the daemon, so a
+// socket that accepts and never answers fails here in DOCKER_INFO_TIMEOUT rather than hanging the first build
+function dockerAnswers(): void {
+  try {
+    execFileSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: DOCKER_INFO_TIMEOUT,
+      killSignal: 'SIGKILL',
+    })
+  } catch (error) {
+    const failed = error as { code?: string; signal?: string; status?: number; stderr?: string }
+    const silent = failed.code === 'ETIMEDOUT' || failed.signal === 'SIGKILL'
+    const missing = failed.code === 'ENOENT'
+
+    output.report({
+      glyph: 'failed',
+      kind: 'problem',
+      verb: 'docker',
+      subject: missing
+        ? 'docker is not installed or not on PATH'
+        : silent
+          ? `the Docker daemon does not answer (\`docker info\`, ${DOCKER_INFO_TIMEOUT / 1000} s): start Docker Desktop`
+          : 'the Docker daemon refused `docker info`: start Docker Desktop',
+      exit: failed.status ?? undefined,
+      quote: `${failed.stderr ?? ''}`.split('\n').filter(line => line.trim() !== ''),
+    })
+    output.closeRun({ verdict: 'Stopped before building anything', failure: 'environment', next: 'start Docker (Docker Desktop, or its daemon), then pnpm term:distro' })
+    process.exit(1)
+  }
 }
 
 // gpg asks for the key's passphrase through pinentry, which draws on the terminal GPG_TTY names. This run captures
@@ -425,8 +471,12 @@ function gpg(args: string[]): void {
   run('gpg', [...(process.env.GPG_TTY ? [] : ['--batch']), '--yes', '--local-user', KEY, ...args])
 }
 
-// A child's output is captured and shown only when it fails, under the item that ran it
-function run(command: string, args: string[], options: { cwd?: string; input?: string } = {}): string {
+// A child's output is captured and shown only when it fails, under the item that ran it. Every child is bounded
+// (`timeout`, RUN_TIMEOUT unless the caller names another): one that does not finish is killed and named as such, so
+// a tool waiting on something that never answers stops the run instead of hanging it
+function run(command: string, args: string[], options: { cwd?: string; input?: string; timeout?: number } = {}): string {
+  const timeout = options.timeout ?? RUN_TIMEOUT
+
   try {
     return execFileSync(command, args, {
       cwd: options.cwd,
@@ -434,15 +484,18 @@ function run(command: string, args: string[], options: { cwd?: string; input?: s
       input: options.input,
       stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
+      timeout,
+      killSignal: 'SIGKILL',
     })
   } catch (error) {
-    const failed = error as { stdout?: string; stderr?: string; status?: number }
+    const failed = error as { stdout?: string; stderr?: string; status?: number; code?: string; signal?: string }
+    const timedOut = failed.code === 'ETIMEDOUT' || failed.signal === 'SIGKILL'
 
     output.report({
       glyph: 'failed',
       kind: 'problem',
       verb: 'run',
-      subject: `${command} ${args.slice(0, 3).join(' ')}`,
+      subject: `${command} ${args.slice(0, 3).join(' ')}${timedOut ? `: no answer within ${timeout / 1000} s, killed` : ''}`,
       exit: failed.status ?? undefined,
       quote: `${failed.stdout ?? ''}${failed.stderr ?? ''}`.split('\n').filter(line => line.trim() !== ''),
     })

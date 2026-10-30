@@ -19,7 +19,7 @@ load @term/base/maybe
   find maybe
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 load @term/call/work/small/home-folder
   find project-home
@@ -511,7 +511,7 @@ task hash-or-empty
   fork test, is-equal(parts/length, 0)
     hold
       back <>
-  back hash-text(join(parts, <\n>))
+  back hash-key(join(parts, <\n>))
 
 task walk-sources
   take at, like text
@@ -572,7 +572,7 @@ task hash-running-file
         hold
           fork test, node-file/exists-sync(as-text(file))
             hold
-              back hash-text(node-file/read-file-sync(as-text(file), <utf8>))
+              back hash-key(node-file/read-file-sync(as-text(file), <utf8>))
     halt take
       # try the next candidate
       take problem

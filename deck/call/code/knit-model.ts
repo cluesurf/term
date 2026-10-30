@@ -149,8 +149,8 @@ export async function claudeSpeaker(input: {
           retryBroken: false,
         })
       } catch (error) {
-        const broken = ((error as { brokenUsage?: Usage[] } | null)
-          ?.brokenUsage ?? [])
+        const broken =
+          (error as { brokenUsage?: Usage[] } | null)?.brokenUsage ?? []
 
         throw new KnitRequest(
           error instanceof Error ? error.message : String(error),

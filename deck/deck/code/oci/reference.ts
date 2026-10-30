@@ -26,17 +26,14 @@ export const tagOfVersion = (version: string): string =>
   port.tagOfVersion(version)
 export const versionOfTag = (tag: string): string | undefined =>
   port.versionOfTag(tag) as string | undefined
-export const assertTag = (tag: string): void =>
-  port.assertTag(tag)
+export const assertTag = (tag: string): void => port.assertTag(tag)
 export const assertDigest = (digest: string): void =>
   port.assertDigest(digest)
-export const isDigest = (value: string): boolean =>
-  port.isDigest(value)
+export const isDigest = (value: string): boolean => port.isDigest(value)
 export const pinnedReference = (input: {
   repository: OciRepository
   digest: string
-}): string =>
-  port.pinnedReference(input.repository, input.digest)
+}): string => port.pinnedReference(input.repository, input.digest)
 export const parsePinnedReference = (
   value: string,
 ): { repository: OciRepository; digest: string } =>

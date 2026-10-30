@@ -118,7 +118,7 @@ export function checkLostWrites(
     const values = new Map<string, string>()
 
     task.params.forEach((param, i) => {
-      const type = (task.declared?.params[i]?.type ?? param.type)
+      const type = task.declared?.params[i]?.type ?? param.type
 
       if (
         type?.kind === 'named' &&
@@ -748,9 +748,7 @@ export function warnLostCollectionWrites(
         .filter(
           (param, i) =>
             positions.has(i) &&
-            isCollection(
-              (task.declared?.params[i]?.type ?? param.type),
-            ),
+            isCollection(task.declared?.params[i]?.type ?? param.type),
         )
         .map(param => param.name),
     )

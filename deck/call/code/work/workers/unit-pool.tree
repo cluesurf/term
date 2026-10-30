@@ -17,6 +17,11 @@
 # Under `pool-floor` misses the answer holds no worker and the build on this thread builds the misses itself; at or above
 # it the pool starts with no more workers than misses, and a job that was read back is released without one.
 #
+# FROM A SNAPSHOT ONLY WHAT MOVED IS ASKED (decision 079 section 3, item 0428). When the session took the last build's
+# graph (build-graph.tree `load-snapshot`), the options name the entries the build will replay, which are neither walked
+# nor probed, and the modules whose closure holds a moved file. A library job outside them is taken as stored. A no-op
+# then walks and probes nothing.
+#
 # Docked: compile/load.ts (collectModules), compile/separate.ts (units), compile/resolve.ts (stdlibBase) and node's
 # worker_threads. The compiler versions, the cache, the role reader and a file's reading are the build and cache lanes'
 # ports (term-cli-in-term-0214).
@@ -32,6 +37,7 @@ load ./file-pool
 load ./source-faces
   find face-buildable
   find face-is-whole-file
+  find face-is-whole-file-parsed
 
 load ../build/role-reading
   find make-role-reader
@@ -413,6 +419,7 @@ task compile-units-parallel
   save role-of, face-role-reader(make-role-reader(root))
   # every program entry's closure, walked once through the session, so the main build after this walks nothing new
   save entries, make hash
+  save faced, make hash
   save modules, make list
   save module-seen, make hash
   save scanned
@@ -423,14 +430,22 @@ task compile-units-parallel
       back cache/scanned(source/file, source/text, compute)
   walk files
     take file
-    save unit, face-buildable(file, node-file/read-file-sync(file, <utf8>), units-apply(role-of, file))
+    # an entry the build replays from a snapshot is neither walked nor probed (build-command.tree `snapshot-probing`)
+    fork test, units-replays(options, file)
+      hold
+        turn next
+    save source-text, node-file/read-file-sync(file, <utf8>)
+    save role, units-apply(role-of, file)
+    save unit, face-buildable(file, source-text, role)
     fork test, units-has-faults(unit)
       hold
         turn next
-    fork test, face-is-whole-file(file, unit/text, units-apply(role-of, file))
+    # parsed through the session's memo, where the probe's compile of this entry finds the parse
+    fork test, face-is-whole-file-parsed(file, unit/text, role, session/parsed)
       hold
         turn next
     save entries/{file}, true
+    save faced/{file}, make(faced-entry, bind(text, source-text), bind(role, role), bind(unit-text, unit/text))
     save walked, load-module/collectModules(make(scan-source, bind(file, file), bind(text, unit/text)), session/resolve, session/parsed, scanned, session/walked)
     walk walked/sources
       take source
@@ -493,7 +508,7 @@ task compile-units-parallel
   save found-built, 0
   fork test, units-probe-asked(options)
     hold
-      save probed, probe-units(root, session, entries, graph)
+      save probed, probe-units(root, session, entries, faced, graph, options)
       save missed, probed/missed
       save found, probed/results
       save found-built, probed/built
@@ -567,6 +582,22 @@ bind units-probe-asked
   like boolean
   case node
     text <Boolean($options?.probe)>
+
+# an entry the build will replay from the snapshot the session took (build-command.tree `snapshot-probing`)
+bind units-replays
+  take options, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <Boolean($options?.replay?.has($file))>
+
+# a module the snapshot saw whose closure holds no file that moved since
+bind units-known-clean
+  take options, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <Boolean($options?.known?.has($file) && !$options.dirty.has($file))>
 
 bind units-hash-keys
   take hash, like dynamic
@@ -681,7 +712,9 @@ task probe-units
   take root, like text
   take session, like dynamic
   take entries, like hash, like text, like boolean
+  take faced, like hash, like text, like faced-entry
   take graph, like hash, like text, like list, like text
+  take narrowing, like dynamic
   like units-probed
   mark private
 
@@ -717,7 +750,12 @@ task probe-units
         units-set-add(missed, file)
         turn next
     save entry, entries/has(file)
-    save answer, probe-unit(file, entry, role-of, options)
+    # from a snapshot, a library job whose module reaches no file that moved is taken as stored: the build that wrote
+    # the snapshot stored it, and one lost since is built by the build after the pool
+    fork test, and(not(entry), units-known-clean(narrowing, file))
+      hold
+        turn next
+    save answer, probe-unit(file, entry, faced, role-of, options)
     fork test, units-is-nothing(answer)
       hold
         units-set-add(missed, file)
@@ -742,6 +780,20 @@ task probe-units
         save results/{file}, answer
   back make(units-probed, bind(missed, missed), bind(results, results), bind(built, built))
 
+# an entry as the walk read it: the file's text, its role as the host held it, and the text `face-buildable` gave
+form faced-entry
+  link text, like text
+  link role, like dynamic
+  link unit-text, like text
+
+# two roles as the host holds them (a text or undefined) are the same role
+bind units-same
+  take one, like dynamic
+  take other, like dynamic
+  like boolean
+  case node
+    text <($one === $other)>
+
 # an answer of compileSeparate, as against the `true` of a file that is no program
 bind units-is-answer
   take answer, like dynamic
@@ -751,10 +803,12 @@ bind units-is-answer
 
 # one job asked of the store: compileSeparate's answer when every unit it reaches was read back, undefined when one was
 # not. A project file is read as its worker reads it (a file of tests rewritten), and one that is no program needs no
-# unit and answers true
+# unit and answers true. An entry whose text and role are still what the walk read (`faced`) is read as the walk read
+# it: the same file, text and role give the same reading, and reading it again parsed it twice more
 task probe-unit
   take file, like text
   take entry, like boolean
+  take faced, like hash, like text, like faced-entry
   take role-of, like dynamic
   take options, like dynamic
   like dynamic
@@ -767,17 +821,28 @@ task probe-unit
     save whole, false
     fork test, entry
       hold
-        save unit, face-buildable(file, text, units-apply(role-of, file))
-        fork test, units-has-faults(unit)
+        save role, units-apply(role-of, file)
+        save read-before, false
+        fork test, faced/has(file)
           hold
-            save whole, true
-          miss
-            save unit-text, units-reply-member(unit, <text>)
-            fork test, face-is-whole-file(file, unit-text, units-apply(role-of, file))
+            save seen, faced/get(file)
+            fork test, and(is-equal(seen/text, text), units-same(seen/role, role))
+              hold
+                save read-before, true
+                save text, seen/unit-text
+        fork test, not(read-before)
+          hold
+            save unit, face-buildable(file, text, role)
+            fork test, units-has-faults(unit)
               hold
                 save whole, true
               miss
-                save text, unit-text
+                save unit-text, units-reply-member(unit, <text>)
+                fork test, face-is-whole-file(file, unit-text, role)
+                  hold
+                    save whole, true
+                  miss
+                    save text, unit-text
     fork test, whole
       hold
         save answer, units-whole()

@@ -1,0 +1,341 @@
+# SHA-256 (FIPS 180-4) in Term: THE definition of `digest-sha256-text` in @term/base/cryptography/digest (decision 080
+# of note/project/term/self-host/change/001-finish-self-host). The browser answers from it, since SubtleCrypto has no
+# synchronous digest. Node, Rust, Swift and Kotlin answer from their native digest, held byte-equal to this one by the
+# FIPS vectors and the deck/base corpus (deck/base/test/sha256.tree, test/compile/digest-text-native.ts).
+#
+# Written on the 32-bit bit vocabulary the way md5.tree is: the bit operations are 64-bit on every backend (the JS
+# hosts run them through BigInt), so every sum is masked back to 32 bits explicitly, and a rotation masks the part it
+# shifts left BEFORE shifting, so nothing passes 2^32 where a host number is exact only to 2^53. Input is a byte list
+# or a text (its UTF-8 bytes, a lone surrogate as U+FFFD), output the 64 lowercase hex digits.
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-not
+  find bitwise-exclusive-or
+  find shift-left
+  find shift-right
+  find unsigned-shift-right
+
+load @term/base/native/shared/cryptography/md5
+  find md5-hex-byte
+
+load @term/base/text/string
+  find concat
+
+load @term/base/text/unicode
+  find to-runes
+
+# the round constants: the first 32 bits of the fractional parts of the cube roots of the first 64 primes
+host sha256-rounds
+  code 1116352408
+  code 1899447441
+  code 3049323471
+  code 3921009573
+  code 961987163
+  code 1508970993
+  code 2453635748
+  code 2870763221
+  code 3624381080
+  code 310598401
+  code 607225278
+  code 1426881987
+  code 1925078388
+  code 2162078206
+  code 2614888103
+  code 3248222580
+  code 3835390401
+  code 4022224774
+  code 264347078
+  code 604807628
+  code 770255983
+  code 1249150122
+  code 1555081692
+  code 1996064986
+  code 2554220882
+  code 2821834349
+  code 2952996808
+  code 3210313671
+  code 3336571891
+  code 3584528711
+  code 113926993
+  code 338241895
+  code 666307205
+  code 773529912
+  code 1294757372
+  code 1396182291
+  code 1695183700
+  code 1986661051
+  code 2177026350
+  code 2456956037
+  code 2730485921
+  code 2820302411
+  code 3259730800
+  code 3345764771
+  code 3516065817
+  code 3600352804
+  code 4094571909
+  code 275423344
+  code 430227734
+  code 506948616
+  code 659060556
+  code 883997877
+  code 958139571
+  code 1322822218
+  code 1537002063
+  code 1747873779
+  code 1955562222
+  code 2024104815
+  code 2227730452
+  code 2361852424
+  code 2428436474
+  code 2756734187
+  code 3204031479
+  code 3329325298
+
+# the initial hash value: the first 32 bits of the fractional parts of the square roots of the first 8 primes
+host sha256-start
+  code 1779033703
+  code 3144134277
+  code 1013904242
+  code 2773480762
+  code 1359893119
+  code 2600822924
+  code 528734635
+  code 1541459225
+
+# a value reduced to its unsigned 32-bit form
+task sha256-wrap
+  take x, like number
+  like number
+  send back, call(bitwise-and, read(x), code(4294967295))
+
+# rotate a 32-bit value right by n (0 < n < 32): the low n bits, masked first, move to the top
+task sha256-rotate-right
+  take x, like number
+  take n, like number
+  like number
+  save low
+    call bitwise-and
+      read x
+      call subtract(call(shift-left, code(1), read(n)), code(1))
+  send back
+    call bitwise-or
+      call shift-left(read(low), call(subtract, code(32), read(n)))
+      call unsigned-shift-right(call(sha256-wrap, read(x)), read(n))
+
+# the three rotations of a value, combined by exclusive or
+task sha256-sigma
+  take x, like number
+  take a, like number
+  take b, like number
+  take c, like number
+  like number
+  send back
+    call bitwise-exclusive-or
+      call bitwise-exclusive-or(call(sha256-rotate-right, read(x), read(a)), call(sha256-rotate-right, read(x), read(b)))
+      call sha256-rotate-right(read(x), read(c))
+
+# two rotations and a shift, combined by exclusive or: the message schedule's small sigma
+task sha256-small-sigma
+  take x, like number
+  take a, like number
+  take b, like number
+  take c, like number
+  like number
+  send back
+    call bitwise-exclusive-or
+      call bitwise-exclusive-or(call(sha256-rotate-right, read(x), read(a)), call(sha256-rotate-right, read(x), read(b)))
+      call unsigned-shift-right(read(x), read(c))
+
+# the UTF-8 bytes of a text, by the WHATWG encoder: a surrogate code point, which only a UTF-16 text can hold alone,
+# encodes as U+FFFD, as TextEncoder and node's Buffer.from do
+task encode-utf-8
+  take value, like text
+  like list
+    like number
+  save out, make list
+  save runes, call(to-runes, read(value))
+  walk list, read runes
+    hook next
+      take site, name rune
+      save c, read rune
+      fork test
+        hook test
+          call and(call(is-minimum, read(c), code(55296)), call(is-maximum, read(c), code(57343)))
+        hook hold
+          save c, code 65533
+      fork test
+        hook test
+          call is-below(read(c), code(128))
+        hook hold
+          call out/push(read(c))
+        hook test
+          call is-below(read(c), code(2048))
+        hook hold
+          call out/push(call(bitwise-or, code(192), call(shift-right, read(c), code(6))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, read(c), code(63))))
+        hook test
+          call is-below(read(c), code(65536))
+        hook hold
+          call out/push(call(bitwise-or, code(224), call(shift-right, read(c), code(12))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, call(shift-right, read(c), code(6)), code(63))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, read(c), code(63))))
+        hook miss
+          call out/push(call(bitwise-or, code(240), call(shift-right, read(c), code(18))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, call(shift-right, read(c), code(12)), code(63))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, call(shift-right, read(c), code(6)), code(63))))
+          call out/push(call(bitwise-or, code(128), call(bitwise-and, read(c), code(63))))
+  send back, read out
+
+# the digest of a text's UTF-8 bytes, as 64 lowercase hex characters
+task calculate-sha256-text
+  take value, like text
+  like text
+  send back, call(calculate-sha256, call(encode-utf-8, read(value)))
+
+# the digest of a byte list, as 64 lowercase hex characters
+task calculate-sha256
+  take list
+    like list
+      like number
+  like text
+  # pad: 0x80, zeros to 56 mod 64, then the bit length as 8 big-endian bytes
+  save m, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below(read(i), read(list/length))
+    hook hold
+      call m/push(read(list/{i}))
+      save i, call increment(read i)
+  call m/push(code(128))
+  # `(120 - length % 64) % 64` zeros, the 120 keeping the dividend positive
+  save zeros
+    call modulo(call(subtract, code(120), call(modulo, read(m/length), code(64))), code(64))
+  save z, code 0
+  walk test
+    hook test
+      call is-below(read(z), read(zeros))
+    hook hold
+      call m/push(code(0))
+      save z, call increment(read z)
+  save bits, call(multiply, read(list/length), code(8))
+  save j, code 0
+  walk test
+    hook test
+      call is-below(read(j), code(8))
+    hook hold
+      call m/push(call(bitwise-and, call(shift-right, read(bits), call(multiply, call(subtract, code(7), read(j)), code(8))), code(255)))
+      save j, call increment(read j)
+  # the running state
+  save h, make list
+  save s, code 0
+  walk test
+    hook test
+      call is-below(read(s), code(8))
+    hook hold
+      call h/push(read(sha256-start/{s}))
+      save s, call increment(read s)
+  save block, code 0
+  walk test
+    hook test
+      call is-maximum(call(add, read(block), code(64)), read(m/length))
+    hook hold
+      # the message schedule: sixteen big-endian words of the block, then 48 more
+      save w, make list
+      save k, code 0
+      walk test
+        hook test
+          call is-below(read(k), code(16))
+        hook hold
+          save at, call(add, read(block), call(multiply, read(k), code(4)))
+          save at1, call(add, read(at), code(1))
+          save at2, call(add, read(at), code(2))
+          save at3, call(add, read(at), code(3))
+          call w/push
+            call bitwise-or
+              call bitwise-or(call(shift-left, read(m/{at}), code(24)), call(shift-left, read(m/{at1}), code(16)))
+              call bitwise-or(call(shift-left, read(m/{at2}), code(8)), read(m/{at3}))
+          save k, call increment(read k)
+      walk test
+        hook test
+          call is-below(read(k), code(64))
+        hook hold
+          save before15, call(subtract, read(k), code(15))
+          save before2, call(subtract, read(k), code(2))
+          save before16, call(subtract, read(k), code(16))
+          save before7, call(subtract, read(k), code(7))
+          save s0, call(sha256-small-sigma, read(w/{before15}), code(7), code(18), code(3))
+          save s1, call(sha256-small-sigma, read(w/{before2}), code(17), code(19), code(10))
+          call w/push
+            call sha256-wrap
+              call add(call(add, read(w/{before16}), read(s0)), call(add, read(w/{before7}), read(s1)))
+          save k, call increment(read k)
+      save a, read h/0
+      save b, read h/1
+      save c, read h/2
+      save d, read h/3
+      save e, read h/4
+      save f, read h/5
+      save g, read h/6
+      save hh, read h/7
+      save r, code 0
+      walk test
+        hook test
+          call is-below(read(r), code(64))
+        hook hold
+          save big1, call(sha256-sigma, read(e), code(6), code(11), code(25))
+          save choice
+            call bitwise-exclusive-or
+              call bitwise-and(read(e), read(f))
+              call bitwise-and(call(bitwise-not, read(e)), read(g))
+          save first
+            call sha256-wrap
+              call add(call(add, read(hh), read(big1)), call(add, read(choice), call(add, read(sha256-rounds/{r}), read(w/{r}))))
+          save big0, call(sha256-sigma, read(a), code(2), code(13), code(22))
+          save majority
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or(call(bitwise-and, read(a), read(b)), call(bitwise-and, read(a), read(c)))
+              call bitwise-and(read(b), read(c))
+          save second, call(sha256-wrap, call(add, read(big0), read(majority)))
+          save hh, read g
+          save g, read f
+          save f, read e
+          save e, call(sha256-wrap, call(add, read(d), read(first)))
+          save d, read c
+          save c, read b
+          save b, read a
+          save a, call(sha256-wrap, call(add, read(first), read(second)))
+          save r, call increment(read r)
+      save next, make list
+      call next/push(call(sha256-wrap, call(add, read(h/0), read(a))))
+      call next/push(call(sha256-wrap, call(add, read(h/1), read(b))))
+      call next/push(call(sha256-wrap, call(add, read(h/2), read(c))))
+      call next/push(call(sha256-wrap, call(add, read(h/3), read(d))))
+      call next/push(call(sha256-wrap, call(add, read(h/4), read(e))))
+      call next/push(call(sha256-wrap, call(add, read(h/5), read(f))))
+      call next/push(call(sha256-wrap, call(add, read(h/6), read(g))))
+      call next/push(call(sha256-wrap, call(add, read(h/7), read(hh))))
+      save h, read next
+      save block, call(add, read(block), code(64))
+  # the digest: the eight words as big-endian bytes, each as two hex characters
+  save digest, text <>
+  save wi, code 0
+  walk test
+    hook test
+      call is-below(read(wi), code(8))
+    hook hold
+      save word, read h/{wi}
+      save bi, code 0
+      walk test
+        hook test
+          call is-below(read(bi), code(4))
+        hook hold
+          save byte
+            call bitwise-and
+              call unsigned-shift-right(read(word), call(multiply, call(subtract, code(3), read(bi)), code(8)))
+              code 255
+          save digest, call(concat, read(digest), call(md5-hex-byte, read(byte)))
+          save bi, call increment(read bi)
+      save wi, call increment(read wi)
+  send back, read digest

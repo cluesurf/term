@@ -717,8 +717,9 @@ export function exportLean(source: LeanSource): LeanExport {
 
   const noteUniverses = (term: Named): void => {
     if (term.k === 'type') {
-      for (const [name] of levelVars(term.level))
-        {universes.add(universeName(name))}
+      for (const [name] of levelVars(term.level)) {
+        universes.add(universeName(name))
+      }
     } else if (term.k === 'pi') {
       noteUniverses(term.domain)
       noteUniverses(term.codomain)
@@ -1580,7 +1581,9 @@ export function exportLean(source: LeanSource): LeanExport {
     }
 
     for (const other of reaches.get(name) ?? []) {
-      for (const axiom of axiomsOf(other, seen)) {found.add(axiom)}
+      for (const axiom of axiomsOf(other, seen)) {
+        found.add(axiom)
+      }
     }
 
     return found

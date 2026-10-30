@@ -99,7 +99,10 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
   return { claims, loads: millLoadTargets({ file, text }) }
 }
 
-export function holdLean(root: string, files: string[]): HoldLean {
+export async function holdLean(
+  root: string,
+  files: string[],
+): Promise<HoldLean> {
   const read = new Map(files.map(file => [file, readFile(file)]))
   const resolver = withNativeEnv('node', projectResolver(root))
   const stating = files.filter(
@@ -208,7 +211,7 @@ export function holdLean(root: string, files: string[]): HoldLean {
   )
 
   const run = lean
-    ? runLean({
+    ? await runLean({
         lean,
         file,
         source: exported.lean,
@@ -218,7 +221,7 @@ export function holdLean(root: string, files: string[]): HoldLean {
 
   if (lean) {
     result.lean = lean
-    result.version = leanVersion(lean)
+    result.version = await leanVersion(lean)
   }
 
   result.claims = stated.map(({ name, file: from }): HoldLeanClaim => {

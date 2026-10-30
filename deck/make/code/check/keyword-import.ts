@@ -80,9 +80,7 @@ export function keywordCandidates(tree: RootNode): KeywordFind[] {
       const aliased = child.nodes
         .slice(2)
         .some(
-          part =>
-            part.kind === 'group' &&
-            headWord(part) === 'name',
+          part => part.kind === 'group' && headWord(part) === 'name',
         )
 
       const span = spanOfNode(child)

@@ -1,14 +1,17 @@
 # Node.js digest implementation (the host node:crypto module). Input and output are raw bytes (a Uint8Array / Buffer): `update` accepts the buffer and `digest` with no encoding returns one. Internal: reached only through the public digest API.
 
+# named `node-crypto`, not `crypto`: native/node/uuid.tree docks the Web Crypto global as `crypto`, and a program
+# reaching both (the compiler's ports reach uuid and, through term/hash.tree's hash-key, this module) would declare
+# the one name twice, which tsc refuses as TS2451 (found by item 0408, 2026-10-30)
 dock load
-  load <node:crypto>, name crypto
+  load <node:crypto>, name node-crypto
 
 task digest-sha256
   mark async
   take input, like bytes
   like bytes
   save hasher
-    call crypto/create-hash
+    call node-crypto/create-hash
       text <sha256>
   save updated
     call hasher/update
@@ -16,12 +19,28 @@ task digest-sha256
   send back
     call updated/digest
 
+# SHA-256 of a text, synchronous: `update` with a string and no encoding reads it as UTF-8 (a lone surrogate as
+# U+FFFD) and `digest` with `hex` answers the 64 lowercase digits. Held to the Term reference
+# (native/shared/cryptography/sha256) by deck/base/test/sha256.tree
+task digest-sha256-text
+  take input, like text
+  like text
+  save hasher
+    call node-crypto/create-hash
+      text <sha256>
+  save updated
+    call hasher/update
+      read input
+  send back
+    call updated/digest
+      text <hex>
+
 task digest-sha512
   mark async
   take input, like bytes
   like bytes
   save hasher
-    call crypto/create-hash
+    call node-crypto/create-hash
       text <sha512>
   save updated
     call hasher/update
@@ -34,7 +53,7 @@ task digest-md5
   take input, like bytes
   like bytes
   save hasher
-    call crypto/create-hash
+    call node-crypto/create-hash
       text <md5>
   save updated
     call hasher/update

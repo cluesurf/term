@@ -1573,7 +1573,13 @@ export function compileProjectSeparate(
     const artifacts: string[] = []
 
     for (const [mfile, emit] of result.modules) {
-      const unitPath = path.join(root, 'host', '.unit', `${slug(mfile)}.ts`)
+      const unitPath = path.join(
+        root,
+        'host',
+        '.unit',
+        `${slug(mfile)}.ts`,
+      )
+
       artifacts.push(unitPath)
       writeArtifact(unitPath, emit.code)
     }
@@ -1584,6 +1590,7 @@ export function compileProjectSeparate(
       'host',
       path.relative(root, file).replace(/\.tree$/, '.ts'),
     )
+
     artifacts.push(shimPath)
     writeArtifact(
       shimPath,
@@ -1635,13 +1642,20 @@ export function compileProjectSeparate(
 // What the last separate build wrote under host/ is recorded beside the project's cache, one path relative to the
 // project a line, sorted. An artifact the last build wrote and this one does not stand behind (its module was
 // shelved with `mark draft`, moved or removed, or its entry failed) is removed, so host/ after an incremental build is
-// what a clean build of the same sources leaves (item term-self-host-001-0425). Only a path under host/ that a build
-// recorded is ever removed; a lost record leaves the old artifacts, as every build did before. separate-build.tree
-// `sweep-artifacts` is the Term twin, and the two read and write one record
-export function sweepArtifacts(root: string, standing: Set<string>): void {
+// what a clean build of the same sources leaves (item term-self-host-001-0425). The record's first line names the
+// project's root. The record is ADVISORY (decision 077 section 4): one that is missing, unreadable or another root's (a
+// copied or moved project) is lost, and a lost record costs a full sweep, never a stale artifact (item
+// term-self-host-001-0433, `sweepAll`). separate-build.tree `sweep-artifacts` is the Term twin, and the two read and
+// write one record
+export function sweepArtifacts(
+  root: string,
+  standing: Set<string>,
+): void {
   const record = projectHome(root, 'artifacts.txt')
   const now = [...standing].map(one => path.relative(root, one)).sort()
   const kept = new Set(now)
+  const header = `# term artifacts ${root}`
+
   let before = ''
 
   try {
@@ -1650,17 +1664,56 @@ export function sweepArtifacts(root: string, standing: Set<string>): void {
     before = ''
   }
 
-  for (const one of before.split('\n')) {
-    if (one !== '' && !kept.has(one) && one.startsWith(`host${path.sep}`)) {
-      rmSync(path.join(root, one), { force: true })
+  const lines = before.split('\n')
+
+  if (lines[0] === header) {
+    for (const one of lines) {
+      if (
+        one !== '' &&
+        !kept.has(one) &&
+        one.startsWith(`host${path.sep}`)
+      ) {
+        rmSync(path.join(root, one), { force: true })
+      }
     }
+  } else {
+    sweepAll(root, kept)
   }
 
-  const text = `${now.join('\n')}\n`
+  const text = `${header}\n${now.join('\n')}\n`
 
   if (before !== text) {
     mkdirSync(path.dirname(record), { recursive: true })
     writeFileSync(record, text)
+  }
+}
+
+// THE FULL SWEEP, for a lost record: the folders under host/ a build writes into are host/.unit and the first folder of
+// every path it stands behind (host/code for a deck whose code root is ./code), and each `.ts` file in them it does not
+// stand behind is removed. host/'s own files (roll.json) and any other folder are left
+function sweepAll(root: string, kept: Set<string>): void {
+  const folders = new Set([`host${path.sep}.unit`])
+
+  for (const one of kept) {
+    const at = one.split(path.sep)
+
+    if (at.length > 2 && at[0] === 'host')
+      {folders.add(`host${path.sep}${at[1]}`)}
+  }
+
+  for (const folder of folders) {
+    const full = path.join(root, folder)
+
+    if (!existsSync(full)) {continue}
+
+    for (const inside of readdirSync(full, {
+      recursive: true,
+    }) as string[]) {
+      const one = path.join(folder, inside)
+
+      if (one.endsWith('.ts') && !kept.has(one))
+        {rmSync(path.join(root, one), { force: true })}
+    }
   }
 }
 
@@ -2063,7 +2116,7 @@ export async function callMake(input: {
       // each entry's own open claims, which both paths report: the separate path carries the entry unit's
       const openClaims =
         'open' in result && Array.isArray(result.open)
-          ? (result.open)
+          ? result.open
           : undefined
 
       // every error and the project's own warnings, as Problem items with their code frames (section 12)

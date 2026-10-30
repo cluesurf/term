@@ -149,7 +149,7 @@ form exclusion
       need false
     link
       accepted
-      like list
+      like list, like text
       need false
 
 # pick a different thing
@@ -256,4 +256,4 @@ form bundle
       thing
       like text
       need false
-    link list, like list
+    link list, like list, like exception

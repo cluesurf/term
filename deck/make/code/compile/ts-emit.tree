@@ -1255,6 +1255,94 @@ task fill-kind-json
       link spec
       back <\{"kind":"form","spec":{fill-spec-json(spec)}\}>
 
+# is a type an exception, or a list of them: a props field the exception codec would carry by itself again
+task is-raise-type
+  take given, like type
+  take facts, like emit-facts
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link type-name
+      link type-args
+      fork test, facts/exceptions/has(type-name)
+        hold
+          back true
+      fork test, is-equal(type-name, <list>)
+        hold
+          walk type-args
+            take one
+            back is-raise-type(one, facts)
+    case array
+      link element
+      back is-raise-type(element, facts)
+    miss
+      save nothing, 0
+  back false
+
+# THE EXCEPTION CODEC'S TABLE (decision 078 section 4 of term/self-host/change/001): `\{"<form>": <spec>\}` over the
+# forms a parallel turn's raise can carry (check/parallel.tree `raise-crossing`), each spec its props record's own fill
+# spec, the one `call melt` with that record writes. `props` holds each form's props record by position, `<>` for a
+# form that declares none (its raise carries the envelope alone)
+task raise-codec-specs
+  take forms, like list, like text
+  take props, like list, like text
+  take facts, like emit-facts
+  like text
+
+  save fields-of
+    task
+      take name, like text
+      like list, like ts-field
+      fork test, facts/record-fields/has(name)
+        hold
+          back facts/record-fields/get(name)
+      back make list
+  save is-record
+    task
+      take name, like text
+      like boolean
+      back facts/record-fields/has(name)
+  save entries, make list
+  save at, 0
+  walk forms
+    take form-name
+    save props-name, get(props, at)
+    save at, add(at, 1)
+    fork test, or(is-equal(props-name, <>), not(facts/record-fields/has(props-name)))
+      hold
+        turn next
+    save props-type
+      make type/named
+        bind name, props-name
+    save seen, make list
+    push(entries, <{json-quote(form-name)}:{fill-spec-json(fill-spec-of(props-type, seen, fields-of, is-record))}>)
+  back <\{{join-texts(entries, <,>)}\}>
+
+# why the exception codec cannot carry a form's props yet, `<>` when it can: a props field typed as an exception or a
+# list of them, which decision 078 section 2 crosses by the codec again, is not walked by the props spec
+task raise-codec-refusal
+  take forms, like list, like text
+  take props, like list, like text
+  take facts, like emit-facts
+  like text
+
+  save at, 0
+  walk forms
+    take form-name
+    save props-name, get(props, at)
+    save at, add(at, 1)
+    fork test, not(facts/record-fields/has(props-name))
+      hold
+        turn next
+    walk facts/record-fields/get(props-name)
+      take field
+      fork test, is-raise-type(field/type, facts)
+        hold
+          back <raise-codec: the props field `{field/name}` of `{form-name}` is an exception, which the exception codec does not carry yet: a parallel walk whose turn can raise `{form-name}` does not build>
+  back <>
+
 # the JSON of an `inspect` kind (compile/backend-shapes.tree), with each field's member and a union's tag as this
 # backend writes them, which `__termInspect` walks (ts-preludes.tree `inspect-prelude`)
 task inspect-kind-json
@@ -4073,6 +4161,7 @@ task emit-function
             save last-required, at
         save at, add(at, 1)
       save params, make list
+      save nones, <>
       save at, 0
       walk fn-params
         take param
@@ -4083,9 +4172,26 @@ task emit-function
             link given
             save fallback, < = {emit-expression(given, 0, st, facts)}>
           case none
+            # a trailing `need false` parameter is its type's empty value when left out, as on every backend (decision 074
+            # of term/self-host change 001): a default, so tsc types its read `T`. A type with no empty value (a maybe, a
+            # form, a type variable) keeps `?`
             fork test, and(param/optional, is-above(at, last-required))
               hold
-                save question, <?>
+                save empty, ts-empty-of(param/type)
+                fork test, starts-with(empty, <undefined>)
+                  hold
+                    save question, <?>
+                    # a maybe left out is its none in the body, the module's own constant a `sift` tests (item 0403):
+                    # it reached the body undefined, and a sift over it read `.form` off undefined
+                    save none-owner, fieldless-owner(<none>, param/type, facts)
+                    fork test, is-unequal(none-owner, <>)
+                      hold
+                        save owner-cases, facts/variant-fields-by-owner/get(none-owner)
+                        fork test, owner-cases/has(<some>)
+                          hold
+                            save nones, <{nones}{pad(add(depth, 1))}{to-camel(param/name)} ??= {fieldless-for(<none>, none-owner, st, facts)}\n>
+                  miss
+                    save fallback, < = {empty}>
         push(params, <{to-camel(param/name)}{question}: {ts-type-of(param/type, facts)}{fallback}>)
         save at, add(at, 1)
       save generic-text, <>
@@ -4124,7 +4230,7 @@ task emit-function
           save st/tailing, make(some, tail)
         miss
           save st/tailing, make none
-      save declared, <>
+      save declared, nones
       walk facts/cursor-names(node)
         take name
         save declared, <{declared}{pad(add(depth, 1))}const __cursor{to-pascal(name)}: number[] = [0, 0]\n>

@@ -68,5 +68,7 @@ export function forEachExpression(
   program: Program,
   visit: (node: Expression) => void,
 ): void {
-  for (const node of index.expressionsOf(program)) {visit(node)}
+  for (const node of index.expressionsOf(program)) {
+    visit(node)
+  }
 }

@@ -65,7 +65,11 @@ import type {
   Source,
   WalkMemo,
 } from '@term/make/code/compile/load'
-import type { CompileCache } from '@term/make/code/compile/cache'
+import {
+  reviveBigint,
+  storeBigint,
+  type CompileCache,
+} from '@term/make/code/compile/cache'
 import {
   milledUnit as cachedMill,
   output as cachedOutput,
@@ -485,12 +489,7 @@ export function entryWarnings(
   parsed: ParseMemo,
   templates?: Map<string, Template>,
 ): Diagnostic[] {
-  return entryWarningsPort(
-    source,
-    sources,
-    parsed,
-    templates!,
-  )
+  return entryWarningsPort(source, sources, parsed, templates!)
 }
 
 // One module milled, through the mill cache when there is one. The merged build and compile/separate.ts both mill
@@ -514,8 +513,19 @@ export function milledModule(
   const leanKey = lean ? 'lean:' : ''
   // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT THAT CAN USE IT: one with a `fuse`, or a document
   const usesTemplates = role === 'view' || /\bfuse\b/.test(unit.text)
+  // A MODULE MILLS TO ITS STORED FORM, whichever path asked: the mill writes keys holding nothing (`result` on a task
+  // with no `like`, a parameter's `fallback`) and shares one type object between nodes, and the store's JSON drops
+  // both. A pass that later writes such a key put it in the key's milled place on a fresh mill and at the end on a
+  // stored one, so a unit's stored bytes hung on whether its process milled the module or read another's mill
+  // (item term-self-host-001-0432, a pool build under TERM_CACHE_VERIFY=hits)
   const mill = () =>
-    millUnitPort(unit, parsed, templates, role, lean) as
+    JSON.parse(
+      JSON.stringify(
+        millUnitPort(unit, parsed, templates, role, lean),
+        storeBigint,
+      ),
+      reviveBigint,
+    ) as
       | { ok: true; program: Program; twins?: Twin[] }
       | { ok: false; diagnostics: Diagnostic[] }
 

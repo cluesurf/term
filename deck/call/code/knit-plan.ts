@@ -498,10 +498,7 @@ export function gateOf(input: {
       const unchecked = required.filter(name => {
         const claim = result.claims.find(one => one.name === name)
 
-        return (
-          claim?.verdict !== 'checked' ||
-          claim.axioms.length > 0
-        )
+        return claim?.verdict !== 'checked' || claim.axioms.length > 0
       })
 
       lean = unchecked.length === 0 ? 'checked' : 'failed'

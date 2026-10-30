@@ -13,7 +13,10 @@ edition = "2021"
 regex = "1"
 sha2 = "0.10"
 sha1 = "0.10"
-md-5 = "0.10"
+# keyed `md5`, its library's own name, because a program's crates are found by the `<key>::` its source names
+# (compile/main-entry.tree crates-named): keyed `md-5` it was looked for as `md_5::`, so a program reaching the crypto
+# runtime (runtime/crypto.rs, `::md5::Md5`) was built without it and failed E0433 (found by item 0438, 2026-10-30)
+md5 = { package = "md-5", version = "0.10" }
 hmac = "0.12"
 uuid = { version = "1", features = ["v4"] }
 getrandom = "0.2"

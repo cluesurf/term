@@ -1,0 +1,1484 @@
+# A LAW IN WORDS: every `rule` of a program as one plain English sentence, written from the rule's Term form alone, so a
+# person approves what was proven and not what the author said was proven (note/project/term/assurance/prove-loop).
+#
+# It reads the mill's program, the same statements the checker and the kernel read: a theorem (`rule` with a `show`) is
+# a function marked `theorem` whose parameters are its `seat`s, whose `if` guards are its `have`s, whose `universals`
+# are its `have`s with a `seat` of their own, and whose `hold` is its goal. A claim (`rule` with no `show`) is a function
+# marked `claim` whose parameters are its `take`s and whose result is its `like`. Nothing reads a comment, and nothing
+# reads the rule's NAME: both are prose an author (or an AI) wrote, and either may say something the law does not.
+#
+# The sentence is what the mill made of the rule, so it shows what the prover checks: `show miss is-below a a` reads
+# "a is at least a", and `like integer` reads "number". The operators the mill knows each have a phrase, a call has
+# one only when its task is in the lexicon below, and any other task renders with its own name and is listed in the
+# sentence's `words`. A shape with no reading (a closure, a conditional value, an `if` with an `otherwise`) is refused
+# with the reason, never guessed. Parentheses are the one device for grouping, so a sentence has exactly one reading.
+#
+# Ported from check/law-english.ts (item term-self-host-change-001-finish-self-host-0004), which stays as the face and
+# keeps the parse and the mill of `lawSentencesOf`. The original's `Refuse` exception is the reading's `refused` field:
+# the first refusal is kept, and a rule refused reads no sentence, exactly where the original threw.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find substring
+  find index-of
+  find last-index-of
+  find starts-with
+  find ends-with
+  find contains
+  find to-upper-case
+  find to-lower-case
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find function-param
+  find generic-param
+  find refinement
+  find universal
+
+# one rule in words: `text` is '' exactly when `refused` says why, and `words` lists each task the sentence names by its
+# own name for want of a phrase, in order of first use
+form law-sentence
+  link name, like text
+  link kind, like text
+  link text, like text
+  link refused, like text
+  link words, like list, like text
+
+# a rendered piece and how it groups: atom, prefix, phrase, infix, relation or logic. The grain decides where
+# parentheses go and nothing else
+form law-piece
+  link text, like text
+  link grain, like text
+
+# what one rule's reading has so far: the names it quantifies over, the words it lacks, the generics, and the first
+# refusal ('' while none)
+form law-reading
+  mark shared
+  link bound, like list, like text
+  link words, like list, like text
+  link generics, like list, like text
+  link refused, like text
+
+# a lexicon entry: `shape` is infix, prefix or pair
+form law-phrase
+  link name, like text
+  link shape, like text
+  link word, like text
+  link first, like text
+  link second, like text
+  link logic, like boolean
+
+# the noun a quantifier takes, and what follows the names
+form law-noun
+  link singular, like text
+  link plural, like text
+  link after, like text
+
+# an argument of a call: a lean nested call is its callee's name and items, any other is the expression
+form law-argument
+  link expression, like expression
+  link callee, like text
+  link items, like list, like expression
+
+form law-binder
+  link name, like text
+  link noun, like law-noun
+
+form law-group
+  mark shared
+  link noun, like law-noun
+  link names, like list, like text
+
+# ---- the lexicon: a task whose meaning is fixed in the stdlib or the math library, and its phrase ----
+
+task infix-phrase
+  take name, like text
+  take word, like text
+  take logic, like boolean
+  like law-phrase
+  mark private
+
+  back
+    make law-phrase
+      bind name, name
+      bind shape, <infix>
+      bind word, word
+      bind first, <>
+      bind second, <>
+      bind logic, logic
+
+task prefix-phrase
+  take name, like text
+  take word, like text
+  like law-phrase
+  mark private
+
+  back
+    make law-phrase
+      bind name, name
+      bind shape, <prefix>
+      bind word, word
+      bind first, <>
+      bind second, <>
+      bind logic, false
+
+task pair-phrase
+  take name, like text
+  take first, like text
+  take second, like text
+  take logic, like boolean
+  like law-phrase
+  mark private
+
+  back
+    make law-phrase
+      bind name, name
+      bind shape, <pair>
+      bind word, <>
+      bind first, first
+      bind second, second
+      bind logic, logic
+
+task lexicon
+  like list, like law-phrase
+  mark private
+
+  save out, make list
+  push(out, infix-phrase(<plus>, <plus>, false))
+  push(out, infix-phrase(<times>, <times>, false))
+  push(out, infix-phrase(<minus>, <minus>, false))
+  push(out, infix-phrase(<monus>, <minus (stopping at zero)>, false))
+  push(out, infix-phrase(<power>, <to the power of>, false))
+  push(out, infix-phrase(<append>, <followed by>, false))
+  push(out, infix-phrase(<compose>, <after>, false))
+  push(out, infix-phrase(<apply>, <applied to>, false))
+  push(out, infix-phrase(<implies>, <implies>, true))
+  push(out, infix-phrase(<iff>, <if and only if>, true))
+  push(out, prefix-phrase(<negate>, <the negative of>))
+  push(out, prefix-phrase(<reverse>, <the reverse of>))
+  push(out, prefix-phrase(<length>, <the length of>))
+  push(out, prefix-phrase(<complement>, <the complement of>))
+  push(out, prefix-phrase(<converse>, <the converse of>))
+  push(out, prefix-phrase(<conjugate>, <the conjugate of>))
+  push(out, prefix-phrase(<transpose>, <the transpose of>))
+  push(out, prefix-phrase(<determinant>, <the determinant of>))
+  push(out, prefix-phrase(<trace>, <the trace of>))
+  push(out, pair-phrase(<both>, <both>, <and>, true))
+  push(out, pair-phrase(<either>, <either>, <or>, true))
+  push(out, pair-phrase(<xor>, <exactly one of>, <and>, true))
+  push(out, pair-phrase(<union>, <the union of>, <and>, false))
+  push(out, pair-phrase(<intersection>, <the intersection of>, <and>, false))
+  push(out, pair-phrase(<max>, <the larger of>, <and>, false))
+  push(out, pair-phrase(<min>, <the smaller of>, <and>, false))
+  push(out, pair-phrase(<dot>, <the dot product of>, <and>, false))
+  back out
+
+# the phrase of a task, or one whose shape is '' when the lexicon has none
+task phrase-of
+  take name, like text
+  like law-phrase
+  mark private
+
+  walk lexicon()
+    take entry
+    fork test, is-equal(entry/name, name)
+      hold
+        back entry
+  back
+    make law-phrase
+      bind name, name
+      bind shape, <>
+      bind word, <>
+      bind first, <>
+      bind second, <>
+      bind logic, false
+
+# ---- the reading's state ----
+
+task fresh-reading
+  take bound, like list, like text
+  take generics, like list, like text
+  like law-reading
+  mark private
+
+  back
+    make law-reading
+      bind bound, bound
+      bind words, make list
+      bind generics, generics
+      bind refused, <>
+
+# the first refusal is the one kept, as the original's first throw ended the rule
+task refuse
+  take reading, like law-reading
+  take why, like text
+  mark private
+
+  fork test, is-equal(reading/refused, <>)
+    hold
+      save reading/refused, why
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task missing
+  take reading, like law-reading
+  take name, like text
+  mark private
+
+  fork test, not(has-text(reading/words, name))
+    hold
+      push(reading/words, name)
+
+task make-piece
+  take text, like text
+  take grain, like text
+  like law-piece
+  mark private
+
+  back
+    make law-piece
+      bind text, text
+      bind grain, grain
+
+# what a refused piece reads: nothing, since the rule reads no sentence
+task refused-piece
+  take reading, like law-reading
+  take why, like text
+  like law-piece
+  mark private
+
+  refuse(reading, why)
+  back make-piece(<>, <atom>)
+
+# ---- grouping ----
+
+# an operand of a value operator, or an argument of a phrase of two or more slots
+task tight
+  take piece, like law-piece
+  like text
+  mark private
+
+  fork test, is-equal(piece/grain, <atom>)
+    hold
+      back piece/text
+  back <({piece/text})>
+
+# the one argument of a prefix phrase, and an operand of `both`, `either` or `not`: a prefix chains, anything with
+# slots or an operator is wrapped
+task chained
+  take piece, like law-piece
+  like text
+  mark private
+
+  fork test, or(is-equal(piece/grain, <atom>), is-equal(piece/grain, <prefix>))
+    hold
+      back piece/text
+  back <({piece/text})>
+
+# a side of a comparison: anything with an "and" of its own between slots is wrapped
+task loose
+  take piece, like law-piece
+  like text
+  mark private
+
+  fork test, or(or(is-equal(piece/grain, <relation>), is-equal(piece/grain, <logic>)), is-equal(piece/grain, <phrase>))
+    hold
+      back <({piece/text})>
+  back piece/text
+
+# `a`, `a and b`, `a, b and c`
+task listed
+  take texts, like list, like text
+  like text
+  mark private
+
+  save size, texts/length
+  save out, <>
+  save at, 0
+  walk texts
+    take one
+    fork test, is-equal(at, 0)
+      hold
+        save out, one
+      miss
+        fork test, is-equal(at, subtract(size, 1))
+          hold
+            save out, <{out} and {one}>
+          miss
+            save out, <{out}, {one}>
+    save at, add(at, 1)
+  back out
+
+task joined
+  take texts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk texts
+    take one
+    fork test, is-equal(at, 0)
+      hold
+        save out, one
+      miss
+        save out, <{out}{between}{one}>
+    save at, add(at, 1)
+  back out
+
+# ---- values and propositions ----
+
+# a value, where a number, a list or a truth value may stand
+task value-piece
+  take reading, like law-reading
+  take node, like expression
+  like law-piece
+  mark private
+
+  sift node
+    case variable
+      back make-piece(name, <atom>)
+    case integer
+      fork test, is-above(char-count(digits), 0)
+        hold
+          back make-piece(digits, <atom>)
+      back make-piece(<{value}>, <atom>)
+    case float
+      back make-piece(<{value}>, <atom>)
+    case boolean
+      fork test, value
+        hold
+          back make-piece(<true>, <atom>)
+      back make-piece(<false>, <atom>)
+    case string
+      back make-piece(<"{value}">, <atom>)
+    case unit
+      back make-piece(<nothing>, <atom>)
+    case binary
+      back binary-piece(reading, node)
+    case unary
+      back unary-piece(reading, node)
+    case call
+      back call-piece(reading, node, false)
+    case record
+      back record-piece(reading, node)
+    case member
+      save inner, value-piece(reading, target)
+      back make-piece(<the {name} of {chained(inner)}>, <prefix>)
+    case array
+      fork test, is-equal(items/length, 0)
+        hold
+          back make-piece(<the empty list>, <atom>)
+      save texts, make list
+      walk items
+        take item
+        push(texts, tight(value-piece(reading, item)))
+      back make-piece(<the list of {listed(texts)}>, <phrase>)
+    case map
+      fork test, is-equal(entries/length, 0)
+        hold
+          back make-piece(<the empty map>, <atom>)
+      save texts, make list
+      walk entries
+        take entry
+        save key-text, tight(value-piece(reading, entry/key))
+        save value-text, tight(value-piece(reading, entry/value))
+        push(texts, <{key-text} to {value-text}>)
+      back make-piece(<the map from {listed(texts)}>, <phrase>)
+    miss
+      back refused-piece(reading, <a {node/form} expression, which has no reading in words yet>)
+
+# a proposition: what a goal, a hypothesis or a connective's operand states
+task proposition-piece
+  take reading, like law-reading
+  take node, like expression
+  like law-piece
+  mark private
+
+  sift node
+    case call
+      back call-piece(reading, node, true)
+    miss
+      back value-piece(reading, node)
+
+task binary-piece
+  take reading, like law-reading
+  take node, like expression
+  like law-piece
+  mark private
+
+  sift node
+    case binary
+      sift op
+        case both
+          back logic-piece(reading, <both>, <and>, left, right)
+        case either
+          back logic-piece(reading, <either>, <or>, left, right)
+        case equal
+          back relation-piece(reading, <equals>, left, right)
+        case unequal
+          back relation-piece(reading, <does not equal>, left, right)
+        case below
+          back relation-piece(reading, <is less than>, left, right)
+        case at-most
+          back relation-piece(reading, <is at most>, left, right)
+        case above
+          back relation-piece(reading, <is greater than>, left, right)
+        case at-least
+          back relation-piece(reading, <is at least>, left, right)
+        case plus
+          back arithmetic-piece(reading, <plus>, left, right)
+        case minus
+          back arithmetic-piece(reading, <minus>, left, right)
+        case times
+          back arithmetic-piece(reading, <times>, left, right)
+        case divide
+          back arithmetic-piece(reading, <divided by>, left, right)
+        case remainder
+          back arithmetic-piece(reading, <modulo>, left, right)
+        miss
+          back refused-piece(reading, <the operator {op}, which has no reading in words yet>)
+    miss
+      back value-piece(reading, node)
+
+task logic-piece
+  take reading, like law-reading
+  take first, like text
+  take second, like text
+  take left, like expression
+  take right, like expression
+  like law-piece
+  mark private
+
+  save left-text, chained(proposition-piece(reading, left))
+  save right-text, chained(proposition-piece(reading, right))
+  back make-piece(<{first} {left-text} {second} {right-text}>, <logic>)
+
+task relation-piece
+  take reading, like law-reading
+  take word, like text
+  take left, like expression
+  take right, like expression
+  like law-piece
+  mark private
+
+  save left-text, loose(value-piece(reading, left))
+  save right-text, loose(value-piece(reading, right))
+  back make-piece(<{left-text} {word} {right-text}>, <relation>)
+
+task arithmetic-piece
+  take reading, like law-reading
+  take word, like text
+  take left, like expression
+  take right, like expression
+  like law-piece
+  mark private
+
+  save left-text, tight(value-piece(reading, left))
+  save right-text, tight(value-piece(reading, right))
+  back make-piece(<{left-text} {word} {right-text}>, <infix>)
+
+task unary-piece
+  take reading, like law-reading
+  take node, like expression
+  like law-piece
+  mark private
+
+  sift node
+    case unary
+      sift op
+        case not
+          save inner, chained(proposition-piece(reading, operand))
+          back make-piece(<it is not true that {inner}>, <logic>)
+        case negate
+          save inner, value-piece(reading, operand)
+          fork test, is-equal(inner/grain, <atom>)
+            hold
+              back make-piece(<negative {inner/text}>, <atom>)
+          back make-piece(<the negative of {chained(inner)}>, <prefix>)
+        miss
+          back refused-piece(reading, <the operator {op}, which has no reading in words yet>)
+    miss
+      back value-piece(reading, node)
+
+# ---- calls ----
+
+# A lean call keeps a nested call as a NAMED argument: `apply(compose(g, f), x)` mills as `apply` with arguments
+# `[g, f]` named `compose` and marked lean, then `x`. Each such argument is the call it was written as
+task arguments-of
+  take node, like expression
+  like list, like law-argument
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      save at, 0
+      walk args
+        take arg
+        save named, <>
+        fork test, is-below(at, names/length)
+          hold
+            save named, get(names, at)
+        save lean-named, false
+        fork test, is-below(at, lean-names/length)
+          hold
+            save lean-named, get(lean-names, at)
+        save items, make list
+        save callee, <>
+        fork test, and(is-above(char-count(named), 0), lean-named)
+          hold
+            save callee, named
+            sift arg
+              case array
+                link array-items
+                walk array-items
+                  take item
+                  push(items, item)
+              miss
+                push(items, arg)
+        save argument
+          make law-argument
+            bind expression, arg
+            bind callee, callee
+            bind items, items
+        push(out, argument)
+        save at, add(at, 1)
+    miss
+      save at, 0
+  back out
+
+# the items of a nested call, as plain arguments
+task plain-arguments
+  take items, like list, like expression
+  like list, like law-argument
+  mark private
+
+  save out, make list
+  walk items
+    take item
+    save argument
+      make law-argument
+        bind expression, item
+        bind callee, <>
+        bind items, make list
+    push(out, argument)
+  back out
+
+task argument-value
+  take reading, like law-reading
+  take argument, like law-argument
+  like law-piece
+  mark private
+
+  fork test, is-equal(argument/callee, <>)
+    hold
+      back value-piece(reading, argument/expression)
+  back called(reading, argument/callee, plain-arguments(argument/items), false)
+
+task argument-proposition
+  take reading, like law-reading
+  take argument, like law-argument
+  like law-piece
+  mark private
+
+  fork test, is-equal(argument/callee, <>)
+    hold
+      back proposition-piece(reading, argument/expression)
+  back called(reading, argument/callee, plain-arguments(argument/items), true)
+
+task call-piece
+  take reading, like law-reading
+  take node, like expression
+  take as-proposition, like boolean
+  like law-piece
+  mark private
+
+  sift node
+    case call
+      sift callee
+        case variable
+          link callee-name
+          fork test, is-equal(callee-name, <>)
+            hold
+              back refused-piece(reading, <a call whose callee is not a name>)
+          back called(reading, callee-name, arguments-of(node), as-proposition)
+        miss
+          back refused-piece(reading, <a call whose callee is not a name>)
+    miss
+      back value-piece(reading, node)
+
+task called
+  take reading, like law-reading
+  take name, like text
+  take args, like list, like law-argument
+  take as-proposition, like boolean
+  like law-piece
+  mark private
+
+  # a call of a quantified function or property: `f of x`, `p holds of x`, `r of x and y`
+  fork test, has-text(reading/bound, name)
+    hold
+      back applied(reading, name, args, as-proposition, <>)
+
+  save phrase, phrase-of(name)
+  save count, args/length
+  fork test, and(is-equal(phrase/shape, <infix>), is-equal(count, 2))
+    hold
+      save left-text, tight(argument-value(reading, get(args, 0)))
+      save right-text, tight(argument-value(reading, get(args, 1)))
+      save grain, <infix>
+      fork test, phrase/logic
+        hold
+          save grain, <logic>
+      back make-piece(<{left-text} {phrase/word} {right-text}>, grain)
+  fork test, and(is-equal(phrase/shape, <prefix>), is-equal(count, 1))
+    hold
+      save inner, chained(argument-value(reading, get(args, 0)))
+      back make-piece(<{phrase/word} {inner}>, <prefix>)
+  fork test, and(is-equal(phrase/shape, <pair>), is-equal(count, 2))
+    hold
+      fork test, phrase/logic
+        hold
+          save left-text, chained(argument-proposition(reading, get(args, 0)))
+          save right-text, chained(argument-proposition(reading, get(args, 1)))
+          back make-piece(<{phrase/first} {left-text} {phrase/second} {right-text}>, <logic>)
+      save left-text, tight(argument-value(reading, get(args, 0)))
+      save right-text, tight(argument-value(reading, get(args, 1)))
+      back make-piece(<{phrase/first} {left-text} {phrase/second} {right-text}>, <phrase>)
+
+  # no phrase: the task's own name, and the name is recorded as a word the renderer lacks
+  missing(reading, name)
+  fork test, is-equal(count, 0)
+    hold
+      back make-piece(name, <atom>)
+  fork test, and(as-proposition, starts-with(name, <is->))
+    hold
+      save texts, make list
+      walk args
+        take arg
+        push(texts, tight(argument-value(reading, arg)))
+      save subject, get(texts, 0)
+      save rest, make list
+      save at, 0
+      walk texts
+        take one
+        fork test, is-above(at, 0)
+          hold
+            push(rest, one)
+        save at, add(at, 1)
+      fork test, is-equal(rest/length, 0)
+        hold
+          back make-piece(<{subject} is {substring(name, 3)}>, <relation>)
+      back make-piece(<{subject} is {substring(name, 3)} {joined(rest, < >)}>, <relation>)
+  back applied(reading, name, args, as-proposition, <the >)
+
+task applied
+  take reading, like law-reading
+  take name, like text
+  take args, like list, like law-argument
+  take as-proposition, like boolean
+  take article, like text
+  like law-piece
+  mark private
+
+  fork test, as-proposition
+    hold
+      save texts, make list
+      walk args
+        take arg
+        push(texts, tight(argument-value(reading, arg)))
+      back make-piece(<{name} holds of {listed(texts)}>, <relation>)
+  fork test, is-equal(args/length, 1)
+    hold
+      save inner, chained(argument-value(reading, get(args, 0)))
+      back make-piece(<{article}{name} of {inner}>, <prefix>)
+  save texts, make list
+  walk args
+    take arg
+    push(texts, tight(argument-value(reading, arg)))
+  back make-piece(<{article}{name} of {listed(texts)}>, <phrase>)
+
+# a value of a form's case: `zero`, `cons with item h and more t`, `matrix-two of a, b, c and d`
+task record-piece
+  take reading, like law-reading
+  take node, like expression
+  like law-piece
+  mark private
+
+  sift node
+    case record
+      save record-name, name
+      fork test, and(is-equal(fields/length, 0), is-equal(positional/length, 0))
+        hold
+          back make-piece(record-name, <atom>)
+      fork test, is-above(positional/length, 0)
+        hold
+          save texts, make list
+          walk positional
+            take item
+            push(texts, tight(value-piece(reading, item)))
+          save grain, <phrase>
+          fork test, is-equal(positional/length, 1)
+            hold
+              save grain, <prefix>
+          back make-piece(<{record-name} of {listed(texts)}>, grain)
+      # one field reads like a prefix and chains: `succ with prior (the length of t)`
+      save parts, make list
+      walk fields
+        take field
+        save field-text, tight(value-piece(reading, field/value))
+        push(parts, <{field/name} {field-text}>)
+      save grain, <phrase>
+      fork test, is-equal(fields/length, 1)
+        hold
+          save grain, <prefix>
+      back make-piece(<{record-name} with {listed(parts)}>, grain)
+    miss
+      back value-piece(reading, node)
+
+# ---- types, as the noun a quantifier takes ----
+
+task plural-of
+  take word, like text
+  like text
+  mark private
+
+  fork test, or(or(or(ends-with(word, <s>), ends-with(word, <x>)), or(ends-with(word, <z>), ends-with(word, <ch>))), ends-with(word, <sh>))
+    hold
+      back <{word}es>
+  save size, char-count(word)
+  fork test, and(is-minimum(size, 2), ends-with(word, <y>))
+    hold
+      save before, char-at(word, subtract(size, 2))
+      fork test, not(contains(<aeiou>, before))
+        hold
+          back <{substring(word, 0, subtract(size, 1))}ies>
+  back <{word}s>
+
+# the plural goes on the last word: `natural numbers`
+task plain-noun
+  take word, like text
+  like law-noun
+  mark private
+
+  save space, last-index-of(word, < >)
+  save plural, plural-of(word)
+  fork test, is-minimum(space, 0)
+    hold
+      save plural, <{substring(word, 0, add(space, 1))}{plural-of(substring(word, add(space, 1)))}>
+  back
+    make law-noun
+      bind singular, word
+      bind plural, plural
+      bind after, <>
+
+task make-noun
+  take singular, like text
+  take plural, like text
+  take after, like text
+  like law-noun
+  mark private
+
+  back
+    make law-noun
+      bind singular, singular
+      bind plural, plural
+      bind after, after
+
+# a type as a short name inside another phrase: `a`, `number`, `roll`, `set of a`
+task short-type
+  take reading, like law-reading
+  take t, like type
+  like text
+  mark private
+
+  sift t
+    case number
+      fork test, is-above(char-count(width), 0)
+        hold
+          back <{width} number>
+      back <number>
+    case float
+      back <decimal number>
+    case boolean
+      back <truth value>
+    case string
+      back <text>
+    case unit
+      back <nothing>
+    case array
+      back <list of {inner-type(reading, element)}>
+    case map
+      save key-text, inner-type(reading, key)
+      save value-text, inner-type(reading, value)
+      back <map from {key-text} to {value-text}>
+    case named
+      # a type indexed by values inside another type names values bound by a dependent function, which no sentence
+      # here can show. Refused rather than said without them
+      fork test, is-above(value-args/length, 0)
+        hold
+          refuse(reading, <the value-indexed type {name} inside another type, which has no reading in words yet>)
+          back <>
+      fork test, is-equal(args/length, 0)
+        hold
+          back name
+      back <{name} of {inner-types(reading, args)}>
+    case function
+      save from, inner-types(reading, params)
+      back <function from {from} to {inner-type(reading, result)}>
+    miss
+      back <any type>
+
+task short-maybe
+  take reading, like law-reading
+  take t, like maybe, like type
+  like text
+  mark private
+
+  sift t
+    case some
+      link known
+      back short-type(reading, known)
+    case none
+      back <any type>
+
+# a type inside another type: one with words of its own is wrapped, so `function from (function from a to b) to c`
+# has one reading
+task inner-type
+  take reading, like law-reading
+  take t, like type
+  like text
+  mark private
+
+  save text, short-type(reading, t)
+  fork test, contains(text, < >)
+    hold
+      back <({text})>
+  back text
+
+task inner-types
+  take reading, like law-reading
+  take types, like list, like type
+  like text
+  mark private
+
+  save texts, make list
+  walk types
+    take one
+    push(texts, inner-type(reading, one))
+  back joined(texts, < and >)
+
+task is-natural
+  take refine, like maybe, like refinement
+  like boolean
+  mark private
+
+  sift refine
+    case some
+      link refinement-value
+      back true
+    case none
+      back false
+
+# the noun a quantifier puts before the names, and what follows them: `every function f from a to b`
+task noun-of
+  take reading, like law-reading
+  take t, like maybe, like type
+  take natural, like boolean
+  like law-noun
+  mark private
+
+  sift t
+    case none
+      back plain-noun(<value>)
+    case some
+      link known
+      back known-noun(reading, known, natural)
+
+task known-noun
+  take reading, like law-reading
+  take t, like type
+  take natural, like boolean
+  like law-noun
+  mark private
+
+  sift t
+    case unknown
+      back plain-noun(<value>)
+    case variable
+      back plain-noun(<value>)
+    case number
+      fork test, natural
+        hold
+          back plain-noun(<natural number>)
+    case named
+      fork test, and(has-text(reading/generics, name), is-equal(args/length, 0))
+        hold
+          back make-noun(<value>, <values>, < of type {name}>)
+    case function
+      save from, inner-types(reading, params)
+      # a function to `type` is a property of its argument, and a call of it a proposition
+      fork test, is-type-named(result)
+        hold
+          back make-noun(<property>, <properties>, < of values of type {from}>)
+      back make-noun(<function>, <functions>, < from {from} to {inner-type(reading, result)}>)
+    case array
+      back make-noun(<list>, <lists>, < of {inner-type(reading, element)}>)
+    miss
+      save nothing, 0
+  sift t
+    case named
+      fork test, is-above(args/length, 0)
+        hold
+          save plain, plain-noun(name)
+          back make-noun(plain/singular, plain/plural, < of {inner-types(reading, args)}>)
+    miss
+      save nothing, 0
+  back plain-noun(short-type(reading, t))
+
+task is-type-named
+  take t, like type
+  like boolean
+  mark private
+
+  sift t
+    case named
+      back is-equal(name, <type>)
+    miss
+      back false
+
+# `every number a`, `all numbers a, b and c`, joined in order, consecutive names of one noun grouped
+task quantified
+  take binders, like list, like law-binder
+  like text
+  mark private
+
+  save groups, make list
+  walk binders
+    take binder
+    save size, groups/length
+    save joins, false
+    fork test, is-above(size, 0)
+      hold
+        save last, get(groups, subtract(size, 1))
+        fork test, and(is-equal(last/noun/singular, binder/noun/singular), is-equal(last/noun/after, binder/noun/after))
+          hold
+            push(last/names, binder/name)
+            save joins, true
+    fork test, not(joins)
+      hold
+        save names, make list
+        push(names, binder/name)
+        save group
+          make law-group
+            bind noun, binder/noun
+            bind names, names
+        push(groups, group)
+  save texts, make list
+  walk groups
+    take group
+    fork test, is-equal(group/names/length, 1)
+      hold
+        push(texts, <every {group/noun/singular} {get(group/names, 0)}{group/noun/after}>)
+      miss
+        push(texts, <all {group/noun/plural} {listed(group/names)}{group/noun/after}>)
+  back listed(texts)
+
+task is-word-char
+  take c, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(c, <_>)
+    hold
+      back true
+  back or(or(contains(<abcdefghijklmnopqrstuvwxyz>, c), contains(<ABCDEFGHIJKLMNOPQRSTUVWXYZ>, c)), and(is-above(char-count(c), 0), contains(<0123456789>, c)))
+
+# whether `word` stands in `text` as a whole word, as the original's /\b(and|or)\b/
+task has-word
+  take text, like text
+  take word, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  save length, char-count(word)
+  save at, index-of(text, word, 0)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save before-word, true
+      fork test, is-above(at, 0)
+        hold
+          save before-word, not(is-word-char(char-at(text, subtract(at, 1))))
+      save after-word, true
+      save end, add(at, length)
+      fork test, is-below(end, size)
+        hold
+          save after-word, not(is-word-char(char-at(text, end)))
+      fork test, and(before-word, after-word)
+        hold
+          back true
+      save at, index-of(text, word, add(at, 1))
+  back false
+
+task upper-first
+  take text, like text
+  like text
+  mark private
+
+  fork test, is-equal(char-count(text), 0)
+    hold
+      back text
+  back <{to-upper-case(char-at(text, 0))}{substring(text, 1)}>
+
+task lower-first
+  take text, like text
+  like text
+  mark private
+
+  fork test, is-equal(char-count(text), 0)
+    hold
+      back text
+  back <{to-lower-case(char-at(text, 0))}{substring(text, 1)}>
+
+task sentence
+  take quantifier, like text
+  take wheres, like list, like text
+  take hypotheses, like list, like text
+  take goal, like text
+  like text
+  mark private
+
+  save text, <>
+  fork test, is-above(char-count(quantifier), 0)
+    hold
+      save text, <{text}for {quantifier}, >
+  walk wheres
+    take where
+    save text, <{text}where {where}, >
+  fork test, is-above(hypotheses/length, 0)
+    hold
+      # among several hypotheses, one with an "and" or "or" of its own is wrapped, or the list's "and" runs into it.
+      # One that quantifies its own variable carries commas, so the joins become ", and" to keep one reading
+      save shown, make list
+      walk hypotheses
+        take h
+        fork test, and(is-above(hypotheses/length, 1), or(has-word(h, <and>), has-word(h, <or>)))
+          hold
+            push(shown, <({h})>)
+          miss
+            push(shown, h)
+      save commas, false
+      walk shown
+        take h
+        fork test, and(contains(h, <,>), not(starts-with(h, <(>)))
+          hold
+            save commas, true
+      save join, listed(shown)
+      fork test, commas
+        hold
+          save join, joined(shown, <, and >)
+      save text, <{text}if {join}, then >
+  save text, <{text}{goal}>
+  back <{upper-first(text)}.>
+
+# ---- theorems and axioms ----
+
+# what the body the bridge builds holds: witnesses as `let`, plain hypotheses as nested `if`, the goal as one `hold`.
+# An axiom's hypotheses and claim are `let`s named for them, the claim last
+form law-body
+  mark shared
+  link where-names, like list, like text
+  link where-inits, like list, like expression
+  link conditions, like list, like expression
+  link goals, like list, like expression
+  link axiom-parts, like list, like expression
+
+task walk-body
+  take reading, like law-reading
+  take axiom, like boolean
+  take body, like list, like statement
+  take found, like law-body
+  mark private
+
+  walk body
+    take one
+    fork test, is-above(char-count(reading/refused), 0)
+      hold
+        back
+    sift one
+      case return
+        turn next
+      case let
+        save let-name, name
+        fork test, axiom
+          hold
+            push(found/axiom-parts, init)
+          miss
+            push(found/where-names, let-name)
+            push(found/where-inits, init)
+            push(reading/bound, let-name)
+      case if
+        fork test, or(is-unequal(branches/length, 1), is-some-otherwise(otherwise))
+          hold
+            refuse(reading, <an `if` that is not one guard around the goal>)
+            back
+        save branch, get(branches, 0)
+        push(found/conditions, branch/cond)
+        walk-body(reading, axiom, branch/body, found)
+      case hold
+        fork test, is-above(found/goals/length, 0)
+          hold
+            refuse(reading, <two goals in one rule>)
+            back
+        push(found/goals, expr)
+      miss
+        refuse(reading, <a {one/form} statement in the rule's body>)
+        back
+
+task is-some-otherwise
+  take otherwise, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift otherwise
+    case some
+      link written
+      back true
+    case none
+      back false
+
+task generic-names
+  take generics, like list, like generic-param
+  like list, like text
+  mark private
+
+  save out, make list
+  walk generics
+    take g
+    push(out, g/name)
+  back out
+
+task type-binders
+  take generics, like list, like text
+  like list, like law-binder
+  mark private
+
+  save out, make list
+  walk generics
+    take g
+    save binder
+      make law-binder
+        bind name, g
+        bind noun, plain-noun(<type>)
+    push(out, binder)
+  back out
+
+task param-binder
+  take reading, like law-reading
+  take param, like function-param
+  like law-binder
+  mark private
+
+  save noun, noun-of(reading, param/type, is-natural(param/refine))
+  back
+    make law-binder
+      bind name, param/name
+      bind noun, noun
+
+task theorem-text
+  take reading, like law-reading
+  take rule-name, like text
+  take params, like list, like function-param
+  take body, like list, like statement
+  take axiom, like boolean
+  take universals, like list, like universal
+  like text
+  mark private
+
+  save found
+    make law-body
+      bind where-names, make list
+      bind where-inits, make list
+      bind conditions, make list
+      bind goals, make list
+      bind axiom-parts, make list
+  walk-body(reading, axiom, body, found)
+  fork test, is-above(char-count(reading/refused), 0)
+    hold
+      back <>
+
+  save goal-list, found/goals
+  save conditions, found/conditions
+  fork test, axiom
+    hold
+      save parts, found/axiom-parts
+      save goal-list, make list
+      save conditions, make list
+      walk found/conditions
+        take c
+        push(conditions, c)
+      save at, 0
+      walk parts
+        take part
+        fork test, is-equal(at, subtract(parts/length, 1))
+          hold
+            push(goal-list, part)
+          miss
+            push(conditions, part)
+        save at, add(at, 1)
+  fork test, is-equal(goal-list/length, 0)
+    hold
+      refuse(reading, <a rule with no goal>)
+      back <>
+  save goal, get(goal-list, 0)
+
+  walk universals
+    take u
+    walk u/binders
+      take binder-name
+      push(reading/bound, binder-name)
+
+  save binders, type-binders(reading/generics)
+  walk params
+    take param
+    push(binders, param-binder(reading, param))
+
+  save hypotheses, make list
+  walk universals
+    take u
+    save inner, make list
+    save at, 0
+    walk u/binders
+      take binder-name
+      save written, none-type()
+      fork test, is-below(at, u/types/length)
+        hold
+          save written, get(u/types, at)/type
+      save binder
+        make law-binder
+          bind name, binder-name
+          bind noun, noun-of(reading, written, false)
+      push(inner, binder)
+      save at, add(at, 1)
+    save quantifier-text, quantified(inner)
+    save said, proposition-piece(reading, u/expr)
+    push(hypotheses, <for {quantifier-text}, {said/text}>)
+  walk conditions
+    take c
+    push(hypotheses, proposition-piece(reading, c)/text)
+
+  save quantifier, quantified(binders)
+  save wheres, make list
+  save at, 0
+  walk found/where-names
+    take where-name
+    save init-piece, value-piece(reading, get(found/where-inits, at))
+    push(wheres, <{where-name} is {init-piece/text}>)
+    save at, add(at, 1)
+  save goal-text, proposition-piece(reading, goal)/text
+  save text, sentence(quantifier, wheres, hypotheses, goal-text)
+  fork test, axiom
+    hold
+      save text, <Assumed without proof: {lower-first(text)}>
+  back text
+
+task none-type
+  like maybe, like type
+  mark private
+
+  back make none
+
+# ---- claims: a name at a type, read as a proposition ----
+
+# A parameter whose type is a proposition is a hypothesis, any other is a value it holds for, and the result is the
+# conclusion. A proposition is the equality family, the empty type, or a family indexed by values
+task is-proposition
+  take t, like maybe, like type
+  like boolean
+  mark private
+
+  sift t
+    case some
+      link known
+      sift known
+        case named
+          back or(or(is-equal(name, <equal>), is-equal(name, <never>)), is-above(value-args/length, 0))
+        miss
+          back false
+    case none
+      back false
+
+task is-property
+  take t, like maybe, like type
+  like boolean
+  mark private
+
+  sift t
+    case some
+      link known
+      sift known
+        case function
+          back is-type-named(result)
+        miss
+          back false
+    case none
+      back false
+
+task said-type
+  take reading, like law-reading
+  take properties, like list, like text
+  take t, like type
+  like text
+  mark private
+
+  sift t
+    case named
+      fork test, and(is-equal(name, <equal>), is-equal(value-args/length, 2))
+        hold
+          save left-text, loose(value-piece(reading, get(value-args, 0)))
+          save right-text, loose(value-piece(reading, get(value-args, 1)))
+          back <{left-text} equals {right-text}>
+      fork test, is-equal(name, <never>)
+        hold
+          back <there is a value of never, the type with no values>
+      save texts, make list
+      walk value-args
+        take arg
+        push(texts, tight(value-piece(reading, arg)))
+      # a family the claim does not quantify over is named by its own name, a word the renderer lacks
+      fork test, and(not(has-text(properties, name)), not(has-text(reading/words, name)))
+        hold
+          push(reading/words, name)
+      back <{name} holds of {listed(texts)}>
+    miss
+      back <>
+
+task claim-text
+  take reading, like law-reading
+  take params, like list, like function-param
+  take result, like maybe, like type
+  like text
+  mark private
+
+  save properties, make list
+  save values, make list
+  walk params
+    take param
+    fork test, is-property(param/type)
+      hold
+        push(properties, param/name)
+    fork test, not(is-proposition(param/type))
+      hold
+        push(values, param)
+        push(reading/bound, param/name)
+
+  save binders, type-binders(reading/generics)
+  walk values
+    take param
+    push(binders, param-binder(reading, param))
+
+  save hypotheses, make list
+  walk params
+    take param
+    fork test, is-proposition(param/type)
+      hold
+        sift param/type
+          case some
+            link known
+            push(hypotheses, said-type(reading, properties, known))
+          case none
+            save nothing, 0
+
+  save quantifier, quantified(binders)
+  save goal, <>
+  sift result
+    case some
+      link known
+      fork test, is-proposition(result)
+        hold
+          save goal, said-type(reading, properties, known)
+        miss
+          save goal, <there is a value of type {short-type(reading, known)}>
+    case none
+      refuse(reading, <a claim with no result type>)
+      back <>
+  save wheres, make list
+  back sentence(quantifier, wheres, hypotheses, goal)
+
+# ---- the public face ----
+
+# every rule of a milled program in words, in the order written. A claim is filled by a task of its name, which is a
+# separate statement and never read here: the sentence is the claim, not its proof
+task law-sentences
+  take program, like list, like statement
+  like list, like law-sentence
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        save rule-name, name
+        fork test, not(or(or(claim, theorem), axiom))
+          hold
+            turn next
+        save kind, <theorem>
+        fork test, and(claim, not(theorem))
+          hold
+            save kind, <claim>
+          miss
+            fork test, axiom
+              hold
+                save kind, <axiom>
+        save bound, make list
+        save reading, fresh-reading(bound, generic-names(generics))
+        save text, <>
+        fork test, is-equal(kind, <claim>)
+          hold
+            save text, claim-text(reading, params, result)
+          miss
+            walk params
+              take param
+              push(reading/bound, param/name)
+            save text, theorem-text(reading, rule-name, params, body, axiom, universals)
+        save words, reading/words
+        fork test, is-above(char-count(reading/refused), 0)
+          hold
+            save text, <>
+            save words, make list
+        save said
+          make law-sentence
+            bind name, rule-name
+            bind kind, kind
+            bind text, text
+            bind refused, reading/refused
+            bind words, words
+        push(out, said)
+      miss
+        turn next
+  back out

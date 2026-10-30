@@ -33,6 +33,7 @@ load @term/base/text
 load ../parser/tree
   find node
   find parse
+  find root-node
 
 load ../parser/token
   find token-source
@@ -92,7 +93,13 @@ task is-look-stylesheet
   fork test, not(looked/ok)
     hold
       back false
-  save tree, looked/tree
+  back is-look-tree(looked/tree)
+
+# the same question of a tree already parsed, so a caller asking it and whether the file is data parses once
+task is-look-tree
+  take tree, like root-node
+  like boolean
+
   sift tree
     case root
       fork test, is-equal(nodes/length, 0)

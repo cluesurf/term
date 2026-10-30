@@ -128,6 +128,24 @@ task upper-params
     push(letters, to-upper-case(param))
   back join-texts(letters, <, >)
 
+# does a record type's chain include `exception`
+task chains-exception
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case record-type
+      link chain
+      walk chain
+        take link-name
+        fork test, is-equal(link-name, <exception>)
+          hold
+            back true
+    miss
+      save nothing, 0
+  back false
+
 # ---- forms ----
 
 # `impl TermHash` for a struct, or a payload struct: its fields one by one
@@ -302,10 +320,17 @@ task emit-form
       # a list the record owns is the plain `Vec`
       save lines, make list
       save field-names, make list
+      save raises, chains-exception(node)
       walk form-fields
         take field
         save field-type, field/type
         save spelled, rust-type-of(field-type, context)
+        # an exception's cause is another exception, held as the carrier a caught one is (decision 078 section 3):
+        # `link base, like maybe` names no item, which spelled `Maybe<i64>` and refused every cause
+        fork test, and(raises, is-equal(field/name, <base>))
+          hold
+            save spelled, <Maybe\<TermException\>>
+
         fork test, facts/field-lists/has(<{form-name}/{field/name}>)
           hold
             sift field-type

@@ -4,6 +4,18 @@ mod crypto {
     pub fn sha256(input: Vec<u8>) -> Vec<u8> { Sha256::digest(&input).to_vec() }
     pub fn sha512(input: Vec<u8>) -> Vec<u8> { Sha512::digest(&input).to_vec() }
     pub fn md5(input: Vec<u8>) -> Vec<u8> { ::md5::Md5::digest(&input).to_vec() }
+    // SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits (a Rust text is valid UTF-8, so it never holds a lone
+    // surrogate). Held to the Term reference by test/compile/digest-text-native.ts
+    pub fn sha256_text(input: String) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let digest = Sha256::digest(input.as_bytes());
+        let mut out = String::with_capacity(64);
+        for byte in digest.iter() {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 15) as usize] as char);
+        }
+        out
+    }
     pub fn hmac_sha256(key: Vec<u8>, data: Vec<u8>) -> Vec<u8> {
         let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
         mac.update(&data);

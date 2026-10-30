@@ -11,6 +11,15 @@ task digest-sha256
     call crypto/sha256
       read input
 
+# SHA-256 of a text's UTF-8 bytes as 64 lowercase hex digits, synchronous (CryptoKit). Held to the Term reference
+# (native/shared/cryptography/sha256) by test/compile/digest-text-native.ts
+task digest-sha256-text
+  take input, like text
+  like text
+  send back
+    call crypto/sha256-text
+      read input
+
 task digest-sha512
   mark async
   take input, like bytes

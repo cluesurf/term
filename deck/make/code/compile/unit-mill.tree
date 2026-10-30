@@ -30,6 +30,7 @@ load @term/base/text
   find char-code-at
   find index-of
   find starts-with
+  find contains
 
 load ../parser/tree
   find parse-result
@@ -46,7 +47,7 @@ load ../parser/diagnostic
   find span
 
 load ../term/hash
-  find hash-text
+  find hash-key
 
 load ../check/note-metadata
   find note-metadata-sites
@@ -239,7 +240,7 @@ task graph-templates
   save key, <>
   fork test, is-above(templates/length(), 0)
     hold
-      save key, hash-text(template-text)
+      save key, hash-key(template-text)
   back
     make graph-template-set
       bind templates, templates
@@ -309,6 +310,11 @@ task entry-warnings
     walk sources
       take unit
       fork test, is-equal(unit/file, source/file)
+        hold
+          turn next
+      # a module that defines the task names it in its text, so one whose text never holds the word is not parsed
+      # to be asked (item term-self-host-001-0437: on a no-op this was most of the probe's parsing)
+      fork test, not(contains(unit/text, site/word))
         hold
           turn next
       save unit-tree, parsed(unit)

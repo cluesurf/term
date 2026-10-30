@@ -25,6 +25,7 @@
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
     "lint": "bash task/lint.sh",
+    "lint:check": "bash task/lint.sh --check",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm run make && pnpm publish --access public",
     "install:all": "pnpm install && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/base && pnpm install) && (cd deck/flow && pnpm install --ignore-workspace)",

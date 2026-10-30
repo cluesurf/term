@@ -101,11 +101,15 @@ const runnerCapture = (
     resolve(result)
   }
 
-  child.stdout?.on('data', (chunk: Buffer) => {
-    output += chunk.toString()
+  // each stream decodes through one UTF-8 decoder, which carries a character a pipe chunk splits over to the next
+  // chunk, so a multi-byte character across a 65,536-byte boundary reads whole (decision 081)
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
+  child.stdout?.on('data', (chunk: string) => {
+    output += chunk
   })
-  child.stderr?.on('data', (chunk: Buffer) => {
-    error += chunk.toString()
+  child.stderr?.on('data', (chunk: string) => {
+    error += chunk
   })
   child.on('error', (cause: Error) => {
     finish({

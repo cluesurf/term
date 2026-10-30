@@ -55,17 +55,20 @@ const unbox = <T>(value: { form: string; value?: T }): T | undefined =>
 
 // `(?:^|\s)(?:task|rule)\s+$` -> ['task', 'rule']
 function headsOf(after: RegExp | undefined): string[] {
-  if (!after) {return []}
+  if (!after) {
+    return []
+  }
 
   const match =
     /^\(\?:\^\|\\s\)(?:\(\?:([A-Za-z|-]+)\)|([A-Za-z-]+))\\s\+\$$/.exec(
       after.source,
     )
 
-  if (!match)
-    {throw new Error(
+  if (!match) {
+    throw new Error(
       `symbols: a pattern the port cannot take: ${after.source}`,
-    )}
+    )
+  }
 
   return (match[1] ?? match[2]!).split('|')
 }
@@ -133,14 +136,18 @@ export function forEachCall(
   program: Program,
   visit: (call: Extract<Expression, { form: 'call' }>) => void,
 ): void {
-  for (const node of port.callsOf(program)) {visit(node)}
+  for (const node of port.callsOf(program)) {
+    visit(node)
+  }
 }
 
 export function forEachExpression(
   program: Program,
   visit: (node: Expression) => void,
 ): void {
-  for (const node of port.expressionsOf(program)) {visit(node)}
+  for (const node of port.expressionsOf(program)) {
+    visit(node)
+  }
 }
 
 export function callAt(

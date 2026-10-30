@@ -1,5 +1,3 @@
-mark draft
-
 # The benchmark runner. Finds the `time-*` tasks of a compiled program, runs them in a child `node` against the
 # compiled module, and reduces the raw samples to statistics. A benchmark is a zero-argument top-level task whose name
 # starts with `time-` (`task time-sort`).

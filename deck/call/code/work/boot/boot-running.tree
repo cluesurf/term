@@ -33,7 +33,7 @@ load @term/call/work/hook/parsing
   find command-routes
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 load ./port-probing
   find base-port
@@ -1293,7 +1293,8 @@ task bundle-plan
   parts/push(<esbuild@{esbuild-module/version}>)
   parts/push(boot-json(config))
   parts/push(plan/key)
-  save key, hash-text(boot-joined(parts))
+  # a stored key, so hash-key (decision 080 of note/project/term/self-host/change/001-finish-self-host)
+  save key, hash-key(boot-joined(parts))
   # the boot cache always holds the bundler's input. The bundle goes there too, unless `--out` names a folder for it
   save cached, project-home(run/project-root, boot-parts(<boot>, key))
   save out, cached

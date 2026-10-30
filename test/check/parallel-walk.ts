@@ -12,7 +12,12 @@
 // to-code, from-code and fill on TypeScript and Rust and reads back equal (PARALLEL_NATIVE=0 skips Rust).
 // Run: npx tsx test/check/parallel-walk.ts (from deck/term/deck/term)
 
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -39,10 +44,13 @@ let made = 0
 
 function check(text: string): { ok: boolean; said: Said[] } {
   made++
-  const built = compile(
-    { file: join(dir, `walk${made}.tree`), text },
-    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' } as never,
-  ) as { ok: boolean; diagnostics?: { name: string; message: string; severity?: string }[] }
+  const built = compile({ file: join(dir, `walk${made}.tree`), text }, {
+    resolve: projectResolver(process.cwd(), 'node'),
+    env: 'node',
+  } as never) as {
+    ok: boolean
+    diagnostics?: { name: string; message: string; severity?: string }[]
+  }
 
   return {
     ok: built.ok,
@@ -57,22 +65,37 @@ const LIST = `load @term/base/list
 `
 
 // refused with `code`, by a message naming every one of `names`. PARALLEL_SAY=1 prints the messages
-function refused(says: string, code: string, names: string | string[], text: string): void {
+function refused(
+  says: string,
+  code: string,
+  names: string | string[],
+  text: string,
+): void {
   const got = check(text)
   const wanted = typeof names === 'string' ? [names] : names
   if (process.env.PARALLEL_SAY === '1') {
-    for (const d of got.said) console.log(`      ${d.name}: ${d.message}`)
+    for (const d of got.said)
+      console.log(`      ${d.name}: ${d.message}`)
   }
   ok(
     `${code}: ${says}`,
-    !got.ok && got.said.some(d => d.name === code && wanted.every(name => d.message.includes(name))),
+    !got.ok &&
+      got.said.some(
+        d =>
+          d.name === code &&
+          wanted.every(name => d.message.includes(name)),
+      ),
     JSON.stringify(got.said),
   )
 }
 
 function accepted(says: string, text: string): void {
   const got = check(text)
-  ok(`accepted: ${says}`, got.ok && got.said.length === 0, JSON.stringify(got.said))
+  ok(
+    `accepted: ${says}`,
+    got.ok && got.said.length === 0,
+    JSON.stringify(got.said),
+  )
 }
 
 // ---- refused ----
@@ -540,7 +563,14 @@ form inner
   link weight, like float
 `
 
-type Kind = { kind: string; field: string; value: string; shown: string; want: string; extra?: string }
+type Kind = {
+  kind: string
+  field: string
+  value: string
+  shown: string
+  want: string
+  extra?: string
+}
 
 const REGION_OF = `
 task region-of
@@ -555,10 +585,34 @@ task region-of
 `
 
 const KINDS: Kind[] = [
-  { kind: 'text', field: 'like text', value: 'text <ada é>', shown: '{got/value}', want: 'ada é' },
-  { kind: 'number', field: 'like number', value: 'code -41', shown: '{got/value}', want: '-41' },
-  { kind: 'decimal', field: 'like float', value: 'code 2.5', shown: '{got/value}', want: '2.5' },
-  { kind: 'flag', field: 'like boolean', value: 'false', shown: '{got/value}', want: 'false' },
+  {
+    kind: 'text',
+    field: 'like text',
+    value: 'text <ada é>',
+    shown: '{got/value}',
+    want: 'ada é',
+  },
+  {
+    kind: 'number',
+    field: 'like number',
+    value: 'code -41',
+    shown: '{got/value}',
+    want: '-41',
+  },
+  {
+    kind: 'decimal',
+    field: 'like float',
+    value: 'code 2.5',
+    shown: '{got/value}',
+    want: '2.5',
+  },
+  {
+    kind: 'flag',
+    field: 'like boolean',
+    value: 'false',
+    shown: '{got/value}',
+    want: 'false',
+  },
   {
     kind: 'data',
     field: 'like data',
@@ -576,14 +630,16 @@ const KINDS: Kind[] = [
   {
     kind: 'form',
     field: 'like inner',
-    value: 'make inner\n        bind tag, text <t>\n        bind weight, code 1.5',
+    value:
+      'make inner\n        bind tag, text <t>\n        bind weight, code 1.5',
     shown: '{got/value/tag}:{got/value/weight}',
     want: 't:1.5',
   },
   {
     kind: 'list of forms',
     field: 'like list, like inner',
-    value: 'make list\n        make inner\n          bind tag, text <u>\n          bind weight, code 0.5',
+    value:
+      'make list\n        make inner\n          bind tag, text <u>\n          bind weight, code 0.5',
     shown: '{got/value/length}:{got/value/0/tag}',
     want: '1:u',
   },
@@ -633,17 +689,24 @@ task run
   send back, text <${one.shown}>
 `
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const root = mkdtempSync(join(tmpdir(), 'term-parallel-cross-'))
 mkdirSync(join(root, 'link/@term'), { recursive: true })
 mkdirSync(join(root, 'code'), { recursive: true })
 symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
 symlinkSync(join(TERM, 'deck/host'), join(root, 'link/@term/host'))
-writeFileSync(join(root, 'deck.tree'), 'deck @probe/parallel-cross\n  code <0.0.0>\n')
+writeFileSync(
+  join(root, 'deck.tree'),
+  'deck @probe/parallel-cross\n  code <0.0.0>\n',
+)
 const out = join(root, 'out')
 mkdirSync(out, { recursive: true })
-const backends = process.env.PARALLEL_NATIVE === '0' ? (['typescript'] as const) : (['typescript', 'rust'] as const)
+const backends =
+  process.env.PARALLEL_NATIVE === '0'
+    ? (['typescript'] as const)
+    : (['typescript', 'rust'] as const)
 
 for (const one of KINDS) {
   for (const backend of backends) {
@@ -663,7 +726,9 @@ for (const one of KINDS) {
     ok(
       `${backend}: a ${one.kind} crosses melt, to-code, from-code and fill unchanged`,
       ran.form === 'ran' && ran.output === one.want,
-      ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
+      ran.form === 'ran'
+        ? `got ${JSON.stringify(ran.output)}`
+        : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
     )
   }
 }

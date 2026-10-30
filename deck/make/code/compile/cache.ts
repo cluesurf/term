@@ -52,7 +52,9 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // items term-self-host-001-0323 and 0324), not its own unit's split names, so a unit stored at '10' may hold a stub
 // whose carried call names another file's task in the unit reading it.
 // The port to Term (item 0107) changes no key and no stored byte, so it keeps '11'.
-export const CACHE_EPOCH = '11'
+// '12': every stored key and every part composed into one is `hash-key`, SHA-256 cut to 32 hex digits, not cyrb53
+// (decision 080, item term-self-host-001-0408). No stored answer changes, only its key, so old entries miss once.
+export const CACHE_EPOCH = '12'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share
@@ -151,7 +153,7 @@ function readScan<T>(stored: string | undefined): T | undefined {
   }
 }
 
-// THE CONTENT HASH IS TERM: `hashText` is deck/make/code/term/hash.tree, and the key of every field list and the memo
+// THE CONTENT HASH IS TERM: `hashKey` is deck/make/code/term/hash.tree (SHA-256 cut to 128 bits, decision 080), and the key of every field list and the memo
 // of each text's hash are compile/cache-store.tree. The memo is the process's one `text-hashes` record, shared by
 // every cache, bounded by the size of the texts it holds.
 const TEXT_HASHES = makeTextHashes()

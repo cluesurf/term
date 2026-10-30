@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { hashText } from '@term/make/code/term/hash'
+import { hashKey } from '@term/make/code/term/hash'
 import {
   dirname,
   isAbsolute,
@@ -223,7 +223,9 @@ function tsconfigJson(text: string): Record<string, unknown> {
       out += text.slice(at, end + 1)
       at = end + 1
     } else if (char === '/' && text[at + 1] === '/') {
-      while (at < text.length && text[at] !== '\n') {at++}
+      while (at < text.length && text[at] !== '\n') {
+        at++
+      }
     } else if (char === '/' && text[at + 1] === '*') {
       const end = text.indexOf('*/', at + 2)
       at = end < 0 ? text.length : end + 2
@@ -344,10 +346,7 @@ export function sourceHash(file: string): string {
     const stat = statSync(file)
     const known = HASHES.get(file)
 
-    if (
-      known?.size === stat.size &&
-      known.time === stat.mtimeMs
-    ) {
+    if (known?.size === stat.size && known.time === stat.mtimeMs) {
       return known.hash
     }
 
@@ -468,9 +467,10 @@ async function bundleUnits(
   root: string,
   units: TestUnits,
 ): Promise<string> {
-  // the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
+  // the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it.
+  // A stored key, so `hashKey` (decision 080 of note/project/term/self-host/change/001-finish-self-host)
   const kept = units.bundles
-  const key = hashText(
+  const key = hashKey(
     `${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`,
   )
 
@@ -539,7 +539,8 @@ function runFolder(root: string, key: string): string {
 // moved when the bundling itself changes, so a kept bundle from before is never run
 // 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
 // 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
-const BUNDLE_EPOCH = 'test-bundle-4'
+// 5: keyed by hashKey, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
+const BUNDLE_EPOCH = 'test-bundle-5'
 
 // each import of a test module is a new instance of it, as each run's own folder made it before
 let imports = 0

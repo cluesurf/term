@@ -121,10 +121,13 @@ function separateCaseNames(
   const caughtMatches = new Set<unknown>()
 
   const findCaught = (node: unknown, caught: Set<string>): void => {
-    if (!node || typeof node !== 'object') {return}
+    if (!node || typeof node !== 'object') {
+      return
+    }
 
-    if (Array.isArray(node))
-      {return node.forEach(child => findCaught(child, caught))}
+    if (Array.isArray(node)) {
+      return node.forEach(child => findCaught(child, caught))
+    }
 
     const record = node as Record<string, unknown>
     const subject = record.subject as
@@ -154,7 +157,9 @@ function separateCaseNames(
     }
 
     for (const [key, value] of Object.entries(record)) {
-      if (key !== 'span' && key !== 'type') {findCaught(value, caught)}
+      if (key !== 'span' && key !== 'type') {
+        findCaught(value, caught)
+      }
     }
   }
 
@@ -220,21 +225,27 @@ function separateCaseNames(
       file: string | undefined,
       fields: string[],
     ): boolean => {
-      if (file && caseFiles.has(file)) {return false}
+      if (file && caseFiles.has(file)) {
+        return false
+      }
 
-      if (file && formFiles.has(file)) {return true}
+      if (file && formFiles.has(file)) {
+        return true
+      }
 
       // a find of the form by its written name is the nearer binding, so it wins over a union import that brings a
       // case of the name (decision 049, term-self-host-001-0332): a name is scoped to its module
-      if ([...reaches(file, name)].some(f => formFiles.has(f)))
-        {return true}
+      if ([...reaches(file, name)].some(f => formFiles.has(f))) {
+        return true
+      }
 
       if (
         [...caseForms].some(form =>
           [...reaches(file, form)].some(f => caseFiles.has(f)),
         )
-      )
-        {return false}
+      ) {
+        return false
+      }
 
       const caseFit = owners.some(o =>
         fields.every(f => o.fields.includes(f)),
@@ -262,15 +273,23 @@ function separateCaseNames(
       }
 
       if (statement.form === 'instance') {
-        if (statement.mask === name) {statement.mask = renamed}
+        if (statement.mask === name) {
+          statement.mask = renamed
+        }
 
-        if (statement.target === name) {statement.target = renamed}
+        if (statement.target === name) {
+          statement.target = renamed
+        }
       }
 
       const visit = (node: unknown): void => {
-        if (!node || typeof node !== 'object') {return}
+        if (!node || typeof node !== 'object') {
+          return
+        }
 
-        if (Array.isArray(node)) {return node.forEach(visit)}
+        if (Array.isArray(node)) {
+          return node.forEach(visit)
+        }
 
         const record = node as Record<string, unknown>
 
@@ -308,7 +327,9 @@ function separateCaseNames(
         }
 
         for (const [key, value] of Object.entries(record)) {
-          if (key !== 'span') {visit(value)}
+          if (key !== 'span') {
+            visit(value)
+          }
         }
       }
 

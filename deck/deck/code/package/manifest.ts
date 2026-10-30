@@ -65,20 +65,26 @@ export function fromPort(port: Record<string, unknown>): DeckManifest {
     link: (port.link as PortLink[]).map(link),
   }
 
-  if (port.devLink) {out.devLink = (port.devLink as PortLink[]).map(link)}
+  if (port.devLink) {
+    out.devLink = (port.devLink as PortLink[]).map(link)
+  }
 
-  if (port.hostLink)
-    {out.hostLink = (
+  if (port.hostLink) {
+    out.hostLink = (
       port.hostLink as { registry: string; link: PortLink[] }[]
-    ).map(g => ({ ...g, link: g.link.map(link) }))}
+    ).map(g => ({ ...g, link: g.link.map(link) }))
+  }
 
-  if (port.need)
-    {out.need = {
+  if (port.need) {
+    out.need = {
       ...(port.need as object),
       mark: hold((port.need as { mark: PortHold }).mark),
-    }}
+    }
+  }
 
-  if (port.hook instanceof Map) {out.hook = Object.fromEntries(port.hook)}
+  if (port.hook instanceof Map) {
+    out.hook = Object.fromEntries(port.hook)
+  }
 
   return out as DeckManifest
 }

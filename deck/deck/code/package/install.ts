@@ -30,9 +30,7 @@ export function hostScopeRegistries(input: {
   >
 
   try {
-    return Object.fromEntries(
-      port.hostScopeRegistries(shaped as never),
-    )
+    return Object.fromEntries(port.hostScopeRegistries(shaped as never))
   } catch (error) {
     const note = (error as { note?: unknown }).note
 

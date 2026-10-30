@@ -21,12 +21,8 @@ export const releasedVersions = (input: {
   transport: unknown
   repository: string
 }): Promise<string[]> =>
-  liftAsync(
-    () =>
-      port.releasedVersions(
-        input.transport,
-        input.repository,
-      ),
+  liftAsync(() =>
+    port.releasedVersions(input.transport, input.repository),
   )
 export const newestMatching = (input: {
   versions: string[]

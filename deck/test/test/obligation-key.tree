@@ -1,7 +1,8 @@
 note <an obligation's cache key: the same inputs give the same key, any change gives another>
 
-# Ported from obligation-cache.ts's key (self-hosting, 2026-10-05). Every key is the TypeScript's own
-# (tmp/self-host-probes/obligation-values.ts).
+# Ported from obligation-cache.ts's key (self-hosting, 2026-10-05). Since 2026-10-30 every hash in the key is
+# hash-key (decision 080), and each value here is node:crypto's SHA-256 composed the same way
+# (tmp/self-host/0446/obligation-values.mjs).
 
 load ../code/obligation-key
   find verdict
@@ -16,20 +17,20 @@ load @term/base/hash
 
 test <a source and a version>
   host none, make list
-  want hold, is-equal(obligation-key(<task one>, none, <2.6.14>), <1vvapj59v2e>)
+  want hold, is-equal(obligation-key(<task one>, none, <2.6.14>), <b3bcfc5f09ddc917aa858c5b92770797>)
 
 test <dependencies are sorted first, so their order does not change the key>
   host unsorted, make list(<b>, <a>)
   host sorted, make list(<a>, <b>)
-  want hold, and(is-equal(obligation-key(<task one>, unsorted, <2.6.14>), <1ie5t3eg65i>), is-equal(obligation-key(<task one>, sorted, <2.6.14>), <1ie5t3eg65i>))
+  want hold, and(is-equal(obligation-key(<task one>, unsorted, <2.6.14>), <7476ce638156fb02d78142c98fdcfa2c>), is-equal(obligation-key(<task one>, sorted, <2.6.14>), <7476ce638156fb02d78142c98fdcfa2c>))
 
 test <dependencies sort in UTF-16 order, so a character past 0xFFFF comes before one from 0xE000>
   host deps, make list(<𝔸𝔸b >, <～bZ～>, <éb>, <>)
-  want hold, is-equal(obligation-key(<>, deps, <😀😀😀0>), <21p9epmead5>)
+  want hold, is-equal(obligation-key(<>, deps, <😀😀😀0>), <8d47101e911d53f3d81a1189b08b0f18>)
 
 test <a new toolchain version is a new key>
   host none, make list
-  want hold, is-equal(obligation-key(<task one>, none, <2.6.16>), <1n2v6qi630i>)
+  want hold, is-equal(obligation-key(<task one>, none, <2.6.16>), <953c7c56498f58c2458604ec4880b4d3>)
 
 test <the memory cache keeps a verdict under its key>
   host cache, memory-cache()

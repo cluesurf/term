@@ -24,7 +24,12 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Case = { name: string; says: string; want: string; program: string }
+type Case = {
+  name: string
+  says: string
+  want: string
+  program: string
+}
 
 const CASES: Case[] = [
   {
@@ -92,7 +97,9 @@ for (const one of CASES) {
     ok(
       `${backend}: ${one.says}`,
       ran.form === 'ran' && ran.output === one.want,
-      ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
+      ran.form === 'ran'
+        ? `got ${JSON.stringify(ran.output)}`
+        : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
     )
   }
 }

@@ -13,7 +13,7 @@ load @term/base/list
   find list
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 load @term/call/test-run-words
   find test-label
@@ -62,10 +62,11 @@ dock load
 # moved when the bundling itself changes, so a kept bundle from before is never run
 # 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
 # 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
+# 5: keyed by hash-key, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
 task bundle-epoch
   like text
 
-  back <test-bundle-4>
+  back <test-bundle-5>
 
 # ---- what the runner answers ----
 
@@ -717,7 +718,8 @@ task bundle-units
   # the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
   save kept, host-text(units/bundles)
   save version, host-text(units/cache/version-of(<unit>))
-  save key, hash-text(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{built/closure-key}\n{prelude}>)
+  # a stored key, so hash-key (decision 080 of note/project/term/self-host/change/001-finish-self-host)
+  save key, hash-key(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{built/closure-key}\n{prelude}>)
   save at, node-path/join(kept, <{key}.mjs>)
   save listed, node-path/join(kept, <{key}.inputs.json>)
   fork test, and(node-file/exists-sync(at), node-file/exists-sync(listed))

@@ -11,6 +11,7 @@ load ../build/build-input
 
 load ../build/unit-naming
   find is-whole-file
+  find is-whole-file-parsed
 
 # what `buildable` answered for a file it reads: the text to compile, whether it is a grammar's generated reader, and
 # `place`, which moves a diagnostic back onto the lines as written
@@ -65,3 +66,13 @@ task face-is-whole-file
   like boolean
 
   back is-whole-file(file, text, role-or-empty(role))
+
+# the same, the file parsed by the build's parse memo (`parse`, the host's function of a `{ file, text }` source)
+task face-is-whole-file-parsed
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  take parse, like dynamic
+  like boolean
+
+  back is-whole-file-parsed(file, text, role-or-empty(role), parse)

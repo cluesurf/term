@@ -171,48 +171,85 @@ export function makeItem(input: ItemInput): Event {
     clock: input.clock ?? Date.now(),
   }
 
-  if (input.kind !== undefined) {one.kind = input.kind}
+  if (input.kind !== undefined) {
+    one.kind = input.kind
+  }
 
-  if (input.verb !== undefined) {one.verb = input.verb}
+  if (input.verb !== undefined) {
+    one.verb = input.verb
+  }
 
-  if (input.subject !== undefined)
-    {one.subject = plainSubject(input.subject)}
+  if (input.subject !== undefined) {
+    one.subject = plainSubject(input.subject)
+  }
 
-  if (input.source !== undefined) {one.source = input.source}
+  if (input.source !== undefined) {
+    one.source = input.source
+  }
 
-  if (input.code !== undefined) {one.code = input.code}
+  if (input.code !== undefined) {
+    one.code = input.code
+  }
 
-  if (input.duration !== undefined) {one.duration = input.duration}
+  if (input.duration !== undefined) {
+    one.duration = input.duration
+  }
 
-  if (input.budget !== undefined) {one.budget = input.budget}
+  if (input.budget !== undefined) {
+    one.budget = input.budget
+  }
 
-  if (input.http !== undefined)
-    {one.status = { kind: 'http', value: input.http, name: '' }}
+  if (input.http !== undefined) {
+    one.status = { kind: 'http', value: input.http, name: '' }
+  }
 
-  if (input.exit !== undefined)
-    {one.status = { kind: 'exit', value: input.exit, name: '' }}
+  if (input.exit !== undefined) {
+    one.status = { kind: 'exit', value: input.exit, name: '' }
+  }
 
-  if (input.bytes !== undefined) {one.bytes = input.bytes}
+  if (input.bytes !== undefined) {
+    one.bytes = input.bytes
+  }
 
-  if (input.counts !== undefined) {one.tallies = input.counts}
+  if (input.counts !== undefined) {
+    one.tallies = input.counts
+  }
 
-  if (input.facts !== undefined) {one.facts = input.facts}
+  if (input.facts !== undefined) {
+    one.facts = input.facts
+  }
 
-  if (input.message !== undefined) {one.message = input.message}
+  if (input.message !== undefined) {
+    one.message = input.message
+  }
 
-  if (input.fields !== undefined) {one.fields = input.fields}
+  if (input.fields !== undefined) {
+    one.fields = input.fields
+  }
 
-  if (input.frames !== undefined) {one.frames = input.frames}
+  if (input.frames !== undefined) {
+    one.frames = input.frames
+  }
 
-  if (input.quote !== undefined) {one.quote = input.quote}
+  if (input.quote !== undefined) {
+    one.quote = input.quote
+  }
 
-  if (input.done !== undefined) {one.done = input.done}
+  if (input.done !== undefined) {
+    one.done = input.done
+  }
 
-  if (input.total !== undefined) {one.total = input.total}
+  if (input.total !== undefined) {
+    one.total = input.total
+  }
 
-  if (input.level !== undefined) {one.level = input.level}
+  if (input.level !== undefined) {
+    one.level = input.level
+  }
 
-  if (input.place !== undefined) {one.place = input.place}
+  if (input.place !== undefined) {
+    one.place = input.place
+  }
 
   return one
 }
@@ -296,8 +333,7 @@ export function report(input: ItemInput | Event): void {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
 
-  const made =
-    'tallies' in input ? (input) : makeItem(input)
+  const made = 'tallies' in input ? input : makeItem(input)
 
   const event = made.verb === '' ? { ...made, verb } : made
 

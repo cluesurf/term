@@ -32,7 +32,7 @@ load ./node
   find native-kind
 
 load ../term/hash
-  find hash-text
+  find hash-key
 
 # a stable, structural text for a type (no spans, no inference ids that vary)
 task type-key
@@ -218,4 +218,4 @@ task interface-hash
   take program, like list, like statement
   like text
 
-  back hash-text(join(module-interface(program), <\n>))
+  back hash-key(join(module-interface(program), <\n>))

@@ -12,8 +12,7 @@ export type IndexPing =
 export const publishStatement = (input: {
   reference: string
   time: string
-}): string =>
-  port.publishStatement(input.reference, input.time)
+}): string => port.publishStatement(input.reference, input.time)
 export const pingIndex = (input: {
   repository: unknown
   digest: string

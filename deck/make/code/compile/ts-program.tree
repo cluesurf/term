@@ -124,6 +124,15 @@ load ./ts-emit
   find loop-guard
   find place-write
   find reuse-task
+  find raise-codec-specs
+  find raise-codec-refusal
+
+load ./node-walk
+  find statements-in
+
+load ../check/parallel
+  find raise-crossing
+  find walk-raises
 
 load ./ts-assemble
   find ts-tables
@@ -762,6 +771,61 @@ task proven-rows
       bind program, stamped
       bind rows, analysed/proven
 
+# can a turn of a `walk xs, mark parallel` the module holds raise, over the whole build's raise sets: the one case the
+# exception codec is written for, so a walk whose turns cannot raise keeps the output it had (item 0436)
+task turn-can-raise
+  take program, like list, like statement
+  take whole, like list, like statement
+  like boolean
+  mark private
+
+  save walks, make list
+  walk statements-in(program)
+    take one
+    sift one
+      case for-each
+        fork test, parallel
+          hold
+            push(walks, one)
+      miss
+        save idle, 0
+  fork test, is-equal(walks/length, 0)
+    hold
+      back false
+  walk walk-raises(whole, walks)
+    take raised
+    fork test, is-above(raised/length, 0)
+      hold
+        back true
+  back false
+
+# each form's props record by position, `<>` for a form that declares none
+task props-records-of
+  take program, like list, like statement
+  take forms, like list, like text
+  like list, like text
+  mark private
+
+  save by-name, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-unequal(props, <>)
+          hold
+            save by-name/{name}, props
+      miss
+        save idle, 0
+  save out, make list
+  walk forms
+    take form-name
+    fork test, by-name/has(form-name)
+      hold
+        push(out, by-name/get(form-name))
+      miss
+        push(out, <>)
+  back out
+
 task emit-type-script
   take given, like list, like statement
   take context, like maybe, like list, like statement
@@ -1154,6 +1218,18 @@ task emit-type-script
   save fieldless, make hash
   save guards-met, make hash
   save st, new-emit-state(fieldless, guards-met)
+  # THE EXCEPTION CODEC (decision 078 section 4), for a module holding a parallel walk whose turn can raise: the props
+  # spec of each form a turn's raise can carry, over the whole build's raises (section 3)
+  save raise-codec, <>
+  fork test, turn-can-raise(lowered, whole)
+    hold
+      save codec-forms, raise-crossing(whole)
+      save codec-props, props-records-of(whole, codec-forms)
+      save codec-refused, raise-codec-refusal(codec-forms, codec-props, facts)
+      fork test, is-unequal(codec-refused, <>)
+        hold
+          fail(codec-refused)
+      save raise-codec, raise-codec-specs(codec-forms, codec-props, facts)
   # the wake chain's entries, each its text: the typed kinds leave `hiveWake` when the program has `hive-wake-typed`
   save typed-wake, false
   walk lowered
@@ -1255,6 +1331,7 @@ task emit-type-script
           bind text-used, st/text-used
           bind list-used, st/list-used
           bind flow-used, st/flow-used
+          bind raise-codec, raise-codec
           bind fieldless, st/fieldless
           bind guards, st/guards
   back assemble-type-script(tables, env, export-constants, is-above(wake/length, 0), wake-of, statement-of, unchecked-of, reusing-of, tag-of, fast-tasks, reuse-tasks-of, flags-of-emit)

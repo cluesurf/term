@@ -1,0 +1,59 @@
+# `process/run` reads a child's whole stdout and stderr, and a character whose bytes the pipe's 65,536-byte chunk
+# boundary splits reads whole, the same on every backend (decision 081, term-self-host-001-0442): 65,535 `a` then `€z`
+# puts byte 65,536 inside a 3-byte character, 65,534 `b` then `😀z` inside a 4-byte one. The child writes each in ONE
+# write (`cat` of a file `sh` built first), so the pipe's chunk can end inside the character: `head | tr` then `printf`
+# would be two writes, split between them. Held by `pnpm term:base-gate`, whose browser leg skips it by name
+# (`process-run` in BROWSER_GAP): a page runs no processes. The files sit under the system's temporary directory and
+# are left for it to clear: nothing here removes a file.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find ends-with
+
+# the arguments `sh` takes to run a script
+task script-words
+  take script, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    text <-c>
+  call words/push
+    read script
+  send back, read words
+
+test <a 3-byte character across the 65,536-byte boundary reads whole from stdout>
+  save result
+    call run
+      text </bin/sh>
+      call script-words
+        text <f=$(mktemp); head -c 65535 /dev/zero | tr '\\0' a \> "$f"; printf %s '€z' \>\> "$f"; cat "$f">
+  want hold
+    call ends-with
+      read result/output
+      text <a€z>
+
+test <a 4-byte character across the 65,536-byte boundary reads whole from stdout>
+  save result
+    call run
+      text </bin/sh>
+      call script-words
+        text <f=$(mktemp); head -c 65534 /dev/zero | tr '\\0' b \> "$f"; printf %s '😀z' \>\> "$f"; cat "$f">
+  want hold
+    call ends-with
+      read result/output
+      text <b😀z>
+
+test <a 3-byte character across the 65,536-byte boundary reads whole from stderr>
+  save result
+    call run
+      text </bin/sh>
+      call script-words
+        text <f=$(mktemp); head -c 65535 /dev/zero | tr '\\0' a \> "$f"; printf %s '€z' \>\> "$f"; cat "$f" 1\>&2>
+  want hold
+    call ends-with
+      read result/error
+      text <a€z>

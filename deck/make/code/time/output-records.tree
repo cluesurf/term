@@ -1,5 +1,3 @@
-mark draft
-
 # What `term time` keeps of a run: the suite (its results, when, and on what), the saved baseline and history entry,
 # and the JSON a baseline is written as. The text table is time/table.tree, the comparison time/compare.tree.
 #

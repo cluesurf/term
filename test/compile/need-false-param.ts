@@ -128,7 +128,7 @@ if (!built.ok) {
 } else {
   const emitted = built.typescript
   const signature = (name: string): string =>
-    emitted.match(new RegExp(`function ${name}\\(([^)]*)\\)`))?.[1] ??
+    emitted.match(new RegExp(`function ${name}\\((.*)\\): `))?.[1] ??
     `(no ${name})`
 
   ok(

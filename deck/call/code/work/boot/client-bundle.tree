@@ -16,7 +16,7 @@ load @term/call/boot-plan
   find client-entry-text
 
 load @term/make/term/hash
-  find hash-text
+  find hash-key
 
 load ../build/project-resolving
   find make-project-resolver
@@ -67,10 +67,11 @@ dock load
 # 10: a program is built one unit at a time, and bundled from its modules and its entry's shim (2026-10-05)
 # 11: a units bundle's entry exports what the run calls, not the whole closure (call/code/unit-bundle.ts
 # `runtimeExports`), and a bundle written under 10 held every name (2026-10-05)
+# 12: keyed by hash-key, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
 task boot-cache-epoch
   like text
 
-  back <11>
+  back <12>
 
 # what `build-client-bundle` is handed, as the original's one input record
 form client-ask
@@ -289,7 +290,8 @@ task bundle-compiled
   parts/push(host-global/JSON/stringify(config))
   parts/push(calls)
   parts/push(source)
-  save key, hash-text(boot-joined-lines(parts))
+  # a stored key (the stamp beside build/boot.js), so hash-key (decision 080)
+  save key, hash-key(boot-joined-lines(parts))
   save build-dir, node-path/join(opts/app-dir, <build>)
   node-file/mkdir-sync(build-dir, make(folder-ask, bind(recursive, true)))
   save out-file, node-path/join(build-dir, <boot.js>)

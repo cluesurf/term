@@ -36,8 +36,7 @@ export const closureOf = (input: {
   commit: string
   chunks: unknown
   files: any[]
-}): string[] =>
-  port.closureOf(input.commit, input.chunks, input.files)
+}): string[] => port.closureOf(input.commit, input.chunks, input.files)
 export const reachableFromCommit = (input: {
   commitId: string
   store: unknown

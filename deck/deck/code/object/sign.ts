@@ -16,5 +16,4 @@ export const verifyId = (input: {
   id: string
   sig: string
   publicKey: string
-}): boolean =>
-  port.verifyId(input.id, input.sig, input.publicKey)
+}): boolean => port.verifyId(input.id, input.sig, input.publicKey)

@@ -84,6 +84,9 @@ load ./backend-shapes
   find escaping-params
   find inspect-forms
   find record-field
+  find form-spec-of
+  find spec-forms
+  find refuse-any
 
 load ./backend-names
   find gated-tasks
@@ -111,6 +114,7 @@ load ./backend-reads
 
 load ./backend-elements
   find owned-elements-of
+  find owned-elements
 
 load ./places
   find scope-of
@@ -149,6 +153,14 @@ load ./rust-names
   find text-keys-of
   find mutated-captures
   find rust-form-walk
+  find json-text
+
+load ./node-walk
+  find statements-in
+
+load ../check/parallel
+  find raise-crossing
+  find walk-raises
 
 load ./rust-tables
   find module-bindings-of
@@ -1237,6 +1249,185 @@ task wake-chain
 
 # one pass over the program: every fact, every statement, the module. `boxed-forms` are the recursive forms whose
 # children this pass holds in a `Box`, and `record` is filled with what it clones
+# ---- the exception codec (decision 078 section 4 of term/self-host/change/001) ----
+
+# can a turn of a `walk xs, mark parallel` the program holds raise: the one case the exception codec is written for, so
+# a walk whose turns cannot raise keeps the output it had (item 0436)
+task turn-can-raise
+  take program, like list, like statement
+  like boolean
+  mark private
+
+  save walks, make list
+  walk statements-in(program)
+    take one
+    sift one
+      case for-each
+        fork test, parallel
+          hold
+            push(walks, one)
+      miss
+        save idle, 0
+  fork test, is-equal(walks/length, 0)
+    hold
+      back false
+  walk walk-raises(program, walks)
+    take raised
+    fork test, is-above(raised/length, 0)
+      hold
+        back true
+  back false
+
+# each form's props record by position, `<>` for a form that declares none
+task props-records-of
+  take program, like list, like statement
+  take forms, like list, like text
+  like list, like text
+  mark private
+
+  save by-name, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-unequal(props, <>)
+          hold
+            save by-name/{name}, props
+      miss
+        save idle, 0
+  save out, make list
+  walk forms
+    take form-name
+    fork test, by-name/has(form-name)
+      hold
+        push(out, by-name/get(form-name))
+      miss
+        push(out, <>)
+  back out
+
+# is a type an exception, or a list of them: a props field the codec would carry by itself again
+task is-raise-type
+  take given, like type
+  take exceptions, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link named-name
+      fork test, exceptions/has(named-name)
+        hold
+          back true
+      fork test, is-equal(named-name, <list>)
+        hold
+          walk args
+            take one
+            back is-raise-type(one, exceptions)
+    case array
+      back is-raise-type(element, exceptions)
+    miss
+      save idle, 0
+  back false
+
+# THE CODEC: `term_melt_raise` writes a raise as the one tree/code shape TypeScript's `__termMeltRaise` writes (the
+# envelope by name, `link` by the form's own melt walker when the carrier's `base` holds the raised record, which a
+# `halt <text>` does not, `base` the cause by the codec again, `flow` the frames), and `term_fill_raise` builds the
+# carrier a `halt` of that form builds (rust-emit `emit-throw`). Dispatch is on the form text over `forms`, each with its
+# props record by position. The carrier holds no `site`: one read is checked and dropped. A filled frame is leaked to
+# the `&'static str` the carrier holds
+task raise-codec-text
+  take forms, like list, like text
+  take props, like list, like text
+  like text
+  mark private
+
+  save parts-arms, make list
+  save build-arms, make list
+  save at, 0
+  walk forms
+    take form-name
+    save props-name, get(props, at)
+    save at, add(at, 1)
+    save record, pascal(form-name)
+    save quoted, json-text(form-name)
+    push(parts-arms, <        {quoted} =\> match raised.base.downcast_ref::\<{record}\>() \{ Some(r) =\> (Some(__melt_{snake(props-name)}(&r.link)), match &r.base \{ Maybe::Some \{ value \} =\> Some(term_melt_raise(value)), Maybe::None =\> None \}), None =\> (None, None) \},>)
+    # the record's own `flow` list is spelled by its default, which is the empty list in whichever shape the program
+    # holds it (traps T-0421): `Vec::new()` refused a record whose list fields are all shared
+    push(build-arms, <        {quoted} =\> \{ let raised = {record} \{ host, form, note, code, time, link: __fill_{snake(props-name)}(link, at)?, base, site: Maybe::None, flow: Default::default() \}; Ok(TermException(Box::new(TermRaised \{ host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised), flow: Vec::new() \}))) \}>)
+  save lines, make list
+  push(lines, <// THE EXCEPTION CODEC (decision 078): a raise as one tree/code shape, the bytes TypeScript's __termMeltRaise writes>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn term_melt_raise(raised: &TermException) -\> Data \{>)
+  push(lines, <    let text = |value: &str| -\> Data \{ Data::Text \{ value: value.to_string() \} \};>)
+  push(lines, <    let mut list: Vec\<DataEntry\> = Vec::new();>)
+  push(lines, <    list.push(DataEntry \{ name: "host".to_string(), base: text(&raised.host) \});>)
+  push(lines, <    list.push(DataEntry \{ name: "form".to_string(), base: text(&raised.form) \});>)
+  push(lines, <    list.push(DataEntry \{ name: "note".to_string(), base: text(&raised.note) \});>)
+  push(lines, <    list.push(DataEntry \{ name: "code".to_string(), base: text(&raised.code) \});>)
+  push(lines, <    list.push(DataEntry \{ name: "time".to_string(), base: Data::Number \{ value: raised.time \} \});>)
+  push(lines, <    let (link, cause) = __term_raise_parts(raised);>)
+  push(lines, <    if let Some(d) = link \{ list.push(DataEntry \{ name: "link".to_string(), base: d \}); \}>)
+  push(lines, <    if let Some(d) = cause \{ list.push(DataEntry \{ name: "base".to_string(), base: d \}); \}>)
+  push(lines, <    let frames: Vec\<Data\> = raised.frames().into_iter().map(text).collect();>)
+  push(lines, <    list.push(DataEntry \{ name: "flow".to_string(), base: Data::Array \{ list: std::rc::Rc::new(std::cell::RefCell::new(frames)) \} \});>)
+  push(lines, <    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}>)
+  push(lines, <\}>)
+  push(lines, <// a raise's props and cause, melted, when its carrier holds the raised record>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn __term_raise_parts(raised: &TermException) -\> (Option\<Data\>, Option\<Data\>) \{>)
+  push(lines, <    match raised.form.as_str() \{>)
+  walk parts-arms
+    take arm
+    push(lines, arm)
+  push(lines, <        _ =\> (None, None),>)
+  push(lines, <    \}>)
+  push(lines, <\}>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn term_fill_raise(value: Data) -\> Result\<TermException, TermException\> \{>)
+  push(lines, <    __term_fill_raise_at(value, String::new())>)
+  push(lines, <\}>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn __term_fill_raise_at(value: Data, path: String) -\> Result\<TermException, TermException\> \{>)
+  push(lines, <    let entries = __term_entries(value, path.clone())?;>)
+  push(lines, <    let known: &[&str] = &["host", "form", "note", "code", "time", "link", "base", "site", "flow"];>)
+  push(lines, <    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}>)
+  push(lines, <    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};>)
+  push(lines, <    let host = __term_text(find("host"), __term_path(&path, "host"), false)?;>)
+  push(lines, <    let form = __term_text(find("form"), __term_path(&path, "form"), false)?;>)
+  push(lines, <    let note = __term_text(find("note"), __term_path(&path, "note"), false)?;>)
+  push(lines, <    let code = __term_text(find("code"), __term_path(&path, "code"), false)?;>)
+  push(lines, <    let time = __term_number(find("time"), __term_path(&path, "time"), false)?;>)
+  push(lines, <    let link = find("link");>)
+  push(lines, <    let cause = match find("base") \{>)
+  push(lines, <        Some(d) =\> \{>)
+  push(lines, <            if link.is_none() \{ return Err(__term_mismatch(__term_path(&path, "base"), "is a cause where no props record is".to_string())); \}>)
+  push(lines, <            Some(__term_fill_raise_at(d, __term_path(&path, "base"))?)>)
+  push(lines, <        \}>)
+  push(lines, <        None =\> None,>)
+  push(lines, <    \};>)
+  push(lines, <    if let Some(d) = find("site") \{ __term_text(Some(d), __term_path(&path, "site"), false)?; \}>)
+  push(lines, <    let flow: Vec\<&'static str\> = __term_list(find("flow"), __term_path(&path, "flow"), true, &|d: Data, p: String| __term_text(Some(d), p, false))?.borrow().iter().map(|f| -\> &'static str \{ Box::leak(f.clone().into_boxed_str()) \}).collect();>)
+  push(lines, <    let mut raised = match link \{>)
+  push(lines, <        None =\> TermException(Box::new(TermRaised \{ host, form, note, code, time, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()), flow: Vec::new() \})),>)
+  push(lines, <        Some(d) =\> __term_raise_build(host, form, note, code, time, d, cause, __term_path(&path, "link"))?,>)
+  push(lines, <    \};>)
+  push(lines, <    raised.0.flow = flow;>)
+  push(lines, <    Ok(raised)>)
+  push(lines, <\}>)
+  push(lines, <// the carrier a `halt` of the form builds, its record filled from the props>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <#[allow(clippy::too_many_arguments)]>)
+  push(lines, <fn __term_raise_build(host: String, form: String, note: String, code: String, time: i64, link: Data, cause: Option\<TermException\>, at: String) -\> Result\<TermException, TermException\> \{>)
+  push(lines, <    let base = match cause \{ Some(value) =\> Maybe::Some \{ value \}, None =\> Maybe::None \};>)
+  push(lines, <    match form.clone().as_str() \{>)
+  walk build-arms
+    take arm
+    push(lines, arm)
+  push(lines, <        _ =\> \{ let _ = (host, note, code, time, link, base); Err(__term_mismatch(at, "is not in the form".to_string())) \}>)
+  push(lines, <    \}>)
+  push(lines, <\}>)
+  back join-with(lines, <\n>)
+
 task emit-rust-pass
   take handed, like list, like statement
   take wake, like list, like wake-group
@@ -1600,8 +1791,16 @@ task emit-rust-pass
   save no-rows, make hash
   save no-carriers, make hash
   save private, private-forms(scope, lend, fresh, no-rows, no-carriers)
+  # ONE LIST SHAPE WHERE A WALKER IS WRITTEN (traps T-0421): every fill and melt walker reads and builds each list it
+  # meets, `data`'s own hash and array lists, a form's list fields and the inner lists of a list of lists, as the shared
+  # `Rc<RefCell<Vec>>`. A `fill` or `melt` call keeps every list shared (owned-fields and owned-elements-of see the call
+  # and own nothing), and the exception codec brings the same walkers with no such call, so it keeps them shared too
+  save codec-wanted, and(forms-by-name/has(<data>), turn-can-raise(program))
   # the variant fields that own their lists, held as a plain `Vec`
-  save field-lists, flags-of(owned-fields(program, fresh, lend, flags-of(private/forms)))
+  save field-lists, make hash
+  fork test, not(codec-wanted)
+    hold
+      save field-lists, flags-of(owned-fields(program, fresh, lend, flags-of(private/forms)))
   # every `+`, `-` and `*` the interval fact bounds inside the safe integers, with the counted steps
   save task-ids, make list
   save next-id, 0
@@ -1640,6 +1839,16 @@ task emit-rust-pass
       like boolean
       back same-place(left, right)
   save elements, owned-elements-of(walked, ids, fresh, lend, key-of, same-node)
+  # the codec's walkers build every inner list shared, as a fill or melt does (backend-elements.tree is-walked)
+  fork test, codec-wanted
+    hold
+      save elements
+        make owned-elements
+          bind keys, make list
+          bind lets, elements/lets
+          bind walks, elements/walks
+          bind items, elements/items
+          bind moves, make list
   save element-keys, flags-of(elements/keys)
   save context/owned-inner, element-keys
   save element-lets, make hash
@@ -2183,6 +2392,59 @@ task emit-rust-pass
           push(body-files, file-of(fast-fn))
         case none
           save idle, 0
+  # THE EXCEPTION CODEC (decision 078 section 4), for a program holding a parallel walk and `@term/host`'s data: each
+  # crossing form's props record joins the fill and melt walkers, and the codec dispatches on the form text over them
+  save codec-text, <>
+  fork test, codec-wanted
+    hold
+      save codec-forms, raise-crossing(program)
+      save codec-props, props-records-of(program, codec-forms)
+      save codec-kept, make list
+      save codec-kept-props, make list
+      save codec-at, 0
+      walk codec-forms
+        take form-name
+        save props-name, get(codec-props, codec-at)
+        save codec-at, add(codec-at, 1)
+        fork test, or(is-equal(props-name, <>), not(record-fields/has(props-name)))
+          hold
+            turn next
+        save props-type, named-of(props-name)
+        walk record-fields/get(props-name)
+          take field
+          fork test, is-raise-type(field/type, exception-forms)
+            hold
+              fail(<raise-codec: the props field `{field/name}` of `{form-name}` is an exception, which the exception codec does not carry yet: a parallel walk whose turn can raise `{form-name}` does not build>)
+        save props-spec, form-spec-of(props-type, record-fields, make list)
+        sift refuse-any(props-spec, <Rust>)
+          case some
+            link reason
+            fail(reason)
+          case none
+            save idle, 0
+        save fill-known, make list
+        walk st/fill-specs/keys()
+          take key
+          push(fill-known, key)
+        walk spec-forms(props-spec, fill-known)
+          take one
+          st/fill-specs/set(one/form, one)
+        save melt-known, make list
+        walk st/melt-specs/keys()
+          take key
+          push(melt-known, key)
+        walk spec-forms(props-spec, melt-known)
+          take one
+          st/melt-specs/set(one/form, one)
+        save raised-type, named-of(form-name)
+        note-clone(make(some, raised-type), st, facts)
+        note-clone(make(some, props-type), st, facts)
+        push(codec-kept, form-name)
+        push(codec-kept-props, props-name)
+      fork test, is-above(codec-kept/length, 0)
+        hold
+          save st/carries, true
+          save codec-text, raise-codec-text(codec-kept, codec-kept-props)
   # a fill walker raises `data-mismatch` through the carrier
   save fills-forms, is-above(st/fill-specs/keys()/length, 0)
   save wake-texts, wake-chain(program, wake, st, facts)
@@ -2229,12 +2491,15 @@ task emit-rust-pass
     fork test, is-unequal(walker, <>)
       hold
         push(form-walk, walker)
+  fork test, is-unequal(codec-text, <>)
+    hold
+      push(form-walk, codec-text)
   save input
     make rust-module-input
       bind uses, uses
       bind body, body
       bind body-files, body-files
-      bind carries, st/carries
+      bind carries, or(st/carries, is-above(exception-names/length, 0))
       bind fills, fills-forms
       bind budget-uses, st/budget-uses
       bind spawn-uses, st/spawn-uses

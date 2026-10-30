@@ -33,7 +33,7 @@ import {
 import { writeUnitBundle } from '@term/call/code/unit-bundle'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { hashText } from '@term/make/code/term/hash'
+import { hashKey, hashText } from '@term/make/code/term/hash'
 import {
   processCache,
   processParse,
@@ -82,7 +82,8 @@ import type { InlinedSource } from '@term/call/code/test-run'
 // 10: a program is built one unit at a time, and bundled from its modules and its entry's shim (2026-10-05)
 // 11: a units bundle's entry exports what the run calls, not the whole closure (call/code/unit-bundle.ts
 // `runtimeExports`), and a bundle written under 10 held every name (2026-10-05)
-const BOOT_CACHE_EPOCH = '11'
+// 12: keyed by hashKey, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
+const BOOT_CACHE_EPOCH = '12'
 
 // every task a command table calls: each route's own calls, its methods', and its subcommands'
 function routeCalls(routes: DockRoute[]): string[] {
@@ -358,7 +359,8 @@ export async function buildClientBundle(opts: {
       minify: prod,
     }
 
-    const key = hashText(
+    // a stored key (the stamp beside build/boot.js), so `hashKey` (decision 080)
+    const key = hashKey(
       [
         BOOT_CACHE_EPOCH,
         compilerVersion(),
@@ -1122,7 +1124,8 @@ export async function callBoot(input: {
       }
 
       // incremental cache in `.base/@term/code/boot/<hash>`. The key folds in everything that can change the output.
-      const key = hashText(
+      // A stored key, so `hashKey` (decision 080)
+      const key = hashKey(
         [
           BOOT_CACHE_EPOCH,
           compilerVersion(),

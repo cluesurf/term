@@ -54,6 +54,7 @@ load ./ts-preludes
   find exception-class
   find exception-prelude
   find form-walk-prelude
+  find raise-codec-prelude
   find inspect-prelude
   find maybe-field-prelude
   find host-value-prelude
@@ -108,6 +109,9 @@ form emit-flags
   link list-used, like boolean
   # a raise or a Term frame was written: the exception class and its frame helpers ride in front
   link flow-used, like boolean
+  # the exception codec's table of props specs (ts-emit.tree `raise-codec-specs`), `<>` for a program with no
+  # parallel walk
+  link raise-codec, like text
   link fieldless, like hash, like text, like text
   link guards, like hash, like text, like text
 
@@ -715,13 +719,18 @@ task assemble-type-script
         hold
           save prelude, with-first(prelude, class-prelude)
 
-  # the form walk raises through the class, so it brings the class when nothing else did
-  fork test, flags/form-walk-used
+  # the form walk raises through the class, so it brings the class when nothing else did. The exception codec fills and
+  # melts a raise's props through it, so it brings both
+  save codec-used, is-unequal(flags/raise-codec, <>)
+  fork test, or(flags/form-walk-used, codec-used)
     hold
       fork test, is-equal(has-text(prelude, class-prelude), false)
         hold
           save prelude, with-first(prelude, class-prelude)
       push(prelude, form-walk-prelude())
+  fork test, codec-used
+    hold
+      push(prelude, raise-codec-prelude(flags/raise-codec))
 
   fork test, flags/inspect-used
     hold

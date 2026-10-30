@@ -1,37 +1,17 @@
 // THE SECOND CHECKER, RUN: find Lean 4, run it on a file `lean-export.ts` wrote, and read its verdict per claim from the
 // `#print axioms` lines the export ends with (note/project/term/proof/lean-export/spec.md). `term hold --lean`
-// (call/code/hold-lean.ts) and test/assurance/lean.ts both read Lean through this, so there is one reading of its
-// output. Nothing here decides a proof: Lean does, and this only reads what it said.
-
-import { statSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
-import path from 'node:path'
+// (call/code/hold-lean.ts) and test/assurance/lean.ts both read Lean through this. The work is Term,
+// check/lean-running.tree (item term-self-host-change-001-finish-self-host-0007, decision 075), whose header says what
+// changed: Lean runs through @term/base/process/run under a limit, so `runLean` and `leanVersion` are async. This face
+// keeps the names, the object input and the record shapes its callers know.
+import * as running from '@term/make/code/check/lean-running'
 
 // how to get Lean, in one line, for a run that found none
-export const LEAN_INSTALL =
-  'brew install elan-init, then elan default leanprover/lean4:stable'
-
-// the namespace lean-export.ts writes every name into
-const SPACE = 'TermExport'
+export const LEAN_INSTALL = running.sayInstall()
 
 // Lean's own spelling of a name: a plain identifier bare, anything else (a dash) in «»
 export function leanName(name: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `«${name}»`
-}
-
-// a Lean name as Term wrote it: the namespace and the quotes taken off
-function termName(lean: string): string {
-  return lean
-    .replace(new RegExp(`^${SPACE}\\.`), '')
-    .replace(/[«»]/g, '')
-}
-
-function isFile(file: string): boolean {
-  try {
-    return statSync(file).isFile()
-  } catch {
-    return false
-  }
+  return running.leanName(name)
 }
 
 // Lean: TERM_LEAN when it names a file, else the first `lean` on the PATH. Read off the environment given, never a
@@ -39,33 +19,14 @@ function isFile(file: string): boolean {
 export function findLean(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-  const named = env.TERM_LEAN
-
-  if (named && isFile(named)) {
-    return named
-  }
-
-  for (const dir of (env.PATH ?? '').split(path.delimiter)) {
-    if (dir && isFile(path.join(dir, 'lean'))) {
-      return path.join(dir, 'lean')
-    }
-  }
-
-  return undefined
+  return (
+    running.findLean(env.TERM_LEAN ?? '', env.PATH ?? '') || undefined
+  )
 }
 
-// `4.35.0`, read off `lean --version`, or empty when it says nothing that looks like one
-export function leanVersion(lean: string): string {
-  const run = spawnSync(lean, ['--version'], {
-    encoding: 'utf8',
-    timeout: 60_000,
-  })
-
-  return (
-    /version (\d+\.\d+\.\d+)/.exec(
-      `${run.stdout ?? ''}${run.stderr ?? ''}`,
-    )?.[1] ?? ''
-  )
+// `4.35.0`, read off `lean --version`, or empty when it says nothing that looks like one or does not answer in a minute
+export function leanVersion(lean: string): Promise<string> {
+  return running.leanVersion(lean, 60_000)
 }
 
 // one error Lean printed: where, the line as Lean printed it with the file dropped, and the definition it fell in
@@ -95,108 +56,53 @@ export type LeanRun = {
   claims: LeanClaim[]
 }
 
-// the definition each line of the source falls in, by the `def` / `inductive` / `axiom` heads the export writes
-function definitionsByLine(source: string): (string | undefined)[] {
-  let current: string | undefined
+type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 
-  const head = new RegExp(
-    `^(?:def|theorem|inductive|axiom|structure) ${SPACE}\\.(\\S+)`,
-  )
+const valueOf = <T>(maybe: Maybe<T>): T | undefined =>
+  maybe.form === 'some' ? maybe.value : undefined
 
-  return source.split('\n').map(line => {
-    const found = head.exec(line)
-
-    if (found) {
-      current = termName(found[1]!)
-    } else if (line === 'end' || line.startsWith('#print')) {
-      current = undefined
-    }
-
-    return current
-  })
-}
-
-// run Lean on `file`, the export `source` written there, and read a verdict for each of `claims`
-export function runLean(input: {
+// run Lean on `file`, the export `source` written there, and read a verdict for each of `claims`. `timeout` is in
+// seconds, 1800 when left out
+export async function runLean(input: {
   lean: string
   file: string
   source: string
   claims: string[]
   timeout?: number
-}): LeanRun {
-  const run = spawnSync(input.lean, [input.file], {
-    encoding: 'utf8',
-    timeout: (input.timeout ?? 1800) * 1000,
-    maxBuffer: 256 * 1024 * 1024,
-  })
+}): Promise<LeanRun> {
+  const run = await running.runLean(
+    input.lean,
+    input.file,
+    input.source,
+    input.claims,
+    (input.timeout ?? 1800) * 1000,
+  )
 
-  const stdout = run.stdout ?? ''
-  const output = `${stdout}${run.stderr ?? ''}`
-  const byLine = definitionsByLine(input.source)
-
-  const errors: LeanError[] = []
-
-  for (const found of output.matchAll(
-    /^.*?:(\d+):(\d+): error: (.*)$/gm,
-  )) {
-    const line = Number(found[1])
-    errors.push({
-      line,
-      column: Number(found[2]),
-      text: `${line}:${found[2]}: error: ${found[3]}`,
-      definition: byLine[line - 1],
-    })
-  }
-
-  const warnings = [...output.matchAll(/^.*?:\d+:\d+: warning: /gm)]
-    .length
-
-  // every `#print axioms` answer: the claim, and the axioms it rests on
-  const said = new Map<string, string[]>()
-
-  for (const found of stdout.matchAll(
-    new RegExp(
-      `^'(${SPACE}\\.[^']+)' (?:does not depend on any axioms|depends on axioms: \\[([^\\]]*)\\])`,
-      'gm',
+  return {
+    status: valueOf(run.status as Maybe<number>) ?? null,
+    output: run.output,
+    // the original wrote `definition` on every error, holding undefined outside a definition
+    errors: run.errors.map(one => ({
+      line: one.line,
+      column: one.column,
+      text: one.text,
+      definition: valueOf(one.definition as Maybe<string>),
+    })),
+    warnings: run.warnings,
+    // and `error` only on a refused claim
+    claims: run.claims.map(one =>
+      one.verdict === 'refused'
+        ? {
+            name: one.name,
+            verdict: 'refused' as const,
+            axioms: one.axioms,
+            error: one.error,
+          }
+        : {
+            name: one.name,
+            verdict: one.verdict as 'checked' | 'axioms',
+            axioms: one.axioms,
+          },
     ),
-  )) {
-    said.set(
-      termName(found[1]!),
-      found[2]
-        ? found[2]
-            .split(',')
-            .map(axiom => termName(axiom.trim()))
-            .filter(Boolean)
-        : [],
-    )
   }
-
-  const firstError = errors[0]
-  const elsewhere = firstError
-    ? `it rests on ${firstError.definition ?? 'a definition'}, which Lean refused: ${firstError.text}`
-    : run.error
-      ? `Lean did not run: ${run.error.message}`
-      : 'Lean printed no axioms line for it'
-
-  const claims = input.claims.map((name): LeanClaim => {
-    const axioms = said.get(name)
-    const own = errors.find(error => error.definition === name)
-
-    if (axioms === undefined || axioms.includes('sorryAx')) {
-      return {
-        name,
-        verdict: 'refused',
-        axioms: (axioms ?? []).filter(axiom => axiom !== 'sorryAx'),
-        error: own?.text ?? elsewhere,
-      }
-    }
-
-    return {
-      name,
-      verdict: axioms.length > 0 ? 'axioms' : 'checked',
-      axioms,
-    }
-  })
-
-  return { status: run.status, output, errors, warnings, claims }
 }

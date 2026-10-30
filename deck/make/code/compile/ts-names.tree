@@ -127,6 +127,12 @@ task split-words
   push(out, part)
   back out
 
+# the three word lists, each split once when the module loads, never per name: every name the emitter and an entry's
+# shim spell went through the split of the reserved words (item term-self-host-001-0437)
+host reserved-table, reserved-words()
+host acronym-table, acronyms()
+host taken-table, ts-taken()
+
 # a name's parts, split at every `-` and `_`, an empty part where two meet
 task name-parts
   take name, like text
@@ -175,7 +181,7 @@ task to-camel
     hook hold
       save camel, <{camel}{capitalized(get(parts, at))}>
       save at, add(at, 1)
-  fork test, has-text(reserved-words(), camel)
+  fork test, has-text(reserved-table, camel)
     hold
       back <{camel}_>
   back camel
@@ -198,7 +204,7 @@ task to-member
   like text
 
   save parts, name-parts(name)
-  save known, acronyms()
+  save known, acronym-table
   save out, get(parts, 0)
   save at, 1
   walk test
@@ -218,7 +224,7 @@ task to-pascal
   like text
 
   save spelled, capitalized(to-camel(name))
-  fork test, has-text(ts-taken(), spelled)
+  fork test, has-text(taken-table, spelled)
     hold
       back <{spelled}Form>
   back spelled

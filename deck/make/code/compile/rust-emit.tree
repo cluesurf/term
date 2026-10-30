@@ -4128,7 +4128,15 @@ task emit-call
                 hold
                   push(arg-list, <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>)
                 miss
-                  push(arg-list, empty-of(missing))
+                  # lent where the callee borrows the slot, as a written argument there is (`emit-argument`): a maybe
+                  # left out was passed as the value to a `&Maybe` (item 0403)
+                  save filled, empty-of(missing)
+                  fork test, and(and(callee-variable, not(local-callee)), facts/borrow-params/has(callee-name))
+                    hold
+                      fork test, has-number(facts/borrow-params/get(callee-name), i)
+                        hold
+                          save filled, <&{filled}>
+                  push(arg-list, filled)
               save i, add(i, 1)
 
       # a call that lends a list evaluates its arguments into locals first and borrows the cell only at the call

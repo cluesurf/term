@@ -243,7 +243,7 @@ if (lean) {
   writeFileSync(join(dir, 'notes.lean'), out.lean)
   writeFileSync(join(dir, 'notes-planted.lean'), planted)
 
-  const good = runLean({
+  const good = await runLean({
     lean,
     file: join(dir, 'notes.lean'),
     source: out.lean,
@@ -279,7 +279,7 @@ if (lean) {
     `${reported} lines`,
   )
 
-  const bad = runLean({
+  const bad = await runLean({
     lean,
     file: join(dir, 'notes-planted.lean'),
     source: planted,

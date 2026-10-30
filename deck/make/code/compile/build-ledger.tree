@@ -1,0 +1,82 @@
+# THE LEDGER (decision 077 section 5.1, item term-self-host-001-0407): every read a unit's build makes, and whether its
+# key covers it. Under TERM_CACHE_VERIFY=ledger the face (compile/separate.ts) records each read made while a unit is
+# milled and checked (the file system and the environment, whatever reader made it), and the unit's build asks
+# `uncovered-reads` before its answer is kept. A read is covered when the unit's key holds what it read:
+#   - a file of the unit or of a unit it reaches, read with the bytes the walk read (their text hash is in the key)
+#   - a deck's `deck.tree`, `lock.tree`, `role.tree` or `base/role.tree`, for a deck one of those files is in (the walk's
+#     key holds every deck it reaches)
+#   - a setting the key holds (`settings`, the checker's switches)
+# Anything else is a read the key forgot, which a hit would answer stale: the unit fails, naming the read and its reader.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# one read: its reader (`read`, `exists`, `stat`, `list`, `env`), what it read (a path or a variable's name), and for a
+# file read whether the bytes were the ones the walk read
+form ledger-read
+  link reader, like text
+  link target, like text
+  link matches, like boolean
+
+# what a unit's key covers
+form ledger-cover
+  link files, like hash, like text, like boolean
+  link roots, like hash, like text, like boolean
+  link settings, like hash, like text, like boolean
+  link separator, like text
+
+# the reads a unit's key does not cover, in the order they were made, each once
+task uncovered-reads
+  take reads, like list, like ledger-read
+  take cover, like ledger-cover
+  like list, like ledger-read
+
+  save out, make list
+  save told, make hash
+  walk reads
+    take one
+    save said, <{one/reader} {one/target}>
+    fork test, and(not(told/has(said)), not(is-covered(one, cover)))
+      hold
+        save told/{said}, true
+        push(out, one)
+  back out
+
+task is-covered
+  take one, like ledger-read
+  take cover, like ledger-cover
+  like boolean
+  mark private
+
+  fork test, is-equal(one/reader, <env>)
+    hold
+      back cover/settings/has(one/target)
+  fork test, cover/files/has(one/target)
+    hold
+      back one/matches
+  back is-setting-file(one/target, cover)
+
+# a deck's own setting file, of a deck the key reaches
+task is-setting-file
+  take target, like text
+  take cover, like ledger-cover
+  like boolean
+  mark private
+
+  save sep, cover/separator
+  save names, make list
+  push(names, <deck.tree>)
+  push(names, <lock.tree>)
+  push(names, <role.tree>)
+  push(names, <base{sep}role.tree>)
+  walk names
+    take name
+    walk cover/roots/keys()
+      take root
+      fork test, is-equal(target, <{root}{sep}{name}>)
+        hold
+          back true
+  back false

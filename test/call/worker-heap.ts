@@ -4,6 +4,10 @@
 // that file is reported `out-of-memory`, the other 15 build, and the process ends on its own with a non-zero exit
 // (never 134, V8's fatal heap death, which is what the main thread compiling the unit again gave).
 //
+// The build stores into a store of its own (TERM_CACHE_HOME), never the machine's: that store is shared and keyed by
+// content, so once any run had stored the probe's units a later run reused them, started no pool and exited 0
+// (item term-self-host-001-0447).
+//
 // Run: npx tsx test/call/worker-heap.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
@@ -63,7 +67,12 @@ const run = spawnSync('node', [LINE, 'make'], {
   encoding: 'utf8',
   timeout: 900_000,
   maxBuffer: 64 * 1024 * 1024,
-  env: { ...process.env, NO_COLOR: '1', TERM_WORKER_HEAP_MB: HEAP_MB },
+  env: {
+    ...process.env,
+    NO_COLOR: '1',
+    TERM_WORKER_HEAP_MB: HEAP_MB,
+    TERM_CACHE_HOME: tempDir('term-worker-heap-store-'),
+  },
 })
 const out = `${run.stdout}${run.stderr}`
 // the report wraps long lines, so a phrase is looked for with its spaces and line breaks made one space

@@ -111,8 +111,9 @@ const kept = (key: string, value: { form: string; value?: unknown }) =>
   value.form === 'some' ? { [key]: value.value } : {}
 
 function stored(answer: port.UnitAnswer): unknown {
-  if (answer.refused.form === 'some')
-    {return { diagnostics: answer.refused.value }}
+  if (answer.refused.form === 'some') {
+    return { diagnostics: answer.refused.value }
+  }
 
   const b = (answer.build as { value: port.UnitBuild }).value
   const head = {
@@ -138,19 +139,21 @@ function restored(
   try {
     const v = JSON.parse(text, reviveBigint) as Record<string, any>
 
-    if (Array.isArray(v.diagnostics))
-      {return some({
+    if (Array.isArray(v.diagnostics)) {
+      return some({
         refused: some(v.diagnostics),
         build: none,
-      }) as never}
+      }) as never
+    }
 
     if (
       !Array.isArray(v.files) ||
       !Array.isArray(v.stubs) ||
       typeof v.interfaceHash !== 'string' ||
       typeof v.roll !== 'object'
-    )
-      {return none}
+    ) {
+      return none
+    }
 
     const [files, stubs] = [
       v.files.map(([file, emit]: [string, unknown]) => ({
@@ -190,40 +193,185 @@ function restored(
 // 1) builds a unit the store answered again from nothing and compares the bytes, the share chosen by the unit's key so
 // a rerun checks the same units; `twice` builds every unit built a second time and compares. A difference raises,
 // naming the unit (separate-units.tree `verify-same`). Neither changes a key or an answer, so neither is in a key
-type CacheVerify = { hit: (key: string) => boolean; twice: boolean }
+// `ledger` records every read a unit's mill and check make, and fails a unit on one its key does not cover
+// (build-ledger.tree)
+type CacheVerify = {
+  hit: (key: string) => boolean
+  twice: boolean
+  ledger: boolean
+}
 
 const verifyModes = new Map<string, CacheVerify>()
 
 export function cacheVerifyOf(text: string): CacheVerify {
   const known = verifyModes.get(text)
 
-  if (known !== undefined) return known
+  if (known !== undefined) {return known}
 
   let rate = 0
   let twice = false
+  let ledger = false
 
-  for (const mode of text.split(',').map(one => one.trim()).filter(Boolean)) {
-    if (mode === 'twice') twice = true
-    else if (mode === 'hits') rate = 1
+  for (const mode of text
+    .split(',')
+    .map(one => one.trim())
+    .filter(Boolean)) {
+    if (mode === 'twice') {twice = true}
+    else if (mode === 'ledger') {ledger = true}
+    else if (mode === 'hits') {rate = 1}
     else if (mode.startsWith('hits:')) {
       rate = Number(mode.slice(5))
-      if (!(rate >= 0 && rate <= 1)) throw new Error(`TERM_CACHE_VERIFY: ${mode} wants a share from 0 to 1`)
-    } else throw new Error(`TERM_CACHE_VERIFY: ${mode} is not a verify mode (hits, hits:<rate>, twice)`)
+
+      if (!(rate >= 0 && rate <= 1))
+        {throw new Error(
+          `TERM_CACHE_VERIFY: ${mode} wants a share from 0 to 1`,
+        )}
+    } else
+      {throw new Error(
+        `TERM_CACHE_VERIFY: ${mode} is not a verify mode (ledger, hits, hits:<rate>, twice)`,
+      )}
   }
 
   // FNV-1a of the key, as a share of 2^32: the same units are chosen on every run
   const chosen = (key: string): boolean => {
-    if (rate >= 1) return true
-    if (rate <= 0) return false
+    if (rate >= 1) {return true}
+
+    if (rate <= 0) {return false}
+
     let h = 0x811c9dc5
-    for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0
+
+    for (let i = 0; i < key.length; i++)
+      {h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0}
 
     return h / 4294967296 < rate
   }
-  const verify = { hit: chosen, twice }
+
+  const verify = { hit: chosen, twice, ledger }
   verifyModes.set(text, verify)
 
   return verify
+}
+
+// THE LEDGER'S RECORDER (decision 077 section 5.1): under `ledger` the file system's synchronous readers and the
+// environment are wrapped once in the process, and while a unit is open (`ledgerOpen` to `ledgerClose`) every read is
+// recorded, whichever reader made it: the resolver, the role and deck lookups, the check's own reads of a module
+// (staleFindsOf), or one nobody knew of. A read of the mill store is not (it is content-addressed by the mill's key), and
+// a file read is marked with whether its bytes are the ones the walk read.
+type LedgerRead = { reader: string; target: string; matches: boolean }
+type LedgerOpen = { reads: LedgerRead[]; texts: Map<string, string> }
+
+let ledgerOpenNow: LedgerOpen | undefined
+let ledgerPaused = 0
+let ledgerInstalled = false
+
+function ledgerNote(
+  reader: string,
+  target: unknown,
+  bytes?: unknown,
+): void {
+  const open = ledgerOpenNow
+
+  if (
+    open === undefined ||
+    ledgerPaused > 0 ||
+    typeof target !== 'string'
+  )
+    {return}
+
+  // a descriptor opened is read with bytes nobody sees here, so it never matches
+  const matches =
+    reader === 'open'
+      ? false
+      : reader !== 'read'
+        ? true
+        : bytes === undefined
+          ? false
+          : open.texts.get(target) ===
+            (typeof bytes === 'string' ? bytes : String(bytes))
+
+  open.reads.push({ reader, target, matches })
+}
+
+function installLedger(): void {
+  if (ledgerInstalled) {return}
+
+  ledgerInstalled = true
+
+  const host = globalThis.process as
+    | (typeof globalThis.process & {
+        getBuiltinModule?: (name: string) => unknown
+      })
+    | undefined
+
+  const fs = host?.getBuiltinModule?.('node:fs') as
+    | Record<string, unknown>
+    | undefined
+
+  const module = host?.getBuiltinModule?.('node:module') as
+    | { syncBuiltinESMExports?: () => void }
+    | undefined
+
+  if (host === undefined || fs === undefined) {return}
+
+  const readers: [string, string][] = [
+    ['readFileSync', 'read'],
+    ['existsSync', 'exists'],
+    ['statSync', 'stat'],
+    ['lstatSync', 'stat'],
+    ['readdirSync', 'list'],
+    ['openSync', 'open'],
+  ]
+
+  // only the outermost call is a read: one reader may call another through the module (under the gate a planted
+  // readFileSync was first noted as an `open` of the same file), and that inner call is the same read
+  let depth = 0
+
+  for (const [name, reader] of readers) {
+    const real = fs[name] as (...args: unknown[]) => unknown
+
+    fs[name] = function (this: unknown, ...args: unknown[]): unknown {
+      if (depth > 0) {return real.apply(this, args)}
+
+      depth++
+
+      let answer: unknown
+
+      try {
+        answer = real.apply(this, args)
+      } finally {
+        depth--
+      }
+
+      if (ledgerOpenNow !== undefined)
+        {ledgerNote(
+          reader,
+          args[0],
+          reader === 'read' ? answer : undefined,
+        )}
+
+      return answer
+    }
+  }
+
+  module?.syncBuiltinESMExports?.()
+
+  // reads pass through and are noted; a write goes to the environment itself (its own setter: `process.env` refuses
+  // the define a proxy's default set would make)
+  host.env = new Proxy(host.env, {
+    get(target, key) {
+      if (typeof key === 'string') {ledgerNote('env', key)}
+
+      return Reflect.get(target, key)
+    },
+    set(target, key, value) {
+      return Reflect.set(target, key, value)
+    },
+    has(target, key) {
+      if (typeof key === 'string') {ledgerNote('env', key)}
+
+      return Reflect.has(target, key)
+    },
+  })
 }
 
 export function compileSeparate(
@@ -248,7 +396,15 @@ export function compileSeparate(
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
   const { cache, explain } = options
-  const verify = cacheVerifyOf(globalThis.process?.env?.TERM_CACHE_VERIFY ?? '')
+  const verify = cacheVerifyOf(
+    globalThis.process?.env?.TERM_CACHE_VERIFY ?? '',
+  )
+
+  // the walk's text of every module, which a file read under `ledger` must have read
+  const ledgerTexts = new Map<string, string>()
+
+  if (verify.ledger) {installLedger()}
+
   const [role, lean] = [
     (file: string) => options.roleOf?.(file) ?? undefined,
     (file: string) => options.leanOf?.(file) ?? false,
@@ -261,6 +417,12 @@ export function compileSeparate(
     naming,
     files,
   ) => {
+    // a test plants a read here, to see the ledger name it (test/compile/cache-verify.ts)
+    if (verify.ledger)
+      {(
+        globalThis as { termLedgerPlant?: (files: string[]) => void }
+      ).termLedgerPlant?.(files)}
+
     const r = compileProgram(
       program as never,
       checkedAs,
@@ -279,8 +441,8 @@ export function compileSeparate(
       new Set(files),
     )
 
-    if (!r.ok)
-      {return {
+    if (!r.ok) {
+      return {
         ok: false,
         diagnostics: r.diagnostics,
         program: [],
@@ -289,7 +451,8 @@ export function compileSeparate(
         roll: none,
         openClaims: [],
         obligations: none,
-      } as never}
+      } as never
+    }
 
     const modules = [...(r.modules ?? [])].map(([file, emit]) => ({
       file,
@@ -309,8 +472,8 @@ export function compileSeparate(
   }
 
   const answer = port.compileSeparate(source, {
-    collect: () =>
-      collectModules(
+    collect: () => {
+      const collected = collectModules(
         source,
         options.resolve,
         parsed,
@@ -319,21 +482,39 @@ export function compileSeparate(
               cache.scanned(unit.file, unit.text, compute)
           : undefined,
         options.walked,
-      ),
+      )
+
+      if (verify.ledger) {
+        for (const unit of collected.sources)
+          {ledgerTexts.set(unit.file, unit.text)}
+      }
+
+      return collected
+    },
     deckOf: file => given(options.deckOf?.(file)),
     roleOf: file => role(file) ?? '',
     leanOf: lean,
     moduleOf: file => options.modules(file),
     parsed,
-    milled: (unit, templates, templateKey) =>
-      milledModule(unit, {
-        parsed,
-        templates: templates as Map<string, Template>,
-        templateKey,
-        cache,
-        role: role(unit.file),
-        lean: lean(unit.file),
-      }),
+    milled: (unit, templates, templateKey) => {
+      const [unitRole, unitLean] = [role(unit.file), lean(unit.file)]
+
+      // the mill store's reads are keyed by what the mill reads (content-addressed), so the ledger skips them
+      ledgerPaused++
+
+      try {
+        return milledModule(unit, {
+          parsed,
+          templates: templates as Map<string, Template>,
+          templateKey,
+          cache,
+          role: unitRole,
+          lean: unitLean,
+        })
+      } finally {
+        ledgerPaused--
+      }
+    },
     compileUnit,
     hasStubExport: s =>
       (s as { stubExport?: string }).stubExport !== undefined,
@@ -368,13 +549,27 @@ export function compileSeparate(
     keepProgram: options.keepProgram === true,
     verifyHit: verify.hit,
     verifyTwice: verify.twice,
+    ledger: verify.ledger,
+    ledgerOpen: () => {
+      ledgerOpenNow = { reads: [], texts: ledgerTexts }
+
+      return true
+    },
+    ledgerClose: () => {
+      const reads = ledgerOpenNow?.reads ?? []
+      ledgerOpenNow = undefined
+
+      return reads as never
+    },
+    separator: globalThis.process?.platform === 'win32' ? '\\' : '/',
   } as never)
 
-  if (answer.refused.form === 'some')
-    {return {
+  if (answer.refused.form === 'some') {
+    return {
       ok: false,
       diagnostics: answer.refused.value as Diagnostic[],
-    }}
+    }
+  }
 
   const kept = options.keepProgram
     ? {

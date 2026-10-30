@@ -3,7 +3,9 @@
 # cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale REUSE and never a
 # crash, and at 53 bits that is astronomically unlikely for a source tree.
 #
-# THIS IS THE CACHE KEY. Every cached mill and every cached compile is addressed by it, so it is the one function
+# IT WAS THE CACHE KEY until item 0408 (2026-10-30), when every stored key moved to `hash-key` below (decision 080):
+# `hash-text` now names emitted code and keys in-memory memos. What follows is why a disagreement there is still costly.
+# Every cached mill and every cached compile was addressed by it, so it was the one function
 # in the compiler where a one-bit disagreement between the TypeScript and the Term version would be invisible in
 # testing and catastrophic in use: two compilers that hash differently do not share a cache, and two that hash the
 # SAME WAY BUT WRONGLY serve each other stale answers. `pnpm term:self-host` compares them over every name in the
@@ -24,6 +26,23 @@ load @term/base/text
   find split
   find char-code-at
   find char-at
+  find substring
+
+load @term/base/cryptography/digest
+  find digest-sha256-text
+
+# THE STORE KEY (decision 080 of note/project/term/self-host/change/001-finish-self-host): SHA-256 of the text's UTF-8,
+# cut to its first 16 bytes as 32 lowercase hex digits. Every key written to the store or the snapshot, and every part
+# composed into one (text hashes, surface, body and shape fingerprints, interface hashes, template keys), is this, so
+# a key resists a text written to land on another text's key. `hash-text` below stays cyrb53 and names what is
+# EMITTED (block-split, the Kotlin emitter) and in-memory memos, so widening a key never moves an artifact. Synchronous
+# on every backend: node:crypto, sha2, CryptoKit and MessageDigest, and on the browser the Term SHA-256 itself
+task hash-key
+  take text, like text
+
+  like text
+
+  back substring(digest-sha256-text(text), 0, 32)
 
 # the two seeds cyrb53 starts from
 host seed-one, code 3735928559

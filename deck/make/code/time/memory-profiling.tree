@@ -1,0 +1,122 @@
+# Memory profiling. Runs the compiled program once in a child `node --expose-gc`, each `time-*` task once, a collection
+# forced before and after, so the heap delta is what the program kept, not what it allocated on the way. CPU profiling
+# is time/cpu-profiling.tree; the result and its report are time/profile.tree.
+#
+# Ported from time/memory.ts (item term-self-host-change-001-finish-self-host-0011, decision 029), which stays as the
+# face. The decisions:
+#   - the harness is JavaScript TEXT for the child, written line by line exactly as the original's template wrote it:
+#     `process.memoryUsage` lives in that text and never in Term
+#   - the child is time/execute-steps.tree's `run-node`, `node` from PATH (decision 029, Diverges)
+#   - a compile that fails is an answer (`memory-run`, `ok` false with the diagnostics); the face throws the original's
+#     `CompileFailure` from it
+#   - the original's `try / finally` is a guarded block: the folder is removed either way, and a failure is raised
+#     again with the same message
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/json
+  find parse
+  find stringify
+  find make-array
+  find push-item
+  find from-text
+
+load ./execute-steps
+  find prepare-module-dir
+  find run-node
+  find cleanup-dir
+
+load ./runner-harness
+  find benchmark
+  find compile-benchmarks
+  find thrown-message
+
+load ./profile
+  find make-memory-result
+  find memory-result
+
+# what profiling a file answered: the heap figures, or the compiler's diagnostics
+form memory-run
+  link ok, like boolean
+  link diagnostics, like list, like dynamic
+  link result, like maybe, like memory-result
+
+# the module loaded and each `time-*` task run once, between two collections, so the delta is what loading and running
+# the program kept
+task build-memory-harness
+  take benchmarks, like list, like benchmark
+  like text
+
+  save entries, make-array()
+  walk benchmarks
+    take one
+    push-item(entries, from-text(one/entry))
+  save lines, make list
+  lines/push(<async function main() \{>)
+  lines/push(<  if (typeof global.gc === 'function') global.gc()>)
+  lines/push(<  const before = process.memoryUsage()>)
+  lines/push(<  const M = await import('./module.mjs')>)
+  lines/push(<  for (const entry of {stringify(entries)}) \{>)
+  lines/push(<    if (typeof M[entry] === 'function') await M[entry]()>)
+  lines/push(<  \}>)
+  lines/push(<  if (typeof global.gc === 'function') global.gc()>)
+  lines/push(<  const after = process.memoryUsage()>)
+  lines/push(<  process.stdout.write(JSON.stringify(\{ before, after \}))>)
+  lines/push(<\}>)
+  lines/push(<main().catch((e) =\> \{ console.error(e); process.exit(1) \})>)
+  lines/push(<>)
+  back join(lines, <\n>)
+
+task run-memory-profile
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take root, like text
+  take name, like text
+  like memory-run
+
+  save built, compile-benchmarks(text, file, resolve, <>)
+  fork test, not(built/ok)
+    hold
+      back
+        make memory-run
+          bind ok, false
+          bind diagnostics, built/diagnostics
+          bind result, make none
+
+  save dir, prepare-module-dir(root, built/code, <memory>)
+  save failed, false
+  save said, <>
+  save result, make none
+  fork
+    mark unsafe
+    save harness, join-path(dir, <harness.mjs>)
+    write-file(harness, build-memory-harness(built/benchmarks))
+    save stdout, run-node(harness, dir, true)
+    save usage, parse(stdout)
+    save made, make-memory-result(name, usage/before/heap-used, usage/after/heap-used, usage/after/rss)
+    save result, make(some, made)
+  halt take
+    take problem
+    save failed, true
+    save said, thrown-message(problem)
+  cleanup-dir(dir)
+  fork test, failed
+    hold
+      halt <{said}>
+  back
+    make memory-run
+      bind ok, true
+      bind diagnostics, make list
+      bind result, result

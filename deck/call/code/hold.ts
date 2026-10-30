@@ -415,7 +415,7 @@ export async function callHold(input: {
 
   // the second checker, when asked for: every claim exported and re-checked by Lean 4
   const lean: HoldLean | undefined = input.lean
-    ? holdLean(root, files)
+    ? await holdLean(root, files)
     : undefined
 
   // the MVP report, when asked for: one row per law of laws.tree, written under the project's home

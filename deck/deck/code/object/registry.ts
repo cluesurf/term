@@ -42,18 +42,13 @@ export const acceptObject = (input: {
 export const acceptPack = (input: {
   store: unknown
   bytes: Buffer
-}): Promise<number> =>
-  port.acceptPack(input.store, input.bytes)
+}): Promise<number> => port.acceptPack(input.store, input.bytes)
 export const resolveRef = (input: {
   refs: unknown
   package: string
   ref: Ref
 }): Promise<string> =>
-  port.resolveRef(
-    input.refs,
-    input.package,
-    input.ref,
-  )
+  port.resolveRef(input.refs, input.package, input.ref)
 export const publishCommit = (input: {
   store: unknown
   refs: unknown
@@ -74,8 +69,7 @@ export const publishCommit = (input: {
     input.sig,
     input.key,
   ) as Promise<{ ok: true; ref: string }>
-export const scopeOf = (pkg: string): string =>
-  port.scopeOf(pkg)
+export const scopeOf = (pkg: string): string => port.scopeOf(pkg)
 export const directRegistry = (input: {
   store: unknown
   refs: unknown

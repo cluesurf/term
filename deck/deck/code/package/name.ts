@@ -6,9 +6,7 @@ import * as port from '@term/deck/code/package/registry-naming'
 export const TERM_REGISTRY: string = port.showTermRegistry()
 export const DEFAULT_OCI_HOST: string = port.showDefaultOciHost()
 export const DEFAULT_SCOPE_REGISTRIES: Record<string, string> =
-  Object.fromEntries(
-    port.defaultScopeRegistries(),
-  )
+  Object.fromEntries(port.defaultScopeRegistries())
 
 export const toRegistryName = (input: { name: string }): string =>
   port.toRegistryName(input.name)

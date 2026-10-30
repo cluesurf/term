@@ -71,7 +71,7 @@ load ./names
   find name-def
 
 load ../term/hash
-  find hash-text
+  find hash-key
 
 load ../check/program-facts
   find program-facts-of
@@ -978,7 +978,7 @@ task surface-hash
       like text
   like text
 
-  back hash-text(portable(program-json(without-spans(), surface)))
+  back hash-key(portable(program-json(without-spans(), surface)))
 
 # the names a unit reaches without writing them: what the checker and the emitters name on a program's behalf
 task names-always-used
@@ -1219,6 +1219,6 @@ task name-defs
       make name-def
         bind gives, gives-of(one)
         bind reads, reads
-        bind print, hash-text(portable(json))
+        bind print, hash-key(portable(json))
     push(out, def)
   back out

@@ -59,9 +59,7 @@ export function printDiagnostics(
     diagnostics.map(diagnostic => ({
       diagnostic,
       text:
-        diagnostic.file === forFile?.file
-          ? forFile.text
-          : undefined,
+        diagnostic.file === forFile?.file ? forFile.text : undefined,
     })),
     process.cwd(),
   )
