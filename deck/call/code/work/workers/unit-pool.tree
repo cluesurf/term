@@ -508,6 +508,11 @@ task compile-units-parallel
   save found-built, 0
   fork test, units-probe-asked(options)
     hold
+      # fewer jobs the store may miss than the floor (from a snapshot, a job the probe takes as stored is never a miss)
+      # can start no worker, and the build on this thread asks the store for them itself, so the probe would ask twice
+      fork test, is-below(units-open-jobs(graph, entries, options), pool-floor)
+        hold
+          back make(units-answer, bind(results, found), bind(jobs, 0), bind(workers, 0), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(heap-mb, 0), bind(built, 0), bind(spent, spent))
       save probed, probe-units(root, session, entries, faced, graph, options)
       save missed, probed/missed
       save found, probed/results
@@ -562,6 +567,22 @@ bind units-contains
   like boolean
   case node
     text <$list.includes($value)>
+
+# the jobs the probe may find missing: every one, but from a snapshot a library job whose module reaches no moved file
+task units-open-jobs
+  take graph, like hash, like text, like list, like text
+  take entries, like hash, like text, like boolean
+  take options, like dynamic
+  like number
+  mark private
+
+  save open, 0
+  walk units-hash-keys(graph)
+    take file
+    fork test, or(entries/has(file), not(units-known-clean(options, file)))
+      hold
+        save open, add(open, 1)
+  back open
 
 # a file's kept edges, the empty list when the file holds none
 task units-edges-of

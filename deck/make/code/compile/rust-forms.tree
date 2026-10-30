@@ -51,6 +51,8 @@ form rust-form-facts
   # the `mark sole` forms, which never derive `Clone` (term/affine-kinds decision 001)
   link sole, like hash, like text, like boolean
   link raising, like hash, like text, like boolean
+  # the exception forms (a chain through `exception`), whose values a record field holds as the carrier
+  link exceptions, like hash, like text, like boolean
   link instance-targets, like hash, like text, like list, like text
   link impl-fn, like hash, like text, like statement
   link mask-of, like hash, like text, like text
@@ -145,6 +147,36 @@ task chains-exception
     miss
       save nothing, 0
   back false
+
+# a record field held as the exception carrier: 1 for an exception (an exception form, or `exception` itself), 2 for a
+# list of them, 0 for any other type
+task carrier-shape
+  take given, like type
+  take exceptions, like hash, like text, like boolean
+  like number
+  mark private
+
+  sift given
+    case named
+      link named-name
+      fork test, or(exceptions/has(named-name), is-equal(named-name, <exception>))
+        hold
+          back 1
+      fork test, is-equal(named-name, <list>)
+        hold
+          walk args
+            take one
+            fork test, is-equal(carrier-shape(one, exceptions), 1)
+              hold
+                back 2
+            back 0
+    case array
+      fork test, is-equal(carrier-shape(element, exceptions), 1)
+        hold
+          back 2
+    miss
+      save nothing, 0
+  back 0
 
 # ---- forms ----
 
@@ -339,6 +371,18 @@ task emit-form
                 save spelled, <Vec\<{rust-element(element, context)}\>>
               miss
                 save nothing, 0
+        # a field typed as an exception, or a list of them, holds what a caught raise is, the carrier, as `base` does
+        # (decision 078 section 2, item 0439): the form's own struct refused every caught raise bound to it (E0308)
+        save carried, carrier-shape(field-type, facts/exceptions)
+        fork test, is-equal(carried, 1)
+          hold
+            save spelled, <TermException>
+        fork test, is-equal(carried, 2)
+          hold
+            save spelled, <std::rc::Rc\<std::cell::RefCell\<Vec\<TermException\>\>\>>
+            fork test, facts/field-lists/has(<{form-name}/{field/name}>)
+              hold
+                save spelled, <Vec\<TermException\>>
         push(lines, <{pad(add(depth, 1))}{snake(field/name)}: {spelled}>)
         push(field-names, snake(field/name))
       # a generic parameter no field mentions still has to be used, or rustc refuses the struct (E0392)

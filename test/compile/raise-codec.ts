@@ -1,9 +1,10 @@
 // The exception codec (decision 078 section 4 of note/project/term/self-host/change/001-finish-self-host, item
 // term-self-host-001-0421): a raise crosses a parallel walk as one tree/code shape, written to the same bytes by
 // TypeScript's `__termMeltRaise` and Rust's `term_melt_raise`, and filled back by `__termFillRaise` / `term_fill_raise`
-// into the raise a `halt` of that form builds. Four raises, each caught in Term and melted: `over-limit` (text and
-// number props), `wrapped` holding it as its cause, `wrapped` holding that one (a nested cause), and a `failure` of a
-// text (no props record). For each, on each backend:
+// into the raise a `halt` of that form builds. Five raises, each caught in Term and melted: `over-limit` (text and
+// number props), `wrapped` holding it as its cause, `wrapped` holding that one (a nested cause), a `failure` of a
+// text (no props record), and `gathered`, whose props hold an exception and a list of them beside a number, each
+// crossed by the codec again (decision 078 section 2, item 0439). For each, on each backend:
 //   - the bytes filled and melted again are the bytes (the envelope, the props, every cause and the frames kept)
 //   - the filled raise, re-raised and caught by a Term handler, sifts as its form with its props
 //   - the bytes are the other backend's, `code` and `time` set aside (a fresh occurrence and clock per run)
@@ -47,6 +48,7 @@ const CASES = [
   { name: 'a cause', sifted: 'wrapped:outer' },
   { name: 'a nested cause', sifted: 'wrapped:outer2' },
   { name: 'failure of a text', sifted: 'failure:too many 9' },
+  { name: 'exception props', sifted: 'gathered:wrapped:1' },
 ]
 
 const BIND_CASES = `  case browser
@@ -88,6 +90,13 @@ form wrapped
   like exception
     bind note, <Wrapped>
     link step, like text
+
+form gathered
+  like exception
+    bind note, <Gathered>
+    link first, like exception
+    link rest, like list, like exception
+    link count, like number
 
 bind melt-raise
   take raised, like exception
@@ -170,6 +179,21 @@ task text-fail
       halt <too many {n}>
   back n
 
+task gather
+  take n, like number
+  like number
+  fork
+    mark unsafe
+    save x, outer(n)
+    back x
+  halt take
+    take problem
+    halt gathered
+      bind first, problem
+      bind rest, make list(problem)
+      bind count, 1
+  back 0
+
 task crossed
   take given, like data
   take n, like number
@@ -183,6 +207,9 @@ task crossed
     hold
       halt wrapped
         bind step, <never>
+  fork test, is-below(n, -2)
+    hold
+      save g, gather(9)
   save z, reraise(given)
   back z
 
@@ -211,6 +238,8 @@ task again
         back <{round}|{problem/form}:{limit}:{label}>
       case wrapped
         back <{round}|{problem/form}:{step}>
+      case gathered
+        back <{round}|{problem/form}:{first/form}:{rest/length}>
       miss
         back <{round}|{problem/form}:{problem/note}>
   back <{round}|none>
@@ -221,7 +250,7 @@ task run
 ${
   hexes
     ? hexes.map(hex => `  push(out, <${hex}>)`).join('\n')
-    : ['check', 'outer', 'outer2', 'text-fail']
+    : ['check', 'outer', 'outer2', 'text-fail', 'gather']
         .map(
           (task, at) => `  fork
     mark unsafe
@@ -326,8 +355,37 @@ function masked(value: Data): Data {
           ? { name: 'time', base: { kind: 'number', value: 0 } }
           : entry.name === 'base'
             ? { name: 'base', base: masked(entry.base) }
-            : entry,
+            : entry.name === 'link'
+              ? { name: 'link', base: maskedProps(entry.base) }
+              : entry,
     ),
+  }
+}
+
+// a raise inside the props, as a field or a list's item (item 0439), masked as a cause is
+const isRaise = (value: Data): boolean =>
+  value.kind === 'hash' && value.list.some(entry => entry.name === 'host')
+
+function maskedProps(value: Data): Data {
+  if (value.kind !== 'hash') {
+    return value
+  }
+
+  return {
+    kind: 'hash',
+    list: value.list.map(entry => ({
+      name: entry.name,
+      base: isRaise(entry.base)
+        ? masked(entry.base)
+        : entry.base.kind === 'list'
+          ? {
+              kind: 'list',
+              list: entry.base.list.map(item =>
+                isRaise(item) ? masked(item) : item,
+              ),
+            }
+          : entry.base,
+    })),
   }
 }
 
@@ -364,7 +422,7 @@ for (const backend of backends) {
   })
 
   // what the bytes hold: the props, the cause and its cause, and none for a text's failure
-  const [limit, cause, nested, text] = lines.map(line =>
+  const [limit, cause, nested, text, gathered] = lines.map(line =>
     decoded(line.hex),
   )
   const limitLink = field(limit, 'link')
@@ -394,6 +452,31 @@ for (const backend of backends) {
     text !== undefined &&
       field(text, 'link') === undefined &&
       field(text, 'base') === undefined,
+  )
+  // item 0439: a props field typed as an exception, and a list of them, cross by the codec again
+  const gatheredLink = field(gathered, 'link')
+  const first = field(gatheredLink, 'first')
+  const rest = field(gatheredLink, 'rest')
+  ok(
+    `${backend}: an exception props field is the codec again, wrapped holding over-limit`,
+    JSON.stringify(field(first, 'form')) ===
+      '{"kind":"text","value":"wrapped"}' &&
+      JSON.stringify(field(field(first, 'base'), 'form')) ===
+        '{"kind":"text","value":"over-limit"}',
+    JSON.stringify(gatheredLink).slice(0, 600),
+  )
+  ok(
+    `${backend}: a list of exceptions props field is the codec again for each, beside a number`,
+    rest?.kind === 'list' &&
+      rest.list.length === 1 &&
+      rest.list.every(
+        item =>
+          JSON.stringify(field(item, 'form')) ===
+          '{"kind":"text","value":"wrapped"}',
+      ) &&
+      JSON.stringify(field(gatheredLink, 'count')) ===
+        '{"kind":"number","value":1}',
+    JSON.stringify(rest).slice(0, 600),
   )
 }
 

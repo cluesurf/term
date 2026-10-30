@@ -125,7 +125,6 @@ load ./ts-emit
   find place-write
   find reuse-task
   find raise-codec-specs
-  find raise-codec-refusal
 
 load ./node-walk
   find statements-in
@@ -1225,10 +1224,6 @@ task emit-type-script
     hold
       save codec-forms, raise-crossing(whole)
       save codec-props, props-records-of(whole, codec-forms)
-      save codec-refused, raise-codec-refusal(codec-forms, codec-props, facts)
-      fork test, is-unequal(codec-refused, <>)
-        hold
-          fail(codec-refused)
       save raise-codec, raise-codec-specs(codec-forms, codec-props, facts)
   # the wake chain's entries, each its text: the typed kinds leave `hiveWake` when the program has `hive-wake-typed`
   save typed-wake, false

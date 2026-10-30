@@ -1255,32 +1255,6 @@ task fill-kind-json
       link spec
       back <\{"kind":"form","spec":{fill-spec-json(spec)}\}>
 
-# is a type an exception, or a list of them: a props field the exception codec would carry by itself again
-task is-raise-type
-  take given, like type
-  take facts, like emit-facts
-  like boolean
-  mark private
-
-  sift given
-    case named
-      link type-name
-      link type-args
-      fork test, facts/exceptions/has(type-name)
-        hold
-          back true
-      fork test, is-equal(type-name, <list>)
-        hold
-          walk type-args
-            take one
-            back is-raise-type(one, facts)
-    case array
-      link element
-      back is-raise-type(element, facts)
-    miss
-      save nothing, 0
-  back false
-
 # THE EXCEPTION CODEC'S TABLE (decision 078 section 4 of term/self-host/change/001): `\{"<form>": <spec>\}` over the
 # forms a parallel turn's raise can carry (check/parallel.tree `raise-crossing`), each spec its props record's own fill
 # spec, the one `call melt` with that record writes. `props` holds each form's props record by position, `<>` for a
@@ -1317,31 +1291,76 @@ task raise-codec-specs
       make type/named
         bind name, props-name
     save seen, make list
-    push(entries, <{json-quote(form-name)}:{fill-spec-json(fill-spec-of(props-type, seen, fields-of, is-record))}>)
-  back <\{{join-texts(entries, <,>)}\}>
-
-# why the exception codec cannot carry a form's props yet, `<>` when it can: a props field typed as an exception or a
-# list of them, which decision 078 section 2 crosses by the codec again, is not walked by the props spec
-task raise-codec-refusal
-  take forms, like list, like text
-  take props, like list, like text
-  take facts, like emit-facts
-  like text
-
-  save at, 0
-  walk forms
-    take form-name
-    save props-name, get(props, at)
-    save at, add(at, 1)
-    fork test, not(facts/record-fields/has(props-name))
-      hold
-        turn next
+    save props-spec, fill-spec-of(props-type, seen, fields-of, is-record)
+    # a props field typed as an exception, or a list of them, crosses by the codec again (decision 078 section 2): its
+    # kind is `raise`, by the field's position, which fill-spec-of walks in the record's own order
+    save raise-kinds, make list
     walk facts/record-fields/get(props-name)
       take field
-      fork test, is-raise-type(field/type, facts)
+      push(raise-kinds, raise-kind-json(field/type, facts))
+    push(entries, <{json-quote(form-name)}:{raise-spec-json(props-spec, raise-kinds)}>)
+  back <\{{join-texts(entries, <,>)}\}>
+
+# the kind JSON of a props field the codec carries again, `<>` for any other field: `raise` for an exception (an
+# exception form or `exception` itself), a list of it for a list of them (ts-preludes.tree `raise-codec-prelude` walks
+# it). rust-program.tree `raise-shape` is the same rule
+task raise-kind-json
+  take given, like type
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save raised, <\{"kind":"raise"\}>
+  save inner, <>
+  sift given
+    case named
+      link type-name
+      link type-args
+      fork test, or(facts/exceptions/has(type-name), is-equal(type-name, <exception>))
         hold
-          back <raise-codec: the props field `{field/name}` of `{form-name}` is an exception, which the exception codec does not carry yet: a parallel walk whose turn can raise `{form-name}` does not build>
-  back <>
+          back raised
+      fork test, is-equal(type-name, <list>)
+        hold
+          walk type-args
+            take one
+            save inner, raise-kind-json(one, facts)
+            halt
+    case array
+      link element
+      save inner, raise-kind-json(element, facts)
+    miss
+      save nothing, 0
+  # one level: a list of exceptions, never a list of lists of them
+  fork test, is-unequal(inner, raised)
+    hold
+      back <>
+  back <\{"kind":"list","item":{inner}\}>
+
+# a props record's spec JSON as fill-spec-json writes it, with each field `raise-kinds` names given that kind
+task raise-spec-json
+  take spec, like fill-spec
+  take raise-kinds, like list, like text
+  like text
+  mark private
+
+  save fields, make list
+  save at, 0
+  walk spec/fields
+    take field
+    save kind-json, fill-kind-json(field/kind)
+    fork test, is-below(at, raise-kinds/length)
+      hold
+        save raised, get(raise-kinds, at)
+        fork test, is-unequal(raised, <>)
+          hold
+            save kind-json, raised
+    save at, add(at, 1)
+    fork test, field/optional
+      hold
+        push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(field/member)},"optional":true,"kind":{kind-json}\}>)
+      miss
+        push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(field/member)},"optional":false,"kind":{kind-json}\}>)
+  back <\{"form":{json-quote(spec/form)},"fields":[{join-texts(fields, <,>)}]\}>
 
 # the JSON of an `inspect` kind (compile/backend-shapes.tree), with each field's member and a union's tag as this
 # backend writes them, which `__termInspect` walks (ts-preludes.tree `inspect-prelude`)

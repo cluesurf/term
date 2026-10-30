@@ -84,6 +84,7 @@ load ./backend-shapes
   find escaping-params
   find inspect-forms
   find record-field
+  find form-spec
   find form-spec-of
   find spec-forms
   find refuse-any
@@ -153,6 +154,10 @@ load ./rust-names
   find text-keys-of
   find mutated-captures
   find rust-form-walk
+  find rust-form-helpers
+  find fill-of
+  find melt-of
+  find empty-test
   find json-text
 
 load ./node-walk
@@ -1305,29 +1310,104 @@ task props-records-of
         push(out, <>)
   back out
 
-# is a type an exception, or a list of them: a props field the codec would carry by itself again
-task is-raise-type
+# how a props field is carried by the codec again (decision 078 section 2, item 0439): 1 for an exception, 2 for a list
+# of them, 0 for any other field, which its form's own walker carries
+task raise-shape
   take given, like type
   take exceptions, like hash, like text, like boolean
-  like boolean
+  like number
   mark private
 
   sift given
     case named
       link named-name
-      fork test, exceptions/has(named-name)
+      fork test, or(exceptions/has(named-name), is-equal(named-name, <exception>))
         hold
-          back true
+          back 1
       fork test, is-equal(named-name, <list>)
         hold
           walk args
             take one
-            back is-raise-type(one, exceptions)
+            fork test, is-equal(raise-shape(one, exceptions), 1)
+              hold
+                back 2
+            back 0
     case array
-      back is-raise-type(element, exceptions)
+      fork test, is-equal(raise-shape(element, exceptions), 1)
+        hold
+          back 2
     miss
       save idle, 0
-  back false
+  back 0
+
+# the codec's own walkers of a props record holding a field `raise-shape` carries: each such field through
+# `term_melt_raise` and `__term_fill_raise_at`, every other field as the form walk writes it (rust-names.tree
+# `rust-form-walk`), in the record's order, which is the order TypeScript's `__termRaiseMeltLink` writes
+task raise-props-walkers
+  take spec, like form-spec
+  take shapes, like list, like number
+  like text
+  mark private
+
+  save known, make list
+  save fills, make list
+  save melts, make list
+  save at, 0
+  walk spec/fields
+    take field
+    save shape, get(shapes, at)
+    save at, add(at, 1)
+    save quoted, json-text(field/name)
+    save member, snake(field/name)
+    save value, <value.{member}.clone()>
+    push(known, quoted)
+    fork test, is-equal(shape, 1)
+      hold
+        push(fills, <{member}: __term_fill_raise_at(__term_data(find({quoted}), __term_path(&path, {quoted}), false)?, __term_path(&path, {quoted}))?>)
+        push(melts, <    list.push(DataEntry \{ name: {quoted}.to_string(), base: term_melt_raise(&value.{member}) \});>)
+        turn next
+    fork test, is-equal(shape, 2)
+      hold
+        push(fills, <{member}: __term_list(find({quoted}), __term_path(&path, {quoted}), {field/optional}, &|d: Data, p: String| __term_fill_raise_at(d, p))?>)
+        save entry, <list.push(DataEntry \{ name: {quoted}.to_string(), base: Data::Array \{ list: std::rc::Rc::new(std::cell::RefCell::new(value.{member}.borrow().iter().map(term_melt_raise).collect::\<Vec\<Data\>\>())) \} \});>
+        fork test, field/optional
+          hold
+            push(melts, <    if !value.{member}.borrow().is_empty() \{ {entry} \}>)
+          miss
+            push(melts, <    {entry}>)
+        turn next
+    push(fills, <{member}: {fill-of(field/kind, <find({quoted})>, <__term_path(&path, {quoted})>, field/optional)}>)
+    save entry, <list.push(DataEntry \{ name: {quoted}.to_string(), base: {melt-of(field/kind, value)} \});>
+    save kept, make none
+    fork test, field/optional
+      hold
+        save kept, empty-test(field/kind, value)
+    save present, make none
+    sift field/kind
+      case optional
+        link item
+        save present, make(some, item)
+      miss
+        save nothing, 0
+    sift present
+      case some
+        link item
+        push(melts, <    if let Maybe::Some \{ value: m \} = {value} \{ list.push(DataEntry \{ name: {quoted}.to_string(), base: {melt-of(item, <m>)} \}); \}>)
+      case none
+        sift kept
+          case some
+            link empty
+            push(melts, <    if !{empty} \{ {entry} \}>)
+          case none
+            push(melts, <    {entry}>)
+  save form-name, snake(spec/form)
+  save form-type, pascal(spec/form)
+  save lines, make list
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn __raise_fill_{form-name}(value: Data, path: String) -\> Result\<{form-type}, TermException\> \{\n    let entries = __term_entries(value, path.clone())?;\n    let known: &[&str] = &[{join-with(known, <, >)}];\n    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}\n    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};\n    Ok({form-type} \{ {join-with(fills, <, >)} \})\n\}>)
+  push(lines, <#[allow(dead_code)]>)
+  push(lines, <fn __raise_melt_{form-name}(value: &{form-type}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-with(melts, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
+  back join-with(lines, <\n>)
 
 # THE CODEC: `term_melt_raise` writes a raise as the one tree/code shape TypeScript's `__termMeltRaise` writes (the
 # envelope by name, `link` by the form's own melt walker when the carrier's `base` holds the raised record, which a
@@ -1338,6 +1418,8 @@ task is-raise-type
 task raise-codec-text
   take forms, like list, like text
   take props, like list, like text
+  # each props record the codec walks itself (`raise-props-walkers`), by position
+  take carried, like list, like boolean
   like text
   mark private
 
@@ -1347,13 +1429,17 @@ task raise-codec-text
   walk forms
     take form-name
     save props-name, get(props, at)
+    save walker, <_>
+    fork test, get(carried, at)
+      hold
+        save walker, <_raise_>
     save at, add(at, 1)
     save record, pascal(form-name)
     save quoted, json-text(form-name)
-    push(parts-arms, <        {quoted} =\> match raised.base.downcast_ref::\<{record}\>() \{ Some(r) =\> (Some(__melt_{snake(props-name)}(&r.link)), match &r.base \{ Maybe::Some \{ value \} =\> Some(term_melt_raise(value)), Maybe::None =\> None \}), None =\> (None, None) \},>)
+    push(parts-arms, <        {quoted} =\> match raised.base.downcast_ref::\<{record}\>() \{ Some(r) =\> (Some(_{walker}melt_{snake(props-name)}(&r.link)), match &r.base \{ Maybe::Some \{ value \} =\> Some(term_melt_raise(value)), Maybe::None =\> None \}), None =\> (None, None) \},>)
     # the record's own `flow` list is spelled by its default, which is the empty list in whichever shape the program
     # holds it (traps T-0421): `Vec::new()` refused a record whose list fields are all shared
-    push(build-arms, <        {quoted} =\> \{ let raised = {record} \{ host, form, note, code, time, link: __fill_{snake(props-name)}(link, at)?, base, site: Maybe::None, flow: Default::default() \}; Ok(TermException(Box::new(TermRaised \{ host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised), flow: Vec::new() \}))) \}>)
+    push(build-arms, <        {quoted} =\> \{ let raised = {record} \{ host, form, note, code, time, link: _{walker}fill_{snake(props-name)}(link, at)?, base, site: Maybe::None, flow: Default::default() \}; Ok(TermException(Box::new(TermRaised \{ host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised), flow: Vec::new() \}))) \}>)
   save lines, make list
   push(lines, <// THE EXCEPTION CODEC (decision 078): a raise as one tree/code shape, the bytes TypeScript's __termMeltRaise writes>)
   push(lines, <#[allow(dead_code)]>)
@@ -1998,6 +2084,7 @@ task emit-rust-pass
       bind keyable, flags-of(traits/keyable)
       bind sole, sole-forms
       bind raising, raising
+      bind exceptions, exception-forms
       bind instance-targets, instance-targets
       bind impl-fn, impl-fn
       bind mask-of, mask-of
@@ -2401,6 +2488,8 @@ task emit-rust-pass
       save codec-props, props-records-of(program, codec-forms)
       save codec-kept, make list
       save codec-kept-props, make list
+      save codec-carried, make list
+      save codec-walkers, make list
       save codec-at, 0
       walk codec-forms
         take form-name
@@ -2410,13 +2499,34 @@ task emit-rust-pass
           hold
             turn next
         save props-type, named-of(props-name)
+        # a props field typed as an exception, or a list of them, is carried by the codec again (decision 078 section
+        # 2, item 0439): the props record then has the codec's own walkers, and the form walk carries every other field
+        save shapes, make list
+        save carried, false
         walk record-fields/get(props-name)
           take field
-          fork test, is-raise-type(field/type, exception-forms)
+          save shape, raise-shape(field/type, exception-forms)
+          push(shapes, shape)
+          fork test, is-above(shape, 0)
             hold
-              fail(<raise-codec: the props field `{field/name}` of `{form-name}` is an exception, which the exception codec does not carry yet: a parallel walk whose turn can raise `{form-name}` does not build>)
+              save carried, true
         save props-spec, form-spec-of(props-type, record-fields, make list)
-        sift refuse-any(props-spec, <Rust>)
+        save walked-spec, props-spec
+        fork test, carried
+          hold
+            save kept-fields, make list
+            save field-at, 0
+            walk props-spec/fields
+              take one
+              fork test, is-equal(get(shapes, field-at), 0)
+                hold
+                  push(kept-fields, one)
+              save field-at, add(field-at, 1)
+            save walked-spec
+              make form-spec
+                bind form, props-name
+                bind fields, kept-fields
+        sift refuse-any(walked-spec, <Rust>)
           case some
             link reason
             fail(reason)
@@ -2426,27 +2536,41 @@ task emit-rust-pass
         walk st/fill-specs/keys()
           take key
           push(fill-known, key)
-        walk spec-forms(props-spec, fill-known)
+        # a carried props record's own walker is the codec's, so only the forms its other fields reach join the walk
+        walk spec-forms(walked-spec, fill-known)
           take one
+          fork test, and(carried, is-equal(one/form, props-name))
+            hold
+              turn next
           st/fill-specs/set(one/form, one)
         save melt-known, make list
         walk st/melt-specs/keys()
           take key
           push(melt-known, key)
-        walk spec-forms(props-spec, melt-known)
+        walk spec-forms(walked-spec, melt-known)
           take one
+          fork test, and(carried, is-equal(one/form, props-name))
+            hold
+              turn next
           st/melt-specs/set(one/form, one)
+        fork test, carried
+          hold
+            push(codec-walkers, raise-props-walkers(props-spec, shapes))
         save raised-type, named-of(form-name)
         note-clone(make(some, raised-type), st, facts)
         note-clone(make(some, props-type), st, facts)
         push(codec-kept, form-name)
         push(codec-kept-props, props-name)
+        push(codec-carried, carried)
       fork test, is-above(codec-kept/length, 0)
         hold
           save st/carries, true
-          save codec-text, raise-codec-text(codec-kept, codec-kept-props)
-  # a fill walker raises `data-mismatch` through the carrier
-  save fills-forms, is-above(st/fill-specs/keys()/length, 0)
+          save codec-text, raise-codec-text(codec-kept, codec-kept-props, codec-carried)
+          walk codec-walkers
+            take one
+            save codec-text, <{codec-text}\n{one}>
+  # a fill walker raises `data-mismatch` through the carrier, the codec's own walkers too
+  save fills-forms, or(is-above(st/fill-specs/keys()/length, 0), is-unequal(codec-text, <>))
   save wake-texts, wake-chain(program, wake, st, facts)
   # A SOLE VALUE IS NEVER CLONED (term/affine-kinds decision 001), asked before `melt`'s clones are noted
   walk st/clone-forms/keys()
@@ -2493,6 +2617,11 @@ task emit-rust-pass
         push(form-walk, walker)
   fork test, is-unequal(codec-text, <>)
     hold
+      # the codec reads a map through the form walk's helpers, which a program whose props records the codec walks
+      # alone has no other walker to bring
+      fork test, and(is-equal(fill-specs/length, 0), is-equal(melt-specs/length, 0))
+        hold
+          push(form-walk, rust-form-helpers())
       push(form-walk, codec-text)
   save input
     make rust-module-input

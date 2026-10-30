@@ -1,7 +1,9 @@
 // `pnpm term:release`: build the `term` command for every platform, as the payload `@term/code` ships through the Term
 // registry (note/project/term/term-load-install.md, note/term/self-host/09-distribution.md).
 //
-//   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop
+//   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop. windows-x64 is built and
+//                                smoke-run on an EC2 Windows machine (task/release-windows.ts, about $0.02 a run);
+//                                --windows-cross packs it here instead, run nowhere
 //   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag, and tell
 //                                the package index, which lists `@term/code` under /packages like any package
 //   pnpm term:release --ping     build nothing: tell the index about every version already released, which is how the
@@ -47,13 +49,12 @@
 import { createHash } from 'node:crypto'
 import { execFileSync, spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
-import os from 'node:os'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
 import { announce, loadPublishKeypair } from '@term/call/code/host'
-import { writeFileList } from '@term/call/code/need-load'
+import { packPayload, SECRET_FILE } from './release-pack'
 // the terminal output library, as a TYPE only: the module itself is loaded by `loadOutput`, because the port build is
 // what writes the modules it is made of, and a fresh clone has none until it runs (see `main`)
 import type * as Output from '@term/call/code/output'
@@ -346,37 +347,51 @@ function shipped(from: string): (source: string) => boolean {
   }
 }
 
-// a file name that holds a secret or a key, refused in a payload whatever folder it is in
-const SECRET_FILE = /^(\.env.*|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa).*|zone\.code\.tree|auth)$|\.(pem|key|p12|pfx|gpg|asc)$/
+// THE WINDOWS STEP (D8): windows-x64 staged here, all but its native part, then handed to task/release-windows.ts
+// under zone for the EC2 key. It rents a Windows machine, builds bin\term.exe there with Windows' own Go, packs the
+// stage here with packPayload, smoke-runs the tarball there, and destroys the machine. The child says each step as a
+// JSON line on stdout, drawn here as the release's own items. `--windows-cross` packs windows-x64 here instead, cross
+// built and not run anywhere, for a dry run with no EC2 key or network
+async function windowsStep(input: { stage: string; file: string }): Promise<Built> {
+  const root = path.resolve(TERM, '../../../..')
+  output.report({ glyph: 'info', verb: 'pack', subject: 'windows-x64 on an EC2 Windows machine', facts: ['zone cluesurf/bench'] })
+  const child = spawn(path.join(root, 'deck/zone/bin/zone'), ['load', 'cluesurf/bench', '--', 'pnpm', '-s', '--dir', TERM, 'exec', 'tsx', 'task/release-windows.ts', '--stage', input.stage, '--out', input.file], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
+  let built: Built | undefined
+  let failed = ''
 
-// The last check before a payload is packed: nothing under the staged `term/` (its `node_modules` fetched from npm
-// included) is a `.base` cache, a `.env`, or a key file, and no file names the machine it was built on: the home
-// folder's absolute path, which shows the builder's user name and folder layout. A hit stops the release, naming
-// the file
-function refuseSecrets(root: string): void {
-  const home = Buffer.from(os.homedir())
-  const found: string[] = []
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const at = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (entry.name === '.base' || entry.name === '.git') {
-          found.push(at)
-        } else {
-          walk(at)
-        }
-      } else if (SECRET_FILE.test(entry.name)) {
-        found.push(at)
-      } else if (entry.isFile() && readFileSync(at).includes(home)) {
-        found.push(`${at} (holds ${home.toString()})`)
-      }
+  for await (const line of createInterface({ input: child.stdout! })) {
+    let said: { form: string; [key: string]: unknown }
+
+    try {
+      said = JSON.parse(line) as typeof said
+    } catch {
+      if (line.trim()) output.report({ glyph: 'info', verb: 'pack', subject: line.trim() })
+      continue
+    }
+
+    if (said.form === 'tools') {
+      output.report({ glyph: 'done', verb: 'check', subject: 'the Windows toolchain: Node, Go, MSVC and Rust', fields: [output.field('crate', String(said.crate))] })
+    } else if (said.form === 'native') {
+      output.report({ glyph: 'done', verb: 'build', subject: 'bin\\term.exe on Windows', fields: [output.field('digest', String(said.digest)), output.field('cross', said.same ? 'the same bytes' : String(said.cross))] })
+    } else if (said.form === 'smoke') {
+      output.report({ glyph: 'done', verb: 'run', subject: `windows-x64 on Windows: ${String(said.version)}`, fields: [output.field('digest', String(said.digest)), output.field('make', String(said.made))] })
+    } else if (said.form === 'built') {
+      built = { platform: 'windows-x64', file: String(said.file), digest: String(said.digest), bytes: Number(said.bytes) }
+    } else if (said.form === 'failed') {
+      failed = String(said.message)
     }
   }
 
-  walk(root)
-  if (found.length > 0) {
-    throw new Error(`the payload holds what is never published:\n${found.map(at => `  ${path.relative(root, at)}`).join('\n')}`)
+  const status = await new Promise<number | null>(resolve => child.on('close', code => resolve(code)))
+
+  if (status !== 0 || !built) {
+    throw Object.assign(new Error(failed || `the Windows step under zone exited ${status ?? 'on a signal'}`), { expected: true })
   }
+
+  return built
 }
 
 // the stdlib as the npm package ships it: no native build output, no build info, no cache
@@ -409,6 +424,13 @@ async function main(): Promise<void> {
   }
 
   const dry = process.argv.includes('--dry')
+  // windows-x64 packed here and run nowhere, instead of by the Windows step: a dry run only
+  const windowsCross = process.argv.includes('--windows-cross')
+
+  if (windowsCross && !dry) {
+    throw new Error('--windows-cross is for a dry run: a release builds windows-x64 on Windows (D8)')
+  }
+
   const version = readVersion()
   const out = path.join(OUT_ROOT, version)
   const cache = path.join(OUT_ROOT, 'npm')
@@ -492,9 +514,15 @@ async function main(): Promise<void> {
 
     mkdirSync(path.join(root, 'bin'), { recursive: true })
 
+    // windows-x64's term.exe is built on Windows by the Windows step, below
+    const onWindows = platform.name === 'windows-x64' && !windowsCross
+
     if (platform.name.startsWith('windows-')) {
       writeFileSync(path.join(root, 'bin', 'term.cmd'), WINDOWS_LAUNCHER)
-      buildWindowsExe({ out: path.join(root, 'bin', 'term.exe'), arch: platform.name === 'windows-arm64' ? 'arm64' : 'amd64' })
+
+      if (!onWindows) {
+        buildWindowsExe({ out: path.join(root, 'bin', 'term.exe'), arch: platform.name === 'windows-arm64' ? 'arm64' : 'amd64' })
+      }
     } else {
       writeFileSync(path.join(root, 'bin', 'term'), LAUNCHER)
       chmodSync(path.join(root, 'bin', 'term'), 0o755)
@@ -512,22 +540,14 @@ async function main(): Promise<void> {
       cache,
     })
 
-    // every file with its sha256 and mode, inside the signed layer, so an install shares what an installed version
-    // holds alike (need-load.ts `extractShared`)
-    writeFileList(root)
-    refuseSecrets(root)
-
     const file = path.join(out, `term-${platform.name}.tar.gz`)
+    // the file list, the secrets check and the tar (task/release-pack.ts), here or, for windows-x64, by the Windows
+    // step once the machine has built term.exe
+    const one = onWindows ? await windowsStep({ stage, file }) : { platform: platform.name, file, ...packPayload({ stage, file }) }
 
-    // COPYFILE_DISABLE keeps macOS tar from writing `._` resource-fork entries into the archive
-    execFileSync('tar', ['-czf', file, '-C', stage, 'term'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
-
-    const bytes = readFileSync(file)
-    const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
-
-    built.push({ platform: platform.name, file, digest, bytes: statSync(file).size })
+    built.push(one)
     // the digest is an identifier of 71 characters: a field, on its own line, not a fact
-    output.report({ glyph: 'done', verb: 'pack', subject: platform.name, duration: Date.now() - packed, bytes: bytes.length, fields: [output.field('digest', digest)] })
+    output.report({ glyph: 'done', verb: 'pack', subject: platform.name, duration: Date.now() - packed, bytes: one.bytes, fields: [output.field('digest', one.digest)] })
   }
 
   writeFileSync(path.join(out, 'release.json'), `${JSON.stringify({ package: '@term/code', version, built }, null, 2)}\n`)
