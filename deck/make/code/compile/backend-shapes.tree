@@ -496,9 +496,20 @@ task unsupported
 
 # ---- filling a form from data ----
 
+# What melt and fill carry, the one kind function every emitter and the parallel walk's crossing rule read (decision 076
+# of term/self-host/change/001). A union is a `form` spec whose `union` holds its tag and its cases, each case a spec of
+# its own whose `form` is the case's name. Melted, a union is a map whose first entry is the tag field naming the case,
+# then the case's fields as a record's are written
 form form-spec
   link form, like text
   link fields, like list, like spec-field
+  link union
+    like maybe, like union-spec
+    need false
+
+form union-spec
+  link tag, like text
+  link cases, like list, like form-spec
 
 form spec-field
   link name, like text
@@ -522,6 +533,15 @@ form form-kind
   # stdlib's name and boxes every optional field in the module (self-host/traps.md T038)
   case optional
     link item, like form-kind
+  # a `maybe T` anywhere else, held boxed on TypeScript: some melts as its value, none as void, and void fills none
+  case boxed
+    link item, like form-kind
+  # a hash keyed by text, melted as a map of its entries in their order
+  case map
+    link item, like form-kind
+  # a form met inside its own walk, under a list or a map: its walker called by its name
+  case again
+    link form, like text
 
 # one field of a record as a `fill` reads it
 form record-field
@@ -531,9 +551,29 @@ form record-field
     like boolean
     need false
 
+# a union of the program as melt and fill read it: the field its value names its case in, and each case's fields
+form union-shape
+  link tag, like text
+  link cases, like list, like union-case
+
+form union-case
+  link name, like text
+  link fields, like list, like record-field
+
+# the spec of a form, with no union known: every union is `any` (Swift, Kotlin and the exception codec, which carry none)
 task form-spec-of
   take given, like type
   take records, like hash, like text, like list, like record-field
+  take seen, like list, like text
+  like form-spec
+
+  save unions, make hash
+  back form-spec-with(given, records, unions, seen)
+
+task form-spec-with
+  take given, like type
+  take records, like hash, like text, like list, like record-field
+  take unions, like hash, like text, like union-shape
   take seen, like list, like text
   like form-spec
 
@@ -549,32 +589,139 @@ task form-spec-of
     take one
     add-name(inner, one)
   add-name(inner, name)
+  fork test, and(not(records/has(name)), unions/has(name))
+    hold
+      save shape, unions/get(name)
+      save cases, make list
+      walk shape/cases
+        take one
+        save made-case
+          make form-spec
+            bind form, one/name
+            bind fields, spec-fields(one/fields, records, unions, inner)
+        push(cases, made-case)
+      save union
+        make union-spec
+          bind tag, shape/tag
+          bind cases, cases
+      back
+        make form-spec
+          bind form, name
+          bind fields, make list
+          bind union, make(some, union)
   save out, make list
   fork test, records/has(name)
     hold
-      walk records/get(name)
-        take field
-        save kind, form-kind-of(make(some, field/type), records, inner)
-        fork test, field/optional
-          hold
-            sift maybe-item(field/type)
-              case some
-                link item
-                save kind
-                  make form-kind/optional
-                    bind item, form-kind-of(make(some, item), records, inner)
-              case none
-                save nothing, 0
-        save made
-          make spec-field
-            bind name, field/name
-            bind optional, field/optional
-            bind kind, kind
-        push(out, made)
+      save out, spec-fields(records/get(name), records, unions, inner)
   back
     make form-spec
       bind form, name
       bind fields, out
+
+# each field of a record or a case, by its kind
+task spec-fields
+  take fields, like list, like record-field
+  take records, like hash, like text, like list, like record-field
+  take unions, like hash, like text, like union-shape
+  take inner, like list, like text
+  like list, like spec-field
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save kind, field-kind(form-kind-with(make(some, field/type), records, unions, inner))
+    fork test, field/optional
+      hold
+        sift maybe-item(field/type)
+          case some
+            link item
+            save kind
+              make form-kind/optional
+                bind item, field-kind(form-kind-with(make(some, item), records, unions, inner))
+          case none
+            save nothing, 0
+    save made
+      make spec-field
+        bind name, field/name
+        bind optional, field/optional
+        bind kind, kind
+    push(out, made)
+  back out
+
+# a form met again as a field's own value, or a maybe's, is held in place on Rust, which a walk does not carry: only
+# under a list or a map does it cross
+task field-kind
+  take kind, like form-kind
+  like form-kind
+  mark private
+
+  sift kind
+    case again
+      back make form-kind/any
+    case boxed
+      link item
+      sift item
+        case again
+          back make form-kind/any
+        miss
+          back kind
+    miss
+      back kind
+
+# every union of the program melt and fill carry: no type parameters, not `mark text`, not `mark shared`, no fields of
+# its own beside its cases. `forms` is every form by name (`inspect-forms`)
+task union-shapes-of
+  take forms, like hash, like text, like statement
+  like hash, like text, like union-shape
+
+  save out, make hash
+  walk forms/values()
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        link fields
+        link variants
+        link tag
+        link text
+        link shared
+        fork test, or(is-equal(variants/length, 0), or(is-above(params/length, 0), is-above(fields/length, 0)))
+          hold
+            turn next
+        fork test, or(is-equal(text, true), is-equal(shared, true))
+          hold
+            turn next
+        save tag-name, <form>
+        fork test, is-unequal(tag, <>)
+          hold
+            save tag-name, tag
+        save cases, make list
+        walk variants
+          take variant
+          save own, make list
+          walk variant/fields
+            take field
+            save made
+              make record-field
+                bind name, field/name
+                bind type, field/type
+                bind optional, field/optional
+            push(own, made)
+          save made-case
+            make union-case
+              bind name, variant/name
+              bind fields, own
+          push(cases, made-case)
+        save shape
+          make union-shape
+            bind tag, tag-name
+            bind cases, cases
+        out/set(name, shape)
+      miss
+        save nothing, 0
+  back out
 
 # the T of a `maybe T`, none for any other type
 task maybe-item
@@ -602,9 +749,55 @@ task one-of-names
 
   back has-text(split(names, < >), name)
 
+# the kind of a type, with no union known (every union `any`)
 task form-kind-of
   take given, like maybe, like type
   take records, like hash, like text, like list, like record-field
+  take seen, like list, like text
+  like form-kind
+
+  save unions, make hash
+  back form-kind-with(given, records, unions, seen)
+
+# is the type text, the only key a melted map carries
+task is-text-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case string
+      back true
+    case named
+      link named-name
+      back is-equal(named-name, <text>)
+    miss
+      back false
+
+# a hash keyed by text, of the value's kind, or `any`
+task map-kind
+  take key, like type
+  take value, like type
+  take records, like hash, like text, like list, like record-field
+  take unions, like hash, like text, like union-shape
+  take seen, like list, like text
+  like form-kind
+  mark private
+
+  fork test, not(is-text-type(key))
+    hold
+      back make form-kind/any
+  save item, form-kind-with(make(some, value), records, unions, seen)
+  back
+    make form-kind/map
+      bind item, item
+
+# THE KIND FUNCTION (decision 076): text, the number and decimal words, boolean, `data`, a list, a text-keyed hash, a
+# `maybe`, a record or a union of the program, and a form met again inside its own walk. Anything else is `any`
+task form-kind-with
+  take given, like maybe, like type
+  take records, like hash, like text, like list, like record-field
+  take unions, like hash, like text, like union-shape
   take seen, like list, like text
   like form-kind
 
@@ -621,10 +814,12 @@ task form-kind-of
         case float
           back make form-kind/decimal
         case array
-          save item, form-kind-of(make(some, element), records, seen)
+          save item, form-kind-with(make(some, element), records, unions, seen)
           back
             make form-kind/list
               bind item, item
+        case map
+          back map-kind(key, value, records, unions, seen)
         case named
           link named-name
           fork test, is-equal(named-name, <text>)
@@ -649,13 +844,33 @@ task form-kind-of
                 take one
                 save first, make(some, one)
                 halt
-              save item, form-kind-of(first, records, seen)
+              save item, form-kind-with(first, records, unions, seen)
               back
                 make form-kind/list
                   bind item, item
-          fork test, and(records/has(named-name), not(has-text(seen, named-name)))
+          # `args` is a `need false` list, read only by walking it (count-defaulting-writes)
+          save given-args, make list
+          walk args
+            take arg
+            push(given-args, arg)
+          fork test, and(is-equal(named-name, <hash>), is-equal(given-args/length, 2))
             hold
-              save spec, form-spec-of(known, records, seen)
+              back map-kind(get(given-args, 0), get(given-args, 1), records, unions, seen)
+          fork test, and(is-equal(named-name, <maybe>), is-equal(given-args/length, 1))
+            hold
+              save held, get(given-args, 0)
+              save item, form-kind-with(make(some, held), records, unions, seen)
+              back
+                make form-kind/boxed
+                  bind item, item
+          fork test, or(records/has(named-name), unions/has(named-name))
+            hold
+              fork test, has-text(seen, named-name)
+                hold
+                  back
+                    make form-kind/again
+                      bind form, named-name
+              save spec, form-spec-with(known, records, unions, seen)
               back
                 make form-kind/form
                   bind spec, spec
@@ -694,6 +909,17 @@ task spec-forms-into
   walk spec/fields
     take field
     spec-forms-kind(field/kind, out, seen)
+  # a union's cases are walked in its own walker, so only the forms their fields reach join
+  sift spec/union
+    case some
+      link held
+      walk held/cases
+        take one
+        walk one/fields
+          take field
+          spec-forms-kind(field/kind, out, seen)
+    case none
+      save nothing, 0
 
 task spec-forms-kind
   take kind, like form-kind
@@ -707,6 +933,10 @@ task spec-forms-kind
     case list
       spec-forms-kind(item, out, seen)
     case optional
+      spec-forms-kind(item, out, seen)
+    case boxed
+      spec-forms-kind(item, out, seen)
+    case map
       spec-forms-kind(item, out, seen)
     miss
       save nothing, 0
@@ -727,8 +957,38 @@ task refuse-any
         back found
       case none
         save nothing, 0
+  sift spec/union
+    case some
+      link held
+      fork test, is-unequal(backend, <Rust>)
+        hold
+          back no-data-form(<form "{spec/form}">, backend)
+      walk held/cases
+        take one
+        walk one/fields
+          take field
+          save found, refused-kind(field/kind, <field "{field/name}" of case "{one/form}" of "{spec/form}">, backend)
+          sift found
+            case some
+              link message
+              back found
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
   back make none
 
+task no-data-form
+  take at, like text
+  take backend, like text
+  like maybe, like text
+  mark private
+
+  save message, <"fill" with a form: {at} has a type with no data form, so it cannot be filled on {backend}>
+  back make(some, message)
+
+# Swift and Kotlin carry what decision 076 named before item 0400: a hash, a maybe outside a `need false` field, a union
+# and a form met again are refused there, as `any` is
 task refused-kind
   take kind, like form-kind
   take at, like text
@@ -736,24 +996,30 @@ task refused-kind
   like maybe, like text
   mark private
 
+  save widened, is-equal(backend, <Rust>)
   sift kind
     case any
-      save message, <"fill" with a form: {at} has a type with no data form, so it cannot be filled on {backend}>
-      back make(some, message)
+      back no-data-form(at, backend)
     case list
       back refused-kind(item, <an item of {at}>, backend)
     case optional
       back refused-kind(item, at, backend)
+    case boxed
+      fork test, not(widened)
+        hold
+          back no-data-form(at, backend)
+      back refused-kind(item, at, backend)
+    case map
+      fork test, not(widened)
+        hold
+          back no-data-form(at, backend)
+      back refused-kind(item, <an entry of {at}>, backend)
+    case again
+      fork test, not(widened)
+        hold
+          back no-data-form(at, backend)
     case form
-      walk spec/fields
-        take field
-        save found, refused-kind(field/kind, <field "{field/name}" of "{spec/form}">, backend)
-        sift found
-          case some
-            link message
-            back found
-          case none
-            save nothing, 0
+      back refuse-any(spec, backend)
     miss
       save nothing, 0
   back make none

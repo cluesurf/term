@@ -59,6 +59,7 @@ load ./backend-shapes
   find collection-call
   find collection-op
   find form-spec
+  find union-spec
   find spec-field
   find form-kind
   find inspect-kind
@@ -2703,6 +2704,19 @@ task fill-of
     case optional
       link item
       back <match {value} \{ None | Some(Data::Blank) =\> Maybe::None, Some(d) =\> Maybe::Some \{ value: {fill-of(item, <Some(d)>, path, false)} \} \}>
+    # a maybe outside a `need false` field reads as one: void is none
+    case boxed
+      link item
+      back <match {value} \{ None | Some(Data::Blank) =\> Maybe::None, Some(d) =\> Maybe::Some \{ value: {fill-of(item, <Some(d)>, path, false)} \} \}>
+    # each entry filled as the item under its name, in the map's order. The key is whatever text key the program's
+    # hash holds (`String` or `TermKey`), made from the name by `From<&str>`
+    case map
+      link item
+      save entry, fill-of(item, <Some(__e.base.clone())>, <__term_path(&__mp, &__e.name)>, false)
+      back <\{ let __mp: String = {path}; match {value} \{ Some(Data::Hash \{ list: __ml \}) =\> \{ let mut __out = TermMap::new(); for __e in __ml.borrow().iter() \{ __out.insert(__e.name.as_str().into(), {entry}); \} std::rc::Rc::new(std::cell::RefCell::new(__out)) \}, None | Some(Data::Blank) =\> if {optional} \{ std::rc::Rc::new(std::cell::RefCell::new(TermMap::new())) \} else \{ return Err(__term_mismatch(__mp, "is missing".to_string())); \}, Some(other) =\> \{ return Err(__term_mismatch(__mp, format!("is \{\} where a map belongs", __term_kind(&other)))); \} \} \}>
+    case again
+      link form
+      back <__fill_{snake(form)}(__term_data({value}, {path}.clone(), {optional})?, {path})?>
     miss
       back <0>
 
@@ -2733,6 +2747,16 @@ task melt-of
     case optional
       link item
       back <match {value} \{ Maybe::Some \{ value: m \} =\> {melt-of(item, <m>)}, Maybe::None =\> Data::Blank \}>
+    case boxed
+      link item
+      back <match {value} \{ Maybe::Some \{ value: m \} =\> {melt-of(item, <m>)}, Maybe::None =\> Data::Blank \}>
+    # the entries in the hash's own order, each key's text as its name
+    case map
+      link item
+      back <Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(({value}).borrow().iter().map(|(k, x)| DataEntry \{ name: k.to_string(), base: {melt-of(item, <x.clone()>)} \}).collect::\<Vec\<DataEntry\>\>())) \}>
+    case again
+      link form
+      back <__melt_{snake(form)}(&({value}))>
     miss
       back <Data::Blank>
 
@@ -2758,16 +2782,23 @@ task empty-test
     case list
       save test, <({value}).borrow().is_empty()>
       back make(some, test)
+    case map
+      save test, <({value}).borrow().is_empty()>
+      back make(some, test)
     case data
       save test, <matches!({value}, Data::Blank)>
       back make(some, test)
     miss
       back make none
 
-# the walkers a module's `fill` / `melt` with a form need: the shared helpers, then a function per form
+# the walkers a module's `fill` / `melt` with a form need: the shared helpers, then a function per form. A union's case
+# whose fields are held in a payload struct (`payloads`, keyed `form/case`) is built and read through it, in a `Box` for
+# a form in `boxed-forms` and an `Rc` otherwise, as the program holds it
 task rust-form-walk
   take fills, like list, like form-spec
   take melts, like list, like form-spec
+  take payloads, like hash, like text, like text
+  take boxed-forms, like hash, like text, like boolean
   like list, like text
 
   save out, make list
@@ -2778,50 +2809,163 @@ task rust-form-walk
 
   walk fills
     take spec
-    save known, make list
-    save fields, make list
-    walk spec/fields
-      take field
-      save quoted, json-text(field/name)
-      push(known, quoted)
-      push(fields, <{snake(field/name)}: {fill-of(field/kind, <find({quoted})>, <__term_path(&path, {quoted})>, field/optional)}>)
     save form-name, snake(spec/form)
     save form-type, pascal(spec/form)
-    push(out, <fn __fill_{form-name}(value: Data, path: String) -\> Result\<{form-type}, TermException\> \{\n    let entries = __term_entries(value, path.clone())?;\n    let known: &[&str] = &[{join-texts(known, <, >)}];\n    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}\n    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};\n    Ok({form-type} \{ {join-texts(fields, <, >)} \})\n\}>)
+    sift spec/union
+      case some
+        link held
+        push(out, union-fill(spec/form, held, payloads, boxed-forms))
+      case none
+        save known, fill-known(spec/fields)
+        save fields, fill-inits(spec/fields)
+        push(out, <fn __fill_{form-name}(value: Data, path: String) -\> Result\<{form-type}, TermException\> \{\n    let entries = __term_entries(value, path.clone())?;\n    let known: &[&str] = &[{join-texts(known, <, >)}];\n    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}\n    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};\n    Ok({form-type} \{ {join-texts(fields, <, >)} \})\n\}>)
 
   walk melts
     take spec
-    save lines, make list
-    walk spec/fields
-      take field
-      save value, <value.{snake(field/name)}.clone()>
-      save entry, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(field/kind, value)} \});>
-      save kept, make none
-      fork test, field/optional
-        hold
-          save kept, empty-test(field/kind, value)
-      save present, make none
-      sift field/kind
-        case optional
-          link item
-          save present, make(some, item)
-        miss
-          save nothing, 0
-      sift present
-        case some
-          link item
-          save held, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(item, <m>)} \});>
-          push(lines, <    if let Maybe::Some \{ value: m \} = {value} \{ {held} \}>)
-        case none
-          sift kept
-            case some
-              link empty
-              push(lines, <    if !{empty} \{ {entry} \}>)
-            case none
-              push(lines, <    {entry}>)
-    push(out, <fn __melt_{snake(spec/form)}(value: &{pascal(spec/form)}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-texts(lines, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
+    sift spec/union
+      case some
+        link held
+        push(out, union-melt(spec/form, held, payloads))
+      case none
+        save lines, melt-lines(spec/fields, <value.>, <    >)
+        push(out, <fn __melt_{snake(spec/form)}(value: &{pascal(spec/form)}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-texts(lines, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
 
   back out
+
+# the names a record's or a case's data may hold, quoted
+task fill-known
+  take fields, like list, like spec-field
+  like list, like text
+  mark private
+
+  save known, make list
+  walk fields
+    take field
+    push(known, json-text(field/name))
+  back known
+
+# each field filled from its entry, as `name: value`
+task fill-inits
+  take fields, like list, like spec-field
+  like list, like text
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save quoted, json-text(field/name)
+    push(out, <{snake(field/name)}: {fill-of(field/kind, <find({quoted})>, <__term_path(&path, {quoted})>, field/optional)}>)
+  back out
+
+# the lines that push each field's entry onto `list`, each field read as `<prefix><field>` (`value.` for a record's
+# own, `__f_` for a case's bound fields, `__p.` through a payload)
+task melt-lines
+  take fields, like list, like spec-field
+  take prefix, like text
+  take indent, like text
+  like list, like text
+  mark private
+
+  save lines, make list
+  walk fields
+    take field
+    save value, <{prefix}{snake(field/name)}.clone()>
+    save entry, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(field/kind, value)} \});>
+    save kept, make none
+    fork test, field/optional
+      hold
+        save kept, empty-test(field/kind, value)
+    save present, make none
+    sift field/kind
+      case optional
+        link item
+        save present, make(some, item)
+      miss
+        save nothing, 0
+    sift present
+      case some
+        link item
+        save held, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(item, <m>)} \});>
+        push(lines, <{indent}if let Maybe::Some \{ value: m \} = {value} \{ {held} \}>)
+      case none
+        sift kept
+          case some
+            link empty
+            push(lines, <{indent}if !{empty} \{ {entry} \}>)
+          case none
+            push(lines, <{indent}{entry}>)
+  back lines
+
+# a union filled from a map: its tag entry names the case, whose fields are filled as a record's are
+task union-fill
+  take form, like text
+  take union, like union-spec
+  take payloads, like hash, like text, like text
+  take boxed-forms, like hash, like text, like boolean
+  like text
+  mark private
+
+  save form-type, pascal(form)
+  save tag, json-text(union/tag)
+  save knowns, make list
+  save builds, make list
+  walk union/cases
+    take one
+    save case-name, json-text(one/form)
+    save known, make list
+    push(known, tag)
+    walk fill-known(one/fields)
+      take name
+      push(known, name)
+    push(knowns, <        {case-name} =\> &[{join-texts(known, <, >)}] as &[&str],>)
+    save variant, <{form-type}::{pascal(one/form)}>
+    save inits, join-texts(fill-inits(one/fields), <, >)
+    save payload-key, <{form}/{one/form}>
+    fork test, is-equal(one/fields/length, 0)
+      hold
+        push(builds, <        {case-name} =\> {variant},>)
+      miss
+        fork test, payloads/has(payload-key)
+          hold
+            save holder, <std::rc::Rc>
+            fork test, boxed-forms/has(form)
+              hold
+                save holder, <Box>
+            push(builds, <        {case-name} =\> {variant}({holder}::new({payloads/get(payload-key)} \{ {inits} \})),>)
+          miss
+            push(builds, <        {case-name} =\> {variant} \{ {inits} \},>)
+  back <fn __fill_{snake(form)}(value: Data, path: String) -\> Result\<{form-type}, TermException\> \{\n    let entries = __term_entries(value, path.clone())?;\n    let __case = __term_text(entries.borrow().iter().find(|e| e.name == {tag}).map(|e| e.base.clone()), __term_path(&path, {tag}), false)?;\n    let known: &[&str] = match __case.as_str() \{\n{join-texts(knowns, <\n>)}\n        _ =\> return Err(__term_mismatch(__term_path(&path, {tag}), format!("is \\"\{\}\\", not a case of the form", __case))),\n    \};\n    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}\n    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};\n    Ok(match __case.as_str() \{\n{join-texts(builds, <\n>)}\n        _ =\> unreachable!(),\n    \})\n\}>
+
+# a union melted to a map: the tag entry naming its case first, then the case's fields as a record's are written
+task union-melt
+  take form, like text
+  take union, like union-spec
+  take payloads, like hash, like text, like text
+  like text
+  mark private
+
+  save form-type, pascal(form)
+  save arms, make list
+  walk union/cases
+    take one
+    save variant, <{form-type}::{pascal(one/form)}>
+    save named, <list.push(DataEntry \{ name: {json-text(union/tag)}.to_string(), base: Data::Text \{ value: {json-text(one/form)}.to_string() \} \});>
+    fork test, is-equal(one/fields/length, 0)
+      hold
+        push(arms, <        {variant} =\> \{ {named} \}>)
+        turn next
+    fork test, payloads/has(<{form}/{one/form}>)
+      hold
+        save lines, melt-lines(one/fields, <__p.>, <            >)
+        push(arms, <        {variant}(__p) =\> \{\n            {named}\n{join-texts(lines, <\n>)}\n        \}>)
+      miss
+        save binds, make list
+        walk one/fields
+          take field
+          push(binds, <{snake(field/name)}: __f_{snake(field/name)}>)
+        save lines, melt-lines(one/fields, <__f_>, <            >)
+        push(arms, <        {variant} \{ {join-texts(binds, <, >)} \} =\> \{\n            {named}\n{join-texts(lines, <\n>)}\n        \}>)
+  back <fn __melt_{snake(form)}(value: &{form-type}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n    match value \{\n{join-texts(arms, <\n>)}\n    \}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>
 
 # A value that does not fit RAISES `data-mismatch`, the package's own exception, with the fields TypeScript gives it, so
 # a guard or a `sift` catches it as it does there. Every helper answers a `Result` and the walkers pass it on with `?`

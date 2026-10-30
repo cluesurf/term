@@ -1,6 +1,6 @@
 # THE TYPES of `compileProgram`, steps 11 to 14: the claims filled, each task's signature as written, the checker, the
-# warning dedupe, the two stamps (an `inspect`'s checked type, every call's and raise's Term frame), the affine checks,
-# the components' lowered code checked, async slots and resolution, the missing waits, and the fast roll's exit. It
+# warning dedupe, the affine checks, the components' lowered code checked, async slots and resolution, the missing
+# waits, the two stamps (an `inspect`'s checked type, every call's and raise's Term frame), and the fast roll's exit. It
 # writes the run in place and answers the refusal that stops the compile, the fast roll, or neither to hand the run on
 # to the proofs.
 #
@@ -16,7 +16,8 @@
 #     4.10, 4.11): a node is rebuilt fresh only when it or a node under it is stamped, so the answer is a stamped program
 #     whose stamped places are new nodes, the input never written. The face assigns it. The original's reflective walks
 #     skipped the keys `span`, `type` and `into` (the inspect stamp) and also `result` (the site stamp), which are the
-#     skip lists here
+#     skip lists here. The original stamped in place before the affine checks; here the stamps come last, after async
+#     resolution, so every write before them still reaches the statements a separate build stubs (item 0454)
 #   - a `call` of a component's view body (node.tree's view-node case `call`) took a `site` from the original's site
 #     stamp, a key node.tree does not declare there (decision 034 rule 3). Nothing reads it, node-json leaves it out, and
 #     here it is not written
@@ -686,9 +687,6 @@ task program-types
     hold
       back types-refusal(errors)
 
-  save run/program, stamp-inspect-types(run/program)
-  save run/program, stamp-sites(run/program, given/deck-of)
-
   # `mark sole` and `mark hide` on a form (affine-kinds decision 001), held after the checker typed every value and
   # before any backend: a form holding a sole value is sole itself, only the declaring file makes a hidden form, and a
   # sole value is used at most once
@@ -722,6 +720,15 @@ task program-types
   fork test, is-above(missing-waits/length, 0)
     hold
       back types-refusal(missing-waits)
+
+  # THE STAMPS COME AFTER ASYNC RESOLUTION. Each builds the statements it stamps afresh, and a separate build stubs a
+  # unit from its statements as milled (compile/separate-units.tree), which see every write the steps above make in
+  # place: the `async` resolve-async gives an inferred task among them. Stamped first, that write reached only the
+  # fresh copy, and a dependent read the task as not async and a pending answer as its value (term-self-host-001-0454,
+  # test/compile/async-across-units.ts). The stamps read nothing these steps write but the awaits they add, which they
+  # walk into as into any node
+  save run/program, stamp-inspect-types(run/program)
+  save run/program, stamp-sites(run/program, given/deck-of)
 
   # the roll alone, for an entry already known to build: everything after this only refuses or warns
   fork test, is-equal(run/want-roll, make fast-roll)

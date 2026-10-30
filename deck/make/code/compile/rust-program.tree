@@ -2609,7 +2609,7 @@ task emit-rust-pass
   walk st/melt-specs/values()
     take spec
     push(melt-specs, spec)
-  save form-walk, rust-form-walk(fill-specs, melt-specs)
+  save form-walk, rust-form-walk(fill-specs, melt-specs, payloads, boxed-forms)
   walk facts/inspect-walkers/values()
     take walker
     fork test, is-unequal(walker, <>)

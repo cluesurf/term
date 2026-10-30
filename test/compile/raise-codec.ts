@@ -4,7 +4,9 @@
 // into the raise a `halt` of that form builds. Five raises, each caught in Term and melted: `over-limit` (text and
 // number props), `wrapped` holding it as its cause, `wrapped` holding that one (a nested cause), a `failure` of a
 // text (no props record), and `gathered`, whose props hold an exception and a list of them beside a number, each
-// crossed by the codec again (decision 078 section 2, item 0439). For each, on each backend:
+// crossed by the codec again (decision 078 section 2, item 0439). `gather` keeps the caught raise in a local list and
+// reads it back, and names it twice in one list literal (item 0455: Rust spelled the local list as the form's struct,
+// rustc E0308, and moved the name twice, E0382). For each, on each backend:
 //   - the bytes filled and melted again are the bytes (the envelope, the props, every cause and the frames kept)
 //   - the filled raise, re-raised and caught by a Term handler, sifts as its form with its props
 //   - the bytes are the other backend's, `code` and `time` set aside (a fresh occurrence and clock per run)
@@ -48,7 +50,7 @@ const CASES = [
   { name: 'a cause', sifted: 'wrapped:outer' },
   { name: 'a nested cause', sifted: 'wrapped:outer2' },
   { name: 'failure of a text', sifted: 'failure:too many 9' },
-  { name: 'exception props', sifted: 'gathered:wrapped:1' },
+  { name: 'exception props', sifted: 'gathered:wrapped:2' },
 ]
 
 const BIND_CASES = `  case browser
@@ -188,10 +190,13 @@ task gather
     back x
   halt take
     take problem
+    save caught, make list
+    push(caught, problem)
+    save kept, get(caught, 0)
     halt gathered
-      bind first, problem
-      bind rest, make list(problem)
-      bind count, 1
+      bind first, kept
+      bind rest, make list(problem, problem)
+      bind count, caught/length
   back 0
 
 task crossed
@@ -468,7 +473,7 @@ for (const backend of backends) {
   ok(
     `${backend}: a list of exceptions props field is the codec again for each, beside a number`,
     rest?.kind === 'list' &&
-      rest.list.length === 1 &&
+      rest.list.length === 2 &&
       rest.list.every(
         item =>
           JSON.stringify(field(item, 'form')) ===

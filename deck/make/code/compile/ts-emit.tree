@@ -62,8 +62,6 @@ load ./ts-names
   find arm-only-reads
   find fill-spec-of
   find fill-spec
-  find fill-kind
-  find fill-kind-of
   find ts-field
 
 load ./backend-shapes
@@ -74,6 +72,12 @@ load ./backend-shapes
   find inspect-kind
   find inspect-field
   find inspect-kind-of
+  find form-kind
+  find form-kind-of
+  find form-spec
+  find form-spec-with
+  find union-shapes-of
+  find record-field
 
 load ./backend-names
   find host-spelled
@@ -1092,21 +1096,8 @@ task holds-type
     case unknown
       back <true>
     miss
-      save fields-of
-        task
-          take name, like text
-          like list, like ts-field
-          fork test, facts/record-fields/has(name)
-            hold
-              back facts/record-fields/get(name)
-          back make list
-      save is-record
-        task
-          take name, like text
-          like boolean
-          back facts/record-fields/has(name)
       save seen, make list
-      back holds-kind(held, fill-kind-of(make(some, given), seen, fields-of, is-record), depth)
+      back holds-kind(held, form-kind-of(make(some, given), ts-records(facts), seen), depth)
 
 # A VALUE OF A FORM WITH CASES, for an arm over an `unknown` that names one (seam decision 003). A case value carries its
 # name in its tag field (`form`, or the field `mark tag` names), so it is an object whose tag is one of the case names and
@@ -1132,19 +1123,7 @@ task holds-cases
   fork test, facts/tag-by-owner/has(owner)
     hold
       save tag, to-member(facts/tag-by-owner/get(owner))
-  save fields-of
-    task
-      take name, like text
-      like list, like ts-field
-      fork test, facts/record-fields/has(name)
-        hold
-          back facts/record-fields/get(name)
-      back make list
-  save is-record
-    task
-      take name, like text
-      like boolean
-      back facts/record-fields/has(name)
+  save records, ts-records(facts)
   save cases, facts/variant-fields-by-owner/get(owner)
   save tests, make list
   walk cases/keys()
@@ -1161,7 +1140,7 @@ task holds-cases
       push(members, json-quote(member))
       save at, <{held}[{json-quote(member)}]>
       save field-type, field/type
-      save kind, fill-kind-of(make(some, field-type), seen, fields-of, is-record)
+      save kind, form-kind-of(make(some, field-type), records, seen)
       fork test, field/optional
         hold
           push(parts, <({at} === undefined || {holds-kind(at, kind, depth)})>)
@@ -1174,9 +1153,31 @@ task holds-cases
       back <false>
   back <(typeof {held} === "object" && {held} !== null && !Array.isArray({held}) && !({held} instanceof Map) && ({join-texts(tests, < || >)}))>
 
+# the program's record forms by their fields, as compile/backend-shapes.tree's kind function reads them
+task ts-records
+  take facts, like emit-facts
+  like hash, like text, like list, like record-field
+  mark private
+
+  save out, make hash
+  walk facts/record-fields/keys()
+    take name
+    save own, make list
+    walk facts/record-fields/get(name)
+      take field
+      save made
+        make record-field
+          bind name, field/name
+          bind type, field/type
+          bind optional, field/optional
+      push(own, made)
+    out/set(name, own)
+  back out
+
+# a value's test by its kind: a kind the shape rule does not test (data, a maybe, a hash, a form met again) holds anything
 task holds-kind
   take held, like text
-  take kind, like fill-kind
+  take kind, like form-kind
   take depth, like number
   like text
   mark private
@@ -1198,6 +1199,11 @@ task holds-kind
       back <(Array.isArray({held}) && {held}.every(({one}: any) =\> {holds-kind(one, item, add(depth, 1))}))>
     case form
       link spec
+      sift spec/union
+        case some
+          back <true>
+        case none
+          save nothing, 0
       save parts, make list
       save members, make list
       push(parts, <typeof {held} === "object">)
@@ -1206,8 +1212,9 @@ task holds-kind
       push(parts, <!({held} instanceof Map)>)
       walk spec/fields
         take field
-        push(members, json-quote(field/member))
-        save at, <{held}[{json-quote(field/member)}]>
+        save member, to-member(field/name)
+        push(members, json-quote(member))
+        save at, <{held}[{json-quote(member)}]>
         fork test, field/optional
           hold
             push(parts, <({at} === undefined || {holds-kind(at, field/kind, depth)})>)
@@ -1215,6 +1222,8 @@ task holds-kind
             push(parts, holds-kind(at, field/kind, depth))
       push(parts, <Object.keys({held}).every((__f: string) =\> [{join-texts(members, <, >)}].includes(__f))>)
       back <({join-texts(parts, < && >)})>
+    miss
+      back <true>
 
 # the JSON of a fill spec, as `JSON.stringify` wrote the original's object
 task fill-spec-json
@@ -1232,8 +1241,37 @@ task fill-spec-json
         push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(field/member)},"optional":false,"kind":{fill-kind-json(field/kind)}\}>)
   back <\{"form":{json-quote(spec/form)},"fields":[{join-texts(fields, <,>)}]\}>
 
+# the JSON of a form spec the form walk prelude reads (ts-preludes.tree `form-walk-prelude`): each field's name, its
+# member and its kind, and a union's tag, its tag's member and its cases
+task form-spec-json
+  take spec, like form-spec
+  like text
+  mark private
+
+  save fields, make list
+  walk spec/fields
+    take field
+    save optional, <false>
+    fork test, field/optional
+      hold
+        save optional, <true>
+    push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(to-member(field/name))},"optional":{optional},"kind":{fill-kind-json(field/kind)}\}>)
+  save union, <>
+  sift spec/union
+    case some
+      link held
+      save cases, make list
+      walk held/cases
+        take one
+        push(cases, form-spec-json(one))
+      save union, <,"union":\{"tag":{json-quote(held/tag)},"member":{json-quote(to-member(held/tag))},"cases":[{join-texts(cases, <,>)}]\}>
+    case none
+      save nothing, 0
+  back <\{"form":{json-quote(spec/form)},"fields":[{join-texts(fields, <,>)}]{union}\}>
+
+# a kind's JSON, for the form walk and for the exception codec's specs alike
 task fill-kind-json
-  take kind, like fill-kind
+  take kind, like form-kind
   like text
   mark private
 
@@ -1246,6 +1284,8 @@ task fill-kind-json
       back <\{"kind":"decimal"\}>
     case flag
       back <\{"kind":"flag"\}>
+    case data
+      back <\{"kind":"data"\}>
     case any
       back <\{"kind":"any"\}>
     case list
@@ -1253,7 +1293,19 @@ task fill-kind-json
       back <\{"kind":"list","item":{fill-kind-json(item)}\}>
     case form
       link spec
-      back <\{"kind":"form","spec":{fill-spec-json(spec)}\}>
+      back <\{"kind":"form","spec":{form-spec-json(spec)}\}>
+    case optional
+      link item
+      back <\{"kind":"optional","item":{fill-kind-json(item)}\}>
+    case boxed
+      link item
+      back <\{"kind":"boxed","item":{fill-kind-json(item)}\}>
+    case map
+      link item
+      back <\{"kind":"map","item":{fill-kind-json(item)}\}>
+    case again
+      link form
+      back <\{"kind":"again","form":{json-quote(form)}\}>
 
 # THE EXCEPTION CODEC'S TABLE (decision 078 section 4 of term/self-host/change/001): `\{"<form>": <spec>\}` over the
 # forms a parallel turn's raise can carry (check/parallel.tree `raise-crossing`), each spec its props record's own fill
@@ -2127,21 +2179,9 @@ task emit-call
                 hold
                   save helper, <__termFill>
               save data, emit-expression(get(args, 0), 0, st, facts)
-              save fields-of
-                task
-                  take name, like text
-                  like list, like ts-field
-                  fork test, facts/record-fields/has(name)
-                    hold
-                      back facts/record-fields/get(name)
-                  back make list
-              save is-record
-                task
-                  take name, like text
-                  like boolean
-                  back facts/record-fields/has(name)
               save seen, make list
-              back <{helper}({data}, {fill-spec-json(fill-spec-of(filled-type, seen, fields-of, is-record))})>
+              save spec, form-spec-with(filled-type, ts-records(facts), union-shapes-of(facts/inspect-forms), seen)
+              back <{helper}({data}, {form-spec-json(spec)})>
             case none
               save nothing, 0
       # a declarative native binding renders its environment's template in place of a real call

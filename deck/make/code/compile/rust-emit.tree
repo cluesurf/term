@@ -144,7 +144,8 @@ load ./backend-shapes
   find reassigned
   find has-valued-return
   find swap-at
-  find form-spec-of
+  find form-spec-with
+  find union-shapes-of
   find spec-forms
   find refuse-any
   find inspect-kind-of
@@ -1228,13 +1229,18 @@ task spell-type
 
   back rust-type-of(known, facts/context)
 
-# how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`
+# how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`. A value typed
+# `exception` is a caught raise, the carrier (as `problem/link` reads it), so a local list of them holds the carrier
+# and not the form's struct (term-self-host-001-0455)
 task spell-element
   take given, like maybe, like type
   take facts, like rust-facts
   like text
   mark private
 
+  fork test, is-equal(named-of(element-of(given)), <exception>)
+    hold
+      back <TermException>
   sift element-of(given)
     case some
       link element
@@ -2888,10 +2894,12 @@ task emit-array
             take item
             push(items, <{emit-expr(item, st, facts)} as {element}>)
           back <std::rc::Rc::new(std::cell::RefCell::new(vec![{join-texts(items, <, >)}]))>
+      # each item is given away into the list, as a record's field is: a name read twice (`make list(word, word)`)
+      # is cloned but at its last read, never moved twice (E0382, term-self-host-001-0455)
       save items, make list
       walk array-items
         take item
-        push(items, emit-expr(item, st, facts))
+        push(items, owned(item, st, facts))
       back <std::rc::Rc::new(std::cell::RefCell::new(vec![{join-texts(items, <, >)}]))>
     miss
       back <>
@@ -3982,7 +3990,7 @@ task emit-call
           sift into
             case some
               link into-type
-              save spec, form-spec-of(into-type, facts/record-fields, no-texts())
+              save spec, form-spec-with(into-type, facts/record-fields, union-shapes-of(facts/inspect-forms), no-texts())
               sift refuse-any(spec, <Rust>)
                 case some
                   link reason
@@ -5041,6 +5049,11 @@ task emit-let
           save context/var-names, widened
           save closed, spell(let-type, facts)
           save context/var-names, saved
+          # a local typed `exception` read out of a call (`get(caught, 0)`) is a caught raise, the carrier, as the list
+          # it came out of holds it (spell-element)
+          fork test, is-equal(named-of(let-type), <exception>)
+            hold
+              save closed, <TermException>
           back <let {mut-of(let-name, st)}{vname(let-name)}: {closed} = {bare(owned(let-init, st, facts))};>
       # a case of a generic form built bare whose type argument only a later use pins: the binding names its type
       fork test, and(and(is-equal(ann, <>), is-form(let-init, <record>)), and(is-equal(kind-of(let-type), <named>), is-above(args-of(let-type)/length, 0)))

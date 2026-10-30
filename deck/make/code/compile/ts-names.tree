@@ -35,6 +35,12 @@ load ./node-children
   find node-children
   find block-handles
 
+load ./backend-shapes
+  find form-kind
+  find form-spec
+  find form-spec-of
+  find record-field
+
 # ---- small helpers ----
 
 task type-and-span
@@ -1338,20 +1344,11 @@ form fill-field
   link name, like text
   link member, like text
   link optional, like boolean
-  link kind, like fill-kind
+  link kind, like form-kind
 
-form fill-kind
-  mark tag, name kind
-  case text
-  case number
-  case decimal
-  case flag
-  case any
-  case list
-    link item, like fill-kind
-  case form
-    link spec, like fill-spec
-
+# The exception codec's spec of a props record (ts-emit.tree `raise-codec-specs`), its kinds compile/backend-shapes.tree
+# `form-spec-of`'s, the one kind function (decision 076), over the records the type reaches. No union is known here, as
+# none is on Rust's codec
 task fill-spec-of
   take given, like type
   take seen, like list, like text
@@ -1366,119 +1363,68 @@ task fill-spec-of
       like boolean
   like fill-spec
 
-  save name, <>
-  sift given
-    case named
-      link type-name
-      save name, type-name
-    miss
-      save nothing, 0
-  save inner, make list
-  walk seen
-    take one
-    push(inner, one)
-  fork test, not(has-text(inner, name))
-    hold
-      push(inner, name)
+  save records, make hash
+  records-reached(given, fields-of, is-record, records)
+  save spec, form-spec-of(given, records, seen)
   save fields, make list
-  walk fields-of(name)
+  walk spec/fields
     take field
-    save field-type, field/type
-    save field-kind, fill-kind-of(make(some, field-type), inner, fields-of, is-record)
     save one
       make fill-field
         bind name, field/name
         bind member, to-member(field/name)
         bind optional, field/optional
-        bind kind, field-kind
+        bind kind, field/kind
     push(fields, one)
   back
     make fill-spec
-      bind form, name
+      bind form, spec/form
       bind fields, fields
 
-task number-names
-  like list, like text
-  mark private
-
-  back split-words(<number integer natural size count index int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64>)
-
-task decimal-names
-  like list, like text
-  mark private
-
-  back split-words(<decimal float float32 float64 double real>)
-
-task fill-kind-of
-  take given, like maybe, like type
-  take seen, like list, like text
+# every record form a type reaches through its fields, each by its fields as `form-kind-of` reads them
+task records-reached
+  take given, like type
   take fields-of
     like task
       take name, like text
       like list, like ts-field
-  # whether the program declares a struct form of the name, fields or none
   take is-record
     like task
       take name, like text
       like boolean
-  like fill-kind
+  take into, like hash, like text, like list, like record-field
+  mark private
 
   sift given
-    case some
-      link known
-      sift known
-        case string
-          back make fill-kind/text
-        case boolean
-          back make fill-kind/flag
-        case number
-          back make fill-kind/number
-        case float
-          back make fill-kind/decimal
-        case array
-          link element
-          save item, fill-kind-of(make(some, element), seen, fields-of, is-record)
+    case named
+      link type-name
+      link type-args
+      walk type-args
+        take arg
+        records-reached(arg, fields-of, is-record, into)
+      fork test, or(into/has(type-name), not(is-record(type-name)))
+        hold
           back
-            make fill-kind/list
-              bind item, item
-        case named
-          link type-name
-          link type-args
-          fork test, is-equal(type-name, <text>)
-            hold
-              back make fill-kind/text
-          fork test, is-equal(type-name, <boolean>)
-            hold
-              back make fill-kind/flag
-          fork test, has-text(number-names(), type-name)
-            hold
-              back make fill-kind/number
-          fork test, has-text(decimal-names(), type-name)
-            hold
-              back make fill-kind/decimal
-          fork test, is-equal(type-name, <list>)
-            hold
-              save first, make none
-              save given-args, make list
-              walk type-args
-                take arg
-                push(given-args, arg)
-              fork test, is-above(given-args/length, 0)
-                hold
-                  save arg, get(given-args, 0)
-                  save first, make(some, arg)
-              save item, fill-kind-of(first, seen, fields-of, is-record)
-              back
-                make fill-kind/list
-                  bind item, item
-          fork test, and(is-record(type-name), not(has-text(seen, type-name)))
-            hold
-              save spec, fill-spec-of(known, seen, fields-of, is-record)
-              back
-                make fill-kind/form
-                  bind spec, spec
-          back make fill-kind/any
-        miss
-          back make fill-kind/any
-    case none
-      back make fill-kind/any
+      save own, make list
+      walk fields-of(type-name)
+        take field
+        save made
+          make record-field
+            bind name, field/name
+            bind type, field/type
+            bind optional, field/optional
+        push(own, made)
+      into/set(type-name, own)
+      walk own
+        take field
+        records-reached(field/type, fields-of, is-record, into)
+    case array
+      link element
+      records-reached(element, fields-of, is-record, into)
+    case map
+      link key-type
+      link value-type
+      records-reached(key-type, fields-of, is-record, into)
+      records-reached(value-type, fields-of, is-record, into)
+    miss
+      save nothing, 0

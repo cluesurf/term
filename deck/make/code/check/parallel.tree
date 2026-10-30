@@ -10,7 +10,7 @@
 #                       `save out/{index}, value`: `out` a list declared outside the turn, `index` the turn's own index
 #   parallel-slot-read  a slot list read or written in the turn other than by its slot writes
 #   parallel-crossing   the item, a capture (a parameter or local declared outside the turn and read in it) or a slot
-#                       list's element whose type does not cross: compile/backend-shapes.tree `form-kind-of` answers a
+#                       list's element whose type does not cross: compile/backend-shapes.tree `form-kind-with` answers a
 #                       kind with an `any` in it (decision 076 section 1), or a kind either emitter loses in the round
 #                       trip (section 3: none today, test/check/parallel-walk.ts holds it), or a task value, a
 #                       `mark shared` form, a `dock type` handle, `unknown` or `dynamic`, named. A form the turn can
@@ -58,8 +58,11 @@ load ../compile/node-walk
 
 load ../compile/backend-shapes
   find form-kind
-  find form-kind-of
+  find form-kind-with
   find record-field
+  find union-shape
+  find union-shapes-of
+  find inspect-forms
 
 load ../compile/type-text
   find show-type
@@ -72,13 +75,14 @@ load ./effects
   find raise-sets-of
 
 # what one check of a program holds: its file, the refusals found, the record forms melt and fill can walk (a form with
-# no cases and no `mark shared`), the shared forms and `dock type` handles by name, the exception forms and the props
-# record each declares, and the parameter positions each task writes
+# no cases and no `mark shared`) and the unions (backend-shapes.tree `union-shapes-of`), the shared forms and `dock type`
+# handles by name, the exception forms and the props record each declares, and the parameter positions each task writes
 form parallel-scan
   mark shared
   link file, like text
   link out, like list, like diagnostic
   link records, like hash, like text, like list, like record-field
+  link unions, like hash, like text, like union-shape
   link shared-forms, like hash, like text, like boolean
   link docked, like hash, like text, like boolean
   link exceptions, like hash, like text, like boolean
@@ -319,6 +323,7 @@ task new-scan
       bind file, file
       bind out, make list
       bind records, make hash
+      bind unions, union-shapes-of(inspect-forms(program))
       bind shared-forms, make hash
       bind docked, make hash
       bind exceptions, make hash
@@ -385,6 +390,12 @@ task kind-crosses
     case optional
       link item
       back kind-crosses(item)
+    case boxed
+      link item
+      back kind-crosses(item)
+    case map
+      link item
+      back kind-crosses(item)
     case form
       link spec
       walk spec/fields
@@ -392,6 +403,18 @@ task kind-crosses
         fork test, not(kind-crosses(field/kind))
           hold
             back false
+      sift spec/union
+        case some
+          link held
+          walk held/cases
+            take one
+            walk one/fields
+              take field
+              fork test, not(kind-crosses(field/kind))
+                hold
+                  back false
+        case none
+          save nothing, 0
       back true
     miss
       back true
@@ -422,7 +445,7 @@ task crossing-refusal
               back <`{named-name}`, a `dock type` handle>
         miss
           save nothing, 0
-      fork test, kind-crosses(form-kind-of(given, scan/records, make list))
+      fork test, kind-crosses(form-kind-with(given, scan/records, scan/unions, make list))
         hold
           back <>
       back <`{show-type(known)}`>

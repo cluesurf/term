@@ -3,8 +3,8 @@
 // refusals, each by its code and naming its variable, and the walks it accepts. Item term-self-host-001-0232.
 //   - parallel-write: an outer name, a list changed in place, a list handed to a task that writes it
 //   - parallel-slot-read: a slot list read in the turn
-//   - parallel-crossing: a task value, and until item 0400 widens `form-kind-of` (decision 076) a hash, a maybe outside
-//     a field and a union; a raise whose props hold a hash (decision 078)
+//   - parallel-crossing: a task value; a raise whose props hold a hash keyed by numbers (decision 078). A text-keyed
+//     hash, a maybe outside a field and a union cross since item 0400 widened `form-kind-with` (decision 076)
 //   - parallel-await, parallel-escape
 // Accepted: slot writes into two lists, captures of a record and a list, a list the turn makes and pushes, `turn next`,
 // a nested unmarked walk, a call to a pure task, a raise of `failure` and of a declared exception with text and number
@@ -191,10 +191,8 @@ task mapped
 `,
 )
 
-refused(
-  'a captured hash, until item 0400 widens form-kind-of (decision 076)',
-  'parallel-crossing',
-  '`table`',
+accepted(
+  'a captured text-keyed hash (decision 076, item 0400)',
   `${LIST}
 task looked
   take xs, like list, like text
@@ -209,10 +207,8 @@ task looked
 `,
 )
 
-refused(
-  'a captured maybe outside a field, until item 0400 (decision 076)',
-  'parallel-crossing',
-  '`bound`',
+accepted(
+  'a captured maybe outside a field (decision 076, item 0400)',
   `${LIST}
 load @term/base/maybe
   find maybe
@@ -237,10 +233,8 @@ task capped
 `,
 )
 
-refused(
-  'a captured union, until item 0400 (decision 076)',
-  'parallel-crossing',
-  '`shape`',
+accepted(
+  'a captured union (decision 076, item 0400)',
   `${LIST}
 form figure
   case dot
@@ -267,7 +261,7 @@ task scaled
 )
 
 refused(
-  'a raise whose props hold a hash names the form and the field (decision 078)',
+  'a raise whose props hold a hash keyed by numbers names the form and the field (decision 078)',
   'parallel-crossing',
   ['`lookup-miss`', '`table`'],
   `${LIST}
@@ -277,7 +271,7 @@ load @term/base/exception
 form lookup-miss
   like exception
     bind note, <Not in the table>
-    link table, like hash, like text, like number
+    link table, like hash, like number, like number
 
 task looked
   take xs, like list, like number
