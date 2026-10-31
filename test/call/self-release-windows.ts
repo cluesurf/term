@@ -2,7 +2,7 @@
 // to a loopback registry on THIS machine, reached from the Windows machine WINDOWS_VM names through an ssh reverse
 // tunnel, installed there by THE LOADER term.surf serves at /load.ps1, and then the INSTALLED term run there:
 //
-//   1. the loader installs, checks the signature, writes bin\term.cmd and install.tree, and names the PATH line
+//   1. the loader installs, checks the signature, writes bin\term.cmd and install.tree, and puts bin on the user Path
 //   2. `term --version`, and `term make` on a sample project: the CLI itself works on Windows
 //   3. `term self check`, `update` (the shim moves to the next version), `check`, `update` again (nothing newer),
 //      `back` (the shim returns)
@@ -199,8 +199,14 @@ const shim = `Get-Content '${base}\\call\\term.cmd'`
 
 try {
   const loaded = await ps(
-    `${env}\n$env:TERM_LOAD_VERSION = '${VERSION}'\n& '${root}\\load.ps1'\n${shim}\nGet-Content '${base}\\code\\${VERSION}\\install.tree'`,
+    `${env}\n$env:TERM_LOAD_VERSION = '${VERSION}'\n& '${root}\\load.ps1'\n${shim}\nGet-Content '${base}\\code\\${VERSION}\\install.tree'\nWrite-Output "user-path=$([Environment]::GetEnvironmentVariable('Path', 'User'))"`,
   )
+  // the user Path as the loader left it, read back from the registry after the run
+  const userPath =
+    loaded.out
+      .split(/\r?\n/)
+      .find(line => line.startsWith('user-path='))
+      ?.slice('user-path='.length) ?? ''
   ok(
     `the loader installs ${VERSION} for ${platform}, checked, and writes bin\\term.cmd`,
     loaded.code === 0 &&
@@ -212,10 +218,18 @@ try {
     loaded.out.includes(`hash <${digest}>`),
     loaded.out,
   )
+  // since 2.8 the loader puts bin on the user Path itself, as rustup, bun and deno do (term-load-install.md, the
+  // reversal of P4), so the check reads the Path back rather than looking for a printed command
   ok(
-    'the loader names the PATH command, and changes nothing itself',
-    /SetEnvironmentVariable\('Path'/.test(loaded.out),
-    loaded.out,
+    'the loader puts bin on the user Path itself, and says so',
+    /path the user Path/.test(loaded.out) &&
+      /This terminal and new ones find term\./.test(loaded.out) &&
+      userPath
+        .toLowerCase()
+        .split(';')
+        .map(entry => entry.replace(/\\+$/, ''))
+        .includes(`${base}\\call`.toLowerCase()),
+    `user Path: ${userPath}\n${loaded.out}`,
   )
 
   const version = await ps(

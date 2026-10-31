@@ -411,6 +411,11 @@ form separate-run
         like boolean
   # whether a proof above a unit runs its bodies
   link under-proof, like list, like boolean
+  # each unit's place among the run's units sorted by their names (unit-ranks): an order no entry's walk decides
+  link rank
+    like hash
+      like number
+      like number
   link template-set, like graph-template-set
   link builds, like list, like unit-build
   # each name to where it is defined, unit by unit, grown as units are answered (compile/names.tree)
@@ -1082,6 +1087,48 @@ task reach-sorted
   save reached, get(run/reach, unit-at)
   back sort(reached/keys(), from-numbers)
 
+# EACH UNIT'S RANK, the order its name key lists the reached definitions in: the units sorted by their files, each deck's
+# root a token, so a unit's key is the same in every run that reaches it and on every clone. The run's numbering is
+# dependency order from the entry's walk, and two units that do not reach each other are numbered in another order by
+# another entry (item term-self-host-001-0452)
+task unit-ranks
+  take order, like list, like list, like text
+  take held, like portable
+  like hash
+    like number
+    like number
+  mark private
+
+  save unit-of
+    like hash
+      like text
+      like number
+    make hash
+  save names, make list
+  save ui, 0
+  walk order
+    take group
+    save written, make list
+    walk group
+      take file
+      push(written, portable-write(held, file))
+    save name, join(sort(written, from-texts), <+>)
+    save unit-of/{name}, ui
+    push(names, name)
+    save ui, add(ui, 1)
+  save ranks
+    like hash
+      like number
+      like number
+    make hash
+  save rank, 0
+  walk sort(names, from-texts)
+    take name
+    save unit, get-or-default(unit-of, name, 0)
+    save ranks/{unit}, rank
+    save rank, add(rank, 1)
+  back ranks
+
 # THE CACHE'S KEY, BY NAME (compile/names.tree): the fingerprints of only the dependency definitions this unit can reach
 # by name, from the names its own modules write, read off the build's index
 task named-key-as
@@ -1093,10 +1140,15 @@ task named-key-as
 
   save used, used-of(run, state)
   index-names(run, state/at)
-  save sees, make hash
+  # each reached unit to its rank, so the fingerprints are listed in an order of the unit's preimage alone
+  save sees
+    like hash
+      like number
+      like number
+    make hash
   walk reach-sorted(run, state/at)
     take d
-    save sees/{d}, true
+    save sees/{d}, get-or-default(run/rank, d, 0)
   save fields, make list
   push(fields, <names>)
   walk own-key(run, state, checked-as)
@@ -1799,6 +1851,7 @@ task compile-separate
       bind order, order
       bind reach, reach
       bind under-proof, proving
+      bind rank, unit-ranks(order, held-roots)
       bind template-set, template-set
       bind builds, make list
       bind name-index, make hash

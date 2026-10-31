@@ -79,8 +79,11 @@ form def-at
 # thousands, and building that index again for each of 3,091 units was most of a cold build (2,447 s of the pool's
 # CPU, 2026-10-05). Here `index` is kept by the caller for the whole build, each name to where it is defined, and grown
 # as units are built; a unit's walk touches only the names it reaches, and keeps a place only in a unit it reaches.
-# The answer is `names-reached`'s over the reached units' definitions in dependency order: a place's key is
-# `unit * span + at`, so the keys sort into that order
+# The answer is the fingerprints of the definitions reached, ordered by each reached unit's RANK, then by its place
+# among that unit's definitions: a place's key is `rank * span + at`, so the keys sort into that order. The rank is the
+# caller's, from the unit's own name and never from the run's unit numbering: two units that do not reach each other
+# are numbered in another order by another entry's walk, and a key in run order made one unit's answer stored by its
+# own run unreachable from an importer's (item term-self-host-001-0452)
 task names-reached-indexed
   take index
     like hash
@@ -90,11 +93,11 @@ task names-reached-indexed
   take defs
     like list
       like list, like name-def
-  # the units this one reaches
+  # the units this one reaches, each to its rank
   take reach
     like hash
       like number
-      like boolean
+      like number
   take used, like list, like text
   # more than any unit's count of definitions
   take span, like number
@@ -121,7 +124,7 @@ task names-reached-indexed
         take place
         fork test, has(reach, place/unit)
           hold
-            save key, add(multiply(place/unit, span), place/at)
+            save key, add(multiply(get-or-default(reach, place/unit, 0), span), place/at)
             fork test, is-equal(has(taken, key), false)
               hold
                 save def, get(get(defs, place/unit), place/at)

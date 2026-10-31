@@ -8,7 +8,9 @@
 // Cases: the snapshot is taken after a build and replays a no-op; corrupt, truncated, another compiler's, another
 // root's and a package folder listed differently are each refused; an artifact touched or removed is written again; a
 // racy edit (same size, same modification time, in the second the build ran) is seen; two writers at once leave a
-// snapshot that is whole or ignored, never a wrong answer.
+// snapshot that is whole or ignored, never a wrong answer. Format 2 (decision 083, item term-self-host-001-0450): the
+// written body decodes to the body the session holds, a problem's file text is read back from the disk and an entry
+// whose file reads otherwise builds again, a format 1 file is refused, and only the newest three snapshots are kept.
 // Run: npx tsx test/call/graph-snapshot.ts (GRAPH_MODULE=<emitted draft> runs a draft before it lands)
 
 import { spawn } from 'node:child_process'
@@ -22,6 +24,8 @@ type Port = {
   buildRequest: (graph: unknown, ask: Record<string, unknown>, store?: unknown) => { build?: { problems: { diagnostic: { name?: string; message?: string } }[]; built: number; reused: number; compiled: number } }
   loadSnapshot: (session: unknown, started: number) => boolean
   snapshotPath: (root: string) => string
+  snapshotBody: (session: unknown, started: number) => { form: string; value?: Record<string, unknown> }
+  decodedSnapshot: (root: string) => Record<string, unknown> | undefined
 }
 
 const loaded = await import(process.env.GRAPH_MODULE || '@term/call/code/work/build/build-graph')
@@ -125,7 +129,21 @@ const takes = (): boolean => {
 
 const path = port.snapshotPath(root)
 const sum = (body: string): string => createHash('sha256').update(body, 'utf8').digest('hex').slice(0, 32)
-const HEAD = '# term graph 1\n'
+const HEAD = '# term graph 2\n'
+
+// a written body's path at an index: a path under the project's root is written relative to it
+const pathAt = (body: Record<string, unknown>, key: string): string => {
+  const spelled = (body.paths as string[])[Number(key)]!
+  return spelled.startsWith('/') ? spelled : join(root, spelled)
+}
+
+// a value with its keys sorted, so two bodies compare field for field
+const canonical = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value as object).sort().map(key => [key, canonical((value as Record<string, unknown>)[key])]))
+      : value
 
 // the snapshot's body rewritten by `change`, with its sum made right again: only the check under test can refuse it
 function rewrite(change: (body: Record<string, unknown>) => void): void {
@@ -188,7 +206,7 @@ ok('a package folder listed otherwise refuses the snapshot', !takes())
 settle()
 rewrite(body => {
   const decks = body.decks as Record<string, { stamp: string; hash: string }>
-  const manifest = Object.keys(decks).find(file => file.endsWith('deck.tree'))!
+  const manifest = Object.keys(decks).find(at => pathAt(body, at).endsWith('deck.tree'))!
   decks[manifest]!.stamp = 'moved since'
   decks[manifest]!.hash = 'another manifest'
 })
@@ -249,6 +267,68 @@ ok('two writers leave no temp file', readdirSync(join(path, '..')).every(name =>
 const raced = settle()
 ok('a build after two writers equals clean', same(raced, clean()) === '', same(raced, clean()))
 ok('and its snapshot is taken', takes())
+
+// FORMAT 2 (decision 083). The body written decodes to the body the session holds, field for field
+{
+  const was = process.env.TERM_CACHE_HOME
+  process.env.TERM_CACHE_HOME = home
+  try {
+    // a helper an hour old, so its stamp is older than any racy line: only its text can tell an edit
+    const hour = Math.floor(Date.now() / 1000) - 3600
+    writeFileSync(helper, helperText(35))
+    utimesSync(helper, hour, hour)
+    const graph = port.makeBuildGraph(root)
+    port.buildRequest(graph, ask)
+    const held = port.snapshotBody(graph.session, Date.now())
+    const decoded = port.decodedSnapshot(root)
+    const blank = (body: Record<string, unknown> | undefined) => body && { ...body, generation: 0, taken: 0, stable: '' }
+    ok('the written body decodes to the session\'s', held.form === 'some' && JSON.stringify(canonical(blank(decoded))) === JSON.stringify(canonical(blank(held.value))))
+    const raw = readFileSync(path, 'utf8')
+    ok('the snapshot is format 2', raw.startsWith(HEAD))
+    const written = JSON.parse(raw.slice(HEAD.length + 33)) as Record<string, unknown>
+    ok('each path is written once', new Set(written.paths as string[]).size === (written.paths as string[]).length && !raw.slice(HEAD.length + 33).includes(`"${join(root, 'code', 'helper.tree')}"`))
+    // the helper's unused binding is a warning, framed in its file: its text is the file's, read back from the disk
+    const entries = (decoded?.entries ?? {}) as Record<string, { problems: { text?: string }[] }>
+    const framed = entries[helper]?.problems ?? []
+    ok('a problem\'s text is filled from the disk', framed.length > 0 && framed[0]!.text === readFileSync(helper, 'utf8') && !raw.includes('task answer'), `${framed.length} problems`)
+  } finally {
+    process.env.TERM_CACHE_HOME = was
+  }
+}
+// the helper's text changed after the write with its stamp kept (same size, same time, inode kept): its problem's text
+// reads otherwise, so its entry is not taken and builds again, equal to clean
+{
+  const before = statSync(helper)
+  writeFileSync(helper, helperText(36))
+  utimesSync(helper, before.atime, before.mtime)
+  const after = statSync(helper)
+  ok('the edit keeps the stamp', after.size === before.size && after.mtimeMs === before.mtimeMs && after.ino === before.ino)
+  ok('the snapshot is still taken', takes())
+  const changed = settle()
+  ok('the entry whose file reads otherwise builds again, equal to clean', changed.built > 0 && same(changed, clean()) === '', `${changed.built} built ${same(changed, clean())}`)
+}
+// a format 1 file, whole and summed, is refused
+{
+  const text = readFileSync(path, 'utf8')
+  writeFileSync(path, `# term graph 1\n${text.slice(HEAD.length)}`)
+  ok('a format 1 snapshot is refused', !takes())
+  settle()
+}
+// only the newest three snapshots of the project are kept
+{
+  const folder = join(path, '..')
+  const old = [0, 1, 2, 3].map(n => join(folder, `old-${n}`))
+  old.forEach((file, n) => {
+    writeFileSync(file, 'old\n')
+    const time = Math.floor(Date.now() / 1000) - 7200 + n * 60
+    utimesSync(file, time, time)
+  })
+  writeFileSync(helper, helperText(37))
+  settle()
+  const left = readdirSync(folder).sort()
+  const want = [path, old[2]!, old[3]!].map(file => relative(folder, file)).sort()
+  ok('the newest three snapshots are kept', JSON.stringify(left) === JSON.stringify(want), left.join(' '))
+}
 
 console.log(`\ngraph-snapshot: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)
