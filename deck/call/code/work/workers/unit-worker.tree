@@ -15,8 +15,9 @@
 # Docked: compile/separate.ts (compileSeparate) and node's worker_threads. The session, the cache, the deck finder, the
 # role readers, a unit's name and an entry's shim are the build and cache lanes' ports (term-cli-in-term-0214).
 
-load ../build/build-session
-  find make-build-session
+# each worker holds a build graph of its own (decision 094 rule 4): build-graph.tree is the one maker of a session
+load ../build/build-graph
+  find make-build-graph
 
 load ../build/deck-finding
   find make-deck-finder
@@ -106,7 +107,8 @@ task make-ready
   save held/root, root
   save held/sent, unit-new-set()
   save held/sent-rolls, unit-new-set()
-  save held/session, face-build-session(make-build-session(root))
+  save graph, make-build-graph(root)
+  save held/session, face-build-session(graph/session)
   # a few thousand milled modules in memory, not the default: every worker of the pool holds its own
   save held/cache, project-cache(root, unit-version-of(worker-threads/worker-data), worker-mills)
   # the deck finder as a record for a unit's name, and as the function the compiler takes

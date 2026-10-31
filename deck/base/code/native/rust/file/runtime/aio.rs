@@ -150,10 +150,28 @@ mod aio {
             if hard {
                 let _ = std::fs::hard_link(&from, &to);
             } else {
-                let _ = std::os::unix::fs::symlink(&from, &to);
+                symlink(&from, &to);
             }
         })
         .await
+    }
+
+    #[cfg(unix)]
+    fn symlink(from: &str, to: &str) {
+        let _ = std::os::unix::fs::symlink(from, to);
+    }
+
+    // Windows makes a file link and a directory link with two calls. Node's `symlink` with no type picks one by
+    // what the target is, read from the link's own folder, and so does this.
+    #[cfg(windows)]
+    fn symlink(from: &str, to: &str) {
+        let base = std::path::Path::new(to).parent().unwrap_or(std::path::Path::new(""));
+
+        if base.join(from).is_dir() {
+            let _ = std::os::windows::fs::symlink_dir(from, to);
+        } else {
+            let _ = std::os::windows::fs::symlink_file(from, to);
+        }
     }
 
     pub async fn link_read(path: String) -> String {
@@ -167,51 +185,93 @@ mod aio {
 
     // ---- permission and owner ----
 
+    // The mode is the full `st_mode`, kind bits and all, the number node's `stat().mode` reads on each system.
     pub async fn permission_read(path: String) -> i64 {
+        crate::__term_hand_back(move || std::fs::metadata(&path).map(|meta| mode_of(&meta)).unwrap_or(0)).await
+    }
+
+    #[cfg(unix)]
+    fn mode_of(meta: &std::fs::Metadata) -> i64 {
         use std::os::unix::fs::PermissionsExt;
 
-        crate::__term_hand_back(move || {
-            std::fs::metadata(&path)
-                .map(|meta| meta.permissions().mode() as i64)
-                .unwrap_or(0)
-        })
-        .await
+        meta.permissions().mode() as i64
+    }
+
+    // Windows has no mode, only a read-only flag. This is the mode libuv (so node) makes of it: the kind
+    // (link 0o120000, directory 0o040000, else file 0o100000), then 0o444 when read-only and 0o666 when not.
+    #[cfg(windows)]
+    fn mode_of(meta: &std::fs::Metadata) -> i64 {
+        let kind = if meta.file_type().is_symlink() {
+            0o120000
+        } else if meta.is_dir() {
+            0o040000
+        } else {
+            0o100000
+        };
+
+        kind | if meta.permissions().readonly() { 0o444 } else { 0o666 }
     }
 
     pub async fn permission_write(path: String, mode: i64) {
+        crate::__term_hand_back(move || mode_write(&path, mode)).await
+    }
+
+    #[cfg(unix)]
+    fn mode_write(path: &str, mode: i64) {
         use std::os::unix::fs::PermissionsExt;
 
-        crate::__term_hand_back(move || {
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode as u32));
-        })
-        .await
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode as u32));
+    }
+
+    // the owner's write bit (0o200) is the read-only flag, the one part of a mode Windows keeps, as libuv's chmod
+    #[cfg(windows)]
+    fn mode_write(path: &str, mode: i64) {
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mut permissions = meta.permissions();
+            permissions.set_readonly(mode & 0o200 == 0);
+            let _ = std::fs::set_permissions(path, permissions);
+        }
     }
 
     pub async fn owner_user(path: String) -> i64 {
-        use std::os::unix::fs::MetadataExt;
-
-        crate::__term_hand_back(move || std::fs::metadata(&path).map(|meta| meta.uid() as i64).unwrap_or(0)).await
+        crate::__term_hand_back(move || std::fs::metadata(&path).map(|meta| owner_of(&meta).0).unwrap_or(0)).await
     }
 
     pub async fn owner_group(path: String) -> i64 {
+        crate::__term_hand_back(move || std::fs::metadata(&path).map(|meta| owner_of(&meta).1).unwrap_or(0)).await
+    }
+
+    #[cfg(unix)]
+    fn owner_of(meta: &std::fs::Metadata) -> (i64, i64) {
         use std::os::unix::fs::MetadataExt;
 
-        crate::__term_hand_back(move || std::fs::metadata(&path).map(|meta| meta.gid() as i64).unwrap_or(0)).await
+        (meta.uid() as i64, meta.gid() as i64)
+    }
+
+    // Windows owners are security identifiers, not numbers: node's `stat` reads uid and gid 0 there, and so does this
+    #[cfg(windows)]
+    fn owner_of(_meta: &std::fs::Metadata) -> (i64, i64) {
+        (0, 0)
     }
 
     // std has no chown: this is the libc call, which is what every crate that offers one does. A failure is
     // swallowed, like every other write here.
     pub async fn owner_write(path: String, user: i64, group: i64) {
-        let path = match std::ffi::CString::new(path) {
-            Ok(path) => path,
-            Err(_) => return,
-        };
-
-        crate::__term_hand_back(move || unsafe {
-            libc::chown(path.as_ptr(), user as libc::uid_t, group as libc::gid_t);
-        })
-        .await
+        crate::__term_hand_back(move || owner_change(path, user, group)).await
     }
+
+    #[cfg(unix)]
+    fn owner_change(path: String, user: i64, group: i64) {
+        if let Ok(path) = std::ffi::CString::new(path) {
+            unsafe {
+                libc::chown(path.as_ptr(), user as libc::uid_t, group as libc::gid_t);
+            }
+        }
+    }
+
+    // node's `chown` on Windows (libuv) changes nothing and succeeds: there is no numeric owner to set
+    #[cfg(windows)]
+    fn owner_change(_path: String, _user: i64, _group: i64) {}
 
     // ---- temporary ----
 

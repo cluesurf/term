@@ -244,6 +244,68 @@ ok(
   builds('looped', looped).errors,
 )
 
+// 4. a closure that names an outer text only inside a `{{...}}`, the text read again after the closure: the `move`
+// closure must take a clone, or the read after it is E0382 (item 0489, the cask dispatch's watch starters, where
+// rust-names.tree used-names never looked into a template's values). Both shapes: a plain body, and a guarded one
+// whose handler names it too
+const follows = `task follow
+  take handler
+    like task
+      take value, like text
+  like number
+  call handler
+    text <x>
+  send back, code 1
+
+task note
+  take t, like text
+  like number
+  send back, code 0
+`
+const captureShapes: Record<string, string> = {
+  plain: `${follows}
+task start
+  take watch, like text
+  like text
+  save drop
+    call follow
+      task heard
+        take value, like text
+        call note
+          text <a/{{watch}}/{{value}}>
+  send back, text <{{watch}}/{{drop}}>
+`,
+  guarded: `${follows}
+task start
+  take watch, like text
+  like text
+  save drop
+    call follow
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call note
+            text <a/{{watch}}/{{value}}>
+        halt take
+          take problem
+          call note
+            text <b/{{watch}}>
+  send back, text <{{watch}}/{{drop}}>
+`,
+}
+
+for (const [label, text] of Object.entries(captureShapes)) {
+  const emitted = rust(text, 'start')
+  ok(
+    `a closure naming a text only in a template clones it (${label})`,
+    /let watch = watch\.clone\(\);/.test(emitted),
+    lines(emitted, /move \|/),
+  )
+  const built = builds(`template-capture-${label}`, emitted)
+  ok(`rustc builds it (${label})`, built.ok, built.errors)
+}
+
 console.log(`\nrust-moves: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

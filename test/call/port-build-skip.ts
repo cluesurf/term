@@ -129,7 +129,10 @@ type Run = {
   code: number
   built: number
   unchanged: number
+  stale: number
   failed: number
+  // the modules that failed, sorted, space-separated
+  broken: string
   skipped: Set<string>
   out: string
 }
@@ -160,7 +163,7 @@ function run(...args: string[]): Run {
   }
 
   const summary =
-    /term port-build: (\d+) built, (\d+) unchanged(?:, \d+ stale)?, (\d+) failed/.exec(
+    /term port-build: (\d+) built, (\d+) unchanged(?:, (\d+) stale)?, (\d+) failed/.exec(
       out,
     )
   const skipped = new Set(
@@ -171,11 +174,20 @@ function run(...args: string[]): Run {
     code,
     built: Number(summary?.[1] ?? -1),
     unchanged: Number(summary?.[2] ?? -1),
-    failed: Number(summary?.[3] ?? -1),
+    stale: Number(summary?.[3] ?? 0),
+    failed: Number(summary?.[4] ?? -1),
+    broken: [...out.matchAll(/^ {2}FAIL {2}(\S+)$/gm)].map(match => match[1]!).sort().join(' '),
     skipped,
     out,
   }
 }
+
+// the modules the CLONE could not compile at all, from the cold run: a tree another session is editing can hold a
+// module stage0 refuses (a half-made edit, or one that needs a compiler fix stage0 predates, T-0376b). Every later run
+// must fail exactly those, never one more, so a defect of the skip still shows (item term-self-host-001-0483)
+let brokenAtClone = ''
+const failsAsCloned = (one: Run): boolean =>
+  one.failed >= 0 && one.broken === brokenAtClone
 
 // every port output of the clone, path to content
 function ports(): Map<string, string> {
@@ -289,8 +301,8 @@ function compare(label: string, edit: () => void): Run {
 
   ok(
     `${label}: the skip run and the --full run write the same bytes`,
-    diff.length === 0 && skip.failed === 0 && full.failed === 0,
-    diff.slice(0, 5).join(' '),
+    diff.length === 0 && failsAsCloned(skip) && failsAsCloned(full),
+    `${diff.slice(0, 5).join(' ')} failed: ${skip.broken} | ${full.broken}`,
   )
 
   return skip
@@ -308,14 +320,16 @@ try {
   // The cold run has no manifest, so it compiles every module. Whether each lands on the port already there says only
   // whether the tree was quiet when it was cloned: a module another session has edited and not yet run through
   // make:line (or one it inlines, such as parser/diagnostic.tree, which `--verify` does not follow) builds anew. So
-  // the default asks that nothing fails and nothing is skipped, and PORT_BUILD_SKIP_QUIET=1 (a tree no one is
-  // editing, such as a release's) asks that nothing is built too (item term-self-host-001-0483)
+  // the default asks that nothing is skipped, names what failed (a module the tree held half edited), and holds every
+  // later run to that set. PORT_BUILD_SKIP_QUIET=1 (a tree no one is editing, such as a release's) asks that nothing
+  // fails and nothing is built too (item term-self-host-001-0483)
   const quiet = process.env.PORT_BUILD_SKIP_QUIET === '1'
   const cold = run()
   const coldBuilt = [...cold.out.matchAll(/^ {2}built (\S+)$/gm)].map(match => match[1]!)
+  brokenAtClone = cold.broken
   ok(
-    `cold: every module compiles, none skipped${quiet ? ', each to the port already there' : ''} (${coldBuilt.length} built where the tree's port lagged its sources)`,
-    cold.failed === 0 && cold.skipped.size === 0 && (!quiet || cold.built === 0),
+    `cold: every module compiles, none skipped${quiet ? ', none fails, each to the port already there' : ''} (${coldBuilt.length} built where the tree's port lagged its sources; failed as cloned: ${brokenAtClone || 'none'})`,
+    cold.failed >= 0 && cold.skipped.size === 0 && (!quiet || (cold.built === 0 && cold.failed === 0)),
     `${coldBuilt.slice(0, 5).join(' ')} ${cold.out.slice(-400)}`,
   )
 
@@ -370,7 +384,8 @@ try {
   const clean = run('--check')
   ok(
     '--check: put back, nothing stale',
-    clean.code === 0,
+    // a module that failed as cloned fails here too, and exits 1 for it alone
+    clean.stale === 0 && failsAsCloned(clean) && (clean.code === 0 || clean.failed > 0),
     clean.out.slice(-400),
   )
 

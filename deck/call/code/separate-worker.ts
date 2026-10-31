@@ -14,9 +14,10 @@ import {
   buildSession,
   entryShim,
   isWholeFile,
+  sessionFace,
   unitSlug,
 } from '@term/call/code/make'
-import type { BuildSession } from '@term/call/code/make'
+import type { SessionFace } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -49,7 +50,8 @@ const VERSION = (
 )?.version
 
 let root: string | undefined
-let session: BuildSession | undefined
+// this worker's build graph, read through its face (decision 094 rule 4: each worker holds a graph of its own)
+let session: SessionFace | undefined
 let cache: CompileCache | undefined
 let deckOf: DeckOf | undefined
 let roleOf: RoleOf | undefined
@@ -66,7 +68,7 @@ function ready(at: string): void {
   root = at
   sent = new Set()
   sentRolls = new Set()
-  session = buildSession(at)
+  session = sessionFace(buildSession(at))
   // a few hundred milled modules in memory, not the default thousands: every worker of the pool holds its own
   cache = projectCache(at, VERSION, WORKER_MILLS)
   deckOf = projectDeckOf()

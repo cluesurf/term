@@ -333,7 +333,9 @@ task boot
       like text
       # the platform calls `drive` from its message loop, with no Term caller to raise to, so a raise outside the
       # checks ends the run with the failed-run status (decision 089 rule 6 of
-      # note/project/term/self-host/change/001-finish-self-host)
+      # note/project/term/self-host/change/001-finish-self-host). The reply is held in a local and sent after the guard: a
+      # guard whose body and handler each send back does not build on Rust (E0308, term-self-host-001-0498)
+      save reply, text <\{"id":"","exception":"failure"\}>
       fork
         mark unsafe
         save where
@@ -375,7 +377,7 @@ task boot
                 read expected
         call exit
           read verdict
-        send back
+        save reply
           call dispatch-as
             text <control>
             read message
@@ -388,7 +390,7 @@ task boot
         halt take
           take unexited
           save skip, code 0
-        send back, text <\{"id":"","exception":"failure"\}>
+      send back, read reply
   call load-bundle
     read first
     read bundle

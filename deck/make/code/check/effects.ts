@@ -264,6 +264,8 @@ type CallReach = {
   // JOBS (decision 092): the tasks that wait a handle, and `onWait` hears each call to one
   waits?: Set<string>
   onWait?: () => void
+  // the tasks that wait a handle they are lent: a call lending them one raises the caller's jobs (decision 095)
+  lentWaits?: Set<string>
 }
 
 // what an argument given at a pass-through parameter raises. Twin: effects.tree `argument-raises`
@@ -346,7 +348,7 @@ function isNativeFile(statement: Extract<Statement, { form: 'function' }>): bool
 // A JOB'S STAND-IN: the raises of every job a task makes, charged where the task waits a handle (decision 092)
 const jobName = (name: string): string => `${name} job`
 const isJobName = (name: string): boolean =>
-  name.length > 4 && name.endsWith(' job')
+  (name.length > 4 && name.endsWith(' job')) || isGiveName(name)
 const isSpawn = (name: string): boolean => written(name) === 'spawn'
 
 // at a call to `callee`, the argument at its pass-through parameter `at`, and what it raises
@@ -584,6 +586,215 @@ function keepingMention(
   return found
 }
 
+// whether a type holds a job's handle: a `handle`, or a list or hash of them. Twin: effects.tree `holds-handle`
+function holdsHandle(type: Type | undefined): boolean {
+  if (!type) {
+    return false
+  }
+
+  if (type.kind === 'named') {
+    return written(type.name) === 'handle'
+  }
+
+  if (type.kind === 'array') {
+    return holdsHandle(type.element)
+  }
+
+  if (type.kind === 'map') {
+    return holdsHandle(type.value)
+  }
+
+  return false
+}
+
+const lendsAHandle = (args: Expression[]): boolean =>
+  args.some(arg => holdsHandle((arg as { type?: Type }).type))
+
+// a stub's `lent wait` and `give <form>` (decision 095 rule 3)
+const isLentMember = (raised: string): boolean => raised === 'lent wait'
+const isGiveMember = (raised: string): boolean =>
+  raised.length > 5 && raised.startsWith('give ')
+const giveName = (name: string): string => `${name} give`
+const isGiveName = (name: string): boolean =>
+  name.length > 5 && name.endsWith(' give')
+const realName = (name: string): string =>
+  isJobName(name) ? name.slice(0, name.lastIndexOf(' ')) : name
+
+// a task a handle may be lent to: one with a Term body, here or in another unit. Twin: effects.tree `is-lendable`
+function isLendable(statement: FunctionStatement): boolean {
+  if (statement.stub) {
+    return statement.stubRaises !== undefined
+  }
+
+  return statement.body.length > 0 && !isNativeFile(statement)
+}
+
+type LentTable = {
+  lent: Map<string, string[]>
+  waits: Set<string>
+  gives: Map<string, string[]>
+  lends: Map<string, string[]>
+}
+
+// what each task does with the handles it is lent and lends (decision 095). Twin: effects.tree `lent-facts-of`
+function lentFactsOf(
+  functions: Map<string, FunctionStatement>,
+  handleWaits: Set<string>,
+): LentTable {
+  const lent = new Map<string, string[]>()
+  const waits = new Set<string>()
+  const gives = new Map<string, string[]>()
+  const lends = new Map<string, string[]>()
+  const waitsAny = new Map<string, boolean>()
+  const forwards = new Map<string, string[]>()
+
+  for (const [name, statement] of functions) {
+    if (statement.stub) {
+      if (statement.stubRaises?.includes('lent wait')) {
+        waits.add(name)
+      }
+
+      continue
+    }
+
+    if (statement.body.length === 0 || isNativeFile(statement)) {
+      continue
+    }
+
+    const own = statement.params
+      .filter(p => holdsHandle(p.type))
+      .map(p => p.name)
+    const shadowed = boundNames(statement.body)
+
+    for (const param of statement.params) {
+      shadowed.add(param.name)
+    }
+
+    let anyWait = false
+    let fills = false
+    const borrowers: string[] = []
+    const forwarded: string[] = []
+    const isLent = (node: Expression): boolean =>
+      node.form === 'variable' && own.includes(node.name)
+
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object') {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const record = value as Record<string, unknown>
+
+      if (
+        record.form === 'call' &&
+        record.callee &&
+        typeof record.callee === 'object' &&
+        Array.isArray(record.args)
+      ) {
+        const call = record as unknown as Extract<Expression, { form: 'call' }>
+
+        if (call.callee.form === 'variable') {
+          const callee = call.callee.name
+
+          if (handleWaits.has(callee) || written(callee) === 'gather') {
+            anyWait = true
+          }
+
+          if (
+            functions.has(callee) &&
+            !shadowed.has(callee) &&
+            isLendable(functions.get(callee)!) &&
+            lendsAHandle(call.args)
+          ) {
+            if (!borrowers.includes(callee)) {
+              borrowers.push(callee)
+            }
+
+            if (call.args.some(isLent) && !forwarded.includes(callee)) {
+              forwarded.push(callee)
+            }
+          }
+        } else if (
+          call.callee.form === 'member' &&
+          (call.callee.name === 'push' || call.callee.name === 'set') &&
+          isLent(call.callee.target)
+        ) {
+          fills = true
+        }
+      }
+
+      if (
+        record.form === 'assign' &&
+        (record.target as Expression | undefined)?.form === 'member' &&
+        isLent((record.target as { target: Expression }).target)
+      ) {
+        fills = true
+      }
+
+      for (const [key, child] of Object.entries(record)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(statement.body)
+
+    if (borrowers.length > 0) {
+      lends.set(name, borrowers)
+    }
+
+    if (own.length > 0) {
+      lent.set(name, own)
+      waitsAny.set(name, anyWait)
+      forwards.set(name, forwarded)
+
+      const giving: string[] = []
+
+      if (fills) {
+        giving.push(jobName(name))
+      }
+
+      for (const borrower of forwarded) {
+        if (!giving.includes(giveName(borrower))) {
+          giving.push(giveName(borrower))
+        }
+      }
+
+      if (giving.length > 0) {
+        gives.set(name, giving)
+      }
+    }
+  }
+
+  let changed = true
+
+  while (changed) {
+    changed = false
+
+    for (const name of lent.keys()) {
+      if (waits.has(name)) {
+        continue
+      }
+
+      if (
+        waitsAny.get(name) ||
+        (forwards.get(name) ?? []).some(b => waits.has(b))
+      ) {
+        waits.add(name)
+        changed = true
+      }
+    }
+  }
+
+  return { lent, waits, gives, lends }
+}
+
 // the work of every `spawn` call in a body, at any depth. Twin: effects.tree `spawned-works`
 function spawnedWorks(body: Statement[]): Expression[] {
   const found: Expression[] = []
@@ -708,6 +919,15 @@ function calledNames(
         if (
           node.callee.form === 'variable' &&
           reach?.waits?.has(node.callee.name)
+        ) {
+          reach.onWait?.()
+        }
+
+        // a call lending a handle to a task that waits during the call (decision 095 rule 4)
+        if (
+          node.callee.form === 'variable' &&
+          reach?.lentWaits?.has(node.callee.name) &&
+          lendsAHandle(node.args)
         ) {
           reach.onWait?.()
         }
@@ -1510,6 +1730,11 @@ function raiseSetsWith(
     },
   }
 
+  // the handles each task lends, and which of the tasks it lends to wait during the call (decision 095)
+  const lending = lentFactsOf(functions, waits)
+
+  reach.lentWaits = lending.waits
+
   // each task's pass-through bindings, by the task that made the calls
   const boundCalls = new Map<string, PassBinding[]>()
   // the stand-in of the jobs the task being scanned makes, '' when it makes none
@@ -1715,8 +1940,24 @@ function raiseSetsWith(
   for (const [name, statement] of functions) {
     // a separately compiled task: the set its own unit closed over its body and callees (`stubRaises`)
     if (statement.stub && statement.stubRaises) {
-      // `pass <i>` names a pass-through parameter, read by `passThroughOf`, never a raise
-      const known = new Set(statement.stubRaises.filter(r => !isPassMember(r)))
+      // `pass <i>` names a pass-through parameter, read by `passThroughOf`, and `lent wait` and `give <form>` what
+      // the task does with a handle it is lent (`lentFactsOf`), never a raise
+      const known = new Set(
+        statement.stubRaises.filter(
+          r => !isPassMember(r) && !isLentMember(r) && !isGiveMember(r),
+        ),
+      )
+      const givenJobs = statement.stubRaises
+        .filter(isGiveMember)
+        .map(r => r.slice(5))
+
+      if (givenJobs.length > 0) {
+        const giving = giveName(name)
+
+        raises.set(giving, new Set(givenJobs))
+        via.set(giving, new Map(givenJobs.map(d => [d, undefined])))
+        calls.set(giving, new Set())
+      }
 
       if (statement.stubFacts?.includes('native')) {
         nativeShims.add(name)
@@ -1760,8 +2001,10 @@ function raiseSetsWith(
     jobs = ''
 
     const works = spawnedWorks(statement.body)
+    // and the jobs the tasks it lends a handle to put in it (decision 095 rule 4)
+    const lentTo = lending.lends.get(name) ?? []
 
-    if (works.length > 0) {
+    if (works.length > 0 || lentTo.length > 0) {
       const standIn = jobName(name)
       const jobDirect = new Set<string>()
       const jobCalled = new Set<string>()
@@ -1786,6 +2029,10 @@ function raiseSetsWith(
         }
       }
 
+      for (const borrower of lentTo) {
+        jobCalled.add(giveName(borrower))
+      }
+
       raises.set(standIn, jobDirect)
       via.set(standIn, new Map([...jobDirect].map(d => [d, undefined])))
       calls.set(standIn, jobCalled)
@@ -1799,6 +2046,15 @@ function raiseSetsWith(
 
     scan(statement.body, direct, called)
     boundCalls.set(name, bindings)
+
+    // what it puts into a handle-bearing parameter it is lent (decision 095 rule 3)
+    if (lending.gives.has(name)) {
+      const giving = giveName(name)
+
+      raises.set(giving, new Set())
+      via.set(giving, new Map())
+      calls.set(giving, new Set(lending.gives.get(name)))
+    }
 
     // a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
     // the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the shim
@@ -1912,14 +2168,16 @@ function raiseSetsWith(
 
       for (const [raised, callee] of [...from]) {
         if (callee === standIn) {
-          from.set(raised, theirs.get(raised))
+          const through = theirs.get(raised)
+
+          from.set(raised, through === undefined ? undefined : realName(through))
         }
       }
 
       const folded = new Set<string>()
 
       for (const callee of [...calls.get(name)!, ...calls.get(standIn)!]) {
-        if (callee !== standIn) {
+        if (!isJobName(callee)) {
           folded.add(callee)
         }
       }
@@ -1958,6 +2216,17 @@ function raiseSetsWith(
       }
     })
     carried.push(...all.filter(isKink))
+
+    // what it does with a handle it is lent (decision 095 rule 3): it waits during the call, and the jobs it gives
+    if (lending.waits.has(name)) {
+      carried.push('lent wait')
+    }
+
+    for (const raised of raises.get(giveName(name)) ?? []) {
+      if (!isKink(raised)) {
+        carried.push(`give ${raised}`)
+      }
+    }
 
     if (carried.length > 0) {
       through.set(name, carried)

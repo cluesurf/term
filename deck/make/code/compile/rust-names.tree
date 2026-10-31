@@ -1915,6 +1915,17 @@ task used-in-expression
     case hole
       link hole-name
       push(out, hole-name)
+    # a text's `{{...}}` values: a closure naming an outer local only there still captures it
+    case template
+      link template-parts
+      walk template-parts
+        take part
+        sift part
+          case value
+            link part-value
+            used-in-expression(part-value, out)
+          miss
+            save nothing, 0
     case call
       link call-callee
       link call-args

@@ -23,7 +23,7 @@ import {
   projectCache,
 } from '@term/call/code/cache-store'
 import { buildable, isWholeFile } from '@term/call/code/make'
-import type { BuildSession } from '@term/call/code/make'
+import type { SessionFace } from '@term/call/code/make'
 import { bundleWorker } from '@term/call/code/build-parallel'
 import { collectModules } from '@term/make/code/compile/load'
 import {
@@ -55,7 +55,8 @@ type Reply = {
 export async function compileUnitsParallel(
   root: string,
   files: string[],
-  session: BuildSession,
+  // the build graph's session as the compiler reads it (make.ts `sessionFace`, decision 094)
+  session: SessionFace,
   options?: { concurrency?: number },
 ): Promise<{
   results: Map<string, SeparateResult>

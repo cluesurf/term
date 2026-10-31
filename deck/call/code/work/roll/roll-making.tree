@@ -24,9 +24,12 @@ load @term/call/work/build/tree-finding
   find find-tree-files
 
 load @term/call/work/build/build-session
-  find make-build-session
   find turn-session
   find close-session
+
+# the build graph, the one maker of a session and its unit memo (decision 094 rule 4)
+load @term/call/work/build/build-graph
+  find make-build-graph
 
 load @term/call/work/build/deck-finding
   find make-deck-finder
@@ -302,7 +305,8 @@ task unit-rolls
     fork test, not(starts-with(file, link))
       hold
         files/push(file)
-  save session, make-build-session(root)
+  save graph, make-build-graph(root)
+  save session, graph/session
   save cache, project-cache(root)
   save finder, make-deck-finder()
   save deck-of, face-deck-finder(finder)

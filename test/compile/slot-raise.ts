@@ -14,6 +14,7 @@
 // Run: npx tsx test/compile/slot-raise.ts (from deck/term/deck/term)
 
 import {
+  mkdirSync,
   mkdtempSync,
   writeFileSync,
   readFileSync,
@@ -30,6 +31,7 @@ import {
 } from '@term/make/code/compile/native'
 import type { Resolver } from '@term/make/code/compile/load'
 import { projectLeanOf } from '@term/call/code/role-of'
+import { projectResolver } from '@term/call/code/make'
 import { diagnosticNames } from '@term/make/code/parser/diagnostic'
 
 // A NAMED SKIP until the checks are in the compiler (item 0463's line-lock window lands them)
@@ -595,6 +597,252 @@ if (mapped.ok) {
   }
 
   ok("and when run on TypeScript it raises the worker's own form", form === 'conflict', String(form))
+}
+
+// ---- 095: a handle is lent by a call ----
+
+const LENDS = `${JOBS}
+task cancel-all
+  take handles, like list, like handle text
+  walk handles
+    take one
+    one/cancel()
+
+task wait-all
+  mark async
+  take handles, like list, like handle text
+  walk handles
+    take one
+    one/wait()
+
+task fill
+  take handles, like list, like handle text
+  handles/push(tick fetch(<a>))
+
+task forward
+  mark async
+  take handles, like list, like handle text
+  wait-all(handles)
+
+task cancels
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  cancel-all(handles)
+
+task waits-all
+  mark async
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  wait-all(handles)
+
+task waits-guarded
+  mark async
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  fork
+    mark unsafe
+    wait-all(handles)
+  halt take
+    take problem
+    save skip, 0
+
+task filled
+  mark async
+  like text
+  host handles, make list
+  fill(handles)
+  save first, handles/0
+  back first/wait()
+
+task forwarded
+  mark async
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  forward(handles)
+`
+const lends = project(LENDS)
+ok('the lending cases build', lends.ok, messages(lends))
+ok(
+  'cancel-all over raising handles charges nothing',
+  !halts(lends, 'cancels').includes('conflict'),
+  JSON.stringify(halts(lends, 'cancels')),
+)
+ok(
+  "wait-all's call raises the jobs' set",
+  halts(lends, 'waits-all').includes('conflict'),
+  JSON.stringify(halts(lends, 'waits-all')),
+)
+ok(
+  'a guard around the lending call removes it',
+  !halts(lends, 'waits-guarded').includes('conflict'),
+  JSON.stringify(halts(lends, 'waits-guarded')),
+)
+ok(
+  "a job pushed into a lent list is the lender's to wait",
+  halts(lends, 'filled').includes('conflict'),
+  JSON.stringify(halts(lends, 'filled')),
+)
+ok(
+  'forwarding a lent list to a waiting task charges the caller',
+  halts(lends, 'forwarded').includes('conflict'),
+  JSON.stringify(halts(lends, 'forwarded')),
+)
+
+const lentBack = project(`${JOBS}
+task keep-it
+  take handles, like list, like handle text
+  like list, like handle text
+  back handles
+
+task lend
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  save kept, keep-it(handles)
+`)
+ok(
+  'returning a lent parameter is handle-escapes',
+  !lentBack.ok && named(lentBack, 'handle-escapes').length === 1,
+  lentBack.ok ? 'compiled' : messages(lentBack),
+)
+
+// a task written in a backend's own folder has no body to read: a handle lent to it escapes
+const lentNative = compile(
+  {
+    file: '/probe/native/node/main.tree',
+    text: `${JOBS}
+task hold-them
+  take handles, like list, like handle text
+  like number
+  back handles/length
+
+task lend
+  like number
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  back hold-them(handles)
+`,
+  },
+  { resolve, leanOf: () => true, roll: true } as never,
+)
+ok(
+  'lending to a task with no body to read is handle-escapes',
+  !lentNative.ok && named(lentNative, 'handle-escapes').length > 0,
+  lentNative.ok ? 'compiled' : messages(lentNative),
+)
+
+// ---- 095: the route dispatcher answers its own raise ----
+
+const ROUTES = `load @term/site/code/dom/native/memory/dom
+  find view
+  find create-element
+
+view home
+  take host, like view
+  view span
+    text <home>
+
+view user
+  take host, like view
+  take name, like text
+  view span
+    text <user>
+
+# the route's data, which cannot be found
+task load-user
+  take path, like text
+  like text
+  halt <no user>
+
+hook /
+  view home
+
+hook /users/:id
+  take path
+    take id
+      like text
+  seed load, read load-user
+  view user
+    bind name, read data
+
+task run
+  like text
+  save root
+    call create-element
+      text <main>
+  save broken
+    call route
+      read root
+      call make-page-request
+        text </users/42>
+  save status, text <none>
+  fork case, read broken
+    case some
+      link answer
+      save status, text <{answer/status} {answer/body}>
+  save home
+    call route
+      read root
+      call make-page-request
+        text </>
+  save home-status, text <none>
+  fork case, read home
+    case some
+      link answer
+      save home-status, text <{answer/status}>
+  send back, text <{status}|{home-status}>
+`
+// under the package's own tmp/, so the node host's `hono` resolves from the emitted module
+mkdirSync(join(TERM, 'tmp'), { recursive: true })
+const routeDir = mkdtempSync(join(TERM, 'tmp', 'slot-raise-route-'))
+const routeEntry = join(routeDir, 'app.tree')
+writeFileSync(routeEntry, ROUTES)
+// the project's resolver over the in-memory dom, as test/compile/route-table.ts builds it
+const projectBase = projectResolver(TERM, 'node')
+const memoryResolve: Resolver = (importPath, fromFile) =>
+  projectBase(
+    importPath.replace(
+      /dom\/native\/\{platform\}\/(dom|view)$/,
+      'dom/native/memory/$1',
+    ),
+    fromFile,
+  )
+const routed = compile(
+  { file: routeEntry, text: ROUTES },
+  { resolve: memoryResolve, env: 'node', roll: true } as never,
+)
+ok('a route table whose load raises builds', routed.ok, messages(routed))
+ok(
+  'and its route raises nothing',
+  routed.ok && halts(routed, 'route').length === 0,
+  JSON.stringify(halts(routed, 'route')),
+)
+
+if (routed.ok) {
+  const file = join(routeDir, 'app.ts')
+  writeFileSync(
+    file,
+    `${nativePrelude(routed.program, 'node', readRuntime, routed.typescript)}\n${routed.typescript}`,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => string
+  }
+  let answered: string
+
+  try {
+    answered = mod.run()
+  } catch (error) {
+    answered = `raised ${(error as { form?: string }).form ?? String(error)}`
+  }
+  ok(
+    'and the raise answers 500, while a page that draws still answers nothing to send',
+    answered === '500 internal error|none',
+    answered,
+  )
 }
 
 console.log(`\nslot-raise: ${pass} pass, ${fail} fail`)

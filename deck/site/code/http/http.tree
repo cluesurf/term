@@ -535,19 +535,23 @@ task handle-request
           read found/value/params
           read segments
           make hash
-      # a handler's raise has no caller above the transport to go to, so it is answered here, as a 500
+      # a handler's raise has no caller above the transport to go to, so it is answered here, as a 500. The answer
+      # is held in a local and sent after the guard (a guard whose body and handler each send back does not build on
+      # Rust, term-self-host-001-0498)
+      save answered
+        make response
+          bind status, code 500
+          bind body, text <internal error>
       fork
         mark unsafe
-        send back
+        save answered
           call found/value/handle
             read request
             read params
       halt take
         take problem
-        send back
-          make response
-            bind status, code 500
-            bind body, text <internal error>
+        save skip, code 0
+      send back, read answered
     case none
       send back
         make response

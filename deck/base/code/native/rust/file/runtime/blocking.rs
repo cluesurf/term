@@ -6,7 +6,30 @@
 // Reached only through the public file/blocking API, which has already ruled out a missing path.
 mod blocking {
     use super::{EntryRaw, StatRaw};
-    use std::os::unix::fs::MetadataExt;
+
+    // milliseconds from the epoch with the fraction kept, signed: on unix the same double `mtime * 1000 +
+    // mtime_nsec / 1e6` makes, and read through `SystemTime` so it is one call on every system
+    fn moment(time: std::io::Result<std::time::SystemTime>) -> f64 {
+        let at = match time {
+            Ok(at) => at,
+            Err(_) => return 0.0,
+        };
+
+        // before the epoch, unix keeps seconds floored and nanoseconds forward of them: -1.5 s is -2 and 5e8
+        let (seconds, nanoseconds) = match at.duration_since(std::time::UNIX_EPOCH) {
+            Ok(since) => (since.as_secs() as i64, since.subsec_nanos() as i64),
+            Err(before) => {
+                let back = before.duration();
+
+                match back.subsec_nanos() {
+                    0 => (-(back.as_secs() as i64), 0),
+                    nanos => (-(back.as_secs() as i64) - 1, 1_000_000_000 - nanos as i64),
+                }
+            }
+        };
+
+        seconds as f64 * 1000.0 + nanoseconds as f64 / 1e6
+    }
 
     pub fn read_path(path: String) -> String {
         match std::fs::read(&path) {
@@ -31,7 +54,7 @@ mod blocking {
                     "other".to_string()
                 },
                 size: meta.len() as i64,
-                changed: meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6,
+                changed: moment(meta.modified()),
             },
             Err(_) => StatRaw {
                 kind: "other".to_string(),

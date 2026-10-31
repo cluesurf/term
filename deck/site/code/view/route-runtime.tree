@@ -12,6 +12,7 @@
 #   read-route-path, read-route-method, is-page-method, read-route-params, answer-route, answer-nothing,
 #   refuse-method                       a route's methods: GET renders, a `task <method>` answers, any other is 405
 #                                       (./route-answer, term-site-framework-0006)
+#   answer-failure                      a raise in the dispatcher, answered as a 500 (decision 095 rule 7)
 #
 # Re-exported with `bear`, so the lowering's names resolve in the module that holds the routes.
 

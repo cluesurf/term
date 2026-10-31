@@ -31,6 +31,9 @@ task boot
       mark async
       take message, like text
       like text
+      # the reply is held in a local and sent after the guard: a guard whose body and handler each send back does not
+      # build on Rust (E0308, term-self-host-001-0498)
+      save reply, text <\{"id":"","exception":"failure"\}>
       fork
         mark unsafe
         save reply
@@ -40,10 +43,10 @@ task boot
           read made
           text <smoke>
           text <after-reply>
-        send back, read reply
       halt take
         take problem
-        send back, text <\{"id":"","exception":"failure"\}>
+        save reply, text <\{"id":"","exception":"failure"\}>
+      send back, read reply
   call load-bundle
     read made
     read bundle

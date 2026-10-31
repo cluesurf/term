@@ -14,9 +14,17 @@
 #   answer-route         a handler's response, as the dispatcher's answer
 #   answer-nothing       no answer: the view was drawn into the host
 #   refuse-method        405, with the methods the route serves in `allow`
+#   answer-failure       500, for a raise in the dispatcher, written to the log (decision 095 rule 7 of
+#                        note/project/term/self-host/change/001-finish-self-host)
 
 load @term/base/maybe
   find maybe
+
+load @term/base/exception
+  find exception
+
+load @term/base/log
+  find error
 
 load @term/base/list
   find list
@@ -129,6 +137,26 @@ task answer-route
 task answer-nothing
   like maybe, like response
   send back, make none
+
+# the lowered dispatcher guards its whole body, and a raise there answers this: a 500 with the body `handle-request`
+# answers one with (../http/http), the exception written to the log, since the browser starts `route` by a statement
+# tick and drops its answer. A line that cannot be logged is dropped
+task answer-failure
+  take problem, like exception
+  like maybe, like response
+  fork
+    mark unsafe
+    call error
+      text <route: {problem/form}: {problem/note}>
+  halt take
+    take unlogged
+    save skip, code 0
+  send back
+    make some
+      bind value
+        make response
+          bind status, code 500
+          bind body, text <internal error>
 
 task refuse-method
   take allow, like text

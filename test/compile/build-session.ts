@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import {
   buildSession,
   compileProjectSeparate,
+  sessionFace,
   unitSlug,
 } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
@@ -74,6 +75,8 @@ const unitText = (): string =>
 const otherShim = join(root, 'host', 'code', 'other.ts')
 
 const session = buildSession(root)
+// the graph's memos, by identity (decision 094: the session is build-graph.tree's)
+const walked = sessionFace(session).walked
 const cache = projectCache(root)
 
 const one = compileProjectSeparate(root, cache, 'node', session)
@@ -85,7 +88,7 @@ ok(
   one.warnings.join(' | '),
 )
 
-const walkedBefore = new Map(session.walked)
+const walkedBefore = new Map(walked)
 
 // a different length, so the edit moves the file's size as well as its time. The unreached entry's artifact is
 // marked, so a rebuild of it would show: a build writes it back, a replay leaves it
@@ -105,12 +108,12 @@ ok(
 )
 ok(
   'the edited module was walked again',
-  session.walked.get(helper) !== walkedBefore.get(helper),
+  walked.get(helper) !== walkedBefore.get(helper),
 )
 
 const kept = [...walkedBefore].filter(
   ([file, walk]) =>
-    file.includes('/deck/base/') && session.walked.get(file) === walk,
+    file.includes('/deck/base/') && walked.get(file) === walk,
 )
 const stdlib = [...walkedBefore.keys()].filter(file =>
   file.includes('/deck/base/'),

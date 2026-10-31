@@ -19,6 +19,7 @@ import {
   buildSession,
   findTreeFiles,
   isWholeFile,
+  sessionFace,
   unitSlug,
 } from '@term/call/code/make'
 import type { BuildProblem } from '@term/call/code/make'
@@ -133,7 +134,9 @@ function unitRolls(
     f => !f.startsWith(link),
   )
 
-  const session = buildSession(root)
+  // one build graph for this pass (decision 094), read through its face: the pass is the session's only build, so it
+  // neither turns nor closes it
+  const session = sessionFace(buildSession(root))
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
   // the role and lean readers, the same ones `term make` compiles with: a lean grammar read long-form reports every
@@ -141,8 +144,6 @@ function unitRolls(
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
   const rolls = new Map<string, Roll>()
-
-  session.turn(files)
 
   for (const file of files) {
     const unit = buildable(
@@ -194,8 +195,6 @@ function unitRolls(
       rolls.set(label, roll)
     }
   }
-
-  session.close()
 
   return rolls
 }

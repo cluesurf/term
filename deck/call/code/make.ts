@@ -42,6 +42,16 @@ import {
 import { projectDeckOf } from '@term/call/code/deck-of'
 import type { DeckOf, Roll } from '@term/make/code/compile/roll'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
+// the build graph and its one entry (work/build/build-graph.tree, decision 094): compileProjectSeparate is a face over it
+import {
+  buildRequest,
+  graphFace,
+  makeBuildGraph,
+  projectAsk,
+  projectBuiltOf,
+} from '@term/call/code/work/build/build-graph'
+import type { BuildGraph } from '@term/call/code/work/build/build-graph'
+import { makeExplainStore } from '@term/call/code/work/build/explain-store'
 import { parse } from '@term/make/code/parser/tree'
 import {
   compileFeedMine,
@@ -405,28 +415,23 @@ function isWithin(child: string, parent: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
 }
 
-// What a separate build learns that the next one may keep (`compileProjectSeparate`): the unit answers, each module's
-// walk, each load's answer, each module's parse, and each entry's outcome. A watch keeps one for its life
-// (note/project/term/incremental-best-in-class.md, steps 2 and 3). A module's walk and parse are checked against its text
-// and a load's answer against its file's stamp, so an edit is seen wherever it lands. What a stamp cannot see is a
-// file appearing where a load found nothing, or a manifest or role file changing how every module is read, so either
-// of those starts the session over
-export type BuildSession = {
+// What a separate build learns that the next one may keep (`compileProjectSeparate`): THE BUILD GRAPH, build-graph.tree's
+// record (decision 077 section 3, decision 094). Its session holds the unit answers, each module's walk, each load's
+// answer, each module's parse, each entry's outcome and each unit's roll, and a watch keeps one graph for its life. This
+// type was the TypeScript session until 0412, whose body is now the graph's
+export type BuildSession = BuildGraph
+
+// what a parallel pass and the compiler read of a graph: its session's resolver as a function, and its memos by identity
+// (build-graph.tree `graph-face`)
+export type SessionFace = {
   resolve: Resolver
   parsed: ParseMemo
   units: UnitMemo
   walked: WalkMemo
-  // what each entry built to, the last time it built
-  entries: Map<string, EntryOutcome>
-  // each unit's roll of its own definitions, by the unit's label, as the entries built this session last carried it.
-  // A replayed entry carries none, so the roll pass reads them here (call/code/roll.ts `projectRoll`)
-  rolls: Map<string, Roll>
-  // starts a build of `files` and answers which files moved since the last one, of every module that build walked.
-  // `undefined` when nothing may be replayed: the session's first build, or one that started it over
-  turn: (files: string[]) => string[] | undefined
-  // ends a build: the stamp of every module it walked, which the next build's `turn` compares against
-  close: () => void
 }
+
+export const sessionFace = (session: BuildSession): SessionFace =>
+  graphFace(session) as SessionFace
 
 // an entry's build, as much of it as the next build needs to replay it: its own problems, its open claims, its
 // obligations, and how many units it reached. Its artifacts are already on disk, written when it was built, and their
@@ -440,70 +445,16 @@ export type EntryOutcome = {
   artifacts: string[]
 }
 
-export function buildSession(root: string): BuildSession {
-  let kept = keptResolver(projectResolver(root))
+// A new graph for the project (build-graph.tree `make-build-graph`, the one maker of a unit memo). `units` hands it a
+// memo to share, as task/term/edit-replay.ts's clean side shares the standard library's units across its clean builds
+export function buildSession(root: string, units?: UnitMemo): BuildSession {
+  const graph = makeBuildGraph(root)
 
-  const walked: WalkMemo = new Map()
-  const entries = new Map<string, EntryOutcome>()
-  const rolls = new Map<string, Roll>()
-  // each walked module's stamp as of the last build
-  const stamps = new Map<string, string>()
-  // the files that say how every module is read, rather than being one
-  const settings = [
-    'deck.tree',
-    'lock.tree',
-    'role.tree',
-    'base/role.tree',
-  ].map(name => path.join(root, name))
-
-  let known: string | undefined
-
-  return {
-    resolve: (importPath, fromFile, how) =>
-      kept.resolve(importPath, fromFile, how),
-    parsed: makeParseMemo(),
-    units: new Map(),
-    walked,
-    entries,
-    rolls,
-    turn: files => {
-      kept.turn()
-
-      const listed = files.join('\n')
-      const moved = [...stamps]
-        .filter(([file, stamp]) => kept.stamp(file) !== stamp)
-        .map(([file]) => file)
-
-      if (
-        listed === known &&
-        !moved.some(file => settings.includes(file))
-      ) {
-        return moved
-      }
-
-      // the session's first build: nothing it holds can be stale yet (a parallel pass may have walked for it already),
-      // but no entry has an outcome to replay
-      if (known === undefined) {
-        known = listed
-
-        return undefined
-      }
-
-      known = listed
-      kept = keptResolver(projectResolver(root))
-      walked.clear()
-      entries.clear()
-      rolls.clear()
-      stamps.clear()
-
-      return undefined
-    },
-    close: () => {
-      for (const file of [...walked.keys(), ...settings]) {
-        stamps.set(file, kept.stamp(file))
-      }
-    },
+  if (units !== undefined) {
+    ;(graph.session as { units: unknown }).units = units
   }
+
+  return graph
 }
 
 // What `term make --explain` keeps (note/project/term/incremental-best-in-class.md, step 6): the inputs each unit was last
@@ -1305,14 +1256,14 @@ export function compileProjectSeparate(
   root: string,
   cache: CompileCache = projectCache(root),
   platform = 'node',
-  // what one build learns and the next may keep: an answer per unit, a walk per module, an answer per load. A batch
-  // build makes its own; a watch keeps one across rebuilds (`watchProject`), so an edit re-walks only the module it
-  // changed and asks the filesystem nothing it asked before, until a file appears or disappears
+  // what one build learns and the next may keep: the build graph. A batch build makes its own; a watch keeps one
+  // across rebuilds (`watchProject`), so an edit re-walks only the module it changed and asks the filesystem nothing it
+  // asked before, until a file appears or disappears
   session: BuildSession = buildSession(root),
   // each entry's answer, built already by a parallel pass over the units (build-separate-parallel.ts)
   precomputed?: Map<string, SeparateResult>,
-  // why each unit built was built (`term make --explain`, `explainStore`)
-  explain?: UnitExplain,
+  // why each unit built was built (`term make --explain`): build-graph.tree's explain store (explain-store.tree)
+  explain?: unknown,
 ): {
   compiled: number
   written: number
@@ -1330,313 +1281,20 @@ export function compileProjectSeparate(
   // and each unit's roll of its own definitions, which the project's roll is assembled from
   rolls: Map<string, Roll>
 } {
-  const files = findTreeFiles(root, [], platform)
-  const { resolve, parsed, units, walked } = session
-  // the entries this build must build again: those whose closure holds a file that moved since the session's last
-  // build (compile/reach.tree). The rest replay what they built to then. Every entry builds when the session cannot
-  // say what moved
-  const moved = session.turn(files)
-  const stale =
-    moved === undefined
-      ? undefined
-      : new Set(
-          staleEntries(
-            new Map(
-              [...walked].map(([file, one]) => [file, one.edges]),
-            ),
-            files,
-            moved,
-          ),
-        )
-
-  const deckOf = projectDeckOf()
-  const roleOf = projectRoleOf(root)
-  const leanOf = projectLeanOf(root)
-  const problems: BuildProblem[] = []
-  const faults: string[] = []
-  const warnings: string[] = []
-  const open = new Set<string>()
-  const obligations: Owed = { total: 0, proven: 0 }
-
-  const slug = (file: string): string => unitSlug(root, file, deckOf)
-
-  let compiled = 0
-  let written = 0
-  let failed = 0
-  let built = 0
-  let reused = 0
-
-  const errors: string[] = []
-  // each built program entry's closure key, which the roll is cached by (`projectRoll`)
-  const closures = new Map<string, string>()
-
-  // Artifacts are written AS THEY ARE PRODUCED, and this remembers only which paths have been written.
-  //
-  // It used to be a `Map<path, content>` drained after the loop, which held every emitted file's TEXT until the whole
-  // project had compiled: O(files) in emitted bytes, tens of kilobytes each. The map was there to dedupe, because a
-  // shared module's `.unit` artifact is produced by every entry that imports it. A Set of PATHS dedupes exactly as
-  // well at about a hundred bytes an entry, and the write itself is already content-addressed, so nothing changes
-  // except how much is resident. See test/compile/build-memory.ts for the shape this protects.
-  const written_paths = new Set<string>()
-
-  // content-addressed: an unchanged artifact is left untouched, so a rebuild touches only what differs
-  const writeArtifact = (outPath: string, content: string): void => {
-    if (written_paths.has(outPath)) {
-      return
-    }
-
-    written_paths.add(outPath)
-
-    let existing: string | undefined
-
-    try {
-      existing = readFileSync(outPath, 'utf8')
-    } catch {
-      existing = undefined
-    }
-
-    if (existing !== content) {
-      mkdirSync(path.dirname(outPath), { recursive: true })
-      writeFileSync(outPath, content)
-      written++
-    }
+  // THE BUILD IS build-graph.tree `build-request` (decision 094). This face begins the request itself, as the
+  // TypeScript build it replaces did: it takes no snapshot, so a fresh graph builds every entry, and a kept one replays
+  // what its own last build left (the CLI's term make takes the snapshot, build-command.tree)
+  if (session.begun === 0) {
+    session.begun = Date.now()
   }
 
-  // the artifacts of every entry this build replayed: on disk already, and still this build's (`sweepArtifacts`)
-  const replayed_paths = new Set<string>()
-
-  for (const file of files) {
-    const replay =
-      stale?.has(file) === false ? session.entries.get(file) : undefined
-
-    if (replay) {
-      compiled++
-      reused += replay.units
-      closures.set(file, replay.closureKey)
-      replay.artifacts.forEach(one => replayed_paths.add(one))
-      problems.push(...replay.problems)
-      warnings.push(
-        ...replay.problems.map(problem =>
-          renderDiagnostic(problem.diagnostic, problem.text),
-        ),
-      )
-      replay.open.forEach(claim => open.add(claim))
-      addOwed(obligations, replay.obligations)
-      continue
-    }
-
-    session.entries.delete(file)
-
-    // a file of `test` blocks, or a feed grammar, is built as compileProject builds it (`buildable`)
-    const unit = buildable(
-      file,
-      readFileSync(file, 'utf8'),
-      roleOf(file),
-    )
-
-    if ('faults' in unit) {
-      failed++
-
-      for (const fault of unit.faults) {
-        errors.push(`${path.relative(root, file)}: ${fault}`)
-        faults.push(`${path.relative(root, file)}: ${fault}`)
-      }
-
-      continue
-    }
-
-    const { text, generated: grammar } = unit
-    const framed = (diagnostic: Diagnostic): BuildProblem =>
-      diagnostic.file !== file
-        ? { diagnostic, text: undefined }
-        : unit.place(diagnostic)
-
-    // a file that is not a program has no module graph to split: a look stylesheet (CSS), a data file (a JSON
-    // module) and a mill definition (checked, never built). Each goes through compile() exactly as the merged build
-    // sends it, and is written where the merged build writes it
-    const role = roleOf(file)
-
-    if (isWholeFile(file, text, role)) {
-      const one = compile(
-        { file, text },
-        { resolve, cache, parsed, walked, deckOf, roleOf, leanOf },
-      )
-
-      if (!one.ok) {
-        failed++
-
-        for (const problem of one.diagnostics.map(framed)) {
-          errors.push(
-            renderDiagnostic(problem.diagnostic, problem.text),
-          )
-          problems.push(problem)
-        }
-
-        continue
-      }
-
-      compiled++
-
-      if (role === 'mill') {
-        continue
-      }
-
-      const isCss = typeof one.css === 'string'
-      const outPath = path.join(
-        root,
-        'host',
-        path
-          .relative(root, file)
-          .replace(/\.tree$/, isCss ? '.css' : '.ts'),
-      )
-
-      writeArtifact(outPath, isCss ? one.css! : one.typescript)
-
-      // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
-      for (const [extension, table] of [
-        ['.style', one.style],
-        ['.dark.style', one.styleDark],
-      ] as const) {
-        if (isCss && table !== undefined) {
-          writeArtifact(outPath.replace(/\.css$/, extension), table)
-        }
-      }
-
-      continue
-    }
-
-    // a parallel pass may have built it already (build-separate-parallel.ts), with these same options in a worker
-    const result =
-      precomputed?.get(file) ??
-      compileSeparate(
-        { file, text },
-        // roleOf comes along: a unit compiled separately has to be asked the same question about its role as one
-        // compiled through the merged path, or the two disagree about whether a `hook` is a command or a route
-        {
-          resolve,
-          cache,
-          modules: f => `./${slug(f)}`,
-          roleOf,
-          leanOf,
-          deckOf,
-          parsed,
-          units,
-          walked,
-          explain,
-        },
-      )
-
-    if (!result.ok) {
-      failed++
-
-      for (const problem of result.diagnostics.map(framed)) {
-        errors.push(renderDiagnostic(problem.diagnostic, problem.text))
-        problems.push(problem)
-      }
-
-      continue
-    }
-
-    compiled++
-    built += result.built.length
-    reused += result.reused.length
-
-    // only this file's warnings, as compileProject reports them: a grammar's own compile is of the reader generated
-    // from it, whose unused captures are about code nobody wrote
-    const own: BuildProblem[] = []
-
-    for (const warning of result.warnings) {
-      if (
-        warning.file === file &&
-        !(grammar && warning.name === 'unused-binding')
-      ) {
-        const problem = framed(warning)
-        warnings.push(
-          renderDiagnostic(problem.diagnostic, problem.text),
-        )
-        problems.push(problem)
-        own.push(problem)
-      }
-    }
-
-    for (const claim of result.openClaims ?? []) {
-      open.add(claim)
-    }
-
-    addOwed(obligations, result.obligations)
-
-    // the roll of every unit the entry reaches, for the roll pass
-    for (const [label, roll] of result.rolls ?? []) {
-      session.rolls.set(label, roll)
-    }
-
-    const artifacts: string[] = []
-
-    for (const [mfile, emit] of result.modules) {
-      const unitPath = path.join(
-        root,
-        'host',
-        '.unit',
-        `${slug(mfile)}.ts`,
-      )
-
-      artifacts.push(unitPath)
-      writeArtifact(unitPath, emit.code)
-    }
-
-    // the entry shim, written by the worker that built the entry when a parallel pass did (`shim`)
-    const shimPath = path.join(
-      root,
-      'host',
-      path.relative(root, file).replace(/\.tree$/, '.ts'),
-    )
-
-    artifacts.push(shimPath)
-    writeArtifact(
-      shimPath,
-      'shim' in result && typeof result.shim === 'string'
-        ? result.shim
-        : entryShim(root, file, result.exports, slug),
-    )
-
-    session.entries.set(file, {
-      problems: own,
-      open: result.openClaims ?? [],
-      obligations: result.obligations,
-      units: result.built.length + result.reused.length,
-      closureKey: result.closureKey,
-      artifacts,
-    })
-    closures.set(file, result.closureKey)
-  }
-
-  // an app's shadows of face's platform implementations take exactly face's contract, as compileProject holds them
-  for (const finding of appShadowFindings(root, resolve)) {
-    failed++
-
-    const fault = `${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`
-    errors.push(fault)
-    faults.push(fault)
-  }
-
-  sweepArtifacts(root, new Set([...written_paths, ...replayed_paths]))
-  session.close()
-
-  return {
-    compiled,
-    written,
-    failed,
-    errors,
-    warnings,
-    problems,
-    faults,
-    open: [...open].sort(),
-    obligations,
-    built,
-    reused,
-    closures,
-    rolls: liveRolls(session, closures),
-  }
+  return projectBuiltOf(
+    buildRequest(
+      session,
+      projectAsk(platform, precomputed, explain),
+      cache,
+    ),
+  ) as never
 }
 
 // What the last separate build wrote under host/ is recorded beside the project's cache, one path relative to the
@@ -1717,34 +1375,6 @@ function sweepAll(root: string, kept: Set<string>): void {
   }
 }
 
-// the rolls of the units some entry still reaches: the session keeps every unit's roll it was handed, and in a watch an
-// edit that drops an import leaves that unit's roll behind, which no entry builds from any more. Every module's edges
-// are in the session's walk
-function liveRolls(
-  session: BuildSession,
-  closures: Map<string, string>,
-): Map<string, Roll> {
-  const reached = new Set<string>()
-  const stack = [...closures.keys()]
-
-  while (stack.length > 0) {
-    const file = stack.pop()!
-
-    if (reached.has(file)) {
-      continue
-    }
-
-    reached.add(file)
-    stack.push(...(session.walked.get(file)?.edges ?? []))
-  }
-
-  // a unit is labelled by its files, joined (compile/separate.ts)
-  return new Map(
-    [...session.rolls].filter(([label]) =>
-      label.split('+').some(file => reached.has(file)),
-    ),
-  )
-}
 
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
 // Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
@@ -2021,8 +1651,9 @@ export async function callMake(input: {
         let precomputed: Map<string, SeparateResult> | undefined
         let pooled = 0
 
+        // the build graph's explain store (explain-store.tree), which compileProjectSeparate hands to build-request
         const explain = input.explain
-          ? explainStore(input.root)
+          ? makeExplainStore(input.root)
           : undefined
 
         // a big project's units are built across worker threads first, in dependency order, and the build below then
@@ -2036,7 +1667,7 @@ export async function callMake(input: {
             const pool = await compileUnitsParallel(
               input.root,
               findTreeFiles(input.root, [], 'node'),
-              session,
+              sessionFace(session),
             )
 
             precomputed = pool.results
@@ -2234,7 +1865,7 @@ export async function callMake(input: {
             const pool = await compileUnitsParallel(
               input.root,
               findTreeFiles(input.root, [], 'node'),
-              buildSession(input.root),
+              sessionFace(buildSession(input.root)),
             )
 
             rolls = new Map(

@@ -210,6 +210,22 @@ task is-task-member
 
   back and(is-above(raised/length, 5), is-equal(substring(raised, 0, 5), <task >))
 
+# a stub's `lent wait`: given a handle, the task waits during the call (decision 095 rule 3)
+task is-lent-member
+  take raised, like text
+  like boolean
+  mark private
+
+  back is-equal(raised, <lent wait>)
+
+# a stub's `give <form>`: a job the task puts in a handle-bearing parameter it is lent raises it
+task is-give-member
+  take raised, like text
+  like boolean
+  mark private
+
+  back and(is-above(raised/length, 5), is-equal(substring(raised, 0, 5), <give >))
+
 # a stub's `pass <i>`: its parameter `i` passes through (decision 089 rule 4)
 task is-pass-member
   take raised, like text
@@ -250,7 +266,55 @@ task is-job-name
   like boolean
   mark private
 
-  back and(is-above(name/length, 4), is-equal(substring(name, subtract(name/length, 4), name/length), < job>))
+  back or(ends-with-text(name, < job>), is-give-name(name))
+
+# A LENT LIST'S GIVING: the jobs a task puts into a handle-bearing parameter it was lent, which its lender then holds
+# (decision 095 rules 3 and 4). A name with a space is no task's
+task give-name
+  take name, like text
+  like text
+  mark private
+
+  back <{name} give>
+
+task is-give-name
+  take name, like text
+  like boolean
+  mark private
+
+  back ends-with-text(name, < give>)
+
+# the task a stand-in or a giving stands for, for a path the roll shows
+task real-name
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-job-name(name)
+    hold
+      back substring(name, 0, last-index-of(name, < >))
+  back name
+
+task ends-with-text
+  take name, like text
+  take ending, like text
+  like boolean
+  mark private
+
+  back and(is-above(name/length, ending/length), is-equal(substring(name, subtract(name/length, ending/length), name/length), ending))
+
+# whether any argument holds a job's handle (decision 095 rule 1)
+task lends-a-handle
+  take given-args, like list, like expression
+  like boolean
+  mark private
+
+  walk given-args
+    take arg
+    fork test, holds-handle(expression-type(arg))
+      hold
+        back true
+  back false
 
 # whether a call is to `spawn`, whose `work` is a job slot (decision 092 rule 4)
 task is-spawn
@@ -353,6 +417,8 @@ form call-reach
   # set by the raise sets alone: a statement tick is charged to no task there (decision 092 rule 5), while the effect
   # rows still read every call
   link ruled, like boolean
+  # the tasks that wait a handle they are lent: a call lending them one raises the caller's jobs (decision 095 rule 4)
+  link lent-waits, like hash, like text, like boolean
 
 # at a call to `callee`, the argument at its pass-through parameter `at` (by position), and what it raises: an
 # exception's name, `kink <i>` (the caller's own pass-through parameter `i`), or `task <name>` (a task given by name,
@@ -383,6 +449,7 @@ task new-reach
       bind waits, make hash
       bind waited, false
       bind ruled, false
+      bind lent-waits, make hash
 
 # the parameter a call's argument `i` fills: the one its name names, where it was written with one, else its position
 task argument-position
@@ -530,6 +597,10 @@ task called-in-expression
                     push(given-names, one)
                   bind-arguments(reach, name, args, given-names)
           fork test, reach/waits/has(name)
+            hold
+              save reach/waited, true
+          # a call lending a handle to a task that waits during the call (decision 095 rule 4)
+          fork test, and(reach/lent-waits/has(name), lends-a-handle(args))
             hold
               save reach/waited, true
           fork test, reach/known/has(name)
@@ -2098,6 +2169,9 @@ task raise-sets-of
   save reach/param-lists, param-lists
   save reach/waits, waits
   save reach/ruled, true
+  # the handles each task lends, and which of the tasks it lends to wait during the call (decision 095)
+  save lending, lent-facts-of(program, places, waits)
+  save reach/lent-waits, lending/waits
   save state
     make raise-state
       bind exceptions, flags-of(exceptions)
@@ -2130,12 +2204,29 @@ task raise-sets-of
                 link stored
                 save stubbed, true
                 save known-raises, make list
+                save given-jobs, make list
                 walk stored
                   take raised
-                  # `pass <i>` names a pass-through parameter, read by `pass-through-of`, never a raise
-                  fork test, not(is-pass-member(raised))
+                  # `pass <i>` names a pass-through parameter, read by `pass-through-of`, and `lent wait` and
+                  # `give <form>` what the task does with a handle it is lent (`lent-facts-of`), never a raise
+                  fork test, is-give-member(raised)
                     hold
-                      save known-raises, add-text(known-raises, raised)
+                      push(given-jobs, substring(raised, 5, raised/length))
+                    miss
+                      fork test, not(or(is-pass-member(raised), is-lent-member(raised)))
+                        hold
+                          save known-raises, add-text(known-raises, raised)
+                fork test, is-above(given-jobs/length, 0)
+                  hold
+                    save giving, give-name(name)
+                    save raised-by/{giving}, given-jobs
+                    save given-directs, make hash
+                    walk given-jobs
+                      take raised
+                      save given-directs/{raised}, <>
+                    save via/{giving}, given-directs
+                    save no-give-calls, make list
+                    save calls/{giving}, no-give-calls
                 save facts, make list
                 sift stub-facts
                   case some
@@ -2196,7 +2287,12 @@ task raise-sets-of
         # rules 1 and 2): a guard around the start subtracts nothing, a guard around the wait does
         save state/jobs, <>
         save works, spawned-works(body)
-        fork test, is-above(works/length, 0)
+        # and the jobs the tasks it lends a handle to put in it (decision 095 rule 4)
+        save lent-to, make list
+        fork test, lending/lends/has(name)
+          hold
+            save lent-to, lending/lends/get(name)
+        fork test, or(is-above(works/length, 0), is-above(lent-to/length, 0))
           hold
             save stand-in, job-name(name)
             walk works
@@ -2220,6 +2316,9 @@ task raise-sets-of
               fork test, and(not(has-text(own-params, callee)), not(has-text(bound, callee)))
                 hold
                   push(job-callees, callee)
+            walk lent-to
+              take borrower
+              save job-callees, add-text(job-callees, give-name(borrower))
             save raised-by/{stand-in}, state/direct
             save job-directs, make hash
             walk state/direct
@@ -2238,6 +2337,16 @@ task raise-sets-of
         scan(state, body)
         save direct, state/direct
         save bound-calls/{name}, state/reach/bindings
+        # what it puts into a handle-bearing parameter it is lent: its own jobs, where it fills one, and what the tasks
+        # it lends that parameter to put in it (decision 095 rule 3)
+        fork test, lending/gives/has(name)
+          hold
+            save giving, give-name(name)
+            save no-give, make list
+            save raised-by/{giving}, no-give
+            save no-give-via, make hash
+            save via/{giving}, no-give-via
+            save calls/{giving}, lending/gives/get(name)
         # a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
         # the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the
         # shim author's contract, added to the set rather than checked against it (03-exception.md, natives)
@@ -2355,17 +2464,17 @@ task raise-sets-of
                   save through-job, <>
                   fork test, theirs/has(raised)
                     hold
-                      save through-job, theirs/get(raised)
+                      save through-job, real-name(theirs/get(raised))
                   save from/{raised}, through-job
             save folded, make list
             walk calls/get(name)
               take callee
-              fork test, is-unequal(callee, stand-in)
+              fork test, not(is-job-name(callee))
                 hold
                   save folded, add-text(folded, callee)
             walk calls/get(stand-in)
               take callee
-              fork test, is-unequal(callee, stand-in)
+              fork test, not(is-job-name(callee))
                 hold
                   save folded, add-text(folded, callee)
             save calls/{name}, folded
@@ -2411,6 +2520,18 @@ task raise-sets-of
     walk members
       take one
       push(carried, one)
+    # what it does with a handle it is lent (decision 095 rule 3): it waits during the call, and the jobs it gives
+    fork test, lending/waits/has(name)
+      hold
+        push(carried, <lent wait>)
+    save giving, give-name(name)
+    fork test, raised-by/has(giving)
+      hold
+        walk raised-by/get(giving)
+          take raised
+          fork test, not(is-kink(raised))
+            hold
+              push(carried, <give {raised}>)
     fork test, is-above(carried/length, 0)
       hold
         save through/{name}, carried
@@ -3091,6 +3212,7 @@ task check-slot-raises
         save nothing, 0
   save places, function-places(program)
   save table, pass-through-of(program, places)
+  save lending, lent-facts-of(program, places, handle-waits-of(program))
   save gather
     make slot-gather
       bind program, program
@@ -3121,7 +3243,9 @@ task check-slot-raises
             turn next
         # `halt kink` on a slot is a checked claim on a task with a body (decision 089 rule 3)
         kink-refusals(diagnostics, table, one, file)
-        fork test, and(is-above(spawned-works(body)/length, 0), not(is-task-module(file)))
+        # a task that makes a job, is lent a handle or lends one (decisions 092 rule 3 and 095)
+        save handled, or(is-above(spawned-works(body)/length, 0), or(lending/lent/has(name), lending/lends/has(name)))
+        fork test, and(handled, not(is-task-module(file)))
           hold
             push(makers, one)
         save own-sets, make hash
@@ -3204,16 +3328,48 @@ task check-slot-raises
     save kind, make raise-escapes-slot
     push(diagnostics, diagnose(kind, input))
   # A HANDLE OF A JOB THAT CAN RAISE STAYS IN THE TASK THAT MADE IT (decision 092 rule 3)
+  # and a handle a task is lent is held as its own for the call: kept, it is refused the same way (decision 095 rule 2)
   walk makers
     take one
     sift one
       case function
+        save made, make list
         fork test, sets/jobs/has(name)
           hold
-            handle-refusals(diagnostics, one, sets/jobs/get(name), file)
+            save made, sets/jobs/get(name)
+        save lent-params, make list
+        fork test, lending/lent/has(name)
+          hold
+            save lent-params, lending/lent/get(name)
+        fork test, or(is-above(made/length, 0), is-above(lent-params/length, 0))
+          hold
+            handle-refusals(diagnostics, one, made, lent-params, program, places, file)
       miss
         save nothing, 0
   back diagnostics
+
+# `wait` and `wait-within` of @term/base/task's `handle`, by the names the binding gave them
+task handle-waits-of
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            fork test, and(is-equal(written-name(owner/form), <handle>), or(is-equal(owner/name, <wait>), is-equal(owner/name, <wait-within>)))
+              hold
+                save out/{name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
 
 # @term/base's task module implements the handle, and is held to its contract by its own tests (decision 092 rule 6)
 task is-task-module
@@ -3274,30 +3430,43 @@ form handle-gather
   link task-name, like text
   link raised, like list, like text
   link file, like text
-  link waits, like hash, like text, like boolean
   link locals, like hash, like text, like boolean
+  # the task's lent parameters: a value read from one is refused wherever it is kept, whatever the task's own jobs
+  link lent, like hash, like text, like boolean
+  link program, like list, like statement
+  link places, like hash, like text, like number
   link seen, like hash, like text, like boolean
 
-# every place in `one` a handle of its jobs leaves it: given back, bound into a record, handed to a task other than a
-# handle's own `wait`, `wait-within`, `cancel` and `alive` or a method of one of its own lists and hashes, or read in a
-# closure
+# every place in `one` a handle of its jobs, or one it is lent, leaves it: given back, bound into a record, handed to a
+# host module, a bodyless task or a backend's own task, or read in a closure. A handle's own `wait`, `wait-within`,
+# `cancel` and `alive`, a method of the task's own or lent lists and hashes, and a call to a task with a Term body
+# (a lend, decision 095 rule 1) keep it
 task handle-refusals
   take diagnostics, like list, like diagnostic
   take one, like statement
   take raised, like list, like text
+  take lent-params, like list, like text
+  take program, like list, like statement
+  take places, like hash, like text, like number
   take file, like text
   mark private
 
   sift one
     case function
+      save locals, flags-of(bound-names(body))
+      walk lent-params
+        take lent-param
+        save locals/{lent-param}, true
       save gather
         make handle-gather
           bind diagnostics, diagnostics
           bind task-name, written-name(name)
           bind raised, raised
           bind file, file
-          bind waits, make hash
-          bind locals, flags-of(bound-names(body))
+          bind locals, locals
+          bind lent, flags-of(lent-params)
+          bind program, program
+          bind places, places
           bind seen, make hash
       walk block-handles(body)
         take handle
@@ -3337,13 +3506,32 @@ task refuse-handle
     hold
       back
   save gather/seen/{key}, true
+  save message, <a handle of a job "{gather/task-name}" makes leaves it here, and the job can raise {join(gather/raised, <, >)}, which is raised where the task that made it waits it>
+  fork test, is-lent-rooted(gather, node)
+    hold
+      save message, <a handle "{gather/task-name}" is lent leaves it here: a lent handle is held for the call, and only the task that made it may keep it>
   save input
     make diagnostic-input
       bind file, gather/file
       bind span, at
-      bind message, make(some, <a handle of a job "{gather/task-name}" makes leaves it here, and the job can raise {join(gather/raised, <, >)}, which is raised where the task that made it waits it>)
+      bind message, make(some, message)
   save kind, make handle-escapes
   push(gather/diagnostics, diagnose(kind, input))
+
+# whether a value is read from one of the task's lent parameters: the parameter, or an element or field of it
+task is-lent-rooted
+  take gather, like handle-gather
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back gather/lent/has(name)
+    case member
+      back is-lent-rooted(gather, target)
+    miss
+      back false
 
 # a handle-typed value under `handle`, `escaping` when where it stands takes it out of the task
 task handle-escapes-in
@@ -3391,8 +3579,10 @@ task handle-escapes-in
       link held
       fork test, and(escaping, holds-handle(expression-type(held)))
         hold
-          refuse-handle(gather, held)
-          back
+          fork test, or(is-above(gather/raised/length, 0), is-lent-rooted(gather, held))
+            hold
+              refuse-handle(gather, held)
+              back
       sift held
         case record
           walk fields
@@ -3417,8 +3607,14 @@ task handle-escapes-in
               fork test, is-handle-method(name)
                 hold
                   save kept-in, false
+              # a task with a Term body is lent the handle for the call (decision 095 rule 1)
+              fork test, and(gather/places/has(name), not(gather/locals/has(name)))
+                hold
+                  fork test, is-lendable(get(gather/program, gather/places/get(name)))
+                    hold
+                      save kept-in, false
             case member
-              # a method of the task's own list or hash: `lanes/push(work)`, `lanes/set(i, work)`
+              # a method of the task's own list or hash, or of one it is lent: `lanes/push(work)`, `lanes/set(i, work)`
               sift target
                 case variable
                   link owner
@@ -4140,3 +4336,220 @@ task spawned-in
   walk node-children(handle, skip)
     take child
     spawned-in(gather, child)
+
+# ---- a handle lent by a call (decision 095) ----
+
+# what each task does with the handles it is lent and lends: its lent parameters (a handle, a list or hash of them, of a
+# task with a Term body), whether it waits during a call that lends it one (`lent-wait`, to a fixed point), the
+# givings its own giving reads (its stand-in where it fills a lent parameter, and the giving of each task it lends one
+# of its lent parameters to), and every task it lends a handle to
+form lent-table
+  link lent, like hash, like text, like list, like text
+  link waits, like hash, like text, like boolean
+  link gives, like hash, like text, like list, like text
+  link lends, like hash, like text, like list, like text
+
+form lent-gather
+  mark shared
+  link program, like list, like statement
+  link places, like hash, like text, like number
+  link lent, like hash, like text, like boolean
+  link shadowed, like hash, like text, like boolean
+  link handle-waits, like hash, like text, like boolean
+  link waits-any, like boolean
+  link fills, like boolean
+  link borrowers, like list, like text
+  link forwards, like list, like text
+
+# a task a handle may be lent to: one with a Term body, here or in another unit (a stub), never a task written in a
+# backend's own folder, a bodyless one or a host module's (decision 095 rule 1)
+task is-lendable
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, read(stub)
+        hold
+          sift stub-raises
+            case some
+              back true
+            case none
+              back false
+      back and(is-above(body/length, 0), not(is-native-file(one)))
+    miss
+      back false
+
+task lent-facts-of
+  take program, like list, like statement
+  take places, like hash, like text, like number
+  take handle-waits, like hash, like text, like boolean
+  like lent-table
+
+  save lent, make hash
+  save waits, make hash
+  save gives, make hash
+  save lends, make hash
+  save waits-any, make hash
+  save forwards, make hash
+  walk places/keys()
+    take name
+    save one, get(program, places/get(name))
+    sift one
+      case function
+        fork test, read(stub)
+          hold
+            sift stub-raises
+              case some
+                link stored
+                fork test, has-text(stored, <lent wait>)
+                  hold
+                    save waits/{name}, true
+              case none
+                save nothing, 0
+            turn next
+        fork test, or(is-equal(body/length, 0), is-native-file(one))
+          hold
+            turn next
+        save own, make list
+        walk params
+          take param
+          fork test, holds-handle(param/type)
+            hold
+              push(own, param/name)
+        save shadowed, flags-of(bound-names(body))
+        walk param-names(one)
+          take param-name
+          save shadowed/{param-name}, true
+        save gather
+          make lent-gather
+            bind program, program
+            bind places, places
+            bind lent, flags-of(own)
+            bind shadowed, shadowed
+            bind handle-waits, handle-waits
+            bind waits-any, false
+            bind fills, false
+            bind borrowers, make list
+            bind forwards, make list
+        walk block-handles(body)
+          take handle
+          lent-in(gather, handle)
+        fork test, is-above(gather/borrowers/length, 0)
+          hold
+            save lends/{name}, gather/borrowers
+        fork test, is-above(own/length, 0)
+          hold
+            save lent/{name}, own
+            save waits-any/{name}, gather/waits-any
+            save forwards/{name}, gather/forwards
+            save giving, make list
+            fork test, gather/fills
+              hold
+                push(giving, job-name(name))
+            walk gather/forwards
+              take borrower
+              save giving, add-text(giving, give-name(borrower))
+            fork test, is-above(giving/length, 0)
+              hold
+                save gives/{name}, giving
+      miss
+        save nothing, 0
+  # `lent-wait`: a task with a lent parameter that waits a handle, or lends one of its lent parameters to a task that
+  # does, to a fixed point (it only grows)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk lent/keys()
+        take name
+        fork test, waits/has(name)
+          hold
+            turn next
+        save waiting, waits-any/get(name)
+        walk forwards/get(name)
+          take borrower
+          fork test, waits/has(borrower)
+            hold
+              save waiting, true
+        fork test, waiting
+          hold
+            save waits/{name}, true
+            save changed, true
+  back
+    make lent-table
+      bind lent, lent
+      bind waits, waits
+      bind gives, gives
+      bind lends, lends
+
+# the waits, fills and lends under `handle`
+task lent-in
+  take gather, like lent-gather
+  take handle, like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link held
+      sift held
+        case call
+          save given-args, args
+          sift callee
+            case variable
+              fork test, or(gather/handle-waits/has(name), is-equal(written-name(name), <gather>))
+                hold
+                  save gather/waits-any, true
+              fork test, and(gather/places/has(name), not(gather/shadowed/has(name)))
+                hold
+                  fork test, and(is-lendable(get(gather/program, gather/places/get(name))), lends-a-handle(given-args))
+                    hold
+                      save gather/borrowers, add-text(gather/borrowers, name)
+                      walk given-args
+                        take arg
+                        fork test, is-lent-variable(gather, arg)
+                          hold
+                            save gather/forwards, add-text(gather/forwards, name)
+            case member
+              fork test, and(or(is-equal(name, <push>), is-equal(name, <set>)), is-lent-variable(gather, target))
+                hold
+                  save gather/fills, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case statement-handle
+      link held
+      sift held
+        case assign
+          sift target
+            case member
+              fork test, is-lent-variable(gather, target)
+                hold
+                  save gather/fills, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    lent-in(gather, child)
+
+task is-lent-variable
+  take gather, like lent-gather
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back gather/lent/has(name)
+    miss
+      back false
