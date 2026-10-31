@@ -392,6 +392,9 @@ export function compileSeparate(
     explain?: UnitExplain
     // hand back what the editor reads (`program`, `surface`): the language server
     keepProgram?: boolean
+    // the pool's job for a cycle another unit imports: its import answer (`<head>#unit`) is built here too, by its one
+    // owner (decision 088 of term/self-host/change/001-finish-self-host, separate-units.tree)
+    answerAsImport?: boolean
   },
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
@@ -547,6 +550,7 @@ export function compileSeparate(
       true
     ),
     keepProgram: options.keepProgram === true,
+    answerAsImport: options.answerAsImport === true,
     verifyHit: verify.hit,
     verifyTwice: verify.twice,
     ledger: verify.ledger,

@@ -54,7 +54,15 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // The port to Term (item 0107) changes no key and no stored byte, so it keeps '11'.
 // '12': every stored key and every part composed into one is `hash-key`, SHA-256 cut to 32 hex digits, not cyrb53
 // (decision 080, item term-self-host-001-0408). No stored answer changes, only its key, so old entries miss once.
-export const CACHE_EPOCH = '12'
+// '13': a cycle unit's files are in sorted order, not the order the walk entered it (decision 090, item
+// term-self-host-001-0477), so a cycle's unit key, its import key and the file its names are kept in change.
+// '14': a reference to a form or mask two or more files define, which no import or several imports reach, binds the
+// last definer by file name, not the one the walk merged last (decision 091, item term-self-host-001-0469), so an
+// answer stored under the old binding can differ from the new one under the same key.
+// '15': a form group's files sort by their portable names (each deck root as its token), not their absolute paths (item
+// term-self-host-001-0484, decision 091 section 3), so a split spelling and an unimported binding across two deck roots
+// can move under the same key.
+export const CACHE_EPOCH = '15'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

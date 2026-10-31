@@ -24,7 +24,14 @@ import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import type { RoleOf } from '@term/call/code/role-of'
 import type { DeckOf } from '@term/make/code/compile/roll'
 
-type Job = { type: 'job'; root: string; file: string; entry: boolean }
+// `asImport`: the head of a cycle another unit imports, whose job also builds the cycle's import answer (decision 088)
+type Job = {
+  type: 'job'
+  root: string
+  file: string
+  entry: boolean
+  asImport?: boolean
+}
 
 // what one worker holds in memory: milled modules, and unit answers. Enough for @term/bind's whole closure, about
 // 3,700 modules: at 512 every job read the standard library's mills back from disk, and eight workers spent 2,500 s of
@@ -111,6 +118,7 @@ parentPort?.on('message', (job: Job) => {
         parsed: session!.parsed,
         units: session!.units,
         walked: session!.walked,
+        answerAsImport: job.asImport === true,
       },
     )
 

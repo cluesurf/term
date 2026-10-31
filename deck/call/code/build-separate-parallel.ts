@@ -136,6 +136,8 @@ export async function compileUnitsParallel(
   }
 
   const graph = new Map<string, string[]>()
+  // the units another unit's deps name: a cycle among them is asked as an import, by its importers
+  const imported = new Set<string>()
 
   for (const unit of units) {
     const deps = new Set<string>()
@@ -146,6 +148,7 @@ export async function compileUnitsParallel(
 
         if (dep !== unit[0]) {
           deps.add(dep)
+          imported.add(dep)
         }
       }
     }
@@ -158,6 +161,15 @@ export async function compileUnitsParallel(
       }
     }
   }
+
+  // EVERY KEY HAS ONE OWNING JOB (decision 088 of term/self-host/change/001-finish-self-host): a cycle's import answer
+  // (`<head>#unit`) is built by its head's job, which every importer waits on already, so importers started together
+  // read it back. A cycle no unit imports is never asked as an import, so its head is not flagged
+  const asImport = new Set(
+    units
+      .filter(unit => unit.length > 1 && imported.has(unit[0]!))
+      .map(unit => unit[0]!),
+  )
 
   // at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more, and
   // fourteen of them held more than the machine had
@@ -218,6 +230,7 @@ export async function compileUnitsParallel(
           root,
           file,
           entry: entries.has(file),
+          asImport: asImport.has(file),
         })
       }
 

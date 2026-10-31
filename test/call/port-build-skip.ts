@@ -96,6 +96,10 @@ function clone(): void {
   for (const file of [
     'task/port-build.ts',
     'task/port-trace.ts',
+    // what port-build.ts imports beside it since stage0 (decision 036) and the shelved list
+    'task/stage0.ts',
+    'task/port-shelved.ts',
+    'task/stage0.json',
     'package.json',
   ]) {
     cpSync(join(TERM, file), join(copy, file))

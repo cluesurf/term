@@ -79,6 +79,9 @@ load ./route-lower
 load ../check/scope
   find bind-forms-by-import
 
+load ./unit-graph
+  find deck-root
+
 load ../check/mask-defaults
   find fill-mask-defaults
 
@@ -302,6 +305,32 @@ task deck-names
             bind file, one
             bind name, deck/name
         out/push(named)
+      case none
+        turn next
+  back out
+
+# the deck of each file of a program, its root and its name, as the form scope takes them to spell a file portably: the
+# compile's own file and every statement's
+task deck-roots
+  take program, like list, like statement
+  take file, like text
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  like list, like deck-root
+
+  save out, make list
+  walk program-files(program, file)
+    take one
+    sift deck-of(one)
+      case some
+        link deck
+        save known
+          make deck-root
+            bind root, deck/root
+            bind name, deck/name
+        out/push(known)
       case none
         turn next
   back out
@@ -629,7 +658,7 @@ task program-gate
 
   # module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
   # before anything below reads a form by name
-  save form-scope, bind-forms-by-import(run/program, given/scopes, given/naming)
+  save form-scope, bind-forms-by-import(run/program, given/scopes, given/naming, deck-roots(run/program, file, deck-of))
   fork test, is-above(form-scope/diagnostics/length, 0)
     hold
       back refusal(form-scope/diagnostics, no-bound())

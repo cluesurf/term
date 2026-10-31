@@ -191,6 +191,33 @@ rewrite(body => (body.env = `${body.env}\nTERM_OTHER=1`))
 ok('another environment\'s snapshot is refused', !takes())
 settle()
 
+// THE LAUNCH-ONLY VARIABLES (call/code/launch-only.ts, item term-self-host-001-0476): a terminal emulator's own say
+// only how the process was started, so a snapshot written in one terminal pane is taken in another
+function launched<T>(values: Record<string, string | undefined>, run: () => T): T {
+  const was = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]))
+  const put = (from: Record<string, string | undefined>): void => {
+    for (const [name, value] of Object.entries(from)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+  put(values)
+  try {
+    return run()
+  } finally {
+    put(was)
+  }
+}
+
+launched({ TERM_SESSION_ID: 'w0t0p0:pane-one', TERM_PROGRAM: 'iTerm.app', TERM_PROGRAM_VERSION: '3.5.0', TERM_FEATURES: 'T3LrMSc7' }, () => settle())
+ok(
+  'a snapshot written under one TERM_SESSION_ID is taken under another (and another terminal program)',
+  launched({ TERM_SESSION_ID: 'w1t2p0:pane-two', TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '455', TERM_FEATURES: undefined }, () => takes()),
+)
+ok('and with no terminal variables at all', launched({ TERM_SESSION_ID: undefined, TERM_PROGRAM: undefined, TERM_PROGRAM_VERSION: undefined, TERM_FEATURES: undefined }, () => takes()))
+ok('while a Term setting written beside them still refuses it', !launched({ TERM_SESSION_ID: 'w1t2p0:pane-two', TERM_OTHER: '1' }, () => takes()))
+settle()
+
 const folders = Object.keys(JSON.parse(readFileSync(path, 'utf8').slice(HEAD.length + 33)).folders as object)
 ok('it records the folders of the packages it reaches', folders.length > 0, `${folders.length} folders`)
 // a folder whose stamp moved is listed again: the same names keep the snapshot, other names refuse it

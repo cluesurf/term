@@ -2,7 +2,9 @@
 # call/code/separate-worker.ts, term-cli-in-term-0026.
 #
 # Each job is one module compiled as its own entry through `compileSeparate`, which is exactly the answer every other
-# entry reaching that module looks up: a one-file unit is checked as itself whichever entry reached it. The driver sends
+# entry reaching that module looks up: a one-file unit is checked as itself whichever entry reached it. A cycle's
+# importers look up another answer, the cycle as an import (`<head>#unit`), so the head's job, flagged `asImport` when
+# another unit imports the cycle, builds that one too after its own (decision 088). The driver sends
 # a module only once every unit it depends on is built, so its dependencies are answered from the cache the pool shares
 # on disk, and its own answer is there for the modules after it. A project file's answer travels back whole, so the
 # parent writes it without compiling it again; a module from outside the project is built for the cache alone.
@@ -156,14 +158,15 @@ bind unit-has-faults
   case node
     text <("faults" in $unit)>
 
-# what compileSeparate is handed: the session's resolver, memo, answers and walk, the cache, the readers, and the name
-# each module's code is written under
+# what compileSeparate is handed: the session's resolver, memo, answers and walk, the cache, the readers, the name
+# each module's code is written under, and whether the job also answers its cycle as an import (decision 088)
 bind unit-separate-options
   take held, like dynamic
   take modules, like dynamic
+  take imported, like boolean
   like dynamic
   case node
-    text <(\{ resolve: $held.session.resolve, cache: $held.cache, modules: $modules, roleOf: $held.roleOf, leanOf: $held.leanOf, deckOf: $held.deckOf, parsed: $held.session.parsed, units: $held.session.units, walked: $held.session.walked \})>
+    text <(\{ resolve: $held.session.resolve, cache: $held.cache, modules: $modules, roleOf: $held.roleOf, leanOf: $held.leanOf, deckOf: $held.deckOf, parsed: $held.session.parsed, units: $held.session.units, walked: $held.session.walked, answerAsImport: $imported \})>
 
 bind unit-input
   take file, like dynamic
@@ -257,6 +260,8 @@ task answer-unit
   save root, unit-member(job, <root>)
   save file, unit-member(job, <file>)
   save entry, unit-is-true(unit-member(job, <entry>))
+  # the head of a cycle another unit imports also builds the cycle's import answer (decision 088)
+  save imported, unit-is-true(unit-member(job, <asImport>))
   fork
     mark unsafe
     make-ready(root)
@@ -284,7 +289,7 @@ task answer-unit
         take module, like dynamic
         like text
         back <./{unit-slug(root, module, held/finder)}>
-    save result, separate-module/compile-separate(unit-input(file, text), unit-separate-options(held, modules))
+    save result, separate-module/compile-separate(unit-input(file, text), unit-separate-options(held, modules, imported))
     save building, subtract(host-date/now(), built-at)
     save rolled-at, host-date/now()
     # no roll here: the project's roll is assembled from each unit's own roll and reach, which came back with the answer

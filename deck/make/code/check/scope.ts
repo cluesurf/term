@@ -16,8 +16,12 @@
 //   a mask instance   the mask, and the form it is worn on
 //
 // A reference whose imports reach exactly one of them is that one. One that reaches NONE (unimported), or SEVERAL (an
-// import whose `bear` chain re-exports two forms of the name), gets what the flat program gave it: the definition merged
-// last, among those it reaches when it reaches any. So nothing that builds today stops building: the generated `bind`
+// import whose `bear` chain re-exports two forms of the name), binds the last of its definers in file name order (the
+// order `files` holds, which fixes every split spelling), among those it reaches when it reaches any: never the order the
+// walk merged them in, which a unit's key cannot see (decision 091 of term/self-host/change/001-finish-self-host). The
+// file names are the portable ones, each deck's root written as its token, so the order is the same on every clone
+// (item term-self-host-001-0484). So
+// nothing that builds today stops building: the generated `bind`
 // package names forms it never imports thousands of times, and imports `function` through a chain that reaches three
 // (`pnpm term:scope-census`). The strict step (module-scope-0006) refuses both. A type parameter of the enclosing
 // definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
@@ -32,16 +36,21 @@ import type {
   Diagnostic,
   Span,
 } from '@term/make/code/parser/diagnostic'
+import {
+  type DeckRoot,
+  portableOut,
+  portableRoots,
+} from '@term/make/code/compile/unit-graph'
 
 type Defining = Extract<Statement, { form: 'record-type' | 'mask' }>
 
-// `last` is the file of the definition merged last, the one the flat program let win, for an unimported reference
+// `files` is in portable file name order (`portableOrder`): the split spellings' order, and the binding's for an
+// unimported reference
 type Group = {
   name: string
   files: string[]
   byFile: Map<string, Defining[]>
   renamed: Map<string, string>
-  last: string
 }
 
 // a file and every file its `bear` chain re-exports
@@ -361,25 +370,43 @@ function scopeMap(scopes: FileScope[]): ImportScope | undefined {
 }
 
 // The original moved first to check/scope.tree's shape: the scope a list, the entry `''` for none (no form is
-// defined in a file named `''`), and the program handed back beside the diagnostics
+// defined in a file named `''`), and the program handed back beside the diagnostics. `roots` are the decks the
+// program's files belong to (none for a harness that knows none), so a group's files sort by their portable names
 export function bindFormsByImport(
   program: Program,
   scopes: FileScope[],
   entry: string,
+  roots: DeckRoot[] = [],
 ): { program: Program; diagnostics: Diagnostic[] } {
   return {
     program,
     diagnostics: bindForms(
       program,
       scopeMap(scopes),
+      portableRoots(roots),
       entry === '' ? undefined : entry,
     ),
   }
 }
 
+// A GROUP'S FILES IN PORTABLE NAME ORDER (item term-self-host-001-0484, decision 091 section 3): each deck's root
+// written as its token, as the name key ranks units (compile/separate-units.tree `unit-ranks`), so two definers under
+// two roots sort the same on every clone. Sorted by absolute path, the roots' directory names chose the order, which
+// moved every split spelling and the unimported binding while the name key stayed. Two files one portable name spells
+// (two copies of one deck) fall back to their own names. The key is `<portable>\n<file>`: a newline sorts below every
+// character a path holds, so this is the order of the pair
+function portableOrder(files: string[], roots: DeckRoot[]): string[] {
+  const byKey = new Map(
+    files.map(file => [`${portableOut(roots, file)}\n${file}`, file]),
+  )
+
+  return [...byKey.keys()].sort().map(key => byKey.get(key)!)
+}
+
 function bindForms(
   program: Program,
   scope: ImportScope | undefined,
+  roots: DeckRoot[],
   entry?: string,
 ): Diagnostic[] {
   separateCaseNames(program, scope)
@@ -404,31 +431,13 @@ function bindForms(
 
   const groups = new Map<string, Group>()
 
-  // the file each name was defined in LAST, in program order, and each file's place in that order
-  const lastFile = new Map<string, string>()
-  const order = new Map<string, number>()
-
-  program.forEach((statement, index) => {
-    if (statement.span.file) {
-      order.set(statement.span.file, index)
-    }
-
-    if (
-      (statement.form === 'record-type' || statement.form === 'mask') &&
-      statement.span.file
-    ) {
-      lastFile.set(statement.name, statement.span.file)
-    }
-  })
-
   for (const [name, byFile] of byName) {
     if (byFile.size > 1) {
       groups.set(name, {
         name,
-        files: [...byFile.keys()].sort(),
+        files: portableOrder([...byFile.keys()], roots),
         byFile,
         renamed: new Map(),
-        last: lastFile.get(name)!,
       })
     }
   }
@@ -508,17 +517,13 @@ function bindForms(
       return group.renamed.get(hits[0]!)
     }
 
-    // unimported: the definition the flat program let win, until the strict step refuses it
+    // unimported: the last definer by file name, until the strict step refuses it (decision 091)
     if (hits.length === 0) {
-      return group.renamed.get(group.last)
+      return group.renamed.get(group.files[group.files.length - 1]!)
     }
 
-    // several reached: the one of them merged last, which is the one the flat program let win among them
-    const latest = hits.reduce((a, b) =>
-      (order.get(b) ?? -1) > (order.get(a) ?? -1) ? b : a,
-    )
-
-    return group.renamed.get(latest)
+    // several reached: the last of them by file name, in the same order
+    return group.renamed.get(hits[hits.length - 1]!)
   }
 
   for (const statement of program) {

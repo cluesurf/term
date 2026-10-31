@@ -78,6 +78,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import { projectHome } from '@term/call/code/home'
+import { isLaunchOnly } from '@term/call/code/launch-only'
 import type { DockRoute, Program } from '@term/make/code/compile/node'
 import { readPin, stage0Path, STAGE0_SOURCES } from './stage0'
 import { shelvedText } from './port-shelved'
@@ -450,23 +451,13 @@ function readManifest(path: string): Manifest | undefined {
 // file esbuild's bundle of this script reaches through tsconfig.json's paths, which since stage0 is this script with
 // its prelude splice, the trace and the home paths, never the working tree's compiler (it is loaded by a path esbuild
 // does not follow). Beside them the nearest lockfile, the tsconfig, Node, and every TERM_ / SEED_ / NODE_ variable
-// but LAUNCH_ONLY's.
+// but the launch-only ones.
 // Undefined when any of it cannot be read, and then nothing is skipped
 //
-// The variables that say only how port-build was started, which the fingerprint leaves out. Each of them in it made the
-// same tree a full rebuild of every module from another route or terminal, reported as `0 built, N unchanged`:
-//   TERM_LINE_LOCK, TERM_LINE_LOCK_BY   who holds the line lock. make:line hands down a fresh random token every run
-//                                       (traps.md T-0018b)
-//   TERM_PROGRAM, TERM_PROGRAM_VERSION, TERM_SESSION_ID, TERM_FEATURES
-//                                       the terminal emulator's own (iTerm2, Apple Terminal, VS Code), no Term variable.
-//                                       TERM_SESSION_ID differs in every terminal pane
-//   TERM_DEPTH                          the output library's nesting depth (output.ts openRun), set for every child of
-//                                       a Term run, as `pnpm term:release` is
-//   NODE_PATH                           pnpm's lookup path for the tsx it launched, which differs by where pnpm was run
-//                                       from: `pnpm term:release` at the repository root gives tsx 4.20.3's, make:line
-//                                       the global one's. A release's port-build took 27 minutes for `0 built, 680
-//                                       unchanged` (item term-self-host-001-0453)
-const LAUNCH_ONLY = /^(TERM_LINE_LOCK|TERM_LINE_LOCK_BY|TERM_PROGRAM|TERM_PROGRAM_VERSION|TERM_SESSION_ID|TERM_FEATURES|TERM_DEPTH|NODE_PATH)$/
+// The variables that say only how port-build was started are left out: each of them in it made the same tree a full
+// rebuild of every module from another route or terminal, reported as `0 built, N unchanged` (a release's port-build
+// took 27 minutes so, item term-self-host-001-0453). The list, and why each is on it, is deck/call/code/launch-only.ts,
+// which build-graph.tree's env-text reads too (item term-self-host-001-0476)
 
 async function fingerprint(stage0Id: string): Promise<string | undefined> {
   try {
@@ -487,9 +478,9 @@ async function fingerprint(stage0Id: string): Promise<string | undefined> {
 
     hash.update(`schema ${SCHEMA}\nstage0 ${stage0Id}\nnode ${process.version} ${process.platform} ${process.arch}\n`)
 
-    // LAUNCH_ONLY's variables are left out: each says how this process was started, never what a compile writes
+    // the launch-only variables are left out: each says how this process was started, never what a compile writes
     for (const name of Object.keys(process.env).sort()) {
-      if (/^(TERM|SEED|NODE)_/.test(name) && !LAUNCH_ONLY.test(name)) {
+      if (/^(TERM|SEED|NODE)_/.test(name) && !isLaunchOnly(name)) {
         hash.update(`env ${name}=${process.env[name]}\n`)
       }
     }

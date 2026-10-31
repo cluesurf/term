@@ -8,6 +8,10 @@ load @term/base/list
   find list
   find get
   find join
+  find sort
+
+load @term/base/ordering
+  find from-texts
 
 load @term/base/text
   find split
@@ -99,7 +103,11 @@ task strong-connect
           save state/on-stack/{w}, false
           push(component, w)
           save going, is-unequal(w, v)
-      push(state/out, component)
+      # A CYCLE IS NAMED BY ITS SORTED MEMBERS (decision 090): the pop order says where the walk entered the cycle, so
+      # two walks entering at two members would name and key one cycle two ways. Sorted by file name, the head is the
+      # first in that order for every caller. Within one deck root this is the portable name's order, since a portable
+      # name is the root's token and the same rest
+      push(state/out, sort(component, from-texts))
 
 # a deck's root and its name
 form deck-root

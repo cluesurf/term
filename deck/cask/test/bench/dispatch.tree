@@ -302,7 +302,8 @@ task answer
 
 # every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the
 # exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for
-# the window whose key is `owner`
+# the window whose key is `owner`. The answer's own encoding is guarded too, so dispatch-as raises nothing and fits
+# on-message's slot, which declares no raise (decision 086 of the self-host change 001)
 task dispatch-as
   mark async
   take owner, like text
@@ -317,17 +318,22 @@ task dispatch-as
         read message
   halt take
     take problem
-    send back
-      call stringify
-        call set-field
+    fork
+      mark unsafe
+      send back
+        call stringify
           call set-field
-            call make-object
-            text <id>
+            call set-field
+              call make-object
+              text <id>
+              call from-text
+                text <>
+            text <exception>
             call from-text
-              text <>
-          text <exception>
-          call from-text
-            text <{{problem/form}}: {{problem/note}}>
+              text <{{problem/form}}: {{problem/note}}>
+    halt take
+      take unwritten
+      send back, text <\{"id":"","exception":"failure"\}>
 
 # one message, for an app with one window: `on-message(window, dispatch)`
 task dispatch

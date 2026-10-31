@@ -222,18 +222,12 @@ form renamed-file
   link file, like text
   link renamed, like text
 
-# a form name two or more files define: the files in sorted order, each file's own name for it, and the file whose
-# definition was merged last
+# a form name two or more files define: the files in sorted order (the split spellings' order, and the binding's for a
+# reference no import or several imports reach, decision 091), and each file's own name for it
 form form-group
   link name, like text
   link files, like list, like text
   link renamed, like list, like renamed-file
-  link last, like text
-
-# the place of a file's last statement in the program
-form file-order
-  link file, like text
-  link index, like number
 
 form form-binding
   link groups, like list, like form-group
@@ -242,7 +236,6 @@ form form-binding
   # the type parameters of the statement being rewritten, which shadow a form of the same name
   link shadowed, like list, like text
   link scopes, like list, like file-scope
-  link order, like list, like file-order
   # every task's and method's name in the program: a lean call to one is a call, never a construction
   link tasks, like list, like text
 
@@ -3128,22 +3121,10 @@ task renamed-in
         back one/renamed
   back <>
 
-task order-of
-  take order, like list, like file-order
-  take file, like text
-  like number
-  mark private
-
-  walk order
-    take one
-    fork test, is-equal(one/file, file)
-      hold
-        back one/index
-  back -1
-
 # the name a reference to `group` in the rewritten statement's file binds to. A reference written through an alias
 # reaches the files ITS find named, and a bare one the plain finds only, each falling back to every find of the name.
-# Exactly one reached is that one; none is the definition merged last; several the one of them merged last
+# Exactly one reached is that one; none is the last definer by file name; several the last of them by file name, never
+# the order the walk merged them in, which a unit's key cannot see (decision 091)
 task bind-group
   take binding, like form-binding
   take group, like form-group
@@ -3212,14 +3193,8 @@ task bind-group
       back renamed-in(group, get(hits, 0))
   fork test, is-equal(hits/length, 0)
     hold
-      back renamed-in(group, group/last)
-  save latest, get(hits, 0)
-  walk hits
-    take one
-    fork test, is-above(order-of(binding/order, one), order-of(binding/order, latest))
-      hold
-        save latest, one
-  back renamed-in(group, latest)
+      back renamed-in(group, get(group/files, subtract(group/files/length, 1)))
+  back renamed-in(group, get(hits, subtract(hits/length, 1)))
 
 # the name a reference to `name` binds to, where it names a form two files define and no type parameter hides it.
 # check/scope.tree binds a method's form and an instance's mask and target by it too

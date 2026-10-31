@@ -349,6 +349,9 @@ form separate-given
       take reasons, like list, like text
       like boolean
   link keep-program, like boolean
+  # the pool's job for a cycle another unit imports (decision 088): the entry's own unit of two files or more is also
+  # answered as an import (`<head>#unit`), the one job that builds that key
+  link answer-as-import, like boolean
   # TERM_CACHE_VERIFY (decision 077 section 5): whether a unit the store answered is built again from nothing and
   # compared byte for byte (`hits`, sampled by its key), and whether every unit built is built a second time and
   # compared (`twice`). A difference raises, naming the unit
@@ -1955,6 +1958,28 @@ task compile-separate
             save cached, answer-unit(run, state, as-import)
       case none
         save nothing, 0
+
+    # A CYCLE'S IMPORT ANSWER IS BUILT BY ITS HEAD'S JOB (decision 088): asked `answer-as-import`, the entry's own unit
+    # of two files or more is also answered as an import after its entry answer, so of the pool's jobs only this one
+    # builds `<head>#unit` and every importer reads it back. A second compile, not a by-product: the two keys differ by
+    # the entry, and the entry answer keeps open claims and obligations the import answer drops. Counted built or
+    # reused as the entry's answer is, and asked even when the entry answer is refused, so the key still has its owner
+    fork test, and(given/answer-as-import, and(entry, is-above(group/length, 1)))
+      hold
+        save entry-ran, state/ran
+        save state/ran, false
+        save imported, answer-unit(run, state, as-import)
+        sift imported/build
+          case some
+            fork test, state/ran
+              hold
+                push(built, label)
+              miss
+                push(reused, label)
+          case none
+            save nothing, 0
+        save state/ran, entry-ran
+        save state/answering, asked-first
 
     sift cached/refused
       case some

@@ -132,6 +132,12 @@ task dispatch-text
   lines/push <load @term/base/console>
   lines/push <  find log>
   lines/push <>
+  # a watch closure's own raise is logged where it is caught
+  fork test, watching
+    hold
+      lines/push <load @term/base/log>
+      lines/push <  find warn>
+      lines/push <>
 
   walk modules
     take site, name docked
@@ -265,10 +271,24 @@ task dispatch-text
     lines/push <            call {module-name}-{task-name}>
     lines/push <              task heard>
     lines/push <                take value, like text>
-    lines/push <                call emit>
-    lines/push <                  read place>
-    lines/push <                  text \<term-watch/\{\{watch\}\}\>>
-    lines/push <                  read value>
+    # the host's watcher calls this with no Term caller above it, so what `emit` raises is caught and logged here
+    # (decision 089 rule 6 of the self-host change 001). The log line is a native write, which raises `failure` too, so
+    # it is guarded as well and a line that cannot be written is dropped
+    lines/push <                fork>
+    lines/push <                  mark unsafe>
+    lines/push <                  call emit>
+    lines/push <                    read place>
+    lines/push <                    text \<term-watch/\{\{watch\}\}\>>
+    lines/push <                    read value>
+    lines/push <                halt take>
+    lines/push <                  take problem>
+    lines/push <                  fork>
+    lines/push <                    mark unsafe>
+    lines/push <                    call warn>
+    lines/push <                      text \<term-watch/\{\{watch\}\}: \{\{problem/form\}\}: \{\{problem/note\}\}\>>
+    lines/push <                  halt take>
+    lines/push <                    take unlogged>
+    lines/push <                    save skip, code 0>
     lines/push <          call set>
     lines/push <            read watch-drops>
     lines/push <            text \<\{\{owner\}\}/\{\{watch\}\}\>>
@@ -596,7 +616,8 @@ task dispatch-text
   lines/push <>
   lines/push <# every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the>
   lines/push <# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for>
-  lines/push <# the window whose key is `owner`>
+  lines/push <# the window whose key is `owner`. The answer's own encoding is guarded too, so dispatch-as raises nothing and fits>
+  lines/push <# on-message's slot, which declares no raise (decision 086 of the self-host change 001)>
   lines/push <task dispatch-as>
   lines/push <  mark async>
   lines/push <  take owner, like text>
@@ -611,17 +632,22 @@ task dispatch-text
   lines/push <        read message>
   lines/push <  halt take>
   lines/push <    take problem>
-  lines/push <    send back>
-  lines/push <      call stringify>
-  lines/push <        call set-field>
+  lines/push <    fork>
+  lines/push <      mark unsafe>
+  lines/push <      send back>
+  lines/push <        call stringify>
   lines/push <          call set-field>
-  lines/push <            call make-object>
-  lines/push <            text \<id\>>
+  lines/push <            call set-field>
+  lines/push <              call make-object>
+  lines/push <              text \<id\>>
+  lines/push <              call from-text>
+  lines/push <                text \<\>>
+  lines/push <            text \<exception\>>
   lines/push <            call from-text>
-  lines/push <              text \<\>>
-  lines/push <          text \<exception\>>
-  lines/push <          call from-text>
-  lines/push <            text \<\{\{problem/form\}\}: \{\{problem/note\}\}\>>
+  lines/push <              text \<\{\{problem/form\}\}: \{\{problem/note\}\}\>>
+  lines/push <    halt take>
+  lines/push <      take unwritten>
+  lines/push <      send back, text \<\\\{"id":"","exception":"failure"\\\}\>>
   lines/push <>
   lines/push <# one message, for an app with one window: `on-message(window, dispatch)`>
   lines/push <task dispatch>

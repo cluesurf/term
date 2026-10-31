@@ -16,8 +16,11 @@
 #   a mask instance   the mask, and the form it is worn on
 #
 # A reference whose imports reach exactly one of them is that one. One that reaches NONE (unimported), or SEVERAL (an
-# import whose `bear` chain re-exports two forms of the name), gets what the flat program gave it: the definition merged
-# last, among those it reaches when it reaches any. So nothing that builds today stops building: the generated `bind`
+# import whose `bear` chain re-exports two forms of the name), binds the last of its definers in file name order (the
+# order a group's files hold, which fixes every split spelling), among those it reaches when it reaches any: never the
+# order the walk merged them in, which a unit's key cannot see (decision 091 of term/self-host/change/001-finish-self-host).
+# The file names are the portable ones, each deck's root written as its token, so the order is the same on every clone
+# (item term-self-host-001-0484). So nothing that builds today stops building: the generated `bind`
 # package names forms it never imports thousands of times, and imports `function` through a chain that reaches three
 # (`pnpm term:scope-census`). The strict step (module-scope-0006) refuses both. A type parameter of the enclosing
 # definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
@@ -55,6 +58,11 @@ load ../compile/node
   find statement
   find statement-span
 
+load ../compile/unit-graph
+  find deck-root
+  find portable-roots
+  find portable-out
+
 load ../compile/node-rewrite
   find rewrite-statement
   find rewrite-rule
@@ -62,7 +70,6 @@ load ../compile/node-rewrite
   find case-apart
   find case-owner
   find case-sharing
-  find file-order
   find form-binding
   find form-group
   find renamed-file
@@ -357,31 +364,28 @@ task separate-case-names
       save position, add(position, 1)
   back program
 
-# the file of each form or mask name defined in two or more files, and every reference to one bound by import
+# the file of each form or mask name defined in two or more files, and every reference to one bound by import. `decks`
+# are the decks the program's files belong to (empty when the build knows none), so a group's files sort by their
+# portable names (`portable-order`)
 task bind-forms-by-import
   take program, like list, like statement
   take scopes, like list, like file-scope
   take entry, like text
+  take decks, like list, like deck-root
   like scope-result
 
+  save roots, portable-roots(decks)
   save program, separate-case-names(program, scopes)
 
-  # each name's definitions by file, files in the order first met, and each file's last place in the program
+  # each name's definitions by file, files in the order first met
   save by-name, make list
   save files-of, make list
-  save last-file, make list
-  save order, make list
   save index, 0
   walk program
     take one
     save file, file-of(one)
     fork test, is-unequal(file, <>)
       hold
-        save placed
-          make file-order
-            bind file, file
-            bind index, index
-        save order, with-order(order, placed)
         save defined, defined-name(one)
         fork test, is-unequal(defined, <>)
           hold
@@ -398,7 +402,6 @@ task bind-forms-by-import
                 save files, make list
                 push(files, file)
                 push(files-of, files)
-                push(last-file, file)
               miss
                 save known, get(by-name, at)
                 push(known/indices, index)
@@ -408,7 +411,6 @@ task bind-forms-by-import
                   hold
                     push(files, file)
                 save files-of/{at}, files
-                save last-file/{at}, file
     save index, add(index, 1)
 
   save groups, make list
@@ -418,7 +420,7 @@ task bind-forms-by-import
     save files, get(files-of, at)
     fork test, is-above(files/length, 1)
       hold
-        save sorted, sort-texts(files)
+        save sorted, portable-order(files, roots)
         save renamed, make list
         save k, 0
         walk sorted
@@ -438,7 +440,6 @@ task bind-forms-by-import
             bind name, named/name
             bind files, sorted
             bind renamed, renamed
-            bind last, get(last-file, at)
         push(groups, group)
         # every definition takes its file's name for the form
         walk named/indices
@@ -461,7 +462,6 @@ task bind-forms-by-import
         bind file, file
         bind shadowed, shadowed
         bind scopes, scopes
-        bind order, order
         bind tasks, tasks
     save owned, with-owners-bound(one, binding)
     save rule
@@ -509,25 +509,6 @@ task renamed-for
       hold
         back one/renamed
   back <>
-
-# the order with `placed` as its file's last place: a file met again moves to where it was first met, as a map's set
-# keeps a key's place
-task with-order
-  take order, like list, like file-order
-  take placed, like file-order
-  like list, like file-order
-  mark private
-
-  save at, 0
-  walk order
-    take one
-    fork test, is-equal(one/file, placed/file)
-      hold
-        save order/{at}, placed
-        back order
-    save at, add(at, 1)
-  push(order, placed)
-  back order
 
 # a method, by the form it belongs to (the function's own name follows), and a mask instance's mask and the form it is
 # worn on, each bound where it names a form two files define
@@ -586,6 +567,35 @@ task sort-texts
   mark private
 
   back sort(values, from-texts)
+
+# A GROUP'S FILES IN PORTABLE NAME ORDER (item term-self-host-001-0484, decision 091 section 3): each deck's root
+# written as its token, as the name key ranks units (compile/separate-units.tree `unit-ranks`), so two definers under
+# two roots sort the same on every clone. Sorted by absolute path, the roots' directory names chose the order, which
+# moved every split spelling and the unimported binding while the name key stayed. Two files one portable name spells
+# (two copies of one deck) fall back to their own names. The key is `<portable>\n<file>`: a newline sorts below every
+# character a path holds, so this is the order of the pair
+task portable-order
+  take files, like list, like text
+  take roots, like list, like deck-root
+  like list, like text
+  mark private
+
+  save by-key
+    like hash
+      like text
+      like text
+    make hash
+  save keys, make list
+  walk files
+    take file
+    save key, <{portable-out(roots, file)}\n{file}>
+    save by-key/{key}, file
+    push(keys, key)
+  save out, make list
+  walk sort-texts(keys)
+    take key
+    push(out, by-key/get(key))
+  back out
 
 # A CASE NAME TWO MODULES' FORMS SHARE. `make number` in node.tree, which builds its own `type`'s case, built
 # surface.tree's `primitive` case of the same name once both were in one program. Renaming the case per file would
