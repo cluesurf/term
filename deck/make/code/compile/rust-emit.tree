@@ -1229,18 +1229,14 @@ task spell-type
 
   back rust-type-of(known, facts/context)
 
-# how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`. A value typed
-# `exception` is a caught raise, the carrier (as `problem/link` reads it), so a local list of them holds the carrier
-# and not the form's struct (term-self-host-001-0455)
+# how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`. A list of values typed
+# `exception` holds the carrier, by rust-type-of's one rule (decision 085)
 task spell-element
   take given, like maybe, like type
   take facts, like rust-facts
   like text
   mark private
 
-  fork test, is-equal(named-of(element-of(given)), <exception>)
-    hold
-      back <TermException>
   sift element-of(given)
     case some
       link element
@@ -5049,11 +5045,6 @@ task emit-let
           save context/var-names, widened
           save closed, spell(let-type, facts)
           save context/var-names, saved
-          # a local typed `exception` read out of a call (`get(caught, 0)`) is a caught raise, the carrier, as the list
-          # it came out of holds it (spell-element)
-          fork test, is-equal(named-of(let-type), <exception>)
-            hold
-              save closed, <TermException>
           back <let {mut-of(let-name, st)}{vname(let-name)}: {closed} = {bare(owned(let-init, st, facts))};>
       # a case of a generic form built bare whose type argument only a later use pins: the binding names its type
       fork test, and(and(is-equal(ann, <>), is-form(let-init, <record>)), and(is-equal(kind-of(let-type), <named>), is-above(args-of(let-type)/length, 0)))
@@ -5510,6 +5501,15 @@ task told
       back <\{ let told = {built}; hive_tell(HiveEntry \{ host: told.host.clone(), kind: "exception".to_string(), name: told.form.clone(), site: String::new(), base: std::rc::Rc::new(told.clone()) \}); told \}>
   back built
 
+# a declared exception form's struct, boxed into the carrier a caught raise is: its envelope copied out, its props
+# boxed as the `link` and the struct itself as the `base` (decision 085 section 3, the one spelling of the box)
+task carrier-of-raised
+  take rendered, like text
+  like text
+  mark private
+
+  back <\{ let raised = {rendered}; TermException(Box::new(TermRaised \{ host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised), flow: Vec::new() \})) \}>
+
 task emit-throw
   take node, like statement
   take st, like rust-state
@@ -5545,7 +5545,7 @@ task emit-throw
               save nothing, 0
           fork test, exception
             hold
-              save carrier, told(<\{ let raised = {emit-expr(throw-value, st, facts)}; TermException(Box::new(TermRaised \{ host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised), flow: Vec::new() \})) \}>, facts)
+              save carrier, told(carrier-of-raised(emit-expr(throw-value, st, facts)), facts)
             miss
               save carrier, <({emit-expr(throw-value, st, facts)}).clone()>
       # the raise's own Term frame first (term/hive decision 001); a raised carrier keeps the flow it has
@@ -6729,6 +6729,10 @@ task mark-keys
           fork test, is-key
             hold
               add-text(marks/names, to-upper-case(type-name))
+          # the props argument of `exception` is boxed in the carrier, never a generic (decision 085)
+          fork test, is-equal(type-name, <exception>)
+            hold
+              back
           save key-args, make list
           fork test, facts/form-key-indices/has(type-name)
             hold
@@ -6756,6 +6760,10 @@ task scan-named
           link type-name
           link type-args
           add-text(out, to-upper-case(type-name))
+          # the props argument of `exception` is boxed in the carrier, never a generic (decision 085)
+          fork test, is-equal(type-name, <exception>)
+            hold
+              back
           walk type-args
             take arg
             save one, make(some, arg)

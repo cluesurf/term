@@ -723,6 +723,12 @@ task rust-type-of
     case named
       link type-name
       link type-args
+      # A VALUE TYPED `exception` IS THE CARRIER, whatever its props argument: a caught raise is one, wherever it is
+      # held (a parameter, a result, a let, a list's item, a field), and the props live boxed behind its `link`
+      # (decision 085, item 0460)
+      fork test, is-equal(type-name, <exception>)
+        hold
+          back <TermException>
       fork test, context/opaque-types/has(type-name)
         hold
           save opaque, context/opaque-types/get(type-name)
@@ -858,6 +864,10 @@ task vars-into
     case named
       link type-name
       link type-args
+      # the props argument of `exception` is boxed in the carrier, never a generic of the task (decision 085)
+      fork test, is-equal(type-name, <exception>)
+        hold
+          back
       walk type-args
         take arg
         vars-into(arg, out)

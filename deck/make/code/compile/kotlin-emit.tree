@@ -851,6 +851,10 @@ task kotlin-type
           back <MutableMap\<{kotlin-type(make(some, key-type), st, facts)}, {kotlin-type(make(some, value-type), st, facts)}\>>
         case named
           link named-name
+          # a value typed `exception` is the carrier a caught raise is, whatever its props argument (decision 085)
+          fork test, is-equal(named-name, <exception>)
+            hold
+              back <TermException>
           fork test, facts/opaque/has(named-name)
             hold
               back facts/opaque/get(named-name)

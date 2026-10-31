@@ -6,7 +6,10 @@
 // text (no props record), and `gathered`, whose props hold an exception and a list of them beside a number, each
 // crossed by the codec again (decision 078 section 2, item 0439). `gather` keeps the caught raise in a local list and
 // reads it back, and names it twice in one list literal (item 0455: Rust spelled the local list as the form's struct,
-// rustc E0308, and moved the name twice, E0382). For each, on each backend:
+// rustc E0308, and moved the name twice, E0382). `told` hands a caught raise to a task parameter typed `exception`
+// (`describe`, its form and a link prop) and a list of them to one typed a list of exceptions (`count-told`), a local
+// list and a list literal (decision 085, item 0460: Rust spelled the parameter as the form's struct generic over its
+// props, rustc E0308 and E0283). For each, on each backend:
 //   - the bytes filled and melted again are the bytes (the envelope, the props, every cause and the frames kept)
 //   - the filled raise, re-raised and caught by a Term handler, sifts as its form with its props
 //   - the bytes are the other backend's, `code` and `time` set aside (a fresh occurrence and clock per run)
@@ -199,6 +202,34 @@ task gather
       bind count, caught/length
   back 0
 
+task describe
+  take e, like exception
+  like text
+  back <{e/form}:{e/link/step}>
+
+task count-told
+  take all, like list, like exception
+  like text
+  save forms, make list
+  walk all
+    take one
+    push(forms, one/form)
+  back <{all/length}:{join(forms, <,>)}>
+
+task told
+  take n, like number
+  like text
+  fork
+    mark unsafe
+    save x, outer(n)
+    back <none>
+  halt take
+    take problem
+    save kept, make list
+    push(kept, problem)
+    back <{describe(problem)}/{count-told(kept)}/{count-told(make list(problem, problem))}>
+  back <none>
+
 task crossed
   take given, like data
   take n, like number
@@ -270,7 +301,7 @@ ${
   walk out
     take hex
     push(lines, <{hex}|{again(hex)}>)
-  back join(lines, <\\n>)
+${hexes ? '' : '  push(lines, <told|{told(9)}>)\n'}  back join(lines, <\\n>)
 `
 
 const HERE =
@@ -483,6 +514,13 @@ for (const backend of backends) {
         '{"kind":"number","value":1}',
     JSON.stringify(rest).slice(0, 600),
   )
+  // item 0460: a caught raise given to a parameter typed exception, and lists of them to a list-of-exceptions one
+  const told = lines.find(line => line.hex === 'told')
+  ok(
+    `${backend}: a caught raise passes to a parameter typed exception and to a list of them`,
+    told?.round === 'wrapped:outer/1:wrapped/2:wrapped,wrapped',
+    `got ${JSON.stringify(told?.round)}`,
+  )
 }
 
 // the same raise, the same bytes on both backends, `code` and `time` set aside
@@ -512,7 +550,7 @@ if (ts && rust) {
   ] as const) {
     const lines = run(
       backend,
-      programOf(given.map(line => line.hex)),
+      programOf(given.slice(0, CASES.length).map(line => line.hex)),
       `cross-${backend}`,
     )
 

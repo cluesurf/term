@@ -82,12 +82,13 @@ function artifactsOf(at: string): Map<string, string> {
   return out
 }
 
-// one project request by a new graph over `at`, with `cacheHome` as the store
-function build(at: string, cacheHome: string): Answer {
+// one project request by a new graph over `at`, with `cacheHome` as the store. `precomputed` stands where the parallel
+// pass's answers go, asked once for each entry the build compiles (separate-build.tree `precomputed-of`)
+function build(at: string, cacheHome: string, precomputed?: unknown): Answer {
   const was = process.env.TERM_CACHE_HOME
   process.env.TERM_CACHE_HOME = cacheHome
   try {
-    const answered = port.buildRequest(port.makeBuildGraph(at), ask).build!
+    const answered = port.buildRequest(port.makeBuildGraph(at), { ...ask, precomputed }).build!
     return {
       built: answered.built,
       problems: answered.problems.map(p => `${p.diagnostic.name}|${p.diagnostic.message}`),
@@ -102,6 +103,7 @@ function build(at: string, cacheHome: string): Answer {
 function clean(): Answer {
   const copy = realpathSync(tempDir('graph-snapshot-clean-'))
   cpSync(join(root, 'deck.tree'), join(copy, 'deck.tree'))
+  if (existsSync(join(root, 'role.tree'))) cpSync(join(root, 'role.tree'), join(copy, 'role.tree'))
   cpSync(join(root, 'code'), join(copy, 'code'), { recursive: true })
   const answer = build(copy, cleanHome)
   const renamed = new Map([...answer.artifacts].map(([file, text]) => [file, text.split(copy).join('<root>')]))
@@ -236,6 +238,49 @@ ok('a touched artifact is written again, equal to clean', same(touched, clean())
 rmSync(join(root, unit))
 const removed = settle()
 ok('a removed artifact is written again, equal to clean', same(removed, clean()) === '', same(removed, clean()))
+
+// AN EDIT DURING THE BUILD (item term-self-host-001-0466): a setting the build read, or an artifact it wrote, changed
+// before the build writes its snapshot is noted as the build saw it (a setting by the stamp the build first asked, an
+// artifact by its stamp after the write and the hash of the bytes written), never as it stands when the snapshot is
+// written, so the next process builds again and equals clean. The edit is made from inside the build: `precomputed` is
+// asked for each entry the build compiles, after the roles are read and the earlier entries' artifacts are written
+const during = (edit: (file: string) => boolean): boolean => {
+  let done = false
+  const hook = {
+    get: (file: string): undefined => {
+      if (!done) done = edit(file)
+      return undefined
+    },
+  }
+  build(root, home, hook)
+  return done
+}
+const roleFile = join(root, 'role.tree')
+const leanFile = join(root, 'code', 'lean.tree')
+// read lean, a call-shaped part whose head is a parameter of the callee and a task is refused (label-or-call); read
+// longhand, it is the call, and builds. The edit adds `mark lean`: an entry refused keeps no outcome, so only an entry
+// that built can be replayed wrongly
+writeFileSync(roleFile, 'role code\n  take @/code/**/*.tree\n')
+writeFileSync(leanFile, `${fresh}task name\n  take x, like text\n  like text\n  back <named>\n\ntask greet\n  take name, like text\n  like text\n  back name\n\ntask shout\n  like text\n  back greet(name(<x>))\n`)
+const leanBuild = settle()
+ok('a longhand role builds the label-or-call file, equal to clean', !leanBuild.problems.some(p => p.includes('also a call')) && same(leanBuild, clean()) === '', `${leanBuild.problems.join(' ; ')} ${same(leanBuild, clean())}`)
+writeFileSync(join(root, 'code', 'helper.tree'), helperText(34))
+// a build that takes no snapshot (its first, or one whose snapshot was refused): no stamp of a setting is asked before
+// the build reads it, unless the build asks it at its start
+writeFileSync(path, HEAD)
+// edited once lean.tree is built under it: other.tree is compiled after it
+ok('the role is edited inside the build', during(file => file.endsWith(`${'/'}other.tree`) && (writeFileSync(roleFile, 'role code\n  mark lean\n  take @/code/**/*.tree\n'), true)))
+const afterRole = settle()
+ok('a role edited during the build: the next process refuses the file as lean, equal to clean', afterRole.problems.some(p => p.includes('also a call')) && same(afterRole, clean()) === '', `${afterRole.built} built ${same(afterRole, clean())}`)
+const shimFile = join(root, 'host', 'code', 'base.ts')
+writeFileSync(join(root, 'code', 'helper.tree'), helperText(35))
+const shimEdited = during(file => file.endsWith(`${'/'}other.tree`) && (writeFileSync(shimFile, '// edited during the build\n'), true))
+ok('the artifact is edited inside the build, after its entry wrote it', shimEdited && readFileSync(shimFile, 'utf8') === '// edited during the build\n')
+const afterShim = settle()
+ok('an artifact edited after the build wrote it: the next process equals clean', same(afterShim, clean()) === '', `${afterShim.built} built ${same(afterShim, clean())}`)
+rmSync(roleFile)
+rmSync(leanFile)
+settle()
 
 // THE RACY STAMP: an edit in the second of the build, the same size and the same modification time, inode kept. The file
 // is written just before the build, so its time is the build's, and edited just after it with its stamp put back

@@ -737,6 +737,10 @@ task swift-type
           back <SeedMap\<{key-text}, {swift-type(make(some, map-value), st, facts)}\>>
         case named
           link type-name
+          # a value typed `exception` is the carrier a caught raise is, whatever its props argument (decision 085)
+          fork test, is-equal(type-name, <exception>)
+            hold
+              back <TermException>
           fork test, facts/opaque/has(type-name)
             hold
               back facts/opaque/get(type-name)

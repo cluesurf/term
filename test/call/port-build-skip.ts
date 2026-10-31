@@ -63,8 +63,13 @@ const LEAVE = new Set([
   '.git',
 ])
 
-// the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`
-const copy = realpathSync(tempDir('term-port-build-skip-'))
+// the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`. The clone sits
+// five levels below its root, as the Term tree sits in the repository, and the root holds a copy of the line lock at
+// task/term/line-lock.ts: port-build loads the lock by that path and refuses to run without it (item
+// term-self-host-001-0475), so the clone's runs lock the clone, never the tree the other builds share
+const cloneRoot = realpathSync(tempDir('term-port-build-skip-'))
+const copy = join(cloneRoot, 'deck', 'term', 'deck', 'term')
+const LINE_LOCK = join(TERM, '..', '..', '..', '..', 'task', 'term', 'line-lock.ts')
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {
@@ -95,6 +100,8 @@ function clone(): void {
   ]) {
     cpSync(join(TERM, file), join(copy, file))
   }
+
+  cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
 
   // the one path tsconfig.json writes relative to the package, outside it, made absolute for the clone
   const tsconfig = readFileSync(
@@ -419,7 +426,7 @@ try {
   )
 } finally {
   if (fail === 0) {
-    rmSync(copy, { recursive: true, force: true })
+    rmSync(cloneRoot, { recursive: true, force: true })
   } else {
     console.log(`the clone is kept for a look: ${copy}`)
   }

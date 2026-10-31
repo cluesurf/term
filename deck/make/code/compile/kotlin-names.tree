@@ -231,9 +231,13 @@ task collect-vars
             collect-vars(make(some, one), into)
           collect-vars(make(some, fn-result), into)
         case named
-          walk read(args)
-            take one
-            collect-vars(make(some, one), into)
+          link named-name
+          # the props argument of `exception` lives in the carrier, never a generic of the task (decision 085)
+          fork test, is-unequal(named-name, <exception>)
+            hold
+              walk read(args)
+                take one
+                collect-vars(make(some, one), into)
         miss
           save nothing, 0
     case none
