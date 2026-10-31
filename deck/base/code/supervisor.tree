@@ -95,14 +95,14 @@ task make-supervisor
 
 # the work a child runs: a worker's own, or a nested supervisor supervised in turn. A nested supervisor that stops
 # itself (its intensity exceeded) raises, so its parent sees a failed child and applies its own strategy, which is
-# how a failure escalates up the tree
+# how a failure escalates up the tree. The work may raise anything: a supervisor exists to run work that fails
+# (decision 096 rule 6 of note/project/term/self-host/change/001-finish-self-host)
 task child-work
   take one, like child
   like task
     mark async
     like text
-    halt failure
-    halt overload
+    halt exception
   fork case, read one
     case worker
       send back, read work

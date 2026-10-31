@@ -17,6 +17,7 @@
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/text
   find trim
@@ -107,7 +108,7 @@ bind statement-head
   take line, like text
   like text
   case node
-    text <$line.trim().split(/[\s,]/)[0]>
+    text <($line.trim().split(/[\s,]/)[0] ?? "")>
 
 # `test <rest>` at the start of a line, the empty text when it is no test header
 bind test-header
@@ -174,7 +175,7 @@ bind found-name
   take line, like text
   like text
   case node
-    text <((m) =\> (m ? (m[2] ?? m[1]) : ""))(/^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec($line))>
+    text <((m) =\> (m ? (m[2] ?? m[1] ?? "") : ""))(/^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec($line))>
 
 bind carries-test-blocks
   take source, like text
@@ -957,7 +958,8 @@ task sampled-test
   save inputs, make list
   walk groups
     take group, like list, like number
-    fork test, is-equal(statement-head(lines/{group/0}), <take>)
+    save group-start, get(group, 0)
+    fork test, is-equal(statement-head(lines/{group-start}), <take>)
       hold
         save texts, make list
         walk group
@@ -1001,7 +1003,8 @@ task sampled-test
   origin/push(at)
   walk groups
     take group, like list, like number
-    save head, statement-head(lines/{group/0})
+    save group-start, get(group, 0)
+    save head, statement-head(lines/{group-start})
     fork test, is-equal(head, <want>)
       hold
         save written, guard(group-lines(lines, group), group, true, 0, 0)
@@ -1150,7 +1153,8 @@ task preprocess-tests
           save takes, false
           walk groups
             take group, like list, like number
-            fork test, is-equal(statement-head(lines/{group/0}), <take>)
+            save group-start, get(group, 0)
+            fork test, is-equal(statement-head(lines/{group-start}), <take>)
               hold
                 save takes, true
           fork test, takes
@@ -1168,8 +1172,9 @@ task preprocess-tests
               save snapshots-taken, 0
               walk groups
                 take group, like list, like number
-                save first, trim(lines/{group/0})
-                save head, statement-head(lines/{group/0})
+                save group-start, get(group, 0)
+                save first, trim(lines/{group-start})
+                save head, statement-head(lines/{group-start})
                 fork test, and(is-equal(head, <want>), is-snapshot-head(first))
                   hold
                     save written, snapshot-want(group-lines(lines, group), group, label, snapshots-taken, snapshots, plain)

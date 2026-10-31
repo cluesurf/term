@@ -115,6 +115,36 @@ task read-latin1-string
       read chars
       text <>
 
+# a latin-1 field's bytes as text, the code point of every byte joined: how ./mine.tree's generated reader decodes
+# FNAME and FCOMMENT, since its `mine until` hands back the bytes before the terminator
+task latin1-text
+  take bytes
+    like maybe
+      like list
+        like u8
+  like maybe
+    like text
+  fork case, read bytes
+    case some
+      link value
+      save chars
+        make list
+      walk list, read value
+        hook next
+          take site, name one
+          call push
+            read chars
+            call rune-to-text read one
+      send back
+        make some
+          bind value
+            call join
+              read chars
+              text <>
+    case none
+  send back
+    make none
+
 task read-gzip-name
   take cursor, like feed-cursor
   take flags, like number

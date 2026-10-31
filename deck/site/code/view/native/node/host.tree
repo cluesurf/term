@@ -30,6 +30,8 @@ load @term/base/maybe
   find maybe
 load @term/site/view/route-answer
   find page-methods
+  find answer-nothing
+  find answer-failure
 
 task host
   # async: a `route` that loads its data first, or a `task <method>` that waits, answers once it is done. Without the
@@ -53,12 +55,22 @@ task host
           text <div>
       # awaited: a `route` that loads its data first (an async task it calls) is async, and the page is not drawn
       # until it returns. A parameter's call cannot be seen as async, so the `wait` is written, and on a `route` that
-      # is not async it waits on a plain value. Without it `/` was served as an empty `<div></div>` (web/fetching)
-      save answer
-        call route
-          read root
-          read request
-          wait true
+      # is not async it waits on a plain value. Without it `/` was served as an empty `<div></div>` (web/fetching).
+      # A route that raises is reported and answers 500 through `answer-failure`, sent below like any answer (decision
+      # 100 rule 7 of note/project/term/self-host/change/001-finish-self-host)
+      save answer, call answer-nothing
+      fork
+        mark unsafe
+        save answer
+          call route
+            read root
+            read request
+            wait true
+      halt take
+        take problem
+        save answer
+          call answer-failure
+            read problem
       # a method other than GET: the route's task answered, or 405 (term-site-framework-0006)
       sift answer
         case some

@@ -1,6 +1,9 @@
 # battery on a browser (device-layer-0009): navigator.getBattery.
 # Conforms to ../battery. The runtime is runtime/native-battery.ts.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-battery>, name native-battery
   load <global:native-watch>, name native-watch
@@ -19,7 +22,17 @@ task follow-battery
   # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
   save watching
     call native-battery/watch
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-battery>
+            read problem
   send back
     task drop
       call native-battery/unwatch

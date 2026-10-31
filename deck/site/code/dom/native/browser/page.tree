@@ -10,6 +10,9 @@ load ../global
 load @term/base/maybe
   find maybe
 
+load ../../../report
+  find report-raise
+
 dock load
   load <global:title>, name title
 
@@ -95,8 +98,20 @@ task go-back
 task listen-pop
   take handler
     like task
+  # the page calls it from its own loop, so a raise in it is reported and the page goes on (decision 096 of
+  # note/project/term/self-host/change/001-finish-self-host)
+  save guarded
+    task moved
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <listen-pop>
+          read problem
   host go, like any
-    read handler
+    read guarded
   call viewport/add-event-listener
     text <popstate>
     read go

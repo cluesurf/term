@@ -9,7 +9,13 @@
 #     original's order (its `maybe` case keeps the stdlib's `maybe` its own name since item 0378, so the face hands the
 #     rules through, item 0379)
 #   - the original's module counters (`inRepetition`, `inSpan`) and the helper-name closure are one `feed-state`,
-#     `mark shared`, threaded through every compiling task
+#     `mark shared`, which `compile-feed-mine` makes at its start and threads through every compiling task
+#     (decided by item 0009, spec.md section 4.8)
+#
+# Diverges (item term-self-host-001-0058, decision 027): the original's counters were module variables, so a compile
+# that threw inside a list or a span left them raised for every compile after it in the process, and those compiles
+# wrote a repetition's bare `halt` and a span's joined payload where they belonged to neither. Here no counter outlives
+# its compile: a compile that throws, then a second, gives what the second gives alone (test/compile/feed-state-fresh.ts)
 #   - whether a rule carries a `send` KEY (`'send' in rule`, which the original asked twice, true even when the value
 #     was undefined) is `has-send-key`, by kind as the original's object literals had it
 #   - the code points and the numbers printed into the generated text go through binds that are JavaScript's own
@@ -2183,9 +2189,7 @@ task push-all
     take one
     push(into, one)
 
-# the counters a run starts from. The original kept them in module variables, so a compile that threw inside a list
-# or a span left them raised for every compile after it in the process; the face keeps one of these for the module
-# and hands it to every compile, so the same is true here
+# the counters a compile starts from, made by each compile for itself (the Diverges at the top of this file)
 task fresh-feed-state
   like feed-state
 
@@ -2202,11 +2206,10 @@ task compile-feed-mine
   take substrate, like text
   take cursor-import-path, like text
   take extra-imports, like list, like text
-  take state, like feed-state
   like text
 
+  save state, fresh-feed-state()
   save ops, ops-of(substrate)
-  save state/conversions, make hash
   save lines, make list
   push(lines, <load {cursor-import-path}>)
   walk ops/imports

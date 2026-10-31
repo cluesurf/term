@@ -33,8 +33,8 @@ load @term/site/http/http
   find response
 load @term/base/maybe
   find maybe
-load @term/base/log
-  find warn
+load @term/site/report
+  find report-raise
 
 # the window's default size, in points: a phone's width, a reading height
 host app-width
@@ -79,34 +79,30 @@ task mount-app
                     call clear
                       read root
                     # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
-                    # that moves a captured text does not build on Rust (E0507)
-                    call route
-                      read root
-                      call make-page-request
-                        call current-path
+                    # that moves a captured text does not build on Rust (E0507). A route that raises is reported and
+                    # leaves the root it cleared empty (decision 096 of
+                    # note/project/term/self-host/change/001-finish-self-host)
+                    fork
+                      mark unsafe
+                      call route
+                        read root
+                        call make-page-request
+                          call current-path
+                    halt take
+                      take problem
+                      call report-raise
+                        text <mount-app>
+                        read problem
                     send back, read root
   call on-back
     task went-back
       like boolean
       send back
         call navigate-back
-  # the platform calls `shown` from its own loop, with no Term caller to raise to, so it handles its own raise
-  # (decision 089 rule 6 of note/project/term/self-host/change/001-finish-self-host): logged, and a line that cannot
-  # be logged is dropped
+  # `after-launch` reports a raise in `shown` itself (decision 096)
   call after-launch
     task shown
-      fork
-        mark unsafe
-        call show-window
-      halt take
-        take problem
-        fork
-          mark unsafe
-          call warn
-            text <after-launch: {problem/form}: {problem/note}>
-        halt take
-          take unlogged
-          save skip, code 0
+      call show-window
   send back, read root
 
 task host

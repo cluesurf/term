@@ -4,6 +4,9 @@
 # compose/native-audio.kt. The permission runtime is docked too: the recorder registers the microphone's grant with
 # it, which on Apple is AVFoundation's (native-capture.swift). The watchers fan out through native-watch.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-audio>, name native-audio
   load <global:native-watch>, name native-watch
@@ -50,7 +53,17 @@ task follow-loop
   like task
   save watching
     call native-audio/watch-loop
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-loop>
+            read problem
   send back
     task drop
       call native-audio/unwatch-loop
@@ -77,7 +90,17 @@ task follow-playback
   like task
   save watching
     call native-audio/watch-playback
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-playback>
+            read problem
   send back
     task drop
       call native-audio/unwatch-playback
@@ -102,7 +125,17 @@ task follow-recording
   like task
   save watching
     call native-audio/watch-recording
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-recording>
+            read problem
   send back
     task drop
       call native-audio/unwatch-recording

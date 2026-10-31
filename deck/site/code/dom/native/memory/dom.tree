@@ -26,6 +26,9 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
+load ../../../report
+  find report-raise
+
 load ./view
   find view
   find memory-element
@@ -589,7 +592,16 @@ task fire
             read heard/event
             read event
         hook hold
-          call heard/handle
+          # a raise in one listener is reported and the next still runs, as on a host with a loop of its own
+          # (decision 096 of note/project/term/self-host/change/001-finish-self-host)
+          fork
+            mark unsafe
+            call heard/handle
+          halt take
+            take problem
+            call report-raise
+              text <listen>
+              read problem
 
 # a key pressed, named as KeyboardEvent.key names it, delivered to every listener in the order they listened
 task fire-key
@@ -597,8 +609,15 @@ task fire-key
   walk list, read window-keys/listeners
     hook next
       take site, name listener
-      call listener/handle
-        read key
+      fork
+        mark unsafe
+        call listener/handle
+          read key
+      halt take
+        take problem
+        call report-raise
+          text <listen-key>
+          read problem
 
 # the child at `index`, counting from 0
 task child-at

@@ -4,6 +4,9 @@
 # ../device. The defaults describe a phone: compact, touch, light, motion allowed, text at its standard size. A name
 # that is not a trait reads `no`.
 
+load @term/site/report
+  find report-raise
+
 load @term/base/hash
   find hash
   find get
@@ -109,8 +112,17 @@ task change-trait
   fork test
     hook test, read watch/installed
     hook hold
-      call watch/handler
-        read name
-        read value
+      # reported, as a platform's notification would be (decision 096 of
+      # note/project/term/self-host/change/001-finish-self-host)
+      fork
+        mark unsafe
+        call watch/handler
+          read name
+          read value
+      halt take
+        take problem
+        call report-raise
+          text <watch-traits>
+          read problem
     hook miss
       save skip, code 0

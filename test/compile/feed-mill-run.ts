@@ -25,7 +25,10 @@ import {
   withNativeEnv,
   nativePrelude,
 } from '@term/make/code/compile/native'
-import { expandTemplates } from '@term/make/code/compile/template'
+import {
+  collectTemplates,
+  expandTemplates,
+} from '@term/make/code/compile/template'
 import {
   bindModules,
   stampModule,
@@ -90,8 +93,7 @@ function frontEnd(text: string, roots: string[]): Program {
     withNativeEnv('node', resolver),
   )
   const program: Program = []
-
-  for (const unit of sources) {
+  const trees = sources.map(unit => {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
@@ -100,7 +102,18 @@ function frontEnd(text: string, roots: string[]): Program {
       )
     }
 
-    const built = mill(expandTemplates(parsed.tree), unit.file)
+    return { unit, tree: parsed.tree }
+  })
+  // every template the graph defines, as the ordinary build hands each unit (compile/unit-mill.tree
+  // `graph-templates`): a `fuse` expands in another module than its `tree`, so `fuse integer, u8, ...` in
+  // integer/unsigned.tree makes `to-u8` only with integer/n.tree's template in hand (term-self-host-001-0515: each
+  // unit expanded alone, `to-u8` was never made, and the generated program called a `toU8` it did not define)
+  const templates = new Map(
+    trees.flatMap(({ tree }) => [...collectTemplates(tree)]),
+  )
+
+  for (const { unit, tree } of trees) {
+    const built = mill(expandTemplates(tree, templates), unit.file)
 
     if (!built.ok) {
       throw new Error(
@@ -114,6 +127,9 @@ function frontEnd(text: string, roots: string[]): Program {
 
   // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
   bindModules(program, scope, 'main.tree')
+  // resolve's answer is dropped, so an UNDEFINED NAME passes here (the hole feed-mill-coverage.ts names): the json
+  // reader's `read-pair` reads an `item` nothing defines (term-self-host-001-0515 found it, filed as its own item),
+  // and the gzip reader once called a `to-u8` no unit had made. The cases below are the run-time witness
   resolveNames(program, 'main.tree')
 
   const errors = check(program, 'main.tree').filter(
@@ -299,6 +315,14 @@ runSuite({
       'a minimal header+trailer round trips byte for byte',
       '1f8b08000000000000ffaabb7856341202000000',
       '1f8b08000000000000ffaabb7856341202000000',
+    ],
+    // FNAME (flag 0x08) and FCOMMENT (0x10) set: the grammar's `mine until` hands back the bytes, and its `mine
+    // value` decodes them as latin-1 into the form's text fields, so 0xe9 is `é` and writes back as the one byte
+    // 0xe9 (term-self-host-001-0515: the bytes went into the text field undecoded and the build refused it)
+    [
+      'a latin-1 name and comment round trip byte for byte',
+      '1f8b08180000000000ff61e9006300aabb7856341202000000',
+      '1f8b08180000000000ff61e9006300aabb7856341202000000',
     ],
   ],
   expectRules: 3,

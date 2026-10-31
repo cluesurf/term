@@ -23,8 +23,8 @@ load @term/base/maybe
 load @term/base/exception
   find exception
 
-load @term/base/log
-  find error
+load ../report
+  find report-raise
 
 load @term/base/list
   find list
@@ -140,17 +140,13 @@ task answer-nothing
 
 # the lowered dispatcher guards its whole body, and a raise there answers this: a 500 with the body `handle-request`
 # answers one with (../http/http), the exception written to the log, since the browser starts `route` by a statement
-# tick and drops its answer. A line that cannot be logged is dropped
+# tick and drops its answer (../report)
 task answer-failure
   take problem, like exception
   like maybe, like response
-  fork
-    mark unsafe
-    call error
-      text <route: {problem/form}: {problem/note}>
-  halt take
-    take unlogged
-    save skip, code 0
+  call report-raise
+    text <route>
+    read problem
   send back
     make some
       bind value

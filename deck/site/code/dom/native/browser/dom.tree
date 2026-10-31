@@ -32,6 +32,9 @@ load @term/base/maybe
 load ../../view
   find view
 
+load ../../../report
+  find report-raise
+
 dock load
   load <global:resize>, name resize
   load <global:position>, name position
@@ -141,9 +144,21 @@ task listen
   host made, like element
     read node/handle
   # bind's addEventListener wants its EventListener union; the handler is a real function at runtime, so bridge it
-  # through the gradual `any` (it is passed straight through, never structurally matched)
+  # through the gradual `any` (it is passed straight through, never structurally matched). The page calls it from
+  # its own loop, so a raise in it is reported and the page goes on (decision 096 of
+  # note/project/term/self-host/change/001-finish-self-host), as in every handler below the page keeps
+  save guarded
+    task heard
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <listen>
+          read problem
   host listener, like any
-    read handler
+    read guarded
   call made/add-event-listener
     read event
     read listener
@@ -159,8 +174,20 @@ task listen-event
       take event, like any
   host made, like element
     read node/handle
+  save guarded
+    task heard
+      take happened, like any
+      fork
+        mark unsafe
+        call handler
+          read happened
+      halt take
+        take problem
+        call report-raise
+          text <listen-event>
+          read problem
   host listener, like any
-    read handler
+    read guarded
   call made/add-event-listener
     read event
     read listener
@@ -173,8 +200,20 @@ task listen-document
     like task
       take event
   like task
+  save guarded
+    task heard
+      take happened
+      fork
+        mark unsafe
+        call handler
+          read happened
+      halt take
+        take problem
+        call report-raise
+          text <listen-document>
+          read problem
   host listener, like any
-    read handler
+    read guarded
   call page/add-event-listener
     read event
     read listener
@@ -197,8 +236,15 @@ task listen-key
   save listener
     task on-key
       take event, like keyboard-event
-      call handler
-        read event/key
+      fork
+        mark unsafe
+        call handler
+          read event/key
+      halt take
+        take problem
+        call report-raise
+          text <listen-key>
+          read problem
   host held, like any
     read listener
   call page/add-event-listener
@@ -252,7 +298,17 @@ task observe-size
       take width
   call resize/observe-size
     read node/handle
-    read handler
+    task resized
+      take width
+      fork
+        mark unsafe
+        call handler
+          read width
+      halt take
+        take problem
+        call report-raise
+          text <observe-size>
+          read problem
 
 # the element's current content-box width
 task measure-width
@@ -280,7 +336,17 @@ task watch-font
       take status, like text
   call fontset/watch
     read family
-    read handler
+    task settled
+      take status, like text
+      fork
+        mark unsafe
+        call handler
+          read status
+      halt take
+        take problem
+        call report-raise
+          text <watch-font>
+          read problem
 
 # register a face: a FontFace added to document.fonts and asked to load. answers at once; `watch-font` says when the
 # face is drawable. `asset:<name>` is a URL relative to the page, as an app bundle's file is relative to the app.
@@ -303,7 +369,15 @@ task watch-deadline
   call fontset/deadline
     read family
     read threshold
-    read handler
+    task passed
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <watch-deadline>
+          read problem
 
 task append
   take parent, like view

@@ -17,7 +17,7 @@
 // (`simctl get_app_container`), the Mac's temporary folder for the AppKit program. AUDIO_ONLY=macos or ios runs one.
 // Run: npx tsx test/compile/device-audio.ts
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runToolkits } from './shared/toolkit-run'
@@ -490,9 +490,28 @@ const LEGS = process.env.AUDIO_ONLY
   ? [process.env.AUDIO_ONLY]
   : ['macos', 'ios']
 
-// the Mac's own program reads the Mac's temporary folder, which is node's
-if (LEGS.includes('macos')) {
-  writeFiles(tmpdir())
+// The Mac's own program reads the Mac's temporary folder, Foundation's NSTemporaryDirectory(), which is the per-user
+// folder `getconf DARWIN_USER_TEMP_DIR` names and NOT node's tmpdir(): Foundation ignores TMPDIR, and the gate points
+// TMPDIR at a scratch folder per suite (task/term/temp-run.ts), so files written to tmpdir() were never where the app
+// looked and every step answered `unavailable` (term-self-host-001-0515; run alone the two folders are one). The two
+// files are removed when the run ends, since nothing else removes what is written there
+function appTemporary(): string {
+  const found = spawnSync('getconf', ['DARWIN_USER_TEMP_DIR'], {
+    encoding: 'utf8',
+  })
+  const dir = (found.stdout ?? '').trim()
+
+  return found.status === 0 && dir !== '' ? dir : tmpdir()
+}
+
+const macTemporary = LEGS.includes('macos') ? appTemporary() : ''
+
+if (macTemporary) {
+  writeFiles(macTemporary)
+  process.on('exit', () => {
+    rmSync(join(macTemporary, TONE), { force: true })
+    rmSync(join(macTemporary, SHORT), { force: true })
+  })
 }
 
 for (const leg of LEGS) {

@@ -16,6 +16,9 @@
 load ../../view
   find view
 
+load ../../../report
+  find report-raise
+
 dock load
   load <global:native-view>, name native-view
 
@@ -109,10 +112,21 @@ task listen
   take event, like text
   take handler
     like task
+  # the platform calls the handler from its own loop, so a raise in it is reported here and the loop goes on
+  # (decision 096 of note/project/term/self-host/change/001-finish-self-host). Every handler or body below that the
+  # platform keeps is guarded the same way
   call native-view/listen
     read node/handle
     read event
-    read handler
+    task heard
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <listen {event}>
+          read problem
 
 # a native control's events carry no DOM event object, so a handler that wants one is not called
 task listen-event
@@ -141,7 +155,17 @@ task listen-key
   like task
   save number
     call native-view/listen-key
-      read handler
+      task pressed
+        take key, like text
+        fork
+          mark unsafe
+          call handler
+            read key
+        halt take
+          take problem
+          call report-raise
+            text <listen-key>
+            read problem
   send back
     task drop
       call native-view/drop-key
@@ -210,16 +234,22 @@ task watch-font
   take handler
     like task
       take status, like text
+  save status, text <error>
   fork test
     hook test
       call native-view/has-font
         read family
     hook hold
-      call handler
-        text <ready>
-    hook miss
-      call handler
-        text <error>
+      save status, text <ready>
+  fork
+    mark unsafe
+    call handler
+      read status
+  halt take
+    take problem
+    call report-raise
+      text <watch-font>
+      read problem
 
 # register a face with the platform: CoreText on Apple, a Typeface on Android. `source` is a `data:` URI, a path, or
 # `asset:<name>` from the app bundle (an APK asset, a bundle resource)
@@ -349,7 +379,15 @@ task after-launch
   take body
     like task
   call native-view/after-launch
-    read body
+    task launched
+      fork
+        mark unsafe
+        call body
+      halt take
+        take problem
+        call report-raise
+          text <after-launch>
+          read problem
 
 # run an ASYNC body once the app is running and its window exists: a page's `boot`, which awaits its data before it
 # mounts (native-dom-0014)
@@ -359,7 +397,16 @@ task launch
       wait true
       like void
   call native-view/launch
-    read body
+    task started
+      mark async
+      fork
+        mark unsafe
+        call body
+      halt take
+        take problem
+        call report-raise
+          text <launch>
+          read problem
 
 task show-window
   call native-view/show
@@ -380,8 +427,20 @@ task on-back
   take handler
     like task
       like boolean
+  # a handler that raises did not take the back, so the platform's own back goes on
   call native-view/on-back
-    read handler
+    task asked
+      like boolean
+      save taken, false
+      fork
+        mark unsafe
+        save taken, call handler
+      halt take
+        take problem
+        call report-raise
+          text <on-back>
+          read problem
+      send back, read taken
 
 # ---- for tests: what a person does, and what they see ----
 
@@ -402,7 +461,15 @@ task later
   take body
     like task
   call native-view/later
-    read body
+    task turned
+      fork
+        mark unsafe
+        call body
+      halt take
+        take problem
+        call report-raise
+          text <later>
+          read problem
 
 # for tests: dismiss a dialog the way a person does (Esc, a swipe down, back), and its report (native-dom-0026)
 task dismiss

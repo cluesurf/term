@@ -431,23 +431,40 @@ export function diskCacheStore(
     save(kind, key, value) {
       sweep(kind)
 
-      const file = path.join(dirFor(kind, key), `${key}.json.gz`)
-      // atomic: write a unique temp then rename over the target (rename is atomic on the same filesystem)
-      const temp = `${file}.${process.pid}.${tempCounter++}.tmp`
+      const bytes = gzipSync(Buffer.from(value, 'utf8'), { level: 6 })
 
-      try {
-        writeFileSync(
-          temp,
-          gzipSync(Buffer.from(value, 'utf8'), { level: 6 }),
-        )
-        renameSync(temp, file)
-      } catch {
-        // a cache write failure must never fail the build
+      // atomic: write a unique temp then rename over the target (rename is atomic on the same filesystem)
+      const write = (): boolean => {
+        const file = path.join(dirFor(kind, key), `${key}.json.gz`)
+        const temp = `${file}.${process.pid}.${tempCounter++}.tmp`
+
         try {
-          unlinkSync(temp)
+          writeFileSync(temp, bytes)
+          renameSync(temp, file)
+
+          return true
         } catch {
-          // the temp may not exist
+          try {
+            unlinkSync(temp)
+          } catch {
+            // the temp may not exist
+          }
+
+          return false
         }
+      }
+
+      // ONE RETRY, WITH THE SHARD MADE AGAIN. `ensured` remembers each shard folder for the life of the process, and
+      // another process's reclaimStaleVersions removes a namespace by mtime, not by use, so a long-lived process (the
+      // language server, the daemon) found its folder gone and lost every later write, ENOENT in silence
+      // (term-self-host-001-0471, test/compile/cache-reclaimed.ts). A cache write failure still never fails the build.
+      try {
+        if (!write()) {
+          ensured.delete(path.join(dir, kind, slugFor(kind), shardOf(key)))
+          write()
+        }
+      } catch {
+        // the shard could not be made again: a miss later, never a crash now
       }
     },
   }

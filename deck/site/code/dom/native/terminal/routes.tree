@@ -26,6 +26,9 @@ load ../../../view/reactive
   find make-effect
   find untrack
 
+load ../../../report
+  find report-raise
+
 load ../../../view/render
   find make-branch-slot
   find rebuild
@@ -76,11 +79,20 @@ task mount-routes
                     call clear
                       read root
                     # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
-                    # that moves a captured text does not build on Rust (E0507)
-                    call route
-                      read root
-                      call make-page-request
-                        call current-path
+                    # that moves a captured text does not build on Rust (E0507). A route that raises is reported and
+                    # leaves the root it cleared empty (decision 096 of
+                    # note/project/term/self-host/change/001-finish-self-host)
+                    fork
+                      mark unsafe
+                      call route
+                        read root
+                        call make-page-request
+                          call current-path
+                    halt take
+                      take problem
+                      call report-raise
+                        text <mount-routes>
+                        read problem
                     send back, read root
   save drop
     call listen-key

@@ -8,6 +8,7 @@ import {
   writeFileSync,
   readFileSync,
   realpathSync,
+  renameSync,
   existsSync,
   rmSync,
   watch as fsWatch,
@@ -1341,8 +1342,30 @@ export function sweepArtifacts(
   const text = `${header}\n${now.join('\n')}\n`
 
   if (before !== text) {
+    writeRecord(record, text)
+  }
+}
+
+// the counter that makes each temp name of the artifact record unique in this process
+let recordTemps = 0
+
+// THE RECORD IS WRITTEN WHOLE OR NOT AT ALL (item term-self-host-001-0470): a temp beside it named by the process and a
+// counter, then a rename over it, so a build reading it meanwhile reads the last record or this one, never a short list
+// under a valid header. A write that fails (a full disk, EACCES) never fails the build: the record is advisory.
+// separate-build.tree `write-record` is the Term twin
+function writeRecord(record: string, text: string): void {
+  const temp = `${record}.${process.pid}.${recordTemps++}.tmp`
+
+  try {
     mkdirSync(path.dirname(record), { recursive: true })
-    writeFileSync(record, text)
+    writeFileSync(temp, text)
+    renameSync(temp, record)
+  } catch {
+    try {
+      rmSync(temp, { force: true })
+    } catch {
+      // the temp stays: it is never read
+    }
   }
 }
 

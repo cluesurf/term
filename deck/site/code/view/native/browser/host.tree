@@ -25,11 +25,37 @@ load @term/site/view/navigation
   find follow-address
 load @term/site/view/route-answer
   find make-page-request
+  find answer-failure
 load @term/site/http/http
   find request
   find response
 load @term/base/maybe
   find maybe
+
+# draw one place: the route, started by a statement tick, which would end the program on a raise (decision 092 rule 5).
+# A route that raises is reported by `answer-failure` and its answer dropped, as every answer here is, so the body it
+# cleared stays empty (decision 100 rule 7 of note/project/term/self-host/change/001-finish-self-host)
+task draw-route
+  mark private
+  mark async
+  take route
+    like task
+      take host, like view
+      take request, like request
+      like maybe, like response
+      mark async
+  take body, like view
+  take request, like request
+  fork
+    mark unsafe
+    call route
+      read body
+      read request
+      wait true
+  halt take
+    take problem
+    call answer-failure
+      read problem
 
 task host
   # async, as on node: a `route` that loads its data first may be async (view/native/node/host.tree)
@@ -69,7 +95,8 @@ task host
                     # that moves a captured text does not build on Rust (E0507)
                     # a GET: the browser draws the page, and a form posts to the server, never to this dispatcher.
                     # Started and not waited for: the build is not async, and a route that waits draws when it is done
-                    tick route
+                    tick draw-route
+                      read route
                       read body
                       call make-page-request
                         call current-path

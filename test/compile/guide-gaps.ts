@@ -2232,6 +2232,7 @@ host left
     task count-left
       like number
       send back, subtract(3, read-signal(read-count))
+    bind fallback, 0
 
 task read-two
   batch

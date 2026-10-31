@@ -8,6 +8,9 @@ load @term/base/list
   find get
   find is-empty
 
+load ../report
+  find report-raise
+
 # A signal, an effect and an owner are each ONE object that every reader holds: a write to a signal must reach the
 # effects that subscribed to that very signal. `note shared` says so, so a backend whose forms are values (Swift's
 # `struct`) emits a reference type instead of copying the signal at every binding.
@@ -198,7 +201,16 @@ task run-effect
       call push
         bind list, read running
         bind item, read effect
-      call effect/run
+      # a raise in the effect ends this run of it, reported, and the stack and the pause are put back as after any
+      # run (decision 096 of note/project/term/self-host/change/001-finish-self-host)
+      fork
+        mark unsafe
+        call effect/run
+      halt take
+        take problem
+        call report-raise
+          text <effect>
+          read problem
       call pop
         bind list, read running
       save flags/paused, read was-paused
@@ -232,31 +244,59 @@ task dispose-scope
     hook next
       take site, name member
       save member/live, false
+  # a cleanup that raises is reported, and the cleanups after it still run
   walk list, read scope/cleanups
     hook next
       take site, name run
-      call run
+      fork
+        mark unsafe
+        call run
+      halt take
+        take problem
+        call report-raise
+          text <cleanup>
+          read problem
 
 # a derived, cached reactive value (Solid createMemo): an effect recomputes `compute` whenever a signal it reads
 # changes and stores the result in a signal. Read it with read-signal. Recomputes only on dependency change, so
-# downstream effects do not re-run when an unrelated signal updates.
+# downstream effects do not re-run when an unrelated signal updates. `fallback` is the value that means "not known":
+# a `compute` that raises is reported and the memo holds `fallback`, never its last value (Solid's
+# `createMemo(fn, value)` takes its first value the same way; decision 100 rule 6 of
+# note/project/term/self-host/change/001-finish-self-host)
 task make-memo
   head t
   take compute
     like task
       like t
+  take fallback, like t
   like signal t
+  save first, read fallback
+  fork
+    mark unsafe
+    save first, call compute
+  halt take
+    take problem
+    call report-raise
+      text <make-memo/compute>
+      read problem
   save held
     call make-signal
-      bind value
-        call compute
+      bind value, read first
   call make-effect
     bind run
       task recompute
+        save next, read fallback
+        fork
+          mark unsafe
+          save next, call compute
+        halt take
+          take problem
+          call report-raise
+            text <make-memo/compute>
+            read problem
         call write-signal
           bind self, read held
-          bind value
-            call compute
+          bind value, read next
   send back, read held
 
 # run `body` inside a fresh ownership scope and return the scope handle, so the caller can later dispose it (Solid

@@ -1,0 +1,23 @@
+
+# A raise in a callback the library keeps for a host loop (a key handler, an effect, a launch body, a route the window
+# draws) has no Term caller to reach. The library guards each call it makes through such a slot and hands the raise
+# here: it is written to the log as `<place>: <form>: <note>`, and the host loop goes on (decision 096 of
+# note/project/term/self-host/change/001-finish-self-host). A line that cannot be written is dropped, so this task
+# raises nothing.
+
+load @term/base/exception
+  find exception
+
+load @term/base/log
+  find error
+
+task report-raise
+  take place, like text
+  take problem, like exception
+  fork
+    mark unsafe
+    call error
+      text <{place}: {problem/form}: {problem/note}>
+  halt take
+    take unlogged
+    save skip, code 0

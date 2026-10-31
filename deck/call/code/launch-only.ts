@@ -12,6 +12,8 @@
 //                                       a Term run, and term make reads its snapshot before its run opens (T-0457)
 //   NODE_PATH                           pnpm's lookup path for the tsx it ran, which differs by where it was started
 //                                       from (item term-self-host-001-0453)
+//   TERM_CENSUS_KEEP, TERM_SUITE        a census run keeps every program it builds, named for its suite
+//                                       (task/term/census-keep.cjs, item term-self-host-001-0508); the build is the same
 //
 // Plain TypeScript with no imports: port-build loads it before any port exists, and the build-graph port docks it.
 
@@ -24,6 +26,8 @@ export const LAUNCH_ONLY: readonly string[] = [
   'TERM_FEATURES',
   'TERM_DEPTH',
   'NODE_PATH',
+  'TERM_CENSUS_KEEP',
+  'TERM_SUITE',
 ]
 
 const NAMES = new Set(LAUNCH_ONLY)

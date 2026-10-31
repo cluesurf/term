@@ -32,6 +32,8 @@ load @term/base/maybe
   find maybe
 load @term/site/view/route-answer
   find page-methods
+  find answer-nothing
+  find answer-failure
 
 task host
   # async, as on node: a `route` that loads its data first may be async (view/native/node/host.tree)
@@ -51,12 +53,21 @@ task host
       save root
         call create-element
           text <div>
-      # awaited, as on node: a `route` that loads its data first is async (view/native/node/host.tree)
-      save answer
-        call route
-          read root
-          read request
-          wait true
+      # awaited, as on node: a `route` that loads its data first is async (view/native/node/host.tree). A route that
+      # raises answers 500 through `answer-failure`, as on node (decision 100 rule 7)
+      save answer, call answer-nothing
+      fork
+        mark unsafe
+        save answer
+          call route
+            read root
+            read request
+            wait true
+      halt take
+        take problem
+        save answer
+          call answer-failure
+            read problem
       # a method other than GET: the route's task answered, or 405 (term-site-framework-0006)
       sift answer
         case some

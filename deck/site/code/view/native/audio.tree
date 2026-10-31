@@ -1,6 +1,9 @@
 # audio where there is none (beat-term-0001): the abstract module beside the env dirs, reached by every env with no
 # device (node, the server, the memory host, Rust, a browser until it has a host). Conforms to ../audio.
 
+load @term/site/report
+  find report-raise
+
 task begin-loop
   take path, like text
   take segments, like text
@@ -30,8 +33,15 @@ task follow-loop
     like task
       take value, like text
   like task
-  call handler
-    text <stopped>
+  fork
+    mark unsafe
+    call handler
+      text <stopped>
+  halt take
+    take problem
+    call report-raise
+      text <follow-loop>
+      read problem
   send back
     task drop
       save skip, code 0
@@ -51,8 +61,15 @@ task follow-playback
     like task
       take value, like text
   like task
-  call handler
-    text <done>
+  fork
+    mark unsafe
+    call handler
+      text <done>
+  halt take
+    take problem
+    call report-raise
+      text <follow-playback>
+      read problem
   send back
     task drop
       save skip, code 0
@@ -71,8 +88,15 @@ task follow-recording
     like task
       take value, like text
   like task
-  call handler
-    text <idle>
+  fork
+    mark unsafe
+    call handler
+      text <idle>
+  halt take
+    take problem
+    call report-raise
+      text <follow-recording>
+      read problem
   send back
     task drop
       save skip, code 0

@@ -45,6 +45,16 @@ load ./reactive
 load ../dom/native/{platform}/view
   find view
 
+load ../report
+  find report-raise
+
+# AFTER A RAISE A SLOT ANSWERS EMPTY (decision 100 of note/project/term/self-host/change/001-finish-self-host). A getter
+# or build an app hands a renderer may raise, and no Term caller is above the effect that calls it. The renderer guards
+# the call inside the effect's own closure, reports the raise once with `report-raise` at `<task>/<slot>` (so
+# `run-effect`'s guard never sees it), and draws the empty answer, never the last one: the empty text, an empty view,
+# the empty list, the failing item left out. The reads made before the raise subscribed the effect, so the view draws
+# again by itself when they change.
+
 # the owner of the branch a renderer has mounted now. ONE object, shared, because the effect that swaps the branch and
 # the cleanup that disposes it both hold it
 form branch-slot
@@ -102,7 +112,10 @@ task make-branch-list
   send back, read held
 
 # `build` called inside a fresh owner, which is left closed and returned through `into`, so whatever the build created
-# can be disposed as one
+# can be disposed as one. A build that raises is reported, its owner closed and disposed (the partial build's effects
+# stop and its cleanups run), `into` given a fresh idle owner (never the disposed one, which a later dispose would run
+# again), and the answer is an empty text node. Every branch builds through here, so `show`, `render-dynamic-view`,
+# `render-gate` and the hosts' draws need no guard of their own (decision 100 rule 4)
 task build-owned
   take build
     like task
@@ -110,10 +123,37 @@ task build-owned
   take into, like branch-slot
   like view
   save scope, call open-scope
-  save node, call build
+  save node
+    call create-text
+      bind value, text <>
+  save built, false
+  fork
+    mark unsafe
+    save node, call build
+    save built, true
+  halt take
+    take problem
+    call report-raise
+      text <build-owned/build>
+      read problem
   call close-scope
-  save into/scope, read scope
+  fork test
+    hook test
+      read built
+    hook hold
+      save into/scope, read scope
+    hook miss
+      call dispose-scope
+        read scope
+      save into/scope, call make-idle-owner
   send back, read node
+
+# the empty view, which a branch draws when its condition cannot be read
+task make-empty-view
+  like view
+  send back
+    call create-text
+      bind value, text <>
 
 # dispose the branch in `slot`, then build its replacement in an owner of its own
 task rebuild
@@ -175,11 +215,20 @@ task bind-attribute
   call make-effect
     bind run
       task sync-attribute
+        # a getter that raises sets the attribute to the empty text (decision 100)
+        save shown, text <>
+        fork
+          mark unsafe
+          save shown, call source
+        halt take
+          take problem
+          call report-raise
+            text <bind-attribute/source>
+            read problem
         call set-attribute
           bind node, read node
           bind name, read name
-          bind value
-            call source
+          bind value, read shown
 
 # a text node kept in sync with a reactive getter
 task make-dynamic-text
@@ -193,10 +242,19 @@ task make-dynamic-text
   call make-effect
     bind run
       task sync-text
+        # a getter that raises sets the text to the empty text (decision 100)
+        save shown, text <>
+        fork
+          mark unsafe
+          save shown, call source
+        halt take
+          take problem
+          call report-raise
+            text <make-dynamic-text/source>
+            read problem
         call set-text
           bind node, read host
-          bind value
-            call source
+          bind value, read shown
   send back, read host
 
 # swap a subtree on a reactive condition. An effect re-evaluates `when` and mounts `then` or `other`, replacing the
@@ -222,18 +280,37 @@ task show
   call make-effect
     bind run
       task swap
+        # a condition that raises is neither true nor false, so the branch is rebuilt as an empty view, never `other`
+        # (decision 100)
+        save holds, false
+        save known, false
+        fork
+          mark unsafe
+          save holds, call when
+          save known, true
+        halt take
+          take problem
+          call report-raise
+            text <show/when>
+            read problem
         save next
           fork test
             hook test
-              call when
+              read holds
             hook hold
               call rebuild
                 bind slot, read slot
                 bind build, read then
-            hook miss
+            hook test
+              read known
+            hook hold
               call rebuild
                 bind slot, read slot
                 bind build, read other
+            hook miss
+              call rebuild
+                bind slot, read slot
+                bind build, read make-empty-view
         call replace
           bind old, read current
           bind new, read next
@@ -318,24 +395,56 @@ task render-each
               read old-scope
         save fresh, call make-empty-views
         save owned, call make-empty-owners
-        save current, call items
+        # `items` that raises is the empty list, so the state below is rewritten as for any empty list and nothing
+        # removed above is disposed twice (decision 100 rule 5)
+        save current
+          like list
+            like t
+          make list
+        fork
+          mark unsafe
+          save current, call items
+        halt take
+          take problem
+          call report-raise
+            text <render-each/items>
+            read problem
         walk list, read current
           hook next
             take site, name item
+            # an item whose build raises is left out of this render, its owner closed and disposed
             save scope, call open-scope
-            save node
-              call build
-                bind item, read item
+            save built, false
+            fork
+              mark unsafe
+              call push
+                bind list, read fresh
+                bind item
+                  call build
+                    bind item, read item
+              save built, true
+            halt take
+              take problem
+              call report-raise
+                text <render-each/build>
+                read problem
             call close-scope
+            fork test
+              hook test
+                read built
+              hook hold
+                call push
+                  bind list, read owned
+                  bind item, read scope
+              hook miss
+                call dispose-scope
+                  read scope
+        walk list, read fresh
+          hook next
+            take site, name node
             call insert-before
               bind node, read node
               bind reference, read marker
-            call push
-              bind list, read fresh
-              bind item, read node
-            call push
-              bind list, read owned
-              bind item, read scope
         save mounted, read fresh
         save held/scopes, read owned
 
@@ -373,82 +482,120 @@ task render-each-keyed
   call make-effect
     bind run
       task render
-        save current, call items
+        # `items` that raises is the empty list: every old key vanishes, so every old node is removed and its owner
+        # disposed once (decision 100 rule 5)
+        save current
+          like list
+            like t
+          make list
+        fork
+          mark unsafe
+          save current, call items
+        halt take
+          take problem
+          call report-raise
+            text <render-each-keyed/items>
+            read problem
         save next-keys, call make-empty-texts
         save next-nodes, call make-empty-views
         save next-scopes, call make-empty-owners
-        # build or reuse a node per current item, matched by key against the previous render
+        # build or reuse a node per current item, matched by key against the previous render. An item whose key or
+        # build raises is left out of this render, with no node, key or owner, so it is built fresh on the next one
         walk list, read current
           hook next
             take site, name item
-            save k
-              call key
-                bind item, read item
-            save found, code 0
-            save i, code 0
-            walk list, read keys
-              hook next
-                take site, name old-key
-                fork test
-                  hook test
-                    call is-equal
-                      read old-key
-                      read k
-                  hook hold
-                    save found
+            save k, text <>
+            save keyed, false
+            fork
+              mark unsafe
+              save k
+                call key
+                  bind item, read item
+              save keyed, true
+            halt take
+              take problem
+              call report-raise
+                text <render-each-keyed/key>
+                read problem
+            fork test
+              hook test
+                read keyed
+              hook hold
+                save found, code 0
+                save i, code 0
+                walk list, read keys
+                  hook next
+                    take site, name old-key
+                    fork test
+                      hook test
+                        call is-equal
+                          read old-key
+                          read k
+                      hook hold
+                        save found
+                          call add
+                            read i
+                            code 1
+                    save i
                       call add
                         read i
                         code 1
-                save i
-                  call add
-                    read i
-                    code 1
-            # a kept item keeps its owner with its node; a new one is built in an owner of its own
-            save scope
-              fork test
-                hook test
-                  call is-above
-                    read found
-                    code 0
-                hook hold
-                  call get
-                    read held/scopes
-                    call subtract
+                # a kept item keeps its owner with its node; a new one is built in an owner of its own
+                fork test
+                  hook test
+                    call is-above
                       read found
-                      code 1
-                hook miss
-                  call open-scope
-            save node
-              fork test
-                hook test
-                  call is-above
-                    read found
-                    code 0
-                hook hold
-                  call get
-                    read nodes
-                    call subtract
-                      read found
-                      code 1
-                hook miss
-                  call build
-                    bind item, read item
-            fork test
-              hook test
-                call is-equal
-                  read found
-                  code 0
-              hook hold
-                call close-scope
-            call push
-              bind list, read next-keys
-              bind item, read k
-            call push
-              bind list, read next-nodes
-              bind item, read node
-            call push
-              bind list, read next-scopes
-              bind item, read scope
+                      code 0
+                  hook hold
+                    call push
+                      bind list, read next-keys
+                      bind item, read k
+                    call push
+                      bind list, read next-nodes
+                      bind item
+                        call get
+                          read nodes
+                          call subtract
+                            read found
+                            code 1
+                    call push
+                      bind list, read next-scopes
+                      bind item
+                        call get
+                          read held/scopes
+                          call subtract
+                            read found
+                            code 1
+                  hook miss
+                    save scope, call open-scope
+                    save built, false
+                    fork
+                      mark unsafe
+                      call push
+                        bind list, read next-nodes
+                        bind item
+                          call build
+                            bind item, read item
+                      save built, true
+                    halt take
+                      take problem
+                      call report-raise
+                        text <render-each-keyed/build>
+                        read problem
+                    call close-scope
+                    fork test
+                      hook test
+                        read built
+                      hook hold
+                        call push
+                          bind list, read next-keys
+                          bind item, read k
+                        call push
+                          bind list, read next-scopes
+                          bind item, read scope
+                      hook miss
+                        call dispose-scope
+                          read scope
         # remove old nodes whose key is no longer present
         save j, code 0
         walk list, read keys
@@ -553,7 +700,16 @@ task render-gate
   call make-effect
     bind run
       task swap
-        save state, call status
+        # a status that cannot be read is a failure: the gate mounts `failed` (decision 100)
+        save state, text <error>
+        fork
+          mark unsafe
+          save state, call status
+        halt take
+          take problem
+          call report-raise
+            text <render-gate/status>
+            read problem
         save next
           fork test
             hook test

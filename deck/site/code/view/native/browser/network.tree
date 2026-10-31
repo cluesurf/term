@@ -1,6 +1,9 @@
 # network on a browser (device-layer-0010): navigator.onLine and navigator.connection.
 # Conforms to ../network. The runtime is runtime/native-network.ts.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-network>, name native-network
   load <global:native-watch>, name native-watch
@@ -19,7 +22,17 @@ task follow-network
   # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
   save watching
     call native-network/watch
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-network>
+            read problem
   send back
     task drop
       call native-network/unwatch

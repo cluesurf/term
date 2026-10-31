@@ -332,21 +332,22 @@ task next-temp
   save counters/{name}, add(at, 1)
   back at
 
-# atomic: a unique temp, then a rename over the target. A cache write failure never fails the build
-task save-entry
+# atomic: a unique temp, then a rename over the target. True when the entry landed
+task write-entry
   take state, like disk-state
   take kind, like text
   take key, like text
-  take value, like text
-  like void
+  take bytes, like dynamic
+  like boolean
+  mark private
 
-  sweep(state, kind)
   save file, node-path/join(dir-for(state, kind, key), <{key}.json.gz>)
   save temp, <{file}.{pid()}.{next-temp()}.tmp>
   fork
     mark unsafe
-    node-file/write-file-sync(temp, gzip-text(value))
+    node-file/write-file-sync(temp, bytes)
     node-file/rename-sync(temp, file)
+    back true
   halt take
     take problem
     fork
@@ -355,7 +356,31 @@ task save-entry
     halt take
       # the temp may not exist
       take missing
-      back
+    back false
+
+# One retry, with the shard made again. `ensured` remembers each shard folder for the life of the process, and another
+# process's reclaim-stale-versions removes a namespace by mtime, not by use, so a long-lived process (the language
+# server, the daemon) found its folder gone and lost every later write, ENOENT in silence (term-self-host-001-0471,
+# test/compile/cache-reclaimed.ts). A cache write failure still never fails the build
+task save-entry
+  take state, like disk-state
+  take kind, like text
+  take key, like text
+  take value, like text
+  like void
+
+  sweep(state, kind)
+  save bytes, gzip-text(value)
+  fork
+    mark unsafe
+    fork test, not(write-entry(state, kind, key, bytes))
+      hold
+        state/ensured/remove(node-path/join(state/dir, kind, slug-for(state, kind), shard-of(key)))
+        write-entry(state, kind, key, bytes)
+  halt take
+    # the shard could not be made again: a miss later, never a crash now
+    take problem
+    back
 
 task face-of
   take state, like disk-state
@@ -623,7 +648,9 @@ task compiler-version
 task compiler-versions
   like dynamic
 
-  save entries, make list
+  # typed where it is made: each entry is a [kind, version] pair, a host value
+  save entries, like list, like dynamic
+    make list
   walk scope-kinds(cache-scope-module)
     take kind
     entries/push entry-of(kind, compiler-version(kind))

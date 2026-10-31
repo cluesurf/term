@@ -47,6 +47,7 @@ load ../compile/node
   find chunk-part
   find value-part
   find expression-type
+  find with-type
 
 load ../compile/node-reach
   find reach-statements
@@ -2608,6 +2609,24 @@ task simplify-template
     miss
       back node
 
+# AN INLINED CALL HAS THE CALL'S TYPE. The callee's body was checked at its own generics, so `get(sp, 2)` inlined is
+# `sp.at(2)` typed `t`, while the checker typed the call at its instantiation (`kernel-elim`). Every pass after reads
+# the type off the node: a `sift` on the call picks its arm's form by it, and with `t` the emitters fell back to the
+# case NAME and took whichever union declares it (term-self-host-001-0510, traps.md T-0006). A copy, since a
+# specialized value may be an argument node itself
+task typed-as-call
+  take value, like expression
+  take call, like expression
+  like expression
+  mark private
+
+  sift expression-type(call)
+    case some
+      link known
+      back with-type(shallow-copy(value), known)
+    case none
+      back value
+
 task simplify-call
   take node, like expression
   take state, like simplify-state
@@ -2634,7 +2653,7 @@ task simplify-call
               sift specialized-value(callee-name, args, frames-of(node), state)
                 case some
                   link value
-                  back value
+                  back typed-as-call(value, node)
                 case none
                   save nothing, 0
               fork test, state/small/has(callee-name)
@@ -2667,7 +2686,7 @@ task simplify-call
                   sift small-value(callee-name, tiny, args, frames-of(node), state)
                     case some
                       link value
-                      back value
+                      back typed-as-call(value, node)
                     case none
                       save nothing, 0
         miss

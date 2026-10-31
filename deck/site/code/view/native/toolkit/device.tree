@@ -18,6 +18,9 @@
 #   reduce-motion  yes or no
 #   text-scale     the platform's text size over its default, `1` at the default
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-device>, name native-device
 
@@ -35,7 +38,19 @@ task watch-traits
       take value, like text
   like task
   call native-device/watch
-    read handler
+    task heard
+      take name, like text
+      take value, like text
+      fork
+        mark unsafe
+        call handler
+          read name
+          read value
+      halt take
+        take problem
+        call report-raise
+          text <watch-traits>
+          read problem
   send back
     task drop
       call native-device/unwatch

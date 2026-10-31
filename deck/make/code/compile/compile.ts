@@ -279,6 +279,21 @@ export function compile(
 
   const reading = readingOf(options)
   const loaded = loadGraphPort(source, reading)
+  // a census run keeps the program this build loaded, its texts as read (task/term/census-keep.cjs, preloaded only under
+  // TERM_CENSUS_KEEP; decision 096 rule 8 of note/project/term/self-host/change/001-finish-self-host). A global, so
+  // this face stays browser-safe
+  const census = (
+    globalThis as {
+      termCensusKeep?: {
+        sources?: (entry: string, sources: unknown) => void
+      }
+    }
+  ).termCensusKeep
+
+  census?.sources?.(
+    source.file,
+    (loaded.graph as { sources?: unknown } | undefined)?.sources,
+  )
 
   if (loaded.refused.form === 'some') {
     return {

@@ -1,6 +1,9 @@
 # network where there is none (device-layer-0010): the abstract module beside the env dirs, reached by
 # every env with no device (node, the server, the memory host). Conforms to ../network.
 
+load @term/site/report
+  find report-raise
+
 task read-network
   like text
   send back, text <unavailable>
@@ -10,8 +13,15 @@ task follow-network
     like task
       take value, like text
   like task
-  call handler
-    text <unavailable>
+  fork
+    mark unsafe
+    call handler
+      text <unavailable>
+  halt take
+    take problem
+    call report-raise
+      text <follow-network>
+      read problem
   send back
     task drop
       save skip, code 0

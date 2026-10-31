@@ -1,6 +1,9 @@
 # motion on the platform's own toolkit (device-layer-0011): CoreMotion on iOS, SensorManager on Android, unavailable on macOS and under Compose on the desktop.
 # Conforms to ../motion. The runtime is native-motion.swift, native-motion.kt (both Android hosts) and compose/native-motion.kt.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-motion>, name native-motion
   load <global:native-watch>, name native-watch
@@ -19,7 +22,17 @@ task follow-motion
   # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
   save watching
     call native-motion/watch
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-motion>
+            read problem
   send back
     task drop
       call native-motion/unwatch

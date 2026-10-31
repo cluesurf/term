@@ -12,6 +12,11 @@ mark draft
 load @term/base/bit
   find bitwise-and
 
+# `mine until` hands back the bytes before the terminator, and the form's name and comment are text: gzip spells
+# them latin-1 (RFC 1952, 2.3.1), so the value decodes them as ./code.tree's own reader does
+load @term/mill/blob/gzip/code
+  find latin1-text
+
 mine gzip
   mine byte, code 0x1f
   mine byte, code 0x8b
@@ -96,8 +101,8 @@ mine gzip
       bind extra-flags, read extra-flags
       bind os, read os
       bind extra, read extra
-      bind name, read name
-      bind comment, read comment
+      bind name, call latin1-text(read name)
+      bind comment, call latin1-text(read comment)
       bind header-crc16, read header-crc16
       bind compressed-data, read compressed-data
       bind crc32, read crc32

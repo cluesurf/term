@@ -2,6 +2,9 @@
 # Conforms to ../location. The runtime is native-location.swift, native-location.kt (both Android hosts) and compose/native-location.kt.
 # The permission runtime is docked too: this capability reads its grant through it (../permission).
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:native-location>, name native-location
   load <global:native-permission>, name native-permission
@@ -21,7 +24,17 @@ task follow-position
   # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
   save watching
     call native-location/watch
-      read handler
+      task heard
+        take value, like text
+        fork
+          mark unsafe
+          call handler
+            read value
+        halt take
+          take problem
+          call report-raise
+            text <follow-position>
+            read problem
   send back
     task drop
       call native-location/unwatch

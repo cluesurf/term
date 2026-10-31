@@ -137,12 +137,8 @@ export function printNode(node: Node, depth = 0): string {
 
 // ---- compiling a mine grammar to .tree source text ----
 
-// The counters the code generator keeps while it works: how deep in a repetition and in a span it is. They were
-// module variables, raised and lowered around each nested compile, so a compile that throws partway leaves them raised
-// for every compile after it in the process. That is kept exactly, by holding one state for the module, until it is
-// decided whether a throw should reset them.
-const STATE = port.freshFeedState()
-
+// Each compile makes its own counters (how deep in a repetition and in a span it is) in the port, so a compile that
+// throws partway leaves nothing raised for the next (item term-self-host-001-0058, decided by item 0009).
 export function compileFeedMine(
   grammar: FeedMineGrammar,
   substrate: Substrate,
@@ -154,6 +150,5 @@ export function compileFeedMine(
     substrate,
     cursorImportPath,
     extraImports,
-    STATE,
   )
 }

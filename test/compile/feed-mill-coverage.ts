@@ -48,7 +48,11 @@ import { check } from '@term/make/code/check/infer'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { expandTemplates } from '@term/make/code/compile/template'
+import {
+  collectTemplates,
+  expandTemplates,
+} from '@term/make/code/compile/template'
+import type { RootNode } from '@term/make/code/parser/narrow'
 import {
   bindModules,
   stampModule,
@@ -250,6 +254,7 @@ function compilesClean(source: string, at: string): boolean {
       withNativeEnv('node', resolver),
     )
     const program: Program = []
+    const trees: { unit: Source; tree: RootNode }[] = []
 
     for (const unit of sources) {
       const parsed = parse(unit)
@@ -258,7 +263,18 @@ function compilesClean(source: string, at: string): boolean {
         return false
       }
 
-      const built = mill(expandTemplates(parsed.tree), unit.file)
+      trees.push({ unit, tree: parsed.tree })
+    }
+
+    // every template the graph defines, as the ordinary build hands each unit (compile/unit-mill.tree
+    // `graph-templates`): `fuse integer, u8, ...` in integer/unsigned.tree makes `to-u8` only with integer/n.tree's
+    // template in hand, and expanded alone it made nothing (term-self-host-001-0515)
+    const templates = new Map(
+      trees.flatMap(({ tree }) => [...collectTemplates(tree)]),
+    )
+
+    for (const { unit, tree } of trees) {
+      const built = mill(expandTemplates(tree, templates), unit.file)
 
       if (!built.ok) {
         return false

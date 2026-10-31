@@ -79,6 +79,13 @@ load ../build/role-reading
 load ../build/unit-naming
   find unit-slug
 
+load ../build/build-graph
+  find build-graph
+  find make-build-graph
+  find build-request
+  find entry-ask
+  find document-of
+
 load ../build/tree-watching
   find watch-tree-files
 
@@ -137,7 +144,6 @@ dock load
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
-  load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
   # an inherited method (on, exit) is reached only through the global (traps.md)
   load <global:process>, name host-process
@@ -159,21 +165,22 @@ task read-last-boot-units
 
   back last-boot-units
 
-# the unit answers and module walks of every build in this process, so a rebuild of the dev loop reads what an edit did
-# not reach from memory. Bounded: past the cap the memo starts over and reads from the cache
-bind boot-new-memo
-  like dynamic
-  case node
-    text <new Map()>
+# THE PROCESS'S BUILD GRAPH (decision 094 rule 1), one for each project root a boot builds in this process (a dev
+# loop builds one), so a rebuild reads every unit an edit did not reach from memory, the memo bounded by the graph's
+# cap. Marked turned once (decision 097): a boot resolves through the app's own resolver and never turns the session
+host boot-graphs, make hash
 
-host process-units, boot-new-memo()
+task boot-graph-of
+  take root, like text
+  like build-graph
+  mark private
 
-host process-walked, boot-new-memo()
-
-task process-units-cap
-  like number
-
-  back 20000
+  fork test, not(boot-graphs/has(root))
+    hold
+      save made, make-build-graph(root)
+      save made/turned, true
+      save boot-graphs/{root}, made
+  back boot-graphs/get(root)
 
 # ---- the shapes ----
 
@@ -340,19 +347,6 @@ form whole-options
   link role-of, like dynamic
   link lean-of, like dynamic
 
-form unit-options
-  link resolve, like dynamic
-  link cache, like dynamic
-  link modules, like dynamic
-  link role-of, like dynamic
-  link lean-of, like dynamic
-  link deck-of, like dynamic
-  link parsed, like dynamic
-  link units, like dynamic
-  link walked, like dynamic
-  link env, like text
-  link keep-program, like boolean
-
 form folder-ask
   link recursive, like boolean
 
@@ -404,18 +398,6 @@ bind boot-last-segment
   like text
   case node
     text <$text.split("/").pop()>
-
-bind boot-memo-size
-  take memo, like dynamic
-  like number
-  case node
-    text <$memo.size>
-
-bind boot-memo-clear
-  take memo, like dynamic
-  like void
-  case node
-    text <$memo.clear()>
 
 bind boot-items
   take value, like dynamic
@@ -1133,25 +1115,18 @@ task unit-plan
   like boot-plan
   mark private
 
-  fork test, is-above(boot-memo-size(process-units), process-units-cap())
-    hold
-      boot-memo-clear(process-units)
   save finder, make-deck-finder()
-  save deck-of, face-deck-finder(finder)
   save project-root, run/project-root
   save slug
     task
       take file, like text
       like text
       back unit-slug(project-root, file, finder)
-  save modules
-    task
-      take file, like text
-      like text
-      back <./{unit-slug(project-root, file, finder)}>
-  save source, make(compile-source, bind(file, run/entry), bind(text, node-file/read-file-sync(run/entry, <utf8>)))
-  save options, make(unit-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(modules, modules), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))), bind(deck-of, deck-of), bind(parsed, process-parse()), bind(units, process-units), bind(walked, process-walked), bind(env, run/env), bind(keep-program, true))
-  save built, separate-module/compileSeparate(source, options)
+  # through the process's build graph (decision 094 rule 1): the entry as it is on disk, the app's env, its resolver,
+  # and the checked program handed back for the command routes
+  save entry-text, node-file/read-file-sync(run/entry, <utf8>)
+  save answer, document-of(build-request(boot-graph-of(project-root), entry-ask(run/entry, entry-text, run/env, true, run/resolve), run/cache))
+  save built, answer/result
   fork test, not(built/ok)
     hold
       report-failed(run, built/diagnostics, started)

@@ -16,6 +16,7 @@ import {
   writeFileSync,
   readFileSync,
   existsSync,
+  realpathSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -481,12 +482,14 @@ let package = Package(
   )
 
   // the SwiftPM scratch directory is SHARED between runs, so the swift-nio and Hummingbird graph is resolved and
-  // built once rather than once per run (a cold resolve is minutes)
-  const scratch = join(
-    process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'),
-    'swift',
-    'server-roundtrip',
-  )
+  // built once rather than once per run (a cold resolve is minutes). By its REAL path: under the gate TMPDIR is a
+  // scratch folder per suite with term-native LINKED in (task/term/temp-run.ts), and clang's module cache keys a
+  // precompiled module by the path it was reached through, so a .pcm built through one run's link and the same file
+  // reached through the next run's link were two definitions of `_DarwinFoundation1` and swift-build refused both
+  // (term-self-host-001-0515; it passed run alone, where the path is the same every time)
+  const shared = process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native')
+  mkdirSync(shared, { recursive: true })
+  const scratch = join(realpathSync(shared), 'swift', 'server-roundtrip')
   const exe = join(scratch, 'debug', 'server')
 
   const build = (): void => {
@@ -511,12 +514,13 @@ let package = Package(
     } catch (first) {
       // TMPDIR is purged file by file, and a scratch that lost files fails with a missing module map, header or
       // precompiled module. That one is reset and built from nothing once; the program's own errors fail as they are
-      // (term-cli-in-term-0217)
+      // (term-cli-in-term-0217). So is a module cache holding one module at two paths (`is defined in both`), which a
+      // scratch built before it was reached by its real path still holds (term-self-host-001-0515)
       const said = first as { stderr?: Buffer; stdout?: Buffer }
       const text = `${String(said.stdout ?? '')}${String(said.stderr ?? '')}`
 
       if (
-        !/not found|No such file|missing required module|module cache path/.test(
+        !/not found|No such file|missing required module|module cache path|is defined in both/.test(
           text,
         )
       ) {

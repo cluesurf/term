@@ -2,15 +2,19 @@
 # `term feed`, the command line) can share one instead of each cold-starting its own. The transport is hono over HTTP
 # (decision 002). Ported from call/code/dev/daemon.ts, term-cli-in-term-0064.
 #
-# IT RUNS THE BUILD'S OWN `compile`, with the project's resolver, roles, lean flag and decks, and one compile cache
-# for every file it is asked about, the way the language server does. The cache is what keeps a second answer fast:
-# only the module that changed is read again.
+# IT BUILDS THROUGH THE BUILD'S OWN ENGINE (decision 077 section 3, item term-self-host-001-0414): one build graph for
+# the daemon's life (work/build/build-graph.tree), asked in document mode, with the machine store. A question's text is
+# the graph's overlay for its file, so a second question reads again only the unit that changed and what reads it, and
+# every unit no text moved is answered from the graph's memo or the store `term make` fills. The overlay entry stays
+# while the text differs from the disk (a client's unsaved text, which another question's import then reads), and is
+# dropped once the disk holds the same text, or when the client closes the file. Each question turns the graph's
+# session, so a loaded module edited on disk is read again (item term-self-host-001-0431).
 #
-# `POST /analyze {file, text}` answers that document's diagnostics, the build's errors or, when it builds, its
-# warnings. `POST /close {file}` drops a document's warm state. `GET /health` reports liveness and how many documents
-# are warm. Docked: hono, @hono/node-server, compile/compile, compile/cache. The project root is found by the boot
-# lane's port (boot/entry-finding.tree, loaded since term-cli-in-term-0066), and the resolver, the role readers and the
-# deck finder are the build lane's ports (term-cli-in-term-0214).
+# `POST /analyze {file, text}` answers that document's diagnostics, the build's errors or, when it builds, its own
+# warnings, placed as `term make` places them. `POST /close {file}` drops a document's warm state and its overlay
+# entry. `GET /health` reports liveness and how many documents are warm. Docked: hono, @hono/node-server. The project
+# root is found by the boot lane's port (boot/entry-finding.tree, loaded since term-cli-in-term-0066), and a resolver
+# for an env other than node is the build lane's port (term-cli-in-term-0214).
 
 load ../boot/entry-finding
   find find-project-root
@@ -18,24 +22,27 @@ load ../boot/entry-finding
 load ../build/project-resolving
   find make-project-resolver
 
-load ../build/deck-finding
-  find make-deck-finder
-
-load ../build/role-reading
-  find make-role-reader
-
 load ../build/host-faces
   find face-project-resolver
-  find face-deck-finder
-  find face-role-reader
-  find face-lean-reader
+
+load ../build/build-graph
+  find build-graph
+  find build-mode
+  find build-ask
+  find build-answer
+  find make-build-graph
+  find build-request
+  find set-overlay
+  find drop-overlay
+
+load ../cache/compile-store
+  find project-cache
 
 dock load
   load <hono>, name hono-module
   load <@hono/node-server>, name node-server
   load <node:path>, name node-path
-  load <@term/make/code/compile/compile>, name compiling-module
-  load <@term/make/code/compile/cache>, name cache-module
+  load <node:fs>, name node-file
 
 # ---- the host values Term has no word for ----
 
@@ -52,12 +59,6 @@ bind daemon-new-hono
   like dynamic
   case node
     text <new $module.Hono()>
-
-bind daemon-new-cache
-  take module, like dynamic
-  like dynamic
-  case node
-    text <new $module.CompileCache()>
 
 bind daemon-new-set
   like dynamic
@@ -119,20 +120,19 @@ bind daemon-diagnostics
   case node
     text <(\{ diagnostics: $diagnostics \})>
 
+# a grammar the build refuses (build-input.tree `refused`), answered as an error of the document
+bind daemon-fault
+  take message, like text
+  like dynamic
+  case node
+    text <(\{ severity: "error", message: $message \})>
+
 # the answer closes its connection
 bind daemon-close-after
   take context, like dynamic
   like void
   case node
     text <void $context.header("connection", "close")>
-
-# the warnings whose file is `file`
-bind daemon-own-warnings
-  take warnings, like dynamic
-  take file, like text
-  like dynamic
-  case node
-    text <$warnings.filter((one) =\> one.file === $file)>
 
 bind daemon-json
   take context, like dynamic
@@ -157,18 +157,6 @@ bind daemon-body
 
 # ---- the shapes ----
 
-form daemon-source
-  link file, like text
-  link text, like text
-
-form daemon-options
-  link resolve, like dynamic
-  link cache, like dynamic
-  link role-of, like dynamic
-  link lean-of, like dynamic
-  link deck-of, like dynamic
-  link optimize, like boolean
-
 form serve-ask
   link fetch, like dynamic
   link port, like number
@@ -179,6 +167,64 @@ form daemon
   link warm, like dynamic
   link close, like dynamic
 
+# whether the disk holds `text` at `file` already, so the overlay has nothing to shadow
+task matches-disk
+  take file, like text
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, not(node-file/exists-sync(file))
+    hold
+      back false
+  back is-equal(node-file/read-file-sync(file, <utf8>), text)
+
+# node's loads are the graph's own (undefined here), its kept answers turned each question. Another env's are a
+# resolver made per question: one kept for the daemon's life answered a loaded module edited on disk by its first text
+# (item term-self-host-001-0431)
+task resolver-for-env
+  take root, like text
+  take env, like text
+  like dynamic
+  mark private
+
+  fork test, is-equal(env, <node>)
+    hold
+      back void
+  back face-project-resolver(make-project-resolver(root, env))
+
+# one question: the text laid over its file, the document built as `term make` builds it, and its problems as the build
+# places them (the errors when it fails, else its own warnings), then the overlay entry dropped when the disk agrees
+task analyze-document
+  take graph, like build-graph
+  take store, like dynamic
+  take file, like text
+  take text, like text
+  take resolve, like dynamic
+  like list, like dynamic
+  mark private
+
+  set-overlay(graph, file, text)
+  save ask, make(build-ask, bind(mode, make document), bind(file, file), bind(platform, <node>), bind(precomputed, void), bind(explain, void), bind(text, <>), bind(env, <>), bind(keep-program, false), bind(resolve, resolve))
+  save answered, build-request(graph, ask, store)
+  save diagnostics, like list, like dynamic
+    make list
+  sift answered
+    case document-built
+      link answer
+      walk answer/problems
+        take problem, like dynamic
+        diagnostics/push(problem/diagnostic)
+      walk answer/faults
+        take fault
+        diagnostics/push(daemon-fault(fault))
+    case project-built
+      save skipped, true
+  fork test, matches-disk(file, text)
+    hold
+      drop-overlay(graph, file)
+  back diagnostics
+
 # start the daemon. `options` is the original's record: root, and port and env when given
 task start-daemon
   take options, like dynamic
@@ -187,8 +233,9 @@ task start-daemon
   save project-root, find-project-root(options/root)
   save env, daemon-or(options/env, <node>)
   save port, daemon-or(options/port, 5179)
-  # one compile cache for every document: a second question about a file reads again only what changed
-  save cache, daemon-new-cache(cache-module)
+  # one build graph and one store for every document: a second question reads again only what its text moved
+  save graph, make-build-graph(project-root)
+  save store, project-cache(project-root)
   # the documents asked about and not closed
   save warm, daemon-new-set()
 
@@ -213,23 +260,7 @@ task start-daemon
       # a file named relative to the project, as a client in it writes one
       save file, node-path/resolve(project-root, body/file)
       daemon-set-add(warm, file)
-      # a resolver, role reader and deck finder per question: each keeps every file it read for its life ("files do
-      # not change during a compile"), so one kept for the daemon's life answered a loaded module edited on disk by
-      # its first text (item term-self-host-001-0431: a renamed task read as unknown in its caller). The compile cache
-      # is keyed by the texts, so it still reads again only what changed
-      save resolve, face-project-resolver(make-project-resolver(project-root, env))
-      save reader, make-role-reader(project-root)
-      save role-of, face-role-reader(reader)
-      save lean-of, face-lean-reader(reader)
-      save deck-of, face-deck-finder(make-deck-finder())
-      save result, compiling-module/compile(make(daemon-source, bind(file, file), bind(text, body/text)), make(daemon-options, bind(resolve, resolve), bind(cache, cache), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(optimize, false)))
-      save diagnostics, result/diagnostics
-      # the document's OWN warnings, as the build reports them (separate-build.tree `is-own-warning`): a loaded
-      # module's warnings carry that module's file and no span file, and were answered as this document's (item
-      # term-self-host-001-0424)
-      fork test, result/ok
-        hold
-          save diagnostics, daemon-own-warnings(result/warnings, file)
+      save diagnostics, analyze-document(graph, store, file, body/text, resolver-for-env(project-root, env))
       # one connection per question. A kept-alive socket is closed by the server after 5 s idle, and a client whose
       # own thread was busy past that (the language server mid-build) writes its next question into the closed socket
       # and reads ECONNRESET (item 0424, tmp/self-host/0424/reset.ts: 2 of 12). A local connect costs well under a ms
@@ -237,7 +268,7 @@ task start-daemon
       back daemon-json(context, daemon-diagnostics(diagnostics))
   app/post(</analyze>, analyze)
 
-  # drop a document's warm state (the editor closed it)
+  # drop a document's warm state and its overlay entry (the editor closed it)
   save forget
     task
       take context, like dynamic
@@ -246,7 +277,9 @@ task start-daemon
       save body, daemon-await(daemon-body(context))
       fork test, daemon-is-text(body/file)
         hold
-          daemon-set-delete(warm, node-path/resolve(project-root, body/file))
+          save closed, node-path/resolve(project-root, body/file)
+          daemon-set-delete(warm, closed)
+          drop-overlay(graph, closed)
       back daemon-json(context, daemon-closed())
   app/post(</close>, forget)
 

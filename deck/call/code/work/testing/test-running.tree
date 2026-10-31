@@ -33,6 +33,11 @@ load ../cache/compile-store
 load ../build/unit-naming
   find unit-slug
 
+load ../build/build-graph
+  find build-request
+  find entry-ask
+  find document-of
+
 load ../bundle/unit-writing
   find unit-ask
   find write-unit-bundle
@@ -343,8 +348,10 @@ task compile-units
       take file, like text
       like text
       back <./{names(file)}>
-  save ask, make(separate-ask, bind(resolve, input/resolve), bind(cache, units/cache), bind(modules, modules), bind(role-of, input/role-of), bind(lean-of, input/lean-of), bind(deck-of, units/deck-of), bind(parsed, units/parsed), bind(units, units/units), bind(walked, units/walked))
-  save result, separate-module/compile-separate(source, ask)
+  # through the run's build graph (decision 094 rule 1): the file as the preprocessor rewrote it, with its snapshots,
+  # is the caller's text, and the session the run turned for the round is read as it stands (decision 097)
+  save answer, document-of(build-request(units/graph, entry-ask(source/file, source/text), units/cache))
+  save result, answer/result
   fork test, not(is-truthy(result/ok))
     hold
       back result

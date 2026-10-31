@@ -1,0 +1,2750 @@
+# THE SECOND CHECKER'S INPUT: every claim the kernel checked as one term, written out as Lean 4 source, so the proof is
+# re-checked by a kernel that shares no code with Term's (note/project/term/proof/lean-export/spec.md).
+#
+# Ported from check/lean-export.ts (items term-self-host-change-001-finish-self-host-0005 and 0006), which stays as the
+# face. Part 1 (0005) is the translation's own tools, the original's lines 80 to 495: a kernel term (de Bruijn
+# indices, check/judging.tree `kernel-term`) as a NAMED term whose every binder has a name unique in the export, the
+# walks over a named term, and the printer that writes one as Lean. Part 2 (0006) is the export itself (`export-lean`),
+# `plant-lean` and `join-sources`. The front end (parse, mill, resolve, the claim fill, the surface check, the kernel's
+# reading of the types, elaboration) is the build's own TypeScript, so the face runs it and hands its answers in as a
+# `lean-front`: the checked program, its claims, the elaboration data, and the judge state elaboration left, whose
+# `definition` the export reads and `quote`s itself, as the original read `judgeState()`. The decisions:
+#   - the original's `Names` class is `name-counter`, a `mark shared` record handed to every task that names a binder,
+#     so one counter numbers the whole export as the one instance did
+#   - a refusal (the original's `Refuse`, thrown and caught per definition) raises `failure` with `lean-refuse:` in
+#     front of its message, the way check/judging.tree marks a kernel error. Part 2 catches it per definition
+#   - a binder's name is its hint with every UTF-16 unit outside [A-Za-z0-9] written `_` (a code point past U+FFFF is
+#     two units, so two), its leading run of non-letters dropped, `x` when nothing is left (T001, T024)
+#   - a set of constants is a hash from the name to true, so its keys keep the order the original's Set kept
+#   - the printer's constant names are spelled by `const-name` over a `lean-spelling` record (the forms with cases and
+#     the constructors), which the original's `constName` closure read from the export's own tables
+#   - the original's locals of `exportLean` are one `mark shared` record, `lean-export-state`, every step writes through.
+#     `emit` guards its step and keeps a `lean-refuse:` failure as the definition's refusal, as the original's catch of
+#     `Refuse` did; any other raise leaves with its note
+#   - a sort is JavaScript's default, by UTF-16 units (`sorted-keys`)
+#   - the case of an application is `apply`: a case `app` in this union made check/judging.tree's `sift get(sp, 2)`
+#     test this union's tag once both were in one closure (traps.md T-0006)
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find ends-with
+  find substring
+  find replace-all
+  find contains
+
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/rune
+  find scalar-to-text
+
+load ./judging
+  find kernel-term
+  find level
+  find judge-state
+  find quote
+
+load ./elaborating-data
+  find elaboration-data
+
+load ../compile/node
+  find statement
+
+load ../parser/tree
+  find parse
+  find node
+  find root-node
+  find comment
+
+load ../parser/token
+  find token-source
+
+load ../compile/mill-running
+  find head-word
+
+load @term/base/text
+  find starts-with
+  find index-of
+  find split
+
+# the namespace every exported name lives in, so no Term name meets one of Lean's own (`absurd`, `Eq`, `not`)
+task lean-space
+  like text
+
+  back <TermExport>
+
+# ---- a named copy of a kernel term: each binder gets a name of its own, unique in the export, so substituting one
+# term into another can never capture ----
+
+form lean-term
+  mark tag, name k
+  case var
+    link name, like text
+  case const
+    link name, like text
+  case type
+    link level, like level
+  case pi
+    link name, like text
+    link domain, like lean-term
+    link codomain, like lean-term
+  case lam
+    link name, like text
+    link body, like lean-term
+  case apply
+    link fun, like lean-term
+    link arg, like lean-term
+  case ann
+    link term, like lean-term
+    link type, like lean-term
+
+# the binder names given so far, one counter for the whole export
+form name-counter
+  mark shared
+  link count, like number
+
+task new-names
+  like name-counter
+
+  back
+    make name-counter
+      bind count, 0
+
+task is-word-rune
+  take rune, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(rune, 48), is-maximum(rune, 57))
+    hold
+      back true
+  back is-letter-rune(rune)
+
+task is-letter-rune
+  take rune, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(rune, 65), is-maximum(rune, 90))
+    hold
+      back true
+  back and(is-minimum(rune, 97), is-maximum(rune, 122))
+
+# `text.replace(/[^A-Za-z0-9]/g, '_')`: every UTF-16 unit outside the class is one `_`, so a code point past U+FFFF is
+# two of them
+task word-units
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-word-rune(rune)
+      hold
+        push(out, scalar-to-text(rune))
+      miss
+        push(out, <_>)
+        fork test, is-above(rune, 65535)
+          hold
+            push(out, <_>)
+  back out
+
+# a binder's name from its hint: `replace(/[^A-Za-z0-9]/g, '_')`, then `replace(/^[^A-Za-z]+/, '')`, `x` for nothing
+task binder-base
+  take hint, like text
+  like text
+  mark private
+
+  save units, word-units(hint)
+  save kept, make list
+  save started, false
+  walk units
+    take unit
+    fork test, not(started)
+      hold
+        fork test, contains(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz>, unit)
+          hold
+            save started, true
+    fork test, started
+      hold
+        push(kept, unit)
+  fork test, is-equal(kept/length, 0)
+    hold
+      back <x>
+  back join(kept, <>)
+
+# a fresh binder name, `<hint>_<n>`
+task fresh
+  take counter, like name-counter
+  take hint, like text
+  like text
+
+  save base, binder-base(hint)
+  save counter/count, add(counter/count, 1)
+  back <{base}_{counter/count}>
+
+task with-name
+  take env, like list, like text
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk env
+    take one
+    push(out, one)
+  push(out, name)
+  back out
+
+# a kernel term (de Bruijn indices) as a named one. `env` names the binders in scope, innermost last
+task named
+  take given, like kernel-term
+  take env, like list, like text
+  take counter, like name-counter
+  like lean-term
+
+  sift given
+    case var
+      link index
+      save at, subtract(subtract(env/length, 1), index)
+      fork test, or(is-below(at, 0), is-minimum(at, env/length))
+        hold
+          halt <lean-refuse:a variable out of scope (#{index})>
+      save found, get(env, at)
+      back
+        make lean-term/var
+          bind name, found
+    case const
+      link name
+      back
+        make lean-term/const
+          bind name, name
+    case type
+      link at-level
+      back
+        make lean-term/type
+          bind level, at-level
+    case pi
+      link mult
+      link domain
+      link codomain
+      save binder, fresh(counter, <x>)
+      save named-domain, named(domain, env, counter)
+      save named-codomain, named(codomain, with-name(env, binder), counter)
+      back
+        make lean-term/pi
+          bind name, binder
+          bind domain, named-domain
+          bind codomain, named-codomain
+    case lam
+      link body
+      link name
+      save hint, <x>
+      sift name
+        case some
+          link written
+          save hint, written
+        case none
+          save hint, <x>
+      save binder, fresh(counter, hint)
+      save named-body, named(body, with-name(env, binder), counter)
+      back
+        make lean-term/lam
+          bind name, binder
+          bind body, named-body
+    case app
+      link fun
+      link arg
+      save named-fun, named(fun, env, counter)
+      save named-arg, named(arg, env, counter)
+      back
+        make lean-term/apply
+          bind fun, named-fun
+          bind arg, named-arg
+    case ann
+      link ann-term
+      link ann-type
+      save named-inner, named(ann-term, env, counter)
+      save named-type, named(ann-type, env, counter)
+      back
+        make lean-term/ann
+          bind term, named-inner
+          bind type, named-type
+    case meta
+      halt <lean-refuse:an unsolved metavariable>
+    case id
+      halt <lean-refuse:the built-in identity type (id), whose Lean reading is not decided>
+    case refl
+      halt <lean-refuse:the built-in identity type (refl), whose Lean reading is not decided>
+    case j
+      halt <lean-refuse:the built-in identity type (j), whose Lean reading is not decided>
+    case sigma
+      halt <lean-refuse:a built-in sigma (sigma), whose Lean reading is not decided>
+    case pair
+      halt <lean-refuse:a built-in sigma (pair), whose Lean reading is not decided>
+    case fst
+      halt <lean-refuse:a built-in sigma (fst), whose Lean reading is not decided>
+    case snd
+      halt <lean-refuse:a built-in sigma (snd), whose Lean reading is not decided>
+    case self
+      halt <lean-refuse:a self type, which Lean has no reading of>
+  halt <lean-refuse:a term of no known kind>
+
+task is-pi
+  take given, like kernel-term
+  like boolean
+  mark private
+
+  sift given
+    case pi
+      back true
+    miss
+      back false
+
+task is-lam
+  take given, like kernel-term
+  like boolean
+  mark private
+
+  sift given
+    case lam
+      back true
+    miss
+      back false
+
+task hint-at
+  take hints, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, hints/length)
+    hold
+      back get(hints, at)
+  back <x>
+
+# one binder of a peeled type: its name and its domain
+form lean-binder
+  link name, like text
+  link domain, like lean-term
+
+form peeled-pis
+  link binders, like list, like lean-binder
+  link rest, like lean-term
+  link env, like list, like text
+
+# peel up to `count` leading pis of a type, naming each binder by `hints` where given
+task peel-pis
+  take given, like kernel-term
+  take count, like number
+  take hints, like list, like text
+  take counter, like name-counter
+  like peeled-pis
+
+  save binders, make list
+  save env, make list
+  save at, given
+  walk test
+    hook test, and(is-below(binders/length, count), is-pi(at))
+    hook hold
+      sift at
+        case pi
+          link mult
+          link domain
+          link codomain
+          save binder, fresh(counter, hint-at(hints, binders/length))
+          save named-domain, named(domain, env, counter)
+          save one
+            make lean-binder
+              bind name, binder
+              bind domain, named-domain
+          push(binders, one)
+          push(env, binder)
+          save at, codomain
+        miss
+          save at, at
+  save rest, named(at, env, counter)
+  back
+    make peeled-pis
+      bind binders, binders
+      bind rest, rest
+      bind env, env
+
+form peeled-lams
+  link body, like kernel-term
+  link bound, like list, like text
+
+# peel the leading lambdas of a value onto names already given to its type's binders
+task peel-lams
+  take value, like kernel-term
+  take env, like list, like text
+  like peeled-lams
+
+  save at, value
+  save bound, make list
+  walk test
+    hook test, and(is-below(bound/length, env/length), is-lam(at))
+    hook hold
+      save next-name, get(env, bound/length)
+      push(bound, next-name)
+      sift at
+        case lam
+          link body
+          save at, body
+        miss
+          save at, at
+  back
+    make peeled-lams
+      bind body, at
+      bind bound, bound
+
+# ---- walks over a named term ----
+
+form named-spine
+  link head, like lean-term
+  link args, like list, like lean-term
+
+task is-app
+  take given, like lean-term
+  like boolean
+  mark private
+
+  sift given
+    case apply
+      back true
+    miss
+      back false
+
+task spine
+  take given, like lean-term
+  like named-spine
+
+  save reversed, make list
+  save at, given
+  walk test
+    hook test, is-app(at)
+    hook hold
+      sift at
+        case apply
+          link fun
+          link arg
+          push(reversed, arg)
+          save at, fun
+        miss
+          save at, at
+  save args, make list
+  save k, reversed/length
+  walk test
+    hook test, is-above(k, 0)
+    hook hold
+      save k, subtract(k, 1)
+      push(args, get(reversed, k))
+  back
+    make named-spine
+      bind head, at
+      bind args, args
+
+task apply-all
+  take head, like lean-term
+  take args, like list, like lean-term
+  like lean-term
+
+  save out, head
+  walk args
+    take one
+    save out
+      make lean-term/apply
+        bind fun, out
+        bind arg, one
+  back out
+
+# replace free names. Every binder name is unique in the export, so no binder can capture a replacement
+task substitute
+  take given, like lean-term
+  take replacements, like hash, like text, like lean-term
+  like lean-term
+
+  sift given
+    case var
+      link name
+      fork test, replacements/has(name)
+        hold
+          back replacements/get(name)
+      back given
+    case const
+      back given
+    case type
+      back given
+    case pi
+      link name
+      link domain
+      link codomain
+      save new-domain, substitute(domain, replacements)
+      save new-codomain, substitute(codomain, replacements)
+      back
+        make lean-term/pi
+          bind name, name
+          bind domain, new-domain
+          bind codomain, new-codomain
+    case lam
+      link name
+      link body
+      save new-body, substitute(body, replacements)
+      back
+        make lean-term/lam
+          bind name, name
+          bind body, new-body
+    case apply
+      link fun
+      link arg
+      save new-fun, substitute(fun, replacements)
+      save new-arg, substitute(arg, replacements)
+      back
+        make lean-term/apply
+          bind fun, new-fun
+          bind arg, new-arg
+    case ann
+      link ann-term
+      link ann-type
+      save new-term, substitute(ann-term, replacements)
+      save new-type, substitute(ann-type, replacements)
+      back
+        make lean-term/ann
+          bind term, new-term
+          bind type, new-type
+
+# whether a term names a variable
+task mentions
+  take given, like lean-term
+  take wanted, like text
+  like boolean
+
+  sift given
+    case var
+      link name
+      back is-equal(name, wanted)
+    case const
+      back false
+    case type
+      back false
+    case pi
+      link binder
+      link domain
+      link codomain
+      fork test, mentions(domain, wanted)
+        hold
+          back true
+      back mentions(codomain, wanted)
+    case lam
+      link binder
+      link body
+      back mentions(body, wanted)
+    case apply
+      link fun
+      link arg
+      fork test, mentions(fun, wanted)
+        hold
+          back true
+      back mentions(arg, wanted)
+    case ann
+      link ann-term
+      link ann-type
+      fork test, mentions(ann-term, wanted)
+        hold
+          back true
+      back mentions(ann-type, wanted)
+
+# AN ELIMINATOR'S MOTIVE TARGETS ANY UNIVERSE. Term's universes are cumulative (judge.ts: `Type 0` is a `Type 1`), so a
+# motive `T -> Type 1` (the large eliminator `matchType__T`) also takes a motive into `Type 0`, which every dependent
+# match on a form with no indices is. Lean has no cumulativity, so the motive's sort is a universe variable: the
+# eliminator is defined once for every universe, and Lean checks the definition at all of them
+task motive-level
+  like level
+
+  save vars, make hash
+  vars/set(<motive>, 0)
+  back
+    make level
+      bind constant, 0
+      bind vars, vars
+
+task any-sort
+  take domain, like lean-term
+  like lean-term
+
+  sift domain
+    case pi
+      link name
+      link pi-domain
+      link pi-codomain
+      save new-codomain, any-sort(pi-codomain)
+      back
+        make lean-term/pi
+          bind name, name
+          bind domain, pi-domain
+          bind codomain, new-codomain
+    case type
+      back
+        make lean-term/type
+          bind level, motive-level()
+    miss
+      back domain
+
+task is-named-lam
+  take given, like lean-term
+  like boolean
+  mark private
+
+  sift given
+    case lam
+      back true
+    miss
+      back false
+
+# a function applied to variables, its leading lambdas reduced: `(fun a b => M) x y` is `M[a := x, b := y]`. The
+# arguments are variables, so substituting never copies a binder
+task beta
+  take fun, like lean-term
+  take args, like list, like lean-term
+  like lean-term
+
+  save at, fun
+  save used, 0
+  save replacements, make hash
+  walk test
+    hook test, and(is-named-lam(at), is-below(used, args/length))
+    hook hold
+      sift at
+        case lam
+          link name
+          link body
+          replacements/set(name, get(args, used))
+          save at, body
+        miss
+          save at, at
+      save used, add(used, 1)
+  save rest, make list
+  save k, used
+  walk test
+    hook test, is-below(k, args/length)
+    hook hold
+      push(rest, get(args, k))
+      save k, add(k, 1)
+  back apply-all(substitute(at, replacements), rest)
+
+# the constants a term names, added to `into` in the order met, and `into` handed back
+task constants
+  take given, like lean-term
+  take into, like hash, like text, like boolean
+  like hash, like text, like boolean
+
+  save out, into
+  sift given
+    case const
+      link name
+      out/set(name, true)
+    case pi
+      link binder
+      link domain
+      link codomain
+      save out, constants(domain, out)
+      save out, constants(codomain, out)
+    case lam
+      link binder
+      link body
+      save out, constants(body, out)
+    case apply
+      link fun
+      link arg
+      save out, constants(fun, out)
+      save out, constants(arg, out)
+    case ann
+      link ann-term
+      link ann-type
+      save out, constants(ann-term, out)
+      save out, constants(ann-type, out)
+    miss
+      save out, out
+  back out
+
+# the name a named term carries, `<>` for a type, an application or an annotation
+task name-of-named
+  take given, like lean-term
+  like text
+  mark private
+
+  sift given
+    case var
+      link name
+      back name
+    case const
+      link name
+      back name
+    case pi
+      link name
+      back name
+    case lam
+      link name
+      back name
+    miss
+      back <>
+
+task renaming-with
+  take renaming, like hash, like text, like text
+  take from, like text
+  take to, like text
+  like hash, like text, like text
+  mark private
+
+  save out, make hash
+  walk renaming/keys()
+    take key
+    out/set(key, renaming/get(key))
+  out/set(from, to)
+  back out
+
+task renamed
+  take renaming, like hash, like text, like text
+  take name, like text
+  like text
+  mark private
+
+  fork test, renaming/has(name)
+    hold
+      back renaming/get(name)
+  back name
+
+# whether two named terms are the same up to the names of their binders
+task same-named
+  take a, like lean-term
+  take b, like lean-term
+  take renaming, like hash, like text, like text
+  like boolean
+
+  fork test, is-unequal(a/k, b/k)
+    hold
+      back false
+  sift a
+    case var
+      link a-name
+      back is-equal(renamed(renaming, a-name), name-of-named(b))
+    case const
+      link a-name
+      back is-equal(a-name, name-of-named(b))
+    case type
+      link a-level
+      sift b
+        case type
+          link b-level
+          back is-equal(level-text(a-level), level-text(b-level))
+        miss
+          back false
+    case pi
+      link a-name
+      link a-domain
+      link a-codomain
+      sift b
+        case pi
+          link b-name
+          link b-domain
+          link b-codomain
+          fork test, not(same-named(a-domain, b-domain, renaming))
+            hold
+              back false
+          back same-named(a-codomain, b-codomain, renaming-with(renaming, a-name, b-name))
+        miss
+          back false
+    case lam
+      link a-name
+      link a-body
+      sift b
+        case lam
+          link b-name
+          link b-body
+          back same-named(a-body, b-body, renaming-with(renaming, a-name, b-name))
+        miss
+          back false
+    case apply
+      link a-fun
+      link a-arg
+      sift b
+        case apply
+          link b-fun
+          link b-arg
+          fork test, not(same-named(a-fun, b-fun, renaming))
+            hold
+              back false
+          back same-named(a-arg, b-arg, renaming)
+        miss
+          back false
+    case ann
+      link a-term
+      link a-type
+      sift b
+        case ann
+          link b-term
+          link b-type
+          fork test, not(same-named(a-term, b-term, renaming))
+            hold
+              back false
+          back same-named(a-type, b-type, renaming)
+        miss
+          back false
+
+# ---- printing ----
+
+task universe-name
+  take name, like text
+  like text
+
+  back <u_{join(word-units(name), <>)}>
+
+# Term's `Type n` is Lean's `Type n` (Sort (n+1)); a level over variables is Lean's `max` of the same parts
+task level-text
+  take lev, like level
+  like text
+
+  save parts, make list
+  walk lev/vars/keys()
+    take key
+    save offset, lev/vars/get(key)
+    save universe, universe-name(key)
+    fork test, is-equal(offset, 0)
+      hold
+        push(parts, universe)
+      miss
+        push(parts, <{universe}+{offset}>)
+  fork test, is-equal(parts/length, 0)
+    hold
+      back <{lev/constant}>
+  save all, make list
+  fork test, is-above(lev/constant, 0)
+    hold
+      push(all, <{lev/constant}>)
+  walk parts
+    take part
+    push(all, part)
+  save shown, get(all, 0)
+  save k, 1
+  walk test
+    hook test, is-below(k, all/length)
+    hook hold
+      save right, get(all, k)
+      save shown, <max ({shown}) ({right})>
+      save k, add(k, 1)
+  back shown
+
+task quote-name
+  take part, like text
+  like text
+
+  save cleaned, replace-all(replace-all(part, <«>, <_>), <»>, <_>)
+  back <«{cleaned}»>
+
+# a case of a form as Lean names it: the form, and the case's own name
+form lean-constructor
+  link owner, like text
+  link variant, like text
+
+# what the printer needs to spell a constant: the forms with cases (an inductive each), and the constant Term gives
+# each case's constructor
+form lean-spelling
+  link cases, like hash, like text, like boolean
+  link constructors, like hash, like text, like lean-constructor
+
+# whether a text holds a line break `.` stops at
+task holds-line-break
+  take value, like text
+  like boolean
+  mark private
+
+  walk to-runes(value)
+    take rune
+    fork test, or(or(is-equal(rune, 10), is-equal(rune, 13)), or(is-equal(rune, 8232), is-equal(rune, 8233)))
+      hold
+        back true
+  back false
+
+# `/^(.*)\.(rec|casesOn)$/`: the form a recursor or case split names, and which of the two, `<>` for none
+form recursor-name
+  link owner, like text
+  link which, like text
+
+task recursor-of
+  take name, like text
+  like recursor-name
+  mark private
+
+  save which, <>
+  save owner, <>
+  fork test, ends-with(name, <.rec>)
+    hold
+      save which, <rec>
+      save owner, substring(name, 0, subtract(name/length, 4))
+  fork test, ends-with(name, <.casesOn>)
+    hold
+      save which, <casesOn>
+      save owner, substring(name, 0, subtract(name/length, 8))
+  fork test, and(is-unequal(which, <>), holds-line-break(owner))
+    hold
+      save which, <>
+  back
+    make recursor-name
+      bind owner, owner
+      bind which, which
+
+# a constant's Lean name: a form's own recursor and case split, and a case's constructor, with `@` so every argument is
+# explicit (a Lean constructor takes its form's parameters implicitly, and Term's takes them first and explicitly)
+task const-name
+  take spelling, like lean-spelling
+  take name, like text
+  like text
+
+  save space, lean-space()
+  save recursor, recursor-of(name)
+  fork test, and(is-unequal(recursor/which, <>), spelling/cases/has(recursor/owner))
+    hold
+      save owner, quote-name(recursor/owner)
+      save which, recursor/which
+      back <@{space}.{owner}.{which}>
+  fork test, spelling/constructors/has(name)
+    hold
+      save found, spelling/constructors/get(name)
+      save owner, quote-name(found/owner)
+      save variant, quote-name(found/variant)
+      back <@{space}.{owner}.{variant}>
+  save quoted, quote-name(name)
+  back <{space}.{quoted}>
+
+# `/^\d+$/`
+task is-digits
+  take value, like text
+  like boolean
+  mark private
+
+  save runes, to-runes(value)
+  fork test, is-equal(runes/length, 0)
+    hold
+      back false
+  walk runes
+    take rune
+    fork test, or(is-below(rune, 48), is-above(rune, 57))
+      hold
+        back false
+  back true
+
+# a named term as Lean source
+task print-named
+  take given, like lean-term
+  take spelling, like lean-spelling
+  like text
+
+  sift given
+    case var
+      link name
+      back name
+    case const
+      link name
+      back const-name(spelling, name)
+    case type
+      link at-level
+      save shown, level-text(at-level)
+      fork test, is-equal(shown, <0>)
+        hold
+          back <Type>
+      fork test, is-digits(shown)
+        hold
+          back <Type {shown}>
+      back <Type ({shown})>
+    case pi
+      link name
+      link domain
+      link codomain
+      save domain-text, print-named(domain, spelling)
+      save codomain-text, print-named(codomain, spelling)
+      back <(({name} : {domain-text}) → {codomain-text})>
+    case lam
+      link name
+      link body
+      save body-text, print-named(body, spelling)
+      back <(fun {name} =\> {body-text})>
+    case apply
+      # one flat spine: `(@T.casesOn a b c)`, never `((@T.casesOn a) b)`, where Lean would insert the implicit
+      # arguments `@` turned off after the first
+      save shape, spine(given)
+      save head-text, print-named(shape/head, spelling)
+      save printed, make list
+      walk shape/args
+        take one
+        push(printed, print-named(one, spelling))
+      save joined, join(printed, < >)
+      back <({head-text} {joined})>
+    case ann
+      link ann-term
+      link ann-type
+      save term-text, print-named(ann-term, spelling)
+      save type-text, print-named(ann-type, spelling)
+      back <({term-text} : {type-text})>
+
+# ---- the export (part 2, item 0006) ----
+
+# one case of a form: its name in Lean, and the constant Term gives its constructor
+form lean-case
+  link variant, like text
+  link key, like text
+
+# a record's projection `R__field`: its record, the field's place and the record's field count
+form lean-projection
+  link owner, like text
+  link index, like number
+  link count, like number
+
+# an eliminator read from its definition: `fun xs => major motive minors...`, the self-type encoding's shape, with the
+# major's parameters and indices read from the eliminator's type. All under one set of binder names
+form lean-eliminator
+  link owner, like text
+  link binders, like list, like lean-binder
+  link result, like lean-term
+  link major, like text
+  link params, like list, like lean-term
+  link indices, like list, like lean-term
+  link motive, like lean-term
+  link minors, like list, like lean-term
+
+# one exported definition: its Term name, whether it is a claim (a `rule` with no `show`), and the axioms it rests on
+form lean-entry
+  link name, like text
+  link claim, like boolean
+  link axioms, like list, like text
+
+# a claim or definition left out, with the reason
+form lean-refusal
+  link name, like text
+  link reason, like text
+
+# a task's kernel type and the value the kernel kept
+form kept-term
+  link type, like kernel-term
+  link value, like kernel-term
+
+# what the export answers: the Lean source, what was written, what was refused, every axiom, and the kernel's terms
+form lean-export
+  link lean, like text
+  link exported, like list, like lean-entry
+  link refused, like list, like lean-refusal
+  link axioms, like list, like text
+  link terms, like hash, like text, like kept-term
+
+# EVERYTHING ONE EXPORT HOLDS, the original's locals of `exportLean`: one record every step writes through
+form lean-export-state
+  mark shared
+  link data, like elaboration-data
+  link st, like judge-state
+  link signature, like hash, like text, like kernel-term
+  link cases, like hash, like text, like list, like lean-case
+  link projections, like hash, like text, like lean-projection
+  link constructors, like hash, like text, like lean-constructor
+  link eliminators, like hash, like text, like text
+  link enum-defs, like hash, like text, like kernel-term
+  link proven, like hash, like text, like boolean
+  link counter, like name-counter
+  link terms, like hash, like text, like kept-term
+  link param-hints, like hash, like text, like list, like text
+  link spelling, like lean-spelling
+  link blocks, like hash, like text, like text
+  link order, like list, like text
+  link refused, like hash, like text, like text
+  link axioms, like hash, like text, like boolean
+  link reaches, like hash, like text, like hash, like text, like boolean
+  link visiting, like hash, like text, like boolean
+  link universes, like hash, like text, like boolean
+  link eliminator-cache, like hash, like text, like lean-eliminator
+
+task refuse
+  take message, like text
+  mark private
+
+  halt <lean-refuse:{message}>
+
+task form-arity
+  take xs, like lean-export-state
+  take owner, like text
+  like number
+  mark private
+
+  save arities, xs/data/type-former-arity
+  fork test, and(is-equal(owner, <Array>), not(arities/has(owner)))
+    hold
+      back 1
+  fork test, arities/has(owner)
+    hold
+      back arities/get(owner)
+  back 0
+
+task print-in
+  take xs, like lean-export-state
+  take given, like lean-term
+  like text
+  mark private
+
+  back print-named(given, xs/spelling)
+
+task note-universes
+  take xs, like lean-export-state
+  take given, like lean-term
+  mark private
+
+  sift given
+    case type
+      link at-level
+      walk at-level/vars/keys()
+        take key
+        xs/universes/set(universe-name(key), true)
+    case pi
+      link binder
+      link domain
+      link codomain
+      note-universes(xs, domain)
+      note-universes(xs, codomain)
+    case lam
+      link binder
+      link body
+      note-universes(xs, body)
+    case apply
+      link fun
+      link arg
+      note-universes(xs, fun)
+      note-universes(xs, arg)
+    case ann
+      link ann-term
+      link ann-type
+      note-universes(xs, ann-term)
+      note-universes(xs, ann-type)
+    miss
+      save nothing, 0
+
+task binder-text
+  take xs, like lean-export-state
+  take binders, like list, like lean-binder
+  like text
+  mark private
+
+  save parts, make list
+  walk binders
+    take one
+    save domain-text, print-in(xs, one/domain)
+    push(parts, < ({one/name} : {domain-text})>)
+  back join(parts, <>)
+
+task var-term
+  take name, like text
+  like lean-term
+  mark private
+
+  back
+    make lean-term/var
+      bind name, name
+
+task const-term
+  take name, like text
+  like lean-term
+  mark private
+
+  back
+    make lean-term/const
+      bind name, name
+
+task lam-term
+  take name, like text
+  take body, like lean-term
+  like lean-term
+  mark private
+
+  back
+    make lean-term/lam
+      bind name, name
+      bind body, body
+
+task pi-term
+  take name, like text
+  take domain, like lean-term
+  take codomain, like lean-term
+  like lean-term
+  mark private
+
+  back
+    make lean-term/pi
+      bind name, name
+      bind domain, domain
+      bind codomain, codomain
+
+task ann-term-of
+  take inner, like lean-term
+  take given-type, like lean-term
+  like lean-term
+  mark private
+
+  back
+    make lean-term/ann
+      bind term, inner
+      bind type, given-type
+
+task app-term
+  take fun, like lean-term
+  take arg, like lean-term
+  like lean-term
+  mark private
+
+  back
+    make lean-term/apply
+      bind fun, fun
+      bind arg, arg
+
+task binder-domains-into
+  take binders, like list, like lean-binder
+  take into, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save out, into
+  walk binders
+    take one
+    save out, constants(one/domain, out)
+  back out
+
+# the name a term is when it is a variable, `<>` otherwise
+task var-name
+  take given, like lean-term
+  like text
+  mark private
+
+  sift given
+    case var
+      link name
+      back name
+    miss
+      back <>
+
+task const-name-of
+  take given, like lean-term
+  like text
+  mark private
+
+  sift given
+    case const
+      link name
+      back name
+    miss
+      back <>
+
+task names-constant
+  take given, like lean-term
+  take name, like text
+  like boolean
+  mark private
+
+  save found, constants(given, make hash)
+  back found/has(name)
+
+task text-index
+  take values, like list, like text
+  take wanted, like text
+  like number
+  mark private
+
+  save at, 0
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# an eliminator read once from its definition
+task read-eliminator
+  take xs, like lean-export-state
+  take name, like text
+  like lean-eliminator
+
+  fork test, xs/eliminator-cache/has(name)
+    hold
+      back xs/eliminator-cache/get(name)
+  save owner, xs/eliminators/get(name)
+  fork test, or(not(xs/signature/has(name)), not(xs/enum-defs/has(name)))
+    hold
+      refuse(<the eliminator {name} has no type or no definition>)
+  save given, xs/signature/get(name)
+  save value, xs/enum-defs/get(name)
+  save no-hints, make list
+  save peeled, peel-pis(given, 9007199254740991, no-hints, xs/counter)
+  save lams, peel-lams(value, peeled/env)
+  fork test, is-unequal(lams/bound/length, peeled/binders/length)
+    hold
+      refuse(<the eliminator {name} takes {lams/bound/length} arguments where its type has {peeled/binders/length}>)
+  save shape, spine(named(lams/body, lams/bound, xs/counter))
+  save major, var-name(shape/head)
+  fork test, or(is-equal(major, <>), is-below(shape/args/length, 1))
+    hold
+      refuse(<the eliminator {name} is not a match on one of its arguments>)
+  save major-domain, var-term(major)
+  walk peeled/binders
+    take one
+    fork test, is-equal(one/name, major)
+      hold
+        save major-domain, one/domain
+        halt
+  save typed, spine(major-domain)
+  fork test, is-unequal(const-name-of(typed/head), owner)
+    hold
+      refuse(<the eliminator {name} matches a value that is not a {owner}>)
+  save arity, form-arity(xs, owner)
+  save read
+    make lean-eliminator
+      bind owner, owner
+      bind binders, peeled/binders
+      bind result, peeled/rest
+      bind major, major
+      bind params, typed/args/slice(0, arity)
+      bind indices, typed/args/slice(arity, typed/args/length)
+      bind motive, get(shape/args, 0)
+      bind minors, shape/args/slice(1, shape/args/length)
+  xs/eliminator-cache/set(name, read)
+  back read
+
+# write one constant and, first, everything it reaches. Answers false when it could not be written
+task emit
+  take xs, like lean-export-state
+  take name, like text
+  like boolean
+
+  fork test, xs/blocks/has(name)
+    hold
+      back true
+  fork test, xs/refused/has(name)
+    hold
+      back false
+  fork test, xs/visiting/has(name)
+    hold
+      refuse(<{name} is reached through itself by another definition (mutual recursion)>)
+  xs/visiting/set(name, true)
+  save wrote, true
+  save problem-note, <>
+  fork
+    mark unsafe
+    save wrote, emit-body(xs, name)
+  halt take
+    take problem
+    save problem-note, problem/note
+  xs/visiting/delete(name)
+  fork test, is-unequal(problem-note, <>)
+    hold
+      fork test, starts-with(problem-note, <lean-refuse:>)
+        hold
+          xs/refused/set(name, substring(problem-note, 12, problem-note/length))
+          back false
+      halt <{problem-note}>
+  back wrote
+
+task emit-body
+  take xs, like lean-export-state
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, xs/constructors/has(name)
+    hold
+      save found, xs/constructors/get(name)
+      back emit(xs, found/owner)
+  fork test, xs/cases/has(name)
+    hold
+      emit-form(xs, name)
+    miss
+      fork test, xs/projections/has(name)
+        hold
+          emit-projection(xs, name)
+        miss
+          fork test, and(xs/eliminators/has(name), xs/enum-defs/has(name))
+            hold
+              emit-eliminator(xs, name)
+            miss
+              fork test, and(is-equal(name, <arrayElim>), xs/cases/has(<Array>))
+                hold
+                  emit-array-eliminator(xs, name)
+                miss
+                  fork test, and(xs/proven/has(name), and(xs/st/definition/has(name), xs/data/function-type/has(name)))
+                    hold
+                      emit-task(xs, name)
+                    miss
+                      emit-axiom(xs, name)
+  push(xs/order, name)
+  back true
+
+# emit everything `used` names (a constructor by its form), noting what `name` reaches; a refused one refuses `name`
+task need-all
+  take xs, like lean-export-state
+  take name, like text
+  take used, like hash, like text, like boolean
+  mark private
+
+  save reached, make hash
+  fork test, xs/reaches/has(name)
+    hold
+      save reached, xs/reaches/get(name)
+  walk used/keys()
+    take other
+    fork test, is-equal(other, name)
+      hold
+        turn next
+    save owner, other
+    fork test, xs/constructors/has(other)
+      hold
+        save found, xs/constructors/get(other)
+        save owner, found/owner
+    fork test, is-equal(owner, name)
+      hold
+        turn next
+    fork test, not(emit(xs, owner))
+      hold
+        save why, xs/refused/get(owner)
+        refuse(<it reaches {owner}, which was refused: {why}>)
+    reached/set(owner, true)
+  xs/reaches/set(name, reached)
+
+# a form as a Lean inductive: the first `arity` binders of the type former are parameters, which every constructor
+# takes first and passes through unchanged (Lean's own rule for a parameter)
+task emit-form
+  take xs, like lean-export-state
+  take owner, like text
+  mark private
+
+  fork test, not(xs/signature/has(owner))
+    hold
+      refuse(<the form {owner} has no type former in the signature>)
+  save former-type, xs/signature/get(owner)
+  save arity, form-arity(xs, owner)
+  save no-hints, make list
+  save former, peel-pis(former-type, arity, no-hints, xs/counter)
+  fork test, is-unequal(former/binders/length, arity)
+    hold
+      refuse(<the form {owner} has {former/binders/length} parameters where {arity} were expected>)
+  save used, constants(former/rest, make hash)
+  save used, binder-domains-into(former/binders, used)
+  note-universes(xs, former/rest)
+  save lines, make list
+  save listed, make list
+  fork test, xs/cases/has(owner)
+    hold
+      save listed, xs/cases/get(owner)
+  walk listed
+    take one
+    save variant, one/variant
+    fork test, not(xs/signature/has(one/key))
+      hold
+        refuse(<the case {variant} of {owner} has no constructor in the signature>)
+    # the constructor's leading binders are the form's parameters, bound to the same names
+    save at, xs/signature/get(one/key)
+    save env, make list
+    walk former/binders
+      take binder
+      save matches, false
+      sift at
+        case pi
+          link mult
+          link at-domain
+          link at-codomain
+          save matches, same-named(named(at-domain, env, xs/counter), binder/domain, make hash)
+          fork test, matches
+            hold
+              push(env, binder/name)
+              save at, at-codomain
+        miss
+          save matches, false
+      fork test, not(matches)
+        hold
+          refuse(<the case {variant} of {owner} does not take the form's parameters first>)
+    save rest, named(at, env, xs/counter)
+    save result, rest
+    walk test
+      hook test, is-lean-pi(result)
+      hook hold
+        save result, pi-codomain-of(result)
+    save shape, spine(result)
+    save passes, true
+    save k, 0
+    walk former/binders
+      take binder
+      fork test, is-below(k, shape/args/length)
+        hold
+          fork test, is-unequal(var-name(get(shape/args, k)), binder/name)
+            hold
+              save passes, false
+        miss
+          save passes, false
+      save k, add(k, 1)
+    fork test, or(is-unequal(const-name-of(shape/head), owner), not(passes))
+      hold
+        refuse(<the case {variant} of {owner} does not build a {owner} of its own parameters>)
+    save used, constants(rest, used)
+    note-universes(xs, rest)
+    save quoted, quote-name(variant)
+    save rest-text, print-in(xs, rest)
+    push(lines, <  | {quoted} : {rest-text}>)
+  used/delete(owner)
+  need-all(xs, owner, used)
+  save head-name, const-name(xs/spelling, owner)
+  save head-binders, binder-text(xs, former/binders)
+  save head-type, print-in(xs, former/rest)
+  save block, make list
+  push(block, <inductive {head-name}{head-binders} : {head-type} where>)
+  walk lines
+    take line
+    push(block, line)
+  xs/blocks/set(owner, join(block, <\n>))
+
+task is-lean-pi
+  take given, like lean-term
+  like boolean
+  mark private
+
+  sift given
+    case pi
+      back true
+    miss
+      back false
+
+task pi-codomain-of
+  take given, like lean-term
+  like lean-term
+  mark private
+
+  sift given
+    case pi
+      link binder
+      link domain
+      link codomain
+      back codomain
+    miss
+      back given
+
+# `match__T` by Lean's `T.casesOn`: parameters, motive, indices, the major, then one minor per case. Lean checks the
+# definition against the type Term gave the eliminator, so a wrong eliminator type is refused there
+task emit-eliminator
+  take xs, like lean-export-state
+  take name, like text
+  mark private
+
+  save read, read-eliminator(xs, name)
+  save motive-name, var-name(read/motive)
+  save binders, make list
+  walk read/binders
+    take one
+    fork test, and(is-unequal(motive-name, <>), is-equal(one/name, motive-name))
+      hold
+        save sorted
+          make lean-binder
+            bind name, one/name
+            bind domain, any-sort(one/domain)
+        push(binders, sorted)
+      miss
+        push(binders, one)
+  save cases-on, <{read/owner}.casesOn>
+  save args, make list
+  walk read/params
+    take one
+    push(args, one)
+  push(args, read/motive)
+  walk read/indices
+    take one
+    push(args, one)
+  push(args, var-term(read/major))
+  walk read/minors
+    take one
+    push(args, one)
+  save body, apply-all(const-term(cases-on), args)
+  save used, constants(body, make hash)
+  save used, binder-domains-into(binders, used)
+  save used, constants(read/result, used)
+  used/delete(cases-on)
+  used/set(read/owner, true)
+  need-all(xs, name, used)
+  walk binders
+    take one
+    note-universes(xs, one/domain)
+  save head-name, const-name(xs/spelling, name)
+  save head-binders, binder-text(xs, binders)
+  save result-text, print-in(xs, read/result)
+  save body-text, print-in(xs, body)
+  xs/blocks/set(name, <def {head-name}{head-binders} : {result-text} :=\n  {body-text}>)
+
+# `arrayElim` by `Array.rec`: the element type, the motive, the two minors and the list, in the order both take them.
+# Lean checks the definition against the type Term gives the eliminator, so a wrong rule is refused there
+task emit-array-eliminator
+  take xs, like lean-export-state
+  take name, like text
+  mark private
+
+  fork test, not(xs/signature/has(name))
+    hold
+      refuse(<the eliminator {name} is in no signature>)
+  save hints, make list
+  push(hints, <A>)
+  push(hints, <motive>)
+  push(hints, <empty>)
+  push(hints, <push>)
+  push(hints, <list>)
+  save peeled, peel-pis(xs/signature/get(name), 5, hints, xs/counter)
+  fork test, is-unequal(peeled/binders/length, 5)
+    hold
+      refuse(<the eliminator {name} takes {peeled/binders/length} arguments where Array.rec takes 5>)
+  save typed, make list
+  save k, 0
+  walk peeled/binders
+    take one
+    fork test, is-equal(k, 1)
+      hold
+        save sorted
+          make lean-binder
+            bind name, one/name
+            bind domain, any-sort(one/domain)
+        push(typed, sorted)
+      miss
+        push(typed, one)
+    save k, add(k, 1)
+  save args, make list
+  walk peeled/binders
+    take one
+    push(args, var-term(one/name))
+  save body, apply-all(const-term(<Array.rec>), args)
+  save used, constants(peeled/rest, make hash)
+  save used, binder-domains-into(typed, used)
+  used/set(<Array>, true)
+  need-all(xs, name, used)
+  walk typed
+    take one
+    note-universes(xs, one/domain)
+  save head-name, const-name(xs/spelling, name)
+  save head-binders, binder-text(xs, typed)
+  save result-text, print-in(xs, peeled/rest)
+  save body-text, print-in(xs, body)
+  xs/blocks/set(name, <def {head-name}{head-binders} : {result-text} :=\n  {body-text}>)
+
+# a record's projection `R__field` by `R.casesOn`, its one case returning the field. Lean checks it against the type
+# Term gives the projection
+task emit-projection
+  take xs, like lean-export-state
+  take name, like text
+  mark private
+
+  save projection, xs/projections/get(name)
+  fork test, not(xs/signature/has(name))
+    hold
+      refuse(<the projection {name} is in no signature>)
+  save hints, make list
+  push(hints, <r>)
+  save peeled, peel-pis(xs/signature/get(name), 1, hints, xs/counter)
+  fork test, is-unequal(peeled/binders/length, 1)
+    hold
+      refuse(<the projection {name} does not take its record>)
+  save fields, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, projection/count)
+    hook hold
+      push(fields, fresh(xs/counter, <field>))
+      save k, add(k, 1)
+  save motive-binder, fresh(xs/counter, <m>)
+  save chosen, var-term(get(fields, projection/index))
+  save k, fields/length
+  walk test
+    hook test, is-above(k, 0)
+    hook hold
+      save k, subtract(k, 1)
+      save chosen, lam-term(get(fields, k), chosen)
+  save record, get(peeled/binders, 0)
+  save args, make list
+  push(args, lam-term(motive-binder, peeled/rest))
+  push(args, var-term(record/name))
+  push(args, chosen)
+  save body, apply-all(const-term(<{projection/owner}.casesOn>), args)
+  save used, constants(peeled/rest, make hash)
+  save used, constants(record/domain, used)
+  used/set(projection/owner, true)
+  need-all(xs, name, used)
+  save head-name, const-name(xs/spelling, name)
+  save head-binders, binder-text(xs, peeled/binders)
+  save result-text, print-in(xs, peeled/rest)
+  save body-text, print-in(xs, body)
+  xs/blocks/set(name, <def {head-name}{head-binders} : {result-text} :=\n  {body-text}>)
+
+# a task the kernel proved: its type, its value, and when it calls itself, the call turned into `T.rec`
+task emit-task
+  take xs, like lean-export-state
+  take name, like text
+  mark private
+
+  save given, xs/data/function-type/get(name)
+  save value, quote(xs/st, 0, xs/st/definition/get(name))
+  save kept
+    make kept-term
+      bind type, given
+      bind value, value
+  xs/terms/set(name, kept)
+  save hints, make list
+  fork test, xs/param-hints/has(name)
+    hold
+      save hints, xs/param-hints/get(name)
+  save peeled, peel-pis(given, 9007199254740991, hints, xs/counter)
+  save lams, peel-lams(value, peeled/env)
+  # binders the value does not open stay in the type: the value is then a function, written as one
+  save outer, peeled/binders/slice(0, lams/bound/length)
+  save result, peeled/rest
+  save k, peeled/binders/length
+  walk test
+    hook test, is-above(k, lams/bound/length)
+    hook hold
+      save k, subtract(k, 1)
+      save binder, get(peeled/binders, k)
+      save result, pi-term(binder/name, binder/domain, result)
+  save written, named(lams/body, lams/bound, xs/counter)
+  fork test, names-constant(written, name)
+    hold
+      save written, recursion(xs, name, written, outer)
+  save used, constants(written, make hash)
+  save used, binder-domains-into(peeled/binders, used)
+  save used, constants(peeled/rest, used)
+  used/delete(name)
+  # `T.rec` stands for its form
+  save listed, make list
+  walk used/keys()
+    take one
+    push(listed, one)
+  walk listed
+    take one
+    fork test, ends-with(one, <.rec>)
+      hold
+        used/delete(one)
+        used/set(substring(one, 0, subtract(one/length, 4)), true)
+  need-all(xs, name, used)
+  note-universes(xs, result)
+  walk outer
+    take one
+    note-universes(xs, one/domain)
+  save head-name, const-name(xs/spelling, name)
+  save head-binders, binder-text(xs, outer)
+  save result-text, print-in(xs, result)
+  save body-text, print-in(xs, written)
+  xs/blocks/set(name, <def {head-name}{head-binders} : {result-text} :=\n  {body-text}>)
+
+# a constant with no definition here: postulated, and reported
+task emit-axiom
+  take xs, like lean-export-state
+  take name, like text
+  mark private
+
+  fork test, not(xs/signature/has(name))
+    hold
+      refuse(<{name} is in no signature>)
+  save no-names, make list
+  save written, named(xs/signature/get(name), no-names, xs/counter)
+  save used, constants(written, make hash)
+  used/delete(name)
+  need-all(xs, name, used)
+  note-universes(xs, written)
+  xs/axioms/set(name, true)
+  save head-name, const-name(xs/spelling, name)
+  save type-text, print-in(xs, written)
+  xs/blocks/set(name, <axiom {head-name} : {type-text}>)
+
+# ---- a task that calls itself ----
+
+# one field of a case, named by its minor's own binder: whether it is of the form's own type, and its indices if so
+form case-field
+  link name, like text
+  link recursive, like boolean
+  link indices, like list, like lean-term
+
+# one minor of the match: its case's fields, and its body with those fields bound
+form case-piece
+  link fields, like list, like case-field
+  link minor, like lean-term
+
+# the induction hypothesis a field gives, and the field
+form field-hypothesis
+  link hypothesis, like text
+  link field, like case-field
+
+# what the rewrite of one recursive task reads: the task, its parameters, the matched one's position, the parameters
+# its indices are (parameter position to index position), the generalized positions, and each case's hypotheses
+form recursion-scope
+  mark shared
+  link name, like text
+  link param-names, like list, like text
+  link position, like number
+  link index-at, like hash, like number, like number
+  link index-order, like list, like number
+  link varying, like hash, like number, like boolean
+  link general, like list, like number
+  link hypotheses, like hash, like text, like field-hypothesis
+
+# the parameters a call changes, other than the matched one and its indices
+task scan-calls
+  take scope, like recursion-scope
+  take given, like lean-term
+  mark private
+
+  save call, spine(given)
+  fork test, is-equal(const-name-of(call/head), scope/name)
+    hold
+      fork test, is-unequal(call/args/length, scope/param-names/length)
+        hold
+          refuse(<it calls itself with {call/args/length} arguments where it takes {scope/param-names/length}>)
+      save i, 0
+      walk call/args
+        take arg
+        fork test, and(is-unequal(i, scope/position), not(scope/index-at/has(i)))
+          hold
+            fork test, is-unequal(var-name(arg), get(scope/param-names, i))
+              hold
+                scope/varying/set(i, true)
+        scan-calls(scope, arg)
+        save i, add(i, 1)
+      back
+  sift given
+    case const
+      link name
+      fork test, is-equal(name, scope/name)
+        hold
+          refuse(<it uses itself other than by a call>)
+    case pi
+      link binder
+      link domain
+      link codomain
+      scan-calls(scope, domain)
+      scan-calls(scope, codomain)
+    case lam
+      link binder
+      link body
+      scan-calls(scope, body)
+    case apply
+      link fun
+      link arg
+      scan-calls(scope, fun)
+      scan-calls(scope, arg)
+    case ann
+      link ann-term
+      link ann-type
+      scan-calls(scope, ann-term)
+      scan-calls(scope, ann-type)
+    miss
+      save nothing, 0
+
+# each call of the task on a field becomes that field's hypothesis, applied to the generalized arguments
+task replace-calls
+  take scope, like recursion-scope
+  take given, like lean-term
+  like lean-term
+  mark private
+
+  save call, spine(given)
+  fork test, is-equal(const-name-of(call/head), scope/name)
+    hold
+      save on, var-name(get(call/args, scope/position))
+      fork test, or(is-equal(on, <>), not(scope/hypotheses/has(on)))
+        hold
+          refuse(<it calls itself on something other than a field of the matched value (well-founded, not structural, recursion)>)
+      save found, scope/hypotheses/get(on)
+      walk scope/index-order
+        take i
+        save j, scope/index-at/get(i)
+        save same, false
+        fork test, is-below(j, found/field/indices/length)
+          hold
+            save same, same-named(get(call/args, i), get(found/field/indices, j), make hash)
+        fork test, not(same)
+          hold
+            refuse(<it calls itself with an index of the matched value other than the field's own (argument {add(i, 1)})>)
+      save args, make list
+      walk scope/general
+        take i
+        push(args, replace-calls(scope, get(call/args, i)))
+      back apply-all(var-term(found/hypothesis), args)
+  sift given
+    case pi
+      link name
+      link domain
+      link codomain
+      save new-domain, replace-calls(scope, domain)
+      save new-codomain, replace-calls(scope, codomain)
+      back pi-term(name, new-domain, new-codomain)
+    case lam
+      link name
+      link body
+      back lam-term(name, replace-calls(scope, body))
+    case apply
+      link fun
+      link arg
+      save new-fun, replace-calls(scope, fun)
+      save new-arg, replace-calls(scope, arg)
+      back app-term(new-fun, new-arg)
+    case ann
+      link ann-term
+      link ann-type
+      save new-term, replace-calls(scope, ann-term)
+      save new-type, replace-calls(scope, ann-type)
+      back ann-term-of(new-term, new-type)
+    miss
+      back given
+
+# A TASK THAT CALLS ITSELF, inside a match on one of its own parameters, each call on a field of the matched value:
+# structural recursion, written with `T.rec` the way Lean's own equation compiler writes it (the original's comment
+# above `recursion` says the whole of it)
+task recursion
+  take xs, like lean-export-state
+  take name, like text
+  take body, like lean-term
+  take params, like list, like lean-binder
+  like lean-term
+  mark private
+
+  save param-names, make list
+  walk params
+    take one
+    push(param-names, one/name)
+  save shape, spine(body)
+  save head-name, const-name-of(shape/head)
+  fork test, or(is-equal(head-name, <>), not(xs/eliminators/has(head-name)))
+    hold
+      refuse(<it calls itself outside a match on one of its parameters>)
+  save read, read-eliminator(xs, head-name)
+  fork test, is-below(shape/args/length, read/binders/length)
+    hold
+      refuse(<it calls itself in a match not applied to all of its arguments>)
+  save map, make hash
+  save k, 0
+  walk read/binders
+    take one
+    map/set(one/name, get(shape/args, k))
+    save k, add(k, 1)
+  # a match whose result is a function, applied on (a convoy): the arguments after the eliminator's own
+  save extra, shape/args/slice(read/binders/length, shape/args/length)
+  save major, map/get(read/major)
+  save major-name, var-name(major)
+  save position, text-index(param-names, major-name)
+  fork test, or(is-equal(major-name, <>), is-below(position, 0))
+    hold
+      refuse(<it calls itself in a match on something other than one of its parameters>)
+  save form-params, make list
+  walk read/params
+    take one
+    push(form-params, substitute(one, map))
+  save indices, make list
+  walk read/indices
+    take one
+    push(indices, substitute(one, map))
+  save motive, substitute(read/motive, map)
+  save variants, make list
+  fork test, xs/cases/has(read/owner)
+    hold
+      save variants, xs/cases/get(read/owner)
+  save arity, form-arity(xs, read/owner)
+  fork test, is-unequal(read/minors/length, variants/length)
+    hold
+      refuse(<its match has {read/minors/length} cases where {read/owner} has {variants/length}>)
+  save scope
+    make recursion-scope
+      bind name, name
+      bind param-names, param-names
+      bind position, position
+      bind index-at, make hash
+      bind index-order, make list
+      bind varying, make hash
+      bind general, make list
+      bind hypotheses, make hash
+  # the task's parameters the matched value's indices are: parameter position to index position
+  save j, 0
+  walk indices
+    take index
+    save at, -1
+    save index-name, var-name(index)
+    fork test, is-unequal(index-name, <>)
+      hold
+        save at, text-index(param-names, index-name)
+    fork test, and(is-minimum(at, 0), and(is-unequal(at, position), not(scope/index-at/has(at))))
+      hold
+        scope/index-at/set(at, j)
+        push(scope/index-order, at)
+    save j, add(j, 1)
+  # each case's fields, named by its minor's own binders, with the indices of each field of the form's own type
+  save pieces, make list
+  save i, 0
+  walk read/minors
+    take piece
+    save variant, get(variants, i)
+    save ctor-type, xs/signature/get(variant/key)
+    save env, make list
+    save from-params, make hash
+    save fields, make list
+    save minor, substitute(piece, map)
+    save at, ctor-type
+    save count, 0
+    walk test
+      hook test, is-pi(at)
+      hook hold
+        sift at
+          case pi
+            link mult
+            link at-domain
+            link at-codomain
+            fork test, is-below(count, arity)
+              hold
+                save param, fresh(xs/counter, <p>)
+                push(env, param)
+                fork test, is-below(count, form-params/length)
+                  hold
+                    from-params/set(param, get(form-params, count))
+              miss
+                save field-name, <>
+                sift minor
+                  case lam
+                    link minor-name
+                    link minor-body
+                    save field-name, minor-name
+                    save minor, minor-body
+                  miss
+                    save field-name, fresh(xs/counter, <field>)
+                    save minor, app-term(minor, var-term(field-name))
+                save field-type, spine(substitute(named(at-domain, env, xs/counter), from-params))
+                save recursive, is-equal(const-name-of(field-type/head), read/owner)
+                save field-indices, make list
+                fork test, recursive
+                  hold
+                    save field-indices, field-type/args/slice(arity, field-type/args/length)
+                save field
+                  make case-field
+                    bind name, field-name
+                    bind recursive, recursive
+                    bind indices, field-indices
+                push(fields, field)
+                push(env, field-name)
+            save count, add(count, 1)
+            save at, at-codomain
+          miss
+            save at, at
+    save one-piece
+      make case-piece
+        bind fields, fields
+        bind minor, minor
+    push(pieces, one-piece)
+    save i, add(i, 1)
+  walk pieces
+    take piece
+    scan-calls(scope, piece/minor)
+  # the generalized parameters, in order
+  save general-at, make list
+  save p, 0
+  walk param-names
+    take one
+    fork test, scope/varying/has(p)
+      hold
+        push(general-at, p)
+    save p, add(p, 1)
+  save scope/general, general-at
+  save matched, make list
+  walk form-params
+    take one
+    push(matched, one)
+  walk indices
+    take one
+    push(matched, one)
+  walk matched
+    take one
+    walk general-at
+      take g
+      fork test, mentions(one, get(param-names, g))
+        hold
+          refuse(<a parameter its calls change is in the type of the matched value, so the motive cannot be generalized over it>)
+  # the generalized parameters, renamed inside the motive and the minors
+  save renamed-general, make list
+  save rename, make hash
+  walk general-at
+    take g
+    save fresh-name, fresh(xs/counter, get(param-names, g))
+    push(renamed-general, fresh-name)
+    rename/set(get(param-names, g), var-term(fresh-name))
+  # the motive, over the indices and the matched value, quantified over the generalized parameters
+  save motive-binders, make list
+  walk indices
+    take one
+    push(motive-binders, fresh(xs/counter, <i>))
+  push(motive-binders, fresh(xs/counter, <x>))
+  save motive-args, make list
+  walk motive-binders
+    take one
+    push(motive-args, var-term(one))
+  save generalized, substitute(beta(motive, motive-args), rename)
+  save k, renamed-general/length
+  walk test
+    hook test, is-above(k, 0)
+    hook hold
+      save k, subtract(k, 1)
+      save param, get(params, get(general-at, k))
+      save generalized, pi-term(get(renamed-general, k), substitute(param/domain, rename), generalized)
+  save new-motive, generalized
+  save k, motive-binders/length
+  walk test
+    hook test, is-above(k, 0)
+    hook hold
+      save k, subtract(k, 1)
+      save new-motive, lam-term(get(motive-binders, k), new-motive)
+  save minors, make list
+  walk pieces
+    take piece
+    save piece-hypotheses, make hash
+    walk piece/fields
+      take field
+      fork test, field/recursive
+        hold
+          save hypothesis
+            make field-hypothesis
+              bind hypothesis, fresh(xs/counter, <ih>)
+              bind field, field
+          piece-hypotheses/set(field/name, hypothesis)
+    save scope/hypotheses, piece-hypotheses
+    save rewritten, substitute(replace-calls(scope, piece/minor), rename)
+    save k, renamed-general/length
+    walk test
+      hook test, is-above(k, 0)
+      hook hold
+        save k, subtract(k, 1)
+        save rewritten, lam-term(get(renamed-general, k), rewritten)
+    save binders, make list
+    walk piece/fields
+      take field
+      push(binders, field/name)
+    walk piece/fields
+      take field
+      fork test, piece-hypotheses/has(field/name)
+        hold
+          push(binders, piece-hypotheses/get(field/name)/hypothesis)
+    save k, binders/length
+    walk test
+      hook test, is-above(k, 0)
+      hook hold
+        save k, subtract(k, 1)
+        save rewritten, lam-term(get(binders, k), rewritten)
+    push(minors, rewritten)
+  save args, make list
+  walk form-params
+    take one
+    push(args, one)
+  push(args, new-motive)
+  walk minors
+    take one
+    push(args, one)
+  walk indices
+    take one
+    push(args, one)
+  push(args, major)
+  walk general-at
+    take g
+    push(args, var-term(get(param-names, g)))
+  walk extra
+    take one
+    push(args, one)
+  save written, apply-all(const-term(<{read/owner}.rec>), args)
+  fork test, names-constant(written, name)
+    hold
+      refuse(<it calls itself outside the cases of its match>)
+  back written
+
+# ---- the export ----
+
+# what the front end (the face's, as the build runs it up to the kernel) hands the export: the source's file, the
+# checked program, its claims in order, the kernel's reading of the program's types, the judge state elaboration left
+# (its `definition` holds every task the kernel kept), and what the kernel proved and declined
+form lean-front
+  link file, like text
+  link program, like list, like statement
+  link claims, like list, like text
+  link data, like elaboration-data
+  link st, like judge-state
+  link proven, like list, like text
+  link declined, like list, like lean-refusal
+
+task lean-case-of
+  take variant, like text
+  take key, like text
+  like lean-case
+  mark private
+
+  back
+    make lean-case
+      bind variant, variant
+      bind key, key
+
+# the axioms a definition rests on, transitively
+task axioms-of
+  take xs, like lean-export-state
+  take name, like text
+  take seen, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save found, make hash
+  fork test, seen/has(name)
+    hold
+      back found
+  seen/set(name, true)
+  fork test, xs/axioms/has(name)
+    hold
+      found/set(name, true)
+  fork test, xs/reaches/has(name)
+    hold
+      save reached, xs/reaches/get(name)
+      walk reached/keys()
+        take other
+        save under, axioms-of(xs, other, seen)
+        walk under/keys()
+          take axiom
+          found/set(axiom, true)
+  back found
+
+# a text as its UTF-16 code units, the order JavaScript's default sort compares in
+task sort-units
+  take value, like text
+  like list, like number
+  mark private
+
+  save units, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-above(rune, 65535)
+      hold
+        save rest, subtract(rune, 65536)
+        save low, modulo(rest, 1024)
+        push(units, add(55296, divide(subtract(rest, low), 1024)))
+        push(units, add(56320, low))
+      miss
+        push(units, rune)
+  back units
+
+task is-before
+  take a, like text
+  take b, like text
+  like boolean
+  mark private
+
+  save left, sort-units(a)
+  save right, sort-units(b)
+  save k, 0
+  walk test
+    hook test, and(is-below(k, left/length), is-below(k, right/length))
+    hook hold
+      save l, get(left, k)
+      save r, get(right, k)
+      fork test, is-below(l, r)
+        hold
+          back true
+      fork test, is-above(l, r)
+        hold
+          back false
+      save k, add(k, 1)
+  back is-below(left/length, right/length)
+
+# the keys of a set in JavaScript's default sort order
+task sorted-keys
+  take values, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values/keys()
+    take one
+    save placed, make list
+    save put, false
+    walk out
+      take kept
+      fork test, and(not(put), is-before(one, kept))
+        hold
+          push(placed, one)
+          save put, true
+      push(placed, kept)
+    fork test, not(put)
+      hold
+        push(placed, one)
+    save out, placed
+  back out
+
+# THE EXPORT: every claim the kernel proved, and everything it reaches, as Lean 4 source
+task export-lean
+  take front, like lean-front
+  like lean-export
+
+  save data, front/data
+  # the signature, the last entry of a name winning as it does in the kernel's context
+  save signature, make hash
+  walk data/signature
+    take entry
+    signature/set(entry/name, entry/type)
+  # EVERY FORM IS AN INDUCTIVE, whatever its number of cases: a form with cases has one constructor per case, a record
+  # one constructor `make` taking its fields, and the kernel's own unit type one constructor with no fields
+  save cases, make hash
+  walk data/variant-names/keys()
+    take owner
+    save listed, make list
+    walk data/variant-names/get(owner)
+      take variant
+      push(listed, lean-case-of(variant, <{owner}__{variant}>))
+    cases/set(owner, listed)
+  # a record's projections, `R__field`, each defined by the record's `casesOn`
+  save projections, make hash
+  walk data/record-fields/keys()
+    take owner
+    fork test, and(not(cases/has(owner)), signature/has(<make__{owner}>))
+      hold
+        save made, make list
+        push(made, lean-case-of(<make>, <make__{owner}>))
+        cases/set(owner, made)
+        save fields, data/record-fields/get(owner)
+        save index, 0
+        walk fields
+          take field
+          save projection
+            make lean-projection
+              bind owner, owner
+              bind index, index
+              bind count, fields/length
+          projections/set(<{owner}__{field}>, projection)
+          save index, add(index, 1)
+  fork test, and(not(cases/has(<Unit>)), and(signature/has(<Unit>), signature/has(<unitValue>)))
+    hold
+      save unit, make list
+      push(unit, lean-case-of(<unitValue>, <unitValue>))
+      cases/set(<Unit>, unit)
+  # THE KERNEL'S LIST is an inductive too: `Array A` with `arrayEmpty` and `arrayPush`, and its eliminator `arrayElim`
+  # is that inductive's `Array.rec`
+  fork test, and(not(cases/has(<Array>)), and(signature/has(<Array>), and(signature/has(<arrayEmpty>), signature/has(<arrayPush>))))
+    hold
+      save array, make list
+      push(array, lean-case-of(<arrayEmpty>, <arrayEmpty>))
+      push(array, lean-case-of(<arrayPush>, <arrayPush>))
+      cases/set(<Array>, array)
+  save constructors, make hash
+  save spelled, make hash
+  walk cases/keys()
+    take owner
+    spelled/set(owner, true)
+    walk cases/get(owner)
+      take one
+      save constructor
+        make lean-constructor
+          bind owner, owner
+          bind variant, one/variant
+      constructors/set(one/key, constructor)
+  save eliminators, make hash
+  walk data/variant-names/keys()
+    take owner
+    eliminators/set(<match__{owner}>, owner)
+    eliminators/set(<matchType__{owner}>, owner)
+  save enum-defs, make hash
+  walk data/enum-defs
+    take entry
+    enum-defs/set(entry/name, entry/term)
+  save proven, make hash
+  walk front/proven
+    take one
+    proven/set(one, true)
+  save param-hints, make hash
+  walk front/program
+    take statement
+    sift statement
+      case function
+        link function-name
+        link function-params
+        link function-body
+        link function-result
+        link function-result-width
+        link function-generics
+        save hints, make list
+        walk function-generics
+          take generic
+          push(hints, generic/name)
+        walk function-params
+          take param
+          push(hints, param/name)
+        param-hints/set(function-name, hints)
+      miss
+        save nothing, 0
+  save spelling
+    make lean-spelling
+      bind cases, spelled
+      bind constructors, constructors
+  save xs
+    make lean-export-state
+      bind data, data
+      bind st, front/st
+      bind signature, signature
+      bind cases, cases
+      bind projections, projections
+      bind constructors, constructors
+      bind eliminators, eliminators
+      bind enum-defs, enum-defs
+      bind proven, proven
+      bind counter, new-names()
+      bind terms, make hash
+      bind param-hints, param-hints
+      bind spelling, spelling
+      bind blocks, make hash
+      bind order, make list
+      bind refused, make hash
+      bind axioms, make hash
+      bind reaches, make hash
+      bind visiting, make hash
+      bind universes, make hash
+      bind eliminator-cache, make hash
+  walk front/claims
+    take claim
+    fork test, not(proven/has(claim))
+      hold
+        save why, <>
+        save looking, true
+        walk front/declined
+          take one
+          fork test, and(looking, is-equal(one/name, claim))
+            hold
+              save why, <: {one/reason}>
+              save looking, false
+        xs/refused/set(claim, <the kernel did not prove it{why}>)
+        turn next
+    fork test, not(xs/st/definition/has(claim))
+      hold
+        xs/refused/set(claim, <the kernel proved it but kept no term (not both pure and terminating)>)
+        turn next
+    save wrote, emit(xs, claim)
+  save claim-set, make hash
+  walk front/claims
+    take claim
+    claim-set/set(claim, true)
+  save exported, make list
+  walk xs/order
+    take name
+    fork test, and(xs/blocks/has(name), and(not(xs/axioms/has(name)), or(claim-set/has(name), proven/has(name))))
+      hold
+        save entry
+          make lean-entry
+            bind name, name
+            bind claim, claim-set/has(name)
+            bind axioms, sorted-keys(axioms-of(xs, name, make hash))
+        push(exported, entry)
+  save lines, make list
+  push(lines, <-- Generated by deck/make/code/check/lean-export.ts from {front/file}. Do not edit: export again.>)
+  push(lines, <-- Term's Type n is Lean's Type n, so a proof that used Term's impredicative Type 0 is refused here.>)
+  push(lines, <-- The translation: note/project/term/proof/lean-export/spec.md>)
+  save universe-names, sorted-keys(xs/universes)
+  fork test, is-above(universe-names/length, 0)
+    hold
+      save universe-list, join(universe-names, < >)
+      push(lines, <universe {universe-list}>)
+  push(lines, <>)
+  # Lean promotes an index that every constructor fills with its own binder to a parameter, which puts one more
+  # argument before the motive of `casesOn` than Term's form has. Keep the form as Term has it
+  push(lines, <set_option inductive.autoPromoteIndices false>)
+  # a translated binder Term never reads (a motive's major premise) is not a defect: keep the run's output clean
+  push(lines, <set_option linter.unusedVariables false>)
+  push(lines, <>)
+  push(lines, <noncomputable section>)
+  push(lines, <>)
+  walk xs/order
+    take name
+    push(lines, xs/blocks/get(name))
+    push(lines, <>)
+  push(lines, <end>)
+  push(lines, <>)
+  walk exported
+    take entry
+    fork test, entry/claim
+      hold
+        save claim-name, const-name(spelling, entry/name)
+        push(lines, <#print axioms {claim-name}>)
+  push(lines, <>)
+  save refused, make list
+  walk xs/refused/keys()
+    take name
+    save one
+      make lean-refusal
+        bind name, name
+        bind reason, xs/refused/get(name)
+    push(refused, one)
+  save axioms, make list
+  walk xs/axioms/keys()
+    take name
+    push(axioms, name)
+  back
+    make lean-export
+      bind lean, join(lines, <\n>)
+      bind exported, exported
+      bind refused, refused
+      bind axioms, axioms
+      bind terms, xs/terms
+
+# a planted twin: the same export with one definition's body replaced by another term, written in the same names.
+# Lean must refuse the file. The test plants a wrong proof this way
+task plant-lean
+  take lean, like text
+  take name, like text
+  take body, like text
+  like text
+
+  save head, <def {lean-space()}.{quote-name(name)}>
+  save start, index-of(lean, head)
+  fork test, is-below(start, 0)
+    hold
+      halt <no definition of {name} to plant into>
+  save body-start, add(index-of(lean, <:=\n>, start), 3)
+  save body-end, index-of(lean, <\n\n>, body-start)
+  save before, substring(lean, 0, body-start)
+  save after, substring(lean, body-end, lean/length)
+  # JavaScript's `slice(-1)`: the last character, where no blank line follows the body
+  fork test, is-below(body-end, 0)
+    hold
+      save after, substring(lean, subtract(lean/length, 1), lean/length)
+  back <{before}  {body}{after}>
+
+# ---- the stdlib's files as one source ----
+
+form lean-source
+  link file, like text
+  link text, like text
+
+# the comments a node carries above it, none for a node with no such field
+task comments-of
+  take one, like node
+  like list, like comment
+  mark private
+
+  save none-found, make list
+  sift one
+    case group
+      link group-nodes
+      link group-optional
+      link group-comments
+      sift group-comments
+        case some
+          link found
+          back found
+        case none
+          back none-found
+    case text
+      link text-parts
+      link text-raw
+      link text-scope
+      link text-comments
+      sift text-comments
+        case some
+          link found
+          back found
+        case none
+          back none-found
+    case integer
+      link integer-value
+      link integer-text
+      link integer-span
+      link integer-comments
+      sift integer-comments
+        case some
+          link found
+          back found
+        case none
+          back none-found
+    case decimal
+      link decimal-value
+      link decimal-text
+      link decimal-span
+      link decimal-comments
+      sift decimal-comments
+        case some
+          link found
+          back found
+        case none
+          back none-found
+    case radix
+      link radix-value
+      link radix-text
+      link radix-span
+      link radix-comments
+      sift radix-comments
+        case some
+          link found
+          back found
+        case none
+          back none-found
+    miss
+      back none-found
+
+# every line a parsed node's leaves and inner comments stand on. A group's own comments (the lines above it) are not
+# its lines: a comment above a `load` stays, as it stood in the file. The parser's spans count lines from 0
+task lines-of
+  take one, like node
+  like list, like number
+
+  save out, make list
+  sift one
+    case group
+      link group-nodes
+      walk group-nodes
+        take child
+        walk lines-of(child)
+          take line
+          push(out, line)
+        walk comments-of(child)
+          take comment
+          push(out, comment/span/start/line)
+          push(out, comment/span/end/line)
+    case name
+      link name-parts
+      walk name-parts
+        take part
+        walk lines-of(part)
+          take line
+          push(out, line)
+    case text
+      link text-parts
+      walk text-parts
+        take part
+        walk lines-of(part)
+          take line
+          push(out, line)
+    case interpolation
+      link interpolation-depth
+      link interpolation-group
+      sift interpolation-group
+        case some
+          link inner
+          walk lines-of(inner)
+            take line
+            push(out, line)
+        case none
+          save nothing, 0
+    case chunk
+      link chunk-text
+      link chunk-span
+      push(out, chunk-span/start/line)
+      push(out, chunk-span/end/line)
+    case integer
+      link integer-value
+      link integer-text
+      link integer-span
+      push(out, integer-span/start/line)
+      push(out, integer-span/end/line)
+    case decimal
+      link decimal-value
+      link decimal-text
+      link decimal-span
+      push(out, decimal-span/start/line)
+      push(out, decimal-span/end/line)
+    case radix
+      link radix-value
+      link radix-text
+      link radix-span
+      push(out, radix-span/start/line)
+      push(out, radix-span/end/line)
+  back out
+
+# The stdlib's files, read as one source: each file's top-level `load` groups (the line and the `find` lines under it)
+# are dropped, since the files are joined into one program and every name they load is in it. Which lines a load
+# covers is read off the Term tree parser (the spans its leaves carry), never off the text
+task join-sources
+  take sources, like list, like lean-source
+  like lean-source
+
+  save pieces, make list
+  save files, make list
+  walk sources
+    take source
+    push(files, source/file)
+    save token-text
+      make token-source
+        bind file, source/file
+        bind text, source/text
+    save parsed, parse(token-text)
+    fork test, not(parsed/ok)
+      hold
+        save messages, make list
+        walk parsed/diagnostics
+          take one
+          push(messages, one/message)
+        save joined, join(messages, <; >)
+        halt <parse failed in {source/file}: {joined}>
+    save dropped, make hash
+    walk root-nodes(parsed/tree)
+      take top
+      fork test, is-load-group(top)
+        hold
+          save lines, lines-of(top)
+          fork test, is-above(lines/length, 0)
+            hold
+              save low, get(lines, 0)
+              save high, get(lines, 0)
+              walk lines
+                take line
+                fork test, is-below(line, low)
+                  hold
+                    save low, line
+                fork test, is-above(line, high)
+                  hold
+                    save high, line
+              save line, low
+              walk test
+                hook test, is-maximum(line, high)
+                hook hold
+                  dropped/set(line, true)
+                  save line, add(line, 1)
+    save kept, make list
+    save index, 0
+    walk split(source/text, <\n>)
+      take line
+      fork test, not(dropped/has(index))
+        hold
+          push(kept, line)
+      save index, add(index, 1)
+    save kept-text, join(kept, <\n>)
+    push(pieces, <# ---- {source/file}\n{kept-text}>)
+  back
+    make lean-source
+      bind file, join(files, < + >)
+      bind text, join(pieces, <\n\n>)
+
+task root-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      link nodes
+      back nodes
+
+task is-load-group
+  take top, like node
+  like boolean
+  mark private
+
+  sift top
+    case group
+      sift head-word(top)
+        case some
+          link word
+          back is-equal(word, <load>)
+        case none
+          back false
+    miss
+      back false

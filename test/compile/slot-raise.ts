@@ -692,22 +692,59 @@ ok(
   JSON.stringify(halts(lends, 'forwarded')),
 )
 
-const lentBack = project(`${JOBS}
+// 096 rule 7: a kept lent parameter is refused at the lending call, and only when the lender's jobs raise
+const KEEPER_TASKS = `${JOBS}
 task keep-it
   take handles, like list, like handle text
   like list, like handle text
   back handles
 
+task pass-on
+  take handles, like list, like handle text
+  like list, like handle text
+  back keep-it(handles)
+`
+const lentFine = project(`${KEEPER_TASKS}
+task lend
+  like void
+  host handles, make list
+  handles/push(tick fine(<a>))
+  save kept, keep-it(handles)
+`)
+ok(
+  'a lent parameter kept by its borrower builds when the lender\'s jobs raise nothing',
+  lentFine.ok,
+  messages(lentFine),
+)
+const lentBack = project(`${KEEPER_TASKS}
 task lend
   like void
   host handles, make list
   handles/push(tick fetch(<a>))
   save kept, keep-it(handles)
 `)
+const lentSaid = named(lentBack, 'handle-escapes')
 ok(
-  'returning a lent parameter is handle-escapes',
-  !lentBack.ok && named(lentBack, 'handle-escapes').length === 1,
+  'lending raising handles into a kept parameter is handle-escapes at the call',
+  !lentBack.ok && lentSaid.length === 1,
   lentBack.ok ? 'compiled' : messages(lentBack),
+)
+ok(
+  'and the refusal names the line that keeps it',
+  lentSaid.length === 1 && /keeps it at line \d+/.test(lentSaid[0]!),
+  lentSaid.join(' | '),
+)
+const lentForward = project(`${KEEPER_TASKS}
+task lend
+  like void
+  host handles, make list
+  handles/push(tick fetch(<a>))
+  save kept, pass-on(handles)
+`)
+ok(
+  'a forwarder into a kept parameter keeps it too',
+  !lentForward.ok && named(lentForward, 'handle-escapes').length === 1,
+  lentForward.ok ? 'compiled' : messages(lentForward),
 )
 
 // a task written in a backend's own folder has no body to read: a handle lent to it escapes
@@ -733,6 +770,71 @@ ok(
   'lending to a task with no body to read is handle-escapes',
   !lentNative.ok && named(lentNative, 'handle-escapes').length > 0,
   lentNative.ok ? 'compiled' : messages(lentNative),
+)
+
+// ---- 096 rules 1 to 3: a host callback slot of @term/site takes any raise, and the library reports it ----
+
+const CALLBACKS = `load @term/site/code/view/reactive
+  find make-signal
+  find read-signal
+  find make-effect
+
+load @term/site/code/dom/native/memory/dom
+  find listen-key
+  find fire-key
+
+task refuse-key
+  take key, like text
+  halt <no key {key}>
+
+task refuse
+  halt <no more>
+
+task run
+  like text
+  save first
+    call listen-key
+      read refuse-key
+  call fire-key
+    text <a>
+  save level
+    call make-signal
+      bind value, text <0>
+  call make-effect
+    task fails
+      save now
+        call read-signal
+          bind self, read level
+      call refuse
+  send back, text <end>
+`
+const callbackDir = mkdtempSync(join(tmpdir(), 'term-slot-raise-callbacks-'))
+const callbackEntry = join(callbackDir, 'app.tree')
+writeFileSync(callbackEntry, CALLBACKS)
+const memoryProject = projectResolver(TERM, 'node')
+const callbackResolve: Resolver = (importPath, fromFile) =>
+  memoryProject(
+    importPath.replace(
+      /native\/\{platform\}\/(dom|device|view)$/,
+      'native/memory/$1',
+    ),
+    fromFile,
+  )
+const callbacks = compile(
+  { file: callbackEntry, text: CALLBACKS },
+  { resolve: callbackResolve, env: 'node', roll: true } as never,
+)
+ok(
+  'app closures raising failure into listen-key and a make-effect run build',
+  callbacks.ok,
+  messages(callbacks),
+)
+ok(
+  'and neither library task raises it on',
+  callbacks.ok &&
+    !halts(callbacks, 'make-effect').includes('failure') &&
+    !halts(callbacks, 'run').includes('failure'),
+  JSON.stringify([halts(callbacks, 'make-effect'), halts(callbacks, 'run')]),
 )
 
 // ---- 095: the route dispatcher answers its own raise ----

@@ -61,9 +61,12 @@ load ../build/deck-finding
 
 load ../build/build-session
   find build-session
-  find make-build-session
   find turn-session
   find close-session
+
+load ../build/build-graph
+  find build-graph
+  find make-build-graph
 
 load ../build/host-faces
   find face-project-resolver
@@ -185,9 +188,8 @@ form test-units
   # the finder as the compiler takes it (a function), and as the unit naming port takes it (the record)
   link deck-of, like dynamic
   link finder, like dynamic
-  link parsed, like dynamic
-  link units, like dynamic
-  link walked, like dynamic
+  # the run's one build graph (decision 094 rule 1): every test file is built through its `build-request`
+  link graph, like build-graph
 
 form run-ask
   link file, like text
@@ -235,6 +237,7 @@ form test-context
   link deck-of, like dynamic
   link read-runtime, like dynamic
   link session, like build-session
+  link graph, like build-graph
   link units, like dynamic
 
 # a round's counts, written by every file it runs
@@ -582,6 +585,20 @@ bind number-of
 
 # ---- a round ----
 
+# the rounds of the last run in this process, and the turns its session took in all: one a round, the caller's own
+# (decision 097), read by test/call/test-turns.ts. A top-level host is not exported: `read-last-test-turns` reads it
+form test-turns
+  mark shared
+  link rounds, like number
+  link turns, like number
+
+host last-test-turns, make(test-turns, bind(rounds, 0), bind(turns, 0))
+
+task read-last-test-turns
+  like test-turns
+
+  back last-test-turns
+
 # One round over the files given: every test file compiles and runs, so each `test` block executes and its `want hold`
 # / `want miss` is reported, not merely that the file compiled
 task run-round
@@ -613,6 +630,10 @@ task run-round
       message/push(message-of(problem))
       report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
   close-session(context/session)
+  # the round is over: the next one turns the session again before it marks it turned (decision 097)
+  save context/graph/turned, false
+  save last-test-turns/rounds, add(last-test-turns/rounds, 1)
+  save last-test-turns/turns, context/session/turns
   back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skipped, tally/skipped), bind(controls, tally/controls))
 
 # one test file of a round, its counts added to the round's
@@ -877,17 +898,21 @@ task run-seed-tests
   save finder, make-deck-finder()
   save deck-of, face-deck-finder(finder)
   save read-runtime, runtime-reader()
-  # one build session for every test file: the units every file reaches, the standard library's above all, are
-  # checked once for the run and read from the cache after that
-  save session, make-build-session(root)
+  # one build graph for the run (decision 094 rule 1): the units every file reaches, the standard library's above all,
+  # are checked once for the run and read from the cache after that, every file built through its `build-request`
+  save graph, make-build-graph(root)
+  save session, graph/session
+  save last-test-turns/rounds, 0
+  save last-test-turns/turns, 0
   save merged, is-truthy(input/merged)
   save units, nothing()
   fork test, not(merged)
     hold
-      save units, make(test-units, bind(root, root), bind(cache, project-cache(root)), bind(bundles, node-path/join(project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(finder, finder), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked))
-  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(units, units))
-  # the session's first round: everything it was handed
+      save units, make(test-units, bind(root, root), bind(cache, project-cache(root)), bind(bundles, node-path/join(project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(finder, finder), bind(graph, graph))
+  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(graph, graph), bind(units, units))
+  # the session's first round: everything it was handed, turned once here for every file of it (decision 097)
   turn-session(session, files)
+  save graph/turned, true
   save first, run-round(context, files)
   fork test, not(ride)
     hold
@@ -957,5 +982,7 @@ task watch-round
   fork test, is-equal(reached/length, 0)
     hold
       back
+  # turned once for the round (decision 097): its files' requests neither walk nor turn
+  save context/graph/turned, true
   save totals, run-round(context, reached)
   report(make(item-ask, bind(glyph, round-glyph(totals)), bind(verb, <test>), bind(subject, round-subject(reached/length, files/length)), bind(counts, totals-counts(totals))))

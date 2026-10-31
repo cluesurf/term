@@ -2,22 +2,13 @@
 // `term feed`, the command line) can share one instead of each cold-starting its own. The transport is hono over HTTP
 // (the same dependency the dev server uses). See note/seed/plan/compilation-performance.md (Tier 4).
 //
-// IT RUNS THE BUILD'S OWN `compile`, with the project's resolver, roles, lean flag and decks, and one compile cache
-// for every file it is asked about, the way the language server does (deck/flow/code/server.ts). It ran the
-// per-definition `IncrementalAnalyzer` until 2026-10-05, which did not bind names by import or run the `mark private`,
-// claim, effect and hold checks, so a file `term make` refused came back clean (guides: commands/work). The cache is
-// what keeps a second answer fast: only the module that changed is read again.
+// A FACE OVER ITS PORT, work/serve/compile-daemon.tree, which `term work` runs (work/small/worker-start.tree): one
+// build graph for the daemon's life, asked in document mode through build-request with the machine store (decision 077
+// section 3 of note/project/term/self-host/change/001-finish-self-host, item term-self-host-001-0414). It ran a
+// whole-program `compile` per question with a memory cache until then, and the per-definition `IncrementalAnalyzer`
+// until 2026-10-05. Its TypeScript callers (work.ts, test/dev/daemon.ts) keep this API.
 
-import { Hono } from 'hono'
-import { serve } from '@hono/node-server'
-import * as path from 'node:path'
-import { compile } from '@term/make/code/compile/compile'
-import { CompileCache } from '@term/make/code/compile/cache'
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { projectResolver } from '@term/call/code/make'
-import { findProjectRoot } from '@term/call/code/boot'
-import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
-import { projectDeckOf } from '@term/call/code/deck-of'
+import { startDaemon as startDaemonPort } from '@term/call/code/work/serve/compile-daemon'
 import type { NativeEnv } from '@term/make/code/compile/native'
 
 export type Daemon = {
@@ -28,82 +19,12 @@ export type Daemon = {
 }
 
 // start the daemon. `POST /analyze {file, text}` returns that document's diagnostics, the build's errors or, when it
-// builds, its warnings. `GET /health` reports liveness + how many documents are warm.
+// builds, its own warnings. `POST /close {file}` drops the document's warm state and its unsaved text. `GET /health`
+// reports liveness + how many documents are warm.
 export function startDaemon(options: {
   root: string
   port?: number
   env?: NativeEnv
 }): Daemon {
-  const projectRoot = findProjectRoot(options.root)
-  const port = options.port ?? 5179
-  // one compile cache for every document: a second question about a file reads again only what changed
-  const cache = new CompileCache()
-  // the documents asked about and not closed
-  const warm = new Set<string>()
-
-  const app = new Hono()
-
-  app.get('/health', context =>
-    context.json({ ok: true, warm: warm.size }),
-  )
-
-  app.post('/analyze', async context => {
-    const body = await context.req.json()
-
-    if (
-      typeof body.file !== 'string' ||
-      typeof body.text !== 'string'
-    ) {
-      return context.json({ error: 'file and text required' }, 400)
-    }
-
-    // a file named relative to the project, as a client in it writes one
-    const file = path.resolve(projectRoot, body.file)
-    warm.add(file)
-
-    // a resolver, role reader and deck finder per question: each keeps every file it read for its life, so one kept
-    // for the daemon's life answered a loaded module edited on disk by its first text (item term-self-host-001-0431).
-    // The compile cache is keyed by the texts, so it still reads again only what changed
-    const resolve = projectResolver(projectRoot, options.env ?? 'node')
-    const roleOf = projectRoleOf(projectRoot)
-    const leanOf = projectLeanOf(projectRoot)
-    const deckOf = projectDeckOf()
-    const result = compile(
-      { file, text: body.text },
-      { resolve, cache, roleOf, leanOf, deckOf, optimize: false },
-    )
-
-    // the document's OWN warnings, as the build reports them (make.ts `compileProjectSeparate`, warning.file === file):
-    // a loaded module's warnings carry that module's file and no span file, and were answered as this document's
-    // (item term-self-host-001-0424)
-    const diagnostics: Diagnostic[] = result.ok
-      ? result.warnings.filter(warning => warning.file === file)
-      : result.diagnostics
-
-    // one connection per question. A kept-alive socket is closed by the server after 5 s idle, and a client whose own
-    // thread was busy past that (the language server mid-build) writes its next question into the closed socket and
-    // reads ECONNRESET (item 0424, tmp/self-host/0424/reset.ts: 2 of 12). A local connect costs well under a ms
-    context.header('connection', 'close')
-
-    return context.json({ diagnostics })
-  })
-
-  // drop a document's warm state (the editor closed it)
-  app.post('/close', async context => {
-    const body = await context.req.json()
-
-    if (typeof body.file === 'string') {
-      warm.delete(path.resolve(projectRoot, body.file))
-    }
-
-    return context.json({ ok: true })
-  })
-
-  const server = serve({ fetch: app.fetch, port })
-
-  return {
-    port,
-    warm: () => warm.size,
-    close: () => server.close(),
-  }
+  return startDaemonPort(options) as Daemon
 }
