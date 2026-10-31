@@ -26,6 +26,8 @@ import type { UnitInputs } from '@term/make/code/compile/explain'
 import {
   reviveBigint,
   storeBigint,
+  cleanView,
+  withoutWrites,
 } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import type { Template } from '@term/make/code/compile/template'
@@ -446,10 +448,24 @@ export function compileSeparate(
     // every unit under proof, so the key with bodies that each rule-stating importer asks has one owner, this job
     // (decision 093). Its built units are added to `built`
     answerUnderProof?: boolean
+    // THE STORE TAKES ONLY CLEAN FILES (decision 098 rule 6 of term/self-host/change/001-finish-self-host): a file is
+    // clean when the disk holds the text compiled. A unit, its name key and its surface pointer are written only when
+    // every own file is clean, a mill or scan entry only for a clean file; the rest stay in memory. Absent: every write
+    isClean?: (file: string) => boolean
   },
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
-  const { cache, explain } = options
+  const { explain, isClean } = options
+  const cache =
+    options.cache !== undefined && isClean !== undefined
+      ? cleanView(options.cache, isClean)
+      : options.cache
+  // a unit's own entries go to the store only when each of its files is clean
+  const unitWrite = <T>(job: unknown, run: () => T): T =>
+    isClean === undefined ||
+    (job as { state: { files: string[] } }).state.files.every(isClean)
+      ? run()
+      : withoutWrites(options.cache!, run)
   const verify = cacheVerifyOf(
     globalThis.process?.env?.TERM_CACHE_VERIFY ?? '',
   )
@@ -579,13 +595,17 @@ export function compileSeparate(
     hasCache: cache !== undefined,
     unitVersion: () => cache?.versionOf('unit') ?? '',
     cachedUnit: (key, job) =>
-      cache!.unit<{ portable: string }>(key, () => ({
-        portable: port.jobStored(job),
-      })).portable,
+      unitWrite(job, () =>
+        cache!.unit<{ portable: string }>(key, () => ({
+          portable: port.jobStored(job),
+        })).portable,
+      ),
     cachedNameKey: (key, job) =>
-      cache!.unit<{ portable: string }>(key, () => ({
-        portable: port.jobNamedKey(job),
-      })).portable,
+      unitWrite(job, () =>
+        cache!.unit<{ portable: string }>(key, () => ({
+          portable: port.jobNamedKey(job),
+        })).portable,
+      ),
     store: unit => JSON.stringify(stored(unit), storeBigint),
     restore: restored,
     hasUnits: options.units !== undefined,

@@ -70,4 +70,5 @@ task go-back
 task listen-pop
   take handler
     like task
+      halt exception
   save skip, code 0

@@ -79,7 +79,9 @@ load ./language-server
   find field-entry
   find method-entry
   find readers-for
-  find resolver-for
+  find ready-graph
+  find graph-asked
+  find analysis-resolver
   find uri-for
   find no-value
   find is-defined
@@ -95,8 +97,8 @@ load ./server-reply
 dock load
   load <node:path>, name node-path
   load <@term/make/code/compile/compile>, name compile-module
-  load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/analyze>, name source-module
+  load <@term/call/code/work/build/build-graph>, name graph-module
   load <@term/call/code/make>, name make-module
   load <@term/call/code/test-preprocess>, name test-module
 
@@ -135,14 +137,6 @@ bind is-own-reader-role
   case node
     text <($role === "view" || $role === "host" || $role === "mill")>
 
-# `options.deckOf ?? server.deckOf`
-bind deck-reader
-  take options, like dynamic
-  take kept, like dynamic
-  like dynamic
-  case node
-    text <($options.deckOf ?? $kept)>
-
 bind source-of
   take file, like text
   take body, like text
@@ -150,22 +144,22 @@ bind source-of
   case node
     text <(\{ file: $file, text: $body \})>
 
-bind separate-options
+# a document request of the graph (build-graph.tree `build-ask`): the text the editor shows (a test file's as it is
+# rewritten), compiled as given, for the default platform, its checked program kept, through the analysis's resolver
+bind document-ask
+  take file, like text
+  take body, like text
   take resolve, like dynamic
-  take cache, like dynamic
-  take modules
-    like task
-      take file, like text
-      like text
-  take roles, like dynamic
-  take leans, like dynamic
-  take decks, like dynamic
-  take parsed, like dynamic
-  take units, like dynamic
-  take walked, like dynamic
   like dynamic
   case node
-    text <(\{ resolve: $resolve, cache: $cache, modules: $modules, roleOf: $roles, leanOf: $leans, deckOf: $decks, parsed: $parsed, units: $units, walked: $walked, keepProgram: true \})>
+    text <(\{ mode: "document", file: $file, platform: "node", precomputed: undefined, explain: undefined, text: $body, env: "", keepProgram: true, resolve: $resolve \})>
+
+# the compiler's answer of a document request, undefined when a grammar refused the file
+bind answer-result
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <($answer.form === "document-built" ? $answer.answer.result : undefined)>
 
 bind compile-options
   take resolve, like dynamic
@@ -641,7 +635,12 @@ task analyze-now
       save inner, rewritten/text
       save map, make-mapping(doc/text, inner, rewritten/origin)
 
-  save asked, resolver-for(server, doc, readers/root)
+  # THE BUILD'S OWN ENGINE (decision 098): the document's package graph, turned first when a file event (or, for a
+  # client with none, 10 s) asked it to, then asked in document mode with the program kept, so a keystroke builds the
+  # edited unit and what reads it and the store answers the rest. The graph reads every unsaved text from its overlay,
+  # and writes to the store only what the disk holds
+  save entry, ready-graph(server, doc/file)
+  save asked, analysis-resolver(server, doc, entry)
   save resolve, no-value()
   save resolving, false
   sift asked
@@ -659,38 +658,27 @@ task analyze-now
   save faulted, false
   fork
     mark unsafe
-    save decks, deck-reader(server/options, server/deck-of)
-    fork test, and(resolving, is-equal(make-module/isWholeFile(doc/file, inner, role), false))
+    # a file that is not a program, and an empty buffer, are compiled whole below, as `term make` compiles them
+    fork test, and(and(resolving, is-equal(make-module/isWholeFile(doc/file, inner, role), false)), is-unequal(inner, <>))
       hold
-        # every keystroke's text is a unit answer of its own, so a long session's memo is bounded: past the cap it
-        # starts over, and the next analysis reads the closure's units from the cache again
-        fork test, is-above(server/units/size, unit-memo-cap())
+        save answer, graph-module/buildRequest(entry/graph, document-ask(doc/file, inner, resolve), entry/store)
+        graph-asked(entry)
+        save built, answer-result(answer)
+        fork test, is-given-value(built)
           hold
-            server/units/clear()
-        save base, readers/root
-        fork test, is-equal(base, <>)
-          hold
-            save base, node-path/dirname(doc/file)
-        save slugs
-          task
-            take file, like text
-            like text
-            back <./{make-module/unitSlug(base, file, decks)}>
-        save asking, separate-options(resolve, server/cache, slugs, readers/role-of, readers/lean-of, decks, server/parsed, server/units, server/walked)
-        save built, separate-module/compileSeparate(source-of(doc/file, inner), asking)
-        fork test, built/ok
-          hold
-            fork test, is-truthy(built/program)
+            fork test, built/ok
               hold
-                save result, built-result(built)
-                save surface, built/surface
-          miss
-            save result, failed-result(built)
-    # a document answered whole from memory (its text back to one the server built) has no checked program in hand,
-    # and navigation needs one
+                fork test, is-truthy(built/program)
+                  hold
+                    save result, built-result(built)
+                    save surface, built/surface
+              miss
+                save result, failed-result(built)
+    # NAVIGATION ONLY: a document answered whole from memory (its text back to one the graph built) has no checked
+    # program in hand, and navigation needs one. Compiled whole over the graph's store as a document request sees it
     fork test, is-given-value(result)
       miss
-        save result, compile-module/compile(source-of(doc/file, inner), compile-options(resolve, server/cache, readers/role-of, readers/lean-of, decks))
+        save result, compile-module/compile(source-of(doc/file, inner), compile-options(resolve, graph-module/cleanStore(entry/graph, entry/store), readers/role-of, readers/lean-of, graph-module/graphDeckOf(entry/graph)))
   halt take
     take problem
     save fault, problem

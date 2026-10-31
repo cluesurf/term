@@ -1,0 +1,74 @@
+{
+  "deck": [
+    {
+      "host": "@test/flow-workspace",
+      "kind": "deck",
+      "name": "@test/flow-workspace",
+      "site": "",
+      "file": 4
+    }
+  ],
+  "exception": [],
+  "task": [
+    {
+      "host": "@test/flow-workspace",
+      "kind": "task",
+      "name": "loud",
+      "site": "code/b.tree:4:1",
+      "take": [
+        {
+          "name": "m",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@test/flow-workspace",
+      "kind": "task",
+      "name": "quiet",
+      "site": "code/d.tree:4:1",
+      "take": [
+        {
+          "name": "m",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@test/flow-workspace",
+      "kind": "task",
+      "name": "shout",
+      "site": "code/a.tree:2:1",
+      "take": [
+        {
+          "name": "m",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@test/flow-workspace",
+      "kind": "task",
+      "name": "shout",
+      "site": "code/c.tree:2:1",
+      "take": [
+        {
+          "name": "m",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    }
+  ],
+  "dock": [],
+  "tell": [],
+  "kind": [],
+  "supervision": []
+}

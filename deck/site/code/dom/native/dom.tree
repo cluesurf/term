@@ -59,6 +59,7 @@ task listen
   take event, like text
   take handler
     like task
+      halt exception
 
 # like `listen`, but the handler receives the DOM event (typed `any`, bridged through gradual). Used where the handler
 # needs to inspect the event -- e.g. a transitionend guarded on `propertyName === 'opacity'`.
@@ -68,12 +69,14 @@ task listen-event
   take handler
     like task
       take event, like any
+      halt exception
 
 task listen-document
   take event, like text
   take handler
     like task
       take event
+      halt exception
   like task
 
 # every key pressed anywhere in the window, named as the web's KeyboardEvent.key names it (`Escape`, `Enter`, `Tab`,
@@ -84,6 +87,7 @@ task listen-key
   take handler
     like task
       take key, like text
+      halt exception
   like task
 
 task anchor
@@ -109,6 +113,7 @@ task observe-size
   take handler
     like task
       take width
+      halt exception
 
 task measure-width
   take node, like view
@@ -127,6 +132,7 @@ task watch-font
   take handler
     like task
       take status, like text
+      halt exception
 
 # register the face in `source` under `family`, so text set in the family draws in it (native-text-0002). `source` is
 # a `data:` URI, a file path, or `asset:<name>` for a file bundled with the app. true when the host can now draw the
@@ -145,6 +151,7 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+      halt exception
 
 task append
   take parent, like view

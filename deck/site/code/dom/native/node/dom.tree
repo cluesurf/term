@@ -29,6 +29,7 @@ form listener
   link event, like text
   link handle
     like task
+      halt exception
 
 task create-element
   take tag, like text
@@ -183,6 +184,7 @@ task listen
   take event, like text
   take handler
     like task
+      halt exception
   call push
     bind list, read node/handle/listeners
     bind item
@@ -198,6 +200,7 @@ task listen-event
   take handler
     like task
       take event, like any
+      halt exception
   send back
 
 # no document on the server — global listeners are a browser-only concern. Returns a no-op remover so callers can
@@ -207,6 +210,7 @@ task listen-document
   take handler
     like task
       take event
+      halt exception
   like task
   send back
     task drop
@@ -217,6 +221,7 @@ task listen-key
   take handler
     like task
       take key, like text
+      halt exception
   like task
   send back
     task drop
@@ -257,6 +262,7 @@ task observe-size
   take handler
     like task
       take width
+      halt exception
   send back
 
 task measure-width
@@ -277,6 +283,7 @@ task watch-font
   take handler
     like task
       take status, like text
+      halt exception
   send back
 
 # no timers driving the SSR gate: the server render is thrown away + re-rendered on the client, which installs the
@@ -286,6 +293,7 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+      halt exception
   send back
 
 # the server draws no glyphs; the page's own @font-face, or the client's register, is what loads a face. accepted.

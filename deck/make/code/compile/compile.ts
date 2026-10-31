@@ -68,6 +68,7 @@ import type {
 import {
   reviveBigint,
   storeBigint,
+  writesOf,
   type CompileCache,
 } from '@term/make/code/compile/cache'
 import {
@@ -421,7 +422,9 @@ function readingOf(options?: CompileOptions): CompileReading {
     parsed,
     scanOf: cache
       ? (unit: Source, compute: () => unknown) =>
-          cachedScan(cache.state, unit.file, unit.text, compute)
+          writesOf(cache, unit.file, () =>
+            cachedScan(cache.state, unit.file, unit.text, compute),
+          )
       : undefined,
     walked: options?.walked,
     roleOf: file => options?.roleOf?.(file) ?? '',
@@ -545,11 +548,13 @@ export function milledModule(
       | { ok: false; diagnostics: Diagnostic[] }
 
   return cache
-    ? (cachedMill(
-        cache.state,
-        `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`,
-        unit.text,
-        mill,
+    ? (writesOf(cache, unit.file, () =>
+        cachedMill(
+          cache.state,
+          `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`,
+          unit.text,
+          mill,
+        ),
       ) as
         | { ok: true; program: Program; twins?: Twin[] }
         | { ok: false; diagnostics: Diagnostic[] })

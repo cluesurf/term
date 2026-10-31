@@ -64,8 +64,10 @@ dock load
   load <node:child_process>, name node-child
   load <node:timers>, name timers
   load <global:process>, name host-process
-  load <@term/make/code/compile/cache>, name cache-module
-  load <@term/make/code/compile/load>, name load-module
+  # THE BUILD'S OWN ENGINE (decision 099): one build graph and the machine store for the loop's life, docked as their
+  # ports so the loop's port does not carry a copy of the engine
+  load <@term/call/code/work/build/build-graph>, name graph-module
+  load <@term/call/code/cache-store>, name store-module
 
 # what the loop is started with: the app folder, the target, the entry `--entry` names, what the desktop app's
 # environment adds (a test runs it headless with TERM_WINDOW_AWAY=1), and the callback told every event
@@ -95,8 +97,10 @@ form work-session
   link env, like dynamic
   link on-event, like dynamic
   link kotlin, like dynamic
-  link cache, like dynamic
-  link memo, like dynamic
+  # one build graph over the machine store (decision 099): its parse and walk memos serve every rebuild and the scope
+  # check, and its store's mill entries are term make's
+  link graph, like dynamic
+  link store, like dynamic
   link generation, like number
   link running, like dynamic
   link building, like dynamic
@@ -244,13 +248,6 @@ bind error-text
   case node
     text <($problem instanceof Error ? $problem.message : String($problem))>
 
-# a new compile cache: compile/cache.ts `new CompileCache()`, on the docked module by its exact name
-bind new-compile-cache
-  take module, like dynamic
-  like dynamic
-  case node
-    text <new $module.CompileCache()>
-
 # the desktop app's environment: this process's, what the caller adds, and the dev address
 bind desktop-env
   take env, like dynamic
@@ -391,7 +388,7 @@ task build-and-launch
   fork test, node-fs/exists-sync(session/entry)
     hold
       save text, node-fs/read-file-sync(session/entry, <utf8>)
-  save scope, make(work-scope, bind(root, session/root), bind(memo, session/memo))
+  save scope, make(work-scope, bind(root, session/root), bind(memo, session/graph/session/parsed))
   save compiler, session/kotlin/compile
 
   fork test, is-equal(session/target, <compose>)
@@ -405,7 +402,8 @@ task build-and-launch
             bind text, text
             bind file, session/entry
             bind compiler, compiler
-            bind cache, session/cache
+            bind graph, session/graph
+            bind store, session/store
             bind scope, scope
       save duration, subtract(now-ms(), started)
       sift desktop
@@ -441,7 +439,8 @@ task build-and-launch
             bind identifier, session/identifier
             bind file, session/entry
             bind compiler, compiler
-            bind cache, session/cache
+            bind graph, session/graph
+            bind store, session/store
             bind scope, scope
       save duration, subtract(now-ms(), started)
       sift android
@@ -732,9 +731,11 @@ task start-compose-work
   # what the session keeps warm between builds: one Kotlin compiler, so a rebuild pays for the code and not for
   # starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
   save kotlin, start-kotlin-worker(node-path/join(out, <kotlin>))
-  save cache, new-compile-cache(cache-module)
-  # and the parses the scope check walks (call/code/scope.ts), which an edit to the scope itself rechecks
-  save memo, load-module/make-parse-memo()
+  # and one build graph over the machine store (decision 099): each rebuild asks it for the entry as one program, its
+  # parse and walk memos and the store's mill entries kept, its session turned once a build (one turn per edit), and
+  # the scope check walks the same parses
+  save graph, graph-module/makeBuildGraph(root)
+  save store, store-module/projectCache(root)
 
   # a session starts at the app's first screen: the history of an earlier session is not this one's
   forget-address(ask/target, address, identifier)
@@ -750,8 +751,8 @@ task start-compose-work
       bind env, value-or(ask/env, empty-record())
       bind on-event, ask/on-event
       bind kotlin, kotlin
-      bind cache, cache
-      bind memo, memo
+      bind graph, graph
+      bind store, store
       bind generation, 0
       bind running, nothing()
       bind building, nothing()

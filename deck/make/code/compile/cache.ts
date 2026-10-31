@@ -292,3 +292,65 @@ export class CompileCache {
     return outputPort(this.state, key, build, kind) as T
   }
 }
+
+// `run` with the store's writes held back: every read passes through (memory, then the store), and an answer built is
+// kept by neither, not even the cache's memory, which the port fills just before it writes: a held answer left there
+// would answer the same key once the file is clean, and the store would never take it. The caller keeps such answers
+// (the build graph's unit memo). The build is synchronous, so nothing else writes through this cache meanwhile. What the
+// editor's unsaved text compiles to never reaches the store (decision 098 rule 6 of term/self-host/change/001-finish-self-host)
+export function withoutWrites<T>(cache: CompileCache, run: () => T): T {
+  const io = cache.state.io
+  // already held (a unit's build milling one of its own dirty files)
+  if ((io as { held?: boolean }).held === true) {return run()}
+
+  const state = cache.state as unknown as Record<'mills' | 'scans' | 'outputs', Map<string, unknown>>
+  const forget = (_kind: string, key: string): boolean => {
+    state.mills.delete(key)
+    state.scans.delete(key)
+    state.outputs.delete(key)
+
+    return true
+  }
+
+  cache.state.io = { ...io, writeEntry: forget, held: true } as never
+
+  try {
+    return run()
+  } finally {
+    cache.state.io = io
+  }
+}
+
+// THE STORE AS A DOCUMENT REQUEST SEES IT (decision 098 rule 6): the same cache, whose mill and scan entries of a file
+// that is not clean (the editor holds text the disk does not) are kept in memory and never written. Reads pass through
+export function cleanView(
+  cache: CompileCache,
+  isClean: (file: string) => boolean,
+): CompileCache {
+  const view = Object.create(cache) as CompileCache & {
+    isClean?: (file: string) => boolean
+  }
+
+  view.isClean = isClean
+  view.milledUnit = (file, text, build) =>
+    writesOf(view, file, () => cache.milledUnit(file, text, build))
+  view.scanned = (file, text, build) =>
+    writesOf(view, file, () => cache.scanned(file, text, build))
+
+  return view
+}
+
+// a mill or scan entry of one file: written when the cache is no view or the file is clean (compile.ts calls the
+// port on the state, so it asks here)
+export function writesOf<T>(
+  cache: CompileCache,
+  file: string,
+  run: () => T,
+): T {
+  const isClean = (cache as { isClean?: (file: string) => boolean })
+    .isClean
+
+  return isClean === undefined || isClean(file)
+    ? run()
+    : withoutWrites(cache, run)
+}

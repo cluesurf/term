@@ -119,6 +119,7 @@ task watch-loop
   take handler
     like task
       take value, like text
+      halt exception
   like task
   send back
     call follow-loop
@@ -148,6 +149,7 @@ task watch-playback
   take handler
     like task
       take value, like text
+      halt exception
   like task
   send back
     call follow-playback
@@ -169,6 +171,7 @@ task watch-recording
   take handler
     like task
       take value, like text
+      halt exception
   like task
   send back
     call follow-recording

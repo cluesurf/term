@@ -32,6 +32,7 @@ task follow-loop
   take handler
     like task
       take value, like text
+      halt exception
   like task
   fork
     mark unsafe
@@ -60,6 +61,7 @@ task follow-playback
   take handler
     like task
       take value, like text
+      halt exception
   like task
   fork
     mark unsafe
@@ -87,6 +89,7 @@ task follow-recording
   take handler
     like task
       take value, like text
+      halt exception
   like task
   fork
     mark unsafe

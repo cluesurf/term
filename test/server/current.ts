@@ -19,7 +19,8 @@
 //
 // Run: npx tsx test/server/current.ts
 
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { LanguageServer } from '@term/flow/code/server'
@@ -125,6 +126,22 @@ function applyEdits(
 
 const term = process.cwd()
 
+// A PACKAGE ROOT ON DISK (decision 098 rule 5): a file's role, `mark lean` and deck are its package's, read by the
+// package's build graph, so a test that wants a reader writes a `role.tree` (or none, for longhand) beside a deck.tree.
+// Answers a document's uri in that package's code/
+const packages: string[] = []
+const packageWith = (role: string | undefined): ((name: string) => string) => {
+  const root = mkdtempSync(join(tmpdir(), 'term-server-current-'))
+  packages.push(root)
+  writeFileSync(join(root, 'deck.tree'), `deck @test/server-${packages.length}\n  mark <0.0.0>\n`)
+  if (role !== undefined) writeFileSync(join(root, 'role.tree'), role)
+  mkdirSync(join(root, 'code'))
+
+  return name => pathToFileURL(join(root, 'code', name)).href
+}
+const LEAN_ROLE = 'role code\n  mark lean\n  take @/code/**/*.tree\n'
+const CODE_ROLE = 'role code\n  take @/code/**/*.tree\n'
+
 // ---- lean ----
 {
   // the real lean files of the CLI, under their package's own role.tree (`mark lean` on code/work/**)
@@ -142,18 +159,16 @@ const term = process.cwd()
     )
   }
 
-  // and an explicit lean reader: a bare head is a call, `back` returns
-  const lean = new LanguageServer({
-    roleOf: () => 'code',
-    leanOf: () => true,
-  })
+  // and a package whose role.tree marks its code lean: a bare head is a call, `back` returns
+  const leanAt = packageWith(LEAN_ROLE)
+  const lean = new LanguageServer()
   const LEAN =
     'task twice\n  take n, like number\n\n  like number\n\n  back add(n, n)\n'
-  const out = await open(lean, 'file:///virtual/lean.tree', LEAN)
+  const out = await open(lean, leanAt('lean.tree'), LEAN)
   ok(
     'lean: a lean task compiles clean under the lean reader',
-    errors(published(out, 'file:///virtual/lean.tree')).length === 0,
-    JSON.stringify(published(out, 'file:///virtual/lean.tree')),
+    errors(published(out, leanAt('lean.tree'))).length === 0,
+    JSON.stringify(published(out, leanAt('lean.tree'))),
   )
 
   // a construct only the lean surface reads: a bare call with its arguments named by property heads, in the order
@@ -162,27 +177,21 @@ const term = process.cwd()
   // work; this can.
   const NAMED =
     'task join-two\n  take left, like text\n  take right, like text\n\n  like text\n\n  back left\n\ntask use\n  like text\n\n  back\n    join-two\n      right <b>\n      left <a>\n'
-  const outNamed = await open(lean, 'file:///virtual/named.tree', NAMED)
+  const outNamed = await open(lean, leanAt('named.tree'), NAMED)
   ok(
     'lean: named arguments by property head compile under the lean reader',
-    errors(published(outNamed, 'file:///virtual/named.tree')).length ===
-      0,
-    JSON.stringify(published(outNamed, 'file:///virtual/named.tree')),
+    errors(published(outNamed, leanAt('named.tree'))).length === 0,
+    JSON.stringify(published(outNamed, leanAt('named.tree'))),
   )
 
-  const longhand = new LanguageServer({
-    roleOf: () => 'code',
-    leanOf: () => false,
-  })
-  const outLong = await open(
-    longhand,
-    'file:///virtual/named.tree',
-    NAMED,
-  )
+  // a package whose role reads its code longhand
+  const longAt = packageWith(CODE_ROLE)
+  const longhand = new LanguageServer()
+  const outLong = await open(longhand, longAt('named.tree'), NAMED)
   ok(
     'lean: the same text read longhand is an error (the flag reaches the compile)',
-    errors(published(outLong, 'file:///virtual/named.tree')).length > 0,
-    JSON.stringify(published(outLong, 'file:///virtual/named.tree')),
+    errors(published(outLong, longAt('named.tree'))).length > 0,
+    JSON.stringify(published(outLong, longAt('named.tree'))),
   )
 }
 
@@ -210,11 +219,9 @@ const term = process.cwd()
 
   // the control: the same file with no role, which is what the server had before deck/mill/role.tree, is read as
   // code and fails, so the clean result above is the role at work
-  const asCode = new LanguageServer({
-    roleOf: () => null,
-    leanOf: () => false,
-  })
-  const forkMine = pathToFileURL(join(fork, 'mine.tree')).href
+  // (the same text in a package with no role.tree, so no rule names it a mill)
+  const asCode = new LanguageServer()
+  const forkMine = packageWith(undefined)('mine.tree')
   const outCode = await open(
     asCode,
     forkMine,
@@ -442,13 +449,13 @@ const term = process.cwd()
   }
 
   const longhand = await labels(
-    new LanguageServer({ roleOf: () => 'code', leanOf: () => false }),
-    'file:///virtual/k.tree',
+    new LanguageServer(),
+    packageWith(CODE_ROLE)('k.tree'),
     'task f\n  like number\n  send back, code 1\n\n',
   )
   const lean = await labels(
-    new LanguageServer({ roleOf: () => 'code', leanOf: () => true }),
-    'file:///virtual/k.tree',
+    new LanguageServer(),
+    packageWith(LEAN_ROLE)('k.tree'),
     'task f\n  like number\n\n  back 1\n\n',
   )
 
@@ -1628,11 +1635,8 @@ const term = process.cwd()
   )
 
   // lean parameter-name hints
-  const lean = new LanguageServer({
-    roleOf: () => 'code',
-    leanOf: () => true,
-  })
-  const leanUri = 'file:///virtual/hints.tree'
+  const lean = new LanguageServer()
+  const leanUri = packageWith(LEAN_ROLE)('hints.tree')
   const LEAN =
     'task join-two\n  take left, like text\n  take right, like text\n\n  like text\n\n  back left\n\ntask use\n  like text\n\n  back join-two(<a>, <b>)\n'
   await open(lean, leanUri, LEAN)
@@ -1683,6 +1687,8 @@ const term = process.cwd()
     JSON.stringify(longHints),
   )
 }
+
+for (const root of packages) rmSync(root, { recursive: true, force: true })
 
 console.log(`\nserver/current: ${pass} pass, ${fail} fail`)
 

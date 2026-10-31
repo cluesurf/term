@@ -112,6 +112,7 @@ task listen
   take event, like text
   take handler
     like task
+      halt exception
   # the platform calls the handler from its own loop, so a raise in it is reported here and the loop goes on
   # (decision 096 of note/project/term/self-host/change/001-finish-self-host). Every handler or body below that the
   # platform keeps is guarded the same way
@@ -135,12 +136,14 @@ task listen-event
   take handler
     like task
       take event, like any
+      halt exception
 
 task listen-document
   take event, like text
   take handler
     like task
       take event
+      halt exception
   like task
   send back
     task drop
@@ -152,6 +155,7 @@ task listen-key
   take handler
     like task
       take key, like text
+      halt exception
   like task
   save number
     call native-view/listen-key
@@ -210,6 +214,7 @@ task observe-size
   take handler
     like task
       take width
+      halt exception
 
 task measure-width
   take node, like view
@@ -234,6 +239,7 @@ task watch-font
   take handler
     like task
       take status, like text
+      halt exception
   save status, text <error>
   fork test
     hook test
@@ -267,6 +273,7 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+      halt exception
 
 # the tree as HTML, read back from the platform views themselves
 task serialize
@@ -378,6 +385,7 @@ task open-root
 task after-launch
   take body
     like task
+      halt exception
   call native-view/after-launch
     task launched
       fork
@@ -396,6 +404,7 @@ task launch
     like task
       wait true
       like void
+      halt exception
   call native-view/launch
     task started
       mark async
@@ -427,6 +436,7 @@ task on-back
   take handler
     like task
       like boolean
+      halt exception
   # a handler that raises did not take the back, so the platform's own back goes on
   call native-view/on-back
     task asked
@@ -460,6 +470,7 @@ task press
 task later
   take body
     like task
+      halt exception
   call native-view/later
     task turned
       fork

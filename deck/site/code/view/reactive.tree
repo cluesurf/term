@@ -29,6 +29,7 @@ form effect
   mark shared
   link run
     like task
+      halt exception
   link live, like boolean
   link queued, like boolean
 
@@ -44,6 +45,7 @@ form owner
   link cleanups
     like list
       like task
+        halt exception
 
 # the effect currently running, so a signal read can subscribe it (a stack, to support nested effects). The element
 # is written, because a bare `make list` here reaches a native backend as a list of `Any`
@@ -135,6 +137,7 @@ task write-signal
 task make-effect
   take run
     like task
+      halt exception
   like effect
   save own
     make effect
@@ -168,6 +171,7 @@ task make-effect
 task on-cleanup
   take run
     like task
+      halt exception
   fork test
     hook test
       call is-empty, read owners
@@ -268,6 +272,7 @@ task make-memo
   take compute
     like task
       like t
+      halt exception
   take fallback, like t
   like signal t
   save first, read fallback

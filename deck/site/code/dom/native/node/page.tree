@@ -50,6 +50,7 @@ task page-status
 task listen-pop
   take handler
     like task
+      halt exception
 
 # the server renders one request at one path and keeps no history: the navigation contract's mirror tasks are no-ops
 # (native-navigation-0001)

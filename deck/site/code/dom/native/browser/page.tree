@@ -98,6 +98,7 @@ task go-back
 task listen-pop
   take handler
     like task
+      halt exception
   # the page calls it from its own loop, so a raise in it is reported and the page goes on (decision 096 of
   # note/project/term/self-host/change/001-finish-self-host)
   save guarded

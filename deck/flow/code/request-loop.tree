@@ -29,6 +29,7 @@ load ./language-server
 load ./document-sync
   find did-open
   find did-change
+  find did-save
   find did-close
   find did-change-watched-files
   find pull-diagnostics
@@ -236,6 +237,19 @@ bind offers-encodings
   case node
     text <Boolean(((($params)?.capabilities ?? \{\}).general ?? \{\}).positionEncodings)>
 
+# `workspace.didChangeWatchedFiles.dynamicRegistration`, by truth: the client registers file watchers the server asks for
+bind registers-watches
+  take params, like dynamic
+  like boolean
+  case node
+    text <Boolean(($params)?.capabilities?.workspace?.didChangeWatchedFiles?.dynamicRegistration)>
+
+# the server's request that the client send `workspace/didChangeWatchedFiles` for every `.tree` file (decision 098)
+bind watch-registration
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", id: "term-watch-tree", method: "client/registerCapability", params: \{ registrations: [\{ id: "term-watch-tree", method: "workspace/didChangeWatchedFiles", registerOptions: \{ watchers: [\{ globPattern: "**/*.tree" \}] \} \}] \} \})>
+
 task just
   take reply, like dynamic
   like list, like dynamic
@@ -255,6 +269,7 @@ task initialize
   save params, message-params(message)
   save encodings, offers-encodings(params)
   save server/pull, wants-pull(params)
+  save server/watching, registers-watches(params)
   save triggers, make list
   push(triggers, < >)
   push(triggers, </>)
@@ -335,6 +350,10 @@ task handle
       back just(initialize(server, message))
   fork test, is-method(message, <initialized>)
     hold
+      # the file events the graphs turn on (decision 098 rule 1), asked of a client that registers them itself
+      fork test, server/watching
+        hold
+          back just(watch-registration())
       back make list
   fork test, is-method(message, <shutdown>)
     hold
@@ -351,7 +370,7 @@ task handle
       back did-change(server, message-params(message))
   fork test, is-method(message, <textDocument/didSave>)
     hold
-      back make list
+      back did-save(server, message-params(message))
   fork test, is-method(message, <textDocument/didClose>)
     hold
       back did-close(server, message-params(message))

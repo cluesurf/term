@@ -18,6 +18,7 @@ task follow-motion
   take handler
     like task
       take value, like text
+      halt exception
   like task
   # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
   save watching

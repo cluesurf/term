@@ -36,6 +36,7 @@ task watch-traits
     like task
       take name, like text
       take value, like text
+      halt exception
   like task
   call native-device/watch
     task heard

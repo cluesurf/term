@@ -204,8 +204,14 @@ task analyze-document
   like list, like dynamic
   mark private
 
-  set-overlay(graph, file, text)
-  save ask, make(build-ask, bind(mode, make document), bind(file, file), bind(platform, <node>), bind(precomputed, void), bind(explain, void), bind(text, <>), bind(env, <>), bind(keep-program, false), bind(resolve, resolve))
+  # the overlay holds only a text the disk does not (decision 098 rules 3 and 6): a posted text the disk holds already is
+  # clean, and its unit goes to the store
+  fork test, matches-disk(file, text)
+    hold
+      drop-overlay(graph, file)
+    miss
+      set-overlay(graph, file, text)
+  save ask, make(build-ask, bind(mode, make document), bind(file, file), bind(platform, <node>), bind(precomputed, void), bind(explain, void), bind(text, <>), bind(env, <>), bind(keep-program, false), bind(resolve, resolve), bind(whole, false))
   save answered, build-request(graph, ask, store)
   save diagnostics, like list, like dynamic
     make list
@@ -220,9 +226,6 @@ task analyze-document
         diagnostics/push(daemon-fault(fault))
     case project-built
       save skipped, true
-  fork test, matches-disk(file, text)
-    hold
-      drop-overlay(graph, file)
   back diagnostics
 
 # start the daemon. `options` is the original's record: root, and port and env when given

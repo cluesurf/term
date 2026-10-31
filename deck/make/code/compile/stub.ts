@@ -31,7 +31,25 @@ const same = (text: string): string => text
 export function stubKnown(program: Program): StubKnown {
   return port.stubKnownOf(
     program as never,
-    (whole, exceptions) => raiseSetsOf(whole as never, exceptions),
+    // a task's pass-through parameters (`pass <i>`) and the members its set holds for them (`kink <i>`) ride in its
+    // stored set, so a dependent unit puts a call's arguments in their place as the whole program does (decision 089
+    // rule 4 of note/project/term/self-host/change/001-finish-self-host). check/effects reads them back off
+    // `stubRaises`
+    (whole, exceptions) => {
+      const sets = raiseSetsOf(whole as never, exceptions)
+
+      // read through a widened type: under node-switch's paths this module types against the port's answer, which
+      // carries `through` as the TypeScript twin does
+      const through =
+        (sets as { through?: Map<string, string[]> }).through ??
+        new Map<string, string[]>()
+
+      for (const [name, carried] of through) {
+        sets.raises.set(name, [...(sets.raises.get(name) ?? []), ...carried])
+      }
+
+      return sets
+    },
     whole => [...terminatingFunctions(whole as never)],
     // the proof pass of this unit ran just before (compile/separate.ts calls this after compiling the unit), so its
     // record is this unit's

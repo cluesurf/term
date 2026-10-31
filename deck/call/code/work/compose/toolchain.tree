@@ -24,6 +24,7 @@ load ../cask/host-value
 load ../context/app-scope
   find check-scope
 
+
 dock load
   load <node:fs>, name node-fs
   load <node:os>, name node-os
@@ -32,12 +33,51 @@ dock load
   load <node:child_process>, name node-child
   load <global:process>, name host-process
   load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/compile>, name compile-module
+  # the build's own engine (decision 099): the reload loop's one graph, asked for the entry as one program. Docked as
+  # its port, so each compose port does not carry a copy of the engine
+  load <@term/call/code/work/build/build-graph>, name graph-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/make/code/compile/native-main>, name native-main
   load <@term/make/code/resolve>, name resolve-module
 
 form tool-text
   link encoding, like text
+
+form whole-source
+  link file, like text
+  link text, like text
+
+form whole-options
+  link resolve, like dynamic
+  link env, like text
+  link cache, like dynamic
+
+# The entry compiled as one program for `env`, its `program` and `wake` in the answer, as the Kotlin emitter reads it.
+# A session that holds a build graph (the reload loop, decision 099) asks it, so the parse and walk memos and the
+# machine store's mill entries serve every rebuild and are shared with `term make`; the graph turns on each ask, one
+# turn per edit. A build with none (a one-shot `term make --target compose`) compiles whole with its own cache
+task compile-whole
+  take graph, like dynamic
+  take store, like dynamic
+  take entry, like text
+  take text, like text
+  take env, like text
+  take resolve, like dynamic
+  take cache, like dynamic
+  like dynamic
+
+  fork test, is-truthy(graph)
+    hold
+      back whole-result(graph-module/buildRequest(graph, graph-module/entryAsk(entry, text, env, false, resolve, true), store))
+  back compile-module/compile(make(whole-source, bind(file, entry), bind(text, text)), make(whole-options, bind(resolve, resolve), bind(env, env), bind(cache, cache)))
+
+# the compiler's answer of a whole ask, or a grammar's refusal as a failed compile with its faults
+bind whole-result
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <($answer.form === "document-built" ? ($answer.answer.result ?? \{ ok: false, diagnostics: $answer.answer.faults.map((message) =\> (\{ message \})) \}) : undefined)>
 
 form runtime-folder
   link recursive, like boolean

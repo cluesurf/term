@@ -50,6 +50,7 @@ task mount-app
       take host, like view
       take request, like request
       like maybe, like response
+      halt exception
   take title, like text
   like view
   save root
@@ -111,6 +112,7 @@ task host
       take host, like view
       take request, like request
       like maybe, like response
+      halt exception
   take port, like number
   save root
     call mount-app

@@ -23,6 +23,7 @@ task watch-motion
   take handler
     like task
       take value, like text
+      halt exception
   like task
   send back
     call follow-motion

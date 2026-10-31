@@ -33,6 +33,7 @@ load ./toolchain
   find join-on
   find tail-units
   find stage-entry
+  find compile-whole
 
 load ../workers/kotlin-compiler
   find kotlinc
@@ -70,7 +71,8 @@ form desktop-emit
 # what a desktop build is asked: where the program's packages resolve (`root`), the build's folder, the program's name
 # and text, and the entry's own path when the program is an app's (toolchain.tree `entry-file`). A session that builds
 # again and again (`term work`) passes what it keeps warm: a `compiler` (kotlin-worker.ts, else `kotlinc`) and a
-# `cache`, the Term compiler's parsed modules. `scope` is the app's (`root`, and `memo`, the session's parse memo)
+# `cache`, the Term compiler's parsed modules, or a build `graph` and its `store` (the reload loop, decision 099), which
+# the entry is compiled through as one program. `scope` is the app's (`root`, and `memo`, the session's parse memo)
 form compose-ask
   link root, like text
   link dir, like text
@@ -83,6 +85,12 @@ form compose-ask
     like dynamic
     need false
   link cache
+    like dynamic
+    need false
+  link graph
+    like dynamic
+    need false
+  link store
     like dynamic
     need false
   link scope
@@ -123,7 +131,7 @@ task build-compose
   save entry, entry-file(ask/file, dir, name, text)
   save resolve, face-project-resolver(make-project-resolver(ask/root, <compose>))
   save term-started, now-ms()
-  save result, compile-module/compile(make(desktop-source, bind(file, entry), bind(text, text)), make(desktop-options, bind(resolve, resolve), bind(env, <compose>), bind(cache, ask/cache)))
+  save result, compile-whole(ask/graph, ask/store, entry, text, <compose>, resolve, ask/cache)
   stages/push(stage-entry(<term>, subtract(now-ms(), term-started)))
 
   fork test, not(result/ok)

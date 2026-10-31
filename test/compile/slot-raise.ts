@@ -833,8 +833,8 @@ ok(
   'and neither library task raises it on',
   callbacks.ok &&
     !halts(callbacks, 'make-effect').includes('failure') &&
-    !halts(callbacks, 'run').includes('failure'),
-  JSON.stringify([halts(callbacks, 'make-effect'), halts(callbacks, 'run')]),
+    !halts(callbacks, 'run-effect').includes('failure'),
+  JSON.stringify([halts(callbacks, 'make-effect'), halts(callbacks, 'run-effect')]),
 )
 
 // ---- 095: the route dispatcher answers its own raise ----

@@ -240,6 +240,7 @@ task listen
   take event, like text
   take handler
     like task
+      halt exception
   save element
     call element-of
       read node
@@ -257,12 +258,14 @@ task listen-event
   take handler
     like task
       take event, like any
+      halt exception
 
 task listen-document
   take event, like text
   take handler
     like task
       take event
+      halt exception
   like task
   send back
     task drop
@@ -274,6 +277,7 @@ form memory-key-listener
   link handle
     like task
       take key, like text
+      halt exception
 
 form memory-keys
   mark shared
@@ -293,6 +297,7 @@ task listen-key
   take handler
     like task
       take key, like text
+      halt exception
   like task
   save window-keys/next
     call add
@@ -341,6 +346,7 @@ task observe-size
   take handler
     like task
       take width
+      halt exception
 
 task measure-width
   take node, like view
@@ -357,12 +363,14 @@ task watch-font
   take handler
     like task
       take status, like text
+      halt exception
 
 task watch-deadline
   take family, like text
   take threshold, like number
   take handler
     like task
+      halt exception
 
 # the memory host draws no glyphs, so every family is as drawable as any other: accepted, and nothing to load
 task register-font

@@ -141,6 +141,7 @@ task listen
   take event, like text
   take handler
     like task
+      halt exception
   host made, like element
     read node/handle
   # bind's addEventListener wants its EventListener union; the handler is a real function at runtime, so bridge it
@@ -172,6 +173,7 @@ task listen-event
   take handler
     like task
       take event, like any
+      halt exception
   host made, like element
     read node/handle
   save guarded
@@ -199,6 +201,7 @@ task listen-document
   take handler
     like task
       take event
+      halt exception
   like task
   save guarded
     task heard
@@ -232,6 +235,7 @@ task listen-key
   take handler
     like task
       take key, like text
+      halt exception
   like task
   save listener
     task on-key
@@ -296,6 +300,7 @@ task observe-size
   take handler
     like task
       take width
+      halt exception
   call resize/observe-size
     read node/handle
     task resized
@@ -334,6 +339,7 @@ task watch-font
   take handler
     like task
       take status, like text
+      halt exception
   call fontset/watch
     read family
     task settled
@@ -366,6 +372,7 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+      halt exception
   call fontset/deadline
     read family
     read threshold

@@ -65,6 +65,7 @@ task host
       take request, like request
       like maybe, like response
       mark async
+      halt exception
   take port, like number
   save body
     call page-body

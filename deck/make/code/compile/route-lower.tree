@@ -13,7 +13,8 @@
 #     zone welcome                 }
 #
 # A route's optional `seed title <...>` directive becomes a `set-title` call in its branch, so the document title
-# tracks the route. Component props (`bind id, read id`) pass through after `host`.
+# tracks the route. Component props (`bind id, read id`) pass through after `host`. The whole body sits in a guard whose
+# handler answers `answer-failure(problem)`, a 500, so `route` raises nothing into any host (decision 095 rule 6).
 #
 # Ported from compile/route-lower.ts (self-hosting, 2026-10-05). Every node it builds is fresh, and a directive's
 # value is handed on whole, never rebuilt. A case name two of node.tree's forms share is written with its form
@@ -39,6 +40,7 @@ load ../parser/diagnostic
   find position
 
 load ./node
+  find catch-clause
   find closure-param
   find dock-argument
   find dock-component
@@ -242,6 +244,55 @@ task return-value
   back
     make statement/return
       bind value, make(some, value)
+      bind span, at
+
+# `let mut <name> = <value>`
+task mutable-local
+  take name, like text
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/let
+      bind name, name
+      bind init, value
+      bind mutable, true
+      bind span, at
+
+# `<name> = <value>`
+task assigned
+  take name, like text
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/assign
+      bind target, variable(name, at)
+      bind op, make set
+      bind value, value
+      bind span, at
+
+# `fork` / `mark unsafe` over `body`, with `halt take` / `take problem` running `handler`
+task guarded
+  take body, like list, like statement
+  take handler, like list, like statement
+  take at, like span
+  like statement
+  mark private
+
+  save caught
+    make catch-clause
+      bind name, <problem>
+      bind body, handler
+      bind span, at
+  back
+    make statement/guard
+      bind body, body
+      bind catch, make(some, caught)
       bind span, at
 
 # the dispatcher's answer when the page was drawn into the host: `return answer-nothing()`
@@ -572,11 +623,40 @@ task lower-routes
   # its method whether the page is drawn or the route's `task <method>` answers. Every host hands one in, a host with no
   # wire a GET (`make-page-request`). It is typed by its first use, `read-route-path` of the route runtime, so the type
   # is the one that module imported, never a `request` the merged program holds elsewhere
+  save guarded-body, make list
+  push(guarded-body, local(<path>, call-of(<read-route-path>, one-value(variable(<request>, at)), at), at))
+  push(guarded-body, local(<method>, call-of(<read-route-method>, one-value(variable(<request>, at)), at), at))
+  push(guarded-body, dispatch)
+  push(guarded-body, return-drawn(at))
+  save dispatch-params, make list
+  push(dispatch-params, parameter(<host>, view-type))
+  push(dispatch-params, untyped-parameter(<request>))
+  save dispatch-generics, make list
+  save dispatcher
+    make statement/function
+      bind name, <dispatch-route>
+      bind params, dispatch-params
+      bind body, guarded-body
+      bind generics, dispatch-generics
+      bind span, at
+  # THE DISPATCHER ANSWERS ITS OWN RAISE (decision 095 rules 6 and 7 of
+  # note/project/term/self-host/change/001-finish-self-host): every host calls `route` from a request or launch
+  # closure with no Term caller to raise to, and its views and method tasks may raise anything, so `route` runs the
+  # table under a guard and a raise answers `answer-failure(problem)`, a 500. Every table gets the guard, one shape
+  # for all. The answer is held in a local and given back after the guard, with no `return` inside it (a guard whose
+  # body and handler each return does not build on Rust, term-self-host-001-0498):
+  #   function route(host, request) { let answer = answer-nothing()
+  #     try { answer = dispatch-route(host, request) } catch (problem) { answer = answer-failure(problem) }
+  #     return answer }
+  save none-args, make list
   save router-body, make list
-  push(router-body, local(<path>, call-of(<read-route-path>, one-value(variable(<request>, at)), at), at))
-  push(router-body, local(<method>, call-of(<read-route-method>, one-value(variable(<request>, at)), at), at))
-  push(router-body, dispatch)
-  push(router-body, return-drawn(at))
+  push(router-body, mutable-local(<answer>, call-of(<answer-nothing>, none-args, at), at))
+  save tried, make list
+  push(tried, assigned(<answer>, call-of(<dispatch-route>, two(variable(<host>, at), variable(<request>, at)), at), at))
+  save failed, make list
+  push(failed, assigned(<answer>, call-of(<answer-failure>, one-value(variable(<problem>, at)), at), at))
+  push(router-body, guarded(tried, failed, at))
+  push(router-body, return-value(variable(<answer>, at), at))
   save router-params, make list
   push(router-params, parameter(<host>, view-type))
   push(router-params, untyped-parameter(<request>))
@@ -622,6 +702,7 @@ task lower-routes
     fork test, not(is-web-route(one))
       hold
         push(out, one)
+  push(out, dispatcher)
   push(out, router)
   push(out, boot)
 

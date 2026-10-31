@@ -36,6 +36,11 @@ load ./language-server
   find document
   find open-document
   find close-document
+  find set-unsaved
+  find drop-unsaved
+  find matches-disk
+  find turn-graphs
+  find renew-graph-readers
   find path-for
   find is-under
   find is-given
@@ -54,7 +59,6 @@ load ./server-reply
 
 dock load
   load <node:path>, name node-path
-  load <@term/call/code/deck-of>, name deck-module
 
 # a file event, its path read off its uri
 form file-change
@@ -280,6 +284,14 @@ task did-open
     miss
       raise-not-text(uri)
   save doc, open-document(server, uri, body, version)
+  # the overlay holds only a text unlike the disk's (decision 098 rule 3): one read per open
+  fork test, is-unequal(doc/path, <>)
+    hold
+      fork test, matches-disk(doc/file, body)
+        hold
+          drop-unsaved(server, doc/file)
+        miss
+          set-unsaved(server, doc/file, body)
   # an opened file is analyzed at once: there is no burst of typing to wait out
   back run-document(server, doc, true)
 
@@ -298,11 +310,33 @@ task did-change
     save doc/text, apply-change(doc/text, each)
   save doc/version, next-version(params, doc/version)
   save doc/revision, add(doc/revision, 1)
+  # every keystroke's text over the disk, with no read (rule 3)
+  fork test, is-unequal(doc/path, <>)
+    hold
+      set-unsaved(server, doc/file, doc/text)
   fork test, is-deferred-server(server)
     hold
       schedule(server, doc, true)
       back make list
   back run-document(server, doc, true)
+
+# a document saved: the disk holds its text, so the graphs drop it from their overlays (decision 098 rule 3). No turn:
+# the walk memo keys a walk by its text, and a file new to the disk arrives as a created event
+task did-save
+  take server, like language-server
+  take params, like dynamic
+  like list, like dynamic
+
+  save uri, uri-of(params)
+  fork test, server/documents/has(uri)
+    hold
+      save doc, server/documents/get(uri)
+      fork test, server/unsaved/has(doc/file)
+        hold
+          drop-unsaved(server, doc/file)
+          # its next analysis builds its unit clean, and the store takes it (decision 077 section 9)
+          save doc/stale, true
+  back make list
 
 task did-close
   take server, like language-server
@@ -311,6 +345,9 @@ task did-close
 
   save uri, uri-of(params)
   save had, server/documents/has(uri)
+  fork test, had
+    hold
+      drop-unsaved(server, server/documents/get(uri)/file)
   close-document(server, uri)
   save out, make list
   fork test, and(had, is-equal(server/pull, false))
@@ -349,6 +386,9 @@ task did-change-watched-files
     hold
       back out
 
+  # THE TURN (decision 098 rule 1): every graph turns once, on its next request, whatever this burst moved
+  turn-graphs(server)
+
   save files, make list
   save seen, make hash
   walk changes
@@ -372,25 +412,10 @@ task did-change-watched-files
       miss
         forget-file(server/workspace, change/file)
 
+  # a role or deck file moved: every graph's readers are made again now, so this analysis reads the roles as they stand
   fork test, is-above(config-roots/length, 0)
     hold
-      save roots, make list
-      walk server/readers-by-root/keys()
-        take root
-        push(roots, root)
-      walk roots
-        take root
-        save hit, false
-        walk changes
-          take change
-          fork test, is-under(change/file, root)
-            hold
-              save hit, true
-              halt
-        fork test, hit
-          hold
-            server/readers-by-root/remove(root)
-      save server/deck-of, deck-module/projectDeckOf()
+      renew-graph-readers(server)
 
   walk server/documents/values()
     take doc

@@ -48,3 +48,4 @@ form memory-listener
   link event, like text
   link handle
     like task
+      halt exception

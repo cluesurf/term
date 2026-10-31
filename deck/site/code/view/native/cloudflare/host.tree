@@ -43,6 +43,7 @@ task host
       take request, like request
       like maybe, like response
       mark async
+      halt exception
   take port, like u16
   # the catch-all handler: SSR-render the requested page through `route`, or answer with the route's `task <method>`
   save render-request

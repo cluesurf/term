@@ -23,11 +23,10 @@ const coloring = unwrap(emittedColoring)
 const hinting = unwrap(emittedHinting)
 const geometry = unwrap(emittedGeometry)
 
+// a file's role, `mark lean` and deck are its package's, read by the package's build graph as `term make` reads them
+// (decision 098 rule 5): a test that wants a role writes a `role.tree` into a package root
 export type ServerOptions = {
   resolve?: (...args: any[]) => any
-  roleOf?: (file: string) => string | null | undefined
-  leanOf?: (file: string) => boolean | undefined
-  deckOf?: (file: string) => { name: string; root: string } | undefined
   debounce?: number
   send?: (message: Message) => void
 }

@@ -50,6 +50,7 @@ task follow-loop
   take handler
     like task
       take value, like text
+      halt exception
   like task
   save watching
     call native-audio/watch-loop
@@ -87,6 +88,7 @@ task follow-playback
   take handler
     like task
       take value, like text
+      halt exception
   like task
   save watching
     call native-audio/watch-playback
@@ -122,6 +124,7 @@ task follow-recording
   take handler
     like task
       take value, like text
+      halt exception
   like task
   save watching
     call native-audio/watch-recording

@@ -1670,6 +1670,23 @@ task type-of-heads
       fork test, is-above(at(value, <halt>)/length, 0)
         hold
           push(effects, <throw>)
+      # THE TYPE'S RAISE SET: each childless `halt <form>` line is an effect `halt <form>`, and none means the slot
+      # raises nothing (decision 086 of note/project/term/self-host/change/001-finish-self-host, rule 1)
+      walk forms-at(value, <halt>)
+        take halt-form
+        save halted, make(some, halt-form)
+        sift word-at(halted, <mode>)
+          case some
+            link raised
+            fork test, and(is-slot-raise(raised), is-childless-halt(halted))
+              hold
+                push(effects, <halt {raised}>)
+            # `halt kink` on a slot: it passes its raises on (decision 089 rule 3), the effect `halt kink`
+            fork test, and(is-equal(raised, <kink>), is-childless-halt(halted))
+              hold
+                push(effects, <halt kink>)
+          case none
+            save nothing, 0
       save result, unit-type()
       sift type-at(children, 0)
         case some
@@ -1732,6 +1749,27 @@ task type-of-heads
             save nothing, 0
   save built, named-type(name, args, value-args)
   back make(some, built)
+
+# a `halt` word under a `like task` that names a form, never one of the words a `halt` statement heads with
+task is-slot-raise
+  take word, like text
+  like boolean
+  mark private
+
+  walk split(<fork flow code kink take>, < >)
+    take reserved
+    fork test, is-equal(word, reserved)
+      hold
+        back false
+  back is-unequal(word, <>)
+
+# a `halt` line with nothing under it: no value, no `bind`, no handler
+task is-childless-halt
+  take halted, like maybe, like minted
+  like boolean
+  mark private
+
+  back and(and(is-equal(at(halted, <seed>)/length, 0), is-equal(at(halted, <bind>)/length, 0)), and(is-equal(at(halted, <take>)/length, 0), is-equal(at(halted, <flow>)/length, 0)))
 
 # a `head`'s type argument: its `like`, else its name as a type
 task head-type

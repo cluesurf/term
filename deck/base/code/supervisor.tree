@@ -55,6 +55,7 @@ form child
       like task
         mark async
         like text
+        halt exception
   case nested
     link tree, like supervisor
 

@@ -12,6 +12,7 @@ task follow-position
   take handler
     like task
       take value, like text
+      halt exception
   like task
   fork
     mark unsafe

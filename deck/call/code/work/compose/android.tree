@@ -48,6 +48,7 @@ load ./toolchain
   find join-on
   find head-units
   find tail-units
+  find compile-whole
   find stage-entry
   find nul-text
 
@@ -116,6 +117,12 @@ form compose-android-ask
     like dynamic
     need false
   link cache
+    like dynamic
+    need false
+  link graph
+    like dynamic
+    need false
+  link store
     like dynamic
     need false
   link scope
@@ -709,7 +716,7 @@ task build-compose-android
   save resolve, face-project-resolver(make-project-resolver(ask/root, <compose-android>))
   save stages, make list
   save term-started, now-ms()
-  save result, compile-module/compile(make(android-source, bind(file, entry), bind(text, text)), make(android-options, bind(resolve, resolve), bind(env, <compose-android>), bind(cache, ask/cache)))
+  save result, compile-whole(ask/graph, ask/store, entry, text, <compose-android>, resolve, ask/cache)
   stages/push(stage-entry(<term>, subtract(now-ms(), term-started)))
 
   fork test, not(result/ok)

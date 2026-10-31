@@ -22,5 +22,6 @@ task host
       take host, like view
       take request, like request
       like maybe, like response
+      halt exception
   take port, like number
   save nothing, code 0

@@ -85,6 +85,7 @@ load ../check/effects
   find raise-sets
   find raise-sets-of
   find check-raise-bounds
+  find check-slot-raises
 
 load ../check/text-forms
   find check-text-forms
@@ -518,6 +519,12 @@ task program-warnings
   fork test, is-above(bounds/length, 0)
     hold
       back warnings-refusal(bounds)
+
+  # a task put in a place typed as a task raises only what the place declares (decision 086 rule 3)
+  save slot-raises, check-slot-raises(run/program, file)
+  fork test, is-above(slot-raises/length, 0)
+    hold
+      back warnings-refusal(slot-raises)
 
   # a closed set of texts holds only texts, each its own
   save text-forms, check-text-forms(run/program, file)

@@ -1,6 +1,8 @@
 # WHAT THE LANGUAGE SERVER HOLDS, and the plumbing every handler shares: the open documents, each with its text, its
-# version and the VIEW of its last analysis, the one compile cache and build memos every document shares, the readers
-# of each package, the workspace, and the requests the client cancelled.
+# version and the VIEW of its last analysis, one BUILD GRAPH per package root with the editor's unsaved texts in each
+# graph's overlay (decision 098 of term/self-host/change/001-finish-self-host: a keystroke builds through the build's
+# own engine, the store takes only what the disk holds, and a graph turns on file events, never per keystroke), the
+# workspace, and the requests the client cancelled.
 #
 # Every document holds:
 #   its text and version, and the revision analyzed last
@@ -55,13 +57,16 @@ load ./package-index
 dock load
   load <node:url>, name node-url
   load <node:path>, name node-path
+  load <node:fs>, name node-file
   load <@term/make/code/resolve>, name resolving-module
   load <@term/make/code/compile/cache>, name cache-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/role-of>, name role-module
-  load <@term/call/code/deck-of>, name deck-module
   load <@term/call/code/make>, name make-module
+  # THE BUILD'S OWN ENGINE (decision 098): one build graph per package root, asked in document mode, over the machine
+  # store. Docked as the call package's port, so the flow's ports share one copy of it
+  load <@term/call/code/work/build/build-graph>, name graph-module
+  load <@term/call/code/cache-store>, name store-module
 
 # ---- the records ----
 
@@ -135,24 +140,39 @@ form document
   link result-id, like number
   link tokens, like maybe, like held-tokens
 
+# ONE BUILD GRAPH OF A PACKAGE ROOT (decision 098 rule 4): the graph (work/build/build-graph.tree, its memos, its overlay
+# of the editor's unsaved texts, its readers), its store (the machine store, `project-cache`), when it was last asked
+# (the least recently asked of more than 8 is dropped), and when it last turned (a client with no file events turns a
+# graph at most every 10 s). A file outside every package is rooted at its folder, never turned: a file event or the
+# 10 s drop it whole, and the next request makes it again
+form graph-entry
+  mark shared
+  link root, like text
+  link graph, like dynamic
+  link store, like dynamic
+  link asked, like number
+  link turned-at, like number
+  # whether the root holds a `deck.tree` (a package), so the graph walks and turns its files
+  link package, like boolean
+
 form language-server
   mark shared
   link documents, like hash, like text, like document
-  # an open document by the file it is, so an import of it reads the editor's text rather than the disk's
+  # an open document by the file it is, for navigation, the workspace and the file events: an import of it reads the
+  # editor's text rather than the disk's
   link by-file, like hash, like text, like document
-  # ONE mill and output cache for every document, capped (compile/cache.ts): a module the open files share is milled
-  # once, and nothing grows with the session
-  link cache, like dynamic
-  # and one build session's memos for every document: each unit's answer, each module's walk, each parse, so a
-  # keystroke rebuilds the edited module's unit and what reads it (compile/separate.ts)
-  link units, like hash, like text, like dynamic
-  link walked, like hash, like text, like dynamic
-  link parsed, like dynamic
+  # THE BUILD GRAPHS, one per package root (decision 098 rule 4), and the editor's unsaved texts each holds in its
+  # overlay: a text unlike the disk's, set on open and every change, dropped on save and close (rule 3), kept here to
+  # seed a graph made later
+  link graphs, like hash, like text, like graph-entry
+  link unsaved, like hash, like text, like text
+  # how many graphs were asked, for the least recently asked
+  link asks, like number
+  # the client sends file events for `**/*.tree` (it registered `workspace/didChangeWatchedFiles`), so a graph turns on
+  # them alone; else at most every 10 s (rule 1)
+  link watching, like boolean
   # `ServerOptions`, as the caller gave them (a bare resolver is `{ resolve }`)
   link options, like dynamic
-  # the role and lean readers of each package root, read once
-  link readers-by-root, like hash, like text, like dynamic
-  link deck-of, like dynamic
   # the auto-import's answer per package and name, found or not, until a `.tree` file changes on disk: the lightbulb
   # asks again every time the cursor moves onto the diagnostic
   link exporting, like hash, like text, like dynamic
@@ -222,50 +242,16 @@ bind option-resolve
   case node
     text <$options.resolve>
 
-bind option-role-of
-  take options, like dynamic
-  like dynamic
-  case node
-    text <$options.roleOf>
-
-bind option-lean-of
-  take options, like dynamic
-  like dynamic
-  case node
-    text <$options.leanOf>
-
-# `options.roleOf || options.leanOf`, by truth
-bind has-own-readers
-  take options, like dynamic
-  like boolean
-  case node
-    text <Boolean($options.roleOf || $options.leanOf)>
-
 bind new-compile-cache
   take module, like dynamic
   like dynamic
   case node
     text <new $module.CompileCache()>
 
-# `{ roleOf: projectRoleOf(root), leanOf: projectLeanOf(root) }`
-bind package-readers
-  take roles, like dynamic
-  take leans, like dynamic
-  like dynamic
+bind now-ms
+  like number
   case node
-    text <(\{ roleOf: $roles, leanOf: $leans \})>
-
-bind readers-role-of
-  take readers, like dynamic
-  like dynamic
-  case node
-    text <$readers.roleOf>
-
-bind readers-lean-of
-  take readers, like dynamic
-  like dynamic
-  case node
-    text <$readers.leanOf>
+    text <Date.now()>
 
 # what the workspace is told of a file's readers: `{ role: roleOf?.(file) ?? undefined, lean: leanOf?.(file) ?? false }`
 bind readers-answer
@@ -475,13 +461,11 @@ task make-language-server
     make language-server
       bind documents, make hash
       bind by-file, make hash
-      bind cache, new-compile-cache(cache-module)
-      bind units, make hash
-      bind walked, make hash
-      bind parsed, load-module/makeParseMemo()
+      bind graphs, make hash
+      bind unsaved, make hash
+      bind asks, 0
+      bind watching, false
       bind options, server-options(given)
-      bind readers-by-root, make hash
-      bind deck-of, deck-module/projectDeckOf()
       bind exporting, make hash
       bind cancelled, new-set()
       # set below, once the record its host asks exists
@@ -585,32 +569,215 @@ task cancel
     hold
       set-add(server/cancelled, id)
 
-# the role, lean and deck readers for a file, read from its package once
+# the package root of a file (its nearest `deck.tree`), or the empty text for a file outside every package
+task package-root
+  take file, like text
+  like text
+
+  fork test, is-rooted(file)
+    miss
+      back <>
+  save found, resolving-module/findProjectRoot(file)
+  fork test, is-given(found)
+    hold
+      back found
+  back <>
+
+# The role, lean and deck readers for a file: its package's build graph's own (decision 098 rule 5), so a file is read
+# as `term make` reads it. A file outside every package has none
 task readers-for
   take server, like language-server
   take file, like text
   like file-readers
 
-  save root, <>
-  fork test, is-rooted(file)
-    hold
-      save found, resolving-module/findProjectRoot(file)
-      fork test, is-given(found)
-        hold
-          save root, found
-  save options, server/options
-  fork test, has-own-readers(options)
-    hold
-      back make(file-readers, bind(role-of, option-role-of(options)), bind(lean-of, option-lean-of(options)), bind(root, root))
+  save root, package-root(file)
   fork test, is-equal(root, <>)
     hold
       back make(file-readers, bind(role-of, no-value()), bind(lean-of, no-value()), bind(root, <>))
-  fork test, server/readers-by-root/has(root)
+  save entry, graph-for(server, file)
+  back make(file-readers, bind(role-of, graph-module/graphRoleOf(entry/graph)), bind(lean-of, graph-module/graphLeanOf(entry/graph)), bind(root, root))
+
+# ---- the build graphs (decision 098) ----
+
+# the most graphs the server holds; past it the least recently asked is dropped whole (rule 4)
+task graph-cap
+  like number
+
+  back 8
+
+# a client that sends no file events has a graph turned when it last turned this long ago (rule 1)
+task turn-age
+  like number
+
+  back 10000
+
+# the root a file's graph is keyed by: its package root, else its folder (a buffer with no file at all, its own name)
+task graph-root
+  take file, like text
+  like text
+
+  save root, package-root(file)
+  fork test, is-unequal(root, <>)
+    hold
+      back root
+  fork test, is-rooted(file)
+    hold
+      back node-path/dirname(file)
+  back file
+
+# A file's build graph, made when none holds its root, and marked asked. A new graph is seeded with every unsaved text,
+# and neither walks nor turns on its first request: it has read nothing yet, so nothing it holds can be stale (decision
+# 097's `turned`, set by its caller). The eldest past the cap is dropped
+task graph-for
+  take server, like language-server
+  take file, like text
+  like graph-entry
+
+  save root, graph-root(file)
+  save server/asks, add(server/asks, 1)
+  fork test, server/graphs/has(root)
+    hold
+      save kept, server/graphs/get(root)
+      save kept/asked, server/asks
+      back kept
+  save package, is-unequal(package-root(file), <>)
+  save made, make-graph-entry(server, root, package)
+  server/graphs/set(root, made)
+  fork test, is-above(server/graphs/size, graph-cap())
+    hold
+      save eldest, <>
+      save least, server/asks
+      walk server/graphs/values()
+        take one
+        fork test, is-below(one/asked, least)
+          hold
+            save least, one/asked
+            save eldest, one/root
+      server/graphs/remove(eldest)
+  back made
+
+task make-graph-entry
+  take server, like language-server
+  take root, like text
+  take package, like boolean
+  like graph-entry
+  mark private
+
+  save graph, graph-module/makeBuildGraph(root)
+  save graph/turned, true
+  walk server/unsaved/keys()
+    take file
+    graph-module/setOverlay(graph, file, server/unsaved/get(file))
+  # a package's store is the machine store; a file outside every package keeps its answers in memory, so no folder of
+  # the user's gains a cache
+  save store, new-compile-cache(cache-module)
+  fork test, package
+    hold
+      save store, store-module/projectCache(root)
+  back make(graph-entry, bind(root, root), bind(graph, graph), bind(store, store), bind(asked, server/asks), bind(turned-at, now-ms()), bind(package, package))
+
+# Before a request: a graph turns when a file event cleared its `turned`, or, for a client with no file events, when it
+# last turned over 10 s ago. A graph outside every package is made again instead (it has no file list to walk)
+task ready-graph
+  take server, like language-server
+  take file, like text
+  like graph-entry
+
+  save entry, graph-for(server, file)
+  fork test, and(not(server/watching), is-above(subtract(now-ms(), entry/turned-at), turn-age()))
+    hold
+      save entry, turn-graph(server, entry)
+  back entry
+
+# a graph made to turn on its next request: a package's clears `turned`, any other is made again
+task turn-graph
+  take server, like language-server
+  take entry, like graph-entry
+  like graph-entry
+
+  fork test, entry/package
+    hold
+      save entry/graph/turned, false
+      back entry
+  save made, make-graph-entry(server, entry/root, false)
+  server/graphs/set(entry/root, made)
+  back made
+
+# After a request: the graph turned on it, if it was to, so the next keystroke reads the session as it stands
+task graph-asked
+  take entry, like graph-entry
+  like void
+
+  fork test, entry/graph/turned
     miss
-      save made, package-readers(role-module/projectRoleOf(root), role-module/projectLeanOf(root))
-      server/readers-by-root/set(root, made)
-  save kept, server/readers-by-root/get(root)
-  back make(file-readers, bind(role-of, readers-role-of(kept)), bind(lean-of, readers-lean-of(kept)), bind(root, root))
+      save entry/graph/turned, true
+      save entry/turned-at, now-ms()
+
+# every graph made to turn (a file event reached the server, decision 098 rule 1)
+task turn-graphs
+  take server, like language-server
+  like void
+
+  save entries, make list
+  walk server/graphs/values()
+    take one
+    push(entries, one)
+  walk entries
+    take one
+    save turned, turn-graph(server, one)
+
+# every graph's readers made again (a `deck.tree` or `role.tree` moved on disk)
+task renew-graph-readers
+  take server, like language-server
+  like void
+
+  walk server/graphs/values()
+    take one
+    graph-module/renewReaders(one/graph)
+
+# the editor's text of a file laid over the disk in every graph (rule 3)
+task set-unsaved
+  take server, like language-server
+  take file, like text
+  take text, like text
+  like void
+
+  server/unsaved/set(file, text)
+  walk server/graphs/values()
+    take one
+    graph-module/setOverlay(one/graph, file, text)
+
+# a file's unsaved text dropped from every graph: saved, or closed
+task drop-unsaved
+  take server, like language-server
+  take file, like text
+  like void
+
+  fork test, server/unsaved/has(file)
+    miss
+      send back
+  server/unsaved/remove(file)
+  walk server/graphs/values()
+    take one
+    graph-module/dropOverlay(one/graph, file)
+
+# whether the disk holds this text at this file already (one read, on open)
+task matches-disk
+  take file, like text
+  take text, like text
+  like boolean
+
+  fork test, node-file/existsSync(file)
+    miss
+      back false
+  save held, <>
+  fork
+    mark unsafe
+    save held, node-file/readFileSync(file, <utf8>)
+  halt take
+    take problem
+    back false
+  back is-equal(held, text)
 
 # the build resolver a document's package gives, or for a file outside every package (and a buffer with no file at
 # all, `untitled:`), the stdlib's with its `{platform}` slots filled for node, as `projectResolver` fills them
@@ -656,7 +823,36 @@ task resolver-for
   take root, like text
   like maybe, like dynamic
 
-  save base, base-resolver(server, doc, root)
+  back resolver-over(server, doc, base-resolver(server, doc, root))
+
+# The resolver an analysis compiles with: a caller's own (`ServerOptions.resolve`), else the package graph's kept
+# answers with every unsaved text over its file (decision 098), else, outside every package, the stdlib's as
+# `base-resolver` makes it. Recorded in the document's closure as `resolver-for` records it
+task analysis-resolver
+  take server, like language-server
+  take doc, like document
+  take entry, like graph-entry
+  like maybe, like dynamic
+
+  save base, option-resolve(server/options)
+  fork test, is-truthy(base)
+    miss
+      fork test, entry/package
+        hold
+          save base, graph-module/graphResolver(entry/graph, true)
+        miss
+          save base, base-resolver(server, doc, <>)
+  back resolver-over(server, doc, base)
+
+# a base resolver recorded in a document's closure and direct loads, which start over, with every open document's text
+# in place of its file's
+task resolver-over
+  take server, like language-server
+  take doc, like document
+  take base, like dynamic
+  like maybe, like dynamic
+  mark private
+
   fork test, is-truthy(base)
     miss
       back make none

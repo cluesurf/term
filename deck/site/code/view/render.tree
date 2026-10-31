@@ -197,6 +197,7 @@ task attach-event
   take name, like text
   take handler
     like task
+      halt exception
   call listen
     bind node, read node
     bind event, read name
@@ -212,6 +213,7 @@ task bind-attribute
   take source
     like task
       like text
+      halt exception
   call make-effect
     bind run
       task sync-attribute
@@ -235,6 +237,7 @@ task make-dynamic-text
   take source
     like task
       like text
+      halt exception
   like view
   save host
     call create-text
@@ -264,12 +267,15 @@ task show
   take when
     like task
       like boolean
+      halt exception
   take then
     like task
       like view
+      halt exception
   take other
     like task
       like view
+      halt exception
   save current
     call create-text
       bind value, text <>
@@ -363,10 +369,12 @@ task render-each
     like task
       like list
         like t
+      halt exception
   take build
     like task
       take item, like t
       like view
+      halt exception
   # typed: an empty list leaves its element to inference, and Rust's `vec![]` cannot be inferred when nothing reads it
   # as a list of views first (native-dom-0020)
   save mounted
@@ -460,14 +468,17 @@ task render-each-keyed
     like task
       like list
         like t
+      halt exception
   take key
     like task
       take item, like t
       like text
+      halt exception
   take build
     like task
       take item, like t
       like view
+      halt exception
   save keys
     make list
   save nodes
@@ -653,6 +664,7 @@ task render-dynamic-view
   take source
     like task
       like view
+      halt exception
   save current
     call create-text
       bind value, text <>
@@ -681,15 +693,19 @@ task render-gate
   take status
     like task
       like text
+      halt exception
   take pending
     like task
       like view
+      halt exception
   take failed
     like task
       like view
+      halt exception
   take ready
     like task
       like view
+      halt exception
   save current
     call create-text
       bind value, text <>
