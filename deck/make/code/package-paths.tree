@@ -961,26 +961,31 @@ form package-disk
     like task
       take path, like text
       like maybe, like text
+      halt failure
       halt absence
   link read-dir
     like task
       take dir, like text
       like maybe, like list, like text
+      halt failure
       halt absence
   link is-dir
     like task
       take path, like text
       like boolean
+      halt failure
       halt absence
   link real-of
     like task
       take dir, like text
       like text
+      halt failure
       halt absence
   link tree-files-in
     like task
       take dir, like text
       like list, like tree-file
+      halt failure
       halt absence
   link stdlib-base
     like task

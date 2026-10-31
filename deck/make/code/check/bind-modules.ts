@@ -43,7 +43,8 @@ export function bindModules(
   const scopes = scopeList(scope)
   const bound = binding.bindModules(
     program,
-    current => bindFormsByImport(current, scopes, entry),
+    // a harness knows no decks, so a group's files keep their own names' order (check/scope.tree `portable-order`)
+    current => bindFormsByImport(current, scopes, entry, []),
     current => extendForms(current, entry, []),
     current => disambiguateOverloads(current, scope, entry),
   )

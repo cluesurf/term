@@ -106,6 +106,53 @@ export const units = (
   edges: Map<string, string[]>,
 ): string[][] => unitsOf(files, edges)
 
+// THE UNITS A RULE REACHES (decision 093 of term/self-host/change/001-finish-self-host): the head of every unit that a
+// unit stating a top-level `rule` reaches, through `edges`, as separate-units.tree `under-proof-of` reads a walk. A
+// rule-stating importer asks such a unit under the key with bodies, so the pool's plan flags its own job to answer it
+// that way too (`answerUnderProof`). `cut` is `units`' answer, a module's text the walk's (`walked`)
+export function provedHeads(
+  cut: string[][],
+  edges: Map<string, string[]>,
+  walked: WalkMemo,
+  parsed: ParseMemo,
+): Set<string> {
+  const unitOf = new Map<string, number>()
+
+  cut.forEach((unit, at) => {
+    for (const file of unit) {unitOf.set(file, at)}
+  })
+
+  const states = (at: number): boolean =>
+    cut[at]!.some(file => {
+      const text = walked.get(file)?.text
+
+      return (
+        text !== undefined &&
+        port.statesRule({ parsed } as never, { file, text } as never)
+      )
+    })
+
+  const reached = new Set<number>()
+  const reach = (at: number): void => {
+    for (const file of cut[at]!) {
+      for (const edge of edges.get(file) ?? []) {
+        const dep = unitOf.get(edge)
+
+        if (dep !== undefined && dep !== at && !reached.has(dep)) {
+          reached.add(dep)
+          reach(dep)
+        }
+      }
+    }
+  }
+
+  cut.forEach((_, at) => {
+    if (states(at)) {reach(at)}
+  })
+
+  return new Set([...reached].map(at => cut[at]![0]!))
+}
+
 // a unit's answer as the stored entry, key for key the original's, and back: what does not read back is a miss
 const kept = (key: string, value: { form: string; value?: unknown }) =>
   value.form === 'some' ? { [key]: value.value } : {}
@@ -395,6 +442,10 @@ export function compileSeparate(
     // the pool's job for a cycle another unit imports: its import answer (`<head>#unit`) is built here too, by its one
     // owner (decision 088 of term/self-host/change/001-finish-self-host, separate-units.tree)
     answerAsImport?: boolean
+    // the pool's job for a unit a rule-stating unit reaches: after the plain answer the walk is answered again with
+    // every unit under proof, so the key with bodies that each rule-stating importer asks has one owner, this job
+    // (decision 093). Its built units are added to `built`
+    answerUnderProof?: boolean
   },
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
@@ -474,7 +525,7 @@ export function compileSeparate(
     } as never
   }
 
-  const answer = port.compileSeparate(source, {
+  const answerOf = (underProofAll: boolean) => port.compileSeparate(source, {
     collect: () => {
       const collected = collectModules(
         source,
@@ -551,6 +602,7 @@ export function compileSeparate(
     ),
     keepProgram: options.keepProgram === true,
     answerAsImport: options.answerAsImport === true,
+    underProofAll,
     verifyHit: verify.hit,
     verifyTwice: verify.twice,
     ledger: verify.ledger,
@@ -567,6 +619,18 @@ export function compileSeparate(
     },
     separator: globalThis.process?.platform === 'win32' ? '\\' : '/',
   } as never)
+
+  const answer = answerOf(false)
+  // the units this walk built under proof, for a job that owns its unit's key with bodies (decision 093)
+  let provedBuilt: string[] = []
+
+  if (answer.refused.form === 'none' && options.answerUnderProof === true) {
+    const proved = answerOf(true)
+
+    if (proved.refused.form === 'none') {
+      provedBuilt = (proved as never as { built: string[] }).built
+    }
+  }
 
   if (answer.refused.form === 'some') {
     return {
@@ -612,7 +676,7 @@ export function compileSeparate(
     ...claims,
     ...owed,
     exports,
-    built,
+    built: provedBuilt.length > 0 ? [...built, ...provedBuilt] : built,
     reused,
     closureKey,
     natives,

@@ -102,6 +102,7 @@ task child-work
     mark async
     like text
     halt failure
+    halt overload
   fork case, read one
     case worker
       send back, read work

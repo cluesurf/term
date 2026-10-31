@@ -29,6 +29,7 @@ load @term/base/ordering
   find from-texts
 
 load @term/base/text
+  find index-of
   find last-index-of
   find split
   find substring
@@ -45,8 +46,10 @@ load ../compile/node
   find dock-route
   find dock-send
   find expression
+  find expression-span
   find expression-type
   find field-value
+  find function-param
   find statement
   find statement-span
   find type
@@ -128,12 +131,134 @@ task declared-effects
         case function
           walk effects
             take one
-            push(out, one)
+            # a declared raise (`halt <form>`) is the raise sets' to read, never an effect of the row
+            fork test, not(is-slot-halt(one))
+              hold
+                push(out, one)
         miss
           save nothing, 0
     case none
       save nothing, 0
   back out
+
+# A TASK TYPE'S RAISE SET: the forms its childless `halt <form>` lines name, each an effect `halt <form>` (the mill,
+# compile/minting-values.tree). None means the slot raises nothing (decision 086 of
+# note/project/term/self-host/change/001-finish-self-host, rule 1). Empty for anything not a task type
+task slot-halts
+  take given, like maybe, like type
+  like list, like text
+
+  save out, make list
+  sift given
+    case some
+      link written
+      sift written
+        case function
+          walk effects
+            take one
+            fork test, and(is-slot-halt(one), is-unequal(one, <halt kink>))
+              hold
+                save out, add-text(out, substring(one, 5, one/length))
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back out
+
+task is-slot-halt
+  take effect, like text
+  like boolean
+  mark private
+
+  back and(is-above(effect/length, 5), is-equal(substring(effect, 0, 5), <halt >))
+
+# whether a task type says `halt kink`: the slot passes its raises on (decision 089 rule 3)
+task slot-kinks
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link written
+      sift written
+        case function
+          walk effects
+            take one
+            fork test, is-equal(one, <halt kink>)
+              hold
+                back true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back false
+
+# A PASS-THROUGH PARAMETER'S MEMBER of a raise set: `kink <i>` stands for whatever the argument given at parameter `i`
+# raises, put in its place at each call (decision 089 rule 1). Never an exception's name, which has no space
+task is-kink
+  take raised, like text
+  like boolean
+  mark private
+
+  back and(is-above(raised/length, 5), is-equal(substring(raised, 0, 5), <kink >))
+
+# a binding's `task <name>`: the argument was a task given by its name
+task is-task-member
+  take raised, like text
+  like boolean
+  mark private
+
+  back and(is-above(raised/length, 5), is-equal(substring(raised, 0, 5), <task >))
+
+# a stub's `pass <i>`: its parameter `i` passes through (decision 089 rule 4)
+task is-pass-member
+  take raised, like text
+  like boolean
+  mark private
+
+  back and(is-above(raised/length, 5), is-equal(substring(raised, 0, 5), <pass >))
+
+# a task written in a backend's own folder (`native/<env>/`): its parameters are never inferred, only declared
+# (decision 089 rule 4)
+task is-native-file
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      sift span/file
+        case some
+          link written
+          back is-above(index-of(written, </native/>), -1)
+        case none
+          back false
+    miss
+      back false
+
+# A JOB'S STAND-IN: the raises of every job a task makes (`spawn`, a value-position `tick`), charged where the task
+# waits a handle (decision 092 rules 1 and 2). A name with a space is no task's
+task job-name
+  take name, like text
+  like text
+  mark private
+
+  back <{name} job>
+
+task is-job-name
+  take name, like text
+  like boolean
+  mark private
+
+  back and(is-above(name/length, 4), is-equal(substring(name, subtract(name/length, 4), name/length), < job>))
+
+# whether a call is to `spawn`, whose `work` is a job slot (decision 092 rule 4)
+task is-spawn
+  take name, like text
+  like boolean
+  mark private
+
+  back is-equal(written-name(name), <spawn>)
 
 task is-function-type
   take given, like maybe, like type
@@ -211,6 +336,31 @@ form call-reach
   link natives, like hash, like text, like boolean
   link found, like list, like text
   link native, like boolean
+  # A CALL THROUGH A TASK-TYPED SLOT raises the slot's declared set (decision 086 rule 2): `slots` holds the scanned
+  # task's own parameters' sets by name, `shadowed` the names its body binds, and `slot-raised` what the calls met
+  # raise. A call through a local or a field raises its type's set
+  link slots, like hash, like text, like list, like text
+  link shadowed, like hash, like text, like boolean
+  link slot-raised, like list, like text
+  # PASS-THROUGH (decision 089 rule 1): each task's pass-through parameters by name, each task's parameter names in
+  # order, and the bindings met: at each call to such a task, what the argument at a pass-through parameter raises
+  link passes, like hash, like text, like list, like text
+  link param-lists, like hash, like text, like list, like text
+  link bindings, like list, like pass-binding
+  # JOBS (decision 092): the tasks that wait a handle (`wait`, `wait-within`), and whether a call met waits one
+  link waits, like hash, like text, like boolean
+  link waited, like boolean
+  # set by the raise sets alone: a statement tick is charged to no task there (decision 092 rule 5), while the effect
+  # rows still read every call
+  link ruled, like boolean
+
+# at a call to `callee`, the argument at its pass-through parameter `at` (by position), and what it raises: an
+# exception's name, `kink <i>` (the caller's own pass-through parameter `i`), or `task <name>` (a task given by name,
+# whose set is read when the fixed point reaches it)
+form pass-binding
+  link callee, like text
+  link at, like number
+  link given, like list, like text
 
 task new-reach
   take known, like hash, like text, like boolean
@@ -224,6 +374,122 @@ task new-reach
       bind natives, make hash
       bind found, make list
       bind native, false
+      bind slots, make hash
+      bind shadowed, make hash
+      bind slot-raised, make list
+      bind passes, make hash
+      bind param-lists, make hash
+      bind bindings, make list
+      bind waits, make hash
+      bind waited, false
+      bind ruled, false
+
+# the parameter a call's argument `i` fills: the one its name names, where it was written with one, else its position
+task argument-position
+  take params, like list, like text
+  take given-names, like list, like text
+  take i, like number
+  like number
+  mark private
+
+  fork test, is-below(i, given-names/length)
+    hold
+      save named, get(given-names, i)
+      fork test, is-unequal(named, <>)
+        hold
+          walk params
+            take param
+            take k
+            fork test, is-equal(param, named)
+              hold
+                back k
+          back params/length
+  back i
+
+# what an argument given at a pass-through parameter raises, as the binding records it: the scanned task's own
+# parameter's member (its `kink <i>` when it passes through, else its declared set), a task by its name, or the set
+# the argument's type declares. A closure written there is its maker's, scanned where it is written
+task argument-raises
+  take reach, like call-reach
+  take arg, like expression
+  like list, like text
+  mark private
+
+  sift arg
+    case variable
+      fork test, reach/slots/has(name)
+        hold
+          back reach/slots/get(name)
+      fork test, and(reach/known/has(name), not(reach/shadowed/has(name)))
+        hold
+          save named, make list
+          push(named, <task {name}>)
+          back named
+      back slot-halts(type)
+    case closure
+      back make list
+    miss
+      back slot-halts(expression-type(arg))
+
+# the bindings of one call: each argument the callee passes through, with what it raises
+task bind-arguments
+  take reach, like call-reach
+  take callee-name, like text
+  take given-args, like list, like expression
+  take given-names, like list, like text
+  mark private
+
+  fork test, not(reach/passes/has(callee-name))
+    hold
+      back
+  save passing, reach/passes/get(callee-name)
+  fork test, is-equal(passing/length, 0)
+    hold
+      back
+  save params, reach/param-lists/get(callee-name)
+  walk given-args
+    take arg
+    take i
+    save at, argument-position(params, given-names, i)
+    fork test, is-below(at, params/length)
+      hold
+        fork test, has-text(passing, get(params, at))
+          hold
+            save given, argument-raises(reach, arg)
+            fork test, is-above(given/length, 0)
+              hold
+                save binding
+                  make pass-binding
+                    bind callee, callee-name
+                    bind at, at
+                    bind given, given
+                push(reach/bindings, binding)
+
+# what a call through `callee` raises when the callee is a slot: a parameter's declared set, or the type's set of a
+# local, a field, or any name that is no task of the program. A call to a task by its name raises the task's own set,
+# which the raise sets take through its callees instead
+task slot-call-raises
+  take reach, like call-reach
+  take callee, like expression
+  mark private
+
+  save halts, make list
+  sift callee
+    case variable
+      fork test, reach/slots/has(name)
+        hold
+          save halts, reach/slots/get(name)
+        miss
+          fork test, or(not(reach/known/has(name)), reach/shadowed/has(name))
+            hold
+              save halts, slot-halts(type)
+    case member
+      save halts, slot-halts(type)
+    miss
+      save nothing, 0
+  walk halts
+    take one
+    save reach/slot-raised, add-text(reach/slot-raised, one)
 
 # the names of functions (within `known`) called anywhere in the body, in the order first called
 task called-names
@@ -243,8 +509,29 @@ task called-in-expression
 
   sift node
     case call
+      # A STATEMENT TICK RAISES INTO NO TASK: started and never waited, its raise ends the program, so it is charged
+      # to no task and a guard around it catches nothing (decision 092 rule 5). Its arguments are worked out here
+      fork test, and(reach/ruled, read(background))
+        hold
+          walk args
+            take arg
+            called-in-expression(reach, arg)
+          back
+      slot-call-raises(reach, callee)
       sift callee
         case variable
+          fork test, and(reach/known/has(name), not(reach/shadowed/has(name)))
+            hold
+              fork test, not(reach/slots/has(name))
+                hold
+                  save given-names, make list
+                  walk read(names)
+                    take one
+                    push(given-names, one)
+                  bind-arguments(reach, name, args, given-names)
+          fork test, reach/waits/has(name)
+            hold
+              save reach/waited, true
           fork test, reach/known/has(name)
             hold
               save reach/found, add-text(reach/found, name)
@@ -1480,9 +1767,27 @@ task closures-in-expression
       push(gather/found, node)
     case call
       closures-in-expression(gather, callee)
+      # a job's closure (`spawn`'s `work`, a value-position tick) is charged where the job is waited, not where it is
+      # written (decision 092 rule 2)
+      save job, false
+      sift callee
+        case variable
+          save job, is-spawn(name)
+        miss
+          save nothing, 0
       walk args
         take arg
-        closures-in-expression(gather, arg)
+        save skipped, false
+        fork test, job
+          hold
+            sift arg
+              case closure
+                save skipped, true
+              miss
+                save nothing, 0
+        fork test, not(skipped)
+          hold
+            closures-in-expression(gather, arg)
       sift into
         case some
           link target-type
@@ -1685,6 +1990,11 @@ form raise-sets
   link via, like hash, like text, like hash, like text, like text
   # the native shims: the functions that call into a `dock load` module, which raise `failure` by construction
   link native, like list, like text
+  # each task's pass-through parameters, `pass <i>` by position, and `kink <i>` for each one whose argument's raises
+  # reach the task's caller (decision 089 rules 1 and 4): what a stub carries beside its set
+  link through, like hash, like text, like list, like text
+  # what the jobs each task makes can raise, where it makes any (decision 092 rule 1)
+  link jobs, like hash, like text, like list, like text
 
 form raise-state
   mark shared
@@ -1693,6 +2003,8 @@ form raise-state
   # the function being scanned: what its body raises directly, and the functions it calls outside a guarded body
   link direct, like list, like text
   link called, like list, like text
+  # the stand-in of the jobs the scanned task makes, `<>` when it makes none (decision 092)
+  link jobs, like text
   # which integer `/` and `%` the emitter writes checked: each raises `defect`. The default answers false for all
   link checked-division
     like task
@@ -1752,11 +2064,16 @@ task raise-sets-of
             save reach/natives/{alias}, true
       miss
         save nothing, 0
+  # each task's parameter names, and the tasks that wait a handle: `wait` and `wait-within` of @term/base/task's
+  # `handle` (decision 092 rule 2)
+  save param-lists, make hash
+  save waits, make hash
   walk names
     take name
     save one, get(program, places/get(name))
     sift one
       case function
+        save param-lists/{name}, param-names(one)
         sift method
           case some
             link owner
@@ -1768,21 +2085,33 @@ task raise-sets-of
                     save these, reach/implementations/get(owner/name)
                 save these, add-text(these, name)
                 save reach/implementations/{owner/name}, these
+            fork test, and(is-equal(written-name(owner/form), <handle>), or(is-equal(owner/name, <wait>), is-equal(owner/name, <wait-within>)))
+              hold
+                save waits/{name}, true
           case none
             save nothing, 0
       miss
         save nothing, 0
+  # the pass-through parameters (decision 089 rule 1)
+  save table, pass-through-of(program, places)
+  save reach/passes, table/passes
+  save reach/param-lists, param-lists
+  save reach/waits, waits
+  save reach/ruled, true
   save state
     make raise-state
       bind exceptions, flags-of(exceptions)
       bind reach, reach
       bind direct, make list
       bind called, make list
+      bind jobs, <>
       bind checked-division, checked-division
   # named apart from a task's own `raises`, which the arm over a task binds
   save raised-by, make hash
   save via, make hash
   save calls, make hash
+  # each task's pass-through bindings (`pass-binding`), by the task that made the calls
+  save bound-calls, make hash
   save native-shims, make list
   save fill-only, make hash
   save fill-key, <fill-form>
@@ -1803,7 +2132,10 @@ task raise-sets-of
                 save known-raises, make list
                 walk stored
                   take raised
-                  save known-raises, add-text(known-raises, raised)
+                  # `pass <i>` names a pass-through parameter, read by `pass-through-of`, never a raise
+                  fork test, not(is-pass-member(raised))
+                    hold
+                      save known-raises, add-text(known-raises, raised)
                 save facts, make list
                 sift stub-facts
                   case some
@@ -1837,8 +2169,75 @@ task raise-sets-of
         save state/direct, fresh-direct
         save state/called, fresh-called
         save state/reach/native, false
+        # each parameter typed as a task raises its declared set when called (decision 086 rule 2), and a
+        # pass-through one its argument's, `kink <i>` until a call puts the argument in its place (decision 089)
+        save passing, make list
+        fork test, table/passes/has(name)
+          hold
+            save passing, table/passes/get(name)
+        save own-slots, make hash
+        walk params
+          take param
+          take i
+          fork test, has-text(passing, param/name)
+            hold
+              save member, make list
+              push(member, <kink {i}>)
+              save own-slots/{param/name}, member
+            miss
+              save own-slots/{param/name}, slot-halts(param/type)
+        save state/reach/slots, own-slots
+        save state/reach/shadowed, flags-of(bound-names(body))
+        save no-bindings, make list
+        save state/reach/bindings, no-bindings
+        save own-params, param-names(one)
+        save bound, bound-names(body)
+        # THE JOBS THE TASK MAKES, scanned apart into its stand-in, which each wait in the task calls (decision 092
+        # rules 1 and 2): a guard around the start subtracts nothing, a guard around the wait does
+        save state/jobs, <>
+        save works, spawned-works(body)
+        fork test, is-above(works/length, 0)
+          hold
+            save stand-in, job-name(name)
+            walk works
+              take work
+              sift work
+                case closure
+                  scan(state, body)
+                miss
+                  walk argument-raises(state/reach, work)
+                    take raised
+                    fork test, is-task-member(raised)
+                      hold
+                        save state/called, add-text(state/called, substring(raised, 5, raised/length))
+                      miss
+                        fork test, is-raise-member(state, raised)
+                          hold
+                            save state/direct, add-text(state/direct, raised)
+            save job-callees, make list
+            walk state/called
+              take callee
+              fork test, and(not(has-text(own-params, callee)), not(has-text(bound, callee)))
+                hold
+                  push(job-callees, callee)
+            save raised-by/{stand-in}, state/direct
+            save job-directs, make hash
+            walk state/direct
+              take raised
+              save job-directs/{raised}, <>
+            save via/{stand-in}, job-directs
+            save calls/{stand-in}, job-callees
+            save bound-calls/{stand-in}, state/reach/bindings
+            save state/jobs, stand-in
+            save fresh-job-direct, make list
+            save fresh-job-called, make list
+            save fresh-job-bindings, make list
+            save state/direct, fresh-job-direct
+            save state/called, fresh-job-called
+            save state/reach/bindings, fresh-job-bindings
         scan(state, body)
         save direct, state/direct
+        save bound-calls/{name}, state/reach/bindings
         # a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
         # the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the
         # shim author's contract, added to the set rather than checked against it (03-exception.md, natives)
@@ -1891,22 +2290,138 @@ task raise-sets-of
           take callee
           fork test, raised-by/has(callee)
             hold
+              # a callee's pass-through member is its own parameter's, put in place by the bindings below, except
+              # the task's own jobs', which are the task's parameters
+              save raw, is-equal(callee, job-name(name))
               save theirs, raised-by/get(callee)
               walk theirs
                 take exception
-                fork test, not(has-text(set, exception))
+                fork test, and(not(has-text(set, exception)), or(raw, not(is-kink(exception))))
                   hold
                     push(set, exception)
                     save from/{exception}, callee
                     save changed, true
+        # A CALL TO A TASK THAT PASSES AN ARGUMENT'S RAISES THROUGH raises what that argument raises, where the
+        # callee's set holds the parameter's member (decision 089 rule 1)
+        fork test, bound-calls/has(name)
+          hold
+            walk bound-calls/get(name)
+              take binding
+              fork test, raises-has(raised-by, binding/callee, <kink {binding/at}>)
+                hold
+                  walk binding/given
+                    take given
+                    fork test, is-task-member(given)
+                      hold
+                        save task-name, substring(given, 5, given/length)
+                        fork test, and(not(has-text(callees, task-name)), raised-by/has(task-name))
+                          hold
+                            push(callees, task-name)
+                            save changed, true
+                      miss
+                        fork test, and(not(has-text(set, given)), is-raise-member(state, given))
+                          hold
+                            push(set, given)
+                            save from/{given}, binding/callee
+                            save changed, true
         save raised-by/{name}, set
         save via/{name}, from
-  save via, canonical-via(calls, raised-by, via)
+        save calls/{name}, callees
+  # EACH TASK'S JOBS FOLD INTO IT: a raise that reached it through its stand-in reads through to the job's own path,
+  # and the job's callees are its own
+  save jobs, make hash
+  walk names
+    take name
+    save stand-in, job-name(name)
+    fork test, raised-by/has(stand-in)
+      hold
+        save made, make list
+        walk raised-by/get(stand-in)
+          take raised
+          fork test, not(is-kink(raised))
+            hold
+              push(made, raised)
+        fork test, is-above(made/length, 0)
+          hold
+            save jobs/{name}, made
+        fork test, calls/has(name)
+          hold
+            save from, via/get(name)
+            save theirs, via/get(stand-in)
+            walk from/keys()
+              take raised
+              fork test, is-equal(from/get(raised), stand-in)
+                hold
+                  save through-job, <>
+                  fork test, theirs/has(raised)
+                    hold
+                      save through-job, theirs/get(raised)
+                  save from/{raised}, through-job
+            save folded, make list
+            walk calls/get(name)
+              take callee
+              fork test, is-unequal(callee, stand-in)
+                hold
+                  save folded, add-text(folded, callee)
+            walk calls/get(stand-in)
+              take callee
+              fork test, is-unequal(callee, stand-in)
+                hold
+                  save folded, add-text(folded, callee)
+            save calls/{name}, folded
+  # what is answered: no stand-in, no pass-through member, and each task's pass-through parameters beside its set
+  save final-raises, make hash
+  save final-via, make hash
+  save final-calls, make hash
+  save through, make hash
+  walk calls/keys()
+    take name
+    fork test, is-job-name(name)
+      hold
+        turn next
+    save concrete, make list
+    save members, make list
+    walk raised-by/get(name)
+      take raised
+      fork test, is-kink(raised)
+        hold
+          push(members, raised)
+        miss
+          push(concrete, raised)
+    save from, via/get(name)
+    save kept-from, make hash
+    walk from/keys()
+      take raised
+      fork test, not(is-kink(raised))
+        hold
+          save kept-from/{raised}, from/get(raised)
+    save final-raises/{name}, concrete
+    save final-via/{name}, kept-from
+    save final-calls/{name}, calls/get(name)
+    save carried, make list
+    fork test, table/passes/has(name)
+      hold
+        save passing, table/passes/get(name)
+        walk param-lists/get(name)
+          take param-name
+          take i
+          fork test, has-text(passing, param-name)
+            hold
+              push(carried, <pass {i}>)
+    walk members
+      take one
+      push(carried, one)
+    fork test, is-above(carried/length, 0)
+      hold
+        save through/{name}, carried
+  save final-via, canonical-via(final-calls, final-raises, final-via)
   back
     make raise-sets
-      bind raises, raised-by
-      bind via, via
+      bind raises, final-raises
+      bind via, final-via
       bind native, native-shims
+      bind through, through
+      bind jobs, jobs
 
 # the exceptions a body raises directly, honoring guards, and the functions it calls outside a guarded body
 task scan
@@ -1993,6 +2508,16 @@ task mark-divisions
     hold
       save state/direct, add-text(state/direct, <defect>)
 
+# whether a declared or passed-on raise counts in a set: a form the program holds, `failure` (raised by text even with
+# no form), `exception` (any), or the member of a pass-through parameter
+task is-raise-member
+  take state, like raise-state
+  take raised, like text
+  like boolean
+  mark private
+
+  back or(or(state/exceptions/has(raised), is-kink(raised)), or(is-equal(raised, <failure>), is-equal(raised, <exception>)))
+
 # what a thrown value raises: an exception constructed by name, `failure` for a text (one that interpolates too), and
 # `exception` for a re-raised value, decided where it was first raised
 task thrown-exception
@@ -2025,10 +2550,24 @@ task expression-calls
 
   save fresh, make list
   save state/reach/found, fresh
+  save fresh-slots, make list
+  save state/reach/slot-raised, fresh-slots
+  save state/reach/waited, false
   called-in-expression(state/reach, node)
   walk state/reach/found
     take name
     save state/called, add-text(state/called, name)
+  # a call through a slot raises the slot's declared set, as a direct raise: a form the program holds, `failure`
+  # (raised by text even with no form), or `exception` (any), or the member of a pass-through parameter
+  walk state/reach/slot-raised
+    take raised
+    fork test, is-raise-member(state, raised)
+      hold
+        save state/direct, add-text(state/direct, raised)
+  # a wait on a handle raises every job the task makes (decision 092 rule 2)
+  fork test, and(state/reach/waited, is-unequal(state/jobs, <>))
+    hold
+      save state/called, add-text(state/called, state/jobs)
   mark-divisions(state, node)
   save made, closures-in(node)
   walk made
@@ -2461,3 +3000,1143 @@ task chain-text
     hold
       back <{raised} (through {join(chain, < \> >)})>
   back raised
+
+# ---- a task put in a place typed as a task ----
+
+# one place a task value is put in: whose raise set to read (a task of the program, or a closure's stand-in task), or
+# for a parameter of the task (`holder` empty) its declared set `given`; how the message names the value; the place's
+# declared set and name; and where the value is written
+form slot-site
+  link holder, like text
+  link shown, like text
+  link given, like list, like text
+  link halts, like list, like text
+  link place, like text
+  link span, like span
+
+form slot-gather
+  mark shared
+  link program, like list, like statement
+  link places, like hash, like text, like number
+  # the record fields typed as tasks, by form (or case) name and field name
+  link fields, like hash, like text, like hash, like text, like type
+  # the task scanned: its parameters' declared sets, the names its body binds, and its locals saved from a task by name
+  link own, like hash, like text, like list, like text
+  link shadowed, like hash, like text, like boolean
+  link aliases, like hash, like text, like text
+  link sites, like list, like slot-site
+  link stand-ins, like list, like statement
+  # the pass-through parameters, and where each other one is kept (decision 089)
+  link table, like pass-table
+
+# A TASK VALUE PUT IN A PLACE TYPED AS A TASK RAISES ONLY WHAT THE PLACE DECLARES (decision 086 of
+# note/project/term/self-host/change/001-finish-self-host, rule 3). The places: an argument to a parameter, a record
+# field, a field assigned, a list pushed to (a field's or a parameter's, whose element type was declared), and what a
+# task typed as giving back a task gives back. The values: a task named, a closure written there (read through a
+# stand-in task, as check/parallel.tree reads a walk's turn), a local saved from a task by name, and a parameter (its
+# own declared set). Every exception the value can raise must be one the place declares, or `like` one, and
+# `halt exception` admits them all; otherwise `raise-escapes-slot`. Only the tasks of `file` are read
+task check-slot-raises
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save diagnostics, make list
+  save exceptions, make list
+  save chains, make hash
+  save marker, exception-form()
+  save slot-fields, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        # an optional list, walked where it is read: handed to a call it would be written into the program
+        save chained, false
+        save ancestors, make list
+        walk read(chain)
+          take link-name
+          push(ancestors, link-name)
+          fork test, is-equal(link-name, marker)
+            hold
+              save chained, true
+        fork test, chained
+          hold
+            push(exceptions, name)
+            save chains/{name}, ancestors
+        save typed, make hash
+        save typed-count, 0
+        walk fields
+          take field
+          fork test, is-function-type(make(some, field/type))
+            hold
+              save typed/{field/name}, field/type
+              save typed-count, add(typed-count, 1)
+        fork test, is-above(typed-count, 0)
+          hold
+            save slot-fields/{name}, typed
+        walk variants
+          take variant
+          save case-typed, make hash
+          save case-count, 0
+          walk variant/fields
+            take field
+            fork test, is-function-type(make(some, field/type))
+              hold
+                save case-typed/{field/name}, field/type
+                save case-count, add(case-count, 1)
+          fork test, is-above(case-count, 0)
+            hold
+              save slot-fields/{variant/name}, case-typed
+      miss
+        save nothing, 0
+  save places, function-places(program)
+  save table, pass-through-of(program, places)
+  save gather
+    make slot-gather
+      bind program, program
+      bind places, places
+      bind fields, slot-fields
+      bind own, make hash
+      bind shadowed, make hash
+      bind aliases, make hash
+      bind sites, make list
+      bind stand-ins, make list
+      bind table, table
+  # the tasks of `file` that make a job, whose handles are checked once the job sets are known
+  save makers, make list
+  walk program
+    take one
+    sift one
+      case function
+        sift span/file
+          case some
+            link written
+            fork test, is-unequal(written, file)
+              hold
+                turn next
+          case none
+            turn next
+        fork test, read(stub)
+          hold
+            turn next
+        # `halt kink` on a slot is a checked claim on a task with a body (decision 089 rule 3)
+        kink-refusals(diagnostics, table, one, file)
+        fork test, and(is-above(spawned-works(body)/length, 0), not(is-task-module(file)))
+          hold
+            push(makers, one)
+        save own-sets, make hash
+        walk params
+          take param
+          save own-sets/{param/name}, slot-halts(param/type)
+        save gather/own, own-sets
+        save gather/shadowed, flags-of(bound-names(body))
+        save no-aliases, make hash
+        save gather/aliases, no-aliases
+        walk block-handles(body)
+          take handle
+          aliases-into(gather, handle)
+        walk block-handles(body)
+          take handle
+          slot-sites-in(gather, handle)
+        # what the task gives back, where its result is typed as a task
+        fork test, is-function-type(result)
+          hold
+            save task-name, written-name(name)
+            walk returns-in(body)
+              take given-back
+              push-site(gather, given-back, slot-halts(result), <what "{task-name}" gives back>)
+      miss
+        save nothing, 0
+  fork test, and(is-equal(gather/sites/length, 0), is-equal(makers/length, 0))
+    hold
+      back diagnostics
+  # the sets of the program with one stand-in task per closure put in a place
+  save widened, make list
+  walk program
+    take one
+    push(widened, one)
+  walk gather/stand-ins
+    take one
+    push(widened, one)
+  save sets, raise-sets-of(widened, exceptions)
+  walk gather/sites
+    take site
+    save raised, make list
+    walk site/given
+      take one
+      push(raised, one)
+    fork test, is-unequal(site/holder, <>)
+      hold
+        fork test, sets/raises/has(site/holder)
+          hold
+            walk sets/raises/get(site/holder)
+              take one
+              push(raised, one)
+    save escaping, make list
+    walk raised
+      take one
+      fork test, not(slot-admits(site/halts, chains, one))
+        hold
+          push(escaping, one)
+    fork test, is-equal(escaping/length, 0)
+      hold
+        turn next
+    save sorted, sort(escaping, from-texts)
+    save listed, make list
+    walk sorted
+      take one
+      fork test, is-unequal(site/holder, <>)
+        hold
+          push(listed, chain-text(sets, site/holder, one))
+        miss
+          push(listed, one)
+    save declared-text, <nothing>
+    fork test, is-above(site/halts/length, 0)
+      hold
+        save declared-text, <only {join(site/halts, <, >)}>
+    save first, get(sorted, 0)
+    save input
+      make diagnostic-input
+        bind file, file
+        bind span, site/span
+        bind message, make(some, <{site/shown} can raise {join(listed, <, >)}, and {site/place} is a task that raises {declared-text}>)
+        bind hint, make(some, <handle the raise inside the task, in a fork marked mark unsafe with halt take after it, or add "halt {first}" under the like task of {site/place}>)
+    save kind, make raise-escapes-slot
+    push(diagnostics, diagnose(kind, input))
+  # A HANDLE OF A JOB THAT CAN RAISE STAYS IN THE TASK THAT MADE IT (decision 092 rule 3)
+  walk makers
+    take one
+    sift one
+      case function
+        fork test, sets/jobs/has(name)
+          hold
+            handle-refusals(diagnostics, one, sets/jobs/get(name), file)
+      miss
+        save nothing, 0
+  back diagnostics
+
+# @term/base's task module implements the handle, and is held to its contract by its own tests (decision 092 rule 6)
+task is-task-module
+  take file, like text
+  like boolean
+  mark private
+
+  save ending, </base/code/task.tree>
+  fork test, is-below(file/length, ending/length)
+    hold
+      back false
+  back is-equal(substring(file, subtract(file/length, ending/length), file/length), ending)
+
+# `halt kink` beside `halt <form>` lines on one slot, and a `halt kink` slot its task's body keeps (decision 089 rule 3)
+task kink-refusals
+  take diagnostics, like list, like diagnostic
+  take table, like pass-table
+  take one, like statement
+  take file, like text
+  mark private
+
+  sift one
+    case function
+      save task-name, written-name(name)
+      save inferred, and(is-above(body/length, 0), not(is-native-file(one)))
+      walk params
+        take param
+        fork test, not(slot-kinks(param/type))
+          hold
+            turn next
+        save message, <>
+        save at, span
+        fork test, is-above(slot-halts(param/type)/length, 0)
+          hold
+            save message, <the slot "{param/name}" of "{task-name}" says halt kink and names forms too: a slot passes its raises on or raises only its forms, never both>
+          miss
+            save key, <{name} {param/name}>
+            fork test, and(inferred, table/kept/has(key))
+              hold
+                save at, table/kept/get(key)
+                save message, <the slot "{param/name}" of "{task-name}" says halt kink, but line {add(at/start/line, 1)} keeps it, so its raises cannot pass on>
+        fork test, is-equal(message, <>)
+          hold
+            turn next
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, at
+            bind message, make(some, message)
+        save kind, make slot-kink-kept
+        push(diagnostics, diagnose(kind, input))
+    miss
+      save nothing, 0
+
+form handle-gather
+  mark shared
+  link diagnostics, like list, like diagnostic
+  link task-name, like text
+  link raised, like list, like text
+  link file, like text
+  link waits, like hash, like text, like boolean
+  link locals, like hash, like text, like boolean
+  link seen, like hash, like text, like boolean
+
+# every place in `one` a handle of its jobs leaves it: given back, bound into a record, handed to a task other than a
+# handle's own `wait`, `wait-within`, `cancel` and `alive` or a method of one of its own lists and hashes, or read in a
+# closure
+task handle-refusals
+  take diagnostics, like list, like diagnostic
+  take one, like statement
+  take raised, like list, like text
+  take file, like text
+  mark private
+
+  sift one
+    case function
+      save gather
+        make handle-gather
+          bind diagnostics, diagnostics
+          bind task-name, written-name(name)
+          bind raised, raised
+          bind file, file
+          bind waits, make hash
+          bind locals, flags-of(bound-names(body))
+          bind seen, make hash
+      walk block-handles(body)
+        take handle
+        handle-escapes-in(gather, handle, false)
+    miss
+      save nothing, 0
+
+# whether a type holds a job's handle: a `handle`, or a list or hash of them
+task holds-handle
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link written
+      sift written
+        case named
+          back is-equal(written-name(name), <handle>)
+        case array
+          back holds-handle(make(some, element))
+        case map
+          back holds-handle(make(some, value))
+        miss
+          back false
+    case none
+      back false
+
+task refuse-handle
+  take gather, like handle-gather
+  take node, like expression
+  mark private
+
+  save at, expression-span(node)
+  save key, <{at/start/line}:{at/start/column}>
+  fork test, gather/seen/has(key)
+    hold
+      back
+  save gather/seen/{key}, true
+  save input
+    make diagnostic-input
+      bind file, gather/file
+      bind span, at
+      bind message, make(some, <a handle of a job "{gather/task-name}" makes leaves it here, and the job can raise {join(gather/raised, <, >)}, which is raised where the task that made it waits it>)
+  save kind, make handle-escapes
+  push(gather/diagnostics, diagnose(kind, input))
+
+# a handle-typed value under `handle`, `escaping` when where it stands takes it out of the task
+task handle-escapes-in
+  take gather, like handle-gather
+  take handle, like node-handle
+  take escaping, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case return
+          sift read(value)
+            case some
+              link given
+              handle-escapes-in(gather, handle-of-expression(given), true)
+            case none
+              save nothing, 0
+          back
+        case let
+          handle-escapes-in(gather, handle-of-expression(init), false)
+          back
+        case assign
+          # into a field of a record it leaves with the record, into a local it stays
+          save into-field, false
+          sift target
+            case member
+              save into-field, true
+              sift target
+                case variable
+                  link owner
+                  fork test, gather/locals/has(owner)
+                    hold
+                      save into-field, false
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+          handle-escapes-in(gather, handle-of-expression(read(value)), into-field)
+          back
+        miss
+          save nothing, 0
+    case expression-handle
+      link held
+      fork test, and(escaping, holds-handle(expression-type(held)))
+        hold
+          refuse-handle(gather, held)
+          back
+      sift held
+        case record
+          walk fields
+            take field
+            handle-escapes-in(gather, handle-of-expression(field/value), true)
+          walk positional
+            take item
+            handle-escapes-in(gather, handle-of-expression(item), true)
+          back
+        case closure
+          walk block-handles(body)
+            take inner
+            handle-escapes-in(gather, inner, true)
+          back
+        case member
+          handle-escapes-in(gather, handle-of-expression(target), false)
+          back
+        case call
+          save kept-in, true
+          sift callee
+            case variable
+              fork test, is-handle-method(name)
+                hold
+                  save kept-in, false
+            case member
+              # a method of the task's own list or hash: `lanes/push(work)`, `lanes/set(i, work)`
+              sift target
+                case variable
+                  link owner
+                  fork test, gather/locals/has(owner)
+                    hold
+                      save kept-in, false
+                miss
+                  save nothing, 0
+              handle-escapes-in(gather, handle-of-expression(target), false)
+            miss
+              save nothing, 0
+          walk args
+            take arg
+            handle-escapes-in(gather, handle-of-expression(arg), kept-in)
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    handle-escapes-in(gather, child, escaping)
+
+# `wait`, `wait-within`, `cancel` and `alive` of @term/base/task's `handle`, by the name the binding gave them
+task is-handle-method
+  take name, like text
+  like boolean
+  mark private
+
+  save written, written-name(name)
+  walk split(<handle_wait handle_wait-within handle_cancel handle_alive>, < >)
+    take one
+    fork test, is-equal(written, one)
+      hold
+        back true
+  back false
+
+# whether a place that declares `halts` admits a raise of `raised`: it names it, or a form it is `like`, or
+# `exception`, which admits every raise
+task slot-admits
+  take halts, like list, like text
+  take chains, like hash, like text, like list, like text
+  take raised, like text
+  like boolean
+  mark private
+
+  fork test, or(has-text(halts, raised), has-text(halts, <exception>))
+    hold
+      back true
+  fork test, chains/has(raised)
+    hold
+      walk chains/get(raised)
+        take ancestor
+        fork test, has-text(halts, ancestor)
+          hold
+            back true
+  back false
+
+# a local the task saves from a task by its name, `save handler, dispatch`: what it holds raises that task's set
+task aliases-into
+  take gather, like slot-gather
+  take handle, like node-handle
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case let
+          link local-name
+          link local-init
+          sift local-init
+            case variable
+              fork test, and(gather/places/has(name), not(gather/own/has(name)))
+                hold
+                  save gather/aliases/{local-name}, name
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    aliases-into(gather, child)
+
+# every place under `handle` a task value is put in that is typed as a task
+task slot-sites-in
+  take gather, like slot-gather
+  take handle, like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link held
+      expression-slot-sites(gather, held)
+    case statement-handle
+      link held
+      sift held
+        case assign
+          save assigned, read(value)
+          sift target
+            case member
+              fork test, is-function-type(type)
+                hold
+                  push-site(gather, assigned, slot-halts(type), <the field "{name}">)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    slot-sites-in(gather, child)
+
+task expression-slot-sites
+  take gather, like slot-gather
+  take held, like expression
+  mark private
+
+  sift held
+    case call
+      save given-names, make list
+      walk read(names)
+        take one
+        push(given-names, one)
+      save given-args, args
+      sift callee
+        case variable
+          fork test, is-equal(name, <push>)
+            hold
+              fork test, is-equal(given-args/length, 2)
+                hold
+                  push-list-site(gather, get(given-args, 0), get(given-args, 1))
+              back
+          fork test, or(gather/own/has(name), gather/shadowed/has(name))
+            hold
+              back
+          fork test, not(gather/places/has(name))
+            hold
+              back
+          save callee-name, written-name(name)
+          # `spawn`'s work and `gather`'s tasks are job slots: their raises are charged at the wait (decision 092 rule 4)
+          fork test, or(is-equal(callee-name, <spawn>), is-equal(callee-name, <gather>))
+            hold
+              back
+          argument-sites(gather, get(gather/program, gather/places/get(name)), name, given-args, given-names)
+        case member
+          fork test, and(is-equal(name, <push>), is-equal(given-args/length, 1))
+            hold
+              push-list-site(gather, target, get(given-args, 0))
+        miss
+          save nothing, 0
+    case record
+      fork test, gather/fields/has(name)
+        hold
+          save typed, gather/fields/get(name)
+          save form-name, name
+          walk fields
+            take field
+            fork test, typed/has(field/name)
+              hold
+                save field-type, typed/get(field/name)
+                push-site(gather, field/value, slot-halts(make(some, field-type)), <the field "{field/name}" of "{form-name}">)
+    miss
+      save nothing, 0
+
+# each argument of a call to a task of the program whose parameter there is typed as a task: by the argument's name
+# where it was written with one, else by its position
+task argument-sites
+  take gather, like slot-gather
+  take callee, like statement
+  take callee-key, like text
+  take given-args, like list, like expression
+  take given-names, like list, like text
+  mark private
+
+  save callee-name, written-name(callee-key)
+  # a parameter the callee only calls passes its argument's raises through, and is no closed place (decision 089)
+  save passing, make list
+  fork test, gather/table/passes/has(callee-key)
+    hold
+      save passing, gather/table/passes/get(callee-key)
+  sift callee
+    case function
+      walk given-args
+        take arg
+        take i
+        save at, i
+        fork test, is-below(i, given-names/length)
+          hold
+            save named, get(given-names, i)
+            fork test, is-unequal(named, <>)
+              hold
+                save at, params/length
+                walk params
+                  take param
+                  take k
+                  fork test, is-equal(param/name, named)
+                    hold
+                      save at, k
+        fork test, is-below(at, params/length)
+          hold
+            save param, get(params, at)
+            fork test, and(is-function-type(param/type), not(has-text(passing, param/name)))
+              hold
+                # where the callee's body keeps the parameter, the line that keeps it, so the author sees why it is
+                # closed
+                save place, <"{param/name}" of "{callee-name}">
+                save key, <{callee-key} {param/name}>
+                fork test, gather/table/kept/has(key)
+                  hold
+                    save keeping, gather/table/kept/get(key)
+                    save place, <"{param/name}" of "{callee-name}" (kept by line {add(keeping/start/line, 1)})>
+                push-site(gather, arg, slot-halts(param/type), place)
+    miss
+      save nothing, 0
+
+# a value pushed to a list whose element is typed as a task, where the list's type was declared: a field's or a
+# parameter's. A local list's element type is what was pushed, so it declares nothing
+task push-list-site
+  take gather, like slot-gather
+  take pushed-to, like expression
+  take value, like expression
+  mark private
+
+  save declared, false
+  sift pushed-to
+    case member
+      save declared, true
+    case variable
+      save declared, gather/own/has(name)
+    miss
+      save nothing, 0
+  fork test, not(declared)
+    hold
+      back
+  sift expression-type(pushed-to)
+    case some
+      link known
+      sift known
+        case array
+          save element-type, make(some, element)
+          fork test, is-function-type(element-type)
+            hold
+              push-site(gather, value, slot-halts(element-type), <the list it is pushed to>)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# the site of `value` put in a place declaring `halts`, where the value is one whose raise set is known
+task push-site
+  take gather, like slot-gather
+  take value, like expression
+  take halts, like list, like text
+  take place, like text
+  mark private
+
+  save holder, <>
+  save shown, <>
+  save given, make list
+  sift value
+    case variable
+      fork test, gather/own/has(name)
+        hold
+          save given, gather/own/get(name)
+          save shown, <"{name}">
+        miss
+          fork test, gather/shadowed/has(name)
+            hold
+              fork test, gather/aliases/has(name)
+                hold
+                  save holder, gather/aliases/get(name)
+                  save shown, <"{name}">
+            miss
+              fork test, gather/places/has(name)
+                hold
+                  save holder, name
+                  save shown, <"{written-name(name)}">
+    case closure
+      save stand-in-name, <slot task {gather/stand-ins/length}>
+      save stand-in-params, make list
+      walk params
+        take param
+        save made-param
+          make function-param
+            bind name, param/name
+            bind type, param/type
+        push(stand-in-params, made-param)
+      save stand-in
+        make statement/function
+          bind name, stand-in-name
+          bind params, stand-in-params
+          bind body, body
+          bind generics, make list
+          bind span, span
+      push(gather/stand-ins, stand-in)
+      save holder, stand-in-name
+      save shown, <the task written here>
+    miss
+      save nothing, 0
+  fork test, is-equal(shown, <>)
+    hold
+      back
+  save site
+    make slot-site
+      bind holder, holder
+      bind shown, shown
+      bind given, given
+      bind halts, halts
+      bind place, place
+      bind span, expression-span(value)
+  push(gather/sites, site)
+
+# the values a body gives back, outside its closures
+task returns-in
+  take body, like list, like statement
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    save inner, make list
+    sift one
+      case return
+        sift read(value)
+          case some
+            link given-back
+            push(out, given-back)
+          case none
+            save nothing, 0
+      case if
+        walk branches
+          take branch
+          push(inner, branch/body)
+        sift otherwise
+          case some
+            link other
+            push(inner, other)
+          case none
+            save nothing, 0
+      case while
+        push(inner, body)
+      case for-each
+        push(inner, body)
+      case match
+        walk cases
+          take arm
+          push(inner, arm/body)
+        sift otherwise
+          case some
+            link other
+            push(inner, other)
+          case none
+            save nothing, 0
+      case guard
+        push(inner, body)
+        sift catch
+          case some
+            link clause
+            push(inner, clause/body)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+    walk inner
+      take block
+      walk returns-in(block)
+        take given-back
+        push(out, given-back)
+  back out
+
+# ---- a task's parameters that pass their raises through (decision 089) ----
+
+# the pass-through parameters of every task, by name, and for each parameter dropped, the place that keeps it, keyed
+# `<task> <parameter>`
+form pass-table
+  link passes, like hash, like text, like list, like text
+  link kept, like hash, like text, like span
+
+# one walk over a task's body for the mentions of one parameter: what the program's tasks pass through so far, the
+# names the task binds for itself (a call to one is no task), and the first mention that keeps the parameter
+form mention-gather
+  mark shared
+  link program, like list, like statement
+  link places, like hash, like text, like number
+  link passes, like hash, like text, like list, like text
+  link name, like text
+  link shadowed, like hash, like text, like boolean
+  link kept, like maybe, like span
+
+# PASS-THROUGH, INFERRED (decision 089 rules 1 and 4). A `like task` parameter with no `halt <form>` line of a task with
+# a Term body passes its argument's raises through when every mention of it is the callee of a call, an argument to a
+# pass-through parameter of another task, `spawn`'s work (a job the task waits, decision 092 rule 4), or a read inside
+# a closure written in one of those places. Every parameter starts passing through and is dropped at the first mention
+# that keeps it, until nothing changes: kept only grows. A stub carries its own (`pass <i>`), and a task with no body
+# or one written in a backend's own folder passes through only the parameters it marks `halt kink`
+task pass-through-of
+  take program, like list, like statement
+  take places, like hash, like text, like number
+  like pass-table
+
+  save passes, make hash
+  save kept, make hash
+  save inferred, make list
+  walk places/keys()
+    take name
+    save one, get(program, places/get(name))
+    sift one
+      case function
+        save chosen, make list
+        save stubbed, false
+        fork test, read(stub)
+          hold
+            sift stub-raises
+              case some
+                link stored
+                save stubbed, true
+                walk params
+                  take param
+                  take i
+                  fork test, has-text(stored, <pass {i}>)
+                    hold
+                      push(chosen, param/name)
+              case none
+                save nothing, 0
+        fork test, not(stubbed)
+          hold
+            fork test, and(is-above(body/length, 0), not(is-native-file(one)))
+              hold
+                walk params
+                  take param
+                  fork test, and(is-function-type(param/type), is-equal(slot-halts(param/type)/length, 0))
+                    hold
+                      push(chosen, param/name)
+                fork test, is-above(chosen/length, 0)
+                  hold
+                    push(inferred, name)
+              miss
+                walk params
+                  take param
+                  fork test, slot-kinks(param/type)
+                    hold
+                      push(chosen, param/name)
+        save passes/{name}, chosen
+      miss
+        save nothing, 0
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk inferred
+        take name
+        save one, get(program, places/get(name))
+        save remaining, make list
+        walk passes/get(name)
+          take param-name
+          sift keeping-mention(program, places, passes, one, param-name)
+            case some
+              link at
+              save key, <{name} {param-name}>
+              save kept/{key}, at
+              save changed, true
+            case none
+              push(remaining, param-name)
+        save passes/{name}, remaining
+  back
+    make pass-table
+      bind passes, passes
+      bind kept, kept
+
+# the first mention of `param-name` in the task `one` that keeps it, none when every mention passes it through. A
+# parameter the body binds again is kept, at the task
+task keeping-mention
+  take program, like list, like statement
+  take places, like hash, like text, like number
+  take passes, like hash, like text, like list, like text
+  take one, like statement
+  take param-name, like text
+  like maybe, like span
+  mark private
+
+  sift one
+    case function
+      save bound, bound-names(body)
+      fork test, has-text(bound, param-name)
+        hold
+          back make(some, span)
+      walk param-names(one)
+        take own
+        push(bound, own)
+      save nothing-kept, make none
+      save gather
+        make mention-gather
+          bind program, program
+          bind places, places
+          bind passes, passes
+          bind name, param-name
+          bind shadowed, flags-of(bound)
+          bind kept, nothing-kept
+      walk block-handles(body)
+        take handle
+        mentions-in(gather, handle, false)
+      back gather/kept
+    miss
+      back make none
+
+task keep-at
+  take gather, like mention-gather
+  take at, like span
+  mark private
+
+  sift gather/kept
+    case none
+      save gather/kept, make(some, at)
+    miss
+      save nothing, 0
+
+task handle-of-expression
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+# whether a closure's parameters bind `name`, so a read of it inside is the closure's own
+task closure-binds
+  take node, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  sift node
+    case closure
+      walk params
+        take param
+        fork test, is-equal(param/name, name)
+          hold
+            back true
+    miss
+      save nothing, 0
+  back false
+
+# every mention under `handle`: `escaping` when it is inside a closure that is kept, where any mention keeps
+task mentions-in
+  take gather, like mention-gather
+  take handle, like node-handle
+  take escaping, like boolean
+  mark private
+
+  sift gather/kept
+    case some
+      back
+    miss
+      save nothing, 0
+  sift handle
+    case expression-handle
+      link held
+      sift held
+        case variable
+          fork test, is-equal(name, gather/name)
+            hold
+              keep-at(gather, expression-span(held))
+          back
+        case closure
+          fork test, closure-binds(held, gather/name)
+            hold
+              back
+          walk block-handles(body)
+            take inner
+            mentions-in(gather, inner, true)
+          back
+        case call
+          call-mentions(gather, held, escaping)
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    mentions-in(gather, child, escaping)
+
+# a call: the parameter as its callee is called, and as an argument passes through where the callee's parameter there
+# does, or where the callee is `spawn`. A statement tick keeps both (decision 092 rule 5)
+task call-mentions
+  take gather, like mention-gather
+  take node, like expression
+  take escaping, like boolean
+  mark private
+
+  sift node
+    case call
+      save free, and(not(escaping), not(read(background)))
+      save passing, make list
+      save params, make list
+      save job, false
+      save given-args, args
+      sift callee
+        case variable
+          fork test, is-equal(name, gather/name)
+            hold
+              fork test, not(free)
+                hold
+                  keep-at(gather, expression-span(callee))
+            miss
+              fork test, and(gather/places/has(name), not(gather/shadowed/has(name)))
+                hold
+                  save job, is-spawn(name)
+                  save params, param-names(get(gather/program, gather/places/get(name)))
+                  fork test, gather/passes/has(name)
+                    hold
+                      save passing, gather/passes/get(name)
+        miss
+          mentions-in(gather, handle-of-expression(callee), escaping)
+      save given-names, make list
+      walk read(names)
+        take one
+        push(given-names, one)
+      walk given-args
+        take arg
+        take i
+        save allowed, false
+        fork test, free
+          hold
+            fork test, job
+              hold
+                save allowed, true
+              miss
+                save at, argument-position(params, given-names, i)
+                fork test, is-below(at, params/length)
+                  hold
+                    save allowed, has-text(passing, get(params, at))
+        mention-argument(gather, arg, allowed, escaping)
+    miss
+      save nothing, 0
+
+task mention-argument
+  take gather, like mention-gather
+  take arg, like expression
+  take allowed, like boolean
+  take escaping, like boolean
+  mark private
+
+  sift arg
+    case variable
+      fork test, and(is-equal(name, gather/name), not(allowed))
+        hold
+          keep-at(gather, expression-span(arg))
+    case closure
+      fork test, not(closure-binds(arg, gather/name))
+        hold
+          walk block-handles(body)
+            take inner
+            mentions-in(gather, inner, not(allowed))
+    miss
+      mentions-in(gather, handle-of-expression(arg), escaping)
+
+# ---- jobs (decision 092) ----
+
+# the work of every `spawn` call in a body, at any depth: a value-position `tick f(x)` is `spawn` of a closure by then
+# (check/pending.tree)
+task spawned-works
+  take body, like list, like statement
+  like list, like expression
+  mark private
+
+  save gather
+    make closure-gather
+      bind found, make list
+  walk block-handles(body)
+    take handle
+    spawned-in(gather, handle)
+  back gather/found
+
+task spawned-in
+  take gather, like closure-gather
+  take handle, like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link held
+      sift held
+        case call
+          save given-args, args
+          sift callee
+            case variable
+              fork test, and(is-spawn(name), is-equal(given-args/length, 1))
+                hold
+                  push(gather/found, get(given-args, 0))
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    spawned-in(gather, child)

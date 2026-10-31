@@ -71,8 +71,11 @@ export function effectRows(program: Program): Map<string, string[]> {
         param.type?.kind === 'function' &&
         param.type.effects
       ) {
+        // a declared raise (`halt <form>`) is the raise sets' to read, never an effect of the row
         for (const effect of param.type.effects) {
-          row.add(effect)
+          if (!isSlotHalt(effect)) {
+            row.add(effect)
+          }
         }
       }
     }
@@ -247,6 +250,410 @@ type CallReach = {
   implementations?: Map<string, Set<string>>
   natives?: Set<string>
   onNative?: () => void
+  // A CALL THROUGH A TASK-TYPED SLOT raises the slot's declared set (decision 086 rule 2): `slots` holds the scanned
+  // task's own parameters' sets by name, `shadowed` the names its body binds, and `onSlot` hears what each call through
+  // a slot raises. A call through a local or a field raises its type's set
+  slots?: Map<string, string[]>
+  shadowed?: Set<string>
+  onSlot?: (raised: string[]) => void
+  // PASS-THROUGH (decision 089 rule 1): each task's pass-through parameters and parameter names, and `onBinding`
+  // hears, at each call to such a task, what the argument at a pass-through parameter raises
+  passes?: Map<string, string[]>
+  paramLists?: Map<string, string[]>
+  onBinding?: (binding: PassBinding) => void
+  // JOBS (decision 092): the tasks that wait a handle, and `onWait` hears each call to one
+  waits?: Set<string>
+  onWait?: () => void
+}
+
+// what an argument given at a pass-through parameter raises. Twin: effects.tree `argument-raises`
+function argumentRaises(
+  arg: Expression,
+  known: Set<string>,
+  reach: CallReach,
+): string[] {
+  if (arg.form === 'variable') {
+    if (reach.slots?.has(arg.name)) {
+      return reach.slots.get(arg.name)!
+    }
+
+    if (known.has(arg.name) && !reach.shadowed?.has(arg.name)) {
+      return [`task ${arg.name}`]
+    }
+
+    return slotHalts(arg.type)
+  }
+
+  if (arg.form === 'closure') {
+    return []
+  }
+
+  return slotHalts((arg as { type?: Type }).type)
+}
+
+// a declared raise on a task type: the effect `halt <form>` the mill writes for each childless `halt <form>` line
+function isSlotHalt(effect: string): boolean {
+  return effect.length > 5 && effect.slice(0, 5) === 'halt '
+}
+
+// A TASK TYPE'S RAISE SET: the forms its childless `halt <form>` lines name. None means the slot raises nothing
+// (decision 086 of note/project/term/self-host/change/001-finish-self-host, rule 1). Twin: check/effects.tree
+// `slot-halts`
+export function slotHalts(type: Type | undefined): string[] {
+  const out: string[] = []
+
+  if (type?.kind === 'function') {
+    for (const effect of type.effects ?? []) {
+      const raised = effect.slice(5)
+
+      if (
+        isSlotHalt(effect) &&
+        effect !== 'halt kink' &&
+        !out.includes(raised)
+      ) {
+        out.push(raised)
+      }
+    }
+  }
+
+  return out
+}
+
+// whether a task type says `halt kink`: the slot passes its raises on (decision 089 rule 3). Twin: effects.tree
+// `slot-kinks`
+export function slotKinks(type: Type | undefined): boolean {
+  return (
+    type?.kind === 'function' &&
+    (type.effects ?? []).includes('halt kink')
+  )
+}
+
+// A PASS-THROUGH PARAMETER'S MEMBER of a raise set: `kink <i>` stands for whatever the argument given at parameter
+// `i` raises, put in its place at each call (decision 089 rule 1). `task <name>` in a binding is a task given by
+// name, and a stub's `pass <i>` names a pass-through parameter. Never an exception's name, which has no space
+const isKink = (raised: string): boolean =>
+  raised.length > 5 && raised.startsWith('kink ')
+const isTaskMember = (raised: string): boolean =>
+  raised.length > 5 && raised.startsWith('task ')
+const isPassMember = (raised: string): boolean =>
+  raised.length > 5 && raised.startsWith('pass ')
+
+// a task written in a backend's own folder: its parameters are never inferred, only declared (decision 089 rule 4)
+function isNativeFile(statement: Extract<Statement, { form: 'function' }>): boolean {
+  return statement.span?.file?.includes('/native/') ?? false
+}
+
+// A JOB'S STAND-IN: the raises of every job a task makes, charged where the task waits a handle (decision 092)
+const jobName = (name: string): string => `${name} job`
+const isJobName = (name: string): boolean =>
+  name.length > 4 && name.endsWith(' job')
+const isSpawn = (name: string): boolean => written(name) === 'spawn'
+
+// at a call to `callee`, the argument at its pass-through parameter `at`, and what it raises
+type PassBinding = { callee: string; at: number; given: string[] }
+
+// the parameter a call's argument `i` fills: the one its name names, else its position
+function argumentPosition(
+  params: string[],
+  names: string[],
+  i: number,
+): number {
+  if (i < names.length && names[i] !== '') {
+    const at = params.indexOf(names[i]!)
+
+    return at < 0 ? params.length : at
+  }
+
+  return i
+}
+
+// the pass-through parameters of every task, and where each dropped one is kept, keyed `<task> <parameter>`
+type PassTable = {
+  passes: Map<string, string[]>
+  kept: Map<string, Span>
+}
+
+type FunctionStatement = Extract<Statement, { form: 'function' }>
+
+// PASS-THROUGH, INFERRED (decision 089 rules 1 and 4). Twin: effects.tree `pass-through-of`
+export function passThroughOf(program: Program): PassTable {
+  const functions = new Map<string, FunctionStatement>()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      functions.set(statement.name, statement)
+    }
+  }
+
+  const passes = new Map<string, string[]>()
+  const kept = new Map<string, Span>()
+  const inferred: string[] = []
+
+  for (const [name, statement] of functions) {
+    const chosen: string[] = []
+
+    if (statement.stub && statement.stubRaises) {
+      statement.params.forEach((param, i) => {
+        if (statement.stubRaises!.includes(`pass ${i}`)) {
+          chosen.push(param.name)
+        }
+      })
+    } else if (statement.body.length > 0 && !isNativeFile(statement)) {
+      for (const param of statement.params) {
+        if (
+          param.type?.kind === 'function' &&
+          slotHalts(param.type).length === 0
+        ) {
+          chosen.push(param.name)
+        }
+      }
+
+      if (chosen.length > 0) {
+        inferred.push(name)
+      }
+    } else {
+      for (const param of statement.params) {
+        if (slotKinks(param.type)) {
+          chosen.push(param.name)
+        }
+      }
+    }
+
+    passes.set(name, chosen)
+  }
+
+  let changed = true
+
+  while (changed) {
+    changed = false
+
+    for (const name of inferred) {
+      const statement = functions.get(name)!
+      const remaining: string[] = []
+
+      for (const param of passes.get(name)!) {
+        const at = keepingMention(functions, passes, statement, param)
+
+        if (at) {
+          kept.set(`${name} ${param}`, at)
+          changed = true
+        } else {
+          remaining.push(param)
+        }
+      }
+
+      passes.set(name, remaining)
+    }
+  }
+
+  return { passes, kept }
+}
+
+// the first mention of `param` in `statement` that keeps it. Twin: effects.tree `keeping-mention`
+function keepingMention(
+  functions: Map<string, FunctionStatement>,
+  passes: Map<string, string[]>,
+  statement: FunctionStatement,
+  param: string,
+): Span | undefined {
+  const bound = boundNames(statement.body)
+
+  if (bound.has(param)) {
+    return statement.span
+  }
+
+  for (const own of statement.params) {
+    bound.add(own.name)
+  }
+
+  let found: Span | undefined
+
+  const keep = (at: Span | undefined): void => {
+    if (!found) {
+      found = at ?? statement.span
+    }
+  }
+
+  const closureBinds = (node: Extract<Expression, { form: 'closure' }>) =>
+    node.params.some(p => p.name === param)
+
+  const visit = (value: unknown, escaping: boolean): void => {
+    if (found || !value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      for (const one of value) {
+        visit(one, escaping)
+      }
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'variable' && typeof record.name === 'string') {
+      if (record.name === param) {
+        keep(record.span as Span | undefined)
+      }
+
+      return
+    }
+
+    if (record.form === 'closure' && Array.isArray(record.body)) {
+      const closure = record as unknown as Extract<
+        Expression,
+        { form: 'closure' }
+      >
+
+      if (!closureBinds(closure)) {
+        visit(closure.body, true)
+      }
+
+      return
+    }
+
+    if (
+      record.form === 'call' &&
+      record.callee &&
+      typeof record.callee === 'object' &&
+      Array.isArray(record.args)
+    ) {
+      const call = record as unknown as Extract<Expression, { form: 'call' }>
+      const free = !escaping && !call.background
+      let passing: string[] = []
+      let params: string[] = []
+      let job = false
+
+      if (call.callee.form === 'variable') {
+        const name = call.callee.name
+
+        if (name === param) {
+          if (!free) {
+            keep(call.callee.span)
+          }
+        } else if (functions.has(name) && !bound.has(name)) {
+          job = isSpawn(name)
+          params = functions.get(name)!.params.map(p => p.name)
+          passing = passes.get(name) ?? []
+        }
+      } else {
+        visit(call.callee, escaping)
+      }
+
+      const names = call.names ?? []
+
+      call.args.forEach((arg, i) => {
+        let allowed = false
+
+        if (free) {
+          if (job) {
+            allowed = true
+          } else {
+            const at = argumentPosition(params, names, i)
+
+            allowed = at < params.length && passing.includes(params[at]!)
+          }
+        }
+
+        if (arg.form === 'variable') {
+          if (arg.name === param && !allowed) {
+            keep(arg.span)
+          }
+        } else if (arg.form === 'closure') {
+          if (!closureBinds(arg)) {
+            visit(arg.body, !allowed)
+          }
+        } else {
+          visit(arg, escaping)
+        }
+      })
+
+      return
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'type' && key !== 'span') {
+        visit(child, escaping)
+      }
+    }
+  }
+
+  visit(statement.body, false)
+
+  return found
+}
+
+// the work of every `spawn` call in a body, at any depth. Twin: effects.tree `spawned-works`
+function spawnedWorks(body: Statement[]): Expression[] {
+  const found: Expression[] = []
+
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (
+      record.form === 'call' &&
+      record.callee &&
+      typeof record.callee === 'object' &&
+      Array.isArray(record.args)
+    ) {
+      const call = record as unknown as Extract<Expression, { form: 'call' }>
+
+      if (
+        call.callee.form === 'variable' &&
+        isSpawn(call.callee.name) &&
+        call.args.length === 1
+      ) {
+        found.push(call.args[0]!)
+      }
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'type' && key !== 'span') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(body)
+
+  return found
+}
+
+// what a call through `callee` raises when the callee is a slot: a parameter's declared set, or the type's set of a
+// local, a field, or any name that is no task of the program. Twin: check/effects.tree `slot-call-raises`
+function slotCallRaises(
+  callee: Expression,
+  known: Set<string>,
+  reach: CallReach,
+): string[] {
+  if (callee.form === 'variable') {
+    if (reach.slots?.has(callee.name)) {
+      return reach.slots.get(callee.name)!
+    }
+
+    if (!known.has(callee.name) || reach.shadowed?.has(callee.name)) {
+      return slotHalts(callee.type)
+    }
+
+    return []
+  }
+
+  if (callee.form === 'member') {
+    return slotHalts(callee.type)
+  }
+
+  return []
 }
 
 function calledNames(
@@ -259,6 +666,52 @@ function calledNames(
   const expr = (node: Expression): void => {
     switch (node.form) {
       case 'call':
+        // A STATEMENT TICK RAISES INTO NO TASK: its raise ends the program, so it is charged to no task and a guard
+        // around it catches nothing (decision 092 rule 5). Its arguments are worked out here
+        if (node.background && reach?.onSlot) {
+          node.args.forEach(expr)
+          break
+        }
+
+        if (reach?.onSlot) {
+          reach.onSlot(slotCallRaises(node.callee, known, reach))
+        }
+
+        if (
+          reach &&
+          node.callee.form === 'variable' &&
+          known.has(node.callee.name) &&
+          !reach.shadowed?.has(node.callee.name) &&
+          !reach.slots?.has(node.callee.name)
+        ) {
+          const callee = node.callee.name
+          const passing = reach.passes?.get(callee) ?? []
+
+          if (passing.length > 0 && reach.onBinding) {
+            const params = reach.paramLists?.get(callee) ?? []
+            const names = node.names ?? []
+
+            node.args.forEach((arg, i) => {
+              const at = argumentPosition(params, names, i)
+
+              if (at < params.length && passing.includes(params[at]!)) {
+                const given = argumentRaises(arg, known, reach)
+
+                if (given.length > 0) {
+                  reach.onBinding!({ callee, at, given })
+                }
+              }
+            })
+          }
+        }
+
+        if (
+          node.callee.form === 'variable' &&
+          reach?.waits?.has(node.callee.name)
+        ) {
+          reach.onWait?.()
+        }
+
         if (
           node.callee.form === 'variable' &&
           known.has(node.callee.name)
@@ -863,9 +1316,25 @@ function closuresIn(
       return
     }
 
+    // a job's closure (`spawn`'s work, a value-position tick) is charged where the job is waited, not where it is
+    // written (decision 092 rule 2)
+    const job =
+      record.form === 'call' &&
+      (record.callee as { form?: string; name?: string } | undefined)
+        ?.form === 'variable' &&
+      isSpawn((record.callee as { name: string }).name)
+
     for (const [key, child] of Object.entries(record)) {
       if (key !== 'type' && key !== 'span' && key !== 'result') {
-        visit(child)
+        if (job && key === 'args' && Array.isArray(child)) {
+          child
+            .filter(
+              (arg: { form?: string } | undefined) => arg?.form !== 'closure',
+            )
+            .forEach(visit)
+        } else {
+          visit(child)
+        }
       }
     }
   }
@@ -889,6 +1358,10 @@ type RaiseSetsWith = {
   via: Map<string, Map<string, string | undefined>>
   // the native shims: the functions that call into a `dock load` module, which raise `failure` by construction
   native: Set<string>
+  // each task's pass-through parameters `pass <i>` and the members `kink <i>` its set holds (decision 089)
+  through: Map<string, string[]>
+  // what the jobs each task makes can raise, where it makes any (decision 092)
+  jobs: Map<string, string[]>
 }
 
 // the raise sets as check/effects.tree answers them: each set a list in the order it was filled, a direct raise's
@@ -897,6 +1370,8 @@ export type RaiseSets = {
   raises: Map<string, string[]>
   via: Map<string, Map<string, string>>
   native: string[]
+  through: Map<string, string[]>
+  jobs: Map<string, string[]>
 }
 
 // `checkedDivision` is the one place the emitters tell the raise sets which integer `/` and `%` they write checked
@@ -925,6 +1400,8 @@ export function raiseSetsOf(
       ]),
     ),
     native: [...sets.native],
+    through: sets.through,
+    jobs: sets.jobs,
   }
 }
 
@@ -979,6 +1456,33 @@ function raiseSetsWith(
   }
 
   let sawNative = false
+  // what the calls through slots met by the last `calledNames` raise, in the order met
+  let slotRaised: string[] = []
+  // the pass-through bindings of the task being scanned, and whether the last `calledNames` met a wait on a handle
+  let bindings: PassBinding[] = []
+  let waited = false
+
+  // the pass-through parameters (decision 089 rule 1), each task's parameter names, and the tasks that wait a
+  // handle: `wait` and `wait-within` of @term/base/task's `handle` (decision 092 rule 2)
+  const table = passThroughOf(program)
+  const paramLists = new Map<string, string[]>()
+  const waits = new Set<string>()
+
+  for (const [name, statement] of functions) {
+    paramLists.set(
+      name,
+      statement.params.map(p => p.name),
+    )
+
+    if (
+      statement.method &&
+      written(statement.method.form) === 'handle' &&
+      (statement.method.name === 'wait' ||
+        statement.method.name === 'wait-within')
+    ) {
+      waits.add(name)
+    }
+  }
 
   const reach: CallReach = {
     implementations,
@@ -986,7 +1490,37 @@ function raiseSetsWith(
     onNative: () => {
       sawNative = true
     },
+    slots: new Map(),
+    shadowed: new Set(),
+    onSlot: raised => {
+      for (const one of raised) {
+        if (!slotRaised.includes(one)) {
+          slotRaised.push(one)
+        }
+      }
+    },
+    passes: table.passes,
+    paramLists,
+    onBinding: binding => {
+      bindings.push(binding)
+    },
+    waits,
+    onWait: () => {
+      waited = true
+    },
   }
+
+  // each task's pass-through bindings, by the task that made the calls
+  const boundCalls = new Map<string, PassBinding[]>()
+  // the stand-in of the jobs the task being scanned makes, '' when it makes none
+  let jobs = ''
+
+  // whether a declared or passed-on raise counts in a set. Twin: effects.tree `is-raise-member`
+  const isRaiseMember = (raised: string): boolean =>
+    exceptions.has(raised) ||
+    isKink(raised) ||
+    raised === 'failure' ||
+    raised === 'exception'
 
   const nativeShims = new Set<string>()
 
@@ -1099,6 +1633,9 @@ function raiseSetsWith(
     called: Set<string>,
     direct?: Set<string>,
   ): void => {
+    slotRaised = []
+    waited = false
+
     for (const name of calledNames(
       [{ form: 'expression', expr: node, span: node.span }],
       names,
@@ -1107,7 +1644,20 @@ function raiseSetsWith(
       called.add(name)
     }
 
+    // a wait on a handle raises every job the task makes (decision 092 rule 2)
+    if (waited && jobs !== '') {
+      called.add(jobs)
+    }
+
     if (direct) {
+      // a call through a slot raises the slot's declared set, as a direct raise: a form the program holds, `failure`
+      // (raised by text even with no form), or `exception` (any), or the member of a pass-through parameter
+      for (const raised of slotRaised) {
+        if (isRaiseMember(raised)) {
+          direct.add(raised)
+        }
+      }
+
       markDivisions(node, direct)
 
       for (const closure of closuresIn(node)) {
@@ -1165,7 +1715,8 @@ function raiseSetsWith(
   for (const [name, statement] of functions) {
     // a separately compiled task: the set its own unit closed over its body and callees (`stubRaises`)
     if (statement.stub && statement.stubRaises) {
-      const known = new Set(statement.stubRaises)
+      // `pass <i>` names a pass-through parameter, read by `passThroughOf`, never a raise
+      const known = new Set(statement.stubRaises.filter(r => !isPassMember(r)))
 
       if (statement.stubFacts?.includes('native')) {
         nativeShims.add(name)
@@ -1187,10 +1738,67 @@ function raiseSetsWith(
       continue
     }
 
+    sawNative = false
+    // each parameter typed as a task raises its declared set when called (decision 086 rule 2), and a pass-through
+    // one its argument's, `kink <i>` until a call puts the argument in its place (decision 089)
+    const passing = table.passes.get(name) ?? []
+
+    reach.slots = new Map(
+      statement.params.map((param, i) => [
+        param.name,
+        passing.includes(param.name) ? [`kink ${i}`] : slotHalts(param.type),
+      ]),
+    )
+    reach.shadowed = boundNames(statement.body)
+    bindings = []
+
+    const ownParams = new Set(statement.params.map(p => p.name))
+    const bound = boundNames(statement.body)
+
+    // THE JOBS THE TASK MAKES, scanned apart into its stand-in, which each wait in the task calls (decision 092 rules
+    // 1 and 2): a guard around the start subtracts nothing, a guard around the wait does
+    jobs = ''
+
+    const works = spawnedWorks(statement.body)
+
+    if (works.length > 0) {
+      const standIn = jobName(name)
+      const jobDirect = new Set<string>()
+      const jobCalled = new Set<string>()
+
+      for (const work of works) {
+        if (work.form === 'closure') {
+          scan(work.body, jobDirect, jobCalled)
+        } else {
+          for (const raised of argumentRaises(work, names, reach)) {
+            if (isTaskMember(raised)) {
+              jobCalled.add(raised.slice(5))
+            } else if (isRaiseMember(raised)) {
+              jobDirect.add(raised)
+            }
+          }
+        }
+      }
+
+      for (const callee of [...jobCalled]) {
+        if (ownParams.has(callee) || bound.has(callee)) {
+          jobCalled.delete(callee)
+        }
+      }
+
+      raises.set(standIn, jobDirect)
+      via.set(standIn, new Map([...jobDirect].map(d => [d, undefined])))
+      calls.set(standIn, jobCalled)
+      boundCalls.set(standIn, bindings)
+      jobs = standIn
+      bindings = []
+    }
+
     const direct = new Set<string>()
     const called = new Set<string>()
-    sawNative = false
+
     scan(statement.body, direct, called)
+    boundCalls.set(name, bindings)
 
     // a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
     // the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the shim
@@ -1243,10 +1851,37 @@ function raiseSetsWith(
       const from = via.get(name)!
 
       for (const callee of callees) {
+        // a callee's pass-through member is its own parameter's, put in place by the bindings below, except the
+        // task's own jobs', which are the task's parameters
+        const raw = callee === jobName(name)
+
         for (const exception of raises.get(callee) ?? []) {
-          if (!set.has(exception)) {
+          if (!set.has(exception) && (raw || !isKink(exception))) {
             set.add(exception)
             from.set(exception, callee)
+            changed = true
+          }
+        }
+      }
+
+      // A CALL TO A TASK THAT PASSES AN ARGUMENT'S RAISES THROUGH raises what that argument raises, where the
+      // callee's set holds the parameter's member (decision 089 rule 1)
+      for (const binding of boundCalls.get(name) ?? []) {
+        if (!raises.get(binding.callee)?.has(`kink ${binding.at}`)) {
+          continue
+        }
+
+        for (const given of binding.given) {
+          if (isTaskMember(given)) {
+            const task = given.slice(5)
+
+            if (!callees.has(task) && raises.has(task)) {
+              callees.add(task)
+              changed = true
+            }
+          } else if (!set.has(given) && isRaiseMember(given)) {
+            set.add(given)
+            from.set(given, binding.callee)
             changed = true
           }
         }
@@ -1254,9 +1889,90 @@ function raiseSetsWith(
     }
   }
 
-  canonicalVia(calls, raises, via)
+  // EACH TASK'S JOBS FOLD INTO IT: a raise that reached it through its stand-in reads through to the job's own path,
+  // and the job's callees are its own
+  const jobsOf = new Map<string, string[]>()
 
-  return { raises, via, native: nativeShims }
+  for (const name of functions.keys()) {
+    const standIn = jobName(name)
+
+    if (!raises.has(standIn)) {
+      continue
+    }
+
+    const made = [...raises.get(standIn)!].filter(r => !isKink(r))
+
+    if (made.length > 0) {
+      jobsOf.set(name, made)
+    }
+
+    if (calls.has(name)) {
+      const from = via.get(name)!
+      const theirs = via.get(standIn)!
+
+      for (const [raised, callee] of [...from]) {
+        if (callee === standIn) {
+          from.set(raised, theirs.get(raised))
+        }
+      }
+
+      const folded = new Set<string>()
+
+      for (const callee of [...calls.get(name)!, ...calls.get(standIn)!]) {
+        if (callee !== standIn) {
+          folded.add(callee)
+        }
+      }
+
+      calls.set(name, folded)
+    }
+  }
+
+  // what is answered: no stand-in, no pass-through member, and each task's pass-through parameters beside its set
+  const finalRaises = new Map<string, Set<string>>()
+  const finalVia = new Map<string, Map<string, string | undefined>>()
+  const finalCalls = new Map<string, Set<string>>()
+  const through = new Map<string, string[]>()
+
+  for (const name of calls.keys()) {
+    if (isJobName(name)) {
+      continue
+    }
+
+    const all = [...raises.get(name)!]
+    const from = via.get(name)!
+
+    finalRaises.set(name, new Set(all.filter(r => !isKink(r))))
+    finalVia.set(
+      name,
+      new Map([...from].filter(([raised]) => !isKink(raised))),
+    )
+    finalCalls.set(name, calls.get(name)!)
+
+    const passing = table.passes.get(name) ?? []
+    const carried: string[] = []
+
+    ;(paramLists.get(name) ?? []).forEach((param, i) => {
+      if (passing.includes(param)) {
+        carried.push(`pass ${i}`)
+      }
+    })
+    carried.push(...all.filter(isKink))
+
+    if (carried.length > 0) {
+      through.set(name, carried)
+    }
+  }
+
+  canonicalVia(finalCalls, finalRaises, finalVia)
+
+  return {
+    raises: finalRaises,
+    via: finalVia,
+    native: nativeShims,
+    through,
+    jobs: jobsOf,
+  }
 }
 
 // `via` CHOSEN BY RULE, NOT BY DISCOVERY. The fixed point recorded whichever callee brought an exception in first,

@@ -5,9 +5,11 @@
 # Ported from deck/test/code/parallel.ts (term-cli-in-term-0108). The original launched `concurrency` runners pulling
 # from one shared cursor, and `Promise.all` over them. Here each runner is a `tick`ed job (`run-lane`), and the cursor is
 # a list whose length is the next index: jobs interleave only at their waits, so reading the length and pushing is one
-# step, as `next++` was. A runner whose worker raises stops, as the original's did, and the rest go on; the raise that
-# came FIRST IN TIME is raised once every runner has settled, where `Promise.all` raised it at once and left the rest
-# running: every worker call is made all the same.
+# step, as `next++` was. A runner whose worker raises stops, as the original's did, and the rest go on; once every
+# runner has settled, the raise of the FIRST FAILED LANE IN LANE ORDER is raised again, by waiting that lane's job
+# outside any guard, which re-raises the worker's own exception unchanged. `Promise.all` raised the first raise in time
+# at once and left the rest running. The raise is the job's own, so `map-concurrent` raises what its worker raises
+# (decision 092 rule 7 of note/project/term/self-host/change/001-finish-self-host).
 
 load @term/base/list
   find list
@@ -21,9 +23,6 @@ load @term/base/task
 load @term/base/math
   find minimum
   find maximum
-
-dock load
-  load <global:Promise>, name host-promise
 
 # the most jobs at once when the caller says nothing (DEFAULT_CONCURRENCY)
 host default-limit, 8
@@ -51,7 +50,8 @@ bind is-unknown-count
   case node
     text <(!$count || $count \< 1)>
 
-# a runner: claim the next index, run the worker on it, keep its answer, until the items run out or a worker raises
+# a runner: claim the next index, run the worker on it, keep its answer, until the items run out. A worker's raise
+# ends the runner's job with it, and `map-concurrent` raises it again where it waits the job
 task run-lane
   take items, like list, like unknown
   take worker
@@ -62,29 +62,24 @@ task run-lane
       like unknown
   take claimed, like list, like number
   take results, like hash, like number, like unknown
-  take failures, like list, like unknown
   like void
   mark private
   mark async
 
-  fork
-    mark unsafe
-    walk test
-      hook test, true
-      hook hold
-        save index, claimed/length
-        claimed/push(index)
-        fork test, is-minimum(index, items/length)
-          hold
-            halt
-        save answer, call(worker, items/{index}, index)
-        results/set(index, answer)
-  halt take
-    take problem
-    failures/push(problem)
+  walk test
+    hook test, true
+    hook hold
+      save index, claimed/length
+      claimed/push(index)
+      fork test, is-minimum(index, items/length)
+        hold
+          halt
+      save answer, call(worker, items/{index}, index)
+      results/set(index, answer)
 
 # `worker` over `items`, at most `limit` in flight at once, the answers in input order. A worker that raises raises
-# out of the whole call (catch inside the worker to keep a failure as a value)
+# out of the whole call, the first failed lane's in lane order once every lane has settled (catch inside the worker to
+# keep a failure as a value)
 task map-concurrent
   take items, like list, like unknown
   take worker
@@ -98,7 +93,6 @@ task map-concurrent
 
   host claimed, make list
   host results, make hash
-  host failures, make list
   host lanes, make list
 
   host count, lane-count(limit, items/length)
@@ -106,16 +100,25 @@ task map-concurrent
   walk test
     hook test, is-below(started, count)
     hook hold
-      lanes/push(tick run-lane(items, worker, claimed, results, failures))
+      lanes/push(tick run-lane(items, worker, claimed, results))
       save started, add(started, 1)
 
+  # every lane settles first, each failed one kept in lane order
+  host failed, make list
   walk lanes
     take lane
-    lane/wait()
+    fork
+      mark unsafe
+      lane/wait()
+    halt take
+      take problem
+      failed/push(lane)
 
-  fork test, is-above(failures/length, 0)
+  # the first failed lane's raise, again and unchanged: its job keeps it, and a second wait raises it
+  fork test, is-above(failed/length, 0)
     hold
-      wait host-promise/reject(failures/0)
+      save first, failed/0
+      first/wait()
 
   host answers, make list
   save at, 0

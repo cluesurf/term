@@ -6,7 +6,12 @@
 //   a stdlib file the ports read: every module whose trace read it compiles again, and the skip run writes exactly
 //     what a --full run from the same state writes
 //   a toolchain .tree body: the module compiles again and builds, byte-identical to --full
-//   a compiler .ts file: nothing is skipped at all, byte-identical to --full
+//   a compiler .ts file: every module is skipped, byte-identical to --full. Since decision 036 every port compiles
+//     with stage0, so the working tree's compiler is no part of the fingerprint (it was "nothing is skipped" before)
+//
+// The cold run starts from the tree's own ports and manifest, which another session may have left behind its sources
+// (an edit not yet through make:line). So the cold check asks that every module it builds is one `--verify` calls
+// stale in the copied state, never that it builds none (item term-self-host-001-0483).
 //
 // Each edit's comparison starts both runs from the same state: the ports are put back between the skip run and the
 // --full run, since a port the skip run rewrote is part of the compiler the --full run would load.
@@ -17,6 +22,7 @@ import {
   constants,
   cpSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -83,9 +89,11 @@ function clone(): void {
         return false
       }
 
-      // of a `host/`, only `host/port/`: the ported modules the compiler is built from
+      // of a package's `host/` (deck/<d>/host), only `host/port/`: the ported modules the compiler is built from. The
+      // search starts past deck/<d>, so the PACKAGE named host (deck/host, @term/host) is copied whole: it was left out,
+      // and compile/host-codec.tree, which loads @term/host, failed every run in the clone (item 0483)
       const at = relative(TERM, source).split('/')
-      const host = at.indexOf('host')
+      const host = at.indexOf('host', 2)
 
       return (
         host < 0 || at.length === host + 1 || at[host + 1] === 'port'
@@ -106,6 +114,15 @@ function clone(): void {
   }
 
   cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
+
+  // the tree's manifest, so `--verify` in the clone names the ports the tree had left behind their sources. Its entries
+  // are keyed by module name and content hashes, never by the absolute path, so they hold in the clone
+  const treeManifest = join(TERM, '.base', '@term', 'code', 'port-build.json')
+
+  if (existsSync(treeManifest)) {
+    mkdirSync(join(copy, '.base', '@term', 'code'), { recursive: true })
+    cpSync(treeManifest, join(copy, '.base', '@term', 'code', 'port-build.json'))
+  }
 
   // the one path tsconfig.json writes relative to the package, outside it, made absolute for the clone
   const tsconfig = readFileSync(
@@ -297,11 +314,21 @@ try {
 
   // ---- cold, then steady ----
 
+  // the modules the tree's ports had fallen behind, as `--verify` names them against the copied manifest
+  const verified = run('--verify')
+  const stale = new Set(
+    [...verified.out.matchAll(/^ {2}STALE (\S+)/gm)].map(match => match[1]!),
+  )
   const cold = run()
+  // a built line names the port (deck/<d>/host/port/<path>.ts), the stale one its source (deck/<d>/<path>.tree)
+  const coldBuilt = [...cold.out.matchAll(/^ {2}built (\S+)$/gm)].map(
+    match => match[1]!.replace(/^(deck\/[^/]+)\/host\/port\/(.*)\.ts$/, '$1/$2.tree'),
+  )
+  const unexpected = coldBuilt.filter(name => !stale.has(name))
   ok(
-    'cold: every module compiles to the port already there',
-    cold.built === 0 && cold.failed === 0 && cold.skipped.size === 0,
-    cold.out.slice(-400),
+    `cold: every module compiles, to the port already there unless the tree's was stale (${coldBuilt.length} built, ${stale.size} stale)`,
+    cold.failed === 0 && cold.skipped.size === 0 && unexpected.length === 0,
+    `${unexpected.slice(0, 5).join(' ')} ${cold.out.slice(-400)}`,
   )
 
   // every module, so a cold run that had to build some (a port left stale in the tree) fails only the line above,
@@ -423,17 +450,16 @@ try {
       `${readFileSync(file, 'utf8')}\n// port-build-skip probe\n`,
     )
   })
+  // every port compiles with stage0, never the working tree's compiler, so a compiler .ts edit moves no fingerprint
+  // (decision 036 section 3 of term/self-host/change/001-finish-self-host): this check said "nothing is skipped" before
   ok(
-    'compiler .ts edit: nothing is skipped',
-    compiler.skipped.size === 0,
-    `${compiler.skipped.size} skipped`,
+    'compiler .ts edit: every module is skipped, stage0 compiles them (decision 036)',
+    compiler.skipped.size === total && compiler.built === 0,
+    `${compiler.skipped.size} skipped of ${total}, ${compiler.built} built`,
   )
 } finally {
-  if (fail === 0) {
-    rmSync(cloneRoot, { recursive: true, force: true })
-  } else {
-    console.log(`the clone is kept for a look: ${copy}`)
-  }
+  // tempDir removes the clone at exit whatever the verdict (test/temp.ts), so it was never "kept for a look"
+  rmSync(cloneRoot, { recursive: true, force: true })
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

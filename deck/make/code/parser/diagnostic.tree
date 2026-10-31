@@ -775,6 +775,10 @@ form diagnostic-name
   case parallel-crossing, text <parallel-crossing>
   case parallel-await, text <parallel-await>
   case parallel-escape, text <parallel-escape>
+  case raise-escapes-slot, text <raise-escapes-slot>
+  case slot-kink-kept, text <slot-kink-kept>
+  case handle-escapes, text <handle-escapes>
+  case made-exception, text <made-exception>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -1011,6 +1015,24 @@ task entry-of
       back error-entry(0x49, <a parallel walk's turn waits>, <make the waited call before or after the walk, or drop `mark parallel`>)
     case parallel-escape
       back error-entry(0x4a, <a parallel walk's turn leaves the walk early>, <a parallel walk runs every turn: raise an exception to stop it, or drop `mark parallel`>)
+    # a task value put in a place typed as a task that can raise what the place does not declare: a `like task` raises
+    # only its own `halt` lines, none meaning nothing, unless it is a task's parameter the task only calls (decisions
+    # 086 and 089 of note/project/term/self-host/change/001-finish-self-host)
+    case raise-escapes-slot
+      back error-entry(0x4b, <this task can raise what the place it is put in does not declare>, <handle the raise inside the task, or add a `halt` line for it under the place's `like task`>)
+    # a `halt kink` slot the task's body keeps (saves, returns, hands to a host call), or one that also names forms: a
+    # slot passes its raises on only when the task only calls it (decision 089 rule 3)
+    case slot-kink-kept
+      back error-entry(0x4c, <a slot marked `halt kink` is kept by the task, so it cannot pass its raises on>, <only call the slot or hand it to another pass-through slot, or replace `halt kink` with the `halt` lines it may raise>)
+    # a handle of a job that can raise, returned, stored in a record, handed to another task or captured by a closure:
+    # its raise is charged where its maker waits it (decision 092 rule 3)
+    case handle-escapes
+      back error-entry(0x4d, <a handle of a job that can raise leaves the task that made it>, <wait it in the task that made it, or handle the raise inside the job>)
+    # a `make` of a declared exception form anywhere but as the value directly under a `halt`. An exception value is a
+    # raised occurrence: its `form`, `code`, `time` and `link` are filled only at a raise, so a made record read them
+    # as text never filled (decision 087 of term/self-host/change/001, check/type-names.tree)
+    case made-exception
+      back error-entry(0x4e, <an exception form is made outside a `halt`>, <raise it with `halt \<form\>` and catch it with a guard to hold the value, or make a record of a form that is not an exception>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1092,3 +1114,7 @@ task diagnostic-names
       make parallel-crossing
       make parallel-await
       make parallel-escape
+      make raise-escapes-slot
+      make slot-kink-kept
+      make handle-escapes
+      make made-exception

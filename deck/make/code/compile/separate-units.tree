@@ -352,6 +352,10 @@ form separate-given
   # the pool's job for a cycle another unit imports (decision 088): the entry's own unit of two files or more is also
   # answered as an import (`<head>#unit`), the one job that builds that key
   link answer-as-import, like boolean
+  # the pool's job for a unit a rule-stating unit reaches (decision 093): the walk is answered with every unit under
+  # proof, so the entry's own unit is written under the key with bodies that every rule-stating importer asks
+  # (compile/separate.ts `answerUnderProof` asks it after the plain answer)
+  link under-proof-all, like boolean
   # TERM_CACHE_VERIFY (decision 077 section 5): whether a unit the store answered is built again from nothing and
   # compared byte for byte (`hits`, sampled by its key), and whether every unit built is built a second time and
   # compared (`twice`). A difference raises, naming the unit
@@ -1658,12 +1662,12 @@ task job-named-key
 
 # whether a file states a top-level `rule`, read off its parse (the build's own memo). A group's head word is written
 # in the text as it is read, so a text without `rule` in it states none, and is not parsed: the probe of a no-op parses
-# nothing else, and most of a closure states no rule (item term-self-host-001-0437)
+# nothing else, and most of a closure states no rule (item term-self-host-001-0437). Public: the pool's plan asks it to
+# flag the units a rule reaches (compile/separate.ts `provedHeads`, decision 093)
 task states-rule
   take given, like separate-given
   take unit, like token-source
   like boolean
-  mark private
 
   fork test, not(contains(unit/text, <rule>))
     hold
@@ -1788,6 +1792,18 @@ task under-proof-of
     save uj, add(uj, 1)
   back out
 
+# every unit of the walk under proof (decision 093, `under-proof-all`)
+task every-proving
+  take order, like list, like list, like text
+  like list, like boolean
+  mark private
+
+  save out, make list
+  walk order
+    take group
+    push(out, true)
+  back out
+
 # THE SEPARATE BUILD of `source`'s closure
 task compile-separate
   take source, like token-source
@@ -1842,6 +1858,11 @@ task compile-separate
 
   save reach, reach-of(order, edges)
   save proving, under-proof-of(given, by-file, source, order, reach)
+  # A UNIT'S UNDER-PROOF KEY IS BUILT BY ITS OWN JOB (decision 093): a rule-stating importer's walk has the unit and
+  # everything it reaches under proof, so the job answering the unit for it puts every unit of its walk under proof
+  fork test, given/under-proof-all
+    hold
+      save proving, every-proving(order)
 
   save run
     make separate-run

@@ -31,6 +31,8 @@ type Job = {
   file: string
   entry: boolean
   asImport?: boolean
+  // a unit a rule-stating unit reaches, whose job also builds its key with bodies (decision 093)
+  underProof?: boolean
 }
 
 // what one worker holds in memory: milled modules, and unit answers. Enough for @term/bind's whole closure, about
@@ -119,6 +121,7 @@ parentPort?.on('message', (job: Job) => {
         units: session!.units,
         walked: session!.walked,
         answerAsImport: job.asImport === true,
+        answerUnderProof: job.underProof === true,
       },
     )
 

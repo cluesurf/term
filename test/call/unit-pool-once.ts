@@ -11,6 +11,7 @@
 //       holding the worker bundles, as task/term/incremental-bench.ts copyOf makes it), three times
 //   (c) a three-file cycle entered from each member as the entry and through an importer of each (decision 090): one
 //       name for the cycle, and the head's import answer is the key every importer reads
+//   (d) a unit sixteen rule-stating files import (decision 093): its key with bodies built once, by its own job
 // Each of (a) and (b) must write every key once, and count as built exactly the distinct answers it stored (a refusal is stored and
 // never counted). The copy's count must be the same on every run.
 // Run: npx tsx test/call/unit-pool-once.ts
@@ -209,6 +210,29 @@ function holds(name: string, run: Traced): void {
   ok('cycle: the build exits 0', run.status === 0, run.out.slice(-2000))
   ok('cycle: the pool ran', /pool|worker/i.test(run.out), run.out.slice(-2000))
   holds('cycle', run)
+}
+
+// (d) A UNIT A RULE REACHES IS BUILT UNDER PROOF BY ITS OWN JOB (decision 093): a shared form and sixteen files that each
+// state a rule over it. Each rule-stating walk asks the shared unit under its key with bodies, which the shared unit's
+// own walk never asks, so before 093 the jobs started together each built it (built 27 over 20 answers). The shared unit
+// loads part of the standard library, so every worker is started and idle by the time it is built
+{
+  const root = join(scratch, 'proof')
+  mkdirSync(join(root, 'code'), { recursive: true })
+  writeFileSync(join(root, 'deck.tree'), 'deck @probe/unit-proof-once\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+  writeFileSync(join(root, 'code/shared.tree'), 'load @term/base/text\n  find trim\n\nform token\n  head a\n  case mark\n    link value, like a\n')
+
+  for (let n = 1; n <= 16; n++) {
+    writeFileSync(
+      join(root, `code/keep-${n}.tree`),
+      `load ./shared\n  find token\n\nrule keeps-${n}\n  head a\n  take x, like a\n  like token a\n\ntask keeps-${n}\n  take x\n  send back\n    make token/mark\n      bind value, read x\n`,
+    )
+  }
+
+  const run = traced(root, join(scratch, 'proof-home'), {}, [])
+  ok('proof: the build exits 0', run.status === 0, run.out.slice(-2000))
+  ok('proof: the pool ran', /pool|worker|parallel/i.test(run.out), run.out.slice(-2000))
+  holds('proof', run)
 }
 
 // (c) ONE CYCLE, ONE NAME, ONE KEY (decision 090): a three-file cycle x -> y -> z -> x entered from each member, as the

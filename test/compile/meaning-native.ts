@@ -443,6 +443,7 @@ function frontEnd(
     program,
     scopeList(collected.scope),
     'main.tree',
+    [],
   ).program
   program.splice(0, program.length, ...bound)
   // a form `like` an exception made an ordinary record and every `halt <form>` finished, as compileProgram does

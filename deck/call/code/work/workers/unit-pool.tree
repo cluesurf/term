@@ -265,6 +265,8 @@ form unit-job
   link entry, like boolean
   # the head of a cycle another unit imports: its job also builds the cycle's import answer (decision 088)
   link as-import, like boolean
+  # a unit a rule-stating unit reaches: its job also answers it under proof, the key with bodies (decision 093)
+  link under-proof, like boolean
 
 form oom-result
   link ok, like boolean
@@ -289,6 +291,8 @@ form unit-run
   link entries, like hash, like text, like boolean
   # the cycle heads whose job also answers the cycle as an import (decision 088)
   link as-import, like hash, like text, like boolean
+  # the heads a rule-stating unit reaches, whose job also answers them under proof (decision 093), a set
+  link proved, like dynamic
   link graph-size, like number
   link plan, like dynamic
   link ready, like list, like text
@@ -329,7 +333,7 @@ task dispatch-units
         miss
           save worker, units-pop(run/idle)
           units-map-set(run/holding, worker, file)
-          worker/post-message(make(unit-job, bind(type, <job>), bind(root, run/root), bind(file, file), bind(entry, run/entries/has(file)), bind(as-import, run/as-import/has(file))))
+          worker/post-message(make(unit-job, bind(type, <job>), bind(root, run/root), bind(file, file), bind(entry, run/entries/has(file)), bind(as-import, run/as-import/has(file)), bind(under-proof, units-set-has(run/proved, file))))
   # every job answered, or nobody left to answer the rest, which the main build then compiles itself (all but an
   # out-of-memory unit, which is answered as its failure)
   fork test, or(is-equal(run/done, run/graph-size), is-equal(run/alive, 0))
@@ -515,6 +519,10 @@ task compile-units-parallel
     fork test, and(is-above(one-unit/length, 1), imported/has(one-unit/0))
       hold
         save as-import/{one-unit/0}, true
+  # A UNIT'S UNDER-PROOF KEY IS BUILT BY ITS OWN JOB (decision 093): a rule-stating unit's walk asks every unit it
+  # reaches under the key with bodies, which no unit's own walk asks, so the job of each unit a rule reaches answers that
+  # key too, and the rule-stating importers, which wait on that job already, read it back
+  save proved, separate-module/provedHeads(cut, edges, session/walked, session/parsed)
   # at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more
   save graph-size, units-hash-size(graph)
   # the jobs a worker is handed: every one, or with `probe` only the misses, and none under the floor
@@ -529,7 +537,7 @@ task compile-units-parallel
       fork test, is-below(units-open-jobs(graph, entries, options), pool-floor)
         hold
           back make(units-answer, bind(results, found), bind(jobs, 0), bind(workers, 0), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(heap-mb, 0), bind(built, 0), bind(spent, spent))
-      save probed, probe-units(root, session, entries, faced, graph, as-import, options)
+      save probed, probe-units(root, session, entries, faced, graph, as-import, proved, options)
       save missed, probed/missed
       save found, probed/results
       save found-built, probed/built
@@ -545,7 +553,7 @@ task compile-units-parallel
   # each worker's heap is limited, so one that runs out of memory ends alone and its unit is reported (heap-limit.tree)
   save heap, worker-heap-mb(size)
   save plan, make-schedule(graph)
-  save run, make(unit-run, bind(root, root), bind(bundle, bundle), bind(heap, heap), bind(entries, entries), bind(as-import, as-import), bind(graph-size, graph-size), bind(plan, plan), bind(ready, first-ready(plan)), bind(results, found), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(workers, make list), bind(idle, make list), bind(holding, units-new-map()), bind(alive, 0), bind(done, 0), bind(built, found-built), bind(spent, spent), bind(settle, units-nothing()), bind(missed, missed))
+  save run, make(unit-run, bind(root, root), bind(bundle, bundle), bind(heap, heap), bind(entries, entries), bind(as-import, as-import), bind(proved, proved), bind(graph-size, graph-size), bind(plan, plan), bind(ready, first-ready(plan)), bind(results, found), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(workers, make list), bind(idle, make list), bind(holding, units-new-map()), bind(alive, 0), bind(done, 0), bind(built, found-built), bind(spent, spent), bind(settle, units-nothing()), bind(missed, missed))
   save count, 0
   walk test
     hook test, is-below(count, size)
@@ -690,6 +698,13 @@ bind units-answering-import
   case node
     text <(\{ ...$options, answerAsImport: true \})>
 
+# the same options asking the entry's own unit under proof too (decision 093), as a flagged job's worker asks it
+bind units-answering-proved
+  take options, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$options, answerUnderProof: true \})>
+
 # a project file's answer as its worker sends it: each module's code and each unit's roll only the first time an answer
 # carries it, and the entry's shim in place of its exports (unit-worker.tree `answer-unit`)
 bind units-fresh-modules
@@ -760,6 +775,7 @@ task probe-units
   take faced, like hash, like text, like faced-entry
   take graph, like hash, like text, like list, like text
   take as-import, like hash, like text, like boolean
+  take proved, like dynamic
   take narrowing, like dynamic
   like units-probed
   mark private
@@ -805,7 +821,11 @@ task probe-units
     save asked, options
     fork test, as-import/has(file)
       hold
-        save asked, units-answering-import(options)
+        save asked, units-answering-import(asked)
+    # and a unit a rule reaches for its key with bodies (decision 093)
+    fork test, units-set-has(proved, file)
+      hold
+        save asked, units-answering-proved(asked)
     save answer, probe-unit(file, entry, faced, role-of, asked)
     fork test, units-is-nothing(answer)
       hold

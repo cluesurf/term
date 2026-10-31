@@ -26,7 +26,10 @@ import { buildable, isWholeFile } from '@term/call/code/make'
 import type { BuildSession } from '@term/call/code/make'
 import { bundleWorker } from '@term/call/code/build-parallel'
 import { collectModules } from '@term/make/code/compile/load'
-import { units as unitsOf } from '@term/make/code/compile/separate'
+import {
+  provedHeads,
+  units as unitsOf,
+} from '@term/make/code/compile/separate'
 import type { SeparateResult } from '@term/make/code/compile/separate'
 import {
   finish,
@@ -170,6 +173,9 @@ export async function compileUnitsParallel(
       .filter(unit => unit.length > 1 && imported.has(unit[0]!))
       .map(unit => unit[0]!),
   )
+  // A UNIT'S UNDER-PROOF KEY IS BUILT BY ITS OWN JOB (decision 093): every unit a rule-stating unit reaches is asked
+  // under the key with bodies by that unit's walk, so its own job answers that key too
+  const proved = provedHeads(units, edges, session.walked, session.parsed)
 
   // at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more, and
   // fourteen of them held more than the machine had
@@ -231,6 +237,7 @@ export async function compileUnitsParallel(
           file,
           entry: entries.has(file),
           asImport: asImport.has(file),
+          underProof: proved.has(file),
         })
       }
 
