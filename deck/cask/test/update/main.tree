@@ -23,6 +23,9 @@ load @term/cask/cask
 load ./dispatch
   find dispatch
 
+load @term/base/log
+  find warn
+
 task boot
   take resources, like text
   take base, like text
@@ -41,23 +44,43 @@ task boot
       code 480
   # the page speaking is the surest sign it loaded and ran: on Android a page that answers at once can leave before
   # the WebView reports its load finished, so the first message counts as ready as well as `on-ready`
+  # the platform calls `answer` and `drawn` from its own loop, with no Term caller to raise to, so each handles its own
+  # raise (decision 089 rule 6 of note/project/term/self-host/change/001-finish-self-host): `answer` with the
+  # exception reply the generated dispatcher gives, `drawn` and `open` by logging it (a line that cannot be logged is
+  # dropped)
   call on-message
     read made
     task answer
       mark async
       take message, like text
       like text
-      call update-ready
-        read data
-      send back
-        call dispatch
-          read message
+      fork
+        mark unsafe
+        call update-ready
+          read data
+        send back
+          call dispatch
+            read message
+      halt take
+        take problem
+        send back, text <\{"id":"","exception":"failure"\}>
   call on-ready
     read made
     task drawn
       like void
-      call update-ready
-        read data
+      fork
+        mark unsafe
+        call update-ready
+          read data
+      halt take
+        take problem
+        fork
+          mark unsafe
+          call warn
+            text <cask update: {problem/form}: {problem/note}>
+        halt take
+          take unlogged
+          save skip, code 0
   call update-check
     read resources
     read data
@@ -66,7 +89,18 @@ task boot
     task open
       take status, like text
       like void
-      call load-bundle
-        read made
-        read page
+      fork
+        mark unsafe
+        call load-bundle
+          read made
+          read page
+      halt take
+        take problem
+        fork
+          mark unsafe
+          call warn
+            text <cask update: {problem/form}: {problem/note}>
+        halt take
+          take unlogged
+          save skip, code 0
   call run

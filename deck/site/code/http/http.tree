@@ -57,7 +57,9 @@ form response
       like text
     fall make hash
 
-# a registered route: a method, a path pattern (`/users/:id`, `/files/**`), and its handler
+# a registered route: a method, a path pattern (`/users/:id`, `/files/**`), and its handler. A handler may raise
+# `failure`, which `handle-request` answers with a 500 (a record's task raises only its `halt` lines, decision 086 of
+# note/project/term/self-host/change/001-finish-self-host)
 form route
   link method, like text
   link path, like text
@@ -69,6 +71,7 @@ form route
           like text
           like text
       like response
+      halt failure
 
 # one positional parameter a matched handler binds: the segment `index`, the param `name`, and whether it is the
 # catch-all rest (`**` / `*`), which binds the joined remaining segments rather than a single one
@@ -89,6 +92,7 @@ form handler-data
           like text
           like text
       like response
+      halt failure
   link params
     like list
       like param-spec
@@ -214,6 +218,7 @@ task add-route
           like text
           like text
       like response
+      halt failure
   like node
   save specs
     make list
@@ -244,6 +249,7 @@ task insert-route
           like text
           like text
       like response
+      halt failure
   take specs
     like list
       like param-spec
@@ -529,10 +535,19 @@ task handle-request
           read found/value/params
           read segments
           make hash
-      send back
-        call found/value/handle
-          read request
-          read params
+      # a handler's raise has no caller above the transport to go to, so it is answered here, as a 500
+      fork
+        mark unsafe
+        send back
+          call found/value/handle
+            read request
+            read params
+      halt take
+        take problem
+        send back
+          make response
+            bind status, code 500
+            bind body, text <internal error>
     case none
       send back
         make response

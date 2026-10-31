@@ -13,7 +13,13 @@ load @term/cask/cask
   find quit
   find run
 
-# `shoot` true: once the page has loaded, write a PNG of it to `shot` and quit. That is the proof a build leaves behind
+load @term/base/log
+  find warn
+
+# `shoot` true: once the page has loaded, write a PNG of it to `shot` and quit. That is the proof a build leaves behind.
+# The platform calls `ready` and `done` from its own loop, with no Term caller to raise to, so each handles its own
+# raise (decision 089 rule 6 of note/project/term/self-host/change/001-finish-self-host): logged, and a line that cannot
+# be logged is dropped
 task boot
   take bundle, like text
   take shoot, like boolean
@@ -28,17 +34,39 @@ task boot
     read made
     task ready
       like void
-      fork test
-        hook test, read shoot
-        hook hold
-          call show
-            read made
-          call snapshot
-            read made
-            read shot
-            task done
-              like void
-              call quit
+      fork
+        mark unsafe
+        fork test
+          hook test, read shoot
+          hook hold
+            call show
+              read made
+            call snapshot
+              read made
+              read shot
+              task done
+                like void
+                fork
+                  mark unsafe
+                  call quit
+                halt take
+                  take problem
+                  fork
+                    mark unsafe
+                    call warn
+                      text <cask done: {problem/form}: {problem/note}>
+                  halt take
+                    take unlogged
+                    save skip, code 0
+      halt take
+        take problem
+        fork
+          mark unsafe
+          call warn
+            text <cask ready: {problem/form}: {problem/note}>
+        halt take
+          take unlogged
+          save skip, code 0
   call load-bundle
     read made
     read bundle

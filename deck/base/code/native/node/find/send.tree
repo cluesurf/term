@@ -31,6 +31,7 @@ task run-driver-mounted
   take work
     like task
       mark async
+      halt kink
   take before, like dynamic
   call find-driver/run-mounted
     read work

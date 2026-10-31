@@ -775,7 +775,6 @@ form diagnostic-name
   case parallel-crossing, text <parallel-crossing>
   case parallel-await, text <parallel-await>
   case parallel-escape, text <parallel-escape>
-  case made-exception, text <made-exception>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -1012,11 +1011,6 @@ task entry-of
       back error-entry(0x49, <a parallel walk's turn waits>, <make the waited call before or after the walk, or drop `mark parallel`>)
     case parallel-escape
       back error-entry(0x4a, <a parallel walk's turn leaves the walk early>, <a parallel walk runs every turn: raise an exception to stop it, or drop `mark parallel`>)
-    # a `make` of a declared exception form anywhere but as the value directly under a `halt`. An exception value is a
-    # raised occurrence: its `form`, `code`, `time` and `link` are filled only at a raise, so a made record read them
-    # as text never filled (decision 087 of term/self-host/change/001, check/type-names.tree)
-    case made-exception
-      back error-entry(0x4b, <an exception form is made outside a `halt`>, <raise it with `halt \<form\>` and catch it with a guard to hold the value, or make a record of a form that is not an exception>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1098,4 +1092,3 @@ task diagnostic-names
       make parallel-crossing
       make parallel-await
       make parallel-escape
-      make made-exception

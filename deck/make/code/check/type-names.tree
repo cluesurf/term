@@ -23,7 +23,6 @@ load @term/base/maybe
 load @term/base/text
   find ends-with
   find substring
-  find index-of
 
 load ../parser/diagnostic
   find diagnostic
@@ -43,7 +42,6 @@ load ../compile/node
 
 load ../compile/node-walk
   find expressions-in
-  find statements-in
 
 # the names the seeder reads specially, and the language's own: the same list as `PRIMITIVE_TYPE_NAMES` in
 # check/infer.ts, whose warning this refusal hardens. A type argument (`like hash, like text, like number`) stays a
@@ -510,51 +508,6 @@ task check-type-names
       miss
         turn next
 
-  # AN EXCEPTION VALUE IS A RAISED OCCURRENCE (decision 087 of term/self-host/change/001). A declared exception form (its
-  # like-chain holds `exception`) is made only as the value directly under a `halt`, where the raise fills its `host`,
-  # `form`, `code`, `time` and `link`. A record made anywhere else read those as text never filled, and passed where
-  # `exception` is expected it failed as "expected exception, found <form>". A name that is also a case is left to the
-  # case: the form is renamed apart from it before here (check/scope)
-  save exception-forms, make list
-  save case-names, make list
-  walk program
-    take one
-    sift one
-      case record-type
-        walk variants
-          take variant
-          push(case-names, variant/name)
-        fork test, has-text(chain, <exception>)
-          hold
-            push(exception-forms, name)
-      miss
-        turn next
-
-  walk program
-    take one
-    sift one
-      case function
-        fork test, or(is-unequal(file-of(span), file), stub)
-          hold
-            turn next
-        save shown, name
-        sift method
-          case some
-            link of
-            save shown, of/name
-          case none
-            save shown, name
-        refuse-made-exceptions(out, file, body, <in `{shown}`>, exception-forms, case-names)
-      case let
-        fork test, is-unequal(file-of(span), file)
-          hold
-            turn next
-        save top, make list
-        push(top, one)
-        refuse-made-exceptions(out, file, top, <at the top level>, exception-forms, case-names)
-      miss
-        turn next
-
   walk program
     take one
     sift one
@@ -588,85 +541,6 @@ task check-type-names
         turn next
 
   back out/found
-
-# refuse each `make` of an exception form in these statements that is not the value directly under a `halt`. A raise's
-# record is keyed by where it starts and the form it names, which no other construction shares
-task refuse-made-exceptions
-  take out, like refusals
-  take file, like text
-  take statements, like list, like statement
-  take where, like text
-  take exception-forms, like list, like text
-  take case-names, like list, like text
-  like void
-  mark private
-
-  fork test, is-equal(exception-forms/length, 0)
-    hold
-      back
-  save raised, make list
-  walk statements-in(statements)
-    take one
-    sift one
-      case throw
-        sift read(value)
-          case record
-            push(raised, made-key(name, span))
-          miss
-            turn next
-      miss
-        turn next
-  walk expressions-in(statements)
-    take expression
-    sift expression
-      case record
-        fork test, or(not(has-text(exception-forms, name)), has-text(case-names, name))
-          hold
-            turn next
-        fork test, has-text(raised, made-key(name, span))
-          hold
-            turn next
-        save written, written-form-name(name)
-        push(out/found, made-refusal(file, span, <"{written}" is an exception form, made here outside a `halt` ({where}). An exception value is a raised occurrence: `halt {written}` raises it, and a guard catches it>, <raise it with `halt {written}` and catch it with a guard to hold the value, or make a record of a form that is not an exception>))
-      miss
-        turn next
-
-task made-refusal
-  take file, like text
-  take at, like span
-  take message, like text
-  take hint, like text
-  like diagnostic
-  mark private
-
-  save input
-    make diagnostic-input
-      bind file, file
-      bind span, at
-      bind message, make(some, message)
-      bind hint, make(some, hint)
-  save kind, make made-exception
-  back diagnose(kind, input)
-
-task made-key
-  take name, like text
-  take at, like span
-  like text
-  mark private
-
-  back <{at/start/line}:{at/start/column}:{name}>
-
-# a form's name as written: a form split by file is `name__in<g>_<k>`, one renamed apart from a case `name__form`
-task written-form-name
-  take name, like text
-  like text
-  mark private
-
-  save at, index-of(name, <__>, 0)
-  fork test, is-below(at, 0)
-    hold
-      back name
-  back substring(name, 0, at)
 
 task field-span
   take given, like maybe, like span

@@ -22,21 +22,28 @@ task boot
       text <Term smoke>
       code 640
       code 480
-  # every reply is followed by an event, so the page can require the other direction of the bridge too
+  # every reply is followed by an event, so the page can require the other direction of the bridge too. The platform
+  # calls `answer` from its message loop, with no Term caller to raise to, so a raise is answered with the exception
+  # reply the generated dispatcher gives (decision 089 rule 6 of note/project/term/self-host/change/001-finish-self-host)
   call on-message
     read made
     task answer
       mark async
       take message, like text
       like text
-      save reply
-        call dispatch
-          read message
-      call emit
-        read made
-        text <smoke>
-        text <after-reply>
-      send back, read reply
+      fork
+        mark unsafe
+        save reply
+          call dispatch
+            read message
+        call emit
+          read made
+          text <smoke>
+          text <after-reply>
+        send back, read reply
+      halt take
+        take problem
+        send back, text <\{"id":"","exception":"failure"\}>
   call load-bundle
     read made
     read bundle

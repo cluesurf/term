@@ -944,12 +944,15 @@ task load-rest
       back substring(rel, 0, subtract(rel/length, 5))
   back rel
 
-# what the walk of the disk answers, handed in by the face
+# what the walk of the disk answers, handed in by the face. Each reader raises what the disk raises: `failure` from a
+# host call, `absence` from a path that is not there (decision 086 rule 1 of
+# note/project/term/self-host/change/001-finish-self-host: a record's task raises only its `halt` lines)
 form package-disk
   link exists
     like task
       take file, like text
       like boolean
+      halt failure
   link code-root-of
     like task
       take dir, like text
@@ -958,22 +961,27 @@ form package-disk
     like task
       take path, like text
       like maybe, like text
+      halt absence
   link read-dir
     like task
       take dir, like text
       like maybe, like list, like text
+      halt absence
   link is-dir
     like task
       take path, like text
       like boolean
+      halt absence
   link real-of
     like task
       take dir, like text
       like text
+      halt absence
   link tree-files-in
     like task
       take dir, like text
       like list, like tree-file
+      halt absence
   link stdlib-base
     like task
       like maybe, like text

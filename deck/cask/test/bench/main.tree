@@ -27,12 +27,20 @@ task boot
   call on-message
     read made
     read dispatch
+  # the platform calls `ready` from its own loop, with no Term caller to raise to, so it handles its own raise
+  # (decision 089 rule 6 of note/project/term/self-host/change/001-finish-self-host): a line that cannot be logged is
+  # dropped
   call on-ready
     read made
     task ready
       like void
-      call log
-        text <ready>
+      fork
+        mark unsafe
+        call log
+          text <ready>
+      halt take
+        take unlogged
+        save skip, code 0
   call load-bundle
     read made
     read bundle

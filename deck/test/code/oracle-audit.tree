@@ -47,6 +47,8 @@ form oracle-violation
   link detail, like text
   link input, like text
 
+# a backend's emitter, a host module's: it can raise `failure`, and a record's task raises only its `halt` lines
+# (decision 086 of note/project/term/self-host/change/001-finish-self-host)
 form emit-backend
   link name, like text
   link emit
@@ -54,6 +56,7 @@ form emit-backend
       take program, like dynamic
       take wake, like dynamic
       like dynamic
+      halt failure
 
 form emit-ask
   link wake, like dynamic
