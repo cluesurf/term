@@ -9,9 +9,10 @@
 //   a compiler .ts file: every module is skipped, byte-identical to --full. Since decision 036 every port compiles
 //     with stage0, so the working tree's compiler is no part of the fingerprint (it was "nothing is skipped" before)
 //
-// The cold run starts from the tree's own ports and manifest, which another session may have left behind its sources
-// (an edit not yet through make:line). So the cold check asks that every module it builds is one `--verify` calls
-// stale in the copied state, never that it builds none (item term-self-host-001-0483).
+// The cold run starts from the tree's own ports, which another session may have left behind its sources (an edit not
+// yet through make:line). So by default the cold check asks only that nothing fails or is skipped; PORT_BUILD_SKIP_QUIET=1
+// also asks that it builds none, for a tree no one is editing (item term-self-host-001-0483).
+// Run quiet: PORT_BUILD_SKIP_QUIET=1 npx tsx test/call/port-build-skip.ts
 //
 // Each edit's comparison starts both runs from the same state: the ports are put back between the skip run and the
 // --full run, since a port the skip run rewrote is part of the compiler the --full run would load.
@@ -22,7 +23,6 @@ import {
   constants,
   cpSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -114,15 +114,6 @@ function clone(): void {
   }
 
   cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
-
-  // the tree's manifest, so `--verify` in the clone names the ports the tree had left behind their sources. Its entries
-  // are keyed by module name and content hashes, never by the absolute path, so they hold in the clone
-  const treeManifest = join(TERM, '.base', '@term', 'code', 'port-build.json')
-
-  if (existsSync(treeManifest)) {
-    mkdirSync(join(copy, '.base', '@term', 'code'), { recursive: true })
-    cpSync(treeManifest, join(copy, '.base', '@term', 'code', 'port-build.json'))
-  }
 
   // the one path tsconfig.json writes relative to the package, outside it, made absolute for the clone
   const tsconfig = readFileSync(
@@ -314,21 +305,18 @@ try {
 
   // ---- cold, then steady ----
 
-  // the modules the tree's ports had fallen behind, as `--verify` names them against the copied manifest
-  const verified = run('--verify')
-  const stale = new Set(
-    [...verified.out.matchAll(/^ {2}STALE (\S+)/gm)].map(match => match[1]!),
-  )
+  // The cold run has no manifest, so it compiles every module. Whether each lands on the port already there says only
+  // whether the tree was quiet when it was cloned: a module another session has edited and not yet run through
+  // make:line (or one it inlines, such as parser/diagnostic.tree, which `--verify` does not follow) builds anew. So
+  // the default asks that nothing fails and nothing is skipped, and PORT_BUILD_SKIP_QUIET=1 (a tree no one is
+  // editing, such as a release's) asks that nothing is built too (item term-self-host-001-0483)
+  const quiet = process.env.PORT_BUILD_SKIP_QUIET === '1'
   const cold = run()
-  // a built line names the port (deck/<d>/host/port/<path>.ts), the stale one its source (deck/<d>/<path>.tree)
-  const coldBuilt = [...cold.out.matchAll(/^ {2}built (\S+)$/gm)].map(
-    match => match[1]!.replace(/^(deck\/[^/]+)\/host\/port\/(.*)\.ts$/, '$1/$2.tree'),
-  )
-  const unexpected = coldBuilt.filter(name => !stale.has(name))
+  const coldBuilt = [...cold.out.matchAll(/^ {2}built (\S+)$/gm)].map(match => match[1]!)
   ok(
-    `cold: every module compiles, to the port already there unless the tree's was stale (${coldBuilt.length} built, ${stale.size} stale)`,
-    cold.failed === 0 && cold.skipped.size === 0 && unexpected.length === 0,
-    `${unexpected.slice(0, 5).join(' ')} ${cold.out.slice(-400)}`,
+    `cold: every module compiles, none skipped${quiet ? ', each to the port already there' : ''} (${coldBuilt.length} built where the tree's port lagged its sources)`,
+    cold.failed === 0 && cold.skipped.size === 0 && (!quiet || cold.built === 0),
+    `${coldBuilt.slice(0, 5).join(' ')} ${cold.out.slice(-400)}`,
   )
 
   // every module, so a cold run that had to build some (a port left stale in the tree) fails only the line above,
