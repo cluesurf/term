@@ -3,7 +3,8 @@
 // stdlib maybe's absent value, never the text "none", whether the text form is loaded and found, loaded only, or the
 // file's own. Where the file defines the text form and does not import maybe (maybe reached as a type only, through
 // another module's closure), check/scope.ts `bindSharedCases` binds the construction to the file's own case, and the
-// field refuses it LOUDLY: the file names maybe's case only by loading maybe. Each emit is read on TypeScript and Rust.
+// field refuses it LOUDLY: the file names maybe's case only by loading maybe. Since decision 101 (item 0514) the same
+// holds where the file FINDS the text form and not maybe. Each emit is read on TypeScript and Rust.
 // Run from deck/term/deck/term: npx tsx test/check/none-owner.ts
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -73,7 +74,18 @@ function absent(name: string, main: string): void {
 const SHADE = `form shade\n  mark text\n  case none\n  case dark\n`
 
 absent('loaded and found, maybe loaded', `load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find primitive\n  find hold-kind\n\n${HOLDER}\n${BODY}`)
-absent('loaded and found, maybe a type only', `load @app/kinds\n  find primitive\n  find hold-kind\n\n${HOLDER}\n${BODY}`)
+
+{
+  // found, and maybe a type only: the one owner the file's finds reach is the text form, so the construction is its
+  // case, refused loudly in a maybe position (decision 101, item term-self-host-001-0514: the owner is a fact of the
+  // file, as for the file's own text form below). It built maybe's none by position until then
+  const out = emitted(`load @app/kinds\n  find primitive\n  find hold-kind\n\n${HOLDER}\n${BODY}`)
+  ok(
+    'loaded and found, maybe a type only: refused, naming maybe',
+    !out.ok && out.said.includes('expected maybe, like text, found primitive'),
+    out.ok ? out.ts : out.said,
+  )
+}
 absent('loaded, not found, maybe a type only', `load @app/kinds\n  find hold-kind\n\n${HOLDER}\n${BODY}`)
 absent('the file\'s own text form, maybe loaded', `load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find hold-kind\n\n${SHADE}\n${HOLDER}\n${BODY}`)
 

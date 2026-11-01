@@ -82,6 +82,7 @@ load ./places
 
 load ../check/effects
   find raise-sets-of
+  find raise-sets
 
 load ../ir/facts/steps
   find proven-increments
@@ -152,6 +153,23 @@ form ts-task-facts
   link cursor-reads, like hash, like number, like hash, like number, like text
   link redeclared, like hash, like number, like hash, like number, like boolean
 
+# THE WHOLE PROGRAM'S RAISE SETS, kept for one emitModules call (decision 102 of term/self-host/change/001-finish-self-host):
+# every module's emit reads them over the same whole program, so the first emit to ask works them out and the rest read
+# them back, for the same exceptions only. The face makes one per call and hands the same one to every module's emit
+form raise-memo
+  mark shared
+  link names, like list, like text
+  link sets, like maybe, like raise-sets
+
+task new-raise-memo
+  like raise-memo
+
+  save names, make list
+  back
+    make raise-memo
+      bind names, names
+      bind sets, make none
+
 # ---- small helpers ----
 
 task ts-program-skip
@@ -184,6 +202,51 @@ task keys-of
     take one
     push(out, one)
   back out
+
+task same-texts
+  take a, like list, like text
+  take b, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  save at, 0
+  walk a
+    take one
+    fork test, is-unequal(one, get(b, at))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# the raise sets over `whole` for the exceptions `names`: the memo's, when it holds them for the same names and `shared`
+# says every emit it serves reads this same whole program, else worked out (and kept, when shared)
+task raise-sets-kept
+  take whole, like list, like statement
+  take names, like list, like text
+  take memo, like raise-memo
+  take shared, like boolean
+  like raise-sets
+  mark private
+
+  fork test, shared
+    hold
+      sift memo/sets
+        case some
+          link kept
+          fork test, same-texts(memo/names, names)
+            hold
+              back kept
+        case none
+          save idle, 0
+  save made, raise-sets-of(whole, names)
+  fork test, shared
+    hold
+      save memo/names, names
+      save memo/sets, make(some, made)
+  back made
 
 task join-with
   take parts, like list, like text
@@ -837,6 +900,8 @@ task emit-type-script
   take export-constants, like boolean
   take wake, like list, like warnings-wake-group
   take runtime, like list, like runtime-bound
+  # the raise sets kept across one emitModules call's modules (decision 102), a fresh memo for an emit of its own
+  take raises, like raise-memo
   take fail
     like task
       take reason, like text
@@ -851,14 +916,18 @@ task emit-type-script
   # over the whole program a per-module emit is handed, else this one: a separately built unit's stubs carry the sets
   # their own units closed over, so a call gains its frame alike in a separate build and a merged one
   save whole, given
+  save shared, false
   sift context
     case some
       link known
       save whole, known
+      save shared, true
     case none
       save idle, 0
   save raising, make hash
-  save raise-sets, raise-sets-of(whole, keys-of(tables/exceptions))
+  # worked out once per emitModules call over the whole program it hands every module (decision 102): the same whole
+  # program and the same exceptions give the same sets
+  save raise-sets, raise-sets-kept(whole, keys-of(tables/exceptions), raises, shared)
   walk raise-sets/raises/keys()
     take raiser
     fork test, is-above(raise-sets/raises/get(raiser)/length, 0)

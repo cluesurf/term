@@ -480,6 +480,69 @@ bind json-strings
   case kotlin
     text <TODO()>
 
+# A DEFINITION'S KEY TEXT, KEPT (decision 102 of term/self-host/change/001-finish-self-host): `key-text` builds a
+# statement's node-json for every task's memo key and every definition the key reaches, again on every check. The host
+# keeps each answer by the statement's own whole native text, places left out as `key-skip` leaves them out
+# (check/hold-key-memo.ts), so an unchanged definition's text is never built twice; the kept text is the same text,
+# since node-json reads nothing the native text does not hold. `<>` is a statement the host cannot write exactly, which
+# is never kept
+bind kept-key
+  take s, like statement
+  like text
+  case node
+    text <((globalThis as any).__termHoldKeyMemo?.key($s) ?? '')>
+  case browser
+    text <((globalThis as any).__termHoldKeyMemo?.key($s) ?? '')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+bind is-key-kept
+  take key, like text
+  like boolean
+  case node
+    text <Boolean((globalThis as any).__termHoldKeyMemo?.has($key))>
+  case browser
+    text <Boolean((globalThis as any).__termHoldKeyMemo?.has($key))>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+bind key-kept
+  take key, like text
+  like key-found
+  case node
+    text <((globalThis as any).__termHoldKeyMemo.get($key))>
+  case browser
+    text <((globalThis as any).__termHoldKeyMemo.get($key))>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <TODO()>
+
+bind keep-key
+  take key, like text
+  take found, like key-found
+  like boolean
+  case node
+    text <Boolean((globalThis as any).__termHoldKeyMemo?.keep($key, $found))>
+  case browser
+    text <Boolean((globalThis as any).__termHoldKeyMemo?.keep($key, $found))>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
 # what a memo key leaves out of a statement at every depth: its places
 task key-skip
   like list, like text
@@ -495,11 +558,18 @@ task key-text
   like key-found
   mark private
 
+  save memo-key, kept-key(statement)
+  fork test, and(is-unequal(memo-key, <>), is-key-kept(memo-key))
+    hold
+      back key-kept(memo-key)
   save json, statement-json(key-skip(), statement)
   save found
     make key-found
       bind text, json
       bind names, json-strings(json)
+  fork test, is-unequal(memo-key, <>)
+    hold
+      keep-key(memo-key, found)
   back found
 
 # a cited rule without its places, as node-json's text

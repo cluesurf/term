@@ -17,6 +17,7 @@
 import type { Program, Statement } from '@term/make/code/compile/node'
 import {
   emitTypeScript,
+  newRaiseMemo,
   toCamel,
   toPascal,
 } from '@term/make/code/compile/typescript'
@@ -97,6 +98,9 @@ export function emitModules(
 
   const variants = new Set(plans.variants)
   const out = new Map<string, ModuleEmit>()
+  // the whole program's raise sets, worked out by the first module's emit and read by the rest (decision 102 of
+  // term/self-host/change/001-finish-self-host): every module's emit reads them over this same `program`
+  const raises = newRaiseMemo()
 
   for (const plan of plans.plans) {
     // zone modules emit HMR-aware component bodies (signals seeded from the kept snapshot, instances registered)
@@ -109,6 +113,7 @@ export function emitModules(
         exportConstants: true,
         context: program,
         runtime,
+        raises,
       },
     )
 

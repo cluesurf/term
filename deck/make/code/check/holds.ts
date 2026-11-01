@@ -37,6 +37,8 @@ import { checkerSwitches } from '@term/make/code/check/strict'
 import * as inequalityPart from '@term/make/code/check/inequality'
 import * as holdWalk from '@term/make/code/check/hold-walk'
 import type { Owed, OwedKinds } from '@term/make/code/check/holding'
+// installs the memo hold-walk.tree `key-text` reads through the host (decision 102)
+import { clearHoldKeyMemo } from '@term/make/code/check/hold-key-memo'
 import {
   addOwed as addOwedIn,
   describeOwed,
@@ -152,9 +154,10 @@ export function checkHolds(
   }) as never
 }
 
-// forget every kept walk, so a test can ask the provers afresh
+// forget every kept walk and every kept key text, so a test can ask the provers afresh
 export function clearHoldMemo(): void {
   clearHoldMemoIn(STATE)
+  clearHoldKeyMemo()
 }
 
 // the tier-0 count for one compile: how many obligations, how many proven, and the ones that were not, each with

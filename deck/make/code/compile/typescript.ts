@@ -91,6 +91,9 @@ export function emitTypeScript(
     context?: Program
     // the render runtime's names as the build bound them (D020)
     runtime?: { name: string; bound: string }[]
+    // the whole program's raise sets, kept across the modules of one per-module emit (`newRaiseMemo`, decision 102 of
+    // term/self-host/change/001-finish-self-host): only an emit handed `context` reads it, the rest work theirs out
+    raises?: port.RaiseMemo
   },
 ): string {
   return port.emitTypeScript(
@@ -105,6 +108,12 @@ export function emitTypeScript(
     options?.exportConstants === true,
     (options?.wake ?? []) as never,
     (options?.runtime ?? []) as never,
+    options?.raises ?? port.newRaiseMemo(),
     fail,
   )
+}
+
+// one memo of the whole program's raise sets, for every module of one per-module emit (compile/modules.ts)
+export function newRaiseMemo(): port.RaiseMemo {
+  return port.newRaiseMemo()
 }
