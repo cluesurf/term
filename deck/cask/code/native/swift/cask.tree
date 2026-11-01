@@ -3,6 +3,9 @@
 # window, the WKWebView, the WKScriptMessageHandler that receives `window.term.post`, and the run loop. Every task
 # here is total: the shim absorbs the optionals. Internal: reached only through the public cask API in ../../cask.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:cask>, name cask
   load <global:cask-update>, name cask-update
@@ -55,10 +58,29 @@ task on-message
       wait true
       take message, like text
       like text
+      halt exception
   like void
   call cask/on-message
     read self
-    read handler
+    task answered
+      mark async
+      take message, like text
+      like text
+      # a raise is reported and answered with the reply the generated dispatcher gives when its own encoding fails, held
+      # in a local and sent after the guard, because a guard whose body and handler each send back does not build on Rust
+      save reply, text <\{"id":"","exception":"failure"\}>
+      fork
+        mark unsafe
+        save reply
+          call handler
+            wait true
+            read message
+      halt take
+        take problem
+        call report-raise
+          text <on-message/handler>
+          read problem
+      send back, read reply
 
 task emit
   take self, like window
@@ -76,6 +98,7 @@ task listen
     like task
       take text, like text
       like void
+      halt exception
   like void
 
 task on-ready
@@ -83,10 +106,20 @@ task on-ready
   take handler
     like task
       like void
+      halt exception
   like void
   call cask/on-ready
     read self
-    read handler
+    task readied
+      like void
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <on-ready/handler>
+          read problem
 
 # runs when the window closes, by the person or by `close` (native-dom-0030)
 task on-close
@@ -94,10 +127,20 @@ task on-close
   take handler
     like task
       like void
+      halt exception
   like void
   call cask/on-close
     read self
-    read handler
+    task closed
+      like void
+      fork
+        mark unsafe
+        call handler
+      halt take
+        take problem
+        call report-raise
+          text <on-close/handler>
+          read problem
 
 # close the window, as the person would: every `on-close` handler runs
 task close
@@ -112,11 +155,21 @@ task snapshot
   take done
     like task
       like void
+      halt exception
   like void
   call cask/snapshot
     read self
     read path
-    read done
+    task written
+      like void
+      fork
+        mark unsafe
+        call done
+      halt take
+        take problem
+        call report-raise
+          text <snapshot/done>
+          read problem
 
 task show
   take self, like window
@@ -193,13 +246,25 @@ task update-check
     like task
       take status, like text
       like void
+      halt exception
   like void
   call cask-update/check
     read resources
     read data
     read base
     read channel
-    read done
+    task answered
+      take status, like text
+      like void
+      fork
+        mark unsafe
+        call done
+          read status
+      halt take
+        take problem
+        call report-raise
+          text <update-check/done>
+          read problem
 
 # the page reached its first render: the update this launch ran is good. Call it from `on-ready`
 task update-ready

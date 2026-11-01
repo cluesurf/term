@@ -320,10 +320,10 @@ object nativeView {
         context().dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code))
     }
 
-    private fun context(): Activity = activity ?: error("nativeView: no Activity yet. A program runs inside TermActivity.program()")
+    private fun context(): Activity = activity ?: kotlin.error("nativeView: no Activity yet. A program runs inside TermActivity.program()")
 
     // the handle Term holds is `Any`, so every entry point takes `Any` and reads the node out of it
-    private fun node(handle: Any): TermNode = handle as? TermNode ?: error("nativeView: not a node: $handle")
+    private fun node(handle: Any): TermNode = handle as? TermNode ?: kotlin.error("nativeView: not a node: $handle")
 
     // every node made, held weakly, so a test can count the ones still alive (reactive-bridge-0005)
     private val made = mutableListOf<java.lang.ref.WeakReference<TermNode>>()

@@ -74,11 +74,8 @@ if (!only || only === 'rust') {
   }
 }
 
-// Swift has the same defect in its own spelling ('Maybe<Never>' handed where 'Maybe<Any>' is wanted), logged on 0522 as
-// a separate defect: it runs here only with FREE_SWIFT=1 until that is fixed
-const swift = process.env.FREE_SWIFT === '1' || only === 'swift'
-
-for (const backend of BACKENDS.filter(b => (!only || b === only) && (b !== 'swift' || swift))) {
+// Swift had the same defect in its own spelling ('Maybe<Never>' handed where 'Maybe<Any>' is wanted), fixed by 0529
+for (const backend of BACKENDS.filter(b => !only || b === only)) {
   const ran = runOn({
     backend,
     program: PROGRAM,

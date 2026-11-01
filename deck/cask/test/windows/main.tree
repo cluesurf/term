@@ -331,10 +331,9 @@ task boot
       mark async
       take message, like text
       like text
-      # the platform calls `drive` from its message loop, with no Term caller to raise to, so a raise outside the
-      # checks ends the run with the failed-run status (decision 089 rule 6 of
-      # note/project/term/self-host/change/001-finish-self-host). The reply is held in a local and sent after the guard: a
-      # guard whose body and handler each send back does not build on Rust (E0308, term-self-host-001-0498)
+      # a raise outside the checks ends the run with the failed-run status the driver reads, which the cask's own guard
+      # would only report. The reply is held in a local and sent after the guard: a guard whose body and handler each
+      # send back does not build on Rust (E0308, term-self-host-001-0498)
       save reply, text <\{"id":"","exception":"failure"\}>
       fork
         mark unsafe

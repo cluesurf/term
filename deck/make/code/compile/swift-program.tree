@@ -86,6 +86,7 @@ load ./backend-shapes
   find inspect-forms
   find record-field
   find reassigned
+  find pass-positions
 
 load ./backend-names
   find gated-tasks
@@ -2220,6 +2221,22 @@ task emit-swift
     fork test, is-above(raise-sets/raises/get(raiser)/length, 0)
       hold
         save throwing/{raiser}, true
+  # each task's pass-through parameters: the task is `rethrows` and the slot's closure type throws (decision 089 rule 5)
+  save passes, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        fork test, raise-sets/through/has(name)
+          hold
+            save positions, pass-positions(raise-sets/through/get(name), params/length)
+            fork test, is-above(positions/length, 0)
+              hold
+                save passes/{name}, positions
+      miss
+        save idle, 0
   # F1, the same facts Rust reads: the lent and fresh lists
   save gated, gated-tasks(program, keys-of(mask-methods))
   save list-facts, list-facts-of(program, gated)
@@ -2450,6 +2467,7 @@ task emit-swift
       bind binds, collect-binds(program)
       bind fills, fills
       bind throwing, throwing
+      bind passes, passes
       bind async-tasks, flags-of(async-names)
       bind mask-methods, mask-methods
       bind mask-of, mask-of
@@ -2912,7 +2930,7 @@ task swift-stop-text
 task swift-exception-text
   like text
 
-  back <struct TermException: Error \{ let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var first: String? = nil; var second: String? = nil; var rest: [String] = [] \}\nextension TermException \{ var flow: [String] \{ Array(([first, second].compactMap \{ $0 \} + rest).flatMap \{ $0.split(separator: "\\n").map(String.init) \}.prefix(64)) \}; func at(_ site: String) -\> TermException \{ var raised = self; if raised.first == nil \{ raised.first = site \} else if raised.second == nil \{ raised.second = site \} else if raised.rest.count \< 62 \{ raised.rest.append(site) \}; return raised \} \}\nfunc termException(_ thrown: Any) -\> TermException \{ if let e = thrown as? TermException \{ return e \}; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) \}\n@inline(__always) func termCall\<T\>(_ site: String, _ body: () throws -\> T) throws -\> T \{ do \{ return try body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\n@inline(__always) func termCallAsync\<T\>(_ site: String, _ body: () async throws -\> T) async throws -\> T \{ do \{ return try await body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\nfunc termEnd\<T\>(_ site: String, _ body: () throws -\> T) -\> T \{ do \{ return try body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termEndAsync\<T\>(_ site: String, _ body: () async throws -\> T) async -\> T \{ do \{ return try await body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termUnhandled(_ thrown: Any) -\> Never \{ let raised = termException(thrown); var text = raised.form + ": " + raised.note + "\\n"; for frame in raised.flow \{ text += "  at " + frame + "\\n" \}; FileHandle.standardError.write(Data(text.utf8)); exit(1) \}>
+  back <struct TermException: Error \{ let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var first: String? = nil; var second: String? = nil; var rest: [String] = [] \}\nextension TermException \{ var flow: [String] \{ Array(([first, second].compactMap \{ $0 \} + rest).flatMap \{ $0.split(separator: "\\n").map(String.init) \}.prefix(64)) \}; func at(_ site: String) -\> TermException \{ var raised = self; if raised.first == nil \{ raised.first = site \} else if raised.second == nil \{ raised.second = site \} else if raised.rest.count \< 62 \{ raised.rest.append(site) \}; return raised \} \}\nfunc termException(_ thrown: Any) -\> TermException \{ if let e = thrown as? TermException \{ return e \}; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) \}\n@inline(__always) func termCall\<T\>(_ site: String, _ body: () throws -\> T) rethrows -\> T \{ do \{ return try body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\n@inline(__always) func termCallAsync\<T\>(_ site: String, _ body: () async throws -\> T) async rethrows -\> T \{ do \{ return try await body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\nfunc termEnd\<T\>(_ site: String, _ body: () throws -\> T) -\> T \{ do \{ return try body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termEndAsync\<T\>(_ site: String, _ body: () async throws -\> T) async -\> T \{ do \{ return try await body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termUnhandled(_ thrown: Any) -\> Never \{ let raised = termException(thrown); var text = raised.form + ": " + raised.note + "\\n"; for frame in raised.flow \{ text += "  at " + frame + "\\n" \}; FileHandle.standardError.write(Data(text.utf8)); exit(1) \}>
 
 # the reference wrapper for maps, insertion-ordered, and the key rule
 task swift-map-text

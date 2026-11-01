@@ -2333,7 +2333,14 @@ task emit-call
                     miss
                       push(rendered, empty)
                       save at, add(at, 1)
-      save called, <{emit-expression(callee, 0, st, facts)}({join-texts(rendered, <, >)}){bang}>
+      # an inlined task can leave a closure as the callee, and an arrow function is only called inside parentheses
+      save callee-text, emit-expression(callee, 0, st, facts)
+      sift callee
+        case closure
+          save callee-text, <({callee-text})>
+        miss
+          save nothing, 0
+      save called, <{callee-text}({join-texts(rendered, <, >)}){bang}>
       # A CALL THAT PASSES A RAISE OUT names its frame first (term/hive decision 001): one store in the task's `__site`,
       # which the task's catch appends on the way out. Outside every task the call is wrapped once
       fork test, passes-raise(node, facts/raising)

@@ -56,9 +56,9 @@ const platform = (
 const driver = [
   'let args: Vec<String> = std::env::args().collect();',
   '  match args[1].as_str() {',
-  '    "launch" => println!("page {}", launch(args[2].clone(), args[3].clone())),',
-  '    "check" => fetch_update(args[2].clone(), args[3].clone(), args[4].clone(), std::rc::Rc::new(|status: String| println!("status {}", status))),',
-  '    "ready" => mark_ready(args[2].clone()),',
+  '    "launch" => println!("page {}", launch(args[2].clone(), args[3].clone()).unwrap_or_default()),',
+  '    "check" => { let _ = fetch_update(args[2].clone(), args[3].clone(), args[4].clone(), std::rc::Rc::new(|status: String| println!("status {}", status))); }',
+  '    "ready" => { let _ = mark_ready(args[2].clone()); }',
   '    _ => {}',
   '  }',
 ].join('\n')
@@ -237,6 +237,107 @@ const update = published('next')
   ok(
     'a base with nothing published is none',
     check(resources, data, join(dir, 'nothing-here')) === 'none',
+  )
+}
+
+{
+  // A raise in a kept callback (decision 096 of the self-host change 001): the app writes no guard, the library reports
+  // it and the program goes on. update-check runs its real client. The window callbacks need a window, so the runtime's
+  // stub half is built here with each stand-in calling the closure it is handed at once: this runs the library's guard
+  // and report on Rust, and no GTK or Win32 window delivers the call.
+  const raising = buildRustProgram({
+    root: CASK,
+    entry: join(CASK, 'test/update/raising.tree'),
+    driver: [
+      'let args: Vec<String> = std::env::args().collect();',
+      '  if check_raising(args[1].clone(), args[2].clone(), args[3].clone()).is_ok() { println!("went past update-check"); }',
+      '  if wired(cask::open_window(String::new(), 1, 1), args[4].clone()).is_ok() { println!("went on"); }',
+    ].join('\n'),
+    work: join(dir, 'raising-work'),
+    crate: 'update_raising',
+    target: 'linux',
+  })
+  const STUB = /unimplemented!\("\{\}", ELSEWHERE\)/.source
+  const standIns: [RegExp, string][] = [
+    [/#\[cfg\(target_os = "linux"\)\]\n(\s*)mod imp/, '#[cfg(any())]\n$1mod imp'],
+    [/#\[cfg\(windows\)\]\n(\s*)mod imp/, '#[cfg(any())]\n$1mod imp'],
+    [/#\[cfg\(not\(any\(target_os = "linux", windows\)\)\)\]\n\s*mod imp/, 'mod imp'],
+    [
+      new RegExp(`(pub fn open_window\\([^)]*\\) -> CaskWindow \\{\\s*)${STUB}`),
+      '$1CaskWindow',
+    ],
+    [
+      new RegExp(`pub fn on_message\\(_handle: CaskWindow, _handler: Handler\\) -> \\(\\) \\{\\s*${STUB}`),
+      [
+        'pub fn on_message(_handle: CaskWindow, _handler: Handler) -> () {',
+        'let mut reply = _handler("ping".to_string());',
+        'let mut context = std::task::Context::from_waker(std::task::Waker::noop());',
+        'match std::future::Future::poll(reply.as_mut(), &mut context) {',
+        'std::task::Poll::Ready(text) => println!("reply {}", text),',
+        'std::task::Poll::Pending => println!("reply pending"),',
+        '}',
+      ].join('\n'),
+    ],
+    [
+      new RegExp(`(pub fn on_ready\\(_handle: CaskWindow, _handler: Ready\\) -> \\(\\) \\{\\s*)${STUB}`),
+      '$1_handler()',
+    ],
+    [
+      new RegExp(`(pub fn on_close\\(_handle: CaskWindow, _handler: Ready\\) -> \\(\\) \\{\\s*)${STUB}`),
+      '$1_handler()',
+    ],
+    [
+      new RegExp(`(pub fn snapshot\\(_handle: CaskWindow, _path: String, _done: Ready\\) -> \\(\\) \\{\\s*)${STUB}`),
+      '$1_done()',
+    ],
+  ]
+  const mainFile = join(raising.project, 'src/main.rs')
+  let standIn = readFileSync(mainFile, 'utf8')
+  for (const [from, to] of standIns) {
+    ok(`the stand-in finds ${from.source.slice(0, 40)}`, from.test(standIn))
+    standIn = standIn.replace(from, to)
+  }
+  writeFileSync(mainFile, standIn)
+  execFileSync('cargo', ['build', '--release', '--quiet'], {
+    cwd: raising.project,
+    stdio: 'inherit',
+  })
+  const data = mkdtempSync(join(dir, 'data-'))
+  const seen = spawnSync(
+    join(raising.project, 'target/release/update_raising'),
+    [
+      resources,
+      data,
+      join(dir, 'nothing-here'),
+      join(dir, 'shot.png'),
+    ],
+    { encoding: 'utf8', timeout: 60_000 },
+  )
+  const reports = `${seen.stderr}\n${seen.stdout}`
+  for (const [slot, line] of [
+    ['update-check done', 'update-check/done: failure: no status none'],
+    ['on-message', 'on-message/handler: failure: no answer ping'],
+    ['on-ready', 'on-ready/handler: failure: not drawn'],
+    ['snapshot done', 'snapshot/done: failure: not shot'],
+    ['on-close', 'on-close/handler: failure: not closed'],
+  ] as const) {
+    ok(
+      `a raise in ${slot} is reported as the place, the form and the note`,
+      reports.includes(line),
+      reports,
+    )
+  }
+  ok(
+    'on-message answers the fixed exception reply after its raise',
+    seen.stdout.includes('reply {"id":"","exception":"failure"}'),
+    seen.stdout,
+  )
+  ok(
+    'and the program goes on past every raise',
+    seen.status === 0 &&
+      seen.stdout.includes('went past update-check') &&
+      seen.stdout.includes('went on'),
+    `${seen.status} ${seen.stdout}`,
   )
 }
 

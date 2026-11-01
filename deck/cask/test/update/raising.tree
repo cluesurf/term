@@ -1,0 +1,54 @@
+# A raise in each callback the cask keeps for its host (decision 096 of
+# note/project/term/self-host/change/001-finish-self-host): the app writes no guard, the program builds on Rust, and
+# test/call/update-rust.ts runs both tasks to see the library report each raise and the program go on. `check-raising`
+# meets the real update client. `wired` needs a window, so that test runs it over a stand-in for the shim's stub half
+# that calls each kept closure at once.
+
+load @term/cask/cask
+  find window
+  find on-message
+  find on-ready
+  find on-close
+  find snapshot
+  find update-check
+
+task check-raising
+  take resources, like text
+  take data, like text
+  take base, like text
+  call update-check
+    read resources
+    read data
+    read base
+    text <main>
+    task heard
+      take status, like text
+      like void
+      halt <no status {status}>
+
+task wired
+  take made, like window
+  take shot, like text
+  call on-message
+    read made
+    task answer
+      mark async
+      take message, like text
+      like text
+      halt <no answer {message}>
+  call on-ready
+    read made
+    task drawn
+      like void
+      halt <not drawn>
+  call snapshot
+    read made
+    read shot
+    task done
+      like void
+      halt <not shot>
+  call on-close
+    read made
+    task closed
+      like void
+      halt <not closed>

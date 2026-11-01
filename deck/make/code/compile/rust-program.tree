@@ -82,6 +82,8 @@ load ./backend-shapes
   find string-call
   find is-text
   find escaping-params
+  find pass-positions
+  find slot-raising
   find inspect-forms
   find record-field
   find form-spec
@@ -496,6 +498,20 @@ task reused-payload-of
 bind rust-program-copy-expression
   take value, like expression
   like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind rust-program-copy-param
+  take value, like function-param
+  like function-param
   case node
     text <(\{ ...$value \})>
   case browser
@@ -2040,6 +2056,55 @@ task emit-rust-pass
             save impl-fn-params/{name}, local
       miss
         save idle, 0
+  # A TASK WITH A PASS-THROUGH PARAMETER HAS A RAISING INSTANCE (decision 089 rule 5): `<name>-raising`, whose slots
+  # answer `Result`, written when some call reaches it. Every fact keyed by the task's name holds for the instance, so
+  # the emitter reads it as any raising task
+  save passes, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        fork test, raise-sets/through/has(name)
+          hold
+            save positions, pass-positions(raise-sets/through/get(name), params/length)
+            fork test, is-above(positions/length, 0)
+              hold
+                save passes/{name}, positions
+                save instance, <{name}-raising>
+                save raising/{instance}, true
+                fork test, async-functions/has(name)
+                  hold
+                    save async-functions/{instance}, true
+                save slots, make list
+                walk function-params/get(name)
+                  take slot
+                  take at
+                  fork test, has-number(positions, at)
+                    hold
+                      save made, slot-raising(slot)
+                      push(slots, made)
+                    miss
+                      push(slots, slot)
+                save function-params/{instance}, slots
+                fork test, impl-fn-params/has(name)
+                  hold
+                    save impl-fn-params/{instance}, impl-fn-params/get(name)
+                fork test, borrow-params/has(name)
+                  hold
+                    save borrow-params/{instance}, borrow-params/get(name)
+                fork test, lend/has(name)
+                  hold
+                    save lend/{instance}, lend/get(name)
+                fork test, fresh/has(name)
+                  hold
+                    save fresh/{instance}, true
+                fork test, stack-lists/has(name)
+                  hold
+                    save stack-lists/{instance}, stack-lists/get(name)
+      miss
+        save idle, 0
   # a module-level `host` data tree gets one struct per record node, named by the binding and the field path
   save structs
     make rust-host-structs
@@ -2392,6 +2457,7 @@ task emit-rust-pass
       bind function-params, function-params
       bind async-functions, async-functions
       bind impl-fn-params, impl-fn-params
+      bind passes, passes
       bind lend-params, lend
       bind fresh-lists, fresh
       bind field-lists, field-lists
@@ -2477,6 +2543,41 @@ task emit-rust-pass
               save idle, 0
           push(body, emit-unchecked(fast-copy, st, facts))
           push(body-files, file-of(fast-fn))
+        case none
+          save idle, 0
+  # each task some call reached with a raising argument, once more as its raising instance (decision 089 rule 5: the
+  # plain instance stays as it was; the list grows while it is walked, a raising instance forwarding its slot)
+  save raising-at, 0
+  walk test
+    hook test, is-below(raising-at, st/raising-tasks/length)
+    hook hold
+      save raising-name, get(st/raising-tasks, raising-at)
+      save raising-at, add(raising-at, 1)
+      sift first-function(program, raising-name)
+        case some
+          link raising-fn
+          save instance-copy, rust-program-copy-statement(raising-fn)
+          sift instance-copy
+            case function
+              link params
+              save instance-params, make list
+              save positions, passes/get(raising-name)
+              walk params
+                take param
+                take at
+                fork test, has-number(positions, at)
+                  hold
+                    save one-param, rust-program-copy-param(param)
+                    save one-param/type, slot-raising(param/type)
+                    push(instance-params, one-param)
+                  miss
+                    push(instance-params, param)
+              save instance-copy/name, <{raising-name}-raising>
+              save instance-copy/params, instance-params
+            miss
+              save idle, 0
+          push(body, emit-statement(instance-copy, 0, st, facts))
+          push(body-files, file-of(raising-fn))
         case none
           save idle, 0
   # THE EXCEPTION CODEC (decision 078 section 4), for a program holding a parallel walk and `@term/host`'s data: each

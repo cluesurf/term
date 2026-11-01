@@ -19,7 +19,7 @@
 #   - check/inequality.tree's tasks this layer calls back (the linear translation, the polynomial facts, the product
 #     goals) are handed in as `hold-calls`, beside the provers' records, built in Term (inequality.tree
 #     `hold-calls-over`, decision 057 rule 5). The memoized linear prover is eliminate.tree `proves-in` and the
-#     definitions' unfolding unfolding.tree `unfold-over`, called here directly
+#     definitions' unfolding unfolding.tree `unfold-definitions` over the state's table, called here directly
 #   - a node's spread copy is `shallow-copy`, the bind check/unfolding.tree uses, so a rebuilt node keeps every field
 #   - `made.filter(other => other !== instance)` asked object identity. Each instance is carried with its index in
 #     `made` (`instance-ways`), and the rest is every other index, the same on every backend (D011 rule 7). They differ
@@ -75,7 +75,8 @@ load ./products
   find product-profile
 
 load ./unfolding
-  find unfold-over
+  find unfold-definitions
+  find carried-noted
 
 load ./ring
   find equation
@@ -1157,6 +1158,14 @@ task cited-everywhere
       hold
         turn next
     save rule, state/theorems/get(rule-name)
+    # a carried rule is its stub's body, consulted here (decision 103)
+    sift rule
+      case function
+        fork test, and(is-equal(stub, true), is-above(stub-body/length, 0))
+          hold
+            save told, carried-noted(rule, <body>)
+      miss
+        save nothing, 0
     fork test, not(state/proven-theorems/has(rule-name))
       hold
         turn next
@@ -1353,19 +1362,19 @@ task visit-recurrences
               save cases, expressions()
               walk r/steps
                 take one
-                save acc, binary-node(<==>, step/call, unfold-over(bound(one/value, step/given), state/program), goal)
+                save acc, binary-node(<==>, step/call, unfold-definitions(bound(one/value, step/given), state/unfolds), goal)
                 save at, one/guards/length
                 walk test
                   hook test, is-above(at, 0)
                   hook hold
                     save at, subtract(at, 1)
-                    save acc, binary-node(<&&>, unfold-over(bound(get(one/guards, at), step/given), state/program), acc, goal)
+                    save acc, binary-node(<&&>, unfold-definitions(bound(get(one/guards, at), step/given), state/unfolds), acc, goal)
                 push(cases, acc)
               save base-key, <{print-expression(zero/call, 0)} base>
               save base-fact
                 make binder-fact
                   bind binders, texts()
-                  bind expr, binary-node(<==>, zero/call, unfold-over(bound(r/base, zero/given), state/program), goal)
+                  bind expr, binary-node(<==>, zero/call, unfold-definitions(bound(r/base, zero/given), state/unfolds), goal)
               save out/{base-key}, base-fact
               save step-key, <{print-expression(step/call, 0)} step>
               save chained, get(cases, subtract(cases/length, 1))

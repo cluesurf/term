@@ -57,6 +57,11 @@ load ../compile/node-reach
 load ../compile/node-children
   find skip-carried
 
+load ./unfolding
+  find new-unfolds
+  find carried-noted
+  find unfold-definitions, name unfold-through
+
 load ../compile/node-rewrite
   find rewrite-program
   find rewrite-rule
@@ -996,11 +1001,14 @@ task elaborate-report
       take expression, like expression
       like boolean
       back impure-in(expression-part(expression), pure, functions, facts)
+  # one unfolding table for the run, filled as the goals ask, a stub's carried shape told to the trace when an entry
+  # reads it (decision 103): the host's unfolding built the whole table at every call
+  save unfolds, new-unfolds(program, carried-noted)
   save unfold-definitions
     task
       take expression, like expression
       like expression
-      back host/unfold-definitions(expression, program)
+      back unfold-through(expression, unfolds)
   save check-fold
     task
       take goal, like expression

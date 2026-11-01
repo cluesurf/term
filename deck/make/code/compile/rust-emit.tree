@@ -149,6 +149,7 @@ load ./backend-shapes
   find spec-forms
   find refuse-any
   find inspect-kind-of
+  find type-raises
   find form-spec
   find record-field
   find collection-op
@@ -249,6 +250,8 @@ form rust-facts
   link function-params, like hash, like text, like list, like maybe, like type
   link async-functions, like hash, like text, like boolean
   link impl-fn-params, like hash, like text, like list, like number
+  # each task's pass-through parameters, by position (decision 089 rule 5)
+  link passes, like hash, like text, like list, like number
   link lend-params, like hash, like text, like hash, like number, like text
   link fresh-lists, like hash, like text, like boolean
   link field-lists, like hash, like text, like boolean
@@ -363,6 +366,13 @@ form rust-state
   # the loops whose fast copy is being written, and the tasks some call in one reached
   link fast-loops, like list, like statement
   link fast-tasks, like list, like text
+  # the tasks some call reached with a raising argument, whose raising instance is written last (decision 089 rule 5),
+  # the parameters of the task being written whose slot answers `Result`, and the type of the place the value being
+  # written goes, read once by the task value or closure that is that value
+  link raising-tasks, like list, like text
+  link raising-slots, like hash, like text, like boolean
+  link value-slot, like maybe, like type
+  link job-slot, like boolean
   # the body being written is a task's unchecked copy
   link unchecked-ints, like boolean
   link reuse-opened, like list, like text
@@ -407,6 +417,21 @@ form rust-state
   link clone-forms, like hash, like text, like boolean
   link clone-generic, like boolean
 
+# a shallow copy of an expression, at the same place: the raising instance's call
+bind rust-emit-copy-expression
+  take value, like expression
+  like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
 task new-rust-state
   like rust-state
 
@@ -415,6 +440,10 @@ task new-rust-state
       bind carries, false
       bind fast-loops, make list
       bind fast-tasks, make list
+      bind raising-tasks, make list
+      bind raising-slots, make hash
+      bind value-slot, make none
+      bind job-slot, false
       bind unchecked-ints, false
       bind reuse-opened, make list
       bind reuse-built, make list
@@ -1511,6 +1540,33 @@ task box-unknown
       back <(std::rc::Rc::\<{spell(expression-type(value), facts)}\>::new({rendered}) as std::rc::Rc\<dyn std::any::Any\>)>
   back <(std::rc::Rc::new({rendered}) as std::rc::Rc\<dyn std::any::Any\>)>
 
+# An item pushed onto a list of the boxed dynamic boxes as a call's argument does, whichever way the push is written: an
+# identity task taking `unknown` inlines away with the box its call site would have made (term-self-host-001-0532). The
+# test is the list's own spelling, so an element nothing constrains, which spells the boxed dynamic too, boxes as well,
+# unless the item is such a value already
+task box-pushed
+  take list-type, like maybe, like type
+  take item, like expression
+  take rendered, like text
+  take facts, like rust-facts
+  like text
+  mark private
+
+  sift element-of(list-type)
+    case some
+      link element
+      fork test, is-unequal(rust-element(element, facts/context), <std::rc::Rc\<dyn std::any::Any\>>)
+        hold
+          back rendered
+      save form, form-of(item)
+      save held, kind-of-node(item)
+      fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), is-equal(held, <variable>))
+        hold
+          back rendered
+      back box-unknown(make(some, unknown-type()), item, rendered, facts)
+    case none
+      back rendered
+
 # ---- places ----
 
 task root-variable
@@ -2042,6 +2098,9 @@ task collection-expr
   save data, view(op-target, false, st, facts)
   fork test, is-equal(name, <push>)
     hold
+      fork test, is-above(args/length, 0)
+        hold
+          save first, box-pushed(expression-type(op-target), get(args, 0), first, facts)
       sift op-target
         case variable
           link variable-name
@@ -2778,11 +2837,29 @@ task unsigned-operand
 task task-value
   take name, like text
   take given, like maybe, like type
+  take st, like rust-state
   take facts, like rust-facts
   like text
   mark private
 
-  sift given
+  # the place the value goes: a closed slot with a non-empty set answers `Result` (decision 086 rule 4)
+  save slot, st/value-slot
+  save st/value-slot, make none
+  save has-slot, is-equal(kind-of(slot), <function>)
+  save into-raising, type-raises(slot)
+  save raises, facts/raising/has(name)
+  # a raising task into a slot that says it raises nothing is refused by the checker (`raise-escapes-slot`), so it never
+  # reaches an emitter. A job's slot takes it: the raise unwinds to the job, and its wait raises it (decision 092)
+  fork test, and(and(raises, not(into-raising)), and(has-slot, not(st/job-slot)))
+    hold
+      facts/fail(<raise-escapes-slot: internal error, the raising task {name} reached the Rust emitter for a slot that raises nothing>)
+  # the adapter's shape is the name's own type, which is concrete where a generic task's slot is not. Where that type
+  # does not say it is a task, the slot's
+  save shape, given
+  fork test, and(into-raising, is-unequal(kind-of(given), <function>))
+    hold
+      save shape, slot
+  sift shape
     case some
       link known
       sift known
@@ -2795,21 +2872,264 @@ task task-value
             fork test, is-equal(effect, <async>)
               hold
                 save is-async, true
+          save names, make list
+          save typed, make list
+          walk fn-params
+            take param
+            take at
+            push(names, <a{at}>)
+            push(typed, <a{at}: {spell-type(param, facts)}>)
+          save args, join-texts(names, <, >)
+          save params, join-texts(typed, <, >)
+          save answer, spell-type(fn-result, facts)
+          save spelled-answer, answer
+          fork test, into-raising
+            hold
+              save spelled-answer, <std::result::Result\<{answer}, TermException\>>
           fork test, is-async
             hold
-              save names, make list
-              save typed, make list
-              walk fn-params
-                take param
-                take at
-                push(names, <a{at}>)
-                push(typed, <a{at}: {spell-type(param, facts)}>)
-              back <std::rc::Rc::new(move |{join-texts(typed, <, >)}| -\> std::pin::Pin\<std::boxed::Box\<dyn std::future::Future\<Output = {spell-type(fn-result, facts)}\>\>\> \{ std::boxed::Box::pin({snake(name)}({join-texts(names, <, >)})) \})>
+              save future, <{snake(name)}({args})>
+              fork test, and(into-raising, not(raises))
+                hold
+                  save future, <async move \{ std::result::Result::Ok({snake(name)}({args}).await) \}>
+              fork test, and(raises, not(into-raising))
+                hold
+                  save future, <async move \{ {snake(name)}({args}).await.unwrap_or_else(|e| __term_unhandled(e)) \}>
+              back <std::rc::Rc::new(move |{params}| -\> std::pin::Pin\<std::boxed::Box\<dyn std::future::Future\<Output = {spelled-answer}\>\>\> \{ std::boxed::Box::pin({future}) \})>
+          fork test, and(into-raising, not(raises))
+            hold
+              back <std::rc::Rc::new(move |{params}| -\> {spelled-answer} \{ std::result::Result::Ok({snake(name)}({args})) \})>
+          fork test, and(raises, not(into-raising))
+            hold
+              back <std::rc::Rc::new(move |{params}| -\> {spelled-answer} \{ {snake(name)}({args}).unwrap_or_else(|e| __term_unhandled(e)) \})>
         miss
           save nothing, 0
     case none
       save nothing, 0
   back <std::rc::Rc::new({snake(name)})>
+
+# ---- a raise through a task-typed place (decisions 086 rule 4 and 089 rule 5) ----
+
+# whether a body can raise, by what it calls and what it writes: an answer that is too wide only picks the raising
+# instance and an `Ok`, never another meaning
+task body-may-raise
+  take body, like list, like statement
+  take st, like rust-state
+  take facts, like rust-facts
+  like boolean
+  mark private
+
+  walk names-of-body(body)
+    take name
+    fork test, or(facts/raising/has(name), st/raising-slots/has(name))
+      hold
+        back true
+  walk statement-handles(body)
+    take handle
+    fork test, handle-may-raise(handle)
+      hold
+        back true
+  back false
+
+task handle-may-raise
+  take handle, like node-handle
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case throw
+          back true
+        miss
+          save nothing, 0
+    case expression-handle
+      link held
+      sift held
+        case call
+          link call-callee
+          sift call-callee
+            case member
+              fork test, type-raises(expression-type(call-callee))
+                hold
+                  back true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    fork test, handle-may-raise(child)
+      hold
+        back true
+  back false
+
+# whether a value put in a task-typed place can raise when called
+task value-raises
+  take value, like expression
+  take st, like rust-state
+  take facts, like rust-facts
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      link variable-name
+      fork test, st/raising-slots/has(variable-name)
+        hold
+          back true
+      fork test, and(not(st/local-names/has(variable-name)), facts/raising/has(variable-name))
+        hold
+          back true
+    case closure
+      link closure-params
+      link closure-body
+      back body-may-raise(closure-body, st, facts)
+    miss
+      save nothing, 0
+  back type-raises(expression-type(value))
+
+# a call through a task-typed place that answers `Result`: a parameter of a raising instance, a slot that declares a set
+task slot-call-raises
+  take node, like expression
+  take st, like rust-state
+  like boolean
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      sift call-callee
+        case variable
+          link variable-name
+          fork test, st/raising-slots/has(variable-name)
+            hold
+              back true
+          back and(st/local-names/has(variable-name), type-raises(expression-type(call-callee)))
+        case member
+          back type-raises(expression-type(call-callee))
+        miss
+          back false
+    miss
+      back false
+
+# the raising instance of a call whose pass-through argument can raise: the same call with its callee renamed, at the
+# same place (decision 089 rule 5). Any other call as it is
+task raising-instance
+  take node, like expression
+  take st, like rust-state
+  take facts, like rust-facts
+  like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      sift call-callee
+        case variable
+          link variable-name
+          fork test, or(st/local-names/has(variable-name), not(facts/passes/has(variable-name)))
+            hold
+              back node
+          save wanted, false
+          walk facts/passes/get(variable-name)
+            take at
+            fork test, is-below(at, call-args/length)
+              hold
+                fork test, value-raises(get(call-args, at), st, facts)
+                  hold
+                    save wanted, true
+          fork test, not(wanted)
+            hold
+              back node
+          add-text(st/raising-tasks, variable-name)
+          save renamed, rust-emit-copy-expression(call-callee)
+          save copied, rust-emit-copy-expression(node)
+          sift renamed
+            case variable
+              save renamed/name, <{variable-name}-raising>
+            miss
+              save nothing, 0
+          sift copied
+            case call
+              save copied/callee, renamed
+            miss
+              save nothing, 0
+          back copied
+        miss
+          back node
+    miss
+      back node
+
+task callee-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      back call-callee
+    miss
+      back node
+
+# a value handed to a place whose raising differs from its own: `Ok` around an infallible one, and a raising one into a
+# job's slot, where the raise unwinds to the job
+task slot-adapter
+  take rendered, like text
+  take slot, like maybe, like type
+  take to-raising, like boolean
+  take facts, like rust-facts
+  like text
+  mark private
+
+  sift slot
+    case some
+      link known
+      sift known
+        case function
+          link fn-params
+          link fn-result
+          save is-async, false
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                save is-async, true
+          save names, make list
+          save typed, make list
+          walk fn-params
+            take param
+            take at
+            push(names, <a{at}>)
+            push(typed, <a{at}: {spell-type(param, facts)}>)
+          save args, join-texts(names, <, >)
+          save params, join-texts(typed, <, >)
+          save answer, spell-type(fn-result, facts)
+          save spelled-answer, answer
+          fork test, to-raising
+            hold
+              save spelled-answer, <std::result::Result\<{answer}, TermException\>>
+          fork test, is-async
+            hold
+              save inner, <__slot_inner({args}).await.unwrap_or_else(|e| __term_unhandled(e))>
+              fork test, to-raising
+                hold
+                  save inner, <std::result::Result::Ok(__slot_inner({args}).await)>
+              back <\{ let __slot_value = {rendered}; std::rc::Rc::new(move |{params}| -\> std::pin::Pin\<std::boxed::Box\<dyn std::future::Future\<Output = {spelled-answer}\>\>\> \{ let __slot_inner = __slot_value.clone(); std::boxed::Box::pin(async move \{ {inner} \}) \}) \}>
+          save inner, <__slot_value({args}).unwrap_or_else(|e| __term_unhandled(e))>
+          fork test, to-raising
+            hold
+              save inner, <std::result::Result::Ok(__slot_value({args}))>
+          back <\{ let __slot_value = {rendered}; std::rc::Rc::new(move |{params}| -\> {spelled-answer} \{ {inner} \}) \}>
+        miss
+          back rendered
+    case none
+      back rendered
 
 task emit-name
   take node, like expression
@@ -2841,9 +3161,9 @@ task emit-name
     case none
       save nothing, 0
   save given, expression-type(node)
-  fork test, and(and(facts/function-params/has(name), not(st/local-names/has(name))), is-equal(kind-of(given), <function>))
+  fork test, and(and(facts/function-params/has(name), not(st/local-names/has(name))), or(is-equal(kind-of(given), <function>), type-raises(st/value-slot)))
     hold
-      back task-value(name, given, facts)
+      back task-value(name, given, st, facts)
   # a module-level constant lives in a thread_local, cloned out on a read
   fork test, and(facts/module-consts/has(name), not(st/local-names/has(name)))
     hold
@@ -3099,7 +3419,13 @@ task emit-record
                 hold
                   save one-type, one/type
                   save into, make(some, one-type)
-            save value, box-unknown(into, field/value, owned(field/value, st, facts), facts)
+            # a closed slot that declares a set takes a task value as `Result` (decision 086 rule 4)
+            fork test, is-equal(kind-of(into), <function>)
+              hold
+                save st/value-slot, into
+            save rendered-field, owned(field/value, st, facts)
+            save st/value-slot, make none
+            save value, box-unknown(into, field/value, rendered-field, facts)
         push(parts, field-entry(field/name, value))
       walk missing
         take one
@@ -3269,7 +3595,14 @@ task emit-await
 
   sift node
     case await
-      link await-expr
+      link written-await
+      # the call's raising instance, picked by its pass-through arguments (decision 089 rule 5)
+      save await-expr, raising-instance(written-await, st, facts)
+      fork test, slot-call-raises(await-expr, st)
+        hold
+          push(st/awaited-calls, await-expr)
+          save inner, emit-expr(await-expr, st, facts)
+          back <{inner}.await{raise-suffix(st, frames-of(await-expr))}>
       sift await-expr
         case call
           link call-callee
@@ -3379,7 +3712,24 @@ task emit-closure
       save outer-raising, st/current-raising
       save outer-guard-depth, st/guard-depth
       save outer-result, st/current-result
-      save st/current-raising, false
+      # a closure into a slot that answers `Result` carries its raise out as a raising task does (decision 089 rule 5).
+      # Any other keeps today's shape: a raise in it unwinds to the job, or ends the program
+      save closure-raising, type-raises(st/value-slot)
+      save raising-slot-result, make none
+      sift st/value-slot
+        case some
+          link slot-known
+          sift slot-known
+            case function
+              link slot-params
+              link slot-result
+              save raising-slot-result, make(some, slot-result)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save st/value-slot, make none
+      save st/current-raising, closure-raising
       save st/guard-depth, 0
       # the result: its own, else the call site's hint where its own was left unknown
       save inferred, make none
@@ -3406,6 +3756,11 @@ task emit-closure
           save chosen, closure-result
         case none
           save nothing, 0
+      # into a slot that answers `Result` and nothing else, the slot says what the answer is (its other answers may be
+      # the callee's generic letters)
+      fork test, and(closure-raising, is-equal(kind-of(raising-slot-result), <unit>))
+        hold
+          save chosen, raising-slot-result
       save st/current-result, chosen
       save st/closure-depth, add(st/closure-depth, 1)
       save outer-locals, copy-flags(st/local-names)
@@ -3419,6 +3774,19 @@ task emit-closure
         fork test, is-unequal(line, <>)
           hold
             push(lines, line)
+      # a raising closure falling off its end still answers `Ok`
+      fork test, closure-raising
+        hold
+          save closure-last, <>
+          sift last-statement(closure-body)
+            case some
+              link known-last
+              save closure-last, statement-form(known-last)
+            case none
+              save nothing, 0
+          fork test, not(or(is-equal(closure-last, <return>), is-equal(closure-last, <throw>)))
+            hold
+              push(lines, <std::result::Result::Ok(())>)
       save body, join-texts(lines, < >)
       save closure-output, st/current-result
       save st/closure-depth, subtract(st/closure-depth, 1)
@@ -3466,7 +3834,7 @@ task emit-closure
       # a closure whose body is one `return x;` is `move |a| x`, unless the value borrows
       save lone, js-trim(body)
       save expression, make none
-      fork test, and(and(not(closure-async), is-equal(closure-body/length, 1)), and(starts-with(lone, <return >), ends-with(lone, <;>)))
+      fork test, and(and(and(not(closure-async), not(closure-raising)), is-equal(closure-body/length, 1)), and(starts-with(lone, <return >), ends-with(lone, <;>)))
         hold
           fork test, and(is-equal(statement-form(get(closure-body, 0)), <return>), not(borrows(lone)))
             hold
@@ -3480,7 +3848,21 @@ task emit-closure
       fork test, and(closure-async, has-output)
         hold
           save pinned, <__term_boxed::\<{spell(closure-output, facts)}, _\>(async move \{ {body} \})>
+      # its answer spelled, since nothing else tells rustc the raise's type
+      save raising-answer, <()>
+      fork test, has-output
+        hold
+          save raising-answer, spell(closure-output, facts)
+      save raising-answer, <std::result::Result\<{raising-answer}, TermException\>>
+      fork test, and(closure-async, closure-raising)
+        hold
+          save st/boxed-futures, true
+          save pinned, <__term_boxed::\<{raising-answer}, _\>(async move \{ {body} \})>
       save boxed, <std::rc::Rc::new(move |{params}| \{ {body} \})>
+      fork test, closure-raising
+        hold
+          save st/carries, true
+          save boxed, <std::rc::Rc::new(move |{params}| -\> {raising-answer} \{ {body} \})>
       sift expression
         case some
           link known
@@ -3808,6 +4190,12 @@ task emit-argument
       save name, variable-name-of(a)
       save rendered, <>
       save done, false
+      # the slot a task named or a closure written here goes in (decisions 086 rule 4 and 089 rule 5). `spawn`'s work is a
+      # job slot: the raise unwinds to the job and its wait raises it (decision 092 rule 4)
+      fork test, is-equal(kind-of(slot), <function>)
+        hold
+          save st/value-slot, slot
+          save st/job-slot, is-equal(callee-name, <spawn>)
       fork test, and(is-equal(form, <variable>), is-unequal(kind-of(given), <>))
         hold
           fork test, st/move-args/has(name)
@@ -3848,6 +4236,20 @@ task emit-argument
               note-clone(given, st, facts)
               count-clone(a, st)
               save rendered, <{rendered}.clone()>
+      save st/value-slot, make none
+      save st/job-slot, false
+      # a held task value whose raising differs from its slot's
+      fork test, and(and(is-equal(kind-of(slot), <function>), not(is-form(a, <closure>))), or(st/local-names/has(name), is-form(a, <member>)))
+        hold
+          save from-raising, value-raises(a, st, facts)
+          save to-raising, type-raises(slot)
+          fork test, is-unequal(from-raising, to-raising)
+            hold
+              save held-shape, given
+              fork test, is-unequal(kind-of(given), <function>)
+                hold
+                  save held-shape, slot
+              save rendered, slot-adapter(rendered, held-shape, to-raising, facts)
       fork test, to-impl-fn
         hold
           back impl-fn-arg(is-equal(form, <closure>), rendered)
@@ -3952,6 +4354,11 @@ task emit-call
       link call-args
       link call-span
       link call-type
+      # a pass-through argument that can raise picks the task's raising instance (decision 089 rule 5)
+      save instance, raising-instance(node, st, facts)
+      fork test, is-unequal(variable-name-of(callee-of(instance)), variable-name-of(call-callee))
+        hold
+          back emit-call(instance, skip-background, st, facts)
       save callee-name, variable-name-of(call-callee)
       save callee-variable, is-variable(call-callee)
       save local-callee, st/local-names/has(callee-name)
@@ -3999,7 +4406,7 @@ task emit-call
                       fork test, has-text(list-length-tasks(), callee-name)
                         hold
                           back <({list}.len() as i64)>
-                      back <\{ let __push_item = {bare(owned(get(call-args, 1), st, facts))}; {list}.push(__push_item); {list}.len() as i64 \}>
+                      back <\{ let __push_item = {bare(box-pushed(expression-type(pushed-list), get(call-args, 1), owned(get(call-args, 1), st, facts), facts))}; {list}.push(__push_item); {list}.len() as i64 \}>
                 miss
                   save nothing, 0
 
@@ -4359,6 +4766,21 @@ task emit-call
                 push(rest, one)
           back lend-wrap(<({get(arg-list, 0)}).{snake(callee-name)}({join-texts(rest, <, >)}){suffix}>, hoisted, unit, fresh)
 
+      # a call through a slot that answers `Result` (decisions 086 rule 4 and 089 rule 5)
+      fork test, slot-call-raises(node, st)
+        hold
+          save st/carries, true
+          save slot-suffix, raise-suffix(st, frames-of(node))
+          fork test, is-in-list(st/awaited-calls, node, facts)
+            hold
+              save slot-suffix, <>
+          save slot-callee, <>
+          sift call-callee
+            case member
+              save slot-callee, <({member-path(call-callee, st, facts)})>
+            miss
+              save slot-callee, vname(callee-name)
+          back lend-wrap(<{slot-callee}({args}){slot-suffix}>, hoisted, unit, fresh)
       # a slashed callee is a module path; a field holding a closure is invoked with parens
       sift call-callee
         case member
@@ -4379,7 +4801,8 @@ task emit-call
           fork test, is-in-list(st/awaited-calls, node, facts)
             hold
               save suffix, <>
-          back lend-wrap(<{emit-expr(call-callee, st, facts)}({args}){suffix}>, hoisted, unit, fresh)
+          # named, never the value: an inlined call's callee carries a task type, and a raising task as a value is adapted
+          back lend-wrap(<{snake(callee-name)}({args}){suffix}>, hoisted, unit, fresh)
 
       # a callee that is not a name is grouped
       save callee, emit-expr(call-callee, st, facts)
@@ -4821,7 +5244,7 @@ task emit-block
                   save rendered, make list
                   walk items
                     take item
-                    push(rendered, bare(owned(item, st, facts)))
+                    push(rendered, bare(box-pushed(let-type, item, owned(item, st, facts), facts)))
                   push(lines, <{pad(depth)}let {mutable}{vname(let-name)}: Vec\<{element}\> = vec![{join-texts(rendered, <, >)}];>)
                   save at, next
                   save made-vec, true
@@ -5364,7 +5787,7 @@ task emit-expression-statement
                   save list, variable-name-of(get(call-args, 0))
                   fork test, and(is-unequal(list, <>), st/owned-names/has(list))
                     hold
-                      back <{vname(list)}.push({bare(owned(get(call-args, 1), st, facts))});>
+                      back <{vname(list)}.push({bare(box-pushed(expression-type(get(call-args, 0)), get(call-args, 1), owned(get(call-args, 1), st, facts), facts))});>
             case member
               sift collection-call(call-callee)
                 case some
@@ -5372,7 +5795,7 @@ task emit-expression-statement
                   save list, variable-name-of(op/target)
                   fork test, and(and(is-equal(op/kind, <array>), is-equal(op/op, <push>)), and(is-unequal(list, <>), st/owned-names/has(list)))
                     hold
-                      back <{vname(list)}.push({bare(owned(get(call-args, 0), st, facts))});>
+                      back <{vname(list)}.push({bare(box-pushed(expression-type(op/target), get(call-args, 0), owned(get(call-args, 0), st, facts), facts))});>
                 case none
                   save nothing, 0
             miss
@@ -7213,7 +7636,7 @@ task param-text
                 case function
                   link fn-params
                   link fn-result
-                  back <{vname(param/name)}: {impl-fn-type(fn-params, fn-result, facts/context)}>
+                  back <{vname(param/name)}: {impl-fn-type(fn-params, fn-result, facts/context, type-raises(given))}>
                 miss
                   save nothing, 0
             case none
@@ -7452,6 +7875,15 @@ task emit-function
       save st/current-params, param-names
       save st/current-raising, raises
       save st/current-result, declared
+      # the parameters whose slot answers `Result`: a raising instance's, or a slot that declares a set
+      save previous-slots, st/raising-slots
+      save own-slots, make hash
+      walk fn-params
+        take param
+        fork test, type-raises(param/type)
+          hold
+            own-slots/set(param/name, true)
+      save st/raising-slots, own-slots
 
       # names a nested closure assigns to are boxed in `Rc<RefCell>` for this whole body
       save previous-cells, st/cell-vars
@@ -7543,6 +7975,7 @@ task emit-function
           save body-text, join-texts(parts, <\n>)
 
       save st/tail-matches, previous-tail-matches
+      save st/raising-slots, previous-slots
       save st/current-params, previous-params
       save st/current-raising, previous-raising
       save st/current-async, previous-async

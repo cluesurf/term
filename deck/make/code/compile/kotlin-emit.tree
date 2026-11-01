@@ -1848,7 +1848,7 @@ task kt-expr
       save st/awaiting, false
       back operand
     case closure
-      back kt-closure(node, st, facts)
+      back kt-closure(node, false, st, facts)
     case conditional
       link branches
       link otherwise
@@ -2166,7 +2166,13 @@ task kt-call
         hold
           save callee-text, kotlin-camel(callee-name)
         miss
-          save callee-text, kt-expr(call-callee, st, facts)
+          # an inlined task can leave a closure as the callee: called at once, nothing around it gives its parameters
+          # their types, so it writes them
+          sift call-callee
+            case closure
+              save callee-text, <({kt-closure(call-callee, true, st, facts)})>
+            miss
+              save callee-text, kt-expr(call-callee, st, facts)
       # an async task called without `wait true` from code that cannot suspend runs on its own
       fork test, and(and(task-callee, facts/async-fns/has(callee-name)), and(not(awaited), not(st/suspend-context)))
         hold
@@ -2953,7 +2959,7 @@ task caught-prop
   fork test, is-equal(arms/length, 0)
     hold
       halt <no exception the program raises has a prop "{prop}" on its link>
-  save empty, <error("defect: the caught exception has no prop {prop}")>
+  save empty, <kotlin.error("defect: the caught exception has no prop {prop}")>
   fork test, is-equal(spelled, <String>)
     hold
       save empty, <((__carrier.link as? Map\<*, *\>)?.get("{prop}") as? String) ?: "">
@@ -3098,6 +3104,7 @@ task deep-return
 
 task kt-closure
   take node, like expression
+  take spelled, like boolean
   take st, like kotlin-state
   take facts, like kotlin-facts
   like text
@@ -3172,7 +3179,11 @@ task kt-closure
       save names, make list
       walk closure-params
         take param
-        push(names, kotlin-camel(param/name))
+        fork test, spelled
+          hold
+            push(names, <{kotlin-camel(param/name)}: {kotlin-type(param/type, st, facts)}>)
+          miss
+            push(names, kotlin-camel(param/name))
       save parts, make list
       save at, 0
       walk closure-body

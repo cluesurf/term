@@ -90,7 +90,7 @@ object composeHost {
             answer = runCatching(body)
             done.countDown()
         }
-        if (!done.await(10, java.util.concurrent.TimeUnit.SECONDS)) error("composeHost: the main thread did not answer")
+        if (!done.await(10, java.util.concurrent.TimeUnit.SECONDS)) kotlin.error("composeHost: the main thread did not answer")
         return answer!!.getOrThrow()
     }
 
@@ -107,7 +107,7 @@ object composeHost {
     }
 
     fun run(content: TermNode, title: String, width: Int, height: Int, bodies: () -> Unit) {
-        val owner = activity ?: error("composeHost: no Activity yet. A program runs inside TermActivity.program()")
+        val owner = activity ?: kotlin.error("composeHost: no Activity yet. A program runs inside TermActivity.program()")
         CxViewRootForTest.onViewCreatedCallback = { made -> roots.add(java.lang.ref.WeakReference(made)) }
         owner.title = title
         owner.cxSetContent { CxTree(content) }
@@ -193,7 +193,7 @@ object composeHost {
             }
             settle()
         }
-        val session = request() ?: error("composeHost: the field $tag opened no text input session when focused")
+        val session = request() ?: kotlin.error("composeHost: the field $tag opened no text input session when focused")
         onMain {
             val connection = connections.getOrPut(session) { session.createInputConnection(android.view.inputmethod.EditorInfo()) }
             if (commit) connection.commitText(text, 1) else connection.setComposingText(text, 1)

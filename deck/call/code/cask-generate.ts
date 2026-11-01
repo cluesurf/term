@@ -1651,8 +1651,6 @@ function dispatchText(
     'load @term/base/console',
     '  find log',
     '',
-    // a watch closure's own raise is logged where it is caught
-    ...(watching ? ['load @term/base/log', '  find warn', ''] : []),
   ]
 
   for (const module of modules) {
@@ -1794,24 +1792,11 @@ function dispatchText(
       `            call ${one.module}-${one.task}`,
       '              task heard',
       '                take value, like text',
-      // the host's watcher calls this with no Term caller above it, so what `emit` raises is caught and logged here
-      // (decision 089 rule 6 of the self-host change 001). The log line is a native write, which raises `failure`
-      // too, so it is guarded as well and a line that cannot be written is dropped
-      '                fork',
-      '                  mark unsafe',
-      '                  call emit',
-      '                    read place',
-      '                    text <term-watch/{{watch}}>',
-      '                    read value',
-      '                halt take',
-      '                  take problem',
-      '                  fork',
-      '                    mark unsafe',
-      '                    call warn',
-      '                      text <term-watch/{{watch}}: {{problem/form}}: {{problem/note}}>',
-      '                  halt take',
-      '                    take unlogged',
-      '                    save skip, code 0',
+      // what `emit` raises goes to the watch task's slot, whose library reports it (decision 096 of the self-host change 001)
+      '                call emit',
+      '                  read place',
+      '                  text <term-watch/{{watch}}>',
+      '                  read value',
       '          call set',
       '            read watch-drops',
       '            text <{{owner}}/{{watch}}>',
@@ -2163,8 +2148,8 @@ function dispatchText(
     '',
     '# every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the',
     '# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for',
-    '# the window whose key is `owner`. The answer\'s own encoding is guarded too, so dispatch-as raises nothing and fits',
-    "# on-message's slot, which declares no raise (decision 086 of the self-host change 001)",
+    '# the window whose key is `owner`. The answer\'s own encoding is guarded too, so dispatch-as raises nothing and the',
+    "# page always hears a reply naming the exception (decision 086 of the self-host change 001)",
     'task dispatch-as',
     '  mark async',
     '  take owner, like text',

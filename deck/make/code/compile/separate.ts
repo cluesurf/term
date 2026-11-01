@@ -244,10 +244,14 @@ function restored(
 // naming the unit (separate-units.tree `verify-same`). Neither changes a key or an answer, so neither is in a key
 // `ledger` records every read a unit's mill and check make, and fails a unit on one its key does not cover
 // (build-ledger.tree)
+// `trace` (decision 103 item 5) builds every unit built again in the same process with every carried shape and body its
+// trace does not hold stripped, and fails on a difference, naming the unit, the stripped locator that moved it and the
+// first differing byte
 type CacheVerify = {
   hit: (key: string) => boolean
   twice: boolean
   ledger: boolean
+  trace: boolean
 }
 
 const verifyModes = new Map<string, CacheVerify>()
@@ -260,6 +264,7 @@ export function cacheVerifyOf(text: string): CacheVerify {
   let rate = 0
   let twice = false
   let ledger = false
+  let trace = false
 
   for (const mode of text
     .split(',')
@@ -267,6 +272,7 @@ export function cacheVerifyOf(text: string): CacheVerify {
     .filter(Boolean)) {
     if (mode === 'twice') {twice = true}
     else if (mode === 'ledger') {ledger = true}
+    else if (mode === 'trace') {trace = true}
     else if (mode === 'hits') {rate = 1}
     else if (mode.startsWith('hits:')) {
       rate = Number(mode.slice(5))
@@ -277,7 +283,7 @@ export function cacheVerifyOf(text: string): CacheVerify {
         )}
     } else
       {throw new Error(
-        `TERM_CACHE_VERIFY: ${mode} is not a verify mode (ledger, hits, hits:<rate>, twice)`,
+        `TERM_CACHE_VERIFY: ${mode} is not a verify mode (ledger, hits, hits:<rate>, twice, trace)`,
       )}
   }
 
@@ -295,10 +301,176 @@ export function cacheVerifyOf(text: string): CacheVerify {
     return h / 4294967296 < rate
   }
 
-  const verify = { hit: chosen, twice, ledger }
+  const verify = { hit: chosen, twice, ledger, trace }
   verifyModes.set(text, verify)
 
   return verify
+}
+
+// THE TRACE (decision 103 item 3): while a unit builds, every stub whose carried shape or body a prover table or the
+// kernel consulted is told here by its locator, `<file>#<export>#<shape|body>` (the stub's file as its span names it,
+// the name its own unit exports it by). Own definitions never enter it. A FRAME (check/hold-walk.tree) gathers what is
+// told while it is open, so a hold memo entry keeps the trace of its walk, and a memo hit tells it again. The recorder
+// is installed once per process, and tells nothing when no unit is open
+// ONE RECORD A PROCESS, on globalThis: the recorder is one global too, and a process can load this module twice (a tsx
+// program that imports it and also requires it), when the later copy's recorder would tell a set the unit never opened
+type TraceState = {
+  now: Set<string> | undefined
+  frames: { id: number; seen: Set<string> }[]
+  next: number
+}
+const traceHome = globalThis as { termCarriedState?: TraceState }
+const traceState: TraceState = (traceHome.termCarriedState ??= {
+  now: undefined,
+  frames: [],
+  next: 1,
+})
+
+function traceNote(locator: string): void {
+  traceState.now?.add(locator)
+
+  for (const frame of traceState.frames) {frame.seen.add(locator)}
+}
+
+type CarriedStub = {
+  name?: string
+  stub?: boolean
+  stubExport?: string
+  stubShape?: unknown
+  stubBody?: unknown[]
+  span?: { file?: string }
+}
+
+export function carriedLocator(statement: unknown, kind: 'shape' | 'body'): string {
+  const s = statement as CarriedStub
+
+  return `${s.span?.file ?? ''}#${s.stubExport ?? s.name ?? ''}#${kind}`
+}
+
+const traceGlobal = globalThis as {
+  termCarriedTrace?: (statement: unknown, kind: string) => boolean
+  termCarriedFrames?: {
+    open: () => number
+    close: (id: number) => string[]
+    replay: (locators: string[]) => boolean
+  }
+  // a measurement's sink (task/term/trace-measure.ts): each unit built, its files, the carried shapes and bodies its
+  // program holds, and those its trace holds
+  termTraceSink?: (unit: {
+    files: string[]
+    carried: string[]
+    traced: string[]
+  }) => void
+}
+
+traceGlobal.termCarriedTrace = (statement, kind) => {
+  traceNote(carriedLocator(statement, kind === 'body' ? 'body' : 'shape'))
+
+  return true
+}
+
+traceGlobal.termCarriedFrames = {
+  open: () => {
+    const id = traceState.next++
+    traceState.frames.push({ id, seen: new Set() })
+
+    return id
+  },
+  // a frame and any opened after it and never closed (a raise inside the walk)
+  close: id => {
+    const at = traceState.frames.findIndex(frame => frame.id === id)
+
+    if (at < 0) {return []}
+
+    const seen = traceState.frames[at]!.seen
+    traceState.frames.splice(at)
+
+    return [...seen].sort()
+  },
+  replay: locators => {
+    for (const locator of locators) {traceNote(locator)}
+
+    return true
+  },
+}
+
+// TERM_TRACE_SINK=<file>: every unit built appends one JSON line there ({files, carried, traced}), from whichever thread
+// or process builds it, for task/term/trace-measure.ts. Read once, when this module loads, never inside a unit: it is
+// no input of any answer
+const TRACE_SINK = globalThis.process?.env?.TERM_TRACE_SINK
+
+function sinkTrace(unit: { files: string[]; carried: string[]; traced: string[] }): void {
+  traceGlobal.termTraceSink?.(unit)
+
+  if (TRACE_SINK === undefined || TRACE_SINK === '') {return}
+
+  const fs = (
+    globalThis.process as
+      | { getBuiltinModule?: (name: string) => unknown }
+      | undefined
+  )?.getBuiltinModule?.('node:fs') as
+    | { appendFileSync: (file: string, text: string) => void }
+    | undefined
+
+  fs?.appendFileSync(TRACE_SINK, `${JSON.stringify(unit)}\n`)
+}
+
+// every carried shape and body a unit's program holds, by locator
+function carriedOf(program: unknown[]): string[] {
+  const out: string[] = []
+
+  for (const one of program as (CarriedStub & { form?: string })[]) {
+    if (one?.form !== 'function' || one.stub !== true) {continue}
+
+    if (one.stubShape !== undefined) {out.push(carriedLocator(one, 'shape'))}
+
+    if ((one.stubBody?.length ?? 0) > 0) {out.push(carriedLocator(one, 'body'))}
+  }
+
+  return out.sort()
+}
+
+// the program with every carried shape and body not in `keep` stripped: a shape set to none, a body emptied
+function strippedOf(program: unknown[], keep: Set<string>): unknown[] {
+  return (program as (CarriedStub & { form?: string })[]).map(one => {
+    if (one?.form !== 'function' || one.stub !== true) {return one}
+
+    const copy = { ...one }
+
+    if (copy.stubShape !== undefined && !keep.has(carriedLocator(one, 'shape')))
+      {delete copy.stubShape}
+
+    if ((copy.stubBody?.length ?? 0) > 0 && !keep.has(carriedLocator(one, 'body')))
+      {delete copy.stubBody}
+
+    return copy
+  })
+}
+
+// a unit answer's bytes, as the trace check compares them: what it emits and says, never the checked program, which
+// holds the carried shapes and bodies themselves
+function answerBytes(answer: unknown): string {
+  const a = answer as Record<string, unknown>
+
+  return JSON.stringify(
+    [
+      a.ok,
+      a.diagnostics,
+      a.modules instanceof Map ? [...a.modules] : a.modules,
+      a.warnings,
+      a.roll,
+      a.openClaims,
+      a.obligations,
+    ],
+    (_key, value: unknown) =>
+      typeof value === 'bigint'
+        ? `${value}n`
+        : value instanceof Map
+          ? [...value]
+          : value instanceof Set
+            ? [...value]
+            : value,
+  )
 }
 
 // THE LEDGER'S RECORDER (decision 077 section 5.1): under `ledger` the file system's synchronous readers and the
@@ -536,23 +708,85 @@ export function compileSeparate(
         globalThis as { termLedgerPlant?: (files: string[]) => void }
       ).termLedgerPlant?.(files)}
 
-    const r = compileProgram(
-      program as never,
-      checkedAs,
-      undefined,
-      true,
-      options.modules,
-      undefined,
-      options.env,
-      false,
-      false,
-      options.deckOf,
-      scope as never,
-      undefined,
-      undefined,
-      naming,
-      new Set(files),
-    )
+    // the program as handed in, before a compile writes into it: the trace check builds it again stripped
+    const pristine =
+      verify.trace ? structuredClone(program as unknown[]) : undefined
+    const run = (given: unknown) =>
+      compileProgram(
+        given as never,
+        checkedAs,
+        undefined,
+        true,
+        options.modules,
+        undefined,
+        options.env,
+        false,
+        false,
+        options.deckOf,
+        scope as never,
+        undefined,
+        undefined,
+        naming,
+        new Set(files),
+      )
+    const carried = carriedOf(program as unknown[])
+    const outer = traceState.now
+    traceState.now = new Set()
+
+    let r: ReturnType<typeof run>
+    let traced: Set<string>
+
+    try {
+      r = run(program)
+    } finally {
+      traced = traceState.now
+      traceState.now = outer
+    }
+
+    sinkTrace({ files, carried, traced: [...traced].sort() })
+
+    // THE TRACE CHECK (decision 103 item 5): what the trace does not hold, the answer must not read
+    if (pristine !== undefined) {
+      const untraced = carried.filter(locator => !traced.has(locator))
+
+      if (untraced.length > 0) {
+        const answer = answerBytes(r)
+        const quiet = (given: unknown[]) => {
+          const held = traceState.now
+          traceState.now = undefined
+
+          try {
+            return answerBytes(run(structuredClone(given)))
+          } finally {
+            traceState.now = held
+          }
+        }
+        const stripped = quiet(strippedOf(pristine, traced))
+
+        if (stripped !== answer) {
+          // the one stripped locator that moves the answer alone, and where the bytes part
+          const moved =
+            untraced.find(
+              locator =>
+                quiet(
+                  strippedOf(
+                    pristine,
+                    new Set(carried.filter(one => one !== locator)),
+                  ),
+                ) !== answer,
+            ) ?? untraced.join(', ')
+          let at = 0
+
+          while (at < answer.length && answer[at] === stripped[at]) {at++}
+
+          throw new Error(
+            `TERM_CACHE_VERIFY trace: unit ${files.join(', ')} answers otherwise with its untraced carried shapes ` +
+              `and bodies stripped. Moved by ${moved}. First differing byte at ${at}: ` +
+              `${JSON.stringify(answer.slice(at, at + 80))} vs ${JSON.stringify(stripped.slice(at, at + 80))}`,
+          )
+        }
+      }
+    }
 
     if (!r.ok) {
       return {

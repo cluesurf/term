@@ -101,6 +101,38 @@ ok('its trace holds nothing', (plain.unit?.traced.length ?? -1) === 0, JSON.stri
 const again = build('sure.tree', SURE)
 ok('a memo hit keeps the walk\'s trace', shape(again.unit, 'traced'), JSON.stringify(again.unit))
 
+// A MEMO ENTRY KEEPS WHAT ITS OWN WALK ASKED, even of a name an earlier task of the unit asked first. `second`'s walk is
+// kept, then answered from the memo in a unit of its own, whose trace must hold what `second` consults (the replay's
+// seed 1 failed here while the tables told a name once per table)
+const TWO = `load ./bump
+  find bump
+
+task first
+  take n, like number
+  like number
+  hold is-equal(bump(n), add(n, 1))
+  send back, read n
+
+task second
+  take m, like number
+  like number
+  hold is-equal(bump(m), add(m, 1))
+  send back, read m
+`
+const SECOND = `load ./bump
+  find bump
+
+task second
+  take m, like number
+  like number
+  hold is-equal(bump(m), add(m, 1))
+  send back, read m
+`
+const two = build('two.tree', TWO)
+ok('two consulting tasks build', two.r.ok, said(two.r))
+const second = build('second.tree', SECOND)
+ok('a memo hit on the later task keeps its trace', shape(second.unit, 'traced'), JSON.stringify(second.unit))
+
 process.env.TERM_CACHE_VERIFY = 'trace'
 
 for (const [name, text] of [['sure.tree', SURE], ['plain.tree', PLAIN]] as const) {
@@ -131,6 +163,112 @@ try {
 }
 
 ok('an untraced consult fails the trace check', caught.includes('TERM_CACHE_VERIFY trace') && caught.includes('#bump#shape'), caught.slice(0, 300))
+
+// A CARRIED BODY, THE KERNEL'S CONSULT: a theory's tasks carry their bodies, a rule in another file runs one and cites
+// another. Traced, and under the trace check; silenced, the check must fail on the body it strips
+const THEORY = `form flag
+  case yes
+  case no
+
+task both
+  take a, like flag
+  take b, like flag
+
+  like flag
+
+  sift a
+    case yes
+      back b
+    case no
+      back make no
+
+task flip
+  take a, like flag
+
+  like flag
+
+  sift a
+    case yes
+      back make no
+    case no
+      back make yes
+
+rule flip-twice
+  seat a, like flag
+  show hold, is-equal flip(flip(a)), a
+  fold a
+`
+
+const USE = `load ./theory
+  find flag
+  find both
+  find flip
+  find flip-twice
+
+rule computes-across-files
+  seat a, like flag
+  show hold
+    is-equal
+      both
+        make yes
+        a
+      a
+
+rule cites-across-files
+  seat a, like flag
+  seat b, like flag
+  show hold, is-equal both(flip(flip(a)), b), both(a, b)
+  cite flip-twice
+`
+
+const buildUse = (): { r: Built; unit: Unit | undefined } => {
+  units = []
+  const r = compileSeparate(
+    { file: 'use.tree', text: USE },
+    {
+      resolve: path => (path === './theory' ? { file: 'theory.tree', text: THEORY } : undefined),
+      cache: new CompileCache(),
+      modules: slug,
+      leanOf: () => true,
+    },
+  ) as Built
+
+  return { r, unit: units.find(one => one.files.some(f => f.endsWith('use.tree'))) }
+}
+
+const body = (unit: Unit | undefined, list: 'carried' | 'traced', name: string): boolean =>
+  (unit?.[list] ?? []).some(locator => locator.endsWith(`#${name}#body`))
+
+const used = buildUse()
+ok('the rule-stating unit builds', used.r.ok, said(used.r))
+ok('it carries both\'s body', body(used.unit, 'carried', 'both'), JSON.stringify(used.unit))
+ok('its trace holds both\'s body', body(used.unit, 'traced', 'both'), JSON.stringify(used.unit))
+ok('its trace holds the cited rule\'s body', body(used.unit, 'traced', 'flip-twice'), JSON.stringify(used.unit))
+
+process.env.TERM_CACHE_VERIFY = 'trace'
+let usedRaise = ''
+
+try {
+  buildUse()
+} catch (error) {
+  usedRaise = String(error)
+}
+
+ok('the rule-stating unit passes the trace check', usedRaise === '', usedRaise.slice(0, 600))
+
+sink.termCarriedTrace = () => true
+let silenced = ''
+
+try {
+  buildUse()
+} catch (error) {
+  silenced = String(error)
+} finally {
+  sink.termCarriedTrace = recorder
+  delete process.env.TERM_CACHE_VERIFY
+}
+
+ok('a body the kernel reads, untraced, fails the trace check', silenced.includes('TERM_CACHE_VERIFY trace'), silenced.slice(0, 300))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 

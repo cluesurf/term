@@ -257,7 +257,7 @@ object nativeView {
     private var backHandler: (() -> Boolean)? = null
     private var nextKey = 0L
 
-    private fun node(handle: Any): TermNode = handle as? TermNode ?: error("nativeView: not a node: $handle")
+    private fun node(handle: Any): TermNode = handle as? TermNode ?: kotlin.error("nativeView: not a node: $handle")
 
     // every node made, held weakly, so a test can count the ones still alive (reactive-bridge-0005)
     private val made = mutableListOf<java.lang.ref.WeakReference<TermNode>>()

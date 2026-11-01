@@ -69,7 +69,10 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // '17': a construction of a case two files' forms share, in a file that defines no owner and whose finds import exactly
 // one, binds that owner, and one no rule and no position settles is refused (decision 101, item
 // term-self-host-001-0514), so a unit stored at '16' may hold an answer built from the checker's choice by position.
-export const CACHE_EPOCH = '17'
+// '18': an empty list handed back where the task declares a list of unknown takes that type at its let, and a callee
+// that is a closure is parenthesized on TypeScript and spells its parameters on Kotlin (items term-self-host-001-0531
+// and 0532), so a unit stored at '17' holds another emitted text and another checked type under the same key.
+export const CACHE_EPOCH = '18'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

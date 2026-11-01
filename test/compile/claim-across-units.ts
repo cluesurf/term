@@ -183,5 +183,82 @@ ok(
   ),
 )
 
+// A PROOF WHOSE BODY CALLS A TASK OF ANOTHER FILE rests on that task's verdict, read off its stub (item
+// term-self-host-001-0527). `twice` holds calls, so the checker's call stamps rebuild it (compile/node-rebuild.tree) and
+// the verdict is written on the rebuilt statement, not on the one the stub is taken from. test/assurance/notes was the
+// case: 24 proofs refused as `unverified-proof` by `term make`, none by `term make --merged`.
+const CALLING_MODEL = `form natural
+  case zero
+  case succ
+    link prior, like natural
+
+task twice
+  take n, like natural
+  like natural
+  sift n
+    case zero
+      send back, make zero
+    case succ
+      link p
+      send back
+        make succ
+          bind prior
+            make succ
+              bind prior, twice(p)
+
+task spin
+  take n, like natural
+  like natural
+  send back, spin(n)
+`
+
+const callingLaw = (callee: string): string => `load ./model
+  find natural
+  find ${callee}
+
+${EQUAL}
+rule stays
+  take n, like natural
+  like equal natural
+    head
+      ${callee}(n)
+    head
+      ${callee}(n)
+
+task stays
+  take n
+  send back
+    make refl
+      bind c, ${callee}(n)
+`
+
+const resting = build(
+  callingLaw('twice'),
+  CALLING_MODEL,
+  new CompileCache(),
+)
+ok(
+  'a proof calling a grounded task of another file, a task with calls of its own, is proven',
+  resting.ok,
+  JSON.stringify(
+    resting.ok
+      ? []
+      : resting.diagnostics.map(d => d.message.slice(0, 200)),
+  ),
+)
+
+// the wall stays up: a task the kernel cannot ground (it never ends) still refuses what rests on it, over the same stub
+const restingOnLoop = build(
+  callingLaw('spin'),
+  CALLING_MODEL,
+  new CompileCache(),
+)
+ok(
+  'a proof calling a task that never ends is still refused',
+  !restingOnLoop.ok &&
+    restingOnLoop.diagnostics.some(d => d.name === 'unverified-proof'),
+  JSON.stringify(codes(restingOnLoop)),
+)
+
 console.log(`\nclaim-across-units: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

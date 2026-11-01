@@ -88,6 +88,12 @@ load ./products
 
 load ./unfolding
   find unfold-over
+  find unfold-definitions
+  find new-unfolds
+  find carried-noted
+  find trace-open
+  find trace-close
+  find trace-replay
 
 load @term/base/log
   find error, name log-error
@@ -166,6 +172,11 @@ load ./hold-state
   find delta-count
   find binder-fact
   find reset-hold-program
+  find name-memo
+  find name-answer
+  find new-name-memo
+  find name-memo-answer
+  find theorem-of
 
 load ./hold-facts
   find forget
@@ -210,6 +221,8 @@ load ./hold-reach
   find pushed-path
   find list-pushes-of
   find list-pops-of
+  find list-pushes-memo
+  find list-pops-memo
   find exits-early
   find skip-plain
 
@@ -910,7 +923,7 @@ task explain-rule
   fork test, not(state/theorems/has(name))
     hold
       back make none
-  save rule, state/theorems/get(name)
+  save rule, theorem-of(state, name)
   save parts-read, theorem-parts(rule)
   save hypotheses, expressions()
   sift parts-read
@@ -1138,7 +1151,7 @@ task cited-facts
   # an EQUATION the kernel proved is one the kernel rewrites with: it already tried this goal as an instance of it
   fork test, and(has-rule, or(not(has-how), kernel-verdict))
     hold
-      sift theorem-parts(state/theorems/get(name))
+      sift theorem-parts(theorem-of(state, name))
         case some
           link parts
           sift parts/goal
@@ -1156,7 +1169,7 @@ task cited-facts
   fork test, or(not(has-rule), not(has-how))
     hold
       back refuse-cite(walk, name, at, <it is not a rule proven above this one by the arithmetic provers. A rule may cite only a rule proven earlier in the program>)
-  save rule, state/theorems/get(name)
+  save rule, theorem-of(state, name)
   save how, state/proven-theorems/get(name)
   # a theorem with universal hypotheses claims its result over every ordered field, so it may not rest on a rule whose
   # proof used integer reasoning
@@ -1208,7 +1221,7 @@ task cited-facts
           link task-name
           fork test, state/theorems/has(task-name)
             hold
-              sift state/theorems/get(task-name)
+              sift theorem-of(state, task-name)
                 case function
                   link citing-name
                   link citing-params
@@ -1491,7 +1504,7 @@ task check-hold
       save general, make none
       fork test, and(theorem, inducts)
         hold
-          save rule, state/theorems/get(task-name)
+          save rule, theorem-of(state, task-name)
           fork test, not(has-universals-of(rule))
             hold
               save others, texts()
@@ -1534,7 +1547,7 @@ task check-hold
       # AND ONCE MORE THROUGH THE DEFINITIONS, when the goal names a task the provers read as an atom
       fork test, and(and(not(is-proven(verdict)), not(impure)), not(inducts))
         hold
-          save unfolded, unfold-over(expr, state/program)
+          save unfolded, unfold-definitions(expr, state/unfolds)
           fork test, is-unequal(print-expression(unfolded, 0), print-expression(expr, 0))
             hold
               fork test, is-proven(decide-goal(state, calls, theorem, unfolded, given))
@@ -2734,6 +2747,226 @@ task host-extremum
     miss
       back <>
 
+# THE SAME TABLE, FILLED PER NAME ON FIRST ASK (decision 103 of term/self-host/change/001-finish-self-host): a name's
+# extremum reads its own task and the tasks its one call reaches, so a stub's carried shape is read only when a goal asks
+# about a call to it. It answers what `extrema-of` answers, name by name, through the two passes that table makes: the
+# first pass sees, beside the intrinsics, the names before it that the first pass found; the second sees every name
+# the first found and the names before it that the second found
+form extrema-ask
+  mark shared
+  link defined, like hash, like text, like statement
+  link order, like hash, like text, like number
+  link first, like hash, like text, like name-answer
+  link final, like hash, like text, like name-answer
+
+task extrema-memo
+  take program, like list, like statement
+  take noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+  like name-memo
+
+  save defined, statement-table()
+  save order, make hash
+  save count, 0
+  walk program
+    take s
+    sift s
+      case function
+        link fn-name
+        fork test, not(order/has(fn-name))
+          hold
+            order/set(fn-name, count)
+            save count, add(count, 1)
+        save defined/{fn-name}, s
+      miss
+        save nothing, 0
+  save ask
+    make extrema-ask
+      bind defined, defined
+      bind order, order
+      bind first, make hash
+      bind final, make hash
+  save fill
+    task
+      take name, like text
+      like name-answer
+      back extremum-final(ask, name)
+  back new-name-memo(fill, noted)
+
+task extremum-none
+  like name-answer
+  mark private
+
+  back
+    make name-answer
+      bind answer, <>
+      bind read, make list
+
+# an intrinsic the program does not define is its own extremum, before any pass
+task extremum-intrinsic
+  take ask, like extrema-ask
+  take name, like text
+  like boolean
+  mark private
+
+  back and(has-text(two-extrema(), name), not(ask/defined/has(name)))
+
+task extremum-first
+  take ask, like extrema-ask
+  take name, like text
+  like name-answer
+  mark private
+
+  fork test, ask/first/has(name)
+    hold
+      back ask/first/get(name)
+  save found, extremum-none()
+  fork test, ask/defined/has(name)
+    hold
+      save at, ask/order/get(name)
+      save lookup
+        task
+          take callee, like text
+          like name-answer
+          fork test, extremum-intrinsic(ask, callee)
+            hold
+              back
+                make name-answer
+                  bind answer, callee
+                  bind read, make list
+          fork test, and(ask/defined/has(callee), is-below(ask/order/get(callee), at))
+            hold
+              back extremum-first(ask, callee)
+          back extremum-none()
+      save found, extremum-shape(ask, ask/defined/get(name), lookup)
+  ask/first/set(name, found)
+  back found
+
+task extremum-final
+  take ask, like extrema-ask
+  take name, like text
+  like name-answer
+  mark private
+
+  fork test, ask/final/has(name)
+    hold
+      back ask/final/get(name)
+  save found, extremum-none()
+  fork test, extremum-intrinsic(ask, name)
+    hold
+      save found
+        make name-answer
+          bind answer, name
+          bind read, make list
+  fork test, ask/defined/has(name)
+    hold
+      save found, extremum-first(ask, name)
+      fork test, is-equal(found/answer, <>)
+        hold
+          save at, ask/order/get(name)
+          save lookup
+            task
+              take callee, like text
+              like name-answer
+              fork test, extremum-intrinsic(ask, callee)
+                hold
+                  back
+                    make name-answer
+                      bind answer, callee
+                      bind read, make list
+              fork test, ask/defined/has(callee)
+                hold
+                  save earlier, extremum-first(ask, callee)
+                  fork test, is-unequal(earlier/answer, <>)
+                    hold
+                      back earlier
+                  fork test, is-below(ask/order/get(callee), at)
+                    hold
+                      back extremum-final(ask, callee)
+              back extremum-none()
+          save found, extremum-shape(ask, ask/defined/get(name), lookup)
+  ask/final/set(name, found)
+  back found
+
+# one task's extremum by its shape, a callee's read through `lookup`, and the stubs whose carried shape it read: its
+# own, and the callee's
+task extremum-shape
+  take ask, like extrema-ask
+  take fn, like statement
+  take lookup
+    like task
+      take callee, like text
+      like name-answer
+  like name-answer
+  mark private
+
+  save read, make list
+  sift fn
+    case function
+      fork test, is-equal(stub, true)
+        hold
+          sift stub-shape
+            case some
+              link carried
+              push(read, fn)
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  save inner, <>
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      fork test, is-equal(fn-params/length, 2)
+        hold
+          sift only-statement(fn)
+            case some
+              link only
+              sift only
+                case return
+                  link value
+                  sift value
+                    case some
+                      link returned
+                      sift returned
+                        case call
+                          link callee
+                          link args
+                          fork test, is-equal(args/length, 2)
+                            hold
+                              save callee-answer, <>
+                              sift callee
+                                case variable
+                                  link callee-name
+                                  save looked, lookup(callee-name)
+                                  walk looked/read
+                                    take one
+                                    push(read, one)
+                                  save callee-answer, looked/answer
+                                miss
+                                  save callee-answer, host-extremum(callee, fn-params, ask/defined)
+                              fork test, and(is-unequal(callee-answer, <>), and(names-param(get(args, 0), get(fn-params, 0)), names-param(get(args, 1), get(fn-params, 1))))
+                                hold
+                                  save inner, callee-answer
+                        miss
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back
+    make name-answer
+      bind answer, inner
+      bind read, read
+
 # each record form's number fields
 task number-fields-of
   take program, like list, like statement
@@ -3029,6 +3262,21 @@ task mentioned
         push(out, name)
   back json-texts(sort(out, utf16-order))
 
+# the same of a table filled per name, each name looked up quietly
+task mentioned-in-memo
+  take names, like list, like text
+  take memo, like name-memo
+  like text
+  mark private
+
+  save out, texts()
+  walk names
+    take name
+    fork test, is-unequal(name-memo-answer(memo, name, true), <>)
+      hold
+        push(out, name)
+  back json-texts(sort(out, utf16-order))
+
 task mentioned-names
   take names, like list, like text
   take keys, like list, like text
@@ -3192,12 +3440,19 @@ task hold-key
   push(parts, mentioned(names, given/functions))
   push(parts, mentioned(names, globals))
   push(parts, mentioned(names, constants))
-  push(parts, mentioned(names, state/list-pushes))
-  push(parts, mentioned(names, state/list-pops))
-  save pairs, texts()
-  walk mentioned-names(names, keys-of-texts(state/extrema))
+  # the tables filled per name: each mentioned name looked up QUIETLY, since a key is not an answer (decision 103)
+  push(parts, mentioned-in-memo(names, state/list-pushes))
+  push(parts, mentioned-in-memo(names, state/list-pops))
+  save extremum-names, texts()
+  walk names
     take name
-    push(pairs, json-list(two-texts(json-text(name), json-text(state/extrema/get(name)))))
+    fork test, is-unequal(name-memo-answer(state/extrema, name, true), <>)
+      hold
+        push(extremum-names, name)
+  save pairs, texts()
+  walk sort(extremum-names, utf16-order)
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-text(name-memo-answer(state/extrema, name, true)))))
   push(parts, json-list(pairs))
   save field-keys, texts()
   walk state/number-fields/keys()
@@ -3338,6 +3593,8 @@ task replay-holds
   take given, like hold-program
 
   save state/holds-replayed, add(state/holds-replayed, 1)
+  # what the kept walk consulted is consulted by this one (decision 103)
+  save told, trace-replay(delta/trace)
   save at, 0
   walk test
     hook test, is-below(at, delta/uncertified)
@@ -3586,10 +3843,13 @@ task check-program-holds
   save diagnostics, diagnostic-list()
   save program, given/program
   save tables, constant-table-lengths(state, calls, program, given/pure, given/functions)
-  save state/extrema, extrema-of(program)
+  # the tables a goal asks of a name, each filled per name on its first ask (decision 103)
+  save noted, carried-noted
+  save state/extrema, extrema-memo(program, noted)
   save state/number-fields, number-fields-of(program)
-  save state/list-pops, list-pops-of(program)
-  save state/list-pushes, list-pushes-of(program)
+  save state/list-pops, list-pops-memo(program, noted)
+  save state/list-pushes, list-pushes-memo(program, noted)
+  save state/unfolds, new-unfolds(program, noted)
   save globals, flags()
   save constants, flags()
   walk program
@@ -3922,7 +4182,10 @@ task check-task
           bind params, steady-params(fn-params, fn-body)
           bind constants, constants
           bind scalars, scalar-locals(fn-body, fn-params)
+      # the carried shapes and bodies the walk consults, which a kept walk keeps (decision 103)
+      save frame, trace-open()
       walk-holds(state, calls, fn-body, base, task-walk)
+      save traced, trace-close(frame)
       # kept only when the walk refused nothing: its answer is then counts alone
       fork test, and(is-unequal(key, <>), and(is-equal(diagnostics/length, before-diagnostics), is-equal(tally-failed(given), before-failed)))
         hold
@@ -3939,6 +4202,7 @@ task check-task
               bind proven, subtract(tally-proven(given), before-proven)
               bind kinds, delta-kinds
               bind uncertified, subtract(calls/provers/refine/uncertified, before-uncertified)
+              bind trace, traced
           remember-holds(state, key, delta)
     miss
       save nothing, 0

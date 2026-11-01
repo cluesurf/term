@@ -773,11 +773,19 @@ task rust-type-of
       save params, join-texts(spelled, <, >)
       save result, rust-type-of(fn-result, context)
       save is-async, false
+      save raises, false
       walk fn-effects
         take effect
         fork test, is-equal(effect, <async>)
           hold
             save is-async, true
+        # a slot with a non-empty raise set answers `Result` (decision 086 rule 4)
+        fork test, and(is-unequal(effect, <halt kink>), starts-with(effect, <halt >))
+          hold
+            save raises, true
+      fork test, raises
+        hold
+          save result, <std::result::Result\<{result}, TermException\>>
       fork test, is-async
         hold
           back <std::rc::Rc\<dyn Fn({params}) -\> std::pin::Pin\<Box\<dyn std::future::Future\<Output = {result}\>\>\>\>>

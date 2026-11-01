@@ -270,6 +270,213 @@ task unfold-table
         save out/{name}, bodies/get(name)
   back out
 
+# THE SAME TABLE, FILLED PER NAME ON FIRST ASK (decision 103 of term/self-host/change/001-finish-self-host): a task's
+# entry is read the first time a goal calls it, so a stub's carried shape is read only by a unfolding that consults it,
+# never by building the table. It answers what `unfold-table` answers, name by name. That table takes a recursive name
+# out before testing the next, in the order the names were first defined, so whether a name stays depends on the names
+# before it: a name it reaches is in the table when it has an entry and is not a name before it that was taken out.
+# `removed` is computed so, each name once, and only over the names a name reaches
+form unfolds
+  mark shared
+  link program, like list, like statement
+  # the places of each name's tasks, in program order
+  link places, like hash, like text, like list, like number
+  link looked, like hash, like text, like boolean
+  link bodies, like hash, like text, like unfold-entry
+  # the place of a name's first unfoldable task: its order among the names
+  link firsts, like hash, like text, like number
+  link judged, like hash, like text, like boolean
+  link removed, like hash, like text, like boolean
+  # the stubs each name's answer reads (`unfolds-tell`)
+  link reads, like hash, like text, like list, like statement
+  # a stub whose carried shape an answer read, told to `noted` (decision 103's trace)
+  link noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+
+# a program's table, nothing read yet
+task new-unfolds
+  take program, like list, like statement
+  take noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+  like unfolds
+
+  save places, make hash
+  save at, 0
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(places/has(name))
+          hold
+            save fresh, make list
+            places/set(name, fresh)
+        push(places/get(name), at)
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  back
+    make unfolds
+      bind program, program
+      bind places, places
+      bind looked, make hash
+      bind bodies, make hash
+      bind firsts, make hash
+      bind judged, make hash
+      bind removed, make hash
+      bind reads, make hash
+      bind noted, noted
+
+# the entry of a name, read from its tasks the first time it is asked, the last unfoldable one as `unfold-table` keeps
+task unfolds-entry
+  take u, like unfolds
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, u/looked/has(name)
+    hold
+      back u/bodies/has(name)
+  u/looked/set(name, true)
+  fork test, not(u/places/has(name))
+    hold
+      back false
+  walk u/places/get(name)
+    take at
+    save one, get(u/program, at)
+    sift unfoldable-body(one)
+      case some
+        link entry
+        fork test, not(u/firsts/has(name))
+          hold
+            u/firsts/set(name, at)
+        u/bodies/set(name, entry)
+      case none
+        save nothing, 0
+  back u/bodies/has(name)
+
+# THE STUBS A NAME'S ANSWER READS: those of its own tasks, and of every name its body reaches, since whether it recurses
+# is read through them. Told at every ask, never once: a hold memo entry keeps what is told while its walk's frame is
+# open, so a walk asking about a name an earlier task asked first must still tell it
+task unfolds-tell
+  take u, like unfolds
+  take name, like text
+  mark private
+
+  fork test, not(u/reads/has(name))
+    hold
+      save read, make list
+      save seen, make list
+      save stack, make list
+      push(stack, name)
+      walk test
+        hook test, is-above(stack/length, 0)
+        hook hold
+          save current, stack/pop()
+          fork test, contains(seen, current)
+            hold
+              turn next
+          push(seen, current)
+          fork test, u/places/has(current)
+            hold
+              walk u/places/get(current)
+                take at
+                save one, get(u/program, at)
+                sift one
+                  case function
+                    fork test, and(is-equal(stub, true), stub-shape-held(one))
+                      hold
+                        push(read, one)
+                  miss
+                    save nothing, 0
+          fork test, unfolds-entry(u, current)
+            hold
+              save called, make list
+              called-names(u/bodies/get(current)/body, called)
+              walk called
+                take next
+                push(stack, next)
+      u/reads/set(name, read)
+  walk u/reads/get(name)
+    take one
+    save told, u/noted(one, <shape>)
+
+# whether a stub holds a carried shape
+task stub-shape-held
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      sift stub-shape
+        case some
+          link shape
+          back true
+        case none
+          back false
+    miss
+      back false
+
+# whether `unfold-table` took this name out as recursive: it reaches itself through the names in the table when it was
+# tested, which are the names with an entry, but those before it that were taken out
+task unfolds-removed
+  take u, like unfolds
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, u/judged/has(name)
+    hold
+      back u/removed/has(name)
+  u/judged/set(name, true)
+  save order, u/firsts/get(name)
+  save seen, make list
+  save stack, make list
+  push(stack, name)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save current, stack/pop()
+      fork test, not(unfolds-entry(u, current))
+        hold
+          turn next
+      fork test, is-unequal(current, name)
+        hold
+          fork test, and(is-below(u/firsts/get(current), order), unfolds-removed(u, current))
+            hold
+              turn next
+      save called, make list
+      called-names(u/bodies/get(current)/body, called)
+      walk called
+        take next
+        fork test, is-equal(next, name)
+          hold
+            u/removed/set(name, true)
+            back true
+        fork test, not(contains(seen, next))
+          hold
+            push(seen, next)
+            push(stack, next)
+  back false
+
+# is the name in the table: an entry, not taken out
+task unfolds-has
+  take u, like unfolds
+  take name, like text
+  like boolean
+
+  unfolds-tell(u, name)
+  fork test, not(unfolds-entry(u, name))
+    hold
+      back false
+  back not(unfolds-removed(u, name))
+
 # substitute each parameter by its argument, simultaneously (an argument is never re-substituted). Also how the kernel
 # instantiates a universal hypothesis at a goal's terms (check/elaborate.ts universalInstances)
 task substitute
@@ -420,26 +627,103 @@ task read-field
     miss
       back e
 
-# unfold every call to a non-recursive single-expression task, innermost arguments first
+# unfold every call to a non-recursive single-expression task, innermost arguments first, through a program's table
+# filled as the calls ask (`unfolds`), which a check builds once and keeps for its goals (decision 103)
 task unfold-definitions
   take e, like expression
-  take table, like hash, like text, like unfold-entry
+  take table, like unfolds
   like expression
 
   back unfold-walk(e, table, 0)
 
-# the same over a program, its table built for this call: check/unfold.ts kept the last program's table by the program's
+# the same over a program, its table made for this call: check/unfold.ts kept the last program's table by the program's
 # identity, an identity memo, which item 0355 dropped (spec 4.11)
 task unfold-over
   take e, like expression
   take program, like list, like statement
   like expression
 
-  back unfold-walk(e, unfold-table(program), 0)
+  back unfold-walk(e, new-unfolds(program, unnoted), 0)
+
+# THE TRACE (decision 103 item 3): a stub whose carried shape or body a prover or the kernel consulted, told to the
+# recorder compile/separate.ts installs while a unit builds (`termCarriedTrace`), and to nothing when none is installed.
+# Here, in a module that loads nothing of the checker's, so every consult can reach it
+task carried-noted
+  take statement, like statement
+  take kind, like text
+  like boolean
+
+  back tell-carried(statement, kind)
+
+bind tell-carried
+  take statement, like statement
+  take kind, like text
+  like boolean
+  case node
+    text <((globalThis as any).termCarriedTrace?.($statement, $kind) ?? true)>
+  case browser
+    text <((globalThis as any).termCarriedTrace?.($statement, $kind) ?? true)>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+# A HOLD MEMO ENTRY CARRIES ITS TRACE (decision 103 item 1): a frame opened before a task's walk gathers every locator
+# told while it is open, `trace-close` hands them back for the entry to keep, and a memo hit tells them again
+bind trace-open
+  like number
+  case node
+    text <Number((globalThis as any).termCarriedFrames?.open() ?? 0)>
+  case browser
+    text <Number((globalThis as any).termCarriedFrames?.open() ?? 0)>
+  case rust
+    text <0.0>
+  case swift
+    text <0.0>
+  case kotlin
+    text <0.0>
+
+bind trace-close
+  take frame, like number
+  like list, like text
+  case node
+    text <((globalThis as any).termCarriedFrames?.close($frame) ?? [])>
+  case browser
+    text <((globalThis as any).termCarriedFrames?.close($frame) ?? [])>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <mutableListOf()>
+
+bind trace-replay
+  take locators, like list, like text
+  like boolean
+  case node
+    text <((globalThis as any).termCarriedFrames?.replay($locators) ?? true)>
+  case browser
+    text <((globalThis as any).termCarriedFrames?.replay($locators) ?? true)>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+# a table nobody traces
+task unnoted
+  take statement, like statement
+  take kind, like text
+  like boolean
+
+  back true
 
 task unfold-walk
   take x, like expression
-  take table, like hash, like text, like unfold-entry
+  take table, like unfolds
   take depth, like number
   like expression
   mark private
@@ -497,7 +781,7 @@ task unfold-walk
       sift callee
         case variable
           link callee-name
-          fork test, table/has(callee-name)
+          fork test, unfolds-has(table, callee-name)
             hold
               save found, true
               save entry-name, callee-name
@@ -505,7 +789,7 @@ task unfold-walk
           save nothing, 0
       fork test, found
         hold
-          save entry, table/get(entry-name)
+          save entry, table/bodies/get(entry-name)
           fork test, and(is-equal(entry/params/length, new-args/length), is-below(depth, unfold-depth-limit()))
             hold
               save bound-to, make hash

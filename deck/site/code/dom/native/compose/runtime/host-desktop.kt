@@ -113,7 +113,7 @@ object composeHost {
             host.cxOnNodeWithTag(tag).cxRequestFocus()
             host.waitForIdle()
         }
-        val session = request() ?: error("composeHost: the field $tag opened no text input session when focused")
+        val session = request() ?: kotlin.error("composeHost: the field $tag opened no text input session when focused")
         host.runOnUiThread {
             session.editText { if (commit) commitText(text, 1) else setComposingText(text, 1) }
         }
@@ -205,7 +205,7 @@ object composeHost {
             // Skia reads the face only when it is first drawn: a file that is not a font must be refused HERE, as the
             // other hosts refuse it, so its typeface is made now
             typefaces[family] = org.jetbrains.skia.FontMgr.default.makeFromData(org.jetbrains.skia.Data.makeFromBytes(bytes))
-                ?: error("not a font")
+                ?: kotlin.error("not a font")
             androidx.compose.ui.text.font.FontFamily(font)
         }.getOrNull()
 

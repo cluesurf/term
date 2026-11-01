@@ -24,12 +24,13 @@
 #     two arguments. None of these is ever cleared, as none was
 #   - `result-widths`: the program's tasks with a width-typed result, and `width-atoms` the count behind the fresh atom
 #     each reading of an impure one gets
-#   - `extrema`: the extremum (`max` or `min`) each name computes in the program
+#   - `extrema`: the extremum (`max` or `min`) each name computes in the program, a `name-memo` filled per name on its
+#     first ask (decision 103 of term/self-host/change/001-finish-self-host), as `list-pushes`, `list-pops` and `unfolds`
 #   - `number-fields`: each record form's number fields, and `param-forms` the record form of each parameter of the task
 #     being walked
 #   - `list-pushes` and `list-pops`: the program's tasks that ARE a list's push or pop, recognized by shape
-#   - `program`: the program being walked, whose single-expression tasks a goal is unfolded through, and `aliases` its
-#     transparent aliases, so a mark typed by an alias of a task is a function mark
+#   - `program`: the program being walked, whose single-expression tasks a goal is unfolded through (`unfolds`, its
+#     unfolding table), and `aliases` its transparent aliases, so a mark typed by an alias of a task is a function mark
 #   - `theorem-scope`: the names the theorem being walked binds, its marks and its finds, which a cited rule's marks are
 #     read by. `kernel-only`: the rules only the kernel proved. `cased-forms`: the forms with cases, which `fold`
 #     splits. `small-tasks`: the tasks whose whole body is one `back`, which the counterexample search runs
@@ -57,6 +58,119 @@ load ./alias
 
 load ./explain
   find small-task
+
+load ./unfolding
+  find unfolds
+  find new-unfolds
+  find unnoted
+  find carried-noted
+
+# A PROVER'S TABLE OF A PROGRAM, FILLED PER NAME ON FIRST ASK (decision 103): `fill` answers one name, `<>` for none,
+# with the stubs whose carried shape it read (its callees' too), so a stub's shape is read only when a goal asks about a
+# call to it, never by building the table. A lookup that is part of a goal tells `noted` those stubs, at every ask; the
+# hold memo's key looks up QUIETLY (`quiet`), since a key is not an answer
+form name-memo
+  mark shared
+  link known, like hash, like text, like boolean
+  link answers, like hash, like text, like text
+  link read, like hash, like text, like list, like statement
+  link fill
+    like task
+      take name, like text
+      like name-answer
+  link noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+
+# a rule of the program by name, as a goal cites or walks it. A carried rule's statement is its stub's body (`theorems`),
+# so reading it here is a consult of that body (decision 103), told to the trace
+task theorem-of
+  take state, like hold-state
+  take name, like text
+  like statement
+
+  save rule, state/theorems/get(name)
+  sift rule
+    case function
+      fork test, and(is-equal(stub, true), is-above(stub-body/length, 0))
+        hold
+          save told, carried-noted(rule, <body>)
+    miss
+      save nothing, 0
+  back rule
+
+# one name's answer, and the stubs whose carried shape it read
+form name-answer
+  link answer, like text
+  link read, like list, like statement
+
+# a table that knows nothing, as a fresh state holds before a program is checked
+task empty-name-memo
+  like name-memo
+
+  back new-name-memo(answer-none, unnoted)
+
+task answer-none
+  take name, like text
+  like name-answer
+  mark private
+
+  back
+    make name-answer
+      bind answer, <>
+      bind read, make list
+
+task new-name-memo
+  take fill
+    like task
+      take name, like text
+      like name-answer
+  take noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+  like name-memo
+
+  back
+    make name-memo
+      bind known, make hash
+      bind answers, make hash
+      bind read, make hash
+      bind fill, fill
+      bind noted, noted
+
+# a name's answer, `<>` for none, filled on its first ask; unless `quiet`, the stubs it read told
+task name-memo-answer
+  take memo, like name-memo
+  take name, like text
+  take quiet, like boolean
+  like text
+
+  fork test, not(memo/known/has(name))
+    hold
+      save filled, memo/fill(name)
+      memo/answers/set(name, filled/answer)
+      memo/read/set(name, filled/read)
+      memo/known/set(name, true)
+  # told at every ask, never once per name: a hold memo entry keeps what was told while its walk's frame was open, so a
+  # walk that asks about a name an earlier task asked first must still tell it
+  fork test, not(quiet)
+    hold
+      walk memo/read/get(name)
+        take one
+        save told, memo/noted(one, <shape>)
+  back memo/answers/get(name)
+
+# does the table hold the name, as part of a goal
+task name-memo-has
+  take memo, like name-memo
+  take name, like text
+  like boolean
+
+  back is-unequal(name-memo-answer(memo, name, false), <>)
 
 # an atom: the function an application calls, and the variables its arguments read, through nested applications
 form hold-atom
@@ -102,12 +216,13 @@ form hold-state
   # each width-typed field, `<form>/<field>` to its width, under the switch: a read of one is a value inside the width
   link field-widths, like hash, like text, like text
   link width-atoms, like number
-  link extrema, like hash, like text, like text
+  link extrema, like name-memo
   link number-fields, like hash, like text, like list, like text
   link param-forms, like hash, like text, like text
-  link list-pushes, like hash, like text, like boolean
-  link list-pops, like hash, like text, like boolean
+  link list-pushes, like name-memo
+  link list-pops, like name-memo
   link program, like list, like statement
+  link unfolds, like unfolds
   link aliases, like hash, like text, like type-alias
   link theorem-scope, like hash, like text, like boolean
   link kernel-only, like hash, like text, like boolean
@@ -123,6 +238,8 @@ form hold-delta
   link proven, like number
   link kinds, like hash, like text, like delta-count
   link uncertified, like number
+  # the carried shapes and bodies the kept walk consulted (decision 103), told again when the walk is replayed
+  link trace, like list, like text
 
 form delta-count
   link total, like number
@@ -173,12 +290,13 @@ task fresh-hold-state
       bind result-widths, text-table()
       bind field-widths, text-table()
       bind width-atoms, 0
-      bind extrema, text-table()
+      bind extrema, empty-name-memo()
       bind number-fields, fields-table()
       bind param-forms, text-table()
-      bind list-pushes, flag-table()
-      bind list-pops, flag-table()
+      bind list-pushes, empty-name-memo()
+      bind list-pops, empty-name-memo()
       bind program, statements()
+      bind unfolds, new-unfolds(statements(), unnoted)
       bind aliases, alias-table()
       bind theorem-scope, flag-table()
       bind kernel-only, flag-table()
@@ -213,6 +331,7 @@ task reset-hold-program
   take state, like hold-state
 
   save state/program, statements()
+  save state/unfolds, new-unfolds(statements(), unnoted)
   save state/result-widths, text-table()
   save state/field-widths, text-table()
   save state/pure-tasks, flag-table()

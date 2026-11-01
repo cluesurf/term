@@ -13,7 +13,7 @@ class CaskWindow(val title: String, val width: Long, val height: Long)
 
 object cask {
     private fun noWebView(what: String): Nothing =
-        error("cask: $what needs a WebView, which the compose env does not have (compose-target)")
+        kotlin.error("cask: $what needs a WebView, which the compose env does not have (compose-target)")
 
     fun openWindow(title: String, width: Long, height: Long): CaskWindow = CaskWindow(title, width, height)
 

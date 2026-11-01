@@ -2809,6 +2809,37 @@ task read-once
         save nothing, 0
   back is-equal(count, 1)
 
+# A closure that may raise stays a slot's argument, never a callee in its caller: the raise of a closure called in place
+# reaches no backend's framing (Rust's raising instance, Swift's `try`), which read the slot (item term-self-host-001-0531).
+# It may raise when it holds a raise or any call, since a pass this early has no raise sets to ask.
+task may-raise-as-callee
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case closure
+      save reached-of, reach-expression(node, skip-keys())
+      walk reached-of/statements
+        take one
+        sift one
+          case throw
+            back true
+          miss
+            save nothing, 0
+      walk reached-of/expressions
+        take one
+        sift one
+          case call
+            back true
+          case await
+            back true
+          miss
+            save nothing, 0
+      back false
+    miss
+      back false
+
 # a small one-expression task, inlined at a call whose arguments are all pure: the value with the arguments substituted
 # for the parameters. An argument computed with no effect is taken too when its parameter is read exactly once, so
 # nothing is computed twice. Not where a name the body reads, other than its own parameters, is bound by the caller
@@ -2821,6 +2852,11 @@ task small-value
   like maybe, like expression
   mark private
 
+  walk args
+    take arg
+    fork test, may-raise-as-callee(arg)
+      hold
+        back make none
   save computed, make list
   save computed-at, -1
   save i, 0

@@ -7,14 +7,13 @@
 import {
   cpSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import {
   buildSession,
   compileProjectSeparate,
@@ -37,7 +36,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const stdlib = stdlibBase()!
-const base = realpathSync(mkdtempSync(join(tmpdir(), 'unit-portable-')))
+const base = realpathSync(tempDir('unit-portable-'))
 const store = join(base, 'store')
 const SKIP = new Set(['host', 'node_modules', '.base', 'tmp', 'link'])
 

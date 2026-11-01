@@ -106,6 +106,7 @@ load ./hold-state
   find hold-state
   find quotient
   find extremum-pair
+  find name-memo-answer
 
 load ./checker-switches
   find width-limits
@@ -895,9 +896,13 @@ task called-linear
                   back make(some, made)
                 case none
                   back make none
-          fork test, and(state/extrema/has(name), is-equal(args/length, 2))
+          # the extremum a call computes, read from its task when first asked (decision 103)
+          save kind, <>
+          fork test, is-equal(args/length, 2)
             hold
-              save kind, state/extrema/get(name)
+              save kind, name-memo-answer(state/extrema, name, false)
+          fork test, is-unequal(kind, <>)
+            hold
               save a-read, to-linear(state, calls, get(args, 0), side)
               save b-read, to-linear(state, calls, get(args, 1), side)
               sift a-read

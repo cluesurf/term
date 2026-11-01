@@ -1,0 +1,48 @@
+note <the Kotlin the toolchain hands a program never calls a bare error>
+
+# A program that loads @term/base/log defines a top-level `error` answering Unit, and every Kotlin file of a build is
+# one program, so a bare `error("...")` in a runtime or in emitted text binds to it and not to Kotlin's own, which
+# answers Nothing. `x ?: error("...")` is then an Any, and kotlinc refuses it. Every view program has the log in its
+# closure since report-raise (item term-self-host-001-0535), so these files write `kotlin.error`.
+
+load @term/base/file/blocking
+  find read, name read-path
+
+load @term/base/file/directory
+  find walk, name walk-paths
+
+load @term/base/text
+  find contains
+  find ends-with
+  find replace-all
+
+task bare-error-files
+  take base, like text
+  like list, like text
+
+  save found, make list
+  walk walk-paths(base)
+    take path
+    fork test, ends-with(path, <.kt>)
+      hold
+        save kept, replace-all(read-path(path), <kotlin.error(">, <>)
+        fork test, contains(kept, <error(">)
+          hold
+            found/push(path)
+  back found
+
+test <no runtime of the view library calls a bare error>
+  want hold, is-equal(bare-error-files(<../site/code>)/length, 0)
+
+test <no runtime of the cask calls a bare error>
+  want hold, is-equal(bare-error-files(<../cask/code>)/length, 0)
+
+test <no runtime of the stdlib calls a bare error>
+  want hold, is-equal(bare-error-files(<../base/code>)/length, 0)
+
+test <the walk reaches the runtimes it reads>
+  want hold, contains(read-path(<../cask/code/native/kotlin/runtime/compose/cask.kt>), <kotlin.error(">)
+
+test <the Kotlin emitter writes no bare error>
+  save kept, replace-all(read-path(<./code/compile/kotlin-emit.tree>), <kotlin.error(">, <>)
+  want hold, is-equal(contains(kept, <error(">), false)

@@ -172,11 +172,160 @@ task check-body
   take result, like type
   like list, like statement
 
+  save answers-unknown, is-list-of-unknown(st, result)
   save out, make list
   walk body
     take one
-    push(out, check-statement(st, one, env, result))
+    save kept, one
+    fork test, answers-unknown
+      hold
+        save kept, declared-by-return(one, body, result)
+    push(out, check-statement(st, kept, env, result))
   back out
+
+# whether a type is a list declared of `unknown`
+task is-list-of-unknown
+  take st, like infer-state
+  take given, like type
+  like boolean
+  mark private
+
+  save held, resolve-held(st, given)
+  sift held
+    case array
+      link element
+      save held-element, resolve-held(st, element)
+      sift held-element
+        case unknown
+          back true
+        miss
+          back false
+    miss
+      back false
+
+# A LIST MADE EMPTY AND HANDED BACK WHERE THE TASK DECLARES A LIST OF `unknown` IS THAT LIST: the declared element is the
+# list's own from its first line, so its first push does not pin it to that item's type, and every backend holds one list
+# of boxed values (term-self-host-001-0532). A later `expect` passed a list of text as a list of unknown, which Rust and
+# Kotlin refuse, and `items/push(<a>)` then `items/push(1)` was refused on all four
+task declared-by-return
+  take one, like statement
+  take body, like list, like statement
+  take result, like type
+  like statement
+  mark private
+
+  sift one
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      sift let-type
+        case none
+          sift let-init
+            case array
+              link made-items
+              fork test, and(is-equal(made-items/length, 0), hands-back(body, let-name))
+                hold
+                  save one/type, make(some, result)
+            miss
+              save nothing, 0
+        case some
+          save nothing, 0
+    miss
+      save nothing, 0
+  back one
+
+# whether any statement of a body, however deep, hands back the local of this name
+task hands-back
+  take body, like list, like statement
+  take name, like text
+  like boolean
+  mark private
+
+  walk body
+    take one
+    sift one
+      case return
+        link returned-value
+        sift returned-value
+          case some
+            link returned
+            sift returned
+              case variable
+                link returned-name
+                fork test, is-equal(returned-name, name)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          fork test, hands-back(branch/body, name)
+            hold
+              back true
+        sift if-otherwise
+          case some
+            link if-rest
+            fork test, hands-back(if-rest, name)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        fork test, hands-back(while-body, name)
+          hold
+            back true
+      case for-each
+        link each-item
+        link each-index
+        link each-iterable
+        link each-body
+        fork test, hands-back(each-body, name)
+          hold
+            back true
+      case guard
+        link guard-body
+        link guard-catch
+        fork test, hands-back(guard-body, name)
+          hold
+            back true
+        sift guard-catch
+          case some
+            link guard-handler
+            fork test, hands-back(guard-handler/body, name)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        walk match-cases
+          take branch
+          fork test, hands-back(branch/body, name)
+            hold
+              back true
+        sift match-otherwise
+          case some
+            link match-rest
+            fork test, hands-back(match-rest, name)
+              hold
+                back true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
 
 # ONE STATEMENT CHECKED, answered as the statement to keep: every expression in it inferred and written back where it
 # stood, and an `if` a narrowing rewrote checked as the `sift` it became (part 5)

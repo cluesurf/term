@@ -72,6 +72,10 @@ load ./hold-facts
 
 load ./hold-state
   find hold-state
+  find name-memo
+  find name-answer
+  find new-name-memo
+  find name-memo-has
 
 load ./holding
   find owed-kinds
@@ -907,6 +911,123 @@ task list-pops-of
         save nothing, 0
   back out
 
+# THE SAME TWO TABLES, FILLED PER NAME ON FIRST ASK (decision 103 of term/self-host/change/001-finish-self-host): a
+# name's answer reads only that name's tasks, so a stub's carried shape is read when a goal asks about a call to it,
+# never by building the table. Each answers what `list-pushes-of` and `list-pops-of` answer, name by name: `<yes>` for
+# a name one of whose tasks has the shape
+
+# the places of each name's tasks in a program, in program order
+task function-places
+  take program, like list, like statement
+  like hash, like text, like list, like number
+
+  save places, make hash
+  save at, 0
+  walk program
+    take s
+    sift s
+      case function
+        link task-name
+        fork test, not(places/has(task-name))
+          hold
+            save fresh, make list
+            places/set(task-name, fresh)
+        push(places/get(task-name), at)
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  back places
+
+# the stubs among a name's tasks that carry a shape, which deciding the name read
+task shapes-read
+  take program, like list, like statement
+  take at, like list, like number
+  like list, like statement
+
+  save out, make list
+  walk at
+    take place
+    save s, get(program, place)
+    sift s
+      case function
+        fork test, is-equal(stub, true)
+          hold
+            sift stub-shape
+              case some
+                link shape
+                push(out, s)
+              case none
+                save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task list-pushes-memo
+  take program, like list, like statement
+  take noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+  like name-memo
+
+  save places, function-places(program)
+  save fill
+    task
+      take name, like text
+      like name-answer
+      save one-program, make list
+      save answer, <>
+      save read, make list
+      fork test, places/has(name)
+        hold
+          save read, shapes-read(program, places/get(name))
+          walk places/get(name)
+            take place
+            push(one-program, get(program, place))
+          save found, list-pushes-of(one-program)
+          fork test, found/has(name)
+            hold
+              save answer, <yes>
+      back
+        make name-answer
+          bind answer, answer
+          bind read, read
+  back new-name-memo(fill, noted)
+
+task list-pops-memo
+  take program, like list, like statement
+  take noted
+    like task
+      take statement, like statement
+      take kind, like text
+      like boolean
+  like name-memo
+
+  save places, function-places(program)
+  save fill
+    task
+      take name, like text
+      like name-answer
+      save one-program, make list
+      save answer, <>
+      save read, make list
+      fork test, places/has(name)
+        hold
+          save read, shapes-read(program, places/get(name))
+          walk places/get(name)
+            take place
+            push(one-program, get(program, place))
+          save found, list-pops-of(one-program)
+          fork test, found/has(name)
+            hold
+              save answer, <yes>
+      back
+        make name-answer
+          bind answer, answer
+          bind read, read
+  back new-name-memo(fill, noted)
+
 # the value a task's one statement sends back, when that statement is a `send back`
 task only-return
   take s, like statement
@@ -942,7 +1063,7 @@ task names-variable
 # binding, with `p` a plain path to a list
 task popped-path
   take statement, like statement
-  take pops, like hash, like text, like boolean
+  take pops, like name-memo
   like maybe, like text
 
   save value-read, statement-value(statement)
@@ -968,7 +1089,7 @@ task popped-path
                   save nothing, 0
             case variable
               link callee-name
-              fork test, and(pops/has(callee-name), is-equal(args/length, 1))
+              fork test, and(is-equal(args/length, 1), name-memo-has(pops, callee-name))
                 hold
                   back listed-path(get(args, 0))
             miss
@@ -1021,7 +1142,7 @@ task pushed-path
   take state, like hold-state
   take statement, like statement
   take walk, like hold-walk
-  take pushes, like hash, like text, like boolean
+  take pushes, like name-memo
   like maybe, like text
 
   sift statement
@@ -1034,7 +1155,7 @@ task pushed-path
           sift callee
             case variable
               link callee-name
-              fork test, and(pushes/has(callee-name), is-equal(args/length, 2))
+              fork test, and(is-equal(args/length, 2), name-memo-has(pushes, callee-name))
                 hold
                   save list, get(args, 0)
                   fork test, is-array-typed(list)
@@ -1077,7 +1198,7 @@ task push-targets
   take state, like hold-state
   take body, like list, like statement
   take walk, like hold-walk
-  take pushes, like hash, like text, like boolean
+  take pushes, like name-memo
   like list, like text
 
   save out, texts()
@@ -1111,7 +1232,7 @@ task body-only-pushes
   take state, like hold-state
   take body, like list, like statement
   take walk, like hold-walk
-  take pushes, like hash, like text, like boolean
+  take pushes, like name-memo
   like number
 
   save count, 0
@@ -1226,7 +1347,7 @@ task only-pushing-loop
   take state, like hold-state
   take statement, like statement
   take walk, like hold-walk
-  take pushes, like hash, like text, like boolean
+  take pushes, like name-memo
   like boolean
 
   sift statement
@@ -1264,7 +1385,7 @@ task impure-effect
   take start, like list, like node-handle
   take parts, like list, like subtree
   take walk, like hold-walk
-  take pushes, like hash, like text, like boolean
+  take pushes, like name-memo
   like list, like inequality
 
   fork test, not(impure-in(parts, walk))

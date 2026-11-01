@@ -3,6 +3,9 @@
 # here and emit the backend's stub. What a page can do is ask its cask where things are, and leave. Each is one
 # command over the bridge, answered by the cask's dispatcher. Internal: reached only through the public cask API.
 
+load @term/site/report
+  find report-raise
+
 dock load
   load <global:bridge>, name bridge
 
@@ -47,6 +50,7 @@ task on-message
       wait true
       take message, like text
       like text
+      halt exception
   like void
 
 task emit
@@ -61,16 +65,38 @@ task listen
     like task
       take text, like text
       like void
+      halt exception
   like void
   call bridge/listen
     read name
-    read handler
+    task heard
+      take text, like text
+      like void
+      fork
+        mark unsafe
+        call handler
+          read text
+      halt take
+        take problem
+        call report-raise
+          text <listen/handler>
+          read problem
 
 task on-ready
   take self, like window
   take handler
     like task
       like void
+      halt exception
+  like void
+
+# a page holds no window, so nothing here ever closes one: declared so the contract spells one signature on every env
+task on-close
+  take self, like window
+  take handler
+    like task
+      like void
+      halt exception
   like void
 
 task snapshot
@@ -79,6 +105,7 @@ task snapshot
   take done
     like task
       like void
+      halt exception
   like void
 
 task show

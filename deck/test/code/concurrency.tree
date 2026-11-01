@@ -35,12 +35,28 @@ bind lane-count
   like number
   case node
     text <Array.from(\{ length: Math.min($limit, $size) \}).length>
+  case browser
+    text <Array.from(\{ length: Math.min($limit, $size) \}).length>
+  case rust
+    text <std::cmp::max(std::cmp::min($limit, $size), 0)>
+  case swift
+    text <max(min($limit, $size), 0)>
+  case kotlin
+    text <maxOf(minOf($limit, $size), 0)>
 
 # a slot no runner filled, as `new Array(n)` leaves it
 bind concurrency-hole
   like unknown
   case node
     text <undefined>
+  case browser
+    text <undefined>
+  case rust
+    text <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
+  case swift
+    text <(() as Any)>
+  case kotlin
+    text <(Unit as Any)>
 
 # the original's `!cpuCount || cpuCount < 1`: none, zero, NaN and anything below one. A bind, because the build
 # folds not(is-minimum(x, 1)) into x < 1, which reads NaN as a count

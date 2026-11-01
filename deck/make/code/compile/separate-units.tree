@@ -1246,6 +1246,47 @@ task inputs-as
 
 # ---- one unit built ----
 
+# THE KERNEL'S VERDICT REACHES THE STUB, which is taken from the statements as milled, not from the checked program. Most
+# of the checker writes those statements in place, but its stamps hand back a NEW node for a task holding anything they
+# stamped (compile/node-rebuild.tree), and `stamp-grounded` runs after them, so a task with a call got its verdict on a
+# statement no stub reads: a proof in another file resting on it was `unverified-proof` in the unit build and proven by
+# --merged (item term-self-host-001-0527). A task is found again by its name and where it stands.
+# One not found stays ungrounded, which only refuses more
+task carry-grounded
+  take own, like list, like statement
+  take checked, like list, like statement
+  mark private
+
+  save verdicts, make hash
+  walk checked
+    take one
+    sift one
+      case function
+        fork test, grounded
+          hold
+            save key, grounded-key(one, name)
+            save verdicts/{key}, true
+      miss
+        turn next
+  walk own
+    take one
+    sift one
+      case function
+        fork test, verdicts/has(grounded-key(one, name))
+          hold
+            save one/grounded, true
+      miss
+        turn next
+
+task grounded-key
+  take one, like statement
+  take name, like text
+  like text
+  mark private
+
+  save at, statement-span(one)
+  back <{statement-file(one)}:{at/start/line}:{at/start/column}:{name}>
+
 # THE UNIT BUILT, checked as `checked-as`
 task make-unit
   take run, like separate-run
@@ -1330,6 +1371,8 @@ task make-unit
     fork test, own/has(emitted/file)
       hold
         push(files-out, emitted)
+
+  carry-grounded(own-statements, result/program)
 
   # the stub surface dependents check against, per own file, each task carrying what the whole-program analyses found
   # about it here, where its body is

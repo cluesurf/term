@@ -20,6 +20,7 @@ load @term/base/text
   find char-count
   find split
   find replace-all
+  find substring
 
 load ./node
   find type
@@ -1888,4 +1889,85 @@ task inspect-forms
         out/set(name, one)
       miss
         save nothing, 0
+  back out
+
+# WHETHER A TASK TYPE'S SLOT RAISES on a native backend (decisions 086 rule 4 and 089 rule 5 of
+# term/self-host/change/001-finish-self-host): a `halt <form>` line, each an effect. `halt kink` declares a pass-through
+# slot, whose set each call decides, so it is no answer here
+task type-raises
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case function
+          link fn-params
+          link fn-result
+          link fn-effects
+          walk fn-effects
+            take one
+            fork test, and(is-above(char-count(one), 5), is-unequal(one, <halt kink>))
+              hold
+                fork test, is-equal(substring(one, 0, 5), <halt >)
+                  hold
+                    back true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back false
+
+# a task type made to raise, for the slot of a task's raising instance (decision 089 rule 5)
+task slot-raising
+  take given, like maybe, like type
+  like maybe, like type
+
+  sift given
+    case some
+      link known
+      sift known
+        case function
+          link fn-params
+          link fn-result
+          link fn-effects
+          link fn-names
+          save raised, make list
+          walk fn-effects
+            take one
+            push(raised, one)
+          push(raised, <halt exception>)
+          save made
+            make type/function
+              bind params, fn-params
+              bind result, fn-result
+              bind effects, raised
+              bind param-names, fn-names
+          back make(some, made)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back given
+
+# the positions of a task's pass-through parameters, read off what the raise sets carry beside its set (`pass <i>`,
+# check/effects.tree `raise-sets-of`)
+task pass-positions
+  take carried, like list, like text
+  take count, like number
+  like list, like number
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save wanted, <pass {at}>
+      walk carried
+        take one
+        fork test, is-equal(one, wanted)
+          hold
+            push(out, at)
+      save at, add(at, 1)
   back out

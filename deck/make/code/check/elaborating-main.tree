@@ -58,6 +58,9 @@ load ./elaborating-holds
   find hold-state
   find check-hold
 
+load ./unfolding
+  find carried-noted
+
 bind raise-message
   take raised, like unknown
   like text
@@ -412,6 +415,8 @@ task check-program
         save statements, body
         fork test, is-stub
           hold
+            # the kernel consults this stub's carried body (decision 103), told to the trace
+            save told, carried-noted(statement, <body>)
             save statements, make list
             walk stub-body
               take one

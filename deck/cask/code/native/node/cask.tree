@@ -42,6 +42,7 @@ task on-message
       wait true
       take message, like text
       like text
+      halt exception
   like void
   halt <A cask has no window on node>
 
@@ -58,6 +59,7 @@ task listen
     like task
       take text, like text
       like void
+      halt exception
   like void
   halt <A cask has no window on node>
 
@@ -66,6 +68,7 @@ task on-ready
   take handler
     like task
       like void
+      halt exception
   like void
   halt <A cask has no window on node>
 
@@ -75,6 +78,7 @@ task on-close
   take handler
     like task
       like void
+      halt exception
   like void
   halt <A cask has no window on node>
 
@@ -89,6 +93,7 @@ task snapshot
   take done
     like task
       like void
+      halt exception
   like void
   halt <A cask has no window on node>
 
@@ -151,6 +156,7 @@ task update-check
     like task
       take status, like text
       like void
+      halt exception
   like void
   halt <A cask has no page updates on node>
 

@@ -172,7 +172,15 @@ try {
         rebuilt.text === first.text,
       )
     } finally {
-      fs.utimesSync(full, stat.atime, stat.mtime)
+      // never stat.mtime: that Date is mtimeMs ROUNDED to the millisecond, and the version reads Math.floor(mtimeMs), so
+      // a file last written at a fraction of .5 or more (a port just rebuilt) came back one millisecond later and every
+      // version moved (item term-self-host-001-0527). The middle of its own millisecond floors the same through
+      // utimes' seconds-as-a-double, which no fraction nearer the edge of the millisecond does
+      fs.utimesSync(
+        full,
+        stat.atime,
+        (Math.floor(stat.mtimeMs) + 0.5) / 1000,
+      )
     }
   }
 } finally {

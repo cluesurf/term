@@ -13,7 +13,7 @@ object nativeDevice {
     private var installed = false
 
     private fun configuration(): Configuration =
-        (composeHost.activity ?: error("nativeDevice: no Activity yet")).resources.configuration
+        (composeHost.activity ?: kotlin.error("nativeDevice: no Activity yet")).resources.configuration
 
     fun readTrait(name: String): String {
         val config = configuration()

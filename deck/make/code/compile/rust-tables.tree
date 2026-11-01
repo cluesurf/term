@@ -1039,6 +1039,7 @@ task impl-fn-type
   take params, like list, like type
   take result, like type
   take context, like rust-type-context
+  take raises, like boolean
   like text
 
   save spelled, make list
@@ -1050,6 +1051,9 @@ task impl-fn-type
   fork test, is-equal(answer, <()>)
     hold
       save arrow, <>
+  fork test, raises
+    hold
+      save arrow, < -\> std::result::Result\<{answer}, TermException\>>
   back <impl Fn({join-texts(spelled, <, >)}){arrow}>
 
 # an empty list or map binding spells its checked type, so rust does not have to infer it from later use. An empty list

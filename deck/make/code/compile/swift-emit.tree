@@ -73,6 +73,8 @@ load ./backend-shapes
   find reassigned
   find has-valued-return
   find escaping-params
+  find type-raises
+  find slot-raising
   find swap-at
   find form-spec-of
   find spec-forms
@@ -181,6 +183,8 @@ form swift-facts
   link binds, like hash, like text, like statement
   link fills, like hash, like text, like fill
   link throwing, like hash, like text, like boolean
+  # each task's pass-through parameters, by position (decision 089 rule 5)
+  link passes, like hash, like text, like list, like number
   link async-tasks, like hash, like text, like boolean
   link mask-methods, like hash, like text, like boolean
   link mask-of, like hash, like text, like text
@@ -289,6 +293,10 @@ form swift-state
   link current-result
     like maybe, like type
   link current-throws, like boolean
+  # the parameters of the task being written whose closure type throws, and whether the place of the value being written
+  # throws, read once by the task value or closure that is that value
+  link raising-slots, like hash, like text, like boolean
+  link slot-throws, like boolean
   link guard-depth, like number
   link awaiting, like boolean
   link bound-names, like list, like text
@@ -326,6 +334,8 @@ task new-swift-state
       bind fn-returns-array, false
       bind current-result, make none
       bind current-throws, false
+      bind raising-slots, make hash
+      bind slot-throws, false
       bind guard-depth, 0
       bind awaiting, false
       bind bound-names, make list
@@ -687,6 +697,11 @@ task swift-element
           fork test, st/inner-keys/has(inner-text)
             hold
               back <[{swift-type(make(some, inner), st, facts)}]>
+        # A GENERIC FORM'S TYPE ARGUMENT NOTHING CONSTRAINS is `Never` here, as its construction spells it (`Maybe<Never>.none`):
+        # a list of maybes pushed `none` was `SeedList<Maybe<Any>>` beside `Maybe<Never>.none`, and swiftc refused it
+        # (term-self-host-001-0529, Rust's is 0522). An element that is itself a free variable stays `Any`
+        case named
+          back spell-never(element, st, facts)
         miss
           save nothing, 0
       back swift-type(make(some, element), st, facts)
@@ -775,6 +790,10 @@ task swift-type
           link fn-params
           link fn-result
           save marker, <>
+          # a slot with a non-empty raise set throws (decision 086 rule 4)
+          fork test, type-raises(given)
+            hold
+              save marker, < throws>
           walk effects
             take effect
             # an asynchronous task type throws, so a raise inside the work it holds reaches whoever waits on it (a
@@ -1468,6 +1487,13 @@ task async-value-call
   fork test, and(is-unequal(callee-name, <>), not(is-bound(callee-name, st)))
     hold
       back false
+  # a slot that throws: a pass-through parameter (decision 089 rule 5), or one that declares a set (decision 086 rule 4)
+  fork test, st/raising-slots/has(callee-name)
+    hold
+      back true
+  fork test, type-raises(expression-type(callee))
+    hold
+      back true
   sift expression-type(callee)
     case some
       link known
@@ -1482,6 +1508,82 @@ task async-value-call
           save nothing, 0
     case none
       save nothing, 0
+  back false
+
+# WHETHER A VALUE PUT IN A TASK-TYPED PLACE CAN RAISE when called: too wide only adds a `try` to a call that never throws
+task value-raises
+  take value, like expression
+  take st, like swift-state
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      link variable-name
+      fork test, st/raising-slots/has(variable-name)
+        hold
+          back true
+      fork test, and(not(is-bound(variable-name, st)), facts/throwing/has(variable-name))
+        hold
+          back true
+    case closure
+      link closure-params
+      link closure-body
+      walk names-in(block-handles(closure-body))
+        take name
+        fork test, or(facts/throwing/has(name), st/raising-slots/has(name))
+          hold
+            back true
+      back body-throws(closure-body)
+    miss
+      save nothing, 0
+  back type-raises(expression-type(value))
+
+# a call to a task with a pass-through parameter throws where an argument given there can (decision 089 rule 5). The
+# task is `rethrows`, so an infallible argument's call needs no `try`
+task pass-call-throws
+  take callee-name, like text
+  take args, like list, like expression
+  take st, like swift-state
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  fork test, or(is-bound(callee-name, st), not(facts/passes/has(callee-name)))
+    hold
+      back false
+  walk facts/passes/get(callee-name)
+    take at
+    fork test, is-below(at, args/length)
+      hold
+        fork test, value-raises(get(args, at), st, facts)
+          hold
+            back true
+  back false
+
+# whether the parameter at a position of a task takes a closure type that throws
+task slot-at-throws
+  take callee-name, like text
+  take at, like number
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  fork test, facts/passes/has(callee-name)
+    hold
+      walk facts/passes/get(callee-name)
+        take position
+        fork test, is-equal(position, at)
+          hold
+            back true
+  fork test, facts/function-params/has(callee-name)
+    hold
+      save declared, facts/function-params/get(callee-name)
+      fork test, is-below(at, declared/length)
+        hold
+          save one, get(declared, at)
+          back type-raises(one/type)
   back false
 
 task try-word
@@ -1627,6 +1729,14 @@ task emit-expr
             hold
               save async-mark, < async>
               save await-mark, <await >
+          # a slot that throws takes the raise as it comes (decisions 086 rule 4, 089 rule 5), and an asynchronous task
+          # type always throws, so a raise inside a job's work reaches its wait (decision 092). Any other is refused by
+          # the checker, a slot with no set never holds a raising task
+          save slot-throws, st/slot-throws
+          save st/slot-throws, false
+          fork test, or(slot-throws, is-async)
+            hold
+              back <\{ ({join-texts(names, <, >)}){async-mark} throws in try {await-mark}{vname(variable-name)}({join-texts(passed, <, >)}) \}>
           back <\{ ({join-texts(names, <, >)}){async-mark} in try! {await-mark}{vname(variable-name)}({join-texts(passed, <, >)}) \}>
       back vname(variable-name)
     case hole
@@ -2087,7 +2197,10 @@ task emit-call
         take arg
         fork test, not(lending/has(at))
           hold
+            # the slot a task named or a closure written here goes in
+            save st/slot-throws, slot-at-throws(callee-name, at, facts)
             push(rendered-args, emit-expr(arg, field-scope, st, facts))
+            save st/slot-throws, false
           miss
             save how, lending/get(at)
             save fresh-arg, false
@@ -2194,14 +2307,14 @@ task emit-call
       fork test, and(and(free, facts/async-tasks/has(callee-name)), not(awaited))
         hold
           save raise, <>
-          fork test, facts/throwing/has(callee-name)
+          fork test, or(facts/throwing/has(callee-name), pass-call-throws(callee-name, args, st, facts))
             hold
               save raise, <try! >
           mark-need(st, <spawn>)
           back <__termSpawn \{ {raise}await {callee-text}({joined}) \}>
       save call-text, <{callee-text}({joined})>
       save throws, false
-      fork test, and(is-unequal(callee-name, <>), facts/throwing/has(callee-name))
+      fork test, and(is-unequal(callee-name, <>), or(facts/throwing/has(callee-name), pass-call-throws(callee-name, args, st, facts)))
         hold
           save throws, true
           save call-text, <({try-word(st)} {callee-text}({joined}))>
@@ -2679,7 +2792,11 @@ task emit-record
             take field
             fork test, given/has(field/name)
               hold
-                push(parts, <{camel(field/name)}: {field-value(record-name, field/name, given/get(field/name), declared, field-scope, st, facts)}>)
+                # a closed slot that declares a set takes a task value as it is (decision 086 rule 4)
+                save st/slot-throws, type-raises(make(some, field/type))
+                save field-text, field-value(record-name, field/name, given/get(field/name), declared, field-scope, st, facts)
+                save st/slot-throws, false
+                push(parts, <{camel(field/name)}: {field-text}>)
               miss
                 fork test, facts/field-lists/has(<{record-name}/{field/name}>)
                   hold
@@ -2918,8 +3035,11 @@ task emit-closure
       save outer-bound, st/bound-names
       save outer-spares, st/spares
       save st/spares, make list
-      # an asynchronous closure throws (its task type does), so a raise in it is carried to its waiter
-      save st/current-throws, closure-async
+      # an asynchronous closure throws (its task type does), so a raise in it is carried to its waiter, and a closure
+      # into a slot that throws carries its raise as a raising task does (decision 089 rule 5)
+      save closure-throws, and(st/slot-throws, value-raises(node, st, facts))
+      save st/slot-throws, false
+      save st/current-throws, or(closure-async, closure-throws)
       save st/guard-depth, 0
       save inner-bound, copy-texts(outer-bound)
       walk closure-params
@@ -2979,9 +3099,14 @@ task emit-closure
             push(typed, <{camel(param/name)}: {swift-type(param/type, st, facts)}>)
           save signature, <({join-texts(typed, <, >)}) async throws -\> {swift-type(closure-result, st, facts)} in >
         miss
+          save throws-word, <>
+          fork test, closure-throws
+            hold
+              save throws-word, < throws>
+              save signature, <({join-texts(names, <, >)}) throws in >
           sift closure-result
             case some
-              save signature, <({join-texts(names, <, >)}) -\> {swift-type(closure-result, st, facts)} in >
+              save signature, <({join-texts(names, <, >)}){throws-word} -\> {swift-type(closure-result, st, facts)} in >
             case none
               save nothing, 0
       save parts, copy-texts(lead)
@@ -4473,6 +4598,7 @@ task emit-function
         take param
         push(inputs, param/name)
       save params, make list
+      save own-slots, make hash
       save filled-inputs, make list
       save at, 0
       walk fn-params
@@ -4498,7 +4624,12 @@ task emit-function
             fork test, and(is-equal(param-kind, <function>), has-text(escaping, param/name))
               hold
                 save escape-word, <@escaping >
+            # a pass-through parameter's closure type throws (decision 089 rule 5)
             save type-text, swift-type(param/type, st, facts)
+            fork test, slot-at-throws(fn-name, at, facts)
+              hold
+                save own-slots/{param/name}, true
+                save type-text, swift-type(slot-raising(param/type), st, facts)
             save own-default, swift-default(param/fallback, inputs, st, facts)
             save body-default, false
             sift param/fallback
@@ -4551,7 +4682,14 @@ task emit-function
       fork test, or(facts/throwing/has(fn-name), body-throws(fn-body))
         hold
           save throws-mark, < throws>
+        miss
+          # a raise only its pass-through slots bring: a call with an infallible argument needs no `try`
+          fork test, facts/passes/has(fn-name)
+            hold
+              save throws-mark, < rethrows>
       save st/current-throws, is-unequal(throws-mark, <>)
+      save previous-slots-raising, st/raising-slots
+      save st/raising-slots, own-slots
       save st/bound-names, copy-texts(inputs)
       # a reassigned parameter is shadowed by a mutable local
       save mutated, reassigned(fn-body)
@@ -4633,6 +4771,7 @@ task emit-function
                 push(kept, line)
           save body-text, join-texts(kept, <\n>)
       save st/spares, previous-spares
+      save st/raising-slots, previous-slots-raising
       save st/current-assigned, previous-assigned
       save st/fn-returns-array, previous-returns-array
       save st/plain-names, previous-plain
