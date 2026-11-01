@@ -147,7 +147,7 @@ object caskUpdate {
         // staged under a name no launch reads, swapped in only once every asset is there and checks
         val staging = File(store, ".staging-$id")
         staging.deleteRecursively()
-        val assets = mutableListOf(json.getJSONObject("launchAsset"))
+        val assets = kotlin.collections.mutableListOf(json.getJSONObject("launchAsset"))
         val rest: JSONArray = json.optJSONArray("assets") ?: JSONArray()
         for (index in 0 until rest.length()) assets.add(rest.getJSONObject(index))
         for (asset in assets) {

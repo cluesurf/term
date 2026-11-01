@@ -35,7 +35,7 @@ object nativeMicrophone {
         val minimum = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (minimum <= 0) return "unavailable"
         val recorder = try {
-            AudioRecord(MediaRecorder.AudioSource.MIC, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum, RATE * WIDTH))
+            AudioRecord(MediaRecorder.AudioSource.MIC, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, kotlin.comparisons.maxOf(minimum, RATE * WIDTH))
         } catch (e: SecurityException) {
             return "denied"
         } catch (e: Exception) {
@@ -54,11 +54,11 @@ object nativeMicrophone {
         } catch (e: Exception) {
             return "failed"
         } finally {
-            runCatching { recorder.stop() }
+            kotlin.runCatching { recorder.stop() }
             recorder.release()
         }
         if (filled < samples.size) return "failed"
-        return if (runCatching { file.writeBytes(wave(samples)) }.isSuccess) "audio ${file.path}" else "failed"
+        return if (kotlin.runCatching { file.writeBytes(wave(samples)) }.isSuccess) "audio ${file.path}" else "failed"
     }
 
     // the samples behind a WAV header: RIFF, a PCM `fmt ` chunk, and the `data` chunk, every number little-endian

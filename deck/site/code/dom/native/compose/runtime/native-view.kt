@@ -110,10 +110,10 @@ import androidx.compose.ui.unit.sp as cxSp
 import androidx.compose.ui.window.Dialog as CxDialog
 import kotlin.coroutines.startCoroutine as cxStartCoroutine
 
-private val COMPOSE_INLINE_TAGS = setOf("span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd")
+private val COMPOSE_INLINE_TAGS = kotlin.collections.setOf("span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd")
 
 // the families every platform can draw without registering one
-private val COMPOSE_GENERIC_FAMILIES = setOf("", "system-ui", "sans-serif", "serif", "monospace")
+private val COMPOSE_GENERIC_FAMILIES = kotlin.collections.setOf("", "system-ui", "sans-serif", "serif", "monospace")
 
 // one node of the tree, as snapshot state: every field a composable reads is a MutableState or a state list, so a write
 // from Term recomposes exactly the nodes that read it
@@ -141,11 +141,11 @@ class TermNode(val key: Long, val tag: String, text: String) {
     val attributes = cxStateList<Pair<String, String>>()
     val styles = cxStateList<Pair<String, String>>()
     val children = cxStateList<TermNode>()
-    val classes = mutableListOf<String>()
+    val classes = kotlin.collections.mutableListOf<String>()
     // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
-    val inline = mutableSetOf<String>()
+    val inline = kotlin.collections.mutableSetOf<String>()
     // the properties the style table set from this node's classes, so a class removed takes its rows with it
-    var fromClass = setOf<String>()
+    var fromClass = kotlin.collections.setOf<String>()
     var parent: TermNode? = null
     val listeners = mutableListOf<Pair<String, () -> Unit>>()
     // whether a choice's menu is showing
@@ -179,8 +179,8 @@ class TermNode(val key: Long, val tag: String, text: String) {
     fun style(name: String): String = styles.firstOrNull { it.first == name }?.second ?: ""
 
     fun fire(event: String) {
-        for ((name, run) in listeners.toList()) {
-            if (name == event) run()
+        for ((name, handler) in listeners.toList()) {
+            if (name == event) handler()
         }
     }
 }
@@ -260,7 +260,7 @@ object nativeView {
     private fun node(handle: Any): TermNode = handle as? TermNode ?: kotlin.error("nativeView: not a node: $handle")
 
     // every node made, held weakly, so a test can count the ones still alive (reactive-bridge-0005)
-    private val made = mutableListOf<java.lang.ref.WeakReference<TermNode>>()
+    private val made = kotlin.collections.mutableListOf<java.lang.ref.WeakReference<TermNode>>()
 
     private fun make(tag: String, text: String): TermNode {
         nextKey += 1
@@ -270,7 +270,7 @@ object nativeView {
     }
 
     fun liveNodes(): Long {
-        repeat(2) {
+        kotlin.repeat(2) {
             Runtime.getRuntime().gc()
             System.runFinalization()
             Thread.sleep(50)
@@ -311,7 +311,7 @@ object nativeView {
     // the layout words the toolkit hosts share (native-dom-0007): flex-direction, gap, align-items, justify-content,
     // padding, width, height, flex-grow, and `display: flex` as what every container already is. Lengths are CSS
     // pixels, which are dp. Anything else is recorded in `unsupported`, never dropped silently
-    private val LAYOUT_WORDS = setOf(
+    private val LAYOUT_WORDS = kotlin.collections.setOf(
         "display", "flex-direction", "gap", "align-items", "justify-content", "padding", "width", "height", "flex-grow",
         "min-width", "max-width", "min-height", "max-height",
     )
@@ -319,7 +319,7 @@ object nativeView {
     // the look words the toolkit hosts share (native-dom-0008): background, border and its parts, border-radius and
     // opacity on the node, and color, font-size and font-weight INHERITED onto every text under it, as in CSS. Values
     // arrive resolved (look-table.ts): hex colors and px lengths, which are dp here
-    private val LOOK_WORDS = setOf(
+    private val LOOK_WORDS = kotlin.collections.setOf(
         "background", "background-color", "border", "border-width", "border-color", "border-radius", "opacity",
         "color", "font-size", "font-weight", "font-family",
     )
@@ -378,9 +378,9 @@ object nativeView {
 
     private class StyleRule(val name: String, val attribute: String, val expected: String?, val property: String, val value: String)
 
-    private var styleRules = listOf<StyleRule>()
-    private var lightRules = listOf<StyleRule>()
-    private var darkRules = listOf<StyleRule>()
+    private var styleRules = kotlin.collections.listOf<StyleRule>()
+    private var lightRules = kotlin.collections.listOf<StyleRule>()
+    private var darkRules = kotlin.collections.listOf<StyleRule>()
     private var darkScheme = false
     // every node a class was ever added to, held weakly, so a scheme change can restyle them all
     private val styled = java.util.Collections.newSetFromMap(java.util.WeakHashMap<TermNode, Boolean>())
@@ -421,8 +421,8 @@ object nativeView {
     // the node's rows chosen again: what its classes and states select, a row taken away erased, an inline one kept
     private fun restyle(node: TermNode) {
         if (styleRules.isEmpty()) return
-        val wanted = linkedMapOf<String, String>()
-        for (plain in listOf(true, false)) {
+        val wanted = kotlin.collections.linkedMapOf<String, String>()
+        for (plain in kotlin.collections.listOf(true, false)) {
             for (rule in styleRules) {
                 if (rule.attribute.isEmpty() == plain && selects(node, rule) && rule.property !in node.inline) {
                     wanted[rule.property] = rule.value
@@ -635,7 +635,7 @@ object nativeView {
     // every key the window's root heard go down, under its web name, to each listener (CxTree's onPreviewKeyEvent)
     fun deliverKey(name: String) {
         if (name.isEmpty()) return
-        for ((_, run) in keyListeners.toList()) run(name)
+        for ((_, handler) in keyListeners.toList()) handler(name)
     }
 
     // for tests: a key pressed through Compose's own input, the root focused and a real key event sent to it, the route
@@ -904,7 +904,7 @@ object nativeView {
         val semantics = composeHost.semantics(node.testTag, merged = false) ?: return "0,0,0,0"
         val density = composeHost.density()
         val at = semantics.positionInRoot
-        return listOf(at.x, at.y, semantics.size.width.toFloat(), semantics.size.height.toFloat())
+        return kotlin.collections.listOf(at.x, at.y, semantics.size.width.toFloat(), semantics.size.height.toFloat())
             .joinToString(",") { Math.round(it / density).toString() }
     }
 
@@ -1026,7 +1026,7 @@ private fun cxLook(node: TermNode, start: CxModifier): CxModifier {
 private const val COMPOSE_ROOT_TAG = "term-root"
 
 // the web's names for the keys that are not characters (KeyboardEvent.key), and the letters and digits, by Compose key
-private val COMPOSE_KEY_NAMES: List<Pair<androidx.compose.ui.input.key.Key, String>> = listOf(
+private val COMPOSE_KEY_NAMES: List<Pair<androidx.compose.ui.input.key.Key, String>> = kotlin.collections.listOf(
     CxKey.Escape to "Escape",
     CxKey.Enter to "Enter",
     CxKey.Tab to "Tab",
@@ -1036,10 +1036,10 @@ private val COMPOSE_KEY_NAMES: List<Pair<androidx.compose.ui.input.key.Key, Stri
     CxKey.DirectionUp to "ArrowUp",
     CxKey.DirectionDown to "ArrowDown",
     CxKey.Spacebar to " ",
-) + listOf(
+) + kotlin.collections.listOf(
     CxKey.A, CxKey.B, CxKey.C, CxKey.D, CxKey.E, CxKey.F, CxKey.G, CxKey.H, CxKey.I, CxKey.J, CxKey.K, CxKey.L, CxKey.M,
     CxKey.N, CxKey.O, CxKey.P, CxKey.Q, CxKey.R, CxKey.S, CxKey.T, CxKey.U, CxKey.V, CxKey.W, CxKey.X, CxKey.Y, CxKey.Z,
-).mapIndexed { index, key -> key to ('a' + index).toString() } + listOf(
+).mapIndexed { index, key -> key to ('a' + index).toString() } + kotlin.collections.listOf(
     CxKey.Zero, CxKey.One, CxKey.Two, CxKey.Three, CxKey.Four, CxKey.Five, CxKey.Six, CxKey.Seven, CxKey.Eight, CxKey.Nine,
 ).mapIndexed { index, key -> key to index.toString() }
 
@@ -1073,7 +1073,7 @@ fun CxTree(root: TermNode) {
     ) {
         CxNode(root, CxModifier)
     }
-    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    androidx.compose.runtime.LaunchedEffect(Unit) { kotlin.runCatching { focus.requestFocus() } }
 }
 
 // what a reader is told of a node from its attributes, as semantics (native-accessibility-0007): `aria-label` its name,

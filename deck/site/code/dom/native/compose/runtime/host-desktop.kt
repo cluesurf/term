@@ -193,14 +193,14 @@ object composeHost {
 
     // an encoded picture, decoded by Skia into a bitmap Compose draws
     fun decodePicture(bytes: ByteArray): androidx.compose.ui.graphics.ImageBitmap? =
-        runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).cxToComposeImageBitmap() }.getOrNull()
+        kotlin.runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).cxToComposeImageBitmap() }.getOrNull()
 
     // every registered face as Skia holds it, by family, so a glyph can be asked of it
-    private val typefaces = mutableMapOf<String, org.jetbrains.skia.Typeface>()
+    private val typefaces = kotlin.collections.mutableMapOf<String, org.jetbrains.skia.Typeface>()
 
     // a face from its file's bytes, as a family Compose draws text in (Skia reads the font), or null when it does not read
     fun fontOf(family: String, bytes: ByteArray): androidx.compose.ui.text.font.FontFamily? =
-        runCatching {
+        kotlin.runCatching {
             val font = androidx.compose.ui.text.platform.Font(identity = family, data = bytes)
             // Skia reads the face only when it is first drawn: a file that is not a font must be refused HERE, as the
             // other hosts refuse it, so its typeface is made now
@@ -215,7 +215,7 @@ object composeHost {
     fun missingGlyphs(text: String, family: String?): String {
         val face = family?.let { typefaces[it] }
         val manager = org.jetbrains.skia.FontMgr.default
-        val missing = linkedSetOf<String>()
+        val missing = kotlin.collections.linkedSetOf<String>()
         var at = 0
         while (at < text.length) {
             val point = text.codePointAt(at)
@@ -237,7 +237,7 @@ object composeHost {
     fun readFile(path: String): ByteArray? = java.io.File(path).takeIf { it.isFile }?.readBytes()
 
     fun log(line: String) {
-        println(line)
+        kotlin.io.println(line)
         System.out.flush()
     }
 

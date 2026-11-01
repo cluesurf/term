@@ -7,9 +7,9 @@ import java.net.URI
 object nativeOpen {
     // opened, or unavailable when nothing handles the address (or it is not one, or there is no desktop)
     suspend fun address(address: String): String {
-        val uri = runCatching { URI(address) }.getOrNull()
+        val uri = kotlin.runCatching { URI(address) }.getOrNull()
         if (uri?.scheme == null || !Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) return "unavailable"
-        return runCatching { Desktop.getDesktop().browse(uri) }.fold({ "opened" }, { "unavailable" })
+        return kotlin.runCatching { Desktop.getDesktop().browse(uri) }.fold({ "opened" }, { "unavailable" })
     }
 
     suspend fun share(text: String): String = "unavailable"

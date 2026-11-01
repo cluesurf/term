@@ -7,9 +7,9 @@ import android.content.res.Configuration
 import android.provider.Settings
 
 object nativeDevice {
-    val names = listOf("idiom", "width-class", "pointer", "color-scheme", "reduce-motion", "text-scale")
+    val names = kotlin.collections.listOf("idiom", "width-class", "pointer", "color-scheme", "reduce-motion", "text-scale")
     private var handler: ((String, String) -> Unit)? = null
-    private val last = mutableMapOf<String, String>()
+    private val last = kotlin.collections.mutableMapOf<String, String>()
     private var installed = false
 
     private fun configuration(): Configuration =

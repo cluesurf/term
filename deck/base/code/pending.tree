@@ -20,4 +20,4 @@ bind run-pending
   case swift
     text <__termDrain()>
   case kotlin
-    text <run \{ termLoop.drain(); true \}>
+    text <kotlin.run \{ termLoop.drain(); true \}>

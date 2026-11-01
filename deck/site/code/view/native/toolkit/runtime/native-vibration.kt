@@ -15,8 +15,8 @@ object nativeVibration {
         else activity.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
 
     private fun effect(kind: String): VibrationEffect? = when (kind) {
-        "warning" -> VibrationEffect.createWaveform(longArrayOf(0, 40, 60, 40), -1)
-        "error" -> VibrationEffect.createWaveform(longArrayOf(0, 60, 50, 60, 50, 60), -1)
+        "warning" -> VibrationEffect.createWaveform(kotlin.longArrayOf(0, 40, 60, 40), -1)
+        "error" -> VibrationEffect.createWaveform(kotlin.longArrayOf(0, 60, 50, 60, 50, 60), -1)
         "light", "medium", "heavy", "success" ->
             if (Build.VERSION.SDK_INT >= 29) VibrationEffect.createPredefined(
                 when (kind) {

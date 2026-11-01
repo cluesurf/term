@@ -46,7 +46,7 @@ import kotlin.coroutines.startCoroutine
 // the log tag every line goes under, so `adb logcat -s native-dom` reads them
 private const val VIEW_TAG = "native-dom"
 
-private val INLINE_TAGS = setOf("span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd")
+private val INLINE_TAGS = kotlin.collections.setOf("span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd")
 
 private val viewMain = Handler(Looper.getMainLooper())
 
@@ -125,12 +125,12 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     var picture: android.graphics.Bitmap? = null
 
     var value = ""
-    val attributes = mutableListOf<Pair<String, String>>()
-    val styles = mutableMapOf<String, String>()
+    val attributes = kotlin.collections.mutableListOf<Pair<String, String>>()
+    val styles = kotlin.collections.mutableMapOf<String, String>()
     // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
-    val inline = mutableSetOf<String>()
+    val inline = kotlin.collections.mutableSetOf<String>()
     // the properties the style table set from this node's classes, so a class removed takes its rows with it
-    var fromClass = setOf<String>()
+    var fromClass = kotlin.collections.setOf<String>()
     // whether a color or font was ever drawn on this node's text, so one taken away can be drawn back as the default
     var textStyled = false
     // the family the host drew this node's text in, empty for the system face: a Typeface cannot say its own name
@@ -143,8 +143,8 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     var surface: android.graphics.drawable.GradientDrawable? = null
     // the edge as drawn, width in CSS pixels and color: a GradientDrawable keeps its stroke but has no getter for it
     var stroke: Pair<Float, Int>? = null
-    val classes = mutableListOf<String>()
-    val children = mutableListOf<TermNode>()
+    val classes = kotlin.collections.mutableListOf<String>()
+    val children = kotlin.collections.mutableListOf<TermNode>()
     var parent: TermNode? = null
     val listeners = mutableListOf<Pair<String, () -> Unit>>()
     var clickInstalled = false
@@ -154,7 +154,7 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     // the platform's dialog showing a SHEET's content, made the first time it opens
     var dialog: android.app.Dialog? = null
     // the weighted empty views `justify-content: space-between` puts between children
-    val spacers = mutableListOf<android.view.View>()
+    val spacers = kotlin.collections.mutableListOf<android.view.View>()
 
     // the text under this node, in order: what a button shows
     val textContent: String
@@ -172,8 +172,8 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
         }
 
     fun fire(event: String) {
-        for ((name, run) in listeners.toList()) {
-            if (name == event) run()
+        for ((name, handler) in listeners.toList()) {
+            if (name == event) handler()
         }
     }
 
@@ -282,7 +282,7 @@ object nativeView {
     private var nextKeyListener = 0L
 
     // the web's names for the keys that are not characters, by key code
-    private val KEY_NAMES = mapOf(
+    private val KEY_NAMES = kotlin.collections.mapOf(
         android.view.KeyEvent.KEYCODE_ESCAPE to "Escape",
         android.view.KeyEvent.KEYCODE_ENTER to "Enter",
         android.view.KeyEvent.KEYCODE_NUMPAD_ENTER to "Enter",
@@ -309,7 +309,7 @@ object nativeView {
 
     fun deliverKey(name: String) {
         if (name.isEmpty()) return
-        for ((_, run) in keyListeners.toList()) run(name)
+        for ((_, handler) in keyListeners.toList()) handler(name)
     }
 
     // for tests: a key pressed, as a KeyEvent through the Activity's own dispatch, the route a keyboard takes
@@ -326,7 +326,7 @@ object nativeView {
     private fun node(handle: Any): TermNode = handle as? TermNode ?: kotlin.error("nativeView: not a node: $handle")
 
     // every node made, held weakly, so a test can count the ones still alive (reactive-bridge-0005)
-    private val made = mutableListOf<java.lang.ref.WeakReference<TermNode>>()
+    private val made = kotlin.collections.mutableListOf<java.lang.ref.WeakReference<TermNode>>()
 
     private fun make(tag: String, text: String): TermNode {
         nextKey += 1
@@ -338,7 +338,7 @@ object nativeView {
     // for tests: how many nodes are alive. The JVM frees on its own schedule, so it is asked to collect first, twice,
     // with a pause for the collector between
     fun liveNodes(): Long {
-        repeat(2) {
+        kotlin.repeat(2) {
             Runtime.getRuntime().gc()
             System.runFinalization()
             Thread.sleep(50)
@@ -431,7 +431,7 @@ object nativeView {
     private fun spinnerOf(node: TermNode): android.widget.Spinner = node.view as android.widget.Spinner
 
     private fun choicesOf(node: TermNode): List<String> {
-        val adapter = spinnerOf(node).adapter ?: return emptyList()
+        val adapter = spinnerOf(node).adapter ?: return kotlin.collections.emptyList()
         return (0 until adapter.count).map { adapter.getItem(it).toString() }
     }
 
@@ -505,7 +505,7 @@ object nativeView {
         val right = given.getOrNull(1) ?: top
         val bottom = given.getOrNull(2) ?: top
         val left = given.getOrNull(3) ?: right
-        return listOf(top, right, bottom, left)
+        return kotlin.collections.listOf(top, right, bottom, left)
     }
 
     fun setStyle(handle: Any, property: String, raw: String) {
@@ -541,13 +541,13 @@ object nativeView {
                 applyGap(node)
                 true
             }
-            property == "align-items" && layout != null && value in setOf("start", "flex-start", "center", "end", "flex-end", "stretch") -> {
+            property == "align-items" && layout != null && value in kotlin.collections.setOf("start", "flex-start", "center", "end", "flex-end", "stretch") -> {
                 applyAlignment(node)
                 true
             }
             // center and end are LinearLayout's gravity along its axis (applyAlignment), start and space-between its
             // weights (applySpread). Center and end were reported unsupported until 2026-10-03 (swiftui-target-0002)
-            property == "justify-content" && layout != null && value in setOf("start", "flex-start", "space-between", "center", "end", "flex-end") -> {
+            property == "justify-content" && layout != null && value in kotlin.collections.setOf("start", "flex-start", "space-between", "center", "end", "flex-end") -> {
                 applyAlignment(node)
                 applySpread(node)
                 true
@@ -821,8 +821,8 @@ object nativeView {
     // registered here or is one of those. Text whose family is not available draws in the system face, which is what
     // `check-font` answering false says ahead of time
 
-    private val fonts = mutableMapOf<String, android.graphics.Typeface>()
-    private val GENERIC_FAMILIES = setOf("sans-serif", "serif", "monospace", "cursive", "casual", "sans-serif-condensed", "sans-serif-medium", "sans-serif-light")
+    private val fonts = kotlin.collections.mutableMapOf<String, android.graphics.Typeface>()
+    private val GENERIC_FAMILIES = kotlin.collections.setOf("sans-serif", "serif", "monospace", "cursive", "casual", "sans-serif-condensed", "sans-serif-medium", "sans-serif-light")
 
     // register the face in `source` under `family`: `asset:<name>` from the APK, a `data:` URI (written to the cache
     // first, since a Typeface is made from a file), or a path. True when the family can now be drawn
@@ -879,7 +879,7 @@ object nativeView {
     fun missingGlyphs(handle: Any): String {
         val text = node(handle).view as? TextView ?: return ""
         val paint = text.paint
-        val missing = linkedSetOf<String>()
+        val missing = kotlin.collections.linkedSetOf<String>()
         val content = text.text.toString()
         var at = 0
         while (at < content.length) {
@@ -946,9 +946,9 @@ object nativeView {
     private class StyleRule(val name: String, val attribute: String, val expected: String?, val property: String, val value: String)
 
     // the rows in force, and the two tables they are chosen from by the device's color scheme (native-dom-0048)
-    private var styleRules = listOf<StyleRule>()
-    private var lightRules = listOf<StyleRule>()
-    private var darkRules = listOf<StyleRule>()
+    private var styleRules = kotlin.collections.listOf<StyleRule>()
+    private var lightRules = kotlin.collections.listOf<StyleRule>()
+    private var darkRules = kotlin.collections.listOf<StyleRule>()
     private var darkScheme = false
     // every node a class was ever added to, held weakly, so a scheme change can restyle them all
     private val styled = java.util.Collections.newSetFromMap(java.util.WeakHashMap<TermNode, Boolean>())
@@ -988,8 +988,8 @@ object nativeView {
 
     private fun restyle(node: TermNode) {
         if (styleRules.isEmpty()) return
-        val wanted = linkedMapOf<String, String>()
-        for (plain in listOf(true, false)) {
+        val wanted = kotlin.collections.linkedMapOf<String, String>()
+        for (plain in kotlin.collections.listOf(true, false)) {
             for (rule in styleRules) {
                 if (rule.attribute.isEmpty() == plain && selects(node, rule) && rule.property !in node.inline) {
                     wanted[rule.property] = rule.value
@@ -1048,7 +1048,7 @@ object nativeView {
             y += at.top
             at = at.parent as? android.view.View
         }
-        return listOf(x, y, node.view.width, node.view.height)
+        return kotlin.collections.listOf(x, y, node.view.width, node.view.height)
             .joinToString(",") { Math.round(it / density).toString() }
     }
 
@@ -1124,7 +1124,7 @@ object nativeView {
     // `compositionstart` when composing begins, `compositionupdate` for each composing edit, `compositionend` when the
     // text is committed or dropped. `input` follows each edit, and the value includes the composing text, as on the web
 
-    private val FIELD_EVENTS = setOf("input", "compositionstart", "compositionupdate", "compositionend")
+    private val FIELD_EVENTS = kotlin.collections.setOf("input", "compositionstart", "compositionupdate", "compositionend")
 
     private fun noteComposition(node: TermNode, marked: Boolean) {
         if (marked) {

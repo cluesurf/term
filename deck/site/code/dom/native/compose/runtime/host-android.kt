@@ -78,7 +78,7 @@ object composeHost {
     val configurationChanged = mutableListOf<() -> Unit>()
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     // every Compose root the app has made, the content's and each dialog's, held weakly
-    private val roots = mutableListOf<java.lang.ref.WeakReference<CxViewRootForTest>>()
+    private val roots = kotlin.collections.mutableListOf<java.lang.ref.WeakReference<CxViewRootForTest>>()
 
     // run `body` on the main thread and wait for its answer: an immediate call when already there. A null answer is an
     // answer (no node holds that tag), told apart from no answer at all by whether the latch was counted down
@@ -87,7 +87,7 @@ object composeHost {
         val done = java.util.concurrent.CountDownLatch(1)
         var answer: Result<T>? = null
         main.post {
-            answer = runCatching(body)
+            answer = kotlin.runCatching(body)
             done.countDown()
         }
         if (!done.await(10, java.util.concurrent.TimeUnit.SECONDS)) kotlin.error("composeHost: the main thread did not answer")
@@ -126,7 +126,7 @@ object composeHost {
     // thread is the one that would draw it: each wait ran out its two seconds instead, so it lays out what it has
     fun settle(): Boolean {
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) repeat(3) { awaitFrame() }
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) kotlin.repeat(3) { awaitFrame() }
         onMain { for (root in liveRoots()) root.measureAndLayoutForTest() }
         return true
     }
@@ -134,7 +134,7 @@ object composeHost {
     private fun find(tag: String, merged: Boolean): androidx.compose.ui.semantics.SemanticsNode? = onMain {
         for (root in liveRoots()) {
             val top = if (merged) root.semanticsOwner.rootSemanticsNode else root.semanticsOwner.unmergedRootSemanticsNode
-            val pending = ArrayDeque(listOf(top))
+            val pending = ArrayDeque(kotlin.collections.listOf(top))
             while (pending.isNotEmpty()) {
                 val at = pending.removeFirst()
                 if (at.config.cxHostGetOrNull(CxHostProperties.TestTag) == tag) return@onMain at
@@ -242,7 +242,7 @@ object composeHost {
     // it yet: on a loaded emulator the panel's fill came back `none` in a full gate run while the same leg alone read it
     // right, the frame after the write or the scroll not yet laid out when the bitmap was drawn
     fun pixel(tag: String, dx: Float, dy: Float): String? {
-        repeat(PIXEL_TRIES) {
+        kotlin.repeat(PIXEL_TRIES) {
             settle()
             val drawn = sample(tag, dx, dy)
             if (drawn != null && drawn != OFF_SCREEN) return drawn
@@ -267,7 +267,7 @@ object composeHost {
     private fun sample(tag: String, dx: Float, dy: Float): String? =
         onMain {
             for (root in liveRoots()) {
-                val pending = ArrayDeque(listOf(root.semanticsOwner.unmergedRootSemanticsNode))
+                val pending = ArrayDeque(kotlin.collections.listOf(root.semanticsOwner.unmergedRootSemanticsNode))
                 var found: androidx.compose.ui.semantics.SemanticsNode? = null
                 while (pending.isNotEmpty() && found == null) {
                     val at = pending.removeFirst()
@@ -308,7 +308,7 @@ object composeHost {
     // a file's bytes; `asset:<name>` is a file the APK carries
     fun readFile(path: String): ByteArray? {
         if (path.startsWith("asset:")) {
-            return runCatching { activity?.assets?.open(path.removePrefix("asset:"))?.use { it.readBytes() } }.getOrNull()
+            return kotlin.runCatching { activity?.assets?.open(path.removePrefix("asset:"))?.use { it.readBytes() } }.getOrNull()
         }
         return java.io.File(path).takeIf { it.isFile }?.readBytes()
     }
@@ -317,7 +317,7 @@ object composeHost {
     // bytes are written to the cache first; a file that is not a font is refused here, as the other hosts refuse it
     fun fontOf(family: String, bytes: ByteArray): androidx.compose.ui.text.font.FontFamily? {
         val owner = activity ?: return null
-        return runCatching {
+        return kotlin.runCatching {
             val file = java.io.File(owner.cacheDir, "term-font-${java.util.UUID.randomUUID()}")
             file.writeBytes(bytes)
             typefaces[family] = android.graphics.Typeface.createFromFile(file)
@@ -326,7 +326,7 @@ object composeHost {
     }
 
     // every registered face as a Typeface, by family, so a glyph can be asked of it
-    private val typefaces = mutableMapOf<String, android.graphics.Typeface>()
+    private val typefaces = kotlin.collections.mutableMapOf<String, android.graphics.Typeface>()
 
     // the characters of `text` Android would draw as a box, each once in the order first met: asked of a Paint in the
     // text's face (`family`, when registered, else the system's), whose `hasGlyph` follows the system's fallback chain
@@ -334,7 +334,7 @@ object composeHost {
     fun missingGlyphs(text: String, family: String?): String {
         val paint = android.graphics.Paint()
         paint.typeface = family?.let { typefaces[it] } ?: android.graphics.Typeface.DEFAULT
-        val missing = linkedSetOf<String>()
+        val missing = kotlin.collections.linkedSetOf<String>()
         var at = 0
         while (at < text.length) {
             val character = String(Character.toChars(text.codePointAt(at)))

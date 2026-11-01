@@ -14,10 +14,10 @@ object nativeContacts {
         if (grant != "granted") return grant
         val activity = hostActivity() ?: return "unavailable"
         val wanted = query.lowercase()
-        val names = linkedMapOf<Long, String>()
-        val numbers = mutableMapOf<Long, MutableList<String>>()
+        val names = kotlin.collections.linkedMapOf<Long, String>()
+        val numbers = kotlin.collections.mutableMapOf<Long, MutableList<String>>()
         try {
-            val people = arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
+            val people = kotlin.arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
             activity.contentResolver.query(ContactsContract.Contacts.CONTENT_URI, people, null, null, null)?.use { row ->
                 while (row.moveToNext()) {
                     val name = plain(row.getString(1) ?: "")
@@ -25,12 +25,12 @@ object nativeContacts {
                 }
             }
             if (names.isEmpty()) return "none"
-            val phones = arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val phones = kotlin.arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.NUMBER)
             activity.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, phones, null, null, null)?.use { row ->
                 while (row.moveToNext()) {
                     val id = row.getLong(0)
                     val number = plain(row.getString(1) ?: continue)
-                    if (id in names) numbers.getOrPut(id) { mutableListOf() }.apply { if (number !in this) add(number) }
+                    if (id in names) numbers.getOrPut(id) { kotlin.collections.mutableListOf() }.apply { if (number !in this) add(number) }
                 }
             }
         } catch (e: SecurityException) {

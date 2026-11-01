@@ -13,9 +13,9 @@ object nativeDownload {
     }
 
     private fun blocking(address: String, path: String): String {
-        val url = runCatching { java.net.URI(address).toURL() }.getOrNull() ?: return "failed 0"
+        val url = kotlin.runCatching { java.net.URI(address).toURL() }.getOrNull() ?: return "failed 0"
         if (url.protocol != "http" && url.protocol != "https") return "failed 0"
-        val connection = runCatching { url.openConnection() as java.net.HttpURLConnection }.getOrNull() ?: return "failed 0"
+        val connection = kotlin.runCatching { url.openConnection() as java.net.HttpURLConnection }.getOrNull() ?: return "failed 0"
         connection.connectTimeout = 60_000
         connection.readTimeout = 60_000
         return try {

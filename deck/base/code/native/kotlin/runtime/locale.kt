@@ -4,5 +4,5 @@ object tongue {
 
     fun timezone(): String = java.util.TimeZone.getDefault().id
 
-    fun preferred(): MutableList<String> = mutableListOf(tag())
+    fun preferred(): MutableList<String> = kotlin.collections.mutableListOf(tag())
 }

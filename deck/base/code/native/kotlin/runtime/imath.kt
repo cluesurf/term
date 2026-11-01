@@ -3,8 +3,8 @@
 object imath {
     // `abs(Long.MIN_VALUE)` is MIN_VALUE again on the JVM, a different integer: it stops instead
     fun abs(value: Long): Long = if (value == Long.MIN_VALUE) throw ArithmeticException("excess: a number past Long") else kotlin.math.abs(value)
-    fun min(a: Long, b: Long): Long = minOf(a, b)
-    fun max(a: Long, b: Long): Long = maxOf(a, b)
+    fun min(a: Long, b: Long): Long = kotlin.comparisons.minOf(a, b)
+    fun max(a: Long, b: Long): Long = kotlin.comparisons.maxOf(a, b)
     // the integer power or a stop (note/project/term/proof/numbers.md): by squaring with Math.multiplyExact, so a
     // result past Long throws instead of saturating. Through Double it was wrong above 2^53 and capped at Long.MAX_VALUE.
     // A negative exponent is the real result truncated toward zero: 0, except for a base of 1 or -1. Rust and Swift

@@ -77,7 +77,7 @@ bind decimal-format
   case swift
     text <\{ () -\> String in let s: String = $digits; let sc: Int = $scale; if sc == 0 \{ return s \}; let neg = s.hasPrefix("-"); var d = neg ? String(s.dropFirst()) : s; while d.count \< sc + 1 \{ d = "0" + d \}; let split = d.index(d.endIndex, offsetBy: -sc); let out = String(d[..\<split]) + "." + String(d[split...]); return neg ? "-" + out : out \}()>
   case kotlin
-    text <run \{ val s = $digits; val sc = ($scale).toInt(); if (sc == 0) s else \{ val neg = s.startsWith("-"); val d0 = if (neg) s.substring(1) else s; val d = d0.padStart(sc + 1, '0'); val out = d.substring(0, d.length - sc) + "." + d.substring(d.length - sc); if (neg) "-" + out else out \} \}>
+    text <kotlin.run \{ val s = $digits; val sc = ($scale).toInt(); if (sc == 0) s else \{ val neg = s.startsWith("-"); val d0 = if (neg) s.substring(1) else s; val d = d0.padStart(sc + 1, '0'); val out = d.substring(0, d.length - sc) + "." + d.substring(d.length - sc); if (neg) "-" + out else out \} \}>
 
 # ten raised to `power`, as a big integer (used to align two decimals to a common scale)
 task power-of-ten

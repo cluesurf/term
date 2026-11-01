@@ -9,12 +9,12 @@ object regex {
         if (at < fromUnit) text.codePointCount(0, at).toLong() else fromPoint + text.codePointCount(fromUnit, at)
 
     fun search(pattern: String, text: String, from: Long): MutableList<Long> {
-        val out = mutableListOf<Long>()
+        val out = kotlin.collections.mutableListOf<Long>()
         val engine = compiled[pattern] ?: try {
             java.util.regex.Pattern.compile(pattern).also { compiled[pattern] = it }
         } catch (e: Throwable) {
             // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
-            return mutableListOf(-2L)
+            return kotlin.collections.mutableListOf(-2L)
         }
         val count = text.codePointCount(0, text.length)
         if (from < 0 || from > count) return out
@@ -38,12 +38,12 @@ object regex {
     // group 0 the whole match), then each match's slots in code points. After an empty match the search moves on one
     // code point, as the Term search does, so every engine iterates alike.
     fun searchAll(pattern: String, text: String): MutableList<Long> {
-        val out = mutableListOf(-1L)
+        val out = kotlin.collections.mutableListOf(-1L)
         val engine = compiled[pattern] ?: try {
             java.util.regex.Pattern.compile(pattern).also { compiled[pattern] = it }
         } catch (e: Throwable) {
             // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
-            return mutableListOf(-2L)
+            return kotlin.collections.mutableListOf(-2L)
         }
         val found = engine.matcher(text)
         // a cursor: the code point count at a UTF-16 offset, moved forwards only

@@ -123,7 +123,7 @@ bind write-error-text, take value, like text
     load <Foundation>
     text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(2, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
   case kotlin
-    text <run \{ System.err.print($value); System.err.flush(); true \}>
+    text <kotlin.run \{ System.err.print($value); System.err.flush(); true \}>
 
 bind write-data-text, take value, like text
   like boolean
@@ -137,7 +137,7 @@ bind write-data-text, take value, like text
     load <Foundation>
     text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(1, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
   case kotlin
-    text <run \{ print($value); System.out.flush(); true \}>
+    text <kotlin.run \{ kotlin.io.print($value); System.out.flush(); true \}>
 
 # the width of the terminal stderr is on, 0 when it is not one
 bind error-columns, like number
@@ -151,7 +151,7 @@ bind error-columns, like number
     load <Foundation>
     text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDERR_FILENO, TIOCGWINSZ, &__term_size) == 0 ? Int(__term_size.ws_col) : 0 \}()>
   case kotlin
-    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 0L \} catch (__term_failed: Exception) \{ 0L \} \}>
+    text <kotlin.run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 0L \} catch (__term_failed: Exception) \{ 0L \} \}>
 
 # the local zone's offset from UTC in minutes at an instant, east positive
 bind local-offset, take epoch, like number

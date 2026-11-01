@@ -12,7 +12,7 @@ class TermChannel {
     private val waiting = java.util.ArrayDeque<kotlin.coroutines.Continuation<Any>>()
 
     fun send(item: Any) {
-        val receiver = synchronized(this) {
+        val receiver = kotlin.synchronized(this) {
             val first = waiting.pollFirst()
 
             if (first == null) {
@@ -27,7 +27,7 @@ class TermChannel {
 
     suspend fun receive(): Any =
         kotlin.coroutines.suspendCoroutine { receiver ->
-            val ready = synchronized(this) {
+            val ready = kotlin.synchronized(this) {
                 val first = buffer.pollFirst()
 
                 if (first == null) {

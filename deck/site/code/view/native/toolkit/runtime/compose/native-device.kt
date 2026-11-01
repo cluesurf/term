@@ -6,15 +6,15 @@
 // that desktop is written. `change-trait` overrides a trait the way a test turns a device, and every change is
 // reported to the watcher as Android's recheck reports one.
 object nativeDevice {
-    val names = listOf("idiom", "width-class", "pointer", "color-scheme", "reduce-motion", "text-scale")
+    val names = kotlin.collections.listOf("idiom", "width-class", "pointer", "color-scheme", "reduce-motion", "text-scale")
     private var handler: ((String, String) -> Unit)? = null
-    private val last = mutableMapOf<String, String>()
+    private val last = kotlin.collections.mutableMapOf<String, String>()
     // what a test set, ahead of what the system says
-    private val overridden = mutableMapOf<String, String>()
+    private val overridden = kotlin.collections.mutableMapOf<String, String>()
 
     private fun systemScheme(): String {
         if (!(System.getProperty("os.name") ?: "").lowercase().contains("mac")) return "light"
-        return runCatching {
+        return kotlin.runCatching {
             val process = ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle").redirectErrorStream(true).start()
             val said = process.inputStream.bufferedReader().readText().trim()
             process.waitFor()

@@ -274,7 +274,7 @@ object cask {
         val target = File(activity.filesDir, "bundle")
         if (!target.exists()) {
             target.mkdirs()
-            for (name in activity.assets.list("") ?: emptyArray()) {
+            for (name in activity.assets.list("") ?: kotlin.emptyArray()) {
                 if (name == PAGE_ASSET) continue
                 try {
                     activity.assets.open(name).use { input ->

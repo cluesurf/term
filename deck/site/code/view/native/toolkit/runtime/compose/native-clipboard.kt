@@ -10,17 +10,17 @@ import java.awt.datatransfer.StringSelection
 
 object nativeClipboard {
     private fun clipboard(): java.awt.datatransfer.Clipboard? =
-        if (GraphicsEnvironment.isHeadless()) null else runCatching { Toolkit.getDefaultToolkit().systemClipboard }.getOrNull()
+        if (GraphicsEnvironment.isHeadless()) null else kotlin.runCatching { Toolkit.getDefaultToolkit().systemClipboard }.getOrNull()
 
     // the text on the clipboard now, or empty text when it holds none or holds no text
     fun read(): String {
         val board = clipboard() ?: return ""
-        return runCatching { board.getData(DataFlavor.stringFlavor) as? String }.getOrNull() ?: ""
+        return kotlin.runCatching { board.getData(DataFlavor.stringFlavor) as? String }.getOrNull() ?: ""
     }
 
     // `written`, `denied` when another app holds the clipboard open, or `unavailable` with no display
     fun write(text: String): String {
         val board = clipboard() ?: return "unavailable"
-        return runCatching { board.setContents(StringSelection(text), null) }.fold({ "written" }, { "denied" })
+        return kotlin.runCatching { board.setContents(StringSelection(text), null) }.fold({ "written" }, { "denied" })
     }
 }

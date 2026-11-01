@@ -192,6 +192,21 @@ const turnsOf = (server: Server, root: string): number => server.record.graphs.g
   const built = bg.buildRequest(graph, ask('project'), store).build
   ok('held: the project request after the save reads it from the store and builds nothing', built.built === 0, `built ${built.built}, reused ${built.reused}`)
   ok('held: the store took it', holding(root, `${marker}-1`).some(one => one.includes('/unit/')))
+
+  // three unsaved documents, two loading the third, under the cap: each unit is built once, none written
+  const dep = join(root, 'code', 'dep.tree')
+  const first = join(root, 'code', 'first.tree')
+  const second = join(root, 'code', 'second.tree')
+  const texts: [string, string][] = [
+    [dep, `task ${marker}-dep\n  take n, like number\n  like number\n  send back, read n\n`],
+    [first, `load ./dep\n  find ${marker}-dep\n\ntask use-first\n  like number\n  send back\n    call ${marker}-dep\n      code 1\n`],
+    [second, `load ./dep\n  find ${marker}-dep\n\ntask use-second\n  like number\n  send back\n    call ${marker}-dep\n      code 2\n`],
+  ]
+  for (const [at, text] of texts) bg.setOverlay(graph, at, text)
+  let count = 0
+  for (const [at] of texts) count += bg.buildRequest(graph, ask('document', at), store).answer.result?.built?.length ?? 0
+  ok('held: unsaved documents sharing an unsaved load build each unit once under a cap', count === 3, `built ${count}`)
+  ok('held: and the store takes none of them', holding(root, `${marker}-dep`).length === 0)
 }
 
 // ---- roots ----

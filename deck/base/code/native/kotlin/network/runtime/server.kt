@@ -100,7 +100,7 @@ object runtime {
         route("{...}") {
           handle {
             val body = call.receiveText()
-            val headers = mutableMapOf<String, String>()
+            val headers = kotlin.collections.mutableMapOf<String, String>()
 
             for (name in call.request.headers.names()) {
               headers[name.lowercase()] = call.request.headers[name] ?: ""

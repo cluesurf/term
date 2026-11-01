@@ -1,9 +1,9 @@
 // A Term task named like a host language's own top-level function must not capture the host-language calls the
 // toolchain writes. Every file of a native build is one program, so a task `error` taking one value is what a bare
 // `error("...")` in a hand-written runtime or in emitted text binds to, and not Kotlin's own, which answers Nothing
-// (T-0535, term-self-host-001-0543). This builds one program per backend that defines every such name at every arity a
-// runtime calls it with, over a closure of runtimes, with the real toolchain, and runs it: a capture is a compile error
-// or a wrong answer here. Its static twin, for the runtimes this closure does not reach, is
+// (T-0535, term-self-host-001-0543). This builds, per backend and per arity a host call is written at, one program
+// defining every such name, over a closure of runtimes, with the real toolchain, and runs it: a capture is a compile
+// error or a wrong answer here. Its static twin, for the runtimes this closure does not reach, is
 // deck/make/test/kotlin-bare-error.tree. A backend whose toolchain is absent is skipped, never failed.
 // Run: npx tsx test/compile/native-shadow.ts (SHADOW_ONLY=rust|swift|kotlin runs one backend.)
 
@@ -92,11 +92,17 @@ const resolver = (path: string, from: string): Source | undefined => {
   )
 }
 
-const readRuntime = (p: string): string | undefined =>
-  existsSync(p) ? readFileSync(p, 'utf8') : undefined
+// SHADOW_RUNTIMES reads the runtimes from a mirror of the package tree, to prove an edit before it lands
+const readRuntime = (p: string): string | undefined => {
+  const mirror = process.env.SHADOW_RUNTIMES
+  const drafted = mirror ? p.replace(TERM, mirror) : p
+  const from = existsSync(drafted) ? drafted : p
+
+  return existsSync(from) ? readFileSync(from, 'utf8') : undefined
+}
 
 // The host names, in the Term spelling that reaches them. Kotlin's default-imported functions; Swift's module-level
-// functions (a task's `slot` is positional there, as those calls are); Rust's one prelude function.
+// functions; Rust's one prelude function.
 const NAMES: Record<Env, string[]> = {
   kotlin: [
     'error', 'print', 'println', 'check', 'check-not-null', 'require', 'require-not-null', 'assert',
@@ -115,43 +121,74 @@ const NAMES: Record<Env, string[]> = {
   rust: ['drop'],
 }
 
-// A method-free program that reaches the emitter's own host calls: a list, a hash, a guard, a raise, a fork as a value.
-function entry(env: Env): string {
+// Swift ranks a generic exact match above a conversion to Any, so a task taking `unknown` loses to Swift's own `max`,
+// and only a task at the host call's own types could capture it. Its own layer of the program, at those types. What
+// keeps Swift out of this class is that a task's parameters are labelled (`func max(p0: Int, p1: Int)`) and a host call
+// passes none, which the layer holds by the runs it makes.
+const TYPED_LAYER = -1
+const SWIFT_TYPED: Record<string, string[]> = {
+  max: ['number', 'number'],
+  min: ['number', 'number'],
+  abs: ['number'],
+  print: ['text'],
+  'fatal-error': ['text'],
+  precondition: ['boolean'],
+  assert: ['boolean'],
+}
+
+const namesAt = (env: Env, arity: number): string[] =>
+  arity === TYPED_LAYER ? Object.keys(SWIFT_TYPED) : NAMES[env]
+
+// The stdlib modules whose runtimes the program reaches. Rust's regex, json and random runtimes need crates this
+// harness does not add, and they live in their own `mod`, as every Rust runtime does.
+const LOADS: Record<Env, string[]> = {
+  kotlin: ['uuid', 'time', 'random', 'regex', 'json', 'path', 'cryptography', 'bytes'],
+  swift: ['uuid', 'time', 'random', 'regex', 'json', 'path', 'cryptography', 'bytes'],
+  rust: ['time', 'path'],
+}
+
+// One program defines every name at ONE arity: a name defined twice is an overload, renamed, and captures nothing.
+// A shadowing task takes `unknown`, so it fits whatever a host call passes it. Beside the emitter's own host calls (a
+// list, a hash, a guard, a raise, a fork as a value) the program reads two runtime calls that compile whether or not
+// they are captured: `info` over a host print and `max` over a host maximum, each a wrong answer when captured.
+function entry(env: Env, arity: number): string {
   const lines = [
     'load @term/base/text',
     '  find contains',
-    'load @term/base/uuid',
-    'load @term/base/time',
-    'load @term/base/random',
-    'load @term/base/regex',
-    'load @term/base/json',
-    'load @term/base/path',
-    'load @term/base/math',
+    '  find substring',
+    ...LOADS[env].map(name => `load @term/base/${name}`),
     'load @term/base/log',
-    'load @term/base/console',
-    'load @term/base/cryptography',
-    'load @term/base/bytes',
+    '  find info',
+    'load @term/base/math',
+    '  find maximum, name biggest',
     'load @term/base/file/blocking',
     '  find read, name read-path',
     '',
   ]
 
-  for (const name of NAMES[env]) {
-    for (const arity of [0, 1, 2, 3]) {
-      lines.push(`task ${name}`)
+  for (const name of namesAt(env, arity)) {
+    lines.push(`task ${name}`)
 
-      for (let at = 0; at < arity; at++) {
-        lines.push(`  slot p${at}, like unknown`)
-      }
-
-      lines.push('  like number', '  send back, code 0', '')
+    if (arity === TYPED_LAYER) {
+      SWIFT_TYPED[name]!.forEach((type, at) => {
+        lines.push(`  slot p${at}, like ${type}`)
+      })
     }
+
+    for (let at = 0; at < arity; at++) {
+      lines.push(`  slot p${at}, like unknown`)
+    }
+
+    lines.push('  like number', '  send back, code 0', '')
   }
 
   lines.push(
     'task shadow-probe',
     '  take given, like text',
+    '  take kotlin, like number',
     '  like text',
+    '  call info',
+    '    text <the log reached the host>',
     '  save items, make list',
     '  items/push(given)',
     '  save table, make hash',
@@ -167,16 +204,16 @@ function entry(env: Env): string {
     '    send back, <not raised>',
     '  halt take',
     '    take problem',
-    '    send back, <{given} {problem/note}>',
+    '    send back, <{given} {problem/note} {biggest(kotlin, 5)} {substring(given, 1, 3)}>',
     '',
   )
 
   return lines.join('\n')
 }
 
-function frontEnd(env: Env): Program {
+function frontEnd(env: Env, arity: number): Program {
   const { sources, scope } = collectModules(
-    { file: 'main.tree', text: entry(env) },
+    { file: 'main.tree', text: entry(env, arity) },
     withNativeEnv(env, resolver),
   )
   const program: Program = []
@@ -220,13 +257,24 @@ function frontEnd(env: Env): Program {
 
   resolveAsync(program)
 
-  const roots = new Set(['shadow-probe', ...NAMES[env]])
+  const roots = new Set(['shadow-probe', ...namesAt(env, arity)])
 
   return simplify(program, roots)
 }
 
 const stderrOf = (error: unknown): string =>
   String((error as { stderr?: Buffer }).stderr ?? error)
+
+// the arities the host calls of each backend are written at
+const ARITIES: Record<Env, number[]> = {
+  kotlin: [0, 1, 2, 3],
+  swift: [0, 1, 2, TYPED_LAYER],
+  rust: [1],
+}
+
+// the log line reached the host's print, the guard caught the raise, and the host's maximum answered
+const holds = (got: string): boolean =>
+  got.includes('the log reached the host') && got.includes('probe caught 5 ro')
 
 function runKotlin(): void {
   if (!have('kotlinc') || !have('java')) {
@@ -236,32 +284,42 @@ function runKotlin(): void {
     return
   }
 
-  const program = frontEnd('kotlin')
-  const out = join(dir, 'kotlin')
-  mkdirSync(out, { recursive: true })
-  const file = join(out, 'main.kt')
-  writeFileSync(
-    file,
-    hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { kotlin.io.print(shadowProbe("probe")) }\n`,
-    ),
-  )
-
-  try {
-    execFileSync(
-      'kotlinc',
-      [file, '-nowarn', '-include-runtime', '-d', join(out, 'main.jar')],
-      { stdio: 'pipe' },
+  for (const arity of ARITIES.kotlin) {
+    const label = `kotlin, arity ${arity}`
+    const program = frontEnd('kotlin', arity)
+    const out = join(dir, `kotlin-${arity}`)
+    mkdirSync(out, { recursive: true })
+    const file = join(out, 'main.kt')
+    const emitted = emitKotlin(program)
+    const spell = (name: string): string =>
+      name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+    const missing = NAMES.kotlin.filter(
+      name => !new RegExp(`^fun ${spell(name)}\\(`, 'm').test(emitted),
     )
-  } catch (error) {
-    ok('kotlin: a program defining the names builds', false, stderrOf(error))
+    ok(`${label}: every name is declared under its own spelling`, missing.length === 0, missing.join(' '))
+    writeFileSync(
+      file,
+      hoistKotlinImports(
+        `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitted}\nfun main() { kotlin.io.print(shadowProbe("probe", 1L)) }\n`,
+      ),
+    )
 
-    return
+    try {
+      execFileSync(
+        'kotlinc',
+        [file, '-nowarn', '-include-runtime', '-d', join(out, 'main.jar')],
+        { stdio: 'pipe' },
+      )
+    } catch (error) {
+      ok(`${label}: a program defining the names builds`, false, stderrOf(error))
+
+      continue
+    }
+
+    ok(`${label}: a program defining ${NAMES.kotlin.length} names builds`, true)
+    const got = execFileSync('java', ['-jar', join(out, 'main.jar')]).toString()
+    ok(`${label}: the runtime calls and the guard answer`, holds(got), got)
   }
-
-  ok(`kotlin: a program defining ${NAMES.kotlin.length} names builds`, true)
-  const got = execFileSync('java', ['-jar', join(out, 'main.jar')]).toString()
-  ok('kotlin: it runs and the guard catches the raise', got === 'probe caught', got)
 }
 
 function runSwift(): void {
@@ -272,26 +330,36 @@ function runSwift(): void {
     return
   }
 
-  const program = frontEnd('swift')
-  const out = join(dir, 'swift')
-  mkdirSync(out, { recursive: true })
-  const file = join(out, 'main.swift')
-  writeFileSync(
-    file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nSwift.print(try! shadowProbe(given: "probe"), terminator: "")\n`,
-  )
+  for (const arity of ARITIES.swift) {
+    const label = `swift, arity ${arity}`
+    const program = frontEnd('swift', arity)
+    const out = join(dir, `swift-${arity}`)
+    mkdirSync(out, { recursive: true })
+    const file = join(out, 'main.swift')
+    const emitted = emitSwift(program)
+    const spell = (name: string): string =>
+      name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+    const missing = namesAt('swift', arity).filter(
+      name => !new RegExp(`^func ${spell(name)}\\(`, 'm').test(emitted),
+    )
+    ok(`${label}: every name is declared under its own spelling`, missing.length === 0, missing.join(' '))
+    writeFileSync(
+      file,
+      `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nSwift.print(try! shadowProbe(given: "probe", kotlin: 1), terminator: "")\n`,
+    )
 
-  try {
-    execFileSync('swiftc', ['-o', join(out, 'main'), file], { stdio: 'pipe' })
-  } catch (error) {
-    ok('swift: a program defining the names builds', false, stderrOf(error))
+    try {
+      execFileSync('swiftc', ['-o', join(out, 'main'), file], { stdio: 'pipe' })
+    } catch (error) {
+      ok(`${label}: a program defining the names builds`, false, stderrOf(error))
 
-    return
+      continue
+    }
+
+    ok(`${label}: a program defining ${namesAt('swift', arity).length} names builds`, true)
+    const got = execFileSync(join(out, 'main')).toString()
+    ok(`${label}: the runtime calls and the guard answer`, holds(got), got)
   }
-
-  ok(`swift: a program defining ${NAMES.swift.length} names builds`, true)
-  const got = execFileSync(join(out, 'main')).toString()
-  ok('swift: it runs and the guard catches the raise', got === 'probe caught', got)
 }
 
 function runRust(): void {
@@ -302,27 +370,32 @@ function runRust(): void {
     return
   }
 
-  const program = frontEnd('rust')
-  const out = join(dir, 'rust')
-  mkdirSync(join(out, 'src'), { recursive: true })
-  writeFileSync(
-    join(out, 'Cargo.toml'),
-    '[package]\nname = "native_shadow"\nversion = "0.0.0"\nedition = "2021"\n',
-  )
-  writeFileSync(
-    join(out, 'src/main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { print!("{}", shadow_probe("probe".to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n`,
-  )
+  for (const arity of ARITIES.rust) {
+    const label = `rust, arity ${arity}`
+    const program = frontEnd('rust', arity)
+    const out = join(dir, `rust-${arity}`)
+    mkdirSync(join(out, 'src'), { recursive: true })
+    const emitted = emitRust(program)
+    ok(`${label}: the name is declared`, /^(pub )?fn drop\b/m.test(emitted))
+    writeFileSync(
+      join(out, 'Cargo.toml'),
+      '[package]\nname = "native_shadow"\nversion = "0.0.0"\nedition = "2021"\n',
+    )
+    writeFileSync(
+      join(out, 'src/main.rs'),
+      `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}\nfn main() { print!("{}", shadow_probe("probe".to_string(), 1).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n`,
+    )
 
-  try {
-    const got = execFileSync('cargo', ['run', '--quiet'], {
-      cwd: out,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).toString()
-    ok(`rust: a program defining ${NAMES.rust.length} name builds`, true)
-    ok('rust: it runs and the guard catches the raise', got === 'probe caught', got)
-  } catch (error) {
-    ok('rust: a program defining the names builds', false, stderrOf(error))
+    try {
+      const got = execFileSync('cargo', ['run', '--quiet'], {
+        cwd: out,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).toString()
+      ok(`${label}: a program defining ${NAMES.rust.length} name builds`, true)
+      ok(`${label}: the runtime calls and the guard answer`, holds(got), got)
+    } catch (error) {
+      ok(`${label}: a program defining the names builds`, false, stderrOf(error))
+    }
   }
 }
 

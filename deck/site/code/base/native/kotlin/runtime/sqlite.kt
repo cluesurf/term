@@ -28,8 +28,8 @@ object sqlite {
 
     // every row as a map of column name to text, wrapped in the `row` form
     fun query(sql: String, params: MutableList<Any>): MutableList<Row> {
-        val db = database ?: return mutableListOf()
-        val rows = mutableListOf<Row>()
+        val db = database ?: return kotlin.collections.mutableListOf()
+        val rows = kotlin.collections.mutableListOf<Row>()
         val arguments = params.map { it.toString() }.toTypedArray()
         db.rawQuery(rewrite(sql), arguments).use { cursor ->
             while (cursor.moveToNext()) {

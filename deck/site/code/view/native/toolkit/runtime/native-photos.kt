@@ -16,9 +16,9 @@ object nativePhotos {
         refusal()?.let { return it }
         val activity = hostActivity() ?: return "unavailable"
         // when it was taken, the id, and the size the provider holds, which is 0 by 0 until its scanner has read the file
-        val found = mutableListOf<Triple<Long, Long, Pair<Int, Int>>>()
+        val found = kotlin.collections.mutableListOf<Triple<Long, Long, Pair<Int, Int>>>()
         try {
-            val columns = arrayOf(
+            val columns = kotlin.arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DATE_TAKEN,
                 MediaStore.Images.Media.DATE_ADDED,

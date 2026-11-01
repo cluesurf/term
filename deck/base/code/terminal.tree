@@ -255,7 +255,7 @@ bind set-raw
     load <Foundation>
     text <\{ () -\> Bool in let __term_stty = Process(); __term_stty.executableURL = URL(fileURLWithPath: "/bin/stty"); __term_stty.arguments = $on ? ["raw", "-echo"] : ["sane"]; __term_stty.standardInput = FileHandle.standardInput; __term_stty.standardOutput = FileHandle.nullDevice; __term_stty.standardError = FileHandle.nullDevice; do \{ try __term_stty.run(); __term_stty.waitUntilExit(); return __term_stty.terminationStatus == 0 \} catch \{ return false \} \}()>
   case kotlin
-    text <run \{ try \{ ProcessBuilder(if ($on) listOf("stty", "raw", "-echo") else listOf("stty", "sane")).redirectInput(ProcessBuilder.Redirect.INHERIT).start().waitFor() == 0 \} catch (__term_failed: Exception) \{ false \} \}>
+    text <kotlin.run \{ try \{ ProcessBuilder(if ($on) kotlin.collections.listOf("stty", "raw", "-echo") else kotlin.collections.listOf("stty", "sane")).redirectInput(ProcessBuilder.Redirect.INHERIT).start().waitFor() == 0 \} catch (__term_failed: Exception) \{ false \} \}>
 
 # the terminal's width in cells, 80 when output is not a terminal
 bind terminal-columns
@@ -270,7 +270,7 @@ bind terminal-columns
     load <Foundation>
     text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDOUT_FILENO, TIOCGWINSZ, &__term_size) == 0 && __term_size.ws_col \> 0 ? Int(__term_size.ws_col) : 80 \}()>
   case kotlin
-    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 80L \} catch (__term_failed: Exception) \{ 80L \} \}>
+    text <kotlin.run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 80L \} catch (__term_failed: Exception) \{ 80L \} \}>
 
 # the terminal's height in rows, 24 when output is not a terminal
 bind terminal-rows
@@ -285,7 +285,7 @@ bind terminal-rows
     load <Foundation>
     text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDOUT_FILENO, TIOCGWINSZ, &__term_size) == 0 && __term_size.ws_row \> 0 ? Int(__term_size.ws_row) : 24 \}()>
   case kotlin
-    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(0)?.toLongOrNull() ?: 24L \} catch (__term_failed: Exception) \{ 24L \} \}>
+    text <kotlin.run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(0)?.toLongOrNull() ?: 24L \} catch (__term_failed: Exception) \{ 24L \} \}>
 
 # what the terminal has sent, waiting until it sends something: the bytes of one read, decoded as UTF-8. Empty text
 # when input has ended
@@ -301,7 +301,7 @@ bind read-input
     load <Foundation>
     text <\{ () -\> String in var __term_bytes = [UInt8](repeating: 0, count: 256); let __term_count = read(0, &__term_bytes, 256); return __term_count \> 0 ? String(decoding: __term_bytes[0..\<__term_count], as: UTF8.self) : "" \}()>
   case kotlin
-    text <run \{ val __term_bytes = ByteArray(256); val __term_count = System.`in`.read(__term_bytes); if (__term_count \> 0) String(__term_bytes, 0, __term_count, Charsets.UTF_8) else "" \}>
+    text <kotlin.run \{ val __term_bytes = ByteArray(256); val __term_count = System.`in`.read(__term_bytes); if (__term_count \> 0) String(__term_bytes, 0, __term_count, Charsets.UTF_8) else "" \}>
 
 # The signals such a program answers (a resize, SIGTERM, SIGHUP) are ./native/{platform}/signal.
 
@@ -319,7 +319,7 @@ bind write-output
     load <Foundation>
     text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(1, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
   case kotlin
-    text <run \{ print($value); System.out.flush(); true \}>
+    text <kotlin.run \{ kotlin.io.print($value); System.out.flush(); true \}>
 
 # `value` in the color when output takes color (`uses-color`), and as it is otherwise
 task paint

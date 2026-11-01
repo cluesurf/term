@@ -23,14 +23,14 @@ object nativePermission {
     // the Android permissions a grant is, every one of which must be held. The calendar is two, since this module both
     // reads and writes it, and Android asks for both in one prompt
     private fun androidNames(name: String): List<String> = when (name) {
-        "camera" -> listOf(Manifest.permission.CAMERA)
-        "microphone" -> listOf(Manifest.permission.RECORD_AUDIO)
-        "contacts" -> listOf(Manifest.permission.READ_CONTACTS)
-        "calendar" -> listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
-        "photos" -> listOf(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE)
-        "location" -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        "notification" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
-        else -> emptyList()
+        "camera" -> kotlin.collections.listOf(Manifest.permission.CAMERA)
+        "microphone" -> kotlin.collections.listOf(Manifest.permission.RECORD_AUDIO)
+        "contacts" -> kotlin.collections.listOf(Manifest.permission.READ_CONTACTS)
+        "calendar" -> kotlin.collections.listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        "photos" -> kotlin.collections.listOf(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE)
+        "location" -> kotlin.collections.listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        "notification" -> if (Build.VERSION.SDK_INT >= 33) kotlin.collections.listOf(Manifest.permission.POST_NOTIFICATIONS) else kotlin.collections.emptyList()
+        else -> kotlin.collections.emptyList()
     }
 
     private fun asked(activity: Activity) = activity.getSharedPreferences("term-permission", Context.MODE_PRIVATE)

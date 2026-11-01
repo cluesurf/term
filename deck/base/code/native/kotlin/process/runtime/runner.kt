@@ -53,7 +53,7 @@ object runner {
         val kill: java.lang.invoke.MethodHandle,
     )
 
-    val native: Native by lazy {
+    val native: Native by kotlin.lazy {
         needJdk()
         val linker = java.lang.foreign.Linker.nativeLinker()
         val lookup = linker.defaultLookup()
@@ -93,7 +93,7 @@ object runner {
         if (answer != 0) {
             throw IllegalStateException("pipe failed")
         }
-        return intArrayOf(fds.get(java.lang.foreign.ValueLayout.JAVA_INT, 0L), fds.get(java.lang.foreign.ValueLayout.JAVA_INT, 4L))
+        return kotlin.intArrayOf(fds.get(java.lang.foreign.ValueLayout.JAVA_INT, 0L), fds.get(java.lang.foreign.ValueLayout.JAVA_INT, 4L))
     }
 
     fun closeFd(fd: Int) {
@@ -123,13 +123,13 @@ object runner {
                 call(native.adddup2, actions, stdin[0], 0)
                 call(native.adddup2, actions, stdout[1], 1)
                 call(native.adddup2, actions, stderr[1], 2)
-                for (fd in listOf(stdin[0], stdin[1], stdout[0], stdout[1], stderr[0], stderr[1])) {
+                for (fd in kotlin.collections.listOf(stdin[0], stdin[1], stdout[0], stdout[1], stderr[0], stderr[1])) {
                     if (fd > 2) {
                         call(native.addclose, actions, fd)
                     }
                 }
             }
-            val words = listOf(command) + argumentList
+            val words = kotlin.collections.listOf(command) + argumentList
             val argv = arena.allocate(8L * (words.size + 1), 8L)
             for ((index, word) in words.withIndex()) {
                 argv.setAtIndex(pointer, index.toLong(), arena.allocateFrom(word))
@@ -155,7 +155,7 @@ object runner {
     // waitpid's raw status as (code, signal): a signal's death is 128 plus its number and that number, an exit its code and 0
     fun statusOf(raw: Int): LongArray {
         val signal = raw and 0x7f
-        return if (signal == 0) longArrayOf(((raw shr 8) and 0xff).toLong(), 0L) else longArrayOf(128L + signal, signal.toLong())
+        return if (signal == 0) kotlin.longArrayOf(((raw shr 8) and 0xff).toLong(), 0L) else kotlin.longArrayOf(128L + signal, signal.toLong())
     }
 
     fun wait(arena: java.lang.foreign.Arena, pid: Int): LongArray {
@@ -216,7 +216,7 @@ object runner {
                     break
                 }
                 java.lang.foreign.MemorySegment.copy(buffer, java.lang.foreign.ValueLayout.JAVA_BYTE, 0L, chunk, 0, count.toInt())
-                synchronized(sink) {
+                kotlin.synchronized(sink) {
                     sink.write(chunk, 0, count.toInt())
                 }
             }
@@ -227,14 +227,14 @@ object runner {
     }
 
     fun textOf(sink: java.io.ByteArrayOutputStream): String {
-        return synchronized(sink) { String(sink.toByteArray(), Charsets.UTF_8) }
+        return kotlin.synchronized(sink) { String(sink.toByteArray(), Charsets.UTF_8) }
     }
 
     // `input` written to the descriptor, then closed
     fun feed(fd: Int, input: ByteArray) {
         val arena = java.lang.foreign.Arena.ofConfined()
         try {
-            val buffer = arena.allocate(maxOf(input.size, 1).toLong(), 8L)
+            val buffer = arena.allocate(kotlin.comparisons.maxOf(input.size, 1).toLong(), 8L)
             java.lang.foreign.MemorySegment.copy(input, 0, buffer, java.lang.foreign.ValueLayout.JAVA_BYTE, 0L, input.size)
             var offset = 0L
             while (offset < input.size) {
@@ -261,9 +261,9 @@ object runner {
             val stderr = makePipe(arena)
             val pid: Int
             try {
-                pid = spawn(arena, command, argumentList, directory, environment, listOf(stdin, stdout, stderr))
+                pid = spawn(arena, command, argumentList, directory, environment, kotlin.collections.listOf(stdin, stdout, stderr))
             } catch (cause: Throwable) {
-                for (fd in listOf(stdin[0], stdin[1], stdout[0], stdout[1], stderr[0], stderr[1])) {
+                for (fd in kotlin.collections.listOf(stdin[0], stdin[1], stdout[0], stdout[1], stderr[0], stderr[1])) {
                     closeFd(fd)
                 }
                 throw cause
@@ -294,7 +294,7 @@ object runner {
             }
             val (status, ended) = waitLimited(arena, pid, limit)
             val drained = System.nanoTime() + 500L * 1_000_000L
-            for (reader in listOf(outputThread, errorThread)) {
+            for (reader in kotlin.collections.listOf(outputThread, errorThread)) {
                 val left = (drained - System.nanoTime()) / 1_000_000L
                 if (left > 0L) {
                     reader.join(left)

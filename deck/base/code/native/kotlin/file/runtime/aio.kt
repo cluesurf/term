@@ -34,7 +34,7 @@ object aio {
   // how many trailing bytes begin a character the bytes do not complete: 0 to 3
   private fun incompleteTail(bytes: ByteArray, size: Int): Int {
     var back = 1
-    while (back <= minOf(size, 3)) {
+    while (back <= kotlin.comparisons.minOf(size, 3)) {
       val byte = bytes[size - back].toInt() and 0xFF
       if (byte and 0xC0 != 0x80) {
         val need = if (byte >= 0xF0) 4 else if (byte >= 0xE0) 3 else if (byte >= 0xC0) 2 else 1
@@ -247,7 +247,7 @@ object aio {
   }
 
   private fun octalToText(octal: String): String {
-    val bits = arrayOf("---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx")
+    val bits = kotlin.arrayOf("---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx")
     val out = StringBuilder()
 
     for (digit in octal) {
@@ -309,7 +309,7 @@ object aio {
     append: Boolean,
     clear: Boolean,
   ): Handle = termLoop.handBack {
-    val options = mutableSetOf<StandardOpenOption>()
+    val options = kotlin.collections.mutableSetOf<StandardOpenOption>()
 
     if (read) options.add(StandardOpenOption.READ)
     if (write || append) options.add(StandardOpenOption.WRITE)
@@ -367,7 +367,7 @@ object aio {
           when (frame) {
             "relative" -> file.at + offset
             "end" -> file.channel.size() - offset
-            else -> maxOf(0L, offset)
+            else -> kotlin.comparisons.maxOf(0L, offset)
           }
       } catch (error: kotlin.Exception) {
         null
@@ -388,8 +388,8 @@ object aio {
   suspend fun handleClear(file: Handle, size: Long) {
     termLoop.handBack {
       try {
-        file.channel.truncate(maxOf(0L, size))
-        file.at = minOf(file.at, maxOf(0L, size))
+        file.channel.truncate(kotlin.comparisons.maxOf(0L, size))
+        file.at = kotlin.comparisons.minOf(file.at, kotlin.comparisons.maxOf(0L, size))
       } catch (error: kotlin.Exception) {
         null
       }
@@ -400,8 +400,8 @@ object aio {
 
   suspend fun readerOpen(path: String, start: Long, size: Long): Reader =
     termLoop.handBack {
-      val channel = FileChannel.open(at(path), setOf(StandardOpenOption.READ))
-      Reader(channel, maxOf(0L, start), if (size > 0L) size else null)
+      val channel = FileChannel.open(at(path), kotlin.collections.setOf(StandardOpenOption.READ))
+      Reader(channel, kotlin.comparisons.maxOf(0L, start), if (size > 0L) size else null)
     }
 
   // the next chunk, or the empty text at the end of the stream (or of the window). A chunk ends before an incomplete
@@ -411,7 +411,7 @@ object aio {
     try {
       while (true) {
         val left = stream.left
-        val want = if (left != null) maxOf(0L, minOf(left, 65536L)) else 65536L
+        val want = if (left != null) kotlin.comparisons.maxOf(0L, kotlin.comparisons.minOf(left, 65536L)) else 65536L
         val buffer = java.nio.ByteBuffer.allocate(want.toInt())
         val count = if (want > 0L) stream.channel.read(buffer, stream.at) else 0
 
@@ -452,7 +452,7 @@ object aio {
   }
 
   suspend fun writerOpen(path: String, append: Boolean): Writer = termLoop.handBack {
-    val options = mutableSetOf(StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+    val options = kotlin.collections.mutableSetOf(StandardOpenOption.WRITE, StandardOpenOption.CREATE)
 
     if (!append) options.add(StandardOpenOption.TRUNCATE_EXISTING)
 

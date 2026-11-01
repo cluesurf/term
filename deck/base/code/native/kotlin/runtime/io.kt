@@ -17,6 +17,6 @@ object io {
     fun isFile(path: String): Boolean = File(path).isFile
     fun dirMake(path: String) { try { File(path).mkdirs() } catch (e: kotlin.Exception) {} }
     fun dirRemove(path: String) { try { File(path).deleteRecursively() } catch (e: kotlin.Exception) {} }
-    fun dirList(path: String): MutableList<String> = try { File(path).list()?.toMutableList() ?: mutableListOf() } catch (e: kotlin.Exception) { mutableListOf() }
-    fun dirWalk(path: String): MutableList<String> = try { File(path).walkTopDown().drop(1).map { it.path }.toMutableList() } catch (e: kotlin.Exception) { mutableListOf() }
+    fun dirList(path: String): MutableList<String> = try { File(path).list()?.toMutableList() ?: kotlin.collections.mutableListOf() } catch (e: kotlin.Exception) { kotlin.collections.mutableListOf() }
+    fun dirWalk(path: String): MutableList<String> = try { File(path).walkTopDown().drop(1).map { it.path }.toMutableList() } catch (e: kotlin.Exception) { kotlin.collections.mutableListOf() }
 }

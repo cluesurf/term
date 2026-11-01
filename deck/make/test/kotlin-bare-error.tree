@@ -1,9 +1,12 @@
-note <the Kotlin the toolchain hands a program never calls a bare error>
+note <the Kotlin the toolchain hands a program never calls a default-imported function bare>
 
-# A program that loads @term/base/log defines a top-level `error` answering Unit, and every Kotlin file of a build is
-# one program, so a bare `error("...")` in a runtime or in emitted text binds to it and not to Kotlin's own, which
-# answers Nothing. `x ?: error("...")` is then an Any, and kotlinc refuses it. Every view program has the log in its
-# closure since report-raise (item term-self-host-001-0535), so these files write `kotlin.error`.
+# Every Kotlin file of a build is one program, and a top-level function of the program comes before the default imports.
+# So a program's `task error` (the log's, since report-raise, item term-self-host-001-0535) takes every bare `error("...")`
+# in a runtime or in emitted text away from Kotlin's own, which answers Nothing, and `x ?: error("...")` no longer
+# compiles. A `task println` is worse: the runtime compiles and its output goes nowhere. These files write `kotlin.error`,
+# `kotlin.io.println` and so on. This is the static twin of test/compile/native-shadow.ts, for the runtimes that one's
+# closure does not reach, and the pattern is the census of item 0543. The `run` lambdas of two runtimes were renamed, so
+# there is no list of allowed sites.
 
 load @term/base/file/blocking
   find read, name read-path
@@ -11,38 +14,197 @@ load @term/base/file/blocking
 load @term/base/file/directory
   find walk, name walk-paths
 
-load @term/base/text
-  find contains
-  find ends-with
-  find replace-all
+load @term/base/regex
+  find find-matches
 
-task bare-error-files
+load @term/base/text
+  find char-count
+  find ends-with
+  find index-of
+  find split
+  find starts-with
+  find substring
+  find trim-start
+
+task bare-pattern
+  like text
+
+  back <<(?<![\w.$:'"`-])(?<!fun )(error|print|println|check|checkNotNull|require|requireNotNull|assert|TODO|run|with|repeat|lazy|synchronized|runCatching|readLine|readln|readlnOrNull|arrayOf|arrayOfNulls|emptyArray|intArrayOf|longArrayOf|doubleArrayOf|floatArrayOf|byteArrayOf|shortArrayOf|charArrayOf|booleanArrayOf|listOf|listOfNotNull|mutableListOf|arrayListOf|emptyList|mapOf|mutableMapOf|hashMapOf|linkedMapOf|emptyMap|setOf|mutableSetOf|hashSetOf|linkedSetOf|emptySet|buildList|buildMap|buildSet|buildString|maxOf|minOf|compareBy|compareByDescending|naturalOrder|reverseOrder|sequence|sequenceOf|generateSequence|emptySequence)(\\?<[^()]*>)?\s*(\(|\\?\{)>>
+
+# the piece of a line before a `//` comment, unless a string opens first: a `//` in a string is its text
+task before-comment
+  take piece, like text
+  like text
+
+  save at, index-of(piece, <//>)
+  fork test, is-below(at, 0)
+    hold
+      back piece
+  save before, substring(piece, 0, at)
+  fork test, is-below(index-of(before, <">), 0)
+    hold
+      back before
+  back piece
+
+# the bare calls in a piece of Kotlin, each written with its line
+task bare-in-kotlin
+  take line, like text
+  like list, like text
+
+  save out, make list
+  save pieces, split(line, <\\n>)
+  walk pieces
+    take piece
+    walk find-matches(bare-pattern(), before-comment(piece))
+      take hit
+      out/push(hit/text)
+  back out
+
+# the bare calls in a file: an emitter's `.tree` holds its Kotlin in literals a `\n` apart, and its own comments are `#`
+task bare-in-text
+  take text, like text
+  like list, like text
+
+  save out, make list
+  walk split(text, <\n>)
+    take line
+    fork test, not(starts-with(trim-start(line), <#>))
+      hold
+        walk bare-in-kotlin(line)
+          take hit
+          out/push(hit)
+  back out
+
+# the bare calls in the Kotlin a `bind` writes: what stands under its `case kotlin`
+task bare-in-binds
+  take text, like text
+  like list, like text
+
+  save out, make list
+  save within, -1
+  walk split(text, <\n>)
+    take line
+    save trimmed, trim-start(line)
+    save indent, subtract(char-count(line), char-count(trimmed))
+    fork test, is-equal(trimmed, <case kotlin>)
+      hold
+        save within, indent
+        turn next
+    fork test, and(is-above(within, -1), is-above(indent, within))
+      hold
+        fork test, starts-with(trimmed, <text \<>)
+          hold
+            walk bare-in-kotlin(line)
+              take hit
+              out/push(hit)
+      miss
+        save within, -1
+  back out
+
+task files-ending
   take base, like text
+  take ending, like text
   like list, like text
 
   save found, make list
   walk walk-paths(base)
     take path
-    fork test, ends-with(path, <.kt>)
+    fork test, ends-with(path, ending)
       hold
-        save kept, replace-all(read-path(path), <kotlin.error(">, <>)
-        fork test, contains(kept, <error(">)
-          hold
-            found/push(path)
+        found/push(path)
   back found
 
-test <no runtime of the view library calls a bare error>
-  want hold, is-equal(bare-error-files(<../site/code>)/length, 0)
+task kotlin-files
+  take base, like text
+  like list, like text
 
-test <no runtime of the cask calls a bare error>
-  want hold, is-equal(bare-error-files(<../cask/code>)/length, 0)
+  back files-ending(base, <.kt>)
 
-test <no runtime of the stdlib calls a bare error>
-  want hold, is-equal(bare-error-files(<../base/code>)/length, 0)
+task bare-in-bind-files
+  take base, like text
+  like text
+
+  save out, <>
+  walk files-ending(base, <.tree>)
+    take path
+    walk bare-in-binds(read-path(path))
+      take hit
+      save out, <{out}{path}: {hit}\n>
+  back out
+
+task bare-in-files
+  take paths, like list, like text
+  like text
+
+  save out, <>
+  walk paths
+    take path
+    walk bare-in-text(read-path(path))
+      take hit
+      save out, <{out}{path}: {hit}\n>
+  back out
+
+test <the pattern flags a bare call however it is written>
+  want hold, is-equal(bare-in-text(<x ?: error("a")>)/length, 1)
+  want hold, is-equal(bare-in-text(<x ?: error(message)>)/length, 1)
+  want hold, is-equal(bare-in-text(<x ?: error ("a")>)/length, 1)
+  want hold, is-equal(bare-in-text(<check(ready)>)/length, 1)
+  want hold, is-equal(bare-in-text(<require(ready)>)/length, 1)
+  want hold, is-equal(bare-in-text(<println(line)>)/length, 1)
+  want hold, is-equal(bare-in-text(<print(line)>)/length, 1)
+  want hold, is-equal(bare-in-text(<return run \{ 1 \}>)/length, 1)
+  want hold, is-equal(bare-in-text(<val xs = mutableListOf\<String\>()>)/length, 1)
+  want hold, is-equal(bare-in-text(<<back <mutableListOf\<String\>()>>>)/length, 1)
+  want hold, is-equal(bare-in-text(<<a\n    run \{ b \}>>)/length, 1)
+  want hold, is-equal(bare-in-text(<by lazy \{ 1 \}>)/length, 1)
+
+test <the pattern passes what is not a bare call>
+  want hold, is-equal(bare-in-text(<x ?: kotlin.error("a")>)/length, 0)
+  want hold, is-equal(bare-in-text(<kotlin.io.println(line)>)/length, 0)
+  want hold, is-equal(bare-in-text(<kotlin.collections.mutableListOf\<String\>()>)/length, 0)
+  want hold, is-equal(bare-in-text(<fun run() \{\}>)/length, 0)
+  want hold, is-equal(bare-in-text(<override fun check(x: Long)>)/length, 0)
+  want hold, is-equal(bare-in-text(<logError("a")>)/length, 0)
+  want hold, is-equal(bare-in-text(<host.run \{ 1 \}>)/length, 0)
+  want hold, is-equal(bare-in-text(<val mutableLongListOf = 1>)/length, 0)
+  want hold, is-equal(bare-in-text(<// run \{ 1 \}>)/length, 0)
+  want hold, is-equal(bare-in-text(<# run \{ 1 \}>)/length, 0)
+
+test <the bind scan reads only what stands under a case kotlin>
+  want hold, is-equal(bare-in-binds(<bind x\n  case kotlin\n    text \<run \{ 1 \}\>>)/length, 1)
+  want hold, is-equal(bare-in-binds(<bind x\n  case rust\n    text \<run \{ 1 \}\>>)/length, 0)
+  want hold, is-equal(bare-in-binds(<bind x\n  case kotlin\n    text \<kotlin.run \{ 1 \}\>>)/length, 0)
+  want hold, is-equal(bare-in-binds(<bind x\n  case kotlin\n    text \<a\>\n  case swift\n    text \<print(a)\>>)/length, 0)
 
 test <the walk reaches the runtimes it reads>
-  want hold, contains(read-path(<../cask/code/native/kotlin/runtime/compose/cask.kt>), <kotlin.error(">)
+  want hold, is-above(kotlin-files(<../site/code>)/length, 0)
+  want hold, is-above(kotlin-files(<../cask/code>)/length, 0)
+  want hold, is-above(kotlin-files(<../base/code>)/length, 0)
+  want hold, is-above(kotlin-files(<../test/code>)/length, 0)
 
-test <the Kotlin emitter writes no bare error>
-  save kept, replace-all(read-path(<./code/compile/kotlin-emit.tree>), <kotlin.error(">, <>)
-  want hold, is-equal(contains(kept, <error(">), false)
+test <no runtime of the view library calls a default import bare>
+  want hold, is-equal(bare-in-files(kotlin-files(<../site/code>)), <>)
+
+test <no runtime of the cask calls a default import bare>
+  want hold, is-equal(bare-in-files(kotlin-files(<../cask/code>)), <>)
+
+test <no runtime of the stdlib calls a default import bare>
+  want hold, is-equal(bare-in-files(kotlin-files(<../base/code>)), <>)
+
+test <no runtime of the test package calls a default import bare>
+  want hold, is-equal(bare-in-files(kotlin-files(<../test/code>)), <>)
+
+test <no bind writes a default import bare on Kotlin>
+  want hold, is-equal(bare-in-bind-files(<../base/code>), <>)
+  want hold, is-equal(bare-in-bind-files(<../site/code>), <>)
+  want hold, is-equal(bare-in-bind-files(<../cask/code>), <>)
+  want hold, is-equal(bare-in-bind-files(<../test/code>), <>)
+  want hold, is-equal(bare-in-bind-files(<../call/code>), <>)
+  want hold, is-equal(bare-in-bind-files(<./code>), <>)
+
+test <the Kotlin emitter writes no bare call>
+  save paths, make list
+  paths/push(<./code/compile/kotlin-emit.tree>)
+  paths/push(<./code/compile/kotlin-program.tree>)
+  paths/push(<./code/compile/kotlin-names.tree>)
+  want hold, is-equal(bare-in-files(paths), <>)

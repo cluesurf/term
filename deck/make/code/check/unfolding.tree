@@ -697,7 +697,7 @@ bind trace-close
   case swift
     text <[]>
   case kotlin
-    text <mutableListOf()>
+    text <kotlin.collections.mutableListOf()>
 
 bind trace-replay
   take locators, like list, like text

@@ -11,7 +11,7 @@ import android.os.Looper
 
 object nativeTorch {
     // the torch's state as the platform last said it, by camera
-    private val lit = mutableMapOf<String, Boolean>()
+    private val lit = kotlin.collections.mutableMapOf<String, Boolean>()
     private var listening = false
 
     private fun manager(): CameraManager? = hostActivity()?.getSystemService(Context.CAMERA_SERVICE) as? CameraManager

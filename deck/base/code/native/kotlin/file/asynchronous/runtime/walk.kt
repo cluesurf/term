@@ -20,7 +20,7 @@ object walkFile {
   // one level, or every level below it as paths relative to `path`
   suspend fun dirList(path: String, deep: Boolean): MutableList<String> =
     termLoop.handBack {
-      val out = mutableListOf<String>()
+      val out = kotlin.collections.mutableListOf<String>()
       val root = Paths.get(path)
 
       try {
@@ -44,7 +44,7 @@ object walkFile {
   // down, which is what node's own recursive readdir does.
   suspend fun dirWalk(path: String, depth: Long): MutableList<WalkEntry> =
     termLoop.handBack {
-      val out = mutableListOf<WalkEntry>()
+      val out = kotlin.collections.mutableListOf<WalkEntry>()
       val root = Paths.get(path)
 
       try {

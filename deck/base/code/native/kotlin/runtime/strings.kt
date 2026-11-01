@@ -35,16 +35,16 @@ object strings {
     fun replace(s: String, from: String, to: String): String = s.replace(from, to)
     // both bounds clamped to the text, and a start after the end swapped with it, as TermText.substring does
     fun slice(s: String, start: Long, end: Long): String {
-        var x = maxOf(start, 0L)
-        var y = maxOf(end, 0L)
+        var x = kotlin.comparisons.maxOf(start, 0L)
+        var y = kotlin.comparisons.maxOf(end, 0L)
         if (x > y) { val t = x; x = y; y = t }
         val a = unit(s, x)
         val b = a + unit(s.substring(a), y - x)
         return s.substring(a, b)
     }
-    fun sliceFrom(s: String, start: Long): String = s.substring(unit(s, maxOf(start, 0L)))
+    fun sliceFrom(s: String, start: Long): String = s.substring(unit(s, kotlin.comparisons.maxOf(start, 0L)))
     fun indexOf(s: String, search: String, start: Long): Long {
-        val r = s.indexOf(search, unit(s, maxOf(start, 0L)))
+        val r = s.indexOf(search, unit(s, kotlin.comparisons.maxOf(start, 0L)))
         return if (r < 0) -1L else s.codePointCount(0, r).toLong()
     }
     fun replaceFirst(s: String, from: String, to: String): String = s.replaceFirst(from, to)

@@ -42,7 +42,7 @@ bind lane-count
   case swift
     text <max(min($limit, $size), 0)>
   case kotlin
-    text <maxOf(minOf($limit, $size), 0)>
+    text <kotlin.comparisons.maxOf(kotlin.comparisons.minOf($limit, $size), 0)>
 
 # a slot no runner filled, as `new Array(n)` leaves it
 bind concurrency-hole

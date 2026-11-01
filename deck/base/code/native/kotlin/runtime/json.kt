@@ -75,7 +75,7 @@ object json {
     fun makeObject(): Any = LinkedHashMap<String, Any>()
     @Suppress("UNCHECKED_CAST")
     fun setField(value: Any, key: String, field: Any): Any { if (value is MutableMap<*, *>) (value as MutableMap<String, Any>)[key] = field; return value }
-    fun makeArray(): Any = mutableListOf<Any>()
+    fun makeArray(): Any = kotlin.collections.mutableListOf<Any>()
     @Suppress("UNCHECKED_CAST")
     fun pushItem(value: Any, item: Any): Any { if (value is MutableList<*>) (value as MutableList<Any>).add(item); return value }
     fun fromText(value: String): Any = value
@@ -89,7 +89,7 @@ object json {
     fun isBoolean(value: Any): Boolean = value is Boolean
     fun arraySize(value: Any): Long = ((value as? List<*>)?.size ?: 0).toLong()
     fun arrayItem(value: Any, index: Long): Any = getItem(value, index)
-    fun objectKeys(value: Any): MutableList<String> = (value as? Map<*, *>)?.keys?.map { it.toString() }?.toMutableList() ?: mutableListOf()
+    fun objectKeys(value: Any): MutableList<String> = (value as? Map<*, *>)?.keys?.map { it.toString() }?.toMutableList() ?: kotlin.collections.mutableListOf()
 }
 
 // a recursive-descent reader over the text. Malformed text reads as JsonNull, the way the other shims answer.
@@ -150,7 +150,7 @@ private class JsonReader(private val text: String) {
     }
 
     private fun array(): Any {
-        val out = mutableListOf<Any>()
+        val out = kotlin.collections.mutableListOf<Any>()
         at++
         skip()
         if (at < text.length && text[at] == ']') { at++; return out }

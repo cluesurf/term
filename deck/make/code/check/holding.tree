@@ -139,7 +139,7 @@ bind owed-kinds-order
   case swift
     text <["index", "zero", "ends", "width"]>
   case kotlin
-    text <listOf("index", "zero", "ends", "width")>
+    text <kotlin.collections.listOf("index", "zero", "ends", "width")>
 
 # the kinds counted so far, each with its count
 task owed-kinds-counted

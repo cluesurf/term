@@ -26,7 +26,7 @@ object watchFile {
   suspend fun watchOpen(path: String, deep: Boolean): Watcher = termLoop.handBack {
     try {
       val service = FileSystems.getDefault().newWatchService()
-      val roots = mutableMapOf<Any, Path>()
+      val roots = kotlin.collections.mutableMapOf<Any, Path>()
       val root = Paths.get(path)
 
       register(service, roots, root)
@@ -46,7 +46,7 @@ object watchFile {
 
       Watcher(service, roots)
     } catch (error: kotlin.Exception) {
-      Watcher(null, mutableMapOf())
+      Watcher(null, kotlin.collections.mutableMapOf())
     }
   }
 

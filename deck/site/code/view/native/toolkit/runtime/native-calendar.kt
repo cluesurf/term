@@ -46,9 +46,9 @@ object nativeCalendar {
         val end = read(to) ?: return "invalid"
         if (end < start) return "invalid"
         val activity = hostActivity() ?: return "unavailable"
-        val found = mutableListOf<Triple<String, String, String>>()
+        val found = kotlin.collections.mutableListOf<Triple<String, String, String>>()
         try {
-            val columns = arrayOf(CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.TITLE)
+            val columns = kotlin.arrayOf(CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.TITLE)
             CalendarContract.Instances.query(activity.contentResolver, columns, start, end)?.use { row ->
                 while (row.moveToNext()) {
                     // Instances also holds what only touches the span at an end. An event overlaps when it begins
@@ -65,7 +65,7 @@ object nativeCalendar {
             return "failed"
         }
         if (found.isEmpty()) return "none"
-        return found.sortedWith(compareBy<Triple<String, String, String>> { it.first }.thenBy { it.third })
+        return found.sortedWith(kotlin.comparisons.compareBy<Triple<String, String, String>> { it.first }.thenBy { it.third })
             .joinToString("\n") { "${it.first}\t${it.second}\t${it.third}" }
     }
 
@@ -93,7 +93,7 @@ object nativeCalendar {
     // the first calendar the app may add events to, else the local one it makes, its id
     private fun writable(): Long? {
         val activity = hostActivity() ?: return null
-        val columns = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
+        val columns = kotlin.arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
         activity.contentResolver.query(CalendarContract.Calendars.CONTENT_URI, columns, null, null, CalendarContract.Calendars._ID)?.use { row ->
             while (row.moveToNext()) {
                 if (row.getInt(1) >= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) return row.getLong(0)
@@ -120,7 +120,7 @@ object nativeCalendar {
 
     // ISO 8601 with its offset, to milliseconds since 1970
     private fun read(text: String): Long? =
-        runCatching { java.time.OffsetDateTime.parse(text).toInstant().toEpochMilli() }.getOrNull()
+        kotlin.runCatching { java.time.OffsetDateTime.parse(text).toInstant().toEpochMilli() }.getOrNull()
 
     // UTC, to the second: `2030-01-01T09:00:00Z`, which sorts as text in time order
     private fun write(milliseconds: Long): String =

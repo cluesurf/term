@@ -18,7 +18,7 @@ object nativeLocation {
         if (grant != "granted") return grant
         val activity = hostActivity() ?: return "unavailable"
         val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { manager.isProviderEnabled(it) }
+        val provider = kotlin.collections.listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { manager.isProviderEnabled(it) }
             ?: return "unavailable"
         val at = current(manager, provider, activity) ?: return "failed"
         return "%.6f %.6f %.0f".format(java.util.Locale.ROOT, at.latitude, at.longitude, at.accuracy.toDouble())
@@ -44,7 +44,7 @@ object nativeLocation {
             return handler(if (activity.getSharedPreferences("term-permission", Context.MODE_PRIVATE).getBoolean(android.Manifest.permission.ACCESS_FINE_LOCATION, false)) "denied" else "not-determined")
         }
         val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { manager.isProviderEnabled(it) }
+        val provider = kotlin.collections.listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { manager.isProviderEnabled(it) }
             ?: return handler("unavailable")
         val listener = LocationListener { at -> handler(describe(at)) }
         follower = listener

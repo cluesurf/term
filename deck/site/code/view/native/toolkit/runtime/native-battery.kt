@@ -51,7 +51,7 @@ object nativeBattery {
     private fun stop() {
         val made = receiver ?: return
         receiver = null
-        runCatching { hostActivity()?.unregisterReceiver(made) }
+        kotlin.runCatching { hostActivity()?.unregisterReceiver(made) }
     }
 
     private fun describe(status: Intent): String {

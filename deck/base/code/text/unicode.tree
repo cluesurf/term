@@ -71,7 +71,7 @@ bind grapheme-slice
   case swift
     text <\{ () -\> String in let g = Array($value); let a = min(max(Int($start), 0), g.count); let b = min(max(Int($end), a), g.count); return String(g[a..\<b]) \}()>
   case kotlin
-    text <run \{ val bi = java.text.BreakIterator.getCharacterInstance(); bi.setText($value); val cuts = mutableListOf(0); while (bi.next() != java.text.BreakIterator.DONE) cuts.add(bi.current()); val n = cuts.size - 1; val a = ($start).coerceIn(0L, n.toLong()).toInt(); val b = ($end).coerceIn(a.toLong(), n.toLong()).toInt(); $value.substring(cuts[a], cuts[b]) \}>
+    text <kotlin.run \{ val bi = java.text.BreakIterator.getCharacterInstance(); bi.setText($value); val cuts = kotlin.collections.mutableListOf(0); while (bi.next() != java.text.BreakIterator.DONE) cuts.add(bi.current()); val n = cuts.size - 1; val a = ($start).coerceIn(0L, n.toLong()).toInt(); val b = ($end).coerceIn(a.toLong(), n.toLong()).toInt(); $value.substring(cuts[a], cuts[b]) \}>
 
 # Unicode normalization. The four forms each map to the platform's normalizer: canonical (NFC) / canonical-decomposed
 # (NFD) / compatibility (NFKC) / compatibility-decomposed (NFKD). rust uses the unicode-normalization crate, the rest

@@ -15,7 +15,7 @@ object crypto {
         val encoder = Charsets.UTF_8.newEncoder()
             .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
             .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE)
-            .replaceWith(byteArrayOf(0xEF.toByte(), 0xBF.toByte(), 0xBD.toByte()))
+            .replaceWith(kotlin.byteArrayOf(0xEF.toByte(), 0xBF.toByte(), 0xBD.toByte()))
         val encoded = encoder.encode(java.nio.CharBuffer.wrap(input))
         val bytes = ByteArray(encoded.remaining())
         encoded.get(bytes)
@@ -60,17 +60,17 @@ object crypto {
         val out = java.io.ByteArrayOutputStream()
         var block = 1
         while (out.size() < length) {
-            val index = byteArrayOf((block ushr 24).toByte(), (block ushr 16).toByte(), (block ushr 8).toByte(), block.toByte())
+            val index = kotlin.byteArrayOf((block ushr 24).toByte(), (block ushr 16).toByte(), (block ushr 8).toByte(), block.toByte())
             var u = hmac256(password, salt, index)
             val t = u.copyOf()
-            for (round in 1 until maxOf(iterations, 1L)) {
+            for (round in 1 until kotlin.comparisons.maxOf(iterations, 1L)) {
                 u = hmac256(password, u)
                 for (k in t.indices) t[k] = (t[k].toInt() xor u[k].toInt()).toByte()
             }
             out.write(t)
             block += 1
         }
-        return out.toByteArray().copyOf(maxOf(length, 0L).toInt())
+        return out.toByteArray().copyOf(kotlin.comparisons.maxOf(length, 0L).toInt())
     }
 
     // HKDF over HMAC-SHA256 (RFC 5869): extract with the salt (32 zero bytes when empty), then expand with the info
@@ -80,10 +80,10 @@ object crypto {
         var t = ByteArray(0)
         var i = 1
         while (out.size() < length) {
-            t = hmac256(prk, t, info, byteArrayOf(i.toByte()))
+            t = hmac256(prk, t, info, kotlin.byteArrayOf(i.toByte()))
             out.write(t)
             i += 1
         }
-        return out.toByteArray().copyOf(maxOf(length, 0L).toInt())
+        return out.toByteArray().copyOf(kotlin.comparisons.maxOf(length, 0L).toInt())
     }
 }

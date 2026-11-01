@@ -7,7 +7,7 @@ object clock {
     fun precise(): Long = System.nanoTime() / 1_000_000L
 
     // the origin of `nanoseconds`, taken at the first reading (an object's property is initialized on first use)
-    private val origin: Long by lazy { System.nanoTime() }
+    private val origin: Long by kotlin.lazy { System.nanoTime() }
 
     // whole nanoseconds since the first reading, never decreasing
     // the origin is read FIRST: a lazy value is set on its first use, so reading the time before it would make the

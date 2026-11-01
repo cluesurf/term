@@ -32,8 +32,8 @@ object sqlite {
 
     // every row as a map of column name to text, wrapped in the `row` form
     fun query(sql: String, params: MutableList<Any>): MutableList<Row> {
-        val db = database ?: return mutableListOf()
-        val rows = mutableListOf<Row>()
+        val db = database ?: return kotlin.collections.mutableListOf()
+        val rows = kotlin.collections.mutableListOf<Row>()
         prepared(db, sql, params).use { statement ->
             statement.executeQuery().use { result ->
                 val columns = result.metaData

@@ -71,7 +71,7 @@ mod http2 {
             // down on its first poll having served nothing
             let (keep, forever) = tokio::sync::oneshot::channel::<()>();
             accept(port, host, handler, secure, certificate, key, forever).await;
-            drop(keep);
+            std::mem::drop(keep);
         });
     }
 

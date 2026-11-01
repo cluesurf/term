@@ -56,7 +56,7 @@ private class Shot(val manager: CameraManager, val id: String, val width: Int, v
             handler.post {
                 if (!answered) {
                     answered = true
-                    runCatching { camera?.close() }
+                    kotlin.runCatching { camera?.close() }
                     reader.close()
                     thread.quitSafely()
                     continuation.resume(text)
@@ -68,7 +68,7 @@ private class Shot(val manager: CameraManager, val id: String, val width: Int, v
             val buffer = image.planes[0].buffer
             val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
             image.close()
-            finish(if (runCatching { file.writeBytes(bytes) }.isSuccess) "photo ${file.path}" else "failed")
+            finish(if (kotlin.runCatching { file.writeBytes(bytes) }.isSuccess) "photo ${file.path}" else "failed")
         }, handler)
         try {
             manager.openCamera(id, object : CameraDevice.StateCallback() {
@@ -92,7 +92,7 @@ private class Shot(val manager: CameraManager, val id: String, val width: Int, v
     @Suppress("DEPRECATION")
     private fun session(device: CameraDevice, finish: (String) -> Unit) {
         try {
-            device.createCaptureSession(listOf(reader.surface), object : CameraCaptureSession.StateCallback() {
+            device.createCaptureSession(kotlin.collections.listOf(reader.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     val request = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply { addTarget(reader.surface) }
                     session.capture(request.build(), null, handler)

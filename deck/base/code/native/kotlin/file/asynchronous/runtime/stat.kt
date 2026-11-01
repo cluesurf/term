@@ -13,7 +13,7 @@ object stat {
       try {
         val at = Paths.get(path)
         val options =
-          if (follow) emptyArray<LinkOption>() else arrayOf(LinkOption.NOFOLLOW_LINKS)
+          if (follow) kotlin.emptyArray<LinkOption>() else kotlin.arrayOf(LinkOption.NOFOLLOW_LINKS)
         val info = Files.readAttributes(at, PosixFileAttributes::class.java, *options)
 
         val kind =

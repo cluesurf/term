@@ -18,7 +18,7 @@ object nativeNetwork {
     private fun stop() {}
 
     private fun interfacesUp(): String {
-        val up = runCatching {
+        val up = kotlin.runCatching {
             NetworkInterface.getNetworkInterfaces()?.toList().orEmpty().any { it.isUp && !it.isLoopback && it.inetAddresses.hasMoreElements() }
         }.getOrDefault(false)
         return if (up) "online other" else "offline none"

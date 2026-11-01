@@ -18,22 +18,22 @@ object http {
                 throw error.cause ?: error
             }
         } catch (error: java.net.http.HttpTimeoutException) {
-            mutableListOf("timeout", error.toString())
+            kotlin.collections.mutableListOf("timeout", error.toString())
         } catch (error: Throwable) {
-            mutableListOf("outage", error.toString())
+            kotlin.collections.mutableListOf("outage", error.toString())
         }
     }
 
     private suspend fun send(method: String, url: String, body: String, header: Map<String, String>, timeout: Long): MutableList<String> {
-        return run {
-            val wait = java.time.Duration.ofMillis(maxOf(1L, timeout))
+        return kotlin.run {
+            val wait = java.time.Duration.ofMillis(kotlin.comparisons.maxOf(1L, timeout))
             val builder = HttpRequest.newBuilder().uri(URI.create(url)).timeout(wait)
             for ((name, value) in header) builder.header(name, value)
             val publisher = if (body.isEmpty()) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofString(body)
             builder.method(method, publisher)
             val client = HttpClient.newBuilder().connectTimeout(wait).build()
             val response = termLoop.await(client.sendAsync(builder.build(), java.net.http.HttpResponse.BodyHandlers.ofString()))
-            val out = mutableListOf("ok", response.statusCode().toString(), response.body())
+            val out = kotlin.collections.mutableListOf("ok", response.statusCode().toString(), response.body())
             for ((name, values) in response.headers().map()) {
                 out.add(name.lowercase())
                 out.add(values.joinToString(", "))

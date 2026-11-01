@@ -38,7 +38,7 @@ object nativeSecret {
     // saved, unavailable (no app to keep it for), or failed
     fun save(name: String, value: String): String {
         val preferences = preferences() ?: return "unavailable"
-        return runCatching {
+        return kotlin.runCatching {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
             val sealed = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
             preferences.edit().putString(name, "${encode(cipher.iv)}.${encode(sealed)}").commit()
@@ -48,7 +48,7 @@ object nativeSecret {
     // the value, or empty text when there is none
     fun read(name: String): String {
         val stored = preferences()?.getString(name, null) ?: return ""
-        return runCatching {
+        return kotlin.runCatching {
             val (iv, sealed) = stored.split('.', limit = 2)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, decode(iv))) }
             String(cipher.doFinal(decode(sealed)), Charsets.UTF_8)

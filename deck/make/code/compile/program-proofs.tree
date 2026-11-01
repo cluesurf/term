@@ -171,7 +171,7 @@ bind proofs-set-list
   case swift
     text <[]>
   case kotlin
-    text <mutableListOf()>
+    text <kotlin.collections.mutableListOf()>
 
 # whether a host value the dock wrote is there at all. Natively no dock writes one, and a value is always there
 bind proofs-given-value

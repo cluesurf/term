@@ -15,7 +15,7 @@ object nativeWatch {
     }
 
     private val lock = Any()
-    private val topics = mutableMapOf<String, Topic>()
+    private val topics = kotlin.collections.mutableMapOf<String, Topic>()
     private var next = 0
 
     // `handler` added to the capability `name`, and the number that removes it. `start` begins the platform's
@@ -25,7 +25,7 @@ object nativeWatch {
         val topic: Topic
         val first: Boolean
         val last: String?
-        synchronized(lock) {
+        kotlin.synchronized(lock) {
             next += 1
             id = next
             topic = topics.getOrPut(name) { Topic() }
@@ -41,17 +41,17 @@ object nativeWatch {
 
         val stop = start { value ->
             // in the order they joined, each looked up as it is told: a handler may drop itself, or another
-            val keys = synchronized(lock) {
+            val keys = kotlin.synchronized(lock) {
                 topic.last = value
                 topic.handlers.keys.toList()
             }
             for (key in keys) {
-                synchronized(lock) { topic.handlers[key] }?.invoke(value)
+                kotlin.synchronized(lock) { topic.handlers[key] }?.invoke(value)
             }
         }
 
         // a handler told at once may have dropped itself before the subscription's end was known
-        val kept = synchronized(lock) {
+        val kept = kotlin.synchronized(lock) {
             if (topics[name] === topic) topic.stop = stop
             topics[name] === topic
         }
@@ -60,7 +60,7 @@ object nativeWatch {
     }
 
     fun leave(name: String, id: Int) {
-        val ended = synchronized(lock) {
+        val ended = kotlin.synchronized(lock) {
             val topic = topics[name] ?: return
             if (topic.handlers.remove(id) == null || topic.handlers.isNotEmpty()) return
             topics.remove(name)

@@ -46,7 +46,7 @@ object cask {
     }
 
     fun exit(status: Long) {
-        println("cask exit $status")
+        kotlin.io.println("cask exit $status")
         System.out.flush()
         kotlin.system.exitProcess(status.toInt())
     }

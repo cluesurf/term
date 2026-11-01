@@ -992,9 +992,9 @@ task empty-of
           fork test, long-list(given, st, facts)
             hold
               back need(<longs>, <mutableLongListOf()>, st)
-          back <mutableListOf()>
+          back <kotlin.collections.mutableListOf()>
         case map
-          back <mutableMapOf()>
+          back <kotlin.collections.mutableMapOf()>
         case named
           link named-name
           fork test, is-equal(named-name, <text>)
@@ -1014,10 +1014,10 @@ task empty-of
               back <MaybeNone>
           fork test, is-equal(named-name, <list>)
             hold
-              back <mutableListOf()>
+              back <kotlin.collections.mutableListOf()>
           fork test, is-equal(named-name, <hash>)
             hold
-              back <mutableMapOf()>
+              back <kotlin.collections.mutableMapOf()>
           back <0L>
         miss
           back <0L>
@@ -1625,7 +1625,7 @@ task fill-size
       link size-value
       back <{max-zero(size-value)}>
     miss
-      back <Math.toIntExact(maxOf({kt-expr(size, st, facts)}, 0L))>
+      back <Math.toIntExact(kotlin.comparisons.maxOf({kt-expr(size, st, facts)}, 0L))>
 
 # A call to a task that only fills a list as one allocation: the primitive array itself where a fixed list of `kind`
 # takes it, an `Array<T>` for `Object`, a `MutableList` for none. `''` where the call is no such fill
@@ -1815,7 +1815,7 @@ task kt-expr
       fork test, is-equal(args, <\<Long\>>)
         hold
           back need(<longs>, <mutableLongListOf()>, st)
-      back <mutableListOf{args}({join-texts(kt-all(items, st, facts), <, >)})>
+      back <kotlin.collections.mutableListOf{args}({join-texts(kt-all(items, st, facts), <, >)})>
     case map
       link entries
       save args, <>
@@ -1836,7 +1836,7 @@ task kt-expr
         take entry
         save key, key-text(expression-type(node), kt-expr(entry/key, st, facts), st, facts)
         push(rendered, <{key} to {kt-expr(entry/value, st, facts)}>)
-      back <mutableMapOf{args}({join-texts(rendered, <, >)})>
+      back <kotlin.collections.mutableMapOf{args}({join-texts(rendered, <, >)})>
     case record
       back kt-record(node, st, facts)
     case member
@@ -2341,7 +2341,7 @@ task kt-collection
       back <{target}[Math.toIntExact({arg-at(arg, 0)})]>
   fork test, is-equal(name, <set>)
     hold
-      back <run \{ {target}[Math.toIntExact({arg-at(arg, 0)})] = {arg-at(arg, 1)} \}>
+      back <kotlin.run \{ {target}[Math.toIntExact({arg-at(arg, 0)})] = {arg-at(arg, 1)} \}>
   fork test, is-equal(name, <includes>)
     hold
       back <{target}.contains({arg-at(arg, 0)})>
@@ -2413,7 +2413,7 @@ task kt-collection
           hold
             push(items, one)
         save at, add(at, 1)
-      back <{target}.let \{ __l -\> val s = ({arg-at(arg, 0)}).toInt().coerceIn(0, __l.size); val c = ({arg-at(arg, 1)}).toInt().coerceIn(0, __l.size - s); __l.subList(s, s + c).clear(); __l.addAll(s, listOf({join-texts(items, <, >)})); 0L \}>
+      back <{target}.let \{ __l -\> val s = ({arg-at(arg, 0)}).toInt().coerceIn(0, __l.size); val c = ({arg-at(arg, 1)}).toInt().coerceIn(0, __l.size - s); __l.subList(s, s + c).clear(); __l.addAll(s, kotlin.collections.listOf({join-texts(items, <, >)})); 0L \}>
   back <>
 
 # an argument's text, `undefined` past the end as the original's template wrote it
@@ -2534,7 +2534,7 @@ task kt-field-value
               save nothing, 0
           fork test, empty
             hold
-              back <emptyArray\<{element-text}\>()>
+              back <kotlin.emptyArray\<{element-text}\>()>
           sift found
             case some
               link fill
@@ -2702,7 +2702,7 @@ task kt-record
                             save kept-done, true
                             save answer, kt-expr(field/value, st, facts)
                   push(parts, answer)
-                  back <run \{ {join-texts(parts, <; >)} \}>
+                  back <kotlin.run \{ {join-texts(parts, <; >)} \}>
                 miss
                   save nothing, 0
             case none
@@ -2729,7 +2729,7 @@ task kt-record
                   save nothing, 0
             case none
               save nothing, 0
-          back <mutableMapOf{args}()>
+          back <kotlin.collections.mutableMapOf{args}()>
       fork test, and(is-equal(record-name, <list>), no-fields)
         hold
           # a still-FREE element stays unspelled, so kotlin infers it from the expected type at the use site
@@ -2745,7 +2745,7 @@ task kt-record
           fork test, is-equal(args, <\<Long\>>)
             hold
               back need(<longs>, <mutableLongListOf()>, st)
-          back <mutableListOf{args}()>
+          back <kotlin.collections.mutableListOf{args}()>
       # `make void` is the absent value: kotlin's Unit. Unless its type is a union with a case `void`, which builds that
       # case (item 0050: it was Unit)
       save void-owner, named-of(node-type)
@@ -2791,7 +2791,7 @@ task kt-record
             take field
             push(fresh, <{kotlin-camel(field/name)} = __f{k}_{at}>)
             save at, add(at, 1)
-          back <run \{ {join-texts(temps, <; >)}; val __h{k} = __spare{cls}; if (__h{k} != null) \{ __spare{cls} = null; {join-texts(sets, <; >)}; __h{k} \} else {cls}({join-texts(fresh, <, >)}) \}>
+          back <kotlin.run \{ {join-texts(temps, <; >)}; val __h{k} = __spare{cls}; if (__h{k} != null) \{ __spare{cls} = null; {join-texts(sets, <; >)}; __h{k} \} else {cls}({join-texts(fresh, <, >)}) \}>
       fork test, is-unequal(cls, <>)
         hold
           fork test, no-fields
@@ -2972,7 +2972,7 @@ task caught-prop
   fork test, is-equal(spelled, <Boolean>)
     hold
       save empty, <false>
-  back <run \{ val __carrier = {carrier}; when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)}; else -\> {empty} \} \}>
+  back <kotlin.run \{ val __carrier = {carrier}; when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)}; else -\> {empty} \} \}>
 
 task kt-member
   take node, like expression
@@ -3302,7 +3302,7 @@ task kt-block
                   fork test, is-unequal(generator/base, 0)
                     hold
                       save less, < - {generator/base}L>
-                  save size, <Math.toIntExact(maxOf({kt-expr(generator/bound, st, facts)}{less}, 0L))>
+                  save size, <Math.toIntExact(kotlin.comparisons.maxOf({kt-expr(generator/bound, st, facts)}{less}, 0L))>
               save counter, kotlin-camel(generator/counter)
               save binds, has-text(expression-names(generator/item), generator/counter)
               save st/local-names/{generator/list}, true
@@ -3550,7 +3550,7 @@ task reserve-in
                       fork test, is-unequal(pushes, 1)
                         hold
                           save times, < * {pushes}>
-                      save turns, <Math.toIntExact(minOf(maxOf({kotlin-camel(bound-name)}{less}, 0L), 1048576L)){times}>
+                      save turns, <Math.toIntExact(kotlin.comparisons.minOf(kotlin.comparisons.maxOf({kotlin-camel(bound-name)}{less}, 0L), 1048576L)){times}>
                     miss
                       save nothing, 0
                   save element, kotlin-type(element-type, st, facts)
@@ -3635,7 +3635,7 @@ task kt-statement
           link thrown-name
           fork test, facts/exception-forms/has(thrown-name)
             hold
-              back kt-told(<run \{ val raised = {kt-expr(thrown, st, facts)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) \}>, node, facts)
+              back kt-told(<kotlin.run \{ val raised = {kt-expr(thrown, st, facts)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) \}>, node, facts)
         miss
           save nothing, 0
       # a raised carrier keeps the flow it has and gains this raise's frame
@@ -3767,7 +3767,7 @@ task kt-told
       save at, <.at({kotlin-string(raise-site)})>
   fork test, facts/hive-tell
     hold
-      back <throw run \{ val told = {built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told \}{at}>
+      back <throw kotlin.run \{ val told = {built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told \}{at}>
   back <throw {built}{at}>
 
 # a let's function type, from the closure it is bound to
@@ -3990,8 +3990,8 @@ task kt-let
               save keyword, <var>
           save spelled, kotlin-type(let-type, st, facts)
           save found, <val __found = when (__host) \{ is String -\> "a text"; is Long, is Int, is Double -\> "a number"; is Boolean -\> "a boolean"; else -\> "an object" \}>
-          save raised, <throw TermException("@term/host", "data-mismatch", "Data does not fit the shape", "", 0L, mapOf("thing" to "host value", "path" to "{let-name}", "reason" to "is $__found where {host-kind} belongs"), null)>
-          back <{keyword} {spelled-name}: {spelled} = run \{ val __host: Any? = {kt-expr(let-init, st, facts)}; if (__host is {spelled}) __host else \{ {found}; {raised} \} \}>
+          save raised, <throw TermException("@term/host", "data-mismatch", "Data does not fit the shape", "", 0L, kotlin.collections.mapOf("thing" to "host value", "path" to "{let-name}", "reason" to "is $__found where {host-kind} belongs"), null)>
+          back <{keyword} {spelled-name}: {spelled} = kotlin.run \{ val __host: Any? = {kt-expr(let-init, st, facts)}; if (__host is {spelled}) __host else \{ {found}; {raised} \} \}>
       # the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
       save declared-form, named-of(let-type)
       fork test, and(is-unequal(declared-form, <>), facts/record-fields/has(declared-form))
@@ -4168,7 +4168,7 @@ task kt-assign
             take field
             push(parts, <{local}.{kotlin-camel(field/name)} = __place{at}>)
             save at, add(at, 1)
-          back <run \{ {join-texts(parts, <; >)} \}>
+          back <kotlin.run \{ {join-texts(parts, <; >)} \}>
         case none
           save nothing, 0
       save segments, make list
@@ -4661,7 +4661,7 @@ task kt-match
           fork test, conditions
             hold
               save opener, <when>
-          back <run \{\n{pad(add(depth, 1))}val {held}: Any? = {subject-text}\n{pad(add(depth, 1))}{opener} \{\n{join-texts(arms, <\n>)}\n{pad(add(depth, 1))}\}\n{pad(depth)}\}>
+          back <kotlin.run \{\n{pad(add(depth, 1))}val {held}: Any? = {subject-text}\n{pad(add(depth, 1))}{opener} \{\n{join-texts(arms, <\n>)}\n{pad(add(depth, 1))}\}\n{pad(depth)}\}>
       # a fork case over a caught TermException: `when` on `form`, the record recovered from `base` by its form
       save caught-list, read(exception-arms)
       fork test, is-above(caught-list/length, 0)
@@ -5038,7 +5038,7 @@ task kt-function
       save body-text, <>
       fork test, is-equal(count, 0)
         hold
-          save body-text, <{pad(add(depth, 1))}TODO({json-quote(<stub: {fn-name}>)})>
+          save body-text, <{pad(add(depth, 1))}kotlin.TODO({json-quote(<stub: {fn-name}>)})>
         miss
           save lines, make list
           walk shadows

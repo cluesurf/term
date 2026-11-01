@@ -14,7 +14,7 @@ class TermMutex {
 
     suspend fun lock() {
         kotlin.coroutines.suspendCoroutine<Unit> { waiter ->
-            val now = synchronized(this) {
+            val now = kotlin.synchronized(this) {
                 if (!held) {
                     held = true
                     true
@@ -32,7 +32,7 @@ class TermMutex {
 
     fun unlock() {
         // the mutex stays held when there is a waiter: it passes to that one
-        val next = synchronized(this) {
+        val next = kotlin.synchronized(this) {
             val first = waiting.pollFirst()
 
             if (first == null) {

@@ -72,9 +72,9 @@ object grip {
         when (frame) {
           "relative" -> file.file.filePointer + offset
           "end" -> file.file.length() - offset
-          else -> maxOf(0L, offset)
+          else -> kotlin.comparisons.maxOf(0L, offset)
         }
-      file.file.seek(maxOf(0L, at))
+      file.file.seek(kotlin.comparisons.maxOf(0L, at))
     } catch (error: kotlin.Exception) {
       Unit
     }
@@ -90,10 +90,10 @@ object grip {
 
   fun gripClear(file: Grip, size: Long) {
     try {
-      file.file.setLength(maxOf(0L, size))
+      file.file.setLength(kotlin.comparisons.maxOf(0L, size))
 
       if (file.file.filePointer > size) {
-        file.file.seek(maxOf(0L, size))
+        file.file.seek(kotlin.comparisons.maxOf(0L, size))
       }
     } catch (error: kotlin.Exception) {
       Unit

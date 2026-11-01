@@ -64,7 +64,7 @@ mod runtime {
             // costs here.
             let (keep, forever) = tokio::sync::oneshot::channel::<()>();
             accept(port, host, handler, secure, certificate, key, forever).await;
-            drop(keep);
+            std::mem::drop(keep);
         });
     }
 

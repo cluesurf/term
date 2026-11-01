@@ -46,7 +46,7 @@ mod child_runtime {
 
     pub fn close(dock: std::rc::Rc<dyn std::any::Any>) {
         if let Some(cell) = of(&dock) {
-            drop(cell.borrow_mut().stdin.take());
+            std::mem::drop(cell.borrow_mut().stdin.take());
         }
     }
 

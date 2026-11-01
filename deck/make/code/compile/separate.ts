@@ -686,6 +686,12 @@ export function compileSeparate(
       return run().portable
     }
 
+    // a dirty unit asked again under the same key is the answer already built: a capped memo may have let it go while
+    // the store never took it, and another document reaching it must not build it again (item term-self-host-001-0530)
+    const kept = held?.get(place)
+
+    if (kept?.key === key) {return kept.value.portable}
+
     const value = withoutWrites(options.cache!, run)
     held?.set(place, { files, key, value })
 

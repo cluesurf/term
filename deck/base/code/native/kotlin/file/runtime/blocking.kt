@@ -50,7 +50,7 @@ object blocking {
 
   // the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
   fun listPath(path: String): MutableList<EntryRaw> {
-    val out = mutableListOf<EntryRaw>()
+    val out = kotlin.collections.mutableListOf<EntryRaw>()
 
     try {
       Files.newDirectoryStream(Paths.get(path)).use { entries ->

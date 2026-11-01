@@ -374,7 +374,7 @@ bind proof-steps
   case swift
     text <[]>
   case kotlin
-    text <listOf()>
+    text <kotlin.collections.listOf()>
 
 bind universals-of
   take s, like statement
@@ -388,7 +388,7 @@ bind universals-of
   case swift
     text <[]>
   case kotlin
-    text <listOf()>
+    text <kotlin.collections.listOf()>
 
 # a stub that carries no body of its rule's
 bind stub-without-body
@@ -491,7 +491,7 @@ bind json-strings
   case swift
     text <fatalError()>
   case kotlin
-    text <TODO()>
+    text <kotlin.TODO()>
 
 # A DEFINITION'S KEY TEXT, KEPT (decision 102 of term/self-host/change/001-finish-self-host): `key-text` builds a
 # statement's node-json for every task's memo key and every definition the key reaches, again on every check. The host
@@ -539,7 +539,7 @@ bind key-kept
   case swift
     text <fatalError()>
   case kotlin
-    text <TODO()>
+    text <kotlin.TODO()>
 
 bind keep-key
   take key, like text
@@ -2428,7 +2428,7 @@ bind match-case-binds
   case swift
     text <[]>
   case kotlin
-    text <listOf()>
+    text <kotlin.collections.listOf()>
 
 bind for-each-index-text
   take s, like statement
@@ -3225,7 +3225,7 @@ bind musts-of
   case swift
     text <[]>
   case kotlin
-    text <listOf()>
+    text <kotlin.collections.listOf()>
 
 # ---- the memo ----
 
