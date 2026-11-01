@@ -164,6 +164,36 @@ const turnsOf = (server: Server, root: string): number => server.record.graphs.g
   ok('store: the request after the save writes the unit', saved.some(one => one.includes('/unit/')), saved.join(', '))
 }
 
+// ---- a held unit and a project request (item term-self-host-001-0530) ----
+{
+  const bg = unwrap(await import('@term/call/code/work/build/build-graph'))
+  const { projectCache } = unwrap(await import('@term/call/code/work/cache/compile-store'))
+  const root = packageAt('held')
+  const file = join(root, 'code', 'held.tree')
+  const marker = 'held-unit-marker'
+  const textOf = (n: number): string => `task ${marker}-${n}\n  like number\n  send back, code ${n}\n`
+  const other = join(root, 'code', 'other.tree')
+  writeFileSync(file, textOf(0))
+  writeFileSync(other, 'task other-one\n  like number\n  send back, code 1\n')
+  const ask = (mode: string, at = '') => ({ mode, file: at, platform: 'node', precomputed: undefined, explain: undefined })
+  // a cap of one answer: the document's unit is gone from the memo by the time the project request wants it
+  const graph = bg.makeBuildGraph(root, 1)
+  const store = projectCache(root)
+  bg.buildRequest(graph, ask('project'), store)
+
+  bg.setOverlay(graph, file, textOf(1))
+  const looked = bg.buildRequest(graph, ask('document', file), store)
+  const lookedBuilt = looked.answer.result?.built?.length ?? 0
+  ok('held: the dirty unit is built by the document request', lookedBuilt > 0, String(lookedBuilt))
+  ok('held: and the store does not take it', holding(root, `${marker}-1`).length === 0)
+
+  writeFileSync(file, textOf(1))
+  bg.dropOverlay(graph, file)
+  const built = bg.buildRequest(graph, ask('project'), store).build
+  ok('held: the project request after the save reads it from the store and builds nothing', built.built === 0, `built ${built.built}, reused ${built.reused}`)
+  ok('held: the store took it', holding(root, `${marker}-1`).some(one => one.includes('/unit/')))
+}
+
 // ---- roots ----
 {
   const one = packageAt('first')

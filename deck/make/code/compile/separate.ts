@@ -611,6 +611,25 @@ function heldOf(cache: CompileCache): Map<string, HeldEntry> {
   return made
 }
 
+// The held entries whose files are all clean again go to the store. Every request of a graph does this before it builds,
+// a project request too: a save followed by a project request, with the unit memo capped past the dirty answer, would
+// otherwise build the saved unit a second time (item term-self-host-001-0530)
+export function flushHeld(
+  cache: CompileCache | undefined,
+  isClean: (file: string) => boolean,
+): void {
+  if (cache === undefined) {return}
+
+  const held = heldOf(cache)
+
+  for (const [place, entry] of held) {
+    if (entry.files.every(isClean)) {
+      held.delete(place)
+      cache.unit(entry.key, () => entry.value)
+    }
+  }
+}
+
 export function compileSeparate(
   source: { file: string; text: string },
   options: {
@@ -673,14 +692,8 @@ export function compileSeparate(
     return value.portable
   }
 
-  if (held !== undefined && isClean !== undefined) {
-    for (const [place, entry] of held) {
-      if (entry.files.every(isClean)) {
-        held.delete(place)
-        options.cache!.unit(entry.key, () => entry.value)
-      }
-    }
-  }
+  if (isClean !== undefined) {flushHeld(options.cache, isClean)}
+
   const verify = cacheVerifyOf(
     globalThis.process?.env?.TERM_CACHE_VERIFY ?? '',
   )
