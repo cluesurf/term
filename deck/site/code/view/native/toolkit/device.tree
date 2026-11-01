@@ -54,7 +54,14 @@ task watch-traits
           read problem
   send back
     task drop
-      call native-device/unwatch
+      fork
+        mark unsafe
+        call native-device/unwatch
+      halt take
+        take problem
+        call report-raise
+          text <watch-traits/drop>
+          read problem
 
 # for tests: ask the platform to change the window's shape, as a person would (native-dom-0035). macOS widens the
 # window, iOS asks its scene for landscape, Android asks its Activity for landscape. Nothing is written: the new width

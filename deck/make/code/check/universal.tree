@@ -40,6 +40,9 @@ load @term/base/text
   find starts-with
   find substring
 
+# binary-op is found because this file builds its case `make equal`, which ordering (found too) also declares: a file
+# that finds two owners leaves the case to its position (`bind op`), where finding ordering alone bound ordering's
+# (decision 101, item term-self-host-001-0514)
 load ../compile/node
   find expression
   find statement
@@ -47,6 +50,7 @@ load ../compile/node
   find proof
   find function-param
   find universal
+  find binary-op
 
 load @term/base/ordering
   find ordering

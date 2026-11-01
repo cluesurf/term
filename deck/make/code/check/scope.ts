@@ -607,11 +607,13 @@ function bindSharedCases(
     return
   }
 
-  // ONLY where nothing else could be meant: the construction's file defines one owner and imports no other owner's
-  // form. Anything wider is a guess, and both wider rules guessed wrong in @term/host: scan.tree defines `token` and
-  // builds node.tree's `scan-node` cases of the same names, which it imports, and read.tree reaches both
-  // (`compile/host-native` on Kotlin, 2026-10-05). The checker's own choice, by the type the construction flows into,
-  // stays for those, as before
+  // ONLY where nothing else could be meant, a fact of the file and never of the program (decision 101): the one owner
+  // that reaches the file, its own or the one its finds import. A file defining one owner and importing another (scan.tree
+  // defines `token` and builds node.tree's `scan-node` cases of the same names, which it imports; `compile/host-native`
+  // on Kotlin, 2026-10-05) reaches two and is told neither. Counting past the file's own imports (what the merged program
+  // or a unit's stubs happen to hold) made the merged and the separate build disagree (trap T-0514). The checker's own
+  // choice, by the type the construction flows into, stays for two or more, and one no position types is refused at the
+  // final zonk (check/inferring-holes.tree `refuse-unsettled`)
   const ownerFor = (
     name: string,
     file: string | undefined,
@@ -627,15 +629,14 @@ function bindSharedCases(
     // one split by file `<name>__in0_<k>`: compile/view-document imports node.tree's `statement`, which analyzer.tree's
     // closure had renamed `statement__form`, so its `make view` read as importing no other owner and was told its own
     // `view-body` (traps.md T-0079, term-self-host-001-0310)
-    const importsAnother = list.some(
+    const others = list.filter(
       o =>
         o.file !== file &&
         imported?.has(o.form.replace(WRITTEN_FORM, '')),
     )
+    const reach = [...own, ...others]
 
-    return own.length === 1 && !importsAnother
-      ? own[0]!.form
-      : undefined
+    return reach.length === 1 ? reach[0]!.form : undefined
   }
 
   const visit = (node: unknown, file: string | undefined): void => {

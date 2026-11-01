@@ -34,6 +34,7 @@ load @term/base/text
 load ../parser/diagnostic
   find diagnose
   find diagnostic-input
+  find diagnostic-name
   find span
   find edit
   find fix
@@ -72,6 +73,9 @@ load ./substitution
 
 load ./zonk
   find zonk-generic
+
+load ./checker-switches
+  find refuses-ambiguous
 
 load ./resolving
   find hole-name
@@ -522,6 +526,58 @@ task zonk-expressions
     save at, add(at, 1)
   back items
 
+# AN OVERLOADED CONSTRUCTION NOTHING SETTLED IS REFUSED, naming its owners (term-self-host-001-0514). `make none`
+# where two forms of the program declare a case `none` its fields fit alike (the stdlib maybe and a `mark text` form,
+# both imported) is left open by infer-construction for its position to decide. When every constraint is in and no
+# position has decided (a value pushed onto a list nothing reads, a local never read, one handed to an `unknown`), its
+# type is still a free variable or the gradual one, and each backend wrote an arbitrary owner's case: TypeScript the
+# text "none" into a `number[]`, Rust `Primitive::None`. The checker decides, so every backend agrees: refused, as an
+# ambiguous call is (decisions-2026-10 D10) and under the same switch, with the qualified spelling as the way out
+task refuse-unsettled
+  take st, like infer-state
+  take variant, like text
+  take had-type, like maybe, like type
+  take at, like span
+  like boolean
+  mark private
+
+  fork test, or(not(refuses-ambiguous(st/switches)), not(st/variant-owners/has(variant)))
+    hold
+      back false
+  save owners, st/variant-owners/get(variant)
+  fork test, is-below(owners/length, 2)
+    hold
+      back false
+  save open, false
+  sift had-type
+    case some
+      link known
+      sift resolve-held(st, known)
+        case variable
+          save open, true
+        case unknown
+          save open, true
+        case dynamic
+          save open, true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, not(open)
+    hold
+      back false
+  save listed, owners/join(<, >)
+  save first, get(owners, 0)
+  save input
+    make diagnostic-input
+      bind file, st/current-file
+      bind span, at
+      bind message, make(some, <`make {variant}` names a case of {owners/length} forms ({listed}), and nothing where it stands says which: no position types it>)
+      bind hint, make(some, <name the form, `make {first}/{variant}`, or give the value a type where it is used>)
+  save kind, make type-mismatch
+  push(st/diagnostics, diagnose(kind, input))
+  back true
+
 # AN EXPRESSION'S TYPE, AND EVERY TYPE UNDER IT, fully resolved, generic variables named. A closure's body is checked with
 # everything else and resolved with it too: left out, its locals kept their raw inference variables and every native
 # backend spelled them `Any` (native-dom-0021)
@@ -563,6 +619,7 @@ task zonk-expression
         push(entries-out, entry)
       save typed/entries, entries-out
     case record
+      save refused, refuse-unsettled(st, name, had-type, span)
       save fields-out, make list
       walk fields
         take field

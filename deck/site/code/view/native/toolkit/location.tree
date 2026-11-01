@@ -38,5 +38,12 @@ task follow-position
             read problem
   send back
     task drop
-      call native-location/unwatch
-        read watching
+      fork
+        mark unsafe
+        call native-location/unwatch
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-position/drop>
+          read problem

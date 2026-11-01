@@ -3345,8 +3345,9 @@ task bind-statement
       save nothing, 0
   back one
 
-# the owner of a case two modules' forms share, ONLY where nothing else could be meant: the construction's file defines
-# one owner and imports no other owner's form
+# the owner of a case two modules' forms share, ONLY where nothing else could be meant, a fact of the file (decision
+# 101): the one owner that reaches it, its own or the one its finds import. Two or more reaching, or none, it is left to
+# the position, and one no position types is refused at the final zonk (check/inferring-holes.tree `refuse-unsettled`)
 task owner-for
   take sharing, like case-sharing
   take name, like text
@@ -3369,7 +3370,10 @@ task owner-for
     fork test, is-equal(owner/file, file)
       hold
         push(own, owner)
-  save imports-another, false
+  save reach, make list
+  walk own
+    take owner
+    push(reach, owner)
   sift scope-of(sharing/scopes, file)
     case some
       link scope
@@ -3379,14 +3383,14 @@ task owner-for
           hold
             sift targets-of(scope/finds, written-form(owner/form))
               case some
-                save imports-another, true
+                push(reach, owner)
               case none
                 save nothing, 0
     case none
       save nothing, 0
-  fork test, and(is-equal(own/length, 1), not(imports-another))
+  fork test, is-equal(reach/length, 1)
     hold
-      save only, get(own, 0)
+      save only, get(reach, 0)
       back make(some, only/form)
   back make none
 

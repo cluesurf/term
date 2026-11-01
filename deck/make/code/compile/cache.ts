@@ -62,7 +62,14 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // '15': a form group's files sort by their portable names (each deck root as its token), not their absolute paths (item
 // term-self-host-001-0484, decision 091 section 3), so a split spelling and an unimported binding across two deck roots
 // can move under the same key.
-export const CACHE_EPOCH = '15'
+// '16': a stub's stored raise set carries its task's pass-through parameters (`pass <i>`), their members (`kink <i>`)
+// and what it does with a lent handle (`lent wait`, `give <form>`, `keep <i> <line>`), decisions 089, 095 and 096 of
+// note/project/term/self-host/change/001-finish-self-host (item 0463), so a unit stored at '15' holds a stub that
+// closes every callback slot of its tasks, and a dependent refuses a raising argument the whole program passes through.
+// '17': a construction of a case two files' forms share, in a file that defines no owner and whose finds import exactly
+// one, binds that owner, and one no rule and no position settles is refused (decision 101, item
+// term-self-host-001-0514), so a unit stored at '16' may hold an answer built from the checker's choice by position.
+export const CACHE_EPOCH = '17'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

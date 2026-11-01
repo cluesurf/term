@@ -36,5 +36,12 @@ task follow-motion
             read problem
   send back
     task drop
-      call native-motion/unwatch
-        read watching
+      fork
+        mark unsafe
+        call native-motion/unwatch
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-motion/drop>
+          read problem

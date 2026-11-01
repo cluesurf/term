@@ -141,12 +141,14 @@ task subscribe-font
 # subscribe to the shared per-family fallback deadline. `handler` fires once when `first-ask + threshold` ms elapses
 # (regardless of load status), so a text node that has stayed hidden past the ceiling can reveal the fallback face.
 # One shared timer per family lives in the native runtime (measured from the family's first ask), so every node of the
-# family wakes on the same tick. Delegates straight to the dom's `watch-deadline`.
+# family wakes on the same tick. Delegates straight to the dom's `watch-deadline`, which keeps `handler` for the host
+# loop and reports its raise, so the slot takes any raise as that one does (decision 096 rule 1)
 task subscribe-font-deadline
   take family, like text
   take threshold, like number
   take handler
     like task
+      halt exception
   call watch-deadline
     read family
     read threshold

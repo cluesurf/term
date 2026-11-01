@@ -600,8 +600,8 @@ task portable-order
 # A CASE NAME TWO MODULES' FORMS SHARE. `make number` in node.tree, which builds its own `type`'s case, built
 # surface.tree's `primitive` case of the same name once both were in one program. Renaming the case per file would
 # change what the output carries, since a case's tag IS its name, so the construction is told its owner instead
-# (`owner`, which the checker reads first), ONLY where nothing else could be meant: the construction's file defines one
-# owner and imports no other owner's form
+# (`owner`, which the checker reads first), ONLY where nothing else could be meant, a fact of the file (decision 101):
+# the one owner that reaches it, its own or the one its finds import (compile/node-rewrite.tree `owner-for`)
 task bind-shared-cases
   take program, like list, like statement
   take scopes, like list, like file-scope

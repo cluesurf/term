@@ -147,7 +147,14 @@ task listen-document
   like task
   send back
     task drop
-      save skip, code 0
+      fork
+        mark unsafe
+        save skip, code 0
+      halt take
+        take problem
+        call report-raise
+          text <listen-document/drop>
+          read problem
 
 # every key pressed in the window, as KeyboardEvent.key names it: an AppKit key-down monitor, the root controller's
 # hardware key presses on UIKit, the Activity's key dispatch on Android (swiftui-target-0003). Returns the remover
@@ -172,8 +179,15 @@ task listen-key
             read problem
   send back
     task drop
-      call native-view/drop-key
-        read number
+      fork
+        mark unsafe
+        call native-view/drop-key
+          read number
+      halt take
+        take problem
+        call report-raise
+          text <listen-key/drop>
+          read problem
 
 # for tests: how many nodes the host holds alive (reactive-bridge-0005), so a disposed branch can be seen freed
 task live-nodes
@@ -198,7 +212,14 @@ task anchor
   like task
   send back
     task drop
-      save skip, code 0
+      fork
+        mark unsafe
+        save skip, code 0
+      halt take
+        take problem
+        call report-raise
+          text <anchor/drop>
+          read problem
 
 # the window's root once `open-root` made it, as a page's body is its document's, so a page written for the web mounts
 # here unchanged (native-dom-0014). Before a window exists, a detached root

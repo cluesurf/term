@@ -67,8 +67,15 @@ task follow-loop
             read problem
   send back
     task drop
-      call native-audio/unwatch-loop
-        read watching
+      fork
+        mark unsafe
+        call native-audio/unwatch-loop
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-loop/drop>
+          read problem
 
 task begin-playback
   take paths, like text
@@ -105,8 +112,15 @@ task follow-playback
             read problem
   send back
     task drop
-      call native-audio/unwatch-playback
-        read watching
+      fork
+        mark unsafe
+        call native-audio/unwatch-playback
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-playback/drop>
+          read problem
 
 task begin-recording
   take path, like text
@@ -141,8 +155,15 @@ task follow-recording
             read problem
   send back
     task drop
-      call native-audio/unwatch-recording
-        read watching
+      fork
+        mark unsafe
+        call native-audio/unwatch-recording
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-recording/drop>
+          read problem
 
 task length-of
   take path, like text
