@@ -1240,9 +1240,45 @@ task spell-element
   sift element-of(given)
     case some
       link element
-      back rust-element(element, facts/context)
+      back with-free-args-unit(element, facts)
     case none
       back <()>
+
+# AN ELEMENT OF A GENERIC FORM WHOSE TYPE ARGUMENT NOTHING CONSTRAINS spells that argument `()`, as its construction
+# does (`Maybe::<()>::None`, record case above): a list of maybes pushed `none` and nothing else was bound as
+# `Vec<Maybe<Rc<dyn Any>>>` beside `vec![Maybe::<()>::None]`, and rustc refused it (term-self-host-001-0522). Only the
+# free variables under a named type's arguments: an element that is itself a free variable keeps the boxed dynamic,
+# which is what an `unknown` pushed onto it is
+task with-free-args-unit
+  take element, like type
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save free, make list
+  fork test, is-equal(kind-of(make(some, element)), <named>)
+    hold
+      walk collect-vars(make(some, element))
+        take id
+        fork test, and(not(facts/context/var-names/has(id)), not(has-number(free, id)))
+          hold
+            push(free, id)
+  fork test, is-equal(free/length, 0)
+    hold
+      back rust-element(element, facts/context)
+  save context, facts/context
+  save saved, context/var-names
+  save widened, make hash
+  walk saved/keys()
+    take id
+    widened/set(id, saved/get(id))
+  walk free
+    take id
+    widened/set(id, <()>)
+  save context/var-names, widened
+  save closed, rust-element(element, context)
+  save context/var-names, saved
+  back closed
 
 # ---- clones ----
 

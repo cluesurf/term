@@ -1152,9 +1152,22 @@ task check-parallel-walks
   take file, like text
   like list, like diagnostic
 
-  # the narrow walk (no types), since every program pays for it
+  # the narrow walk (no types), since every program pays for it, over the unit's own code: a stub's body is empty and
+  # its carried shape is another unit's, checked there (decision 103)
+  save own, make list
+  walk program
+    take top
+    save carried, false
+    sift top
+      case function
+        save carried, is-equal(stub, true)
+      miss
+        save nothing, 0
+    fork test, not(carried)
+      hold
+        push(own, top)
   save walks, make list
-  walk statements-in(program)
+  walk statements-in(own)
     take one
     sift one
       case for-each

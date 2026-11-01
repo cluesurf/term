@@ -325,20 +325,6 @@ task walk-maybe-block
     case none
       back
 
-task walk-maybe-statement
-  take w, like place-walk
-  take given, like maybe, like statement
-  take at, like standing
-  like void
-  mark private
-
-  sift given
-    case some
-      link inner
-      walk-statement(w, inner, at, -1, -1)
-    case none
-      back
-
 task walk-signature
   take w, like place-walk
   take given, like maybe, like declared-signature
@@ -447,13 +433,7 @@ task walk-statement
       walk-function-params(w, params, under(row, <params>, d))
       walk-block(w, body, under(row, <body>, d))
       walk-maybe-type(w, result, under(row, <result>, d))
-      walk-maybe-statement(w, stub-shape, under(row, <stubShape>, d))
-      # `need false` lists are copied where they are read: one handed to a call is written `[]` into the program
-      save stub-statements, make list
-      walk stub-body
-        take one
-        push(stub-statements, one)
-      walk-block(w, stub-statements, under(row, <stubBody>, d))
+      # never a stub's carried shape or body: another unit's code, which no pass placed here reads (decision 103)
       walk universals
         take one
         walk-expression(w, one/expr, stand(row, false, <expr>, d))

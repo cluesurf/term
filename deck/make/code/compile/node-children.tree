@@ -893,6 +893,18 @@ task node-children
       view-children(at, node)
   back found
 
+# A STUB'S CARRIED SHAPE AND BODY ARE ANOTHER UNIT'S CODE (compile/stub.ts `stubShape`, `stubBody`): written in that
+# unit's split names (traps.md T-0313), and read by a dependent only where a prover or the kernel consults them
+# (decision 103 of term/self-host/change/001-finish-self-host). A walk whose answer concerns the unit's own code adds
+# both to its skip list here, so no pass reads them by passing through
+task skip-carried
+  take skip, like list, like text
+  like list, like text
+
+  push(skip, <stubShape>)
+  push(skip, <stubBody>)
+  back skip
+
 # the statements of a block, each as a handle, for a walk that starts at a body
 task block-handles
   take body, like list, like statement

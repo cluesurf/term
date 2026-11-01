@@ -58,6 +58,9 @@ load ../compile/node-reach
   find reach-statements
   find reach-expression
 
+load ../compile/node-children
+  find skip-carried
+
 load ../compile/import-scope
   find file-scope
   find file-set
@@ -132,7 +135,7 @@ task file-of
 # Every name bound inside a node: a let and a view's `save`, a walk's item and index, every parameter list's names
 # (a task's, a closure's, a component's, a binding's, a function type's named parameters), a case arm's renamed
 # fields, and a guard's caught binder. Through every field but `span`, `type`, `result`, `declared` and `generics`, nested tasks included. A SET:
-# its order is never read
+# its order is never read. Never a stub's carried shape or body: their names are another unit's (decision 103)
 task skipped-keys
   like list, like text
   mark private
@@ -143,7 +146,7 @@ task skipped-keys
   push(out, <result>)
   push(out, <declared>)
   push(out, <generics>)
-  back out
+  back skip-carried(out)
 
 task bound-of
   take reached, like reached

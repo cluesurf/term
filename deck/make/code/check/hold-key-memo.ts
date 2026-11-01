@@ -23,8 +23,11 @@ const MARK = '\u0000'
 
 class NotExact extends Error {}
 
-function exactly(this: unknown, key: string, value: unknown): unknown {
+function exactly(this: Record<string, unknown>, key: string, _written: unknown): unknown {
   if (key === 'span') return undefined
+
+  // the value as held, before any `toJSON` (a Date's would make it its text)
+  const value = this[key]
 
   switch (typeof value) {
     case 'undefined':

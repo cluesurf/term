@@ -54,6 +54,9 @@ load ../compile/node-reach
   find reach-statements
   find reach-expression
 
+load ../compile/node-children
+  find skip-carried
+
 load ../compile/node-rewrite
   find rewrite-program
   find rewrite-rule
@@ -281,8 +284,18 @@ task number-literals
   seen/set(<0>, true)
   push(out, <1>)
   seen/set(<1>, true)
-  save reached, reach-statements(program, make list)
-  walk reached/expressions
+  # the unit's own code, and of a stub's carried shape and body only what the kernel may consult: the stubs its own code
+  # names, and those names, by name (decision 103). A literal of a carried shape no goal can reach is never asked for
+  save own, reach-statements(program, skip-carried(make list))
+  save carried, reach-statements(carried-reached(program), make list)
+  save expressions, make list
+  walk own/expressions
+    take one
+    push(expressions, one)
+  walk carried/expressions
+    take one
+    push(expressions, one)
+  walk expressions
     take one
     save literal, <>
     save found, false
@@ -538,6 +551,70 @@ task carried-bodies
               take inner
               push(queue, inner)
   back reached
+
+# THE CARRIED SHAPES AND BODIES A UNIT'S NAMES REACH: of every stub named by one of the unit's own statements, or by a
+# shape or body reached so, its carried shape and its carried body, each statement once, in the order reached. What
+# `number-literals` gathers from, so a literal the kernel may meet unfolding a stub is registered (decision 103)
+task carried-reached
+  take program, like list, like statement
+  like list, like statement
+  mark private
+
+  save carried, make hash
+  save any-carried, false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(stub, true)
+          hold
+            save statements, make list
+            sift stub-shape
+              case some
+                link shape
+                push(statements, shape)
+              case none
+                save nothing, 0
+            walk stub-body
+              take inner
+              push(statements, inner)
+            fork test, is-above(statements/length, 0)
+              hold
+                carried/set(name, statements)
+                save any-carried, true
+      miss
+        save nothing, 0
+  save out, make list
+  fork test, not(any-carried)
+    hold
+      back out
+  save reached, make hash
+  save queue, make list
+  walk program
+    take one
+    save is-stub, false
+    sift one
+      case function
+        save is-stub, is-equal(stub, true)
+      miss
+        save nothing, 0
+    fork test, not(is-stub)
+      hold
+        push(queue, one)
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save next, queue/pop()
+      walk statement-texts(next)
+        take name
+        fork test, and(carried/has(name), is-equal(reached/has(name), false))
+          hold
+            reached/set(name, true)
+            walk carried/get(name)
+              take inner
+              push(out, inner)
+              push(queue, inner)
+  back out
 
 # RECORD ETA, for the ring normalizer: a value of a form with no cases IS the construction of its fields. So when one
 # side of an equation unfolds to `make vector-two(...)` and the other is a name, the name is read as

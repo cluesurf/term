@@ -55,6 +55,7 @@ load ./node
 load ./node-children
   find node-handle
   find node-children
+  find skip-carried
 
 load ./node-rebuild
   find rebuild-type
@@ -580,6 +581,8 @@ task stamp-inspect-types
   save skip, make list
   push(skip, <type>)
   push(skip, <into>)
+  # a stub's carried shape and body were stamped by the unit that owns them (decision 103)
+  save skip, skip-carried(skip)
   save state
     make stamp-state
       bind stamped, 0
@@ -609,6 +612,8 @@ task stamp-sites
   push(skip, <type>)
   push(skip, <into>)
   push(skip, <result>)
+  # a stub's carried shape and body keep the frames of the unit that owns them (decision 103)
+  save skip, skip-carried(skip)
   save spelled, make hash
   save state
     make stamp-state

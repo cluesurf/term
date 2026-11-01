@@ -423,6 +423,22 @@ function installLedger(): void {
   })
 }
 
+// THE HELD ENTRIES of a store (decision 098 rule 6): each dirty unit's unit and name entry, the last per unit, which the
+// store did not take while a file of the unit was unsaved. Kept beside the cache for the life of the process
+type HeldEntry = { files: string[]; key: string; value: { portable: string } }
+const heldEntries = new WeakMap<object, Map<string, HeldEntry>>()
+
+function heldOf(cache: CompileCache): Map<string, HeldEntry> {
+  const known = heldEntries.get(cache.state)
+
+  if (known !== undefined) {return known}
+
+  const made = new Map<string, HeldEntry>()
+  heldEntries.set(cache.state, made)
+
+  return made
+}
+
 export function compileSeparate(
   source: { file: string; text: string },
   options: {
@@ -460,12 +476,39 @@ export function compileSeparate(
     options.cache !== undefined && isClean !== undefined
       ? cleanView(options.cache, isClean)
       : options.cache
-  // a unit's own entries go to the store only when each of its files is clean
-  const unitWrite = <T>(job: unknown, run: () => T): T =>
-    isClean === undefined ||
-    (job as { state: { files: string[] } }).state.files.every(isClean)
-      ? run()
-      : withoutWrites(options.cache!, run)
+  // a unit's own entries go to the store only when each of its files is clean; a dirty unit's entry is held, the last
+  // one per unit and slot, and written by the first document request that finds all its files clean again (the save),
+  // so the store takes the answer the graph's unit memo already holds without building the unit twice
+  const held = options.cache !== undefined ? heldOf(options.cache) : undefined
+  const unitWrite = (
+    job: unknown,
+    slot: string,
+    key: string,
+    run: () => { portable: string },
+  ): string => {
+    const files = (job as { state: { files: string[] } }).state.files
+    const place = `${slot}\u0000${files.join('\u0000')}`
+
+    if (isClean === undefined || files.every(isClean)) {
+      held?.delete(place)
+
+      return run().portable
+    }
+
+    const value = withoutWrites(options.cache!, run)
+    held?.set(place, { files, key, value })
+
+    return value.portable
+  }
+
+  if (held !== undefined && isClean !== undefined) {
+    for (const [place, entry] of held) {
+      if (entry.files.every(isClean)) {
+        held.delete(place)
+        options.cache!.unit(entry.key, () => entry.value)
+      }
+    }
+  }
   const verify = cacheVerifyOf(
     globalThis.process?.env?.TERM_CACHE_VERIFY ?? '',
   )
@@ -595,16 +638,16 @@ export function compileSeparate(
     hasCache: cache !== undefined,
     unitVersion: () => cache?.versionOf('unit') ?? '',
     cachedUnit: (key, job) =>
-      unitWrite(job, () =>
+      unitWrite(job, 'unit', key, () =>
         cache!.unit<{ portable: string }>(key, () => ({
           portable: port.jobStored(job),
-        })).portable,
+        })),
       ),
     cachedNameKey: (key, job) =>
-      unitWrite(job, () =>
+      unitWrite(job, 'name', key, () =>
         cache!.unit<{ portable: string }>(key, () => ({
           portable: port.jobNamedKey(job),
-        })).portable,
+        })),
       ),
     store: unit => JSON.stringify(stored(unit), storeBigint),
     restore: restored,

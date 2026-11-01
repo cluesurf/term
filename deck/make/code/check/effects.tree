@@ -1234,21 +1234,9 @@ task lets-in
             save out, lets-in(clause/body, out)
           case none
             save nothing, 0
+      # never a stub's carried shape or body: another unit's code, in its names (decision 103)
       case function
         save out, lets-in(body, out)
-        sift stub-shape
-          case some
-            link shape
-            save single, make list
-            push(single, shape)
-            save out, lets-in(single, out)
-          case none
-            save nothing, 0
-        save stubbed, make list
-        walk stub-body
-          take inner
-          push(stubbed, inner)
-        save out, lets-in(stubbed, out)
       miss
         save nothing, 0
   back out
@@ -1624,15 +1612,7 @@ task outside-statement
         take param
         outside-maybe(state, param/fallback)
       outside-block(state, body)
-      sift stub-shape
-        case some
-          link shape
-          outside-statement(state, shape)
-        case none
-          save nothing, 0
-      walk stub-body
-        take inner
-        outside-statement(state, inner)
+      # never a stub's carried shape or body: another unit's code, checked there (decision 103)
       walk universals
         take universal
         outside-expression(state, universal/expr)

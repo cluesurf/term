@@ -26,6 +26,7 @@ load ./node-children
   find node-handle
   find node-children
   find block-handles
+  find skip-carried
 
 load ./backend-shapes
   find collection-call
@@ -42,6 +43,7 @@ load ./type-text
 
 # ---- small helpers ----
 
+# and never a stub's carried shape or body: another unit's code, which no emitter writes here (decision 103)
 task type-and-span
   like list, like text
   mark private
@@ -49,7 +51,7 @@ task type-and-span
   save out, make list
   push(out, <type>)
   push(out, <span>)
-  back out
+  back skip-carried(out)
 
 task text-flags
   like hash, like text, like boolean
@@ -184,8 +186,8 @@ task same-maybe-type
 # ---- the statement lists a node holds ----
 
 # the statement lists directly under a node: a branch's and an arm's bodies, a loop's, a guard's and its handler's, a
-# task's (and a stub's whole body), a closure's. Every other statement the node holds is in one of these, but a stub's
-# shape
+# task's, a closure's. Every other statement the node holds is in one of these. A stub's carried shape and body are
+# another unit's code, never walked here (decision 103)
 task statement-lists
   take handle, like node-handle
   like list, like list, like statement
@@ -246,13 +248,6 @@ task statement-lists
           link fn-params
           link fn-body
           push(out, fn-body)
-          save whole, make list
-          walk stub-body
-            take one
-            push(whole, one)
-          fork test, is-above(whole/length, 0)
-            hold
-              push(out, whole)
         miss
           save nothing, 0
     case expression-handle
@@ -267,23 +262,6 @@ task statement-lists
     miss
       save nothing, 0
   back out
-
-# a stub's shape: the one statement a node holds outside a list
-task stub-shape-of
-  take handle, like node-handle
-  like maybe, like statement
-  mark private
-
-  sift handle
-    case statement-handle
-      link node
-      sift node
-        case function
-          back read(stub-shape)
-        miss
-          back make none
-    miss
-      back make none
 
 # the children that are not statements: a statement is reached through its list
 task other-children
@@ -335,12 +313,6 @@ task redeclare-visit
   walk statement-lists(handle)
     take body
     redeclare-block(body, st)
-  sift stub-shape-of(handle)
-    case some
-      link shape
-      redeclare-visit(statement-handle-of(shape), st)
-    case none
-      save nothing, 0
 
 task redeclare-block
   take body, like list, like statement
@@ -762,12 +734,6 @@ task generators-visit
   walk statement-lists(handle)
     take body
     generators-block(body, fn, st)
-  sift stub-shape-of(handle)
-    case some
-      link shape
-      generators-visit(statement-handle-of(shape), fn, st)
-    case none
-      save nothing, 0
 
 task generators-block
   take body, like list, like statement
@@ -902,12 +868,6 @@ task fixed-visit
   walk statement-lists(handle)
     take body
     fixed-block(body, fn, generated, st)
-  sift stub-shape-of(handle)
-    case some
-      link shape
-      fixed-visit(statement-handle-of(shape), false, false, fn, generated, st)
-    case none
-      save nothing, 0
 
 # a generator's loop, its push left uncounted: the condition and the rest as usual, the push's own parts too
 task fixed-loop

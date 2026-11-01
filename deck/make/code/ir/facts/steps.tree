@@ -235,21 +235,9 @@ task flat-in
             flat-in(out, clause/body, counter, false)
           case none
             save nothing, 0
+      # never a stub's carried shape or body: another unit's code (decision 103)
       case function
         flat-in(out, body, counter, false)
-        sift stub-shape
-          case some
-            link shape
-            save single, make list
-            push(single, shape)
-            flat-in(out, single, counter, false)
-          case none
-            save nothing, 0
-        save stub-statements, make list
-        walk stub-body
-          take inner
-          push(stub-statements, inner)
-        flat-in(out, stub-statements, counter, false)
       miss
         save nothing, 0
     save at, add(at, 1)
