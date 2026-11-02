@@ -55,6 +55,10 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <@term/make/code/time/runner>, name runner-module
   load <@term/make/code/time/execute>, name execute-module
@@ -307,20 +311,20 @@ form time-problem-fields
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form time-compare-item
   link glyph, like text
   link kind, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form time-counted-warning
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form time-done-item
   link glyph, like text
@@ -337,19 +341,19 @@ form time-verb-fields
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form time-close
   link verdict, like text
 
 form time-close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 task one-field
   take key, like text
   take value, like text
-  like list, like dynamic
+  like list, like item-field
   mark private
 
   save out, make list
@@ -360,7 +364,7 @@ task one-count
   take amount, like number
   take many, like text
   take one, like text
-  like list, like dynamic
+  like list, like tally
   mark private
 
   save out, make list

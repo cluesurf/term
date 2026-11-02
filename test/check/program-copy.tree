@@ -1,10 +1,17 @@
 note <The program copier gives the copy structuredClone gives>
 
-# compile/program-copy.ts replaced structuredClone on the build's two hot copies (item 0757). The bind texts run on node:
-# what they read (a Map, a cycle, a Date) has no Term type. Written with function, since an arrow would close the text.
+# compile/node-rewrite.tree copy-program replaced structuredClone on the build's two hot copies (items 0757, 0768). The
+# bind texts run on node: what they read (a Map, a cycle, a Date) has no Term type. Written with function, since an arrow
+# would close the text.
 
-dock load
-  load <@term/make/code/compile/program-copy>, name program-copy
+load @term/make/compile/node-rewrite
+  find copy-program
+
+task copy-given
+  take value, like dynamic
+  like dynamic
+
+  back copy-program(value)
 
 bind same-as-clone
   take copy, like dynamic
@@ -49,22 +56,22 @@ bind a-proto-key-stays-a-key
     text <(function () \{ const out = $copy(JSON.parse('\{"__proto__": \{"x": 1\}\}')); return Object.getPrototypeOf(out) === Object.prototype && out.x === undefined && Object.keys(out).length === 1 \})()>
 
 test <every field, its order, an absent value, a map and a set>
-  want hold, same-as-clone(program-copy/copy-program)
+  want hold, same-as-clone(copy-given)
 
 test <a node met twice is one copy met twice>
-  want hold, one-shared(program-copy/copy-program)
+  want hold, one-shared(copy-given)
 
 test <a cycle is copied>
-  want hold, one-cycle(program-copy/copy-program)
+  want hold, one-cycle(copy-given)
 
 test <what is not plain goes to structuredClone>
-  want hold, a-date-copied(program-copy/copy-program)
+  want hold, a-date-copied(copy-given)
 
 test <a function raises as structuredClone raises>
-  want hold, a-function-refused(program-copy/copy-program)
+  want hold, a-function-refused(copy-given)
 
 test <a write on the copy never reaches the given>
-  want hold, a-write-stays-home(program-copy/copy-program)
+  want hold, a-write-stays-home(copy-given)
 
 test <a field named __proto__ stays a field>
-  want hold, a-proto-key-stays-a-key(program-copy/copy-program)
+  want hold, a-proto-key-stays-a-key(copy-given)

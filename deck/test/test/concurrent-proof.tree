@@ -49,7 +49,7 @@ task max-body
 # job `index`: max on an even index (proven), `return a` on an odd one (refuted)
 task prove-job
   mark async
-  take item, like unknown
+  take item, like number
   take index, like number
   like unknown
 

@@ -23,6 +23,8 @@ load @term/call/work/output/printer
 # a row of the item's list: the output library's own, since the item `make-item` answers is the printer's event
 # (term-cli-in-term-0069), where the output module took any record
 load @term/call/work/item/event
+  find tally
+  find item-field
   find list-entry
 
 # the manifest and its version, read by @term/deck's ports (term-cli-in-term-0236), where the package
@@ -54,12 +56,12 @@ form deck-item-ask
   link subject, like text
   link facts, like list, like text
   link message, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form problem-item
   link glyph, like text

@@ -2998,6 +2998,37 @@ task caught-prop
       save empty, <false>
   back <kotlin.run \{ val __carrier = {carrier}; when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)}; else -\> {empty} \} \}>
 
+# one prop of a caught value's link named at run time, `problem/link/{key}`: the same forms, the prop found by its name. Its
+# type depends on the form raised, so the answer is the loose value. No such prop reads the unit, as it reads undefined on
+# TypeScript, since a loose value here is a non-null `Any`
+task caught-prop-by-key
+  take carrier, like text
+  take key, like text
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save arms, make list
+  walk facts/exception-forms/keys()
+    take form
+    fork test, facts/record-fields/has(form)
+      hold
+        walk facts/record-fields/get(form)
+          take field
+          fork test, is-equal(field/name, <link>)
+            hold
+              save link-form, named-of(make(some, field/type))
+              fork test, facts/record-fields/has(link-form)
+                hold
+                  save props, make list
+                  walk facts/record-fields/get(link-form)
+                    take inner
+                    push(props, <"{inner/name}" -\> __raised.link.{kotlin-camel(inner/name)}>)
+                  push(props, <else -\> null>)
+                  push(arms, <is {kotlin-pascal(form)} -\> when (__key) \{ {join-texts(props, <; >)} \}>)
+  push(arms, <else -\> (__carrier.link as? Map\<*, *\>)?.get(__key)>)
+  back <(kotlin.run \{ val __carrier = {carrier}; val __key = ({key}).toString(); when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)} \} \} ?: Unit)>
+
 task kt-member
   take node, like expression
   take st, like kotlin-state
@@ -3017,6 +3048,12 @@ task kt-member
       sift caught-carrier-of(member-target)
         case some
           link carrier
+          sift read(index)
+            case some
+              link key
+              back caught-prop-by-key(kt-expr(carrier, st, facts), kt-expr(key, st, facts), facts)
+            case none
+              save nothing, 0
           back caught-prop(kt-expr(carrier, st, facts), member-name, st, facts)
         case none
           save nothing, 0

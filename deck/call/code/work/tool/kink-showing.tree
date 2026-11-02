@@ -37,6 +37,9 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <@term/make/code/lint/lint>, name lint-module
 
@@ -114,7 +117,7 @@ form kink-problem-near
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form kink-close
   link verdict, like text

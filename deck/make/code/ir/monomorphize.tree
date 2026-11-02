@@ -149,8 +149,9 @@ task monomorphize
 
 # a list reversed, so a search from its start finds the LAST of a name first, as a map set again keeps the last
 task last-first
-  take values, like list, like unknown
-  like list, like unknown
+  head t
+  take values, like list, like t
+  like list, like t
   mark private
 
   save out, make list

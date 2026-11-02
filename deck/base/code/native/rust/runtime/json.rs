@@ -18,10 +18,20 @@ mod json {
             other => Rc::new(other),
         }
     }
-    // a whole float writes as a whole number, as it does on TypeScript
+    // a whole float writes as a whole number, as it does on TypeScript. Negative zero stays a float, so a read keeps its sign
     fn number_value(n: f64) -> Value {
+        if n == 0.0 && n.is_sign_negative() { return Value::from(n) }
         if n.fract() == 0.0 && n.abs() < 9007199254740992.0 { return Value::from(n as i64) }
         Value::from(n)
+    }
+    // negative zero writes as 0 at any depth, as JSON.stringify writes it
+    fn written(value: Value) -> Value {
+        match value {
+            Value::Number(n) if n.as_f64() == Some(0.0) => Value::from(0),
+            Value::Array(items) => Value::Array(items.into_iter().map(written).collect()),
+            Value::Object(map) => Value::Object(map.into_iter().map(|(key, item)| (key, written(item))).collect()),
+            other => other,
+        }
     }
     fn json_of(v: &dyn Any) -> Value {
         let v: &dyn Any = match v.downcast_ref::<Boxed>() {
@@ -45,7 +55,7 @@ mod json {
         Value::Null
     }
     pub fn parse(text: String) -> Boxed { boxed(serde_json::from_str(&text).unwrap_or(Value::Null)) }
-    pub fn stringify<T: 'static>(value: T) -> String { serde_json::to_string(&json_of(&value)).unwrap_or_default() }
+    pub fn stringify<T: 'static>(value: T) -> String { serde_json::to_string(&written(json_of(&value))).unwrap_or_default() }
     pub fn get_field<T: 'static>(value: T, key: String) -> Boxed { boxed(json_of(&value).get(&key).cloned().unwrap_or(Value::Null)) }
     pub fn get_item<T: 'static>(value: T, index: i64) -> Boxed { boxed(json_of(&value).get(index as usize).cloned().unwrap_or(Value::Null)) }
     pub fn as_number<T: 'static>(value: T) -> f64 { json_of(&value).as_f64().unwrap_or(0.0) }

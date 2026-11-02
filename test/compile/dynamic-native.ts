@@ -260,14 +260,14 @@ task run
   {
     // the operands are cloned: a name stays readable after it is compared
     name: 'equal-name-read-after',
-    expected: 'true t:a',
+    expected: 'true a',
     gap: { swift: SWIFT_EQUAL },
     body: `task run
   like text
   save x, pass-on(<a>)
   save y, pass-on(<a>)
   save same, is-equal(x, y)
-  back <{same} {seen(x)}>
+  back <{same} {x}>
 `,
   },
   {
@@ -392,6 +392,25 @@ const RUST_ONLY: { name: string; body: string; expected: string }[] = [
 task run
   like text
   back <{is-equal(pass-on(<a>), pass-on(<a>))} {compare-runtime/deep-equal(<a>, <a>)}>
+`,
+  },
+  {
+    // a record handed to a dynamic is in a box when it arrives, so two with one value are two (compare.rs cannot see into
+    // one), and the answer is never `true` for everything. TypeScript may differ here: log.md, item 0763
+    name: 'boxed-records-are-two',
+    expected: 'false false',
+    body: `task run
+  like text
+  save a
+    make user
+      bind name, <a>
+  save b
+    make user
+      bind name, <a>
+  save c
+    make user
+      bind name, <c>
+  back <{is-equal(pass-on(a), pass-on(b))} {is-equal(pass-on(a), pass-on(c))}>
 `,
   },
   {

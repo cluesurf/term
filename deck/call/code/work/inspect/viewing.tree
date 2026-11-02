@@ -20,6 +20,7 @@ load @term/call/work/build/host-faces
   find face-role-reader
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find count
   find field
@@ -181,10 +182,6 @@ form view-counted-close
 
 form view-source
   link file, like text
-  link text, like text
-
-form view-problem-entry
-  link diagnostic, like dynamic
   link text, like text
 
 # an empty list of host values, typed so, which a bare make list local is not until something is pushed
@@ -430,7 +427,7 @@ task call-view
         save failed, add(failed, 1)
         walk checked/diagnostics
           take diagnostic, like dynamic
-          problems/push(make(view-problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
+          problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
         turn next
     looks/push(look-at(name, view-member(checked, <file>)))
 

@@ -84,7 +84,8 @@ form turn
     like maybe, like text
     need false
   link broken
-    like maybe, like dynamic
+    like maybe
+      like list, like dynamic
     need false
 
 bind message-content

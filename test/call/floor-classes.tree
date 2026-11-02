@@ -12,6 +12,9 @@ load @term/base/file
   find read, name floor-read
   find write, name floor-write
 
+load ../support/temp
+  find temp-folder
+
 bind floor-has
   take whole, like text
   take part, like text
@@ -90,7 +93,7 @@ test <the census counts foreign source and no untracked bundle>
 
 # The baseline's two lists, decision 108 of change 001, item term-self-host-001-0750. Each test runs the tool in a fresh
 # git repository under the system's temporary folder, holding the paths the lists name, so the real baseline is never
-# written. Those folders are left for the system to clear.
+# written. Those folders go when the run ends (test/support/temp.tree, item 0753).
 
 host floor-young, <2026-11-01T12:00:00>
 host floor-old, <2026-01-01T12:00:00>
@@ -129,18 +132,43 @@ task floor-items
 
   back <\{"item":[\{"id":"term-self-host-001-0721","state":"{item-state}"\}]\}>
 
-# a repository holding the named F1 files and one port file, with a baseline taken, and item 0721 in the state given
-task floor-fixture
+# a checklist holding one item, 0001, in the state given and with the words given
+task floor-decide
+  take item-state, like text
+  take what, like text
+  like text
+
+  back <\{"item":[\{"id":"term-self-host-001-0001","state":"{item-state}","what":"{what}"\}]\}>
+
+# 0 when the baseline is on disk in that repository
+task floor-baseline-code
+  take home, like text
+  like number
+
+  save done, run(<test>, floor-words(<-e {floor-baseline}>), home)
+  back done/code
+
+# a repository holding the named F1 files and one port file, no baseline, and item 0721 in the state given
+task floor-bare
   take item-state, like text
   like text
 
-  save made, run(<mktemp>, floor-words(<-d>), floor-home)
-  save home, floor-trim(made/output)
+  save home, temp-folder(<floor-classes->)
   floor-do(home, <git>, <init -q>)
   floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/make/code/dev {floor-t}/deck/call/code {floor-t}/test/call deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
   floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/deck/make/code/dev/client.ts {floor-t}/test/call/kept.ts>)
   floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
-  floor-run(home, <--commit>)
+  back home
+
+# the same with a baseline taken, its first write named as the tool asks
+task floor-fixture
+  take item-state, like text
+  like text
+
+  save home, floor-bare(item-state)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<done>, <Decide: take the first baseline with --first-write>))
+  floor-run(home, <--commit --first-write term-self-host-001-0001>)
+  floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
   back home
 
 task floor-commit
@@ -149,6 +177,38 @@ task floor-commit
 
   floor-do(home, <git>, <add -A>)
   floor-do(home, <env>, <GIT_AUTHOR_DATE={date} GIT_COMMITTER_DATE={date} git -c user.name=floor -c user.email=floor@floor.test -c commit.gpgsign=false commit -q --no-verify -m floor>)
+
+test <a first write with no floor.json is refused, so deleting the baseline admits nothing>
+  save home, floor-bare(<open>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 1\n>)
+  want hold, floor-has(report, <refusing --commit, no floor.json>)
+  want hold, is-equal(floor-baseline-code(home), 1)
+
+test <a first write names a finished Decide that cites the flag>
+  save id, <--commit --first-write term-self-host-001-0001>
+  save home, floor-bare(<open>)
+  want hold, floor-has(floor-run(home, id), <term-self-host-001-0001 does not exist>)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<done>, <Fix: take it with --first-write>))
+  want hold, floor-has(floor-run(home, id), <is not a Decide>)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<open>, <Decide: take it with --first-write>))
+  want hold, floor-has(floor-run(home, id), <is open, not done>)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<done>, <Decide: take it>))
+  want hold, floor-has(floor-run(home, id), <does not cite --first-write>)
+  want hold, floor-has(floor-run(home, <--commit --first-write>), <names no item>)
+  want hold, is-equal(floor-baseline-code(home), 1)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<done>, <Decide: take it with --first-write>))
+  save taken, floor-run(home, id)
+  want hold, floor-has(taken, <exit 0\n>)
+  want hold, floor-has(taken, <first write, named by term-self-host-001-0001>)
+  want hold, is-equal(floor-baseline-code(home), 0)
+
+test <--first-write is refused while a baseline is there>
+  save home, floor-fixture(<open>)
+  floor-write(<{home}/{floor-checklist}>, floor-decide(<done>, <Decide: take it with --first-write>))
+  save report, floor-run(home, <--commit --first-write term-self-host-001-0001>)
+  want hold, floor-has(report, <exit 1\n>)
+  want hold, floor-has(report, <--first-write with a baseline present>)
 
 test <a listed file younger than asOf is refused>
   save home, floor-fixture(<open>)

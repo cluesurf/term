@@ -1385,8 +1385,10 @@ form failed-closing
   link failure, like text
 
 form problem-entry
-  link diagnostic, like diagnostic
-  link text, like dynamic
+  link diagnostic, like dynamic
+  link text
+    like dynamic
+    need false
 
 # the source a diagnostic points into: the text given, else the file read, else nothing
 task source-lines
@@ -1464,7 +1466,7 @@ task report-problem
 # `entries` are the callers' records, `{ diagnostic, text }`, read as the original read them (each port names its own
 # record of the two, term-cli-in-term-0069)
 task report-problems
-  take entries, like list, like dynamic
+  take entries, like list, like problem-entry
   take root, like text
   take faults
     like list, like text

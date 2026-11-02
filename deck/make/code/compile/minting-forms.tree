@@ -389,7 +389,7 @@ task form-of
     case none
       record-of-form(state, value, name, params, indices, out)
     case some
-      save nothing, 0
+      refuse-lost-data(state, held, name)
 
   save outer, state/owner
   save outer-self, state/self-type
@@ -459,6 +459,24 @@ task param-or
     hold
       back get(params, index)
   back fallback
+
+# A form named for a primitive registers no record-type, so a case or a field written under one would vanish, and the
+# first sign would be a `make` of it naming no form (`form size` in seed.tree's space/holography.tree, item
+# term-self-host-001-0790). Tasks are kept, which is what the stdlib's `form text` and `form list` hold, and a
+# `name <Native>` describes a host type's surface and declares no value of the program
+task refuse-lost-data
+  take state, like mint-state
+  take held, like maybe, like minted
+  take name, like text
+  mark private
+
+  fork test, is-above(forms-at(held, <nick>)/length, 0)
+    hold
+      back
+  save written, add(add(forms-at(held, <case>)/length, forms-at(held, <link>)/length), forms-at(held, <slot>)/length)
+  fork test, is-above(written, 0)
+    hold
+      push-problem(state, span-of(held), <primitive-form-name: `form {name}` declares cases or fields, and `{name}` names a primitive type, so the form registers no record and they would be lost>, make(some, <name the form something else, or keep only its tasks>))
 
 # The record-type of a form that is not a primitive, pushed onto `out`, and a `mark text` form's two conversions
 task record-of-form
@@ -931,6 +949,24 @@ task bind-of
           bind targets, targets
           bind span, span-of(held)
           bind async, true
+  # `head t` under the bind, read as a task's is: without it `t` is an undeclared name, one variable every call shares
+  save written-heads, make list
+  walk forms-at(held, <head>)
+    take head-form
+    save headed, make(some, head-form)
+    save generic
+      make generic-param
+        bind name, forms-text-else(word-at(headed, <name>), <>)
+        bind need, forms-text-else(word-at(first-at(headed, <need>), <name>), <>)
+        bind index, forms-text-else(word-at(first-at(headed, <like>), <name>), <>)
+    push(written-heads, generic)
+  fork test, is-above(written-heads/length, 0)
+    hold
+      sift bound
+        case bind
+          save bound/generics, written-heads
+        miss
+          save nothing, 0
   push(out, bound)
   back out
 

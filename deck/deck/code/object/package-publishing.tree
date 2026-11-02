@@ -118,7 +118,8 @@ bind publishing-sort-by-id
     text <<$inputs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))>>
 
 bind publishing-megabytes
-  take packs, like list, like dynamic
+  head t
+  take packs, like list, like t
   like text
   case node
     text <(($packs.reduce((sum, one) =\> sum + one.bytes.length, 0)) / 1024 / 1024).toFixed(1)>

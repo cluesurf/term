@@ -26,7 +26,17 @@ form name-def
   link gives, like list, like text
   # every name it mentions, which a unit reaching it may reach through it
   link reads, like list, like text
-  # its fingerprint, without its place in the file
+  # its fingerprint, without its place in the file and without what it carries (decision 103 item 4). `reads` still holds
+  # what its carried shape and body mention: a unit that consults them reaches those names, so a carried text that comes
+  # to mention another definition moves the name key of every unit naming it, which costs a build and never an answer
+  link print, like text
+  # its carried shape and body, each with a print of its own: a dependency only of the units whose trace holds it
+  link carried, like list, like carried-print
+
+# a carried shape or body: where it stands (`<file>#<export>#<shape|body>`, as compile/separate.ts `carriedLocator` tells
+# the trace) and its fingerprint
+form carried-print
+  link locator, like text
   link print, like text
 
 # The fingerprints of the definitions `used` reaches, in the order of `defs`

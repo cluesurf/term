@@ -28,6 +28,10 @@ load @term/deck/oci/oci-failure
   find is-oci-failure
   find oci-failure-message
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <global:Error>, name host-error
   load <global:String>, name host-string
@@ -44,14 +48,14 @@ form installed-item
   link verb, like text
   link subject, like text
   link duration, like number
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form pin-kept-item
   link glyph, like text
   link verb, like text
   link subject, like text
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form pin-changed-item
   link glyph, like text
@@ -59,7 +63,7 @@ form pin-changed-item
   link verb, like text
   link subject, like text
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form warning-item
   link glyph, like text

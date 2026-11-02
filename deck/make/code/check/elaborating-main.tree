@@ -76,7 +76,8 @@ bind raise-message
     text <"">
 
 bind truncate-list
-  take items, like list, like unknown
+  head t
+  take items, like list, like t
   take count, like number
   case node
     text <($items.length = $count)>

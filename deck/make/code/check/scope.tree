@@ -122,6 +122,10 @@ task type-parameters
       walk generics
         take generic
         push(out, generic/name)
+    case bind
+      walk generics
+        take generic
+        push(out, generic/name)
     case record-type
       walk params
         take param

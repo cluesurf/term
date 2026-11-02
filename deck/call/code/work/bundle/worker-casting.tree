@@ -43,6 +43,7 @@ load ../cache/compile-store
   find project-cache
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find fail-run
   find field
@@ -51,6 +52,9 @@ load @term/call/work/output/printer
   find report
   find report-problems
   find show-path
+
+load @term/call/work/item/event
+  find item-field
 
 dock load
   load <node:fs>, name node-file
@@ -249,7 +253,7 @@ form fielded-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form build-item
   link glyph, like text
@@ -282,9 +286,6 @@ form compile-options
   link resolve, like dynamic
   link cache, like dynamic
   link env, like text
-
-form problem-entry
-  link diagnostic, like dynamic
 
 form folder-copy
   link recursive, like boolean

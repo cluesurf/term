@@ -72,7 +72,7 @@ task posts-data
 # GET /posts -> every post as a JSON array
 task list-handler
   take request, like request
-  take params, like hash
+  take params, like hash, like text, like text
   mark async
   like response
   save posts
@@ -86,7 +86,7 @@ task list-handler
 # GET /posts/:id -> one post as a JSON object
 task get-handler
   take request, like request
-  take params, like hash
+  take params, like hash, like text, like text
   mark async
   like response
   save id

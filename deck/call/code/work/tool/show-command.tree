@@ -53,6 +53,9 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -149,13 +152,13 @@ form show-problem-fields
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form show-problem-message
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
   link message, like list, like text
 
 form show-close

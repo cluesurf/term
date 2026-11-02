@@ -40,6 +40,10 @@ load @term/call/work/output/printer
 load @term/deck/package/installing
   find verify-install
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
@@ -159,25 +163,25 @@ form seek-field-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form seek-written
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
-  link fields, like list, like dynamic
+  link counts, like list, like tally
+  link fields, like list, like item-field
 
 form seek-close
   link verdict, like text
 
 form seek-close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form seek-close-next
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
 
 task call-seek

@@ -477,6 +477,7 @@ export function explainStore(root: string): UnitExplain {
           read?: [string, string][]
           settings: string
           names: [string, string][]
+          carried?: [string, string][]
         }
 
         return {
@@ -485,6 +486,7 @@ export function explainStore(root: string): UnitExplain {
           read: new Map(kept.read ?? []),
           settings: kept.settings,
           names: new Map(kept.names),
+          carried: new Map(kept.carried ?? []),
         }
       } catch {
         return undefined
@@ -501,6 +503,7 @@ export function explainStore(root: string): UnitExplain {
             read: [...inputs.read],
             settings: inputs.settings,
             names: [...inputs.names],
+            carried: [...inputs.carried],
           }),
         )
       } catch {

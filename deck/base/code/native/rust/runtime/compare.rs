@@ -47,6 +47,32 @@ mod compare_runtime {
         equal_held(as_dyn(&a), as_dyn(&b))
     }
 
+    // `==` where the emitter holds a loose type. Rust knows more than the emitter's type can say: an inlined identity or an
+    // unresolved type leaves two values of one concrete type, and those compare by their own `==`, a record's derived
+    // equality among them. Anything else (a box on either side, two different types) goes through the box. The two traits
+    // pick by method lookup: `(&Pair(a, b)).loose_equal()` finds ByEqual first when its bound holds, and ByBox by autoref
+    pub struct Pair<'a, A, B>(pub &'a A, pub &'a B);
+
+    pub trait ByEqual {
+        fn loose_equal(&self) -> bool;
+    }
+
+    impl<'a, T: PartialEq> ByEqual for Pair<'a, T, T> {
+        fn loose_equal(&self) -> bool {
+            self.0 == self.1
+        }
+    }
+
+    pub trait ByBox {
+        fn loose_equal(&self) -> bool;
+    }
+
+    impl<'a, A: 'static, B: 'static> ByBox for &Pair<'a, A, B> {
+        fn loose_equal(&self) -> bool {
+            equal_held(as_dyn(self.0), as_dyn(self.1))
+        }
+    }
+
     fn equal_held(a: &dyn Any, b: &dyn Any) -> bool {
         if std::ptr::eq(a as *const dyn Any as *const (), b as *const dyn Any as *const ()) {
             return true;

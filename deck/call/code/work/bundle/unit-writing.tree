@@ -19,6 +19,7 @@ load @term/call/unit-shim
 
 load ../build/unit-naming
   find entry-shim
+  find shim-export
 
 dock load
   load <node:fs>, name node-file
@@ -33,7 +34,7 @@ form unit-ask
   link entry, like text
   link modules, like list, like dynamic
   link slug, like dynamic
-  link exports, like list, like dynamic
+  link exports, like list, like shim-export
   link prelude, like text
   link keep, like dynamic
 
@@ -113,11 +114,11 @@ task write-unit-bundle
 task runtime-exports
   take entry, like text
   take entry-code, like text
-  take exports, like list, like dynamic
+  take exports, like list, like shim-export
   take keep
     like list, like text
     fall make list
-  like list, like dynamic
+  like list, like shim-export
 
   save names, make list
   walk exports

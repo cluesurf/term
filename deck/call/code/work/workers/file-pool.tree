@@ -24,6 +24,9 @@ load ../build/tree-finding
 load ../cache/compile-store
   find compiler-versions
 
+load @term/call/work/workers/heap-limit
+  find heap-diagnostic
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -290,7 +293,7 @@ form failed-reply
   link file, like text
   link ok, like boolean
   link error, like text
-  link problems, like list, like dynamic
+  link problems, like list, like heap-diagnostic
 
 form error-reply
   link file, like text

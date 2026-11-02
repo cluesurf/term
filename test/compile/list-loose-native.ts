@@ -11,10 +11,8 @@
 // SLOT_CASE=<name>)
 // A TypeScript test, not a `term test`: it builds with each native toolchain (P12 port debt, log.md 2026-11-01).
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
+import { tempDir } from '../temp'
 import { BACKENDS, runOn } from './shared/run-on'
 import type { Backend } from './shared/run-on'
 
@@ -301,7 +299,7 @@ task run
   },
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'list-loose-'))
+const dir = tempDir('list-loose-')
 const only = process.env.SLOT_ONLY ?? ''
 const caseOnly = process.env.SLOT_CASE ?? ''
 let pass = 0

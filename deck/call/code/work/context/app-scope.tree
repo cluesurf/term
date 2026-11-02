@@ -85,7 +85,8 @@ bind pair-of
 
 # a host record of its entries, each a key and a value
 bind record-of
-  take entries, like list, like dynamic
+  head t
+  take entries, like list, like t
   like dynamic
   case node
     text <Object.fromEntries($entries)>

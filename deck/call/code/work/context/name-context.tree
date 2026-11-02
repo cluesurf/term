@@ -58,6 +58,9 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -213,7 +216,7 @@ form item-ask
   link kind, like text
   link subject, like text
   link fields
-    like list, like dynamic
+    like list, like item-field
     need false
 
 form close-ask

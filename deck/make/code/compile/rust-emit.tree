@@ -2839,13 +2839,12 @@ task emit-binary
           back <(({left} {op} {right}) as i64)>
       save left, binary-operand(binary-left, op, node, st, facts)
       save right, binary-operand(binary-right, op, node, st, facts)
-      # a loose value compares as it does on TypeScript, Swift and Kotlin, deeply, through the runtime's deep_equal. It is
-      # generic since an identity task inlined away leaves a side concrete, and runtime-prelude.tree links it by this name
+      # a loose value compares as it does on TypeScript, Swift and Kotlin, deeply, through the runtime's compare.rs. An
+      # identity task inlined away or a type left unresolved leaves concrete values here, so Rust picks: their own `==` when
+      # they have one, the box otherwise. runtime-prelude.tree links the shim by this name
       fork test, and(or(is-equal(op, <==>), is-equal(op, <!=>)), or(or(is-equal(left-kind, <unknown>), is-equal(left-kind, <dynamic>)), or(is-equal(right-kind, <unknown>), is-equal(right-kind, <dynamic>))))
         hold
-          note-clone(expression-type(binary-left), st, facts)
-          note-clone(expression-type(binary-right), st, facts)
-          save compared, <compare_runtime::deep_equal(({left}).clone(), ({right}).clone())>
+          save compared, <\{ use compare_runtime::\{ByBox, ByEqual\}; (&compare_runtime::Pair(&({left}), &({right}))).loose_equal() \}>
           fork test, is-equal(op, <!=>)
             hold
               back <(!{compared})>
@@ -3550,6 +3549,43 @@ task caught-prop
       save empty, <panic!("defect: the caught exception has no prop {prop}")>
   back <(\{ let __carrier = &{carrier}; {join-texts(arms, < else >)} else \{ {empty} \} \})>
 
+# one prop of a caught value's link named at run time, `problem/link/{key}`: the same forms, the prop found by its name. Its
+# type depends on the form raised, so the answer is the boxed dynamic. No such prop reads null, as it reads undefined on
+# TypeScript
+task caught-prop-by-key
+  take carrier, like text
+  take key, like text
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save boxed, <std::rc::Rc\<dyn std::any::Any\>>
+  save absent, <(std::rc::Rc::new(()) as {boxed})>
+  save arms, make list
+  walk facts/exception-forms/keys()
+    take form
+    fork test, facts/record-fields/has(form)
+      hold
+        walk facts/record-fields/get(form)
+          take field
+          fork test, is-equal(field/name, <link>)
+            hold
+              save link-form, named-of(make(some, field/type))
+              fork test, facts/record-fields/has(link-form)
+                hold
+                  save props, make list
+                  walk facts/record-fields/get(link-form)
+                    take inner
+                    save held, <__raised.link.{snake(inner/name)}.clone()>
+                    save inner-kind, kind-of(make(some, inner/type))
+                    fork test, and(is-unequal(inner-kind, <unknown>), is-unequal(inner-kind, <dynamic>))
+                      hold
+                        save held, <(std::rc::Rc::new({held}) as {boxed})>
+                    push(props, <"{inner/name}" =\> {held},>)
+                  push(arms, <if let Some(__raised) = __carrier.base.downcast_ref::\<{pascal(form)}\>() \{ match __key.as_str() \{ {join-texts(props, < >)} _ =\> {absent} \} \}>)
+  push(arms, <if let Some(__map) = __carrier.link.downcast_ref::\<std::collections::HashMap\<String, String\>\>() \{ match __map.get(&__key) \{ Some(__found) =\> (std::rc::Rc::new(__found.clone()) as {boxed}), None =\> {absent} \} \}>)
+  back <(\{ let __carrier = &{carrier}; let __key = ({key}).to_string(); {join-texts(arms, < else >)} else \{ {absent} \} \})>
+
 task emit-member
   take node, like expression
   take st, like rust-state
@@ -3574,6 +3610,12 @@ task emit-member
       sift caught-carrier-of(member-target)
         case some
           link carrier
+          sift member-index
+            case some
+              link key
+              back caught-prop-by-key(emit-expr(carrier, st, facts), emit-expr(key, st, facts), facts)
+            case none
+              save nothing, 0
           back caught-prop(emit-expr(carrier, st, facts), member-name, facts)
         case none
           save nothing, 0

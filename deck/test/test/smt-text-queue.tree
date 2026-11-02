@@ -20,7 +20,7 @@ load @term/base/list
 # job `index`: is `a = index` satisfiable, and does its model give `a` that index
 task ask-own
   mark async
-  take item, like unknown
+  take item, like number
   take index, like number
   like unknown
 

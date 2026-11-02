@@ -47,6 +47,10 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -84,7 +88,7 @@ form placed-item
   link verb, like text
   link subject, like text
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form recall-item
   link glyph, like text
@@ -110,7 +114,7 @@ form plain-close
 
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form folder-ask
   link recursive, like boolean

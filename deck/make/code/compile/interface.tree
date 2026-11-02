@@ -166,7 +166,20 @@ task signature-of
         push(param-parts, <{param/name}:{shown}>)
       save params-text, join(param-parts, <,>)
       save result-text, type-key(result)
-      back <bind {name}({params-text})-\>{result-text}>
+      # a generic bind's surface says so, since a caller checks against it. A plain bind's text is what it was
+      save generics-text, <>
+      fork test, is-above(generics/length, 0)
+        hold
+          save generic-parts, make list
+          walk generics
+            take generic
+            save bound, <>
+            fork test, is-unequal(generic/need, <>)
+              hold
+                save bound, <:{generic/need}>
+            push(generic-parts, <{generic/name}{bound}>)
+          save generics-text, <\<{join(generic-parts, <,>)}\>>
+      back <bind {name}{generics-text}({params-text})-\>{result-text}>
     case native
       save kind-text, <>
       sift kind

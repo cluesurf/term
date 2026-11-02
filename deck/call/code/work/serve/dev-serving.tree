@@ -152,7 +152,8 @@ bind dev-message-reload
     text <(\{ type: "full-reload" \})>
 
 bind dev-message-update
-  take updates, like list, like dynamic
+  head t
+  take updates, like list, like t
   like dynamic
   case node
     text <(\{ type: "update", updates: $updates \})>

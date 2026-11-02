@@ -140,5 +140,50 @@ ok(
   again.helper.join(' | '),
 )
 
+// a unit built because what it consulted moved (decision 103 item 4) says so, and a unit that only names it is not built
+const consultEntry = `load ./helper\n  find bump\n\ntask main\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  back n\n`
+const bump = (by: number): string =>
+  `task bump\n  take n, like number\n  like number\n  back add(n, ${by})\n`
+const consultBuild = (helperText: string, memory: CompileCache) => {
+  writeFileSync(helper, helperText)
+  writeFileSync(entry, consultEntry)
+
+  const explain: UnitExplain = {
+    reasons: new Map(),
+    recall: id => kept.get(id),
+    remember: (id, inputs) => kept.set(id, inputs),
+  }
+  const result = compileSeparate(
+    { file: entry, text: consultEntry },
+    {
+      resolve: projectResolver(root),
+      cache: memory,
+      modules: f => `./${f}`,
+      explain,
+      leanOf: () => true,
+    },
+  )
+
+  return {
+    ok: result.ok,
+    entry:
+      [...explain.reasons].find(([label]) =>
+        label.endsWith('/code/base.tree'),
+      )?.[1] ?? [],
+  }
+}
+const consulting = new CompileCache(undefined, 'three')
+const consultFirst = consultBuild(bump(1), consulting)
+ok('a consulting unit builds', consultFirst.ok)
+const consultMoved = consultBuild(bump(2), consulting)
+ok(
+  'and says what it consulted changed',
+  consultMoved.entry.some(reason =>
+    reason.startsWith('what it consulted changed') &&
+    reason.endsWith('#bump#shape'),
+  ),
+  consultMoved.entry.join(' | '),
+)
+
 console.log(`\nexplain: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

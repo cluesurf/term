@@ -39,8 +39,6 @@ import * as holdWalk from '@term/make/code/check/hold-walk'
 import type { Owed, OwedKinds } from '@term/make/code/check/holding'
 // installs the memo hold-walk.tree `key-text` reads through the host (decision 102)
 import { clearHoldKeyMemo } from '@term/make/code/check/hold-key-memo'
-// installs the copier compile/node-rewrite.tree and compile/separate-units.tree read through the host (item 0757)
-import '@term/make/code/compile/program-copy'
 import {
   addOwed as addOwedIn,
   describeOwed,

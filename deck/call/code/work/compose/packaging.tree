@@ -43,6 +43,9 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -107,7 +110,7 @@ form make-built-item
   link verb, like text
   link subject, like text
   link duration, like number
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form make-close
   link verdict, like text

@@ -235,9 +235,10 @@ task module-of
 
 # a task added under its name, after any other of that name
 task add-task
-  take table, like hash, like text, like list, like dynamic
+  head t
+  take table, like hash, like text, like list, like t
   take name, like text
-  take statement, like dynamic
+  take statement, like t
   like void
   mark private
 

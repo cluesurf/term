@@ -121,6 +121,10 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -230,7 +234,7 @@ form counted-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form timed-item
   link glyph, like text
@@ -250,7 +254,7 @@ form fielded-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form skipped-item
   link glyph, like text
@@ -258,7 +262,7 @@ form skipped-item
   link subject, like text
   link duration, like number
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form launched-item
   link glyph, like text
@@ -278,7 +282,7 @@ form lifecycle-item
   link verb, like text
   link subject, like text
   link duration, like number
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form said-item
   link glyph, like text

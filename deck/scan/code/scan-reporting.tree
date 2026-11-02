@@ -45,8 +45,15 @@ bind report-counted
   case node
     text <<`${$tally[$word]} ${$word}`>>
 
+bind report-texts
+  take record, like dynamic
+  take key, like text
+  like list, like text
+  case node
+    text <$record[$key]>
+
 bind report-joined
-  take items, like list, like dynamic
+  take items, like list, like text
   take glue, like text
   like text
   case node
@@ -212,11 +219,11 @@ task format-human
 
   save lines, make list
   lines/push(report-scanned(result))
-  host consulted, report-list(result, <advisorySources>)
+  host consulted, report-texts(result, <advisorySources>)
   fork test, is-above(report-length(consulted), 0)
     hold
       lines/push(<Advisory sources: {report-joined(consulted, <, >)}.>)
-  host unavailable, report-list(result, <unavailableSources>)
+  host unavailable, report-texts(result, <unavailableSources>)
   fork test, is-above(report-length(unavailable), 0)
     hold
       lines/push(<Unavailable sources (skipped): {report-joined(unavailable, <, >)}.>)

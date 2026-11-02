@@ -14,10 +14,12 @@
 // Run: npx tsx test/compile/slot-raise-native.ts   (from deck/term/deck/term; SLOT_ONLY=typescript|rust|swift|kotlin)
 // A TypeScript test, not a `term test`: it builds with each native toolchain (P12 port debt, log.md 2026-11-01).
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
+import { projectDeckOf } from '@term/call/code/deck-of'
+import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
 import { BACKENDS, runOn } from './shared/run-on'
@@ -649,7 +651,241 @@ task run
   back <{a}|{b}|{c}|{d}|{e/length}|{f}|{free()}>
 `
 
+// deck/test/code/cross-emission.tree's shape: tasks kept in a closed field declared `halt failure`, in a list, each called
+// in a guard inside a walk. Before item term-self-host-001-0780 its field declared nothing, and Rust threw raise-escapes-slot
+const KEPT_IN_WALK = `form backend
+  link name, like text
+  link emit
+    like task
+      take program, like text
+      like text
+      halt failure
+
+task emit-one
+  take program, like text
+  like text
+  back program
+
+task emit-two
+  take program, like text
+  like text
+  halt <no {program}>
+
+task backends
+  like list, like backend
+  back
+    make list
+      make(backend, bind(name, <one>), bind(emit, emit-one))
+      make(backend, bind(name, <two>), bind(emit, emit-two))
+
+task run
+  like text
+  save out, <>
+  walk backends()
+    take one
+    fork
+      mark unsafe
+      save said, call(one/emit, <p>)
+      save out, <{out}{one/name}:{said}|>
+    halt take
+      take problem
+      save out, <{out}{one/name}:{problem/form}|>
+  back out
+`
+
+// a native call and a text raise raise `failure` with no form in the closure (term/compiler decision 014 rule 1): a guard over
+// each, with `problem/form` read, builds and runs on every backend. The native answers, so its guard is the build's proof and
+// the text raise is the run's, since no native here fails on all four alike
+const NO_FORM_GUARD = `load @term/base/native/{platform}/random
+  find random-integer
+
+task over-native
+  like text
+  fork
+    mark unsafe
+    save got, random-integer(1, 2)
+    fork test, is-below(got, 9)
+      hold
+        back <native ok>
+  halt take
+    take problem
+    back <caught {problem/form}>
+  back <native high>
+
+task fail-it
+  take name, like text
+  like text
+  halt <no {name}>
+
+task over-text
+  take name, like text
+  like text
+  fork
+    mark unsafe
+    back fail-it(name)
+  halt take
+    take problem
+    back <caught {problem/form}>
+
+task run
+  like text
+  back <{over-native()}|{over-text(<x>)}>
+`
+
+// a closed slot saying `halt failure` holds a task that calls a native, with no form in the closure (rule 3)
+const NO_FORM_SLOT = `load @term/base/native/{platform}/random
+  find random-integer
+
+form backend
+  link emit
+    like task
+      take program, like text
+      like text
+      halt failure
+
+task emit-one
+  take program, like text
+  like text
+  save got, random-integer(1, 2)
+  fork test, is-below(got, 9)
+    hold
+      back program
+  back <high>
+
+task use
+  take one, like backend
+  like text
+  fork
+    mark unsafe
+    back call(one/emit, <p>)
+  halt take
+    take problem
+    back <caught {problem/form}>
+
+task run
+  like text
+  back use(make(backend, bind(emit, emit-one)))
+`
+
+// the hole (decision 014): a task calling a host module in a closed field that declares nothing, no form in its closure. Alone it
+// compiled and emitted, and beside a file that loads the form it threw out of the Rust emitter
+const HOLE = `dock load
+  load <node:path>, name path-mod
+
+form backend
+  link emit
+    like task
+      take program, like text
+      like text
+
+task emit-one
+  take program, like text
+  like text
+  back path-mod/basename(program)
+
+task backends
+  like list, like backend
+  back
+    make list
+      make(backend, bind(emit, emit-one))
+`
+
+const HOLE_USER = `load @term/base/exception
+  find failure
+
+load ./hole
+  find backends
+
+task run
+  like text
+  save out, <>
+  walk backends()
+    take one
+    save out, one/emit(<p>)
+  back out
+`
+
+// a slot filled in another file of a merged build (rule 2): no native, and the raising file is not the entry
+const TEXT_HOLE = `form backend
+  link emit
+    like task
+      take program, like text
+      like text
+
+task emit-one
+  take program, like text
+  like text
+  halt <no {program}>
+
+task backends
+  like list, like backend
+  back
+    make list
+      make(backend, bind(emit, emit-one))
+`
+
+const TEXT_HOLE_USER = `load ./text-hole
+  find backends
+
+task run
+  like number
+  back backends()/length
+`
+
+// a closure in a closed slot calling the parameter around it, with a raising task of that name elsewhere in the merged program:
+// the parameter is what it calls, and the task's raise is not charged to the slot (deck/base's spawn beside a global `work`)
+const OUTER_NAME = `form holder
+  link body
+    like task
+      like text
+
+task work
+  like text
+  halt <no>
+
+task keep
+  take work
+    like task
+      like text
+  like holder
+  back
+    make holder
+      bind body
+        task
+          like text
+          back call(work)
+
+task quiet
+  like text
+  back <quiet>
+
+task run
+  like text
+  save one, keep(quiet)
+  back call(one/body)
+`
+
 const CASES: { name: string; program: string; expected: string }[] = [
+  {
+    name: 'outer-name',
+    program: OUTER_NAME,
+    expected: 'quiet',
+  },
+  {
+    name: 'no-form-guard',
+    program: NO_FORM_GUARD,
+    expected: 'native ok|caught failure',
+  },
+  {
+    name: 'no-form-slot',
+    program: NO_FORM_SLOT,
+    expected: 'p',
+  },
+  {
+    name: 'kept-in-walk',
+    program: KEPT_IN_WALK,
+    expected: 'one:p|two:failure|',
+  },
   {
     name: 'closure-callee',
     program: CLOSURE_CALLEE,
@@ -699,6 +935,10 @@ const dir = process.env.SLOT_DIR ?? mkdtempSync(join(tmpdir(), 'term-slot-raise-
 const only = process.env.SLOT_ONLY ?? ''
 const caseOnly = process.env.SLOT_CASE ?? ''
 
+if (!process.env.SLOT_DIR) {
+  process.on('exit', () => rmSync(dir, { recursive: true, force: true }))
+}
+
 for (const one of CASES.filter(c => !caseOnly || c.name === caseOnly)) {
   for (const backend of BACKENDS.filter(b => !only || b === only)) {
     const ran = runOn({
@@ -724,6 +964,38 @@ for (const one of CASES.filter(c => !caseOnly || c.name === caseOnly)) {
   }
 }
 
+// the closure no longer chooses the answer (decision 014): refused on every env, alone and beside the form, filed at the file
+// that puts the task in the slot, and the emitter is never asked
+if (!caseOnly) {
+  for (const backend of BACKENDS.filter(b => !only || b === only)) {
+    const env = backend === 'typescript' ? 'node' : backend
+
+    for (const [label, name, text, others, at] of [
+      ['the hole alone', 'hole', HOLE, [], 'hole.tree'],
+      ['the hole beside the form', 'hole-user', HOLE_USER, [['hole', HOLE]], 'hole.tree'],
+      ['a slot in another file of a merged build', 'text-hole-user', TEXT_HOLE_USER, [['text-hole', TEXT_HOLE]], 'text-hole.tree'],
+    ] as [string, string, string, [string, string][], string][]) {
+      for (const [other, body] of others) {
+        writeFileSync(join(dir, `${other}.tree`), body)
+      }
+
+      const file = join(dir, `${name}.tree`)
+      writeFileSync(file, text)
+      const built = compile(
+        { file, text },
+        { resolve: projectResolver(dir, env), env } as never,
+      ) as { ok: boolean; diagnostics: { name?: string; file?: string; message: string }[] }
+      const refusal = (built.diagnostics ?? []).find(d => d.name === 'raise-escapes-slot')
+
+      ok(
+        `${label} ${backend}: refused raise-escapes-slot at ${at}`,
+        !built.ok && refusal !== undefined && String(refusal.file).endsWith(`/${at}`),
+        JSON.stringify((built.diagnostics ?? []).slice(0, 3)),
+      )
+    }
+  }
+}
+
 // the infallible sort call stays the plain instance: no raising instance is written for a program with no raising call
 if (!only || only === 'rust') {
   const plainSort = PLAIN_SORT
@@ -739,6 +1011,38 @@ if (!only || only === 'rust') {
     if (process.env.SLOT_PLAIN_OUT) {
       writeFileSync(process.env.SLOT_PLAIN_OUT, rust)
     }
+  }
+}
+
+// the CLI's own entry emits Rust (item term-self-host-001-0780). A throw out of the emitter is a failure (decision
+// note/project/term/compiler/decision/013). rustc is not asked here: this holds the emitter, not the whole CLI's build
+if ((!only || only === 'rust') && !caseOnly) {
+  const root = join(process.cwd(), 'deck/call')
+
+  for (const file of ['deck/call/code/line/base.tree', 'deck/call/code/work/tool-verbs.tree']) {
+    const built = compile(
+      { file: join(process.cwd(), file), text: readFileSync(file, 'utf8') },
+      {
+        resolve: projectResolver(root, 'rust'),
+        roleOf: projectRoleOf(root),
+        leanOf: projectLeanOf(root),
+        deckOf: projectDeckOf(),
+        env: 'rust',
+        library: true,
+      } as never,
+    ) as { ok: boolean; program: never }
+    let threw = ''
+    let length = 0
+
+    if (built.ok) {
+      try {
+        length = emitRust(built.program).length
+      } catch (error) {
+        threw = (error as Error).message
+      }
+    }
+
+    ok(`${file} emits Rust`, built.ok && !threw && length > 0, threw)
   }
 }
 

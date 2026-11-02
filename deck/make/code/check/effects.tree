@@ -2217,9 +2217,9 @@ task raise-sets-of
                 fork test, has-text(facts, <native>)
                   hold
                     save native-shims, add-text(native-shims, name)
-                # a task that raises `failure` once it is counted raises it here when this program counts it, as its
-                # own body's scan would (`fails`, compile/stub.ts)
-                fork test, and(state/exceptions/has(<failure>), has-text(facts, <fails>))
+                # a task that raises `failure` raises it here, as its own body's scan would (`fails`, compile/stub.ts),
+                # with or without the form in this program (term/compiler decision 014)
+                fork test, has-text(facts, <fails>)
                   hold
                     save known-raises, add-text(known-raises, <failure>)
                 save raised-by/{name}, known-raises
@@ -2329,13 +2329,12 @@ task raise-sets-of
             save calls/{giving}, lending/gives/get(name)
         # a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
         # the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the
-        # shim author's contract, added to the set rather than checked against it (03-exception.md, natives)
+        # shim author's contract, added to the set rather than checked against it (03-exception.md, natives). By name,
+        # with or without the form in this program, as `halt <text>` is (term/compiler decision 014)
         fork test, state/reach/native
           hold
             save native-shims, add-text(native-shims, name)
-            fork test, state/exceptions/has(<failure>)
-              hold
-                save direct, add-text(direct, <failure>)
+            save direct, add-text(direct, <failure>)
             walk raises
               take declared
               fork test, state/exceptions/has(declared)
@@ -3123,9 +3122,13 @@ form slot-site
   link halts, like list, like text
   link place, like text
   link span, like span
+  link file, like text
 
 form slot-gather
   mark shared
+  link file, like text
+  # the parameters of the task scanned, which a closure in it reads by name
+  link enclosing, like list, like function-param
   link program, like list, like statement
   link places, like hash, like text, like number
   # the record fields typed as tasks, by form (or case) name and field name
@@ -3145,10 +3148,10 @@ form slot-gather
 # task typed as giving back a task gives back. The values: a task named, a closure written there (read through a
 # stand-in task, as check/parallel.tree reads a walk's turn), a local saved from a task by name, and a parameter (its
 # own declared set). Every exception the value can raise must be one the place declares, or `like` one, and
-# `halt exception` admits them all; otherwise `raise-escapes-slot`. Only the tasks of `file` are read
+# `halt exception` admits them all; otherwise `raise-escapes-slot`. Every task with a body is read, each diagnostic
+# filed at its own file (term/compiler decision 014 rule 2): a unit holds stubs of the rest, and the stub test skips them
 task check-slot-raises
   take program, like list, like statement
-  take file, like text
   like list, like diagnostic
 
   save diagnostics, make list
@@ -3204,6 +3207,8 @@ task check-slot-raises
   save lending, lent-facts-of(program, places, handle-waits-of(program))
   save gather
     make slot-gather
+      bind file, <>
+      bind enclosing, make list
       bind program, program
       bind places, places
       bind fields, slot-fields
@@ -3213,28 +3218,26 @@ task check-slot-raises
       bind sites, make list
       bind stand-ins, make list
       bind table, table
-  # the tasks of `file` that make a job, whose handles are checked once the job sets are known
+  # the tasks that make a job, whose handles are checked once the job sets are known
   save makers, make list
   walk program
     take one
     sift one
       case function
-        sift span/file
-          case some
-            link written
-            fork test, is-unequal(written, file)
-              hold
-                turn next
-          case none
+        save written, span-file(span)
+        fork test, is-equal(written, <>)
+          hold
             turn next
         fork test, read(stub)
           hold
             turn next
+        save gather/file, written
+        save gather/enclosing, params
         # `halt kink` on a slot is a checked claim on a task with a body (decision 089 rule 3)
-        kink-refusals(diagnostics, table, one, file)
+        kink-refusals(diagnostics, table, one, written)
         # a task that makes a job, is lent a handle or lends one (decisions 092 rule 3 and 095)
         save handled, or(is-above(spawned-works(body)/length, 0), or(lending/lent/has(name), lending/lends/has(name)))
-        fork test, and(handled, not(is-task-module(file)))
+        fork test, and(handled, not(is-task-module(written)))
           hold
             push(makers, one)
         save own-sets, make hash
@@ -3310,7 +3313,7 @@ task check-slot-raises
     save first, get(sorted, 0)
     save input
       make diagnostic-input
-        bind file, file
+        bind file, site/file
         bind span, site/span
         bind message, make(some, <{site/shown} can raise {join(listed, <, >)}, and {site/place} is a task that raises {declared-text}>)
         bind hint, make(some, <handle the raise inside the task, in a fork marked mark unsafe with halt take after it, or add "halt {first}" under the like task of {site/place}>)
@@ -3332,10 +3335,23 @@ task check-slot-raises
             save lent-params, lending/lent/get(name)
         fork test, is-above(made/length, 0)
           hold
-            save refused-kept, handle-refusals(diagnostics, one, made, lent-params, program, places, lending/keeps, file)
+            save refused-kept, handle-refusals(diagnostics, one, made, lent-params, program, places, lending/keeps, span-file(span))
       miss
         save nothing, 0
   back diagnostics
+
+# the file a span was written in, empty for a span no file wrote
+task span-file
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
 
 # `wait` and `wait-within` of @term/base/task's `handle`, by the names the binding gave them
 task handle-waits-of
@@ -3971,6 +3987,28 @@ task push-site
             bind name, param/name
             bind type, param/type
         push(stand-in-params, made-param)
+      # what the task around the closure binds shadows a task of that name in its stand-in too: in a merged program another
+      # file's `work` is not the parameter `work` this closure calls. A parameter keeps its declared set
+      save closure-names, make list
+      walk stand-in-params
+        take param
+        push(closure-names, param/name)
+      walk gather/enclosing
+        take param
+        fork test, not(has-text(closure-names, param/name))
+          hold
+            push(closure-names, param/name)
+            push(stand-in-params, param)
+      walk gather/shadowed/keys()
+        take local
+        fork test, not(has-text(closure-names, local))
+          hold
+            push(closure-names, local)
+            save local-param
+              make function-param
+                bind name, local
+                bind type, make none
+            push(stand-in-params, local-param)
       save stand-in
         make statement/function
           bind name, stand-in-name
@@ -3994,6 +4032,7 @@ task push-site
       bind halts, halts
       bind place, place
       bind span, expression-span(value)
+      bind file, gather/file
   push(gather/sites, site)
 
 # the values a body gives back, outside its closures

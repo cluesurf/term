@@ -22,12 +22,16 @@ load @term/call/work/build/host-faces
   find face-lean-reader
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find count
   find open-run
   find print-data
   find report
   find report-problems
+
+load @term/call/work/item/event
+  find tally
 
 dock load
   load <node:fs/promises>, name fs-promise
@@ -38,7 +42,7 @@ dock load
 form form-open
   link verb, like text
   link root, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link facts, like list, like text
 
 form problem-item
@@ -75,22 +79,18 @@ form analyze-ask
   link role, like dynamic
   link lean, like dynamic
 
-form problem-of
-  link diagnostic, like dynamic
-  link text, like text
-
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form next-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
 
 form done-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link done, like boolean
 
 # `paths` the files and folders to format (none for the project), `check` and `list` the two modes
@@ -126,7 +126,7 @@ task call-form
 
 task format-files
   take root, like text
-  take files, like list, like dynamic
+  take files, like list, like text
   take check, like boolean
   take list, like boolean
   like void
@@ -166,7 +166,7 @@ task format-files
         report(make(broken-item, bind(glyph, <failed>), bind(verb, <form>), bind(subject, relative), bind(facts, facts)))
         walk errors
           take diagnostic
-          problems/push(make(problem-of, bind(diagnostic, diagnostic), bind(text, text)))
+          problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
         turn next
     save formatted, analysis/format()
     fork test, is-equal(formatted, text)

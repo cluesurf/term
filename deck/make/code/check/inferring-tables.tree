@@ -697,7 +697,7 @@ task fill-debug-intrinsics
       miss
         turn next
 
-# a declarative native binding's signature: no generics, no body, its parameters seeded with no generic names
+# a declarative native binding's signature, read as a task's is: no body, and its type parameters fresh at each call
 task fill-binds
   take st, like infer-state
   mark private
@@ -712,42 +712,18 @@ task fill-binds
         fork test, st/functions/has(bind-name)
           hold
             turn next
-        save no-generics, make hash
-        save param-types, make list
+        save taken, make list
         walk bind-params
           take param
-          push(param-types, seed-maybe-type(st, param/type, no-generics))
-        save result-type, seed-maybe-type(st, bind-result, no-generics)
-        save min-args, 0
-        save names, make list
-        save fallbacks, make list
-        save positional, make list
-        save optional, make list
-        walk bind-params
-          take param
-          push(names, param/name)
-          push(fallbacks, make none)
-          push(positional, false)
-          fork test, param/optional
-            hold
-              push(optional, true)
-            miss
-              save min-args, add(min-args, 1)
-              push(optional, false)
-        save made
-          make task-signature
-            bind generics, make list
-            bind generic-names, make hash
-            bind bounds, make list
-            bind params, param-types
-            bind result, result-type
-            bind min-args, min-args
-            bind names, names
-            bind fallbacks, fallbacks
-            bind positional, positional
-            bind optional, optional
-            bind holes, make list
-        save st/functions/{bind-name}, made
+          save as-task
+            make function-param
+              bind name, param/name
+              bind type, param/type
+              bind optional, param/optional
+              bind fallback, make none
+              bind positional, false
+          push(taken, as-task)
+        save st/functions/{bind-name}, signature-of(st, taken, bind-result, one/generics)
       miss
         turn next
 

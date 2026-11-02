@@ -521,7 +521,7 @@ task program-warnings
       back warnings-refusal(bounds)
 
   # a task put in a place typed as a task raises only what the place declares (decision 086 rule 3)
-  save slot-raises, check-slot-raises(run/program, file)
+  save slot-raises, check-slot-raises(run/program)
   fork test, is-above(slot-raises/length, 0)
     hold
       back warnings-refusal(slot-raises)

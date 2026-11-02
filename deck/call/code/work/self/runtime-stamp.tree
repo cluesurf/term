@@ -63,7 +63,7 @@ form runtime-ask
   # the first line of the native compiler's own version output (`toolchain-of`)
   link toolchain, like text
   # the native sources as built, by a stable name. Order does not matter: they are sorted by name
-  link sources, like list, like dynamic
+  link sources, like list, like native-source
 
 form runtime-stamp
   # 64 hex characters, what a manifest carries on the wire

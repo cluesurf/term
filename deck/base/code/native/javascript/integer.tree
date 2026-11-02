@@ -6,10 +6,6 @@ load ./integer/grow
   find integer
 
 form number
-  link dock
-    like or
-      like i32
-      like integer
 
 bear ./integer/8
 bear ./integer/16

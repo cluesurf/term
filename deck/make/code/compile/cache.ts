@@ -22,6 +22,7 @@ import {
   makeTextHashes,
   milledUnit as milledUnitPort,
   output as outputPort,
+  outputReplace as outputReplacePort,
   scanned as scannedPort,
   versionFor,
 } from '@term/make/code/compile/cache-store'
@@ -72,7 +73,9 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // '18': an empty list handed back where the task declares a list of unknown takes that type at its let, and a callee
 // that is a closure is parenthesized on TypeScript and spells its parameters on Kotlin (items term-self-host-001-0531
 // and 0532), so a unit stored at '17' holds another emitted text and another checked type under the same key.
-export const CACHE_EPOCH = '20'
+// '22': a name's print leaves out what its stub carries, and a unit answer is stored under its name key plus the sorted
+// (locator, print) list its trace holds (decision 103 item 4, item term-self-host-001-0526), so every stored key moves.
+export const CACHE_EPOCH = '23'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share
@@ -295,6 +298,27 @@ export class CompileCache {
   // one unit of the separate build (compile/separate.ts), under its own kind, which the store keeps machine-wide
   unit<T>(key: string, build: () => T): T {
     return this.output(key, build, 'unit')
+  }
+
+  // a unit entry, or nothing: never built. `unit` is what answers, so a view over this cache (the pool's probe, which
+  // raises its own miss) answers here too
+  unitStored<T>(key: string): T | undefined {
+    const absent = {}
+
+    try {
+      return this.unit<T>(key, () => {
+        throw absent
+      })
+    } catch (raised) {
+      if (raised === absent) {return undefined}
+
+      throw raised
+    }
+  }
+
+  // an advisory unit entry, written over what its key held (the `trace:` pointer of decision 103 item 4)
+  unitReplace(key: string, value: unknown): void {
+    outputReplacePort(this.state, key, value, 'unit')
   }
 
   // the whole compiled output for a graph key. The value must be JSON-serializable

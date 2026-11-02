@@ -242,7 +242,8 @@ task run
 
   expect('interface violation is still a type error', bad.ok, false)
 
-  // a one-line body is surface: its edit rebuilds the dependent
+  // a one-line body is carried, and a dependency only of the units that consult it (decision 103 item 4): its edit leaves
+  // a dependent that only calls it where it was
   compileSeparate(
     { file: 'entry.tree', text: ENTRY },
     options(DEP_LINE),
@@ -253,9 +254,34 @@ task run
   )
 
   expect(
-    'one-line body edit: the dependent rebuilt too',
+    'one-line body edit: a caller is cut off',
     lineEdit.ok ? lineEdit.built.join(',') : 'failed',
-    'dep.tree,entry.tree',
+    'dep.tree',
+  )
+
+  // and rebuilds the one whose goal unfolds it (the edited dependency is in the store from the case above)
+  const CONSULTS = `load ./dep
+  find double
+
+task run
+  take n, like number
+  like number
+  hold is-equal(double(n), add(n, n))
+  send back, read n
+`
+  compileSeparate(
+    { file: 'entry.tree', text: CONSULTS },
+    options(DEP_LINE),
+  )
+  const consulted = compileSeparate(
+    { file: 'entry.tree', text: CONSULTS },
+    options(DEP_LINE_EDIT),
+  )
+
+  expect(
+    'one-line body edit: a unit that consults it rebuilt too',
+    consulted.ok ? consulted.built.join(',') : 'failed',
+    'entry.tree',
   )
 
   // a name both files define: the entry's own keeps its name, the dependency's is imported under the name its own

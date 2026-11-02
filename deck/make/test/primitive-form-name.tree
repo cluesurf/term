@@ -1,0 +1,74 @@
+note <a form named for a primitive registers no record-type, so one declaring cases or fields is refused at the form>
+
+# `form size` with two cases built nothing and said nothing: `size` is the primitive number, compile/minting-forms.tree
+# registers no record for it, and the first sign was `make none` naming no form, three lines from a form that is plainly
+# there (item term-self-host-001-0790, seed.tree's space/holography.tree). Holding only methods is what the stdlib's
+# `form text` and `form list` do, and a `name <Native>` describes a host type: neither loses anything it declared.
+
+load ../code/parser/tree
+  find parse
+
+load ../code/parser/token
+  find token-source
+
+load ../code/compile/minting
+  find mill
+  find mill-result
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+
+# the source milled
+task milled
+  take source, like text
+  like mill-result
+
+  host parsed
+    parse
+      make token-source
+        bind file, <t.tree>
+        bind text, source
+  host no-role, make maybe/none
+  back mill(parsed/tree, <t.tree>, no-role, false)
+
+# whether the mill refused the source for its form's name
+task refused-for-name
+  take source, like text
+  like boolean
+
+  walk milled(source)/diagnostics
+    take found
+    fork test, contains(found/message, <primitive-form-name>)
+      hold
+        back true
+  back false
+
+test <a form named size with cases is refused>
+  want hold, refused-for-name(<form size\n  case none\n  case more\n    link prior, like size\n>)
+
+test <a form named number with a field is refused>
+  want hold, refused-for-name(<form number\n  link reals, like text\n>)
+
+test <a form named list with a field is refused>
+  want hold, refused-for-name(<form list\n  link zone, like text\n>)
+
+test <a form named for a width with a positional field is refused>
+  want hold, refused-for-name(<form u8\n  slot value, like text\n>)
+
+test <a form holding only methods stays legal>
+  want hold, not(refused-for-name(<form text\n  task shout\n    take self\n    like text\n    back self\n>))
+
+test <an empty form stays legal>
+  want hold, not(refused-for-name(<form void\n>))
+
+test <a native description stays legal>
+  want hold, not(refused-for-name(<form text, name \<Text\>\n  link data, like text\n>))
+
+test <a form with a free name is not refused>
+  want hold, not(refused-for-name(<form scale\n  case none\n  case more\n    link prior, like scale\n>))

@@ -374,6 +374,14 @@ const CURSOR = readFileSync(
 const CURSOR_WANT =
   '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
 
+// a host bind naming a type parameter takes it fresh at each call: two element types through one bind, the caller's list
+// handed on, a form of the parameter (item term-self-host-001-0804)
+const GENERIC_BIND = readFileSync(
+  join(import.meta.dirname, 'meaning-native/generic-bind.tree'),
+  'utf8',
+)
+const GENERIC_BIND_WANT = 'a:10:2:1:2:1:x:6:five'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
@@ -649,6 +657,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'payload', PAYLOAD, PAYLOAD_WANT)
   run(backend, 'text-keys', TEXT_KEYS, TEXT_KEYS_WANT)
   run(backend, 'raise-spare', RAISE_SPARE, RAISE_SPARE_WANT)
+  run(backend, 'generic-bind', GENERIC_BIND, GENERIC_BIND_WANT)
 }
 
 console.log(

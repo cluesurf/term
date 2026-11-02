@@ -360,6 +360,20 @@ bind hunt-slowest-first
     text <$slow.sort((huntA, huntB) =\> huntB.ms - huntA.ms)>
 
 bind hunt-first
+  take items, like list, like text
+  take count, like number
+  like list, like text
+  case node
+    text <$items.slice(0, $count)>
+
+bind hunt-first-violations
+  take items, like list, like file-violation
+  take count, like number
+  like list, like file-violation
+  case node
+    text <$items.slice(0, $count)>
+
+bind hunt-first-slow
   take items, like list, like dynamic
   take count, like number
   like list, like dynamic
@@ -713,7 +727,7 @@ task render-hunt
           out/push(<  no oracle violations (round-trip, determinism, tolerant parse; backend emit on {c/compiled} compiled file(s))>)
         miss
           out/push(<  {c/violations/length} VIOLATION(S):>)
-          walk hunt-first(c/violations, 20)
+          walk hunt-first-violations(c/violations, 20)
             take v
             out/push(<    [{hunt-text-of(hunt-field(hunt-field(v, <violation>), <oracle>))}] {hunt-text-of(hunt-field(v, <file>))}: {hunt-text-of(hunt-field(hunt-field(v, <violation>), <detail>))}>)
   out/push(<  backend emit: {hunt-joined(result/backends, <, >)}. Emit only: nothing is built, run or compared across backends.>)
@@ -750,7 +764,7 @@ task render-hunt
   fork test, is-above(result/slow/length, 0)
     hold
       out/push(<  {result/slow/length} SLOW INPUT(S), over the compile budget:>)
-      walk hunt-first(result/slow, 5)
+      walk hunt-first-slow(result/slow, 5)
         take one
         out/push(<    - {hunt-field(one, <ms>)}ms>)
         out/push(hunt-quoted(hunt-text-of(hunt-field(one, <input>))))

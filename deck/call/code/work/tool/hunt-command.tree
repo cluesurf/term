@@ -130,8 +130,9 @@ bind hunt-printer-face
     text <(\{ count: $counting, field: $fielding \})>
 
 bind hunt-open-ask
+  head t
   take root, like text
-  take counts, like list, like dynamic
+  take counts, like list, like t
   take started, like number
   like dynamic
   case node

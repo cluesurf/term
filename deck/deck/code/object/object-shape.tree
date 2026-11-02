@@ -126,7 +126,8 @@ bind member-of
 
 # the parts joined as the host joins them: an `undefined` part writes nothing
 bind joined-parts
-  take parts, like list, like dynamic
+  head t
+  take parts, like list, like t
   like text
   case node
     text <$parts.join(",")>

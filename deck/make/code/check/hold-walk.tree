@@ -3413,8 +3413,45 @@ task reached-definitions
   save pairs, texts()
   walk sort(queue, utf16-order)
     take name
-    push(pairs, json-list(two-texts(json-text(name), json-text(definition-found(defs, name)/text))))
+    save files, <>
+    walk defs/statements/get(name)
+      take one
+      save files, <{files}@{carried-file(one)}>
+    push(pairs, json-list(two-texts(json-text(<{name}{files}>), json-text(definition-found(defs, name)/text))))
   back json-list(pairs)
+
+# THE FILE OF A STUB THAT CARRIES ANYTHING, `<>` for any other definition: a key leaves places out, but a kept walk's
+# trace names where each consulted stub stands (decision 103 item 3), so two stubs of one text in two files, or two
+# copies of a project in one process, must not share an entry, or the hit tells another file's locator and the unit's
+# stored key misses what it read (item term-self-host-001-0526)
+task carried-file
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      fork test, not(stub)
+        hold
+          back <>
+      save carries, is-above(stub-body/length, 0)
+      sift stub-shape
+        case some
+          save carries, true
+        case none
+          save nothing, 0
+      fork test, not(carries)
+        hold
+          back <>
+      sift statement-span(one)/file
+        case some
+          link known
+          back known
+        case none
+          back <>
+    miss
+      back <>
+  back <>
 
 # everything a task's walk reads, as one key: the task as checked, without its places, every whole-program fact about
 # a name it mentions, and the text of every definition those names reach

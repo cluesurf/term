@@ -1157,6 +1157,12 @@ form statement
     link async
       like boolean
       need false
+    # `head t` under the bind: its type parameters, fresh at each call as a generic task's are (item
+    # term-self-host-001-0804). Written only when there is one, so a plain bind's node is what it was. Last, for the same
+    # reason as `async`
+    link generics
+      like list, like generic-param
+      need false
   # a component definition
   case view
     link name, like text

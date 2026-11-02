@@ -39,6 +39,10 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
@@ -65,7 +69,7 @@ form problem-at
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form problem-said
   link glyph, like text
@@ -90,7 +94,7 @@ form nothing-close
 
 form ready-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
   link done, like boolean
 

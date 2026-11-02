@@ -7,12 +7,11 @@
 // Run: npx tsx test/compile/free-element-native.ts   (FREE_ONLY=typescript, rust, swift or kotlin runs one)
 // A TypeScript test, not a `term test`: it builds with each native toolchain (P12 port debt, log.md 2026-10-31).
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
+import { tempDir } from '../temp'
 import { BACKENDS, runOn } from './shared/run-on'
 
 let pass = 0
@@ -59,7 +58,7 @@ task run
 
 const EXPECTED = '3 5'
 
-const dir = mkdtempSync(join(tmpdir(), 'term-free-element-'))
+const dir = tempDir('term-free-element-')
 const only = process.env.FREE_ONLY ?? ''
 
 // the Rust text: the list binding and the element it holds spell the free argument alike

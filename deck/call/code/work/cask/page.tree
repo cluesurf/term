@@ -66,7 +66,7 @@ form bundle-options
   link format, like text
   link platform, like text
   link write, like boolean
-  link plugins, like list, like dynamic
+  link plugins, like list, like esbuild-plugin
 
 form resolve-filter
   link filter, like dynamic

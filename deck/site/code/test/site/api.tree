@@ -31,7 +31,7 @@ task make-api
         bind handle
           task health
             take request, like request
-            take params, like hash
+            take params, like hash, like text, like text
             like response
             send back
               make response
@@ -47,7 +47,7 @@ task make-api
         bind handle
           task user
             take request, like request
-            take params, like hash
+            take params, like hash, like text, like text
             like response
             send back
               make response
@@ -68,7 +68,7 @@ task make-api
         bind handle
           task files
             take request, like request
-            take params, like hash
+            take params, like hash, like text, like text
             like response
             send back
               make response

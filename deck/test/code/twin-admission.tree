@@ -380,10 +380,11 @@ bind admission-json
     text <JSON.stringify($value)>
 
 bind admission-request
+  head t
   take module, like text
   take of, like text
   take label, like text
-  take cases, like list, like dynamic
+  take cases, like list, like t
   take shrink, like boolean
   like dynamic
   case node
@@ -506,10 +507,18 @@ bind admission-stderr
   case node
     text <process.stderr.write($line)>
 
-bind admission-first-of
-  take items, like list, like dynamic
+bind admission-first-sites
+  take items, like list, like mutant-site
   take count, like dynamic
-  like list, like dynamic
+  like list, like mutant-site
+  case node
+    text <$items.slice(0, $count)>
+
+bind admission-first-of
+  head t
+  take items, like list, like t
+  take count, like dynamic
+  like list, like t
   case node
     text <$items.slice(0, $count)>
 
@@ -1158,10 +1167,11 @@ bind admission-disagreement
     text <(\{ ...$result.disagreement, literal: $literal \})>
 
 bind admission-pending
+  head t
   take verdict, like dynamic
   take twin, like dynamic
   take reference, like dynamic
-  take cases, like list, like dynamic
+  take cases, like list, like t
   like dynamic
   case node
     text <(\{ verdict: $verdict, twin: $twin, reference: $reference, cases: $cases \})>
@@ -1282,7 +1292,7 @@ task admit
     host no-path, admission-empty(0)
     host no-sites, make list
     host every-site, mutant-sites(admission-member(twin, <body>), no-path, no-sites)
-    host sites, admission-first-of(every-site, admission-number-or(admission-member(ask, <mutants>), 8))
+    host sites, admission-first-sites(every-site, admission-number-or(admission-member(ask, <mutants>), 8))
     admission-stderr(<admit: {of}/{name}: {sites/length} mutants\n>)
 
     walk sites

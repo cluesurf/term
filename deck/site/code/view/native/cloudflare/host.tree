@@ -49,7 +49,7 @@ task host
   save render-request
     task handle
       take request, like request
-      take params, like hash
+      take params, like hash, like text, like text
       like response
       save root
         call create-element

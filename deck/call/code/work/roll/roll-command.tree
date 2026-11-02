@@ -37,6 +37,7 @@ load ./roll-comparing
   find compare-rolls
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find count
   find field
@@ -46,6 +47,10 @@ load @term/call/work/output/printer
   find print-data
   find report
   find report-problems
+
+load @term/call/work/item/event
+  find tally
+  find item-field
 
 dock load
   load <@term/make/code/compile/roll>, name roll-module
@@ -162,7 +167,7 @@ form roll-problem-fields
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form roll-warning
   link glyph, like text
@@ -184,7 +189,7 @@ form roll-verdict-next
 
 form roll-verdict-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 task one-word
   take value, like text
@@ -345,7 +350,7 @@ form roll-change
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form roll-change-plain
   link glyph, like text
@@ -355,7 +360,7 @@ form roll-change-plain
 task report-change
   take glyph, like text
   take subject, like text
-  take fields, like list, like dynamic
+  take fields, like list, like item-field
   like void
   mark private
 
@@ -376,7 +381,7 @@ task roll-diff-run
   take before-name, like text
   take roll, like dynamic
   take failed, like list, like text
-  take problems, like list, like dynamic
+  take problems, like list, like problem-entry
   take json, like boolean
   like void
   mark private
@@ -418,7 +423,7 @@ task run-diff
   take old, like dynamic
   take roll, like dynamic
   take failed, like list, like text
-  take problems, like list, like dynamic
+  take problems, like list, like problem-entry
   take json, like boolean
   take before-failed, like number
   like void

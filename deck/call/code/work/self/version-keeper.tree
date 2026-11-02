@@ -136,6 +136,9 @@ load @term/deck/oci/toolchain-pin
 load @term/deck/oci/oci-routing
   find transport-for
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -446,7 +449,7 @@ form removal-ask
 form show-step
   link rule, like text
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
   link hit, like boolean
 
 # ---- printing ----
@@ -867,7 +870,7 @@ task request-in
 task pin-fields
   take request, like need-request
   take home, like text
-  like list, like dynamic
+  like list, like item-field
   mark private
 
   save fields, make list

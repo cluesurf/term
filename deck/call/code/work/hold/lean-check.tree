@@ -31,6 +31,10 @@ load @term/call/work/build/tree-finding
 load @term/call/work/small/home-folder
   find project-home
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <@term/make/code/parser/tree>, name tree-parsing
   load <@term/make/code/parser/narrow>, name narrowing
@@ -468,7 +472,7 @@ form problem-fields-say
   link verb, like text
   link subject, like text
   link message, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form lean-say
   link glyph, like text
@@ -491,9 +495,9 @@ form total-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link fields
-    like maybe, like list, like dynamic
+    like maybe, like list, like item-field
     need false
 
 task reason-text

@@ -39,6 +39,9 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:crypto>, name node-crypto
   load <node:child_process>, name child-process
@@ -132,7 +135,8 @@ bind pair-of
     text <[$key, $value]>
 
 bind record-of
-  take entries, like list, like dynamic
+  head t
+  take entries, like list, like t
   like dynamic
   case node
     text <Object.fromEntries($entries)>
@@ -292,21 +296,21 @@ form fields-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form change-item
   link glyph, like text
   link kind, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form warning-item
   link glyph, like text
   link verb, like text
   link subject, like text
   link message, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form plain-item
   link glyph, like text
@@ -350,8 +354,9 @@ form listener
   link timer, like dynamic
 
 task one-field
-  take value, like dynamic
-  like list, like dynamic
+  head t
+  take value, like t
+  like list, like t
   mark private
 
   save out, make list

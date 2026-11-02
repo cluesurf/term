@@ -382,3 +382,20 @@ task output
   evict-to(cache/outputs, cache/output-cap)
   write-entry(kind, versioned, fresh)
   back fresh
+
+# AN ADVISORY ENTRY WRITTEN OVER WHAT THE KEY HELD (decision 103 item 4): the one kind of entry a key can hold two values
+# of, the `trace:` pointer, which names the last trace and is validated at every read. An answer is never written so
+task output-replace
+  take cache, like compile-cache
+  take key, like text
+  take value, like unknown
+  take kind, like text
+  like boolean
+
+  save io, cache/io
+  save write-entry, io/write-entry
+  save versioned, hash-fields(make list(version-for(cache, kind), key))
+  cache/outputs/set(versioned, value)
+  evict-to(cache/outputs, cache/output-cap)
+  write-entry(kind, versioned, value)
+  back true

@@ -63,6 +63,9 @@ load @term/make/compile/schedule
   find first, name first-ready
   find finish, name finish-node
 
+load @term/call/work/workers/heap-limit
+  find heap-diagnostic
+
 dock load
   load <node:fs>, name node-file
   load <node:worker_threads>, name worker-threads
@@ -170,8 +173,9 @@ bind units-is-nothing
 
 # the first item taken off a list, and the last
 bind units-shift
-  take list, like list, like dynamic
-  like dynamic
+  head t
+  take list, like list, like t
+  like t
   case node
     text <$list.shift()>
 
@@ -270,7 +274,7 @@ form unit-job
 
 form oom-result
   link ok, like boolean
-  link diagnostics, like list, like dynamic
+  link diagnostics, like list, like heap-diagnostic
 
 form units-answer
   link results, like hash, like text, like dynamic

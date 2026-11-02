@@ -32,6 +32,9 @@ load @term/call/work/need/version-install
   find shared-facts
   find load-ask, name version-load-ask
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <global:process>, name host-process
 
@@ -151,7 +154,7 @@ form loaded-item
     like maybe, like dynamic
     need false
   link facts, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form failed-close
   link verdict, like text

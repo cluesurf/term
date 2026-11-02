@@ -625,7 +625,10 @@ export function flushHeld(
   for (const [place, entry] of held) {
     if (entry.files.every(isClean)) {
       held.delete(place)
-      cache.unit(entry.key, () => entry.value)
+
+      // the trace pointer names the last trace, so it is written over the one a save finds
+      if (place.startsWith('trace\u0000')) {cache.unitReplace(entry.key, entry.value)}
+      else {cache.unit(entry.key, () => entry.value)}
     }
   }
 }
@@ -671,14 +674,26 @@ export function compileSeparate(
   // one per unit and slot, and written by the first document request that finds all its files clean again (the save),
   // so the store takes the answer the graph's unit memo already holds without building the unit twice
   const held = options.cache !== undefined ? heldOf(options.cache) : undefined
+  const filesOf = (job: unknown): string[] =>
+    (job as { state: { files: string[] } }).state.files
+  const placeOf = (slot: string, files: string[]): string =>
+    `${slot}\u0000${files.join('\u0000')}`
+  // the entry a dirty unit holds in a slot, which the store never took
+  const dirtyHeld = (job: unknown, slot: string): HeldEntry | undefined => {
+    const files = filesOf(job)
+
+    return isClean === undefined || files.every(isClean)
+      ? undefined
+      : held?.get(placeOf(slot, files))
+  }
   const unitWrite = (
     job: unknown,
     slot: string,
     key: string,
     run: () => { portable: string },
   ): string => {
-    const files = (job as { state: { files: string[] } }).state.files
-    const place = `${slot}\u0000${files.join('\u0000')}`
+    const files = filesOf(job)
+    const place = placeOf(slot, files)
 
     if (isClean === undefined || files.every(isClean)) {
       held?.delete(place)
@@ -807,6 +822,8 @@ export function compileSeparate(
       }
     }
 
+    const trace = [...traced].sort()
+
     if (!r.ok) {
       return {
         ok: false,
@@ -817,6 +834,7 @@ export function compileSeparate(
         roll: none,
         openClaims: [],
         obligations: none,
+        trace,
       } as never
     }
 
@@ -834,6 +852,7 @@ export function compileSeparate(
       roll: given(r.roll),
       openClaims: r.openClaims ?? [],
       obligations: given(r.obligations),
+      trace,
     } as never
   }
 
@@ -890,12 +909,33 @@ export function compileSeparate(
     env: options.env ?? '',
     hasCache: cache !== undefined,
     unitVersion: () => cache?.versionOf('unit') ?? '',
-    cachedUnit: (key, job) =>
-      unitWrite(job, 'unit', key, () =>
-        cache!.unit<{ portable: string }>(key, () => ({
-          portable: port.jobStored(job),
-        })),
-      ),
+    cachedRead: (slot, key, job) => {
+      const value =
+        dirtyHeld(job, slot)?.key === key
+          ? dirtyHeld(job, slot)!.value
+          : cache!.unitStored<{ portable: string }>(key)
+
+      return value === undefined ? none : some(value.portable)
+    },
+    cachedBuilt: job =>
+      filesOf(job).every(file => isClean?.(file) ?? true)
+        ? port.jobStored(job)
+        : withoutWrites(options.cache!, () => port.jobStored(job)),
+    cachedWrite: (slot, key, job, portable) => {
+      const files = filesOf(job)
+      const place = placeOf(slot, files)
+
+      if (isClean === undefined || files.every(isClean)) {
+        held?.delete(place)
+
+        if (slot === 'trace') {cache!.unitReplace(key, { portable })}
+        else {cache!.unit(key, () => ({ portable }))}
+      } else {
+        held?.set(place, { files, key, value: { portable } })
+      }
+
+      return true
+    },
     cachedNameKey: (key, job) =>
       unitWrite(job, 'name', key, () =>
         cache!.unit<{ portable: string }>(key, () => ({

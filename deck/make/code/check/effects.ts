@@ -2215,13 +2215,9 @@ function raiseSetsWith(
         nativeShims.add(name)
       }
 
-      // a task that raises `failure` once it is counted raises it here when this program counts it, as its own body's
-      // scan would: its stored set was closed over its own unit, which may not have held the form (`fails`,
-      // compile/stub.ts)
-      if (
-        exceptions.has('failure') &&
-        statement.stubFacts?.includes('fails')
-      ) {
+      // a task that raises `failure` raises it here, as its own body's scan would, with or without the form in this
+      // program (`fails`, compile/stub.ts, term/compiler decision 014)
+      if (statement.stubFacts?.includes('fails')) {
         known.add('failure')
       }
 
@@ -2314,13 +2310,10 @@ function raiseSetsWith(
     if (sawNative) {
       nativeShims.add(name)
 
-      // only when the program holds the `failure` form. The shake keeps it as a root in any program that docks a
-      // module (compile/compile.ts, term/compiler decision 001), so a guard around a native call must cover `failure`
-      // shaken or not. The roll asks with `failure` always in its set (compile/roll.ts), so a task's roll entry is
-      // the same whichever entry built it
-      if (exceptions.has('failure')) {
-        direct.add('failure')
-      }
+      // with or without the `failure` form in the program, as a text raise is (term/compiler decision 014), so a guard
+      // around a native call covers `failure` in every closure, and a task's roll entry is the same whichever entry
+      // built it
+      direct.add('failure')
 
       for (const declared of statement.raises ?? []) {
         if (exceptions.has(declared)) {

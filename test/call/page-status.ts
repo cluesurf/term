@@ -504,7 +504,7 @@ load @term/base/maybe
 
 task show-book
   take request, like request
-  take params, like hash
+  take params, like hash, like text, like text
 
   like response
 

@@ -15,10 +15,15 @@ load @term/base/text
   find ends-with
 
 load @term/call/work/output/printer
+  find problem-entry
   find count
   find location
   find report
   find report-problems
+
+load @term/call/work/item/event
+  find item-field
+  find tally
 
 dock load
   load <node:fs>, name node-file
@@ -33,16 +38,12 @@ form style-source
   link file, like text
   link text, like text
 
-form style-problem
-  link diagnostic, like dynamic
-  link text, like text
-
 form manifest-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
-  link fields, like list, like dynamic
+  link counts, like list, like tally
+  link fields, like list, like item-field
 
 form reload-item
   link glyph, like text
@@ -236,7 +237,7 @@ task build-style
         save problems, make list
         walk result/diagnostics
           take diagnostic
-          problems/push(make(style-problem, bind(diagnostic, diagnostic), bind(text, text)))
+          problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
         report-problems(problems, app-dir)
     fork test, and(result/ok, boot-is-defined(result/css))
       hold

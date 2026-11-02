@@ -36,5 +36,12 @@ task follow-battery
             read problem
   send back
     task drop
-      call native-battery/unwatch
-        read watching
+      fork
+        mark unsafe
+        call native-battery/unwatch
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-battery/drop>
+          read problem

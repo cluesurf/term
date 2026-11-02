@@ -461,7 +461,7 @@ function runRust(): void {
 
   writeFileSync(
     join(out, 'src/main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() {\n${calls.join('\n')}\n}\n`,
+    `${nativePrelude(program, 'rust', readRuntime, undefined, emitRust(program))}\n${emitRust(program)}\nfn main() {\n${calls.join('\n')}\n}\n`,
   )
 
   try {

@@ -248,15 +248,20 @@ form case-sharing
   link file, like text
   link scopes, like list, like file-scope
 
-# a whole program the caller may write without touching the one it was handed (compile/program-copy.ts). Natively a
-# value is already a copy
+# a whole program the caller may write without touching the one it was handed. Natively a value is already a copy, so
+# only a host of shared references runs this, and what it reads (a prototype, a Map, a Set, a cycle) has no Term type, so
+# it is host text. The answer `structuredClone` gives at a third of its time (item 0757): an array, a plain object, a Map
+# and a Set are copied with their keys in order and an absent field kept, a primitive is itself, a node met twice (a
+# shared type) is one copy met twice, cycles included, and anything else goes to `structuredClone`: a Date or a class
+# instance as it copies them, a function or a symbol as the error it raises. A generic, so the program keeps its type at
+# get(copy-program(one), 0) (T-0757). test/check/program-copy.tree holds the two equal
 bind copy-program
   take value, like list, like statement
   like list, like statement
   case node
-    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
+    text <(function \<T\>(given: T): T \{ const copies = new Map(); const copy = function (value: any): any \{ if (typeof value !== 'object') return typeof value === 'function' || typeof value === 'symbol' ? structuredClone(value) : value; if (value === null) return null; const known = copies.get(value); if (known !== undefined) return known; if (Array.isArray(value)) \{ const out: any[] = new Array(value.length); copies.set(value, out); for (let at = 0; at \< value.length; at++) out[at] = copy(value[at]); return out \} const shape = Object.getPrototypeOf(value); if (shape === Object.prototype) \{ const out: any = \{\}; copies.set(value, out); for (const key of Object.keys(value)) \{ const field = copy(value[key]); if (key === '__proto__') Object.defineProperty(out, key, \{ value: field, enumerable: true, writable: true, configurable: true \}); else out[key] = field \} return out \} if (shape === Map.prototype) \{ const out = new Map(); copies.set(value, out); for (const [key, field] of value) out.set(copy(key), copy(field)); return out \} if (shape === Set.prototype) \{ const out = new Set(); copies.set(value, out); for (const member of value) out.add(copy(member)); return out \} const out = structuredClone(value); copies.set(value, out); return out \}; return copy(given) \})($value)>
   case browser
-    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
+    text <(function \<T\>(given: T): T \{ const copies = new Map(); const copy = function (value: any): any \{ if (typeof value !== 'object') return typeof value === 'function' || typeof value === 'symbol' ? structuredClone(value) : value; if (value === null) return null; const known = copies.get(value); if (known !== undefined) return known; if (Array.isArray(value)) \{ const out: any[] = new Array(value.length); copies.set(value, out); for (let at = 0; at \< value.length; at++) out[at] = copy(value[at]); return out \} const shape = Object.getPrototypeOf(value); if (shape === Object.prototype) \{ const out: any = \{\}; copies.set(value, out); for (const key of Object.keys(value)) \{ const field = copy(value[key]); if (key === '__proto__') Object.defineProperty(out, key, \{ value: field, enumerable: true, writable: true, configurable: true \}); else out[key] = field \} return out \} if (shape === Map.prototype) \{ const out = new Map(); copies.set(value, out); for (const [key, field] of value) out.set(copy(key), copy(field)); return out \} if (shape === Set.prototype) \{ const out = new Set(); copies.set(value, out); for (const member of value) out.add(copy(member)); return out \} const out = structuredClone(value); copies.set(value, out); return out \}; return copy(given) \})($value)>
   case rust
     text <$value>
   case swift

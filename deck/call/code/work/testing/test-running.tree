@@ -93,7 +93,7 @@ form test-result
 # point into), and under `--update` what each test's `want snapshot`s saw, by its phrase
 form test-run
   link ok, like boolean
-  link results, like list, like dynamic
+  link results, like list, like test-result
   link failure
     like text
     need false

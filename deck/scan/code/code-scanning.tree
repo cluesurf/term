@@ -87,7 +87,8 @@ bind coding-scan
     text <<({ findings: $findings, fileCount: $count, skipped: $skipped })>>
 
 bind coding-length
-  take items, like list, like dynamic
+  head t
+  take items, like list, like t
   like number
   case node
     text <$items.length>

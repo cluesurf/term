@@ -69,11 +69,12 @@ bind is-unknown-count
 # a runner: claim the next index, run the worker on it, keep its answer, until the items run out. A worker's raise
 # ends the runner's job with it, and `map-concurrent` raises it again where it waits the job
 task run-lane
-  take items, like list, like unknown
+  head t
+  take items, like list, like t
   take worker
     like task
       mark async
-      take item, like unknown
+      take item, like t
       take index, like number
       like unknown
   take claimed, like list, like number
@@ -97,11 +98,12 @@ task run-lane
 # out of the whole call, the first failed lane's in lane order once every lane has settled (catch inside the worker to
 # keep a failure as a value)
 task map-concurrent
-  take items, like list, like unknown
+  head t
+  take items, like list, like t
   take worker
     like task
       mark async
-      take item, like unknown
+      take item, like t
       take index, like number
       like unknown
   take limit, like number, fall 8

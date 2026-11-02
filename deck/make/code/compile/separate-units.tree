@@ -52,6 +52,9 @@ load @term/base/ordering
   find from-texts
   find from-numbers
 
+load ./node-rewrite
+  find copy-program
+
 load ../parser/diagnostic
   find diagnostic
 
@@ -77,6 +80,7 @@ load ./node
 load ./names
   find name-def
   find def-at
+  find carried-print
   find names-reached-indexed
   find names-printed
 
@@ -199,6 +203,8 @@ form separate-compiled
   link roll, like maybe, like dynamic
   link open-claims, like list, like text
   link obligations, like maybe, like dynamic
+  # the carried shapes and bodies this compile consulted, by locator, sorted (decision 103 item 3)
+  link trace, like list, like text
 
 # one emitted module of a unit
 form unit-file
@@ -301,17 +307,30 @@ form separate-given
     like task
       like text
   link env, like text
-  # the build cache: whether there is one, the compiler's fingerprint for units, and its two lookups, each building
-  # with the job on a miss
+  # the build cache: whether there is one, the compiler's fingerprint for units, the name pointer, which builds with the
+  # job on a miss, and a unit's entries by slot (`unit` an answer, `trace` the advisory pointer): read, never built, a
+  # job's build, which writes nothing of a dirty unit, and written, over what a pointer's key held
   link has-cache, like boolean
   link unit-version
     like task
       like text
-  link cached-unit
+  link cached-read
     like task
+      take slot, like text
       take key, like text
       take job, like unit-job
+      like maybe, like text
+  link cached-built
+    like task
+      take job, like unit-job
       like text
+  link cached-write
+    like task
+      take slot, like text
+      take key, like text
+      take job, like unit-job
+      take value, like text
+      like boolean
   link cached-name-key
     like task
       take key, like text
@@ -433,10 +452,21 @@ form separate-run
   link unit-defs
     like list
       like list, like name-def
+  # each carried shape and body of the units answered so far, by locator, and how many units that covers
+  link carried
+    like hash
+      like text
+      like carried-at
+  link carried-grown, like number
   # `keep-program`: the entry unit's checked program, when this run built it
   link entry-program, like maybe, like list, like statement
   # `twice`: every unit this run built, held until the run's other units are built, then built again and compared
   link twice-queue, like list, like twice-check
+
+# a carried shape or body as the run holds it: the unit it stands in, and its print
+form carried-at
+  link unit, like number
+  link print, like text
 
 # ONE UNIT'S PART OF THE RUN, kept while it is answered
 form unit-state
@@ -455,6 +485,8 @@ form unit-state
   link ran, like boolean
   # the `checked-as` the cache is being asked for, which a stored answer that cannot be read is built as
   link answering, like text
+  # what the unit's last build consulted (decision 103 item 3), the list its stored key holds
+  link trace, like list, like text
 
 # the build a cache lookup runs on a miss: the unit, checked as `checked-as`
 form unit-job
@@ -548,22 +580,6 @@ bind shallow-call
     text <({...$value})>
   case browser
     text <({...$value})>
-  case rust
-    text <$value>
-  case swift
-    text <$value>
-  case kotlin
-    text <$value>
-
-# the stubs a unit is checked against, deep-copied, the copy `structuredClone` makes (compile/program-copy.ts): the
-# checker annotates what it is handed, and one unit's stubs are read by every unit after it
-bind copy-statements
-  take value, like list, like statement
-  like list, like statement
-  case node
-    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
-  case browser
-    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
   case rust
     text <$value>
   case swift
@@ -1183,6 +1199,181 @@ task named-key-of
       back cached-name-key(<surface:{surface-key}>, job-of(run, state, checked-as))
   back named-key-as(run, state, checked-as)
 
+# ---- the trace in the key (decision 103 item 4) ----
+#
+# ONE KEY, ONE ANSWER: a unit's answer is stored under its name key plus the sorted (locator, print) list its trace holds,
+# so a body edit to a task it only names leaves the key where it was, and one to a task it consulted moves it. Which list
+# is known only after a build, so an advisory `trace:<name key>` pointer names the last one. A lookup reads the pointer,
+# takes each locator's CURRENT print and asks the store. A missing pointer, a locator that no longer resolves or a missing
+# answer is a miss, and the build writes both. Two traces under one name key cost a miss, never a wrong answer
+
+# each carried shape and body of the units before `up-to`, by locator, read off their definitions. The index of names
+# answers another question and costs more, and a unit whose pointer lists nothing never asks this
+task carried-grown-to
+  take run, like separate-run
+  take up-to, like number
+  like boolean
+  mark private
+
+  walk test
+    hook test, is-below(run/carried-grown, up-to)
+    hook hold
+      save unit, run/carried-grown
+      walk defs-of(run, get(run/builds, unit))
+        take def
+        walk def/carried
+          take one
+          save run/carried/{one/locator}, make(carried-at, bind(unit, unit), bind(print, one/print))
+      save run/carried-grown, add(unit, 1)
+  back true
+
+# the print a locator has now, none when it stands in no unit this one reaches
+task carried-now
+  take run, like separate-run
+  take state, like unit-state
+  take locator, like text
+  like maybe, like text
+  mark private
+
+  carried-grown-to(run, state/at)
+  fork test, not(run/carried/has(locator))
+    hold
+      back make none
+  save at, run/carried/get(locator)
+  save reached, get(run/reach, state/at)
+  fork test, not(reached/has(at/unit))
+    hold
+      back make none
+  back make(some, at/print)
+
+# a trace as its pointer holds it: `trace:` and the locators, each deck's root a token, sorted, so a clone reads the same
+task pointer-text
+  take run, like separate-run
+  take locators, like list, like text
+  like text
+  mark private
+
+  save written, make list
+  walk locators
+    take one
+    push(written, portable-write(run/portable, one))
+  back <trace:{join(sort(written, from-texts), <\n>)}>
+
+# a pointer's locators, this machine's roots back
+task pointer-locators
+  take run, like separate-run
+  take text, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save rest, substring(text, 6)
+  fork test, is-equal(rest/length, 0)
+    hold
+      back out
+  walk split(rest, <\n>)
+    take one
+    push(out, portable-read(run/portable, one))
+  back out
+
+# THE STORED KEY: the name key and the sorted (locator, print) list. None when a locator does not resolve
+task traced-key
+  take run, like separate-run
+  take state, like unit-state
+  take named, like text
+  take locators, like list, like text
+  like maybe, like text
+  mark private
+
+  save pairs, make list
+  walk locators
+    take one
+    sift carried-now(run, state, one)
+      case some
+        link print
+        push(pairs, <{portable-write(run/portable, one)} {print}>)
+      case none
+        back make none
+  save fields, make list
+  push(fields, <traced>)
+  push(fields, named)
+  walk sort(pairs, from-texts)
+    take pair
+    push(fields, pair)
+  back make(some, separate-cache/hash-fields(fields))
+
+# the stored answer the pointer leads to, none for a miss
+task stored-by-trace
+  take run, like separate-run
+  take state, like unit-state
+  take named, like text
+  take job, like unit-job
+  like maybe, like text
+  mark private
+
+  save given, run/given
+  save cached-read, given/cached-read
+  sift cached-read(<trace>, <trace:{named}>, job)
+    case some
+      link pointer
+      sift traced-key(run, state, named, pointer-locators(run, pointer))
+        case some
+          link key
+          back cached-read(<unit>, key, job)
+        case none
+          back make none
+    case none
+      back make none
+
+# the unit built, its answer written under the key its trace makes, and the pointer to that trace. A locator the run
+# cannot resolve keeps the pointer, whose next read is a miss: the same build again, never a wrong answer
+task stored-after-build
+  take run, like separate-run
+  take state, like unit-state
+  take named, like text
+  take job, like unit-job
+  like text
+  mark private
+
+  save given, run/given
+  save cached-built, given/cached-built
+  save cached-write, given/cached-write
+  save stored, cached-built(job)
+  save trace, state/trace
+  sift traced-key(run, state, named, trace)
+    case some
+      link key
+      cached-write(<unit>, key, job, stored)
+    case none
+      save nothing, 0
+  cached-write(<trace>, <trace:{named}>, job, pointer-text(run, trace))
+  back stored
+
+# each locator's print now, the empty text for one that no longer resolves, for `term make --explain`
+task carried-prints-now
+  take run, like separate-run
+  take state, like unit-state
+  take locators, like list, like text
+  like hash
+    like text
+    like text
+  mark private
+
+  save out
+    like hash
+      like text
+      like text
+    make hash
+  walk locators
+    take one
+    sift carried-now(run, state, one)
+      case some
+        link print
+        save out/{one}, print
+      case none
+        save out/{one}, <>
+  back out
+
 # the inputs and their definitions for `term make --explain`
 task reached-defs
   take run, like separate-run
@@ -1243,6 +1434,7 @@ task inputs-as
       bind read, read
       bind settings, separate-cache/hash-fields(settings)
       bind names, names-printed(defs, used)
+      bind carried, make hash
 
 # ---- one unit built ----
 
@@ -1298,6 +1490,7 @@ task make-unit
   save given, run/given
   save milled, given/milled
   save compile-unit, given/compile-unit
+  save state/trace, make list
   fork test, given/ledger
     hold
       save ledger-open, given/ledger-open
@@ -1309,7 +1502,8 @@ task make-unit
     take d
     walk get(run/builds, d)/stubs
       take group
-      walk copy-statements(group/statements)
+      # deep-copied: the checker annotates what it is handed, and one unit's stubs are read by every unit after it
+      walk copy-program(group/statements)
         take one
         push(program, filed-in(one, group/file))
 
@@ -1341,6 +1535,7 @@ task make-unit
   # keeps the entry's
   save naming, get(state/files, 0)
   save result, compile-unit(program, checked-as, scope-of(run, state/at), naming, state/files)
+  save state/trace, result/trace
   fork test, given/ledger
     hold
       ledger-check(run, state)
@@ -1536,6 +1731,9 @@ task built-now
 
   save given, run/given
   save state/ran, true
+  save inputs
+    like maybe, like unit-inputs
+    make none
   fork test, given/has-explain
     hold
       save now, inputs-as(run, state, checked-as)
@@ -1544,7 +1742,9 @@ task built-now
       sift recall(checked-as)
         case some
           link before
-          save reasons, why(before, now)
+          # what the last build consulted, as it stands now
+          save asked, make(unit-inputs, bind(compiler, now/compiler), bind(own, now/own), bind(read, now/read), bind(settings, now/settings), bind(names, now/names), bind(carried, carried-prints-now(run, state, before/carried/keys())))
+          save reasons, why(before, asked)
         case none
           push(reasons, <nothing recorded: its first build, or the record was washed>)
       fork test, is-equal(reasons/length, 0)
@@ -1552,9 +1752,15 @@ task built-now
           push(reasons, <its stored answer was missing>)
       save give-reasons, given/give-reasons
       give-reasons(state/label, reasons)
-      save remember, given/remember
-      remember(checked-as, now)
+      save inputs, make(some, now)
   save answer, make-unit(run, state, checked-as)
+  sift inputs
+    case some
+      link built-from
+      save remember, given/remember
+      remember(checked-as, make(unit-inputs, bind(compiler, built-from/compiler), bind(own, built-from/own), bind(read, built-from/read), bind(settings, built-from/settings), bind(names, built-from/names), bind(carried, carried-prints-now(run, state, state/trace))))
+    case none
+      save nothing, 0
   # `twice`: the same unit built again in this process, AFTER the run's other units, must answer the same bytes, so no
   # state a later build leaves behind reaches an earlier one's answer (the class of T-0317). `verify-twice-all` builds
   # it again
@@ -1659,21 +1865,36 @@ task answer-unit
     case none
       fork test, given/has-cache
         hold
-          save cached-unit, given/cached-unit
           # whether the store answered without building: `ran` is set by a build in this lookup alone
           save ran-before, state/ran
           save state/ran, false
           save named, named-key-of(run, state, checked-as, key)
-          save stored, cached-unit(named, job-of(run, state, checked-as))
+          save job, job-of(run, state, checked-as)
+          save stored, <>
+          sift stored-by-trace(run, state, named, job)
+            case some
+              link held
+              save stored, held
+            case none
+              save stored, stored-after-build(run, state, named, job)
           save answer, from-store(run, state, stored)
           save hit, not(state/ran)
           save state/ran, or(ran-before, state/ran)
-          # `hits`: a stored answer built again from nothing must be the bytes the store held (rustc's verify-ich)
+          # `hits`: a stored answer built again from nothing must be the bytes the store held (rustc's verify-ich), and
+          # must consult what the key that found it says it consulted: a consult the pointer lacks is a dependency the
+          # key missed
           save verify-hit, given/verify-hit
           fork test, and(hit, verify-hit(named))
             hold
               save store, given/store
               verify-same(<hits>, state/label, stored, portable-write(run/portable, store(make-unit(run, state, checked-as))))
+              save cached-read, given/cached-read
+              sift cached-read(<trace>, <trace:{named}>, job)
+                case some
+                  link pointer
+                  verify-same(<hits trace>, state/label, pointer, pointer-text(run, state/trace))
+                case none
+                  save nothing, 0
         miss
           save answer, built-now(run, state, checked-as)
   fork test, given/has-units
@@ -1923,6 +2144,8 @@ task compile-separate
       bind builds, make list
       bind name-index, make hash
       bind unit-defs, make list
+      bind carried, make hash
+      bind carried-grown, 0
       bind entry-program, make none
       bind twice-queue, make list
 
@@ -2008,6 +2231,7 @@ task compile-separate
         bind defs, make none
         bind ran, false
         bind answering, asked-first
+        bind trace, make list
 
     push(closure-keys, key-as(run, state, asked-first))
 

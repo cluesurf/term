@@ -95,6 +95,8 @@ form cross-backend
     like task
       take program, like dynamic
       like dynamic
+      # each emit calls into a docked emitter, and cross-emit catches what it raises
+      halt failure
 
 task cross-emit-type-script
   take program, like dynamic

@@ -49,6 +49,9 @@ load @term/call/work/output/printer
 load @term/deck/package/tree-reading
   find read-tree
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -85,7 +88,7 @@ form missing-entry-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form failure-close
   link verdict, like text
@@ -95,7 +98,7 @@ form port-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form interrupted-close
   link verdict, like text

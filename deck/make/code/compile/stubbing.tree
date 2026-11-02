@@ -69,6 +69,7 @@ load ./node-json
 
 load ./names
   find name-def
+  find carried-print
 
 load ../term/hash
   find hash-key
@@ -1197,8 +1198,44 @@ task gives-of
       push(out, <*>)
   back out
 
+# what a stub carries, each with its own print (decision 103 item 4), where the trace finds it
+task carried-prints
+  take one, like statement
+  take portable
+    like task
+      take text, like text
+      like text
+  like list, like carried-print
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      save skip, without-spans()
+      save file, <>
+      sift statement-span(one)/file
+        case some
+          link known
+          save file, known
+        case none
+          save nothing, 0
+      sift stub-shape
+        case some
+          link shape
+          save locator, <{file}#{stub-export}#shape>
+          push(out, make(carried-print, bind(locator, locator), bind(print, hash-key(portable(statement-json(skip, shape))))))
+        case none
+          save nothing, 0
+      fork test, is-above(stub-body/length, 0)
+        hold
+          save locator, <{file}#{stub-export}#body>
+          push(out, make(carried-print, bind(locator, locator), bind(print, hash-key(portable(program-json(skip, stub-body))))))
+    miss
+      save nothing, 0
+  back out
+
 # EACH DEFINITION OF A SURFACE, AS THE NAME-LEVEL CUTOFF READS IT (compile/names.tree): the names it can be reached by,
-# the names it mentions, and its fingerprint
+# the names it mentions, its fingerprint, and what it carries, printed apart
 task name-defs
   take surface, like list, like statement
   take portable
@@ -1208,6 +1245,9 @@ task name-defs
   like list, like name-def
 
   save skip, without-spans()
+  save bare, without-spans()
+  push(bare, <stubShape>)
+  push(bare, <stubBody>)
   save out, make list
   walk surface
     take one
@@ -1215,10 +1255,17 @@ task name-defs
     save seen, make hash
     save reads, make list
     json-texts(json, seen, reads)
+    save carried, carried-prints(one, portable)
+    # node-json writes neither for a stub that carries nothing, so its text is the print's already
+    save printed, json
+    fork test, is-above(carried/length, 0)
+      hold
+        save printed, statement-json(bare, one)
     save def
       make name-def
         bind gives, gives-of(one)
         bind reads, reads
-        bind print, hash-key(portable(json))
+        bind print, hash-key(portable(printed))
+        bind carried, carried
     push(out, def)
   back out

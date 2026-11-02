@@ -12,6 +12,7 @@
 # (compile/host-code) and the output library are docked until their own ports land.
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find open-run
   find print-bytes
@@ -120,7 +121,7 @@ bind mold-thrown-message
 form mold-open
   link verb, like text
   link root, like dynamic
-  link facts, like list, like dynamic
+  link facts, like list, like text
 
 form mold-problem
   link glyph, like text
@@ -140,10 +141,6 @@ form mold-close
 
 form mold-source
   link file, like text
-  link text, like text
-
-form mold-problem-entry
-  link diagnostic, like dynamic
   link text, like text
 
 task mold-one
@@ -166,7 +163,7 @@ task refuse-data
   save problems, make list
   walk diagnostics
     take diagnostic, like dynamic
-    problems/push(make(mold-problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
+    problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
   report-problems(problems, root)
   close-run(make(mold-close, bind(verdict, <The data does not read>)))
 

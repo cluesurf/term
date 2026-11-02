@@ -35,6 +35,10 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <node:path>, name node-path
   load <node:fs/promises>, name fs-promise
@@ -84,7 +88,7 @@ form looked-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form message-item
   link glyph, like text
@@ -116,7 +120,7 @@ form done-close
 
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link done, like boolean
 
 form rm-ask

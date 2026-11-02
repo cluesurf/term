@@ -82,6 +82,10 @@ load @term/call/work/cache/compile-store
 load @term/call/work/small/home-folder
   find project-home
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <node:fs>, name host-fs
   load <node:path>, name host-path
@@ -282,7 +286,7 @@ form hold-ask
 form open-say
   link verb, like text
   link root, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link facts, like list, like text
 
 form problem-say
@@ -299,7 +303,7 @@ form commit-say
   link kind, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form prove-say
   link glyph, like text
@@ -312,7 +316,7 @@ form counted-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link message, like list, like text
 
 form reasons-say
@@ -325,15 +329,15 @@ form trust-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link message, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form fields-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form open-claims-say
   link glyph, like text
@@ -353,18 +357,18 @@ form counts-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form failed-page-say
   link glyph, like text
   link kind, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 # ---- the gate ----
 

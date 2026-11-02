@@ -1,0 +1,115 @@
+load @term/base/list
+  find list
+  find push
+  find get
+
+# a host bind that names a type parameter takes it fresh at each call, as a generic task does (item
+# term-self-host-001-0804). A list of text and a list of number through one bind, a list handed through it still being the
+# caller's list, a value of a type parameter coming back at the type it went in, a form holding one. Until 0804 the first
+# call pinned `t`, and the second was refused on all four backends
+
+form boxed
+  head t
+  link held, like t
+
+bind same-of
+  head t
+  take items, like list, like t
+  like list, like t
+  case node
+    text <$items>
+  case browser
+    text <$items>
+  case rust
+    text <$items.clone()>
+  case swift
+    text <$items>
+  case kotlin
+    text <$items>
+
+bind kept
+  head t
+  take value, like t
+  like t
+  case node
+    text <$value>
+  case browser
+    text <$value>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# two parameters, one type parameter: each call fits them to each other
+bind left-of
+  head t
+  take left, like t
+  take right, like t
+  like t
+  case node
+    text <[$left, $right][0]>
+  case browser
+    text <[$left, $right][0]>
+  case rust
+    text <vec![$left, $right].into_iter().next().unwrap()>
+  case swift
+    text <[$left, $right][0]>
+  case kotlin
+    text <listOf($left, $right)[0]>
+
+# the type parameter of a form, handed through
+bind boxed-of
+  head t
+  take given
+    like boxed
+      head t
+  like boxed
+    head t
+  case node
+    text <$given>
+  case browser
+    text <$given>
+  case rust
+    text <$given.clone()>
+  case swift
+    text <$given>
+  case kotlin
+    text <$given>
+
+task texts
+  like list, like text
+  save out, make list
+  push(out, <a>)
+  push(out, <b>)
+  back out
+
+task numbers
+  like list, like number
+  save out, make list
+  push(out, 7)
+  back out
+
+task compute
+  like text
+  save words, same-of(texts())
+  save counts, same-of(numbers())
+  # the elements came back at their own type: a number adds, a text joins
+  save total, add(get(counts, 0), kept(3))
+  save word, kept(get(words, 0))
+  # the bind hands the caller's own list on
+  save mine, numbers()
+  save handed, same-of(mine)
+  push(handed, 8)
+  save lesser, left-of(1, 2)
+  save said, left-of(<x>, <y>)
+  save one
+    make boxed
+      bind held, 5
+  save two
+    make boxed
+      bind held, <five>
+  save first, boxed-of(one)
+  save second, boxed-of(two)
+  back <{word}:{total}:{words/length}:{counts/length}:{mine/length}:{lesser}:{said}:{add(first/held, 1)}:{second/held}>

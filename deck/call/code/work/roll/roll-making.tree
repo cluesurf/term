@@ -54,6 +54,7 @@ load @term/call/work/cache/compile-store
   find project-cache
 
 load @term/call/work/output/printer
+  find problem-entry
   find print-profile
 
 dock load
@@ -267,7 +268,7 @@ form source-file
 form project-roll-answer
   link roll, like dynamic
   link failed, like list, like text
-  link problems, like list, like dynamic
+  link problems, like list, like problem-entry
 
 # sites relative to the root, so the printed roll reads the same on every machine
 task relativize
@@ -293,7 +294,7 @@ task relativize
 task unit-rolls
   take root, like text
   take failed, like list, like text
-  take problems, like list, like dynamic
+  take problems, like list, like problem-entry
   like dynamic
   mark private
 

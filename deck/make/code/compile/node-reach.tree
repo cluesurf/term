@@ -821,6 +821,11 @@ task reach-statement-in
       fork test, enters(out, <result>)
         hold
           reach-maybe-type(out, result)
+      fork test, enters(out, <generics>)
+        hold
+          walk generics
+            take generic
+            note-name(out, generic/name)
     case roll
       note-name(out, name)
     case tell

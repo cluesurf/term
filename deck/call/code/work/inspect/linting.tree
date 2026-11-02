@@ -51,6 +51,7 @@ load @term/call/manifest-read
   find manifest-name
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find count
   find open-run
@@ -61,6 +62,9 @@ load @term/call/work/output/printer
 # manager's face was docked
 load @term/deck/package/spelling
   find manifest-spellings
+
+load @term/call/work/item/event
+  find tally
 
 dock load
   load <@term/make/code/analyze>, name analyze-module
@@ -187,10 +191,6 @@ form diagnostic-entry
   link hint, like dynamic
   link severity, like dynamic
 
-form problem-entry
-  link diagnostic, like diagnostic-entry
-  link text, like text
-
 form catalog-entry
   link code, like text
   link name, like text
@@ -203,7 +203,7 @@ form catalog-entry
 form counted-open
   link verb, like text
   link root, like dynamic
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link facts, like list, like text
 
 form message-item
@@ -217,18 +217,18 @@ form counted-item
   link kind, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form plain-close
   link verdict, like text
 
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form next-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
 
 # ---- the catalog ----

@@ -46,7 +46,14 @@ task watch-traits
           read problem
   send back
     task drop
-      call native-device/unwatch
+      fork
+        mark unsafe
+        call native-device/unwatch
+      halt take
+        take problem
+        call report-raise
+          text <watch-traits/drop>
+          read problem
 
 # a page cannot force a media query: this asks the browser again, after a test has changed it
 task change-trait

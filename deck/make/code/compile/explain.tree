@@ -33,6 +33,11 @@ form unit-inputs
     like hash
       like text
       like text
+  # each carried shape or body its trace held, to its fingerprint (decision 103 item 4)
+  link carried
+    like hash
+      like text
+      like text
 
 # The reasons `now` differs from `before`, the inputs of the unit's last build. None when they are the same, which
 # means the unit's stored answer was missing rather than stale
@@ -83,4 +88,10 @@ task why
     fork test, is-equal(has(now/names, name), false)
       hold
         push(reasons, <`{name}` is no longer reached>)
+
+  walk keys(before/carried)
+    take locator
+    fork test, is-equal(get-or-default(before/carried, locator, <>), get-or-default(now/carried, locator, <>))
+      miss
+        push(reasons, <what it consulted changed: {locator}>)
   back reasons

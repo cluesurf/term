@@ -2,8 +2,6 @@ mark stable
 
 form boolean
   # Boolean: the stdlib source of truth for the boolean type. The compiler uses its native representation.
-  case true
-  case false
   task and
     take self
     take other, like boolean

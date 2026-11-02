@@ -297,7 +297,7 @@ bind call-resolver-two
   take origin, like text
   like dynamic
   case node
-    text <$resolve($path, $origin)>
+    text <($resolve as any)($path, $origin)>
 
 bind source-file
   take found, like dynamic
@@ -821,7 +821,12 @@ task resolver-for
   take server, like language-server
   take doc, like document
   take root, like text
-  like maybe, like dynamic
+  like maybe
+    like task
+      take import-path, like text
+      take origin, like text
+      take how, like dynamic
+      like dynamic
 
   back resolver-over(server, doc, base-resolver(server, doc, root))
 
@@ -832,7 +837,12 @@ task analysis-resolver
   take server, like language-server
   take doc, like document
   take entry, like graph-entry
-  like maybe, like dynamic
+  like maybe
+    like task
+      take import-path, like text
+      take origin, like text
+      take how, like dynamic
+      like dynamic
 
   save base, option-resolve(server/options)
   fork test, is-truthy(base)
@@ -850,7 +860,12 @@ task resolver-over
   take server, like language-server
   take doc, like document
   take base, like dynamic
-  like maybe, like dynamic
+  like maybe
+    like task
+      take import-path, like text
+      take origin, like text
+      take how, like dynamic
+      like dynamic
   mark private
 
   fork test, is-truthy(base)

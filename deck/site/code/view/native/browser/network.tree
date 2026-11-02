@@ -36,5 +36,12 @@ task follow-network
             read problem
   send back
     task drop
-      call native-network/unwatch
-        read watching
+      fork
+        mark unsafe
+        call native-network/unwatch
+          read watching
+      halt take
+        take problem
+        call report-raise
+          text <follow-network/drop>
+          read problem

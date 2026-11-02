@@ -1,0 +1,45 @@
+# The code role's grammar as compile/mill-running.tree reads it, written as one JSON text. task/term/mill-bundle.ts bakes
+# this text beside the grammar's sources, and the compiler reads it back in a millisecond where parsing the sources took
+# 115 ms of every process that mills a file (item 0757). task/term/mint-parity.ts holds the baked text equal to a fresh
+# read, so a change to a reader or to the grammar shows as stale. Only those two tasks import this file.
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find parse
+
+load ./mill-running
+  find read-lean-rules
+  find read-mine-grammar
+  find read-mint-grammar
+
+# JSON's own key order, and a key holding nothing left out: the bytes the compiler reads back. A generator's text, so it
+# runs on node alone
+bind grammar-json
+  take mine, like dynamic
+  take mint, like dynamic
+  take lean, like dynamic
+  like text
+  case node
+    text <JSON.stringify(\{ mine: [...$mine], mint: [...$mint], lean: $lean \})>
+
+task grammar-read-text
+  take mine-text, like text
+  take mint-text, like text
+  like text
+
+  save mine-source
+    make token-source
+      bind file, <code-mine.tree>
+      bind text, mine-text
+  save mint-source
+    make token-source
+      bind file, <code-mint.tree>
+      bind text, mint-text
+  save mine-parsed, parse(mine-source)
+  save mint-parsed, parse(mint-source)
+  fork test, or(not(mine-parsed/ok), not(mint-parsed/ok))
+    hold
+      halt <the baked grammar does not parse>
+  back grammar-json(read-mine-grammar(mine-parsed/tree), read-mint-grammar(mint-parsed/tree), read-lean-rules(mine-parsed/tree))

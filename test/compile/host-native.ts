@@ -329,7 +329,7 @@ function runRust(): void {
   const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", round_long(input.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n}\n`
   writeFileSync(
     join(out, 'src/main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}${main}`,
+    `${nativePrelude(program, 'rust', readRuntime, undefined, emitRust(program))}\n${emitRust(program)}${main}`,
   )
 
   let output: string
@@ -370,7 +370,7 @@ function runRust(): void {
   )
   writeFileSync(
     join(fillOut, 'src/main.rs'),
-    `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_MISSING)}.to_string()).unwrap_or_else(|e| { eprintln!("uncaught {}", e); std::process::exit(1) })); }\n`,
+    `${nativePrelude(fill, 'rust', readRuntime, undefined, emitRust(fill))}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_MISSING)}.to_string()).unwrap_or_else(|e| { eprintln!("uncaught {}", e); std::process::exit(1) })); }\n`,
   )
 
   try {

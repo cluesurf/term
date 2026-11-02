@@ -30,6 +30,7 @@ load @term/call/work/build/host-faces
   find face-deck-finder
 
 load @term/call/work/output/printer
+  find problem-entry
   find close-run
   find count
   find field
@@ -37,6 +38,9 @@ load @term/call/work/output/printer
   find print-data
   find report
   find report-problems
+
+load @term/call/work/item/event
+  find tally
 
 dock load
   load <@term/make/code/inspect>, name inspect-module
@@ -175,7 +179,7 @@ form usage-close
 
 form counted-close
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form facts-close
   link verdict, like text
@@ -189,10 +193,6 @@ form compile-ask
   link resolve, like dynamic
   link role-of, like dynamic
   link lean-of, like dynamic
-
-form problem-entry
-  link diagnostic, like dynamic
-  link text, like dynamic
 
 task one-of
   take value, like dynamic

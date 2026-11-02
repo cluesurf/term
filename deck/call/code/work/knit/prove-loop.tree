@@ -95,6 +95,10 @@ load @term/call/work/build/host-faces
   find face-role-reader
   find face-lean-reader
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <node:fs>, name host-fs
   load <node:path>, name host-path
@@ -469,7 +473,7 @@ form setup-say
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form open-say
   link verb, like text
@@ -496,8 +500,8 @@ form written-say
   link glyph, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
-  link counts, like list, like dynamic
+  link fields, like list, like item-field
+  link counts, like list, like tally
 
 form verdict-say
   link verdict, like text

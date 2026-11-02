@@ -9,6 +9,9 @@ note <the checker to gap report: a program that compiles yields no gap, a broken
 load ../code/diagnostic-gap
   find gaps-from-diagnostics
 
+load ../code/checker-report
+  find checker-gap
+
 dock load
   load <@term/make/code/compile/compile>, name gap-compiling
 
@@ -48,7 +51,7 @@ bind gap-placed
 
 form gap-run
   link compiled, like boolean
-  link gaps, like list, like dynamic
+  link gaps, like list, like checker-gap
 
 task gaps-for
   take file, like text

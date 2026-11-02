@@ -49,6 +49,10 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+load @term/call/work/item/event
+  find item-field
+  find tally
+
 dock load
   load <@cluesurf/save/repo/repo>, name repo-module
   load <@cluesurf/save/base/mark>, name mark-module
@@ -357,7 +361,7 @@ form open-plain
 form open-facts
   link verb, like text
   link root, like dynamic
-  link facts, like list, like dynamic
+  link facts, like list, like text
 
 form open-subject
   link verb, like text
@@ -375,16 +379,16 @@ form close-verdict
 
 form close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form close-counts-next
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
 
 form close-counts-message-next
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link message, like list, like text
   link next, like text
 
@@ -410,7 +414,7 @@ form problem-fields-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form change-item
   link glyph, like text
@@ -423,13 +427,13 @@ form written-item
   link verb, like text
   link subject, like dynamic
   link bytes, like number
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form projected-item
   link glyph, like text
   link verb, like text
   link subject, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link facts, like list, like text
 
 # what a refusal adds, each as the original's call wrote it
@@ -441,18 +445,18 @@ form refusal-message-next
   link next, like text
 
 form refusal-fields
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form refusal-fields-next
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
   link next, like text
 
 form refusal-message
-  link message, like list, like dynamic
+  link message, like list, like text
 
 form refusal-message-fields
   link message, like list, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form folder-ask
   link recursive, like boolean
@@ -499,8 +503,9 @@ task record-folder
   back <record>
 
 task one-dynamic
-  take value, like dynamic
-  like list, like dynamic
+  head t
+  take value, like t
+  like list, like t
   mark private
 
   save out, make list

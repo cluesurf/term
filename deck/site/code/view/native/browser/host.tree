@@ -44,6 +44,7 @@ task draw-route
       take request, like request
       like maybe, like response
       mark async
+      halt exception
   take body, like view
   take request, like request
   fork

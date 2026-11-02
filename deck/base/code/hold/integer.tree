@@ -19,8 +19,6 @@ load @term/base/bit
 # https://github.com/brix/crypto-js/blob/develop/src/md5.js
 
 form integer
-  link list, list integer-32
-    mark private
 
 task round-down-to-power-of-two-8
   take x

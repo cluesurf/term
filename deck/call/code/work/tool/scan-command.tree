@@ -38,6 +38,10 @@ load @term/call/work/output/printer
   find report
   find report-problems
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/fix>, name fix-module
@@ -202,7 +206,7 @@ form scan-problem-item
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form scan-change
   link glyph, like text
@@ -215,18 +219,18 @@ form scan-refused
   link kind, like text
   link verb, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form scan-close
   link verdict, like text
 
 form scan-close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form scan-close-next
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link next, like text
 
 # one file compiled the way `term make` reads it: its role, its lean flag, and a test file rewritten

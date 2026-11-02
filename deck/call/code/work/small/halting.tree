@@ -42,6 +42,9 @@ load @term/call/work/output/printer
   find open-run
   find report
 
+load @term/call/work/item/event
+  find tally
+
 dock load
   load <node:child_process>, name child
   load <node:fs>, name node-file
@@ -95,7 +98,7 @@ form fact-item-ask
 
 form close-ask
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 # the markers that identify a term boot server process in the process table: the folder's name now, and the name it
 # had until 2026-10-05, which a server an older `term` started still runs from (home-folder.tree)

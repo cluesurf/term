@@ -5,7 +5,8 @@
 
 # the usage strings by key, as device-declare.ts `appleUsage` builds its record: each entry's key to its text, in order
 bind usage-record
-  take usage, like list, like dynamic
+  head t
+  take usage, like list, like t
   like dynamic
   case node
     text <Object.fromEntries($usage.map((one) =\> [one.key, one.text]))>

@@ -20,6 +20,9 @@ load @term/call/work/output/printer
   find open-run
   find report
 
+load @term/call/work/item/event
+  find item-field
+
 dock load
   # the global, not node:process: `on` is inherited from EventEmitter, and a builtin's namespace holds own fields only
   load <global:process>, name host-process
@@ -43,7 +46,7 @@ form start-item
   link verb, like text
   link subject, like text
   link duration, like number
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form failed-item
   link glyph, like text

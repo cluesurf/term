@@ -61,6 +61,10 @@ load @term/call/work/output/printer
 load @term/deck/package/tree-reading
   find read-tree
 
+load @term/call/work/item/event
+  find tally
+  find item-field
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -72,7 +76,7 @@ form native-folder
 form native-open
   link verb, like text
   link root, like dynamic
-  link facts, like list, like dynamic
+  link facts, like list, like text
 
 form native-problem
   link glyph, like text
@@ -83,7 +87,7 @@ form native-problem-fields
   link glyph, like text
   link kind, like text
   link subject, like text
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form native-check
   link glyph, like text
@@ -103,14 +107,14 @@ form native-emitted
   link subject, like text
   link duration, like number
   link bytes, like number
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form native-placed
   link glyph, like text
   link verb, like text
   link subject, like text
   link duration, like number
-  link fields, like list, like dynamic
+  link fields, like list, like item-field
 
 form native-said
   link glyph, like text
@@ -130,11 +134,11 @@ form native-close-next
 
 form native-close-counts
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
 
 form native-close-failed
   link verdict, like text
-  link counts, like list, like dynamic
+  link counts, like list, like tally
   link failure, like text
 
 form program-emit
