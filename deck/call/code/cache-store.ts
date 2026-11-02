@@ -545,6 +545,24 @@ function packageRoot(): string | null {
 // The source tree answers both: it is the same fingerprint from the CLI, from `tsx`, and from inside a worker.
 // Path + size + mtime rather than content, because it runs once per process and a stat is a thousand times cheaper
 // than a read. A touched-but-unchanged file costs one needless rebuild, which is the safe direction.
+// One compiler file's line. While compilerVersions reads every kind at once it holds each file's line, since most files
+// are in most kinds' lists and a language server's first request paid 25 ms for the repeats (item 0757).
+let sourceLines: Map<string, string> | undefined
+
+function sourceLine(full: string): string {
+  const known = sourceLines?.get(full)
+
+  if (known !== undefined) {
+    return known
+  }
+
+  const stat = lstatSync(full)
+  const line = `${full}:${stat.size}:${Math.floor(stat.mtimeMs)}`
+  sourceLines?.set(full, line)
+
+  return line
+}
+
 function compilerSourceHash(kind?: string): string {
   const root = packageRoot()
 
@@ -568,8 +586,7 @@ function compilerSourceHash(kind?: string): string {
       const full = path.join(root, file)
 
       try {
-        const stat = lstatSync(full)
-        parts.push(`${full}:${stat.size}:${Math.floor(stat.mtimeMs)}`)
+        parts.push(sourceLine(full))
       } catch {
         // a listed file that is gone is itself a change, and contributes nothing rather than throwing
       }
@@ -698,9 +715,13 @@ export function compilerVersion(kind?: string): string {
 export function compilerVersions(): Record<string, string> {
   const out: Record<string, string> = {}
 
+  sourceLines = new Map()
+
   for (const kind of Object.keys(CACHE_SCOPE)) {
     out[kind] = compilerVersion(kind)
   }
+
+  sourceLines = undefined
 
   return out
 }

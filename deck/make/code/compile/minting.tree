@@ -26,11 +26,6 @@ load @term/base/text
 load ../parser/tree
   find node
   find root-node
-  find parse
-  find parse-result
-
-load ../parser/token
-  find token-source
 
 load ../parser/diagnostic
   find span
@@ -65,9 +60,6 @@ load ./mill-running
   find mine-run
   find run-mine
   find run-mint
-  find read-mine-grammar
-  find read-mint-grammar
-  find read-lean-rules
 
 load ./minting-reads
   find mint-state
@@ -143,50 +135,15 @@ task baked-grammar
       back known
     case none
       save nothing, 0
-  save mine-tree, parse-source(<code-mine.tree>, minting-grammar-text/MINE_SOURCE)
-  save mint-tree, parse-source(<code-mint.tree>, minting-grammar-text/MINT_SOURCE)
-  save mine, make hash
-  save lean, make hash
-  sift mine-tree
-    case some
-      link known
-      save mine, read-mine-grammar(known)
-      walk read-lean-rules(known)
-        take rule
-        save lean/{rule}, true
-    case none
-      save nothing, 0
-  save mint, make hash
-  sift mint-tree
-    case some
-      link known
-      save mint, read-mint-grammar(known)
-    case none
-      save nothing, 0
+  # the grammar as read at bake time: parsing its sources here cost 115 ms of every process that mills (item 0757)
+  save read, minting-grammar-text/read-grammar()
   save grammar
     make mint-grammar
-      bind mine, mine
-      bind mint, mint
-      bind lean, lean
+      bind mine, read/mine
+      bind mint, read/mint
+      bind lean, read/lean
   save baked-cell/grammar, make(some, grammar)
   back grammar
-
-task parse-source
-  take file, like text
-  take text, like text
-  like maybe, like root-node
-  mark private
-
-  save source
-    make token-source
-      bind file, file
-      bind text, text
-  save parsed, parse(source)
-  fork test, parsed/ok
-    hold
-      save tree, parsed/tree
-      back make(some, tree)
-  back make none
 
 # ---- the driver ----
 

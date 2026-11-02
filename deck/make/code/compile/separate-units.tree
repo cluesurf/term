@@ -555,15 +555,15 @@ bind shallow-call
   case kotlin
     text <$value>
 
-# the stubs a unit is checked against, deep-copied, as the original's `structuredClone`: the checker annotates what it
-# is handed, and one unit's stubs are read by every unit after it
+# the stubs a unit is checked against, deep-copied, the copy `structuredClone` makes (compile/program-copy.ts): the
+# checker annotates what it is handed, and one unit's stubs are read by every unit after it
 bind copy-statements
   take value, like list, like statement
   like list, like statement
   case node
-    text <structuredClone($value)>
+    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
   case browser
-    text <structuredClone($value)>
+    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
   case rust
     text <$value>
   case swift

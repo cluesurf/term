@@ -248,14 +248,15 @@ form case-sharing
   link file, like text
   link scopes, like list, like file-scope
 
-# a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
+# a whole program the caller may write without touching the one it was handed (compile/program-copy.ts). Natively a
+# value is already a copy
 bind copy-program
   take value, like list, like statement
   like list, like statement
   case node
-    text <structuredClone($value)>
+    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
   case browser
-    text <structuredClone($value)>
+    text <(((globalThis as any).__termCopyProgram ?? structuredClone) as typeof structuredClone)($value)>
   case rust
     text <$value>
   case swift

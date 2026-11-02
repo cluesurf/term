@@ -1,0 +1,70 @@
+note <The program copier gives the copy structuredClone gives>
+
+# compile/program-copy.ts replaced structuredClone on the build's two hot copies (item 0757). The bind texts run on node:
+# what they read (a Map, a cycle, a Date) has no Term type. Written with function, since an arrow would close the text.
+
+dock load
+  load <@term/make/code/compile/program-copy>, name program-copy
+
+bind same-as-clone
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const given = \{ form: 'function', name: 'f', none: undefined, list: [1, -0, NaN, 'x', null, undefined, 5n, true], map: new Map([['a', \{ b: 1 \}], ['c', [2]]]), set: new Set(['s', 't']), deep: \{ z: 1, a: \{ y: 2, b: [] \} \} \}; const write = function (v) \{ return JSON.stringify(v, function (k, x) \{ return x === undefined ? 'absent' : typeof x === 'bigint' ? 'n' + x : Object.is(x, -0) ? 'minus' : x !== x ? 'nan' : x instanceof Map ? ['m', ...x] : x instanceof Set ? ['s', ...x] : x \}) \}; const one = $copy(given); return write(one) === write(structuredClone(given)) && write(one) === write(given) && one !== given && one.map !== given.map && one.set !== given.set && one.deep.a !== given.deep.a \})()>
+
+bind one-shared
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const shared = \{ form: 'number' \}; const out = $copy([shared, \{ type: shared \}]); return out[0] === out[1].type && out[0] !== shared \})()>
+
+bind one-cycle
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const cycle = \{ form: 'loop' \}; cycle.self = cycle; const out = $copy(cycle); return out.self === out && out !== cycle \})()>
+
+bind a-date-copied
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const when = new Date(5); const out = $copy(\{ when \}); return out.when instanceof Date && out.when !== when && out.when.getTime() === 5 \})()>
+
+bind a-function-refused
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ try \{ $copy(\{ run: function () \{ return 1 \} \}); return false \} catch (raised) \{ return raised.name === 'DataCloneError' \} \})()>
+
+bind a-write-stays-home
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const given = \{ list: [\{ name: 'a' \}] \}; const out = $copy(given); out.list[0].name = 'b'; out.list.push(1); return given.list.length === 1 && given.list[0].name === 'a' \})()>
+
+bind a-proto-key-stays-a-key
+  take copy, like dynamic
+  like boolean
+  case node
+    text <(function () \{ const out = $copy(JSON.parse('\{"__proto__": \{"x": 1\}\}')); return Object.getPrototypeOf(out) === Object.prototype && out.x === undefined && Object.keys(out).length === 1 \})()>
+
+test <every field, its order, an absent value, a map and a set>
+  want hold, same-as-clone(program-copy/copy-program)
+
+test <a node met twice is one copy met twice>
+  want hold, one-shared(program-copy/copy-program)
+
+test <a cycle is copied>
+  want hold, one-cycle(program-copy/copy-program)
+
+test <what is not plain goes to structuredClone>
+  want hold, a-date-copied(program-copy/copy-program)
+
+test <a function raises as structuredClone raises>
+  want hold, a-function-refused(program-copy/copy-program)
+
+test <a write on the copy never reaches the given>
+  want hold, a-write-stays-home(program-copy/copy-program)
+
+test <a field named __proto__ stays a field>
+  want hold, a-proto-key-stays-a-key(program-copy/copy-program)

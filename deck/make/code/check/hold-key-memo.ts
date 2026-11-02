@@ -23,33 +23,79 @@ const MARK = '\u0000'
 
 class NotExact extends Error {}
 
-function exactly(this: Record<string, unknown>, key: string, _written: unknown): unknown {
-  if (key === 'span') return undefined
+const MARK_KEY = JSON.stringify(MARK)
 
-  // the value as held, before any `toJSON` (a Date's would make it its text)
-  const value = this[key]
+// a field's name as JSON, written once: a program has few names and many fields (item 0757)
+const quotedKeys = new Map<string, string>()
 
+function quotedKey(key: string): string {
+  let quoted = quotedKeys.get(key)
+
+  if (quoted === undefined) {
+    quoted = JSON.stringify(key)
+    quotedKeys.set(key, quoted)
+  }
+
+  return quoted
+}
+
+// the text JSON.stringify writes with a replacer that marks what JSON would lose, written by hand since a replacer made
+// this 2.1 ms of every keystroke (item 0757, test/check/hold-key-memo.ts). `span` is left out at every depth. A cycle
+// overflows the stack, which `key` answers as no key, as JSON.stringify's own refusal was
+function exactly(value: unknown): string {
   switch (typeof value) {
+    case 'string':
+      return JSON.stringify(value)
+    case 'boolean':
+      return value ? 'true' : 'false'
     case 'undefined':
-      return { [MARK]: 'u' }
+      return `{${MARK_KEY}:"u"}`
     case 'bigint':
-      return { [MARK]: 'b', v: value.toString() }
+      return `{${MARK_KEY}:"b","v":"${value.toString()}"}`
     case 'number':
-      return Number.isFinite(value) && !Object.is(value, -0) ? value : { [MARK]: 'n', v: Object.is(value, -0) ? '-0' : String(value) }
+      if (Number.isFinite(value) && !Object.is(value, -0)) return String(value)
+      return `{${MARK_KEY}:"n","v":"${Object.is(value, -0) ? '-0' : String(value)}"}`
     case 'function':
     case 'symbol':
       throw new NotExact()
-    case 'object': {
-      if (value === null || Array.isArray(value)) return value
-      if (value instanceof Map) return { [MARK]: 'm', e: [...value.entries()] }
-      if (value instanceof Set) return { [MARK]: 's', v: [...value] }
-      const proto = Object.getPrototypeOf(value)
-      if ((proto !== Object.prototype && proto !== null) || Object.prototype.hasOwnProperty.call(value, MARK)) throw new NotExact()
-      return value
-    }
     default:
-      return value
   }
+
+  if (value === null) return 'null'
+
+  if (Array.isArray(value)) {
+    let out = '['
+
+    for (let at = 0; at < value.length; at++) {
+      if (at > 0) out += ','
+      out += exactly(value[at])
+    }
+
+    return `${out}]`
+  }
+
+  if (value instanceof Map) return `{${MARK_KEY}:"m","e":${exactly([...value.entries()])}}`
+  if (value instanceof Set) return `{${MARK_KEY}:"s","v":${exactly([...value])}}`
+
+  const proto = Object.getPrototypeOf(value)
+
+  if (proto !== Object.prototype && proto !== null) throw new NotExact()
+
+  let out = '{'
+  let first = true
+  const fields = value as Record<string, unknown>
+
+  for (const key of Object.keys(fields)) {
+    if (key === MARK) throw new NotExact()
+    if (key === 'span') continue
+    if (first) first = false
+    else out += ','
+    out += quotedKey(key)
+    out += ':'
+    out += exactly(fields[key])
+  }
+
+  return `${out}}`
 }
 
 const kept = new Map<string, KeyFound>()
@@ -59,7 +105,7 @@ export const holdKeyMemo = {
   // the statement's whole native text, `''` when it cannot be written exactly
   key(statement: unknown): string {
     try {
-      return JSON.stringify(statement, exactly) ?? ''
+      return exactly(statement)
     } catch {
       return ''
     }
