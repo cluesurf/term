@@ -1,0 +1,43 @@
+note <THE PROOF BUDGET (check/product.ts, check/holds.ts)>
+
+# Ported from budget.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+# THE PROOF BUDGET (check/product.ts, check/holds.ts): the exact search's work per goal is capped, deterministically,
+# so a refusal stops instead of searching for half an hour. Spending it may only DECLINE: a goal it stops is reported as
+# stopped (it may still be true), never as false, and never proven.
+# Run: npx tsx test/check/budget.ts
+# a >= 2 gives a * a >= 2 a: a product of facts, so the exact search must run
+host square, <\nrule square-bound\n  seat a, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read a\n      code 2\n  show hold\n    call is-minimum\n      call multiply\n        read a\n        read a\n      call multiply\n        code 2\n        read a\n>
+
+# a >= 2 gives a + 1 >= 3: the linear prover's, with no exact search at all
+host linear, <\nrule shifted-bound\n  seat a, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read a\n      code 2\n  show hold\n    call is-minimum\n      call add\n        read a\n        code 1\n      code 3\n>
+
+test <the default budget proves a product goal>
+  host result, compile-text(square)
+  host good, result/ok
+  want hold, good
+
+test <a budget too small for it STOPS the search, and says so: not false, not proven>
+  host result, compile-text(square, make(compile-choice, bind(file, <b.tree>), bind(budget, <10>)))
+  host good, and(not(result/ok), text-contains(join(result/messages, <\n>), <was not proven within the proof budget (10 units of exact search)>))
+  want hold, good
+
+test <a goal the linear prover closes needs no budget>
+  host result, compile-text(linear, make(compile-choice, bind(file, <b.tree>), bind(budget, <10>)))
+  host good, result/ok
+  want hold, good
+
+test <and the budget is per run: unset, the product goal is proven again>
+  host result, compile-text(square)
+  host good, result/ok
+  want hold, good

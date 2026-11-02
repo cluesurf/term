@@ -396,9 +396,100 @@ task check-statement
     miss
       back node
 
+# whether a type is `unknown` or `dynamic`, or a list or hash holding one at any depth
+task holds-loose
+  take st, like infer-state
+  take given, like type
+  like boolean
+  mark private
+
+  save held, resolve-held(st, given)
+  sift held
+    case unknown
+      back true
+    case dynamic
+      back true
+    case array
+      link element
+      back holds-loose(st, element)
+    case map
+      link key
+      link value
+      back or(holds-loose(st, key), holds-loose(st, value))
+    miss
+      back false
+
+# whether a type is a hash holding `unknown` or `dynamic` at any depth
+task is-loose-hash
+  take st, like infer-state
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case map
+      back holds-loose(st, given)
+    miss
+      back false
+
+# whether an expression is a list or hash literal, the two a place's wanted type can reach (decision 011 of term/compiler)
+task is-made-in-place
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case array
+      back true
+    case map
+      back true
+    miss
+      back false
+
+# what a literal wants of a parameter's type: that type when it is loose, none otherwise, so a generic or concrete
+# parameter leaves the literal to infer itself
+task wanted-if-loose
+  take st, like infer-state
+  take given, like type
+  like maybe, like type
+  mark private
+
+  fork test, holds-loose(st, given)
+    hold
+      back make(some, given)
+  back make none
+
+# THE TYPE A CALL'S LIST OR HASH LITERAL WANTS, at its position, read off the callee's signature instantiated for it: a
+# parameter loose at any depth, none for anything else. A literal handed a loose parameter is held by nothing else, so it
+# takes the parameter's type and each element boxes (decision 011 of term/compiler, rule 1). The name is a direct call
+# of a task: a bare method's receiver and a task value keep inferring the literal by itself
+task wanted-of-argument
+  take st, like infer-state
+  take name, like text
+  take env, like hash, like text, like scheme
+  take at, like number
+  like maybe, like type
+  mark private
+
+  fork test, or(or(is-equal(name, <>), env/has(name)), or(not(st/functions/has(name)), st/method-names/has(name)))
+    hold
+      back make none
+  save declared, st/functions/get(name)
+  fork test, not(is-below(at, declared/params/length))
+    hold
+      back make none
+  fork test, not(holds-loose(st, get(declared/params, at)))
+    hold
+      back make none
+  save instance, instantiate(declared, st/sub)
+  save param, get(instance/params, at)
+  back make(some, param)
+
 # an expression inferred with the type its place wants handed down, none where nothing is wanted. A list literal wanted
-# as a list whose element is a number of a width takes that element (the `array` case reads it), and the wanted element
-# is cleared after it, where the original cleared it in a `finally` (decision 032 section 4.9) (part 5)
+# as a list whose element is a number of a width, or `unknown` or `dynamic` at any depth, takes that element, and a hash
+# literal wanted loose takes the hash's key and value (the `array` and `map` cases read it, decision 011 of term/compiler,
+# rule 1). The wanted element is cleared after it, where the original cleared it in a `finally` (decision 032 section
+# 4.9) (part 5)
 task infer-wanted
   take st, like infer-state
   take node, like expression
@@ -423,9 +514,21 @@ task infer-wanted
                     hold
                       save st/wanted-element, make(some, element)
                 miss
-                  save nothing, 0
+                  fork test, holds-loose(st, element)
+                    hold
+                      save st/wanted-element, make(some, element)
             miss
               save nothing, 0
+        case none
+          save nothing, 0
+    case map
+      sift wanted
+        case some
+          link wanted-type
+          save wanted-hash, resolve-held(st, wanted-type)
+          fork test, is-loose-hash(st, wanted-hash)
+            hold
+              save st/wanted-element, make(some, wanted-hash)
         case none
           save nothing, 0
     miss
@@ -4491,7 +4594,8 @@ task infer-expression
       save items-out, make list
       walk array-items
         take item
-        save item-found, infer-expression(st, item, env)
+        # a list or hash nested in a wanted list wants the element in turn, and infer-wanted leaves anything else alone
+        save item-found, infer-wanted(st, item, hinted, env)
         expect(st, item-found/type, element, expression-span(item-found/node), <array element>)
         push(items-out, item-found/node)
       save node/items, items-out
@@ -4501,14 +4605,34 @@ task infer-expression
       back inferred-of(found-type, with-type(node, found-type))
     case map
       link map-entries
-      save key-type, fresh-variable(st)
-      save value-type, fresh-variable(st)
+      # a hash literal wanted loose takes that key and value (infer-wanted); taken here, as the `array` case does
+      save hinted-map, st/wanted-element
+      save st/wanted-element, make none
+      save key-type, unknown-type()
+      save value-type, unknown-type()
+      save wanted-value, make none
+      sift hinted-map
+        case some
+          link hinted-hash
+          sift hinted-hash
+            case map
+              link hinted-key
+              link hinted-value
+              save key-type, hinted-key
+              save value-type, hinted-value
+              save wanted-value, make(some, hinted-value)
+            miss
+              save key-type, fresh-variable(st)
+              save value-type, fresh-variable(st)
+        case none
+          save key-type, fresh-variable(st)
+          save value-type, fresh-variable(st)
       save entries-out, make list
       walk map-entries
         take entry
         save key-found, infer-expression(st, entry/key, env)
         expect(st, key-found/type, key-type, expression-span(key-found/node), <map key>)
-        save value-found, infer-expression(st, entry/value, env)
+        save value-found, infer-wanted(st, entry/value, wanted-value, env)
         expect(st, value-found/type, value-type, expression-span(value-found/node), <map value>)
         save entry/key, key-found/node
         save entry/value, value-found/node
@@ -5001,7 +5125,20 @@ task infer-construction
       save fields-out, make list
       walk record-fields
         take field
-        save value-found, infer-expression(st, field/value, env)
+        # a list or hash made as a field's value wants the field's type, seeded once for both reads
+        save field-wanted, make none
+        fork test, is-made-in-place(field/value)
+          hold
+            sift declared
+              case some
+                link wanted-fields
+                fork test, wanted-fields/has(field/name)
+                  hold
+                    save seeded-field, seed-given-type(st, wanted-fields/get(field/name), by-generic)
+                    save field-wanted, make(some, seeded-field)
+              case none
+                save nothing, 0
+        save value-found, infer-wanted(st, field/value, field-wanted, env)
         save field/value, value-found/node
         push(fields-out, field)
         save value-span, expression-span(value-found/node)
@@ -5010,8 +5147,13 @@ task infer-construction
             link declared-fields
             fork test, declared-fields/has(field/name)
               hold
-                save seeded, seed-given-type(st, declared-fields/get(field/name), by-generic)
-                expect(st, value-found/type, seeded, value-span, <field value>)
+                sift field-wanted
+                  case some
+                    link seeded
+                    expect(st, value-found/type, seeded, value-span, <field value>)
+                  case none
+                    save seeded, seed-given-type(st, declared-fields/get(field/name), by-generic)
+                    expect(st, value-found/type, seeded, value-span, <field value>)
               miss
                 # A FIELD THE FORM DOES NOT DECLARE: a construction knows its own fields, so this is decidable here
                 save twice, 0
@@ -5896,6 +6038,7 @@ task infer-call
   # an argument already typed by choose-overload is not inferred twice (that would double its diagnostics)
   save arg-types, make list
   save args-out, make list
+  save arg-at, 0
   walk arguments-of(current)
     take arg
     save had, expression-type(arg)
@@ -5905,9 +6048,15 @@ task infer-call
         push(arg-types, had-type)
         push(args-out, arg)
       case none
-        save arg-found, infer-expression(st, arg, env)
+        # a list or hash made as the argument wants the parameter's type when that type is loose
+        save arg-wanted, make none
+        fork test, is-made-in-place(arg)
+          hold
+            save arg-wanted, wanted-of-argument(st, name, env, arg-at)
+        save arg-found, infer-wanted(st, arg, arg-wanted, env)
         push(arg-types, arg-found/type)
         push(args-out, arg-found/node)
+    save arg-at, add(arg-at, 1)
   save current, with-arguments(current, args-out)
   # RECEIVER DISPATCH: a bare method call goes to the mangled method of its receiver's form, the receiver its first
   # argument (a method takes `self` first). A local of the same name shadows it

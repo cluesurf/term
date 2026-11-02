@@ -1,0 +1,283 @@
+note <Certificates for the linear prover>
+
+# Ported from certificate.ts by task/term/suite-port.ts.
+
+# PORT: helpers of the suite this tool does not read
+# PORT: const found = refutation(system)
+# PORT: const system = [atLeast(x, zero), atLeast(y, x), below(y, zero)]
+# PORT: const x = linear({ x: 1 })
+# PORT: const zero = linear({}, 0)
+# PORT: const y = linear({ y: 1 })
+# PORT: const five = linear({}, 5)
+# PORT: const input = (at: number): Step => ({ by: 'input', at })
+# PORT: const twoX = [atMost(linear({ x: 2 }), linear({}, 3))]
+# PORT: const parity = refutation(twoXisThree)
+# PORT: const twoXisThree = [
+# PORT:   atMost(linear({ x: 2 }), linear({}, 3)),
+# PORT:   atLeast(linear({ x: 2 }), linear({}, 3)),
+# PORT: ]
+# PORT: const square = (
+# PORT:   matrix: number[][],
+# PORT:   strict = false,
+# PORT:   basis: string[][] = [['x'], ['y']],
+# PORT: ) =>
+# PORT:   checkGram({
+# PORT:     basis,
+# PORT:     matrix,
+# PORT:     target: new Map([
+# PORT:       [gramKey(['x', 'x']), 2],
+# PORT:       [gramKey(['x', 'y']), -4],
+# PORT:       [gramKey(['y', 'y']), 2],
+# PORT:     ]),
+# PORT:     strict,
+# PORT:   })
+
+# Certificates for the linear prover: a refutation is a derivation the checker replays, and the checker must refuse
+# a derivation that is not one. Run: npx tsx test/check/certificate.ts
+#
+# A checker that accepted anything would pass every other suite, so this one holds the checker to its refusals.
+# x >= 0, y >= x, y < 0: unsatisfiable
+test <a refutation is found for an unsatisfiable system>
+  # PORT: the field found
+  # PORT: ok('a refutation is found for an unsatisfiable system', found.found)
+  want hold, false
+
+test <and it replays>
+  # PORT: the field found
+  # PORT: ok(
+  # PORT:   'and it replays',
+  # PORT:   found.found && checkRefutation(system, found.step),
+  # PORT:   JSON.stringify(found),
+  # PORT: )
+  want hold, false
+
+# a satisfiable system: x >= 0, x <= 5
+test <no refutation is found for a satisfiable system>
+  # PORT: the field found
+  # PORT: ok(
+  # PORT:   'no refutation is found for a satisfiable system',
+  # PORT:   !refutation([atLeast(x, zero), atMost(x, five)]).found,
+  # PORT: )
+  want hold, false
+
+# ---- tampering ----
+test <a derivation that ends at a satisfiable row is refused>
+  # PORT: the call checkRefutation()
+  # PORT: ok(
+  # PORT:   'a derivation that ends at a satisfiable row is refused',
+  # PORT:   !checkRefutation(system, input(0)),
+  # PORT: )
+  want hold, false
+
+test <a zero multiplier is refused>
+  # PORT: the call checkRefutation()
+  # PORT: ok(
+  # PORT:   'a zero multiplier is refused',
+  # PORT:   !checkRefutation(system, {
+  # PORT:     by: 'sum',
+  # PORT:     first: input(0),
+  # PORT:     second: input(2),
+  # PORT:     a: 0,
+  # PORT:     b: 1,
+  # PORT:   }),
+  # PORT: )
+  want hold, false
+
+test <a negative multiplier is refused>
+  # PORT: the call checkRefutation()
+  # PORT: ok(
+  # PORT:   'a negative multiplier is refused',
+  # PORT:   !checkRefutation(system, {
+  # PORT:     by: 'sum',
+  # PORT:     first: input(0),
+  # PORT:     second: input(1),
+  # PORT:     a: -1,
+  # PORT:     b: 1,
+  # PORT:   }),
+  # PORT: )
+  want hold, false
+
+test <an input that does not exist is refused>
+  # PORT: the call checkRefutation()
+  # PORT: ok(
+  # PORT:   'an input that does not exist is refused',
+  # PORT:   !checkRefutation(system, { by: 'input', at: 99 }),
+  # PORT: )
+  want hold, false
+
+# 2x <= 3 cut by 2 is x <= 1, which is fine, but a cut by 3 does not divide the coefficient 2
+test <a cut by a factor that does not divide every coefficient is refused>
+  # PORT: the call checkRefutation()
+  # PORT: ok(
+  # PORT:   'a cut by a factor that does not divide every coefficient is refused',
+  # PORT:   !checkRefutation(twoX, { by: 'cut', of: input(0), g: 3 }),
+  # PORT: )
+  want hold, false
+
+# ---- the integer reasoning the cuts carry ----
+# 2x == 3 has no integer solution: only the cut sees it
+test <an integer refutation (2x == 3) is found, and replays>
+  # PORT: the field found
+  # PORT: ok(
+  # PORT:   'an integer refutation (2x == 3) is found, and replays',
+  # PORT:   parity.found && checkRefutation(twoXisThree, parity.step),
+  # PORT:   JSON.stringify(parity),
+  # PORT: )
+  want hold, false
+
+# ---- end to end: proves() returns true only with a certificate ----
+test <proves() proves a valid goal (x \>= 0, y \>= x |- y \>= 0)>
+  # PORT: the call proves()
+  # PORT: ok(
+  # PORT:   'proves() proves a valid goal (x >= 0, y >= x |- y >= 0)',
+  # PORT:   proves([atLeast(x, zero), atLeast(y, x)], atLeast(y, zero)),
+  # PORT: )
+  want hold, false
+
+test <proves() refuses an invalid one (x \>= 0 |- x \>= 1)>
+  # PORT: the call proves()
+  # PORT: ok(
+  # PORT:   'proves() refuses an invalid one (x >= 0 |- x >= 1)',
+  # PORT:   !proves([atLeast(x, zero)], atLeast(x, linear({}, 1))),
+  # PORT: )
+  want hold, false
+
+# ---- Gram certificates for the polynomial provers ----
+# (x - y)² = x² - 2xy + y², so 2p = 2x² - 4xy + 2y², and over z = (x, y) the matrix M = 2Q is [[2, -2], [-2, 2]]
+test <a Gram certificate for (x - y)² \>= 0 replays>
+  # PORT: the call checkGram()
+  # PORT:   checkGram({
+  # PORT:     basis,
+  # PORT:     matrix,
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey(['x', 'y']), -4],
+  # PORT:       [gramKey(['y', 'y']), 2],
+  # PORT:     ]),
+  # PORT:     strict,
+  # PORT:   })
+  # PORT: ok(
+  # PORT:   'a Gram certificate for (x - y)² >= 0 replays',
+  # PORT:   square([
+  # PORT:     [2, -2],
+  # PORT:     [-2, 2],
+  # PORT:   ]),
+  # PORT: )
+  want hold, false
+
+test <a matrix whose expansion is not the polynomial is refused>
+  # PORT: the call checkGram()
+  # PORT:   checkGram({
+  # PORT:     basis,
+  # PORT:     matrix,
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey(['x', 'y']), -4],
+  # PORT:       [gramKey(['y', 'y']), 2],
+  # PORT:     ]),
+  # PORT:     strict,
+  # PORT:   })
+  # PORT: ok(
+  # PORT:   'a matrix whose expansion is not the polynomial is refused',
+  # PORT:   !square([
+  # PORT:     [2, -1],
+  # PORT:     [-1, 2],
+  # PORT:   ]),
+  # PORT: )
+  want hold, false
+
+test <an asymmetric matrix is refused, even with the right expansion>
+  # PORT: the call checkGram()
+  # PORT:   checkGram({
+  # PORT:     basis,
+  # PORT:     matrix,
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey(['x', 'y']), -4],
+  # PORT:       [gramKey(['y', 'y']), 2],
+  # PORT:     ]),
+  # PORT:     strict,
+  # PORT:   })
+  # PORT: ok(
+  # PORT:   'an asymmetric matrix is refused, even with the right expansion',
+  # PORT:   !square([
+  # PORT:     [2, -3],
+  # PORT:     [-1, 2],
+  # PORT:   ]),
+  # PORT: )
+  want hold, false
+
+test <the right expansion over a matrix that is not semidefinite is refused (x² - y²)>
+  # PORT: the call checkGram()
+  # PORT: ok(
+  # PORT:   'the right expansion over a matrix that is not semidefinite is refused (x² - y²)',
+  # PORT:   !checkGram({
+  # PORT:     basis: [['x'], ['y']],
+  # PORT:     matrix: [
+  # PORT:       [2, 0],
+  # PORT:       [0, -2],
+  # PORT:     ],
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey(['y', 'y']), -2],
+  # PORT:     ]),
+  # PORT:     strict: false,
+  # PORT:   }),
+  # PORT: )
+  want hold, false
+
+test <a strict claim needs a definite matrix: (x - y)² \> 0 is refused>
+  # PORT: the call checkGram()
+  # PORT:   checkGram({
+  # PORT:     basis,
+  # PORT:     matrix,
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey(['x', 'y']), -4],
+  # PORT:       [gramKey(['y', 'y']), 2],
+  # PORT:     ]),
+  # PORT:     strict,
+  # PORT:   })
+  # PORT: ok(
+  # PORT:   'a strict claim needs a definite matrix: (x - y)² > 0 is refused',
+  # PORT:   !square(
+  # PORT:     [
+  # PORT:       [2, -2],
+  # PORT:       [-2, 2],
+  # PORT:     ],
+  # PORT:     true,
+  # PORT:   ),
+  # PORT: )
+  want hold, false
+
+test <x² + 1 \> 0 replays: definite, and the basis holds the constant>
+  # PORT: the call checkGram()
+  # PORT: ok(
+  # PORT:   'x² + 1 > 0 replays: definite, and the basis holds the constant',
+  # PORT:   checkGram({
+  # PORT:     basis: [['x'], []],
+  # PORT:     matrix: [
+  # PORT:       [2, 0],
+  # PORT:       [0, 2],
+  # PORT:     ],
+  # PORT:     target: new Map([
+  # PORT:       [gramKey(['x', 'x']), 2],
+  # PORT:       [gramKey([]), 2],
+  # PORT:     ]),
+  # PORT:     strict: true,
+  # PORT:   }),
+  # PORT: )
+  want hold, false
+
+test <x² \> 0 is refused: definite over z = (x), but zero at x = 0, and the basis has no constant>
+  # PORT: the call checkGram()
+  # PORT: ok(
+  # PORT:   'x² > 0 is refused: definite over z = (x), but zero at x = 0, and the basis has no constant',
+  # PORT:   !checkGram({
+  # PORT:     basis: [['x']],
+  # PORT:     matrix: [[2]],
+  # PORT:     target: new Map([[gramKey(['x', 'x']), 2]]),
+  # PORT:     strict: true,
+  # PORT:   }),
+  # PORT: )
+  want hold, false

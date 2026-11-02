@@ -1,0 +1,157 @@
+note <the claim wall: an unfilled claim is refused, code that runs may not call one, and a hold the prover cannot reach is an error>
+
+# Ported from test/check/claim.ts (item 0544), one test per ok(). A `rule` states a claim, a `task` of the same name
+# proves it, and between the two the name is declared and not defined. Each rule sits beside the control that would
+# catch it going silent. See note/project/term/proof/archive/law-proof-gate.md.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+  find refused-saying
+
+test <a claim with no proof is refused>
+  host out, compile-text(<rule double\n  take n, like number\n  like number\n>)
+  want hold, refused-as(out, <open-claim>)
+
+test <a claim a task of the same name proves is accepted>
+  host out, compile-text(<rule double\n  take n, like number\n  like number\n\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n>)
+  want hold, out/ok
+  want hold, is-equal out/open-claims/length, 0
+
+test <`note open` leaves the claim open, counted, and compiling>
+  host out, compile-text(<rule double\n  note open\n  take n, like number\n  like number\n>)
+  want hold, out/ok
+  want hold, is-equal out/open-claims/length, 1
+  want hold, is-equal out/open-claims/0, <double>
+
+test <calling an open claim is refused>
+  host out, compile-text(<rule double\n  note open\n  take n, like number\n  like number\n\ntask use-it\n  take n, like number\n  like number\n  send back\n    call double\n      read n\n>)
+  want hold, refused-as(out, <open-claim-used>)
+
+test <calling a PROVEN claim is fine (the control: the wall is about proof, not about calling)>
+  host out, compile-text(<rule double\n  take n, like number\n  like number\n\ntask double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask use-it\n  take n, like number\n  like number\n  send back\n    call double\n      read n\n>)
+  want hold, out/ok
+
+test <CONTROL: a LOCAL that shares an open claim's spelling does not trip the wall>
+  host out, compile-text(<rule double\n  note open\n  take n, like number\n  like number\n\ntask unrelated\n  take double, like number\n  like number\n  send back\n    read double\n>)
+  want hold, out/ok
+  want hold, is-equal out/open-claims/length, 1
+  want hold, is-equal out/open-claims/0, <double>
+
+test <a false non-linear law is refused, and shown false at values>
+  host out, compile-text(<rule mul-is-square\n  seat a, like number\n  seat b, like number\n  show\n    is-equal\n      call multiply\n        read a\n        read b\n      call multiply\n        read a\n        read a\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <a false law about a task the prover cannot reach is refused, and shown false at values>
+  host out, compile-text(<task secret\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n\nrule secret-is-identity\n  seat a, like number\n  show\n    is-equal\n      call secret\n        read a\n      read a\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <a true linear law still passes>
+  host out, compile-text(<rule add-zero\n  seat a, like number\n  show\n    is-equal\n      call add\n        read a\n        code 0\n      read a\n>)
+  want hold, out/ok
+
+test <a true ring identity still passes (non-linear, discharged by the ring normalizer)>
+  host out, compile-text(<rule mul-comm\n  seat a, like number\n  seat b, like number\n  show\n    is-equal\n      call multiply\n        read a\n        read b\n      call multiply\n        read b\n        read a\n>)
+  want hold, out/ok
+
+test <a false LINEAR law is still refuted by the prover, as before>
+  host out, compile-text(<rule add-one-is-same\n  seat a, like number\n  show\n    is-equal\n      call add\n        read a\n        code 1\n      read a\n>)
+  want hold, refused-as(out, <unproven>)
+
+host equal-form, <form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n>
+
+test <a fill with no generics, no result and bare parameters inherits the claim's signature>
+  host out, compile-text(<{equal-form}\nrule refl\n  head a\n  take x, like a\n  like equal a\n    head\n      read x\n    head\n      read x\n\ntask refl\n  take x\n  send back\n    make equal/refl\n      bind c, read x\n>)
+  want hold, out/ok
+
+test <CONTROL: a fill whose body does not inhabit the claim is refused>
+  host out, compile-text(<{equal-form}\nrule refl\n  head a\n  take x, like a\n  like equal a\n    head\n      read x\n    head\n      read x\n\ntask refl\n  take x\n  send back\n    code 1\n>)
+  want hold, refused-as(out, <type-mismatch>)
+
+host anything-equal, <\nrule anything-equal\n  head a\n  take x, like a\n  take y, like a\n  like equal a\n    head\n      read x\n    head\n      read y\n\ntask anything-equal\n  take x\n  take y\n  save along\n    call leap\n      read x\n      read y\n      make equal/refl\n        bind c, read x\n  send back\n    call along\n      make equal/refl\n        bind c, read x\n>
+
+test <FALSE: `x == y` for all x and y, through a convoy helper whose body is wrong, is refused>
+  host out, compile-text(<{equal-form}\ntask leap\n  head a\n  take x, like a\n  take y, like a\n  take left\n    like equal a\n      head\n        read x\n      head\n        read x\n  like task\n    take r\n      like equal a\n        head\n          read x\n        head\n          read x\n    like equal a\n      head\n        read x\n      head\n        read y\n  fork case, read left\n    case refl\n      link c\n      send back\n        task id\n          take r\n            like equal a\n              head\n                read c\n              head\n                read c\n          like equal a\n            head\n              read c\n            head\n              read y\n          send back\n            make equal/refl\n              bind c, read c\n{anything-equal}>)
+  want hold, not(out/ok)
+
+test <FALSE: a proof resting on a helper the kernel did not check is refused, naming the helper>
+  host out, compile-text(<{equal-form}\ntask leap\n  head a\n  take x, like a\n  take y, like a\n  take left\n    like equal a\n      head\n        read x\n      head\n        read x\n  like task\n    take r\n      like equal a\n        head\n          read x\n        head\n          read x\n    like equal a\n      head\n        read x\n      head\n        read y\n  save n, code 0\n{anything-equal}>)
+  want hold, refused-saying(out, <unverified-proof>, <`leap`>)
+
+task chain-claim
+  take sent, like text
+  like text
+
+  back <{equal-form}\nrule transitivity\n  head a\n  take x, like a\n  take y, like a\n  take z, like a\n  take left\n    like equal a\n      head\n        read x\n      head\n        read y\n  take right\n    like equal a\n      head\n        read y\n      head\n        read z\n  like equal a\n    head\n      read x\n    head\n      read z\n\ntask transitivity\n  take x\n  take y\n  take z\n  take left\n  take right\n  save along\n    call chain\n      read x\n      read y\n      read z\n      read left\n  send back\n    call along\n      read right\n\ntask chain\n  head a\n  take x, like a\n  take y, like a\n  take z, like a\n  take left\n    like equal a\n      head\n        read x\n      head\n        read y\n  like task\n    take r\n      like equal a\n        head\n          read y\n        head\n          read z\n    like equal a\n      head\n        read x\n      head\n        read z\n  fork case, read left\n    case refl\n      link c\n      send back\n        task id\n          take r\n            like equal a\n              head\n                read c\n              head\n                read z\n          like equal a\n            head\n              read c\n            head\n              read z\n{sent}\n>
+
+test <the convoy `chain` is checked by the kernel, and `transitivity` on it is accepted>
+  host out, compile-text(chain-claim(<          send back, read r>))
+  want hold, out/ok
+
+test <CONTROL: a `chain` whose body is wrong is refused>
+  host out, compile-text(chain-claim(<          send back\n            make equal/refl\n              bind c, read c>))
+  want hold, refused-as(out, <type-mismatch>)
+
+test <CONTROL: `symmetry`, a true proof with no helper, is still accepted>
+  host out, compile-text(<{equal-form}\nrule symmetry\n  head a\n  take x, like a\n  take y, like a\n  take proof\n    like equal a\n      head\n        read x\n      head\n        read y\n  like equal a\n    head\n      read y\n    head\n      read x\n\ntask symmetry\n  take x\n  take y\n  take proof\n  fork case, read proof\n    case refl\n      link c\n      send back\n        make equal/refl\n          bind c, read c\n>)
+  want hold, out/ok
+
+host flag-form, <form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\ntask spin\n  take g, like flag\n  like flag\n  back spin(g)\n>
+
+task closed-claim
+  take claim, like text
+  take lhs, like text
+  take rhs, like text
+  take witness, like text
+  like text
+
+  back <{equal-form}\n{flag-form}\nrule {claim}\n  like equal flag\n    head\n      {lhs}\n    head\n      {rhs}\n\ntask {claim}\n  send back\n    make equal/refl\n      bind c, {witness}\n>
+
+task every-flag-claim
+  take claim, like text
+  take lhs, like text
+  take rhs, like text
+  like text
+
+  back <{equal-form}\n{flag-form}\nrule {claim}\n  take g, like flag\n  like equal flag\n    head\n      {lhs}\n    head\n      {rhs}\n\ntask {claim}\n  take g\n  sift g\n    case yes\n      back\n        make equal/refl\n          bind c, make yes\n    case no\n      back\n        make equal/refl\n          bind c, make no\n>
+
+test <a claim calling a task: flip(yes) == no, by refl, is proven>
+  host out, compile-text(closed-claim(<flip-yes>, <flip(make yes)>, <make no>, <make no>))
+  want hold, out/ok
+
+test <FALSE: flip(yes) == yes is refused>
+  host out, compile-text(closed-claim(<flip-yes>, <flip(make yes)>, <make yes>, <make yes>))
+  want hold, refused-as(out, <unverified-proof>)
+
+test <flip(flip(g)) == g for every flag, by cases, is proven>
+  host out, compile-text(every-flag-claim(<flip-twice>, <flip(flip(g))>, <read g>))
+  want hold, out/ok
+
+test <FALSE: flip(g) == g for every flag is refused>
+  host out, compile-text(every-flag-claim(<flip-fixed>, <flip(g)>, <read g>))
+  want hold, refused-as(out, <unverified-proof>)
+
+test <a task the kernel did not keep (it does not terminate) is opaque: spin(yes) == yes is refused>
+  host out, compile-text(closed-claim(<spin-yes>, <spin(make yes)>, <make yes>, <make yes>))
+  want hold, refused-as(out, <unverified-proof>)
+
+# a call nested under a call in a lean claim type
+task lean-choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <claim.tree>), bind(lean, true))
+
+test <lean: a call nested under a call in a claim type reads, and flip(flip(g)) == g is proven>
+  want hold, compile-text(every-flag-claim(<flip-twice>, <flip\n        flip\n          read g>, <read g>), lean-choice())/ok
+
+test <FALSE, lean: flip(flip(flip(g))) == g is refused>
+  want hold, refused-as(compile-text(every-flag-claim(<flip-fixed>, <flip\n        flip\n          flip\n            read g>, <read g>), lean-choice()), <unverified-proof>)
+
+test <`make light/red` types as `light`, the same as `make red`>
+  want hold, compile-text(<form light\n  case red\n  case green\n\ntask pick\n  like light\n  send back\n    make red\n>)/ok
+  want hold, compile-text(<form light\n  case red\n  case green\n\ntask pick\n  like light\n  send back\n    make light/red\n>)/ok
+
+test <CONTROL: a variant of another enum is still refused>
+  host out, compile-text(<form light\n  case red\n  case green\n\nform fruit\n  case apple\n\ntask pick\n  like fruit\n  send back\n    make light/red\n>)
+  want hold, not(out/ok)

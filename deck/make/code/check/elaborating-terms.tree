@@ -1324,6 +1324,30 @@ task array-term
   mark private
 
   save st, ts/st
+  # a list of `unknown` or `dynamic` holds boxed values of any type, which the kernel has no type for: declined, as any
+  # expression it cannot represent is (decision 011 of term/compiler)
+  sift node
+    case array
+      link type
+      sift type
+        case some
+          link loose-list
+          sift loose-list
+            case array
+              link loose-element
+              sift loose-element
+                case unknown
+                  back no-term()
+                case dynamic
+                  back no-term()
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
   save terms, make list
   walk items
     take item

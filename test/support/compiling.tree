@@ -1,0 +1,264 @@
+# The ONE file a Term suite reaches the compile driver through (decision 104, "Tests", as decision 106 narrows it). A suite
+# may dock the compiler module that is its subject, and everything else goes through here. `compile-text` compiles a program
+# from a text and answers a typed outcome, so a suite never holds a host value of the compiler's. It docks the
+# TypeScript driver today, as deck/test/code/cross-emission.tree does, and item 0707 moves it to the Term driver after
+# gate 0117 without touching a suite.
+#
+# A fixture is compiled as the TypeScript suites compile it: no project, no role, longhand unless `lean` says so, and
+# every load read from the standard library the compiler finds for itself, unless the choice says otherwise.
+
+load @term/base/list
+  find contains
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-driver
+  load <@term/make/code/resolve>, name compiling-resolve
+  load <@term/make/code/compile/native>, name compiling-native
+
+form compiling-source
+  link file, like text
+  link text, like text
+
+# How to compile. `file` is the name diagnostics carry, and `lean` whether the text is read lean. `stdlib` is the native
+# env of the stdlib resolver, <> none, as <node>. `files` answers a load by its exact path before the stdlib, and a source's
+# `file` is both that path and the file it answers as. `env` and `entry` are the driver's env and one entry point, left out
+# when empty. `budget` is the proof budget, <> the one the run was started with or else the compiler's own.
+form compile-choice
+  link file, like text, fall <suite.tree>
+  link lean, like boolean, fall false
+  link stdlib, like text, fall <>
+  link files
+    like list, like compiling-source
+    fall make list
+  link env, like text, fall <>
+  link entry, like text, fall <>
+  link budget, like text, fall <>
+
+# tier 0: how many obligations the program owes, how many are proven, and the messages of the rest
+form obligation-tally
+  link total, like number
+  link proven, like number
+  link failed, like list, like text
+
+form compile-marker
+  link line, like number
+  link label, like text
+
+# a diagnostic with its place, the line and column from 0 as the driver counts them, both 0 on one with no span
+form compile-note
+  link name, like text
+  link message, like text
+  link line, like number
+  link column, like number
+  link markers, like list, like compile-marker
+
+# What a compile came to. `names` and `messages` are parallel, the diagnostics of a refused program, and empty on one
+# that compiled. `notes` are the same diagnostics with their places. `warnings` are the names of a compiled program's
+# warnings. `program` is the checked program, for a helper that emits or runs it, and is void on a refusal. `emitted` is
+# the TypeScript of a program that compiled, else empty. `ms` is the time around the driver's compile only.
+form compile-outcome
+  link ok, like boolean
+  link names, like list, like text
+  link messages, like list, like text
+  link notes, like list, like compile-note
+  link warnings, like list, like text
+  link obligations, like obligation-tally
+  link open-claims, like list, like text
+  link program, like dynamic
+  link emitted, like text
+  link ms, like number
+
+bind compiling-options
+  take lean, like boolean
+  like dynamic
+  case node
+    text <($lean ? (\{ leanOf: () =\> true \}) : undefined)>
+
+# the rest of the driver's options, each left out when empty: the compiler tells an env given from none (T-0495)
+bind compiling-with-rest
+  take options, like dynamic
+  take resolver, like dynamic
+  take env, like text
+  take entry, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const given = \{ ...$options \}; if ($resolver) given.resolve = $resolver; if ($env !== "") given.env = $env; if ($entry !== "") given.entryPoints = [$entry]; return Object.keys(given).length === 0 ? undefined : given \})()>
+
+bind compiling-no-resolver
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind compiling-with-files
+  take files, like list, like compiling-source
+  take below, like dynamic
+  like dynamic
+  case node
+    text <($files.length === 0 ? $below : (path, from, how) =\> \{ const found = $files.find(one =\> one.file === path); return found ? \{ file: found.file, text: found.text \} : $below?.(path, from, how) \})>
+
+# The driver's compile, timed, with the budget set around it and the value it found put back, also when the compile
+# raises. The compile is synchronous, so no other test can see the value. If the Term driver of item 0707 awaits, this
+# stops being safe and 0707 passes the budget another way (decision 106).
+bind compiling-around
+  take budget, like text
+  take now, like dynamic
+  take source, like compiling-source
+  take options, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const before = process.env.TERM_PROOF_BUDGET; if ($budget !== "") process.env.TERM_PROOF_BUDGET = $budget; try \{ const started = Date.now(); const result = $now($source, $options); return \{ result, ms: Date.now() - started \} \} finally \{ if (before === undefined) delete process.env.TERM_PROOF_BUDGET; else process.env.TERM_PROOF_BUDGET = before \} \})()>
+
+bind compiling-result
+  take around, like dynamic
+  like dynamic
+  case node
+    text <$around.result>
+
+bind compiling-ms
+  take around, like dynamic
+  like number
+  case node
+    text <$around.ms>
+
+bind compiling-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok>
+
+bind compiling-program
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.program>
+
+bind compiling-emitted
+  take result, like dynamic
+  like text
+  case node
+    text <($result.ok ? ($result.typescript ?? "") : "")>
+
+bind compiling-names
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.diagnostics ?? []).map(d =\> d.name ?? "")>
+
+bind compiling-messages
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.diagnostics ?? []).map(d =\> d.message ?? "")>
+
+bind compiling-notes
+  take result, like dynamic
+  like list, like compile-note
+  case node
+    text <($result.diagnostics ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
+
+bind compiling-warnings
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.warnings ?? []).map(d =\> d.name ?? "")>
+
+bind compiling-open
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.openClaims ?? [])>
+
+bind compiling-total
+  take result, like dynamic
+  like number
+  case node
+    text <($result.obligations?.total ?? 0)>
+
+bind compiling-proven
+  take result, like dynamic
+  like number
+  case node
+    text <($result.obligations?.proven ?? 0)>
+
+bind compiling-failed
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.obligations?.failed ?? []).map(f =\> f.diagnostic.message)>
+
+# the options the driver is handed for a choice, undefined when the choice asks for none
+task compiling-options-of
+  take choice, like compile-choice
+  like dynamic
+
+  save below, compiling-no-resolver(0)
+  fork test, is-unequal(choice/stdlib, <>)
+    hold
+      save below, compiling-native/with-native-env(choice/stdlib, compiling-resolve/stdlib-resolver())
+  back compiling-with-rest(compiling-options(choice/lean), compiling-with-files(choice/files, below), choice/env, choice/entry)
+
+# the driver's compile, a task so the budget can stand around it
+task compiling-now
+  take source, like compiling-source
+  take options, like dynamic
+  like dynamic
+
+  back compiling-driver/compile(source, options)
+
+# compile a program, read longhand under the name `suite.tree`
+task compile-text
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make compile-choice)
+
+# compile a program as `choice` says
+task compile-text
+  take source, like text
+  take choice, like compile-choice
+  like compile-outcome
+
+  host around, compiling-around(choice/budget, compiling-now, make(compiling-source, bind(file, choice/file), bind(text, source)), compiling-options-of(choice))
+  host result, compiling-result(around)
+  host names, compiling-names(result)
+  host messages, compiling-messages(result)
+  host notes, compiling-notes(result)
+  host warnings, compiling-warnings(result)
+  host open-claims, compiling-open(result)
+  host tally, make(obligation-tally, bind(total, compiling-total(result)), bind(proven, compiling-proven(result)), bind(failed, compiling-failed(result)))
+  back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(warnings, warnings), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)))
+
+# whether the program was refused, with a diagnostic of this name among the reasons
+task refused-as
+  take outcome, like compile-outcome
+  take name, like text
+  like boolean
+
+  back and(not(outcome/ok), contains(outcome/names, name))
+
+# whether the program was refused by a diagnostic of this name whose message holds `word`
+task refused-saying
+  take outcome, like compile-outcome
+  take name, like text
+  take word, like text
+  like boolean
+
+  fork test, outcome/ok
+    hold
+      back false
+  save at, 0
+  walk outcome/names
+    take found
+    fork test, and(is-equal(found, name), compiling-holds(outcome/messages/{at}, word))
+      hold
+        back true
+    save at, add(at, 1)
+  back false
+
+bind compiling-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>

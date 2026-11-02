@@ -1,0 +1,61 @@
+note <A construction of a case two forms share fits the form whose case it builds, a `need false` field left out included>
+
+# Ported from case-fit.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-choice
+  find compile-outcome
+  find compile-text
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+
+# A construction of a case two forms share fits the form whose case it builds, a `need false` field left out
+# included. Until 2026-10-05 a case fitted only when every one of its fields was given, so `make variable / bind name /
+# bind span` fitted neither node.tree's expression case (with three `need false` fields beside those two) nor the
+# type's (`id`), stayed open, and the TypeScript emitter built the type's case, `{ kind: "variable" }`, where an
+# expression was meant: no refusal, and a wrong record. check/infer.ts, `caseRequired`. Run: npx tsx test/check/case-fit.ts
+# two forms each with a case `variable`: the first tagged on `kind` with one field, the second with two given fields
+# and a `need false` one
+host forms, <form kind-of\n  mark tag, name kind\n  case variable\n    link id, like number\n  case other\n\nform value\n  case variable\n    link name, like text\n    link at, like number\n    link note\n      like text\n      need false\n  case constant\n    link amount, like number\n>
+
+host named, <{forms}\ntask named\n  take name, like text\n  like value\n  send back\n    make variable\n      bind name, read name\n      bind at, code 3\n>
+
+host numbered, <{forms}\ntask numbered\n  like kind-of\n  send back\n    make variable\n      bind id, code 7\n>
+
+task built-of
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <case-fit.tree>)))
+
+# the emitted text from a function's head, `size` characters
+task body-of
+  take built, like compile-outcome
+  take head, like text
+  take size, like number
+  like text
+
+  host at, index-of(built/emitted, head)
+  back substring(built/emitted, at, add(at, size))
+
+test <a construction leaving out a need false field builds>
+  host built, built-of(named)
+  want hold, built/ok
+
+test <it builds the case of the form whose fields it gives>
+  host built, built-of(named)
+  want hold, built/ok
+  want hold, text-contains(body-of(built, <function named>, 300), <form: "variable", name: name, at: 3>)
+
+test <and never the other form's case>
+  host built, built-of(named)
+  want hold, built/ok
+  want hold, not(text-contains(body-of(built, <function named>, 300), <kind: "variable">))
+
+test <a construction giving the other case's field builds that case>
+  host built, built-of(numbered)
+  want hold, built/ok
+  want hold, text-contains(body-of(built, <function numbered>, 200), <kind: "variable", id: 7>)

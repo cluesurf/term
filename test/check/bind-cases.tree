@@ -1,0 +1,44 @@
+note <A shared `bind` has a case for every backend (check/binds.ts)>
+
+# Ported from bind-cases.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+# A shared `bind` has a case for every backend (check/binds.ts). One that left a backend out was a WARNING until
+# 2026-10-05: it built for the backends it had, and a program calling it failed only once built for another, at the
+# emit, far from the bind. It is an error now, at the bind, naming the backends it leaves out. A bind in a
+# `native/<backend>/` file is for that backend alone and is not asked for the others, and so is a bind with one case.
+# Run: npx tsx test/check/bind-cases.ts
+test <a shared bind that leaves backends out is refused, naming them>
+  host out, compile-text(<bind now-ms, like number\n  case node\n    text \<0\>\n  case browser\n    text \<0\>\n\ntask run\n  like number\n  back now-ms()\n>, make(compile-choice, bind(file, </gate/code/clock.tree>), bind(lean, false)))
+  host partial, join(out/messages, < | >)
+  want hold, text-contains(partial, <the bind `now-ms` has no case for rust, swift, kotlin>)
+
+test <a shared bind with a case for each of the five builds>
+  host out, compile-text(<bind now-ms, like number\n  case node\n    text \<0\>\n  case browser\n    text \<0\>\n  case rust\n    text \<0\>\n  case swift\n    text \<0\>\n  case kotlin\n    text \<0\>\n\ntask run\n  like number\n  back now-ms()\n>, make(compile-choice, bind(file, </gate/code/clock.tree>), bind(lean, false)))
+  host whole, join(out/messages, < | >)
+  want hold, is-equal(whole, <>)
+
+test <a bind in a native/\<backend\>/ file is for that backend alone>
+  host out, compile-text(<bind now-ms, like number\n  case rust\n    text \<0\>\n\ntask run\n  like number\n  back now-ms()\n>, make(compile-choice, bind(file, </gate/code/native/rust/clock.tree>), bind(lean, false)))
+  host native, join(out/messages, < | >)
+  want hold, is-equal(native, <>)
+
+# zone's tools are `case node` binds in ordinary files: a node-only CLI, built for node alone
+test <a bind with one case is for that backend alone, wherever it is written>
+  host out, compile-text(<bind now-ms, like number\n  case node\n    text \<0\>\n\ntask run\n  like number\n  back now-ms()\n>, make(compile-choice, bind(file, </gate/code/tool.tree>), bind(lean, false)))
+  host single, join(out/messages, < | >)
+  want hold, is-equal(single, <>)
+
+test <a bind with four of the five is refused, naming the fifth>
+  host out, compile-text(<bind now-ms, like number\n  case node\n    text \<0\>\n  case browser\n    text \<0\>\n  case rust\n    text \<0\>\n  case swift\n    text \<0\>\n\ntask run\n  like number\n  back now-ms()\n>, make(compile-choice, bind(file, </gate/code/clock.tree>), bind(lean, false)))
+  host four, join(out/messages, < | >)
+  want hold, text-contains(four, <has no case for kotlin>)

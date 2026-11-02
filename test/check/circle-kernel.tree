@@ -1,0 +1,300 @@
+note <The circle higher-inductive type, WIRED INTO THE KERNEL>
+
+# Ported from circle-kernel.ts by task/term/suite-port.ts.
+
+# PORT: helpers of the suite this tool does not read
+# PORT: function context() {
+# PORT:   resetMetas()
+# PORT:   resetDefinitions()
+# PORT:   // the circle's rules are the signature's, enabled by whoever postulates it (judge.ts `enableCircle`)
+# PORT:   enableCircle()
+# PORT:   return contextWithSignature(sig)
+# PORT: }
+# PORT: const sig = [
+# PORT:   { name: 'circle', type: ty(0) },
+# PORT:   { name: 'circleBase', type: kconst('circle') },
+# PORT:   // circleRec : (A : Type0) (b : A) (l : Id A b b) (c : circle) -> A
+# PORT:   {
+# PORT:     name: 'circleRec',
+# PORT:     type: pi(
+# PORT:       'many',
+# PORT:       ty(0),
+# PORT:       pi(
+# PORT:         'many',
+# PORT:         v(0),
+# PORT:         pi(
+# PORT:           'many',
+# PORT:           id(v(1), v(0), v(0)),
+# PORT:           pi('many', kconst('circle'), v(3)),
+# PORT:         ),
+# PORT:       ),
+# PORT:     ),
+# PORT:   },
+# PORT:   // circleApLoop : (A : Type0) (b : A) (l : Id A b b) -> Id A b b   (the recursor's action on the loop)
+# PORT:   {
+# PORT:     name: 'circleApLoop',
+# PORT:     type: pi(
+# PORT:       'many',
+# PORT:       ty(0),
+# PORT:       pi(
+# PORT:         'many',
+# PORT:         v(0),
+# PORT:         pi('many', id(v(1), v(0), v(0)), id(v(2), v(1), v(1))),
+# PORT:       ),
+# PORT:     ),
+# PORT:   },
+# PORT:   { name: 'A0', type: ty(0) },
+# PORT:   { name: 'b0', type: kconst('A0') },
+# PORT:   { name: 'c0', type: kconst('A0') }, // another point of A0 (for the soundness control)
+# PORT:   { name: 'l0', type: id(kconst('A0'), kconst('b0'), kconst('b0')) },
+# PORT:   { name: 'l1', type: id(kconst('A0'), kconst('b0'), kconst('b0')) }, // a DIFFERENT loop
+# PORT: ]
+# PORT: const ty = (n: number): Term => ({ tag: 'type', level: litLevel(n) })
+# PORT: const kconst = (name: string): Term => ({ tag: 'const', name })
+# PORT: const pi = (mult: Mult, domain: Term, codomain: Term): Term => ({
+# PORT:   tag: 'pi',
+# PORT:   mult,
+# PORT:   domain,
+# PORT:   codomain,
+# PORT: })
+# PORT: const v = (index: number): Term => ({ tag: 'var', index })
+# PORT: const id = (type: Term, left: Term, right: Term): Term => ({
+# PORT:   tag: 'id',
+# PORT:   type,
+# PORT:   left,
+# PORT:   right,
+# PORT: })
+# PORT: const refl = (type: Term, value: Term): Term => ({
+# PORT:   tag: 'refl',
+# PORT:   type,
+# PORT:   value,
+# PORT: })
+# PORT: const recBase: Term = apps(
+# PORT:   kconst('circleRec'),
+# PORT:   kconst('A0'),
+# PORT:   kconst('b0'),
+# PORT:   kconst('l0'),
+# PORT:   kconst('circleBase'),
+# PORT: )
+# PORT: const apps = (fun: Term, ...args: Term[]): Term => args.reduce(app, fun)
+# PORT: const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
+# PORT: const A0Path = id(kconst('A0'), kconst('b0'), kconst('b0'))
+# PORT: const apLoop: Term = apps(
+# PORT:   kconst('circleApLoop'),
+# PORT:   kconst('A0'),
+# PORT:   kconst('b0'),
+# PORT:   kconst('l0'),
+# PORT: )
+
+# The circle higher-inductive type, WIRED INTO THE KERNEL. The circle's beta-rules are realized as reductions in the
+# kernel's evaluator (`judge.ts` applyValue / reduceCircle), so they hold DEFINITIONALLY -- a `refl` proof type-checks
+# exactly when the two sides reduce to the same normal form. This is the cubical layer reaching the kernel: the engine
+# in `cubical.ts` validates that these are the correct consequences of the interval + path reduction, and the kernel
+# implements them as rewrites on the reserved circle constants.
+#   POINT beta:  circleRec A b l circleBase  ==  b
+#   PATH beta:   circleApLoop A b l           ==  l     (the action of the recursor on the loop is the target loop)
+# Both are checked DEFINITIONALLY (through `check` on a `refl`), with soundness controls (a different target is NOT
+# accepted). Run: npx tsx test/check/circle-kernel.ts
+# the circle signature: the type, its point and recursor, the loop-action, and a concrete target A0 with a point b0 and
+# two distinct postulated loops l0, l1 in A0.
+# 1. POINT beta: circleRec A0 b0 l0 circleBase reduces to b0. refl proves Id A0 (circleRec ... circleBase) b0 only if
+# the two sides are definitionally equal.
+test <point beta: circleRec A0 b0 l0 circleBase == b0>
+  # PORT: a counter with no condition
+  # PORT: function ok(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   } catch (error) {
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`,
+  # PORT:     )
+  # PORT:   }
+  # PORT: }
+  # PORT: ok('point beta: circleRec A0 b0 l0 circleBase == b0', () => {
+  # PORT:   check(
+  # PORT:     context(),
+  # PORT:     refl(kconst('A0'), kconst('b0')),
+  # PORT:     evaluate([], id(kconst('A0'), recBase, kconst('b0'))),
+  # PORT:   )
+  # PORT: })
+  want hold, false
+
+# 2. SOUNDNESS: the recursor on base is b0, NOT the other point c0 -- must be rejected.
+test <soundness: circleRec A0 b0 l0 circleBase != c0>
+  # PORT: a counter with no condition
+  # PORT: function rejects(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  (expected a type error, but it checked)`,
+  # PORT:     )
+  # PORT:   } catch {
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   }
+  # PORT: }
+  # PORT: rejects('soundness: circleRec A0 b0 l0 circleBase != c0', () => {
+  # PORT:   check(
+  # PORT:     context(),
+  # PORT:     refl(kconst('A0'), kconst('b0')),
+  # PORT:     evaluate([], id(kconst('A0'), recBase, kconst('c0'))),
+  # PORT:   )
+  # PORT: })
+  want hold, false
+
+# 3. PATH beta (the deliverable): the action of the recursor on the loop reduces to the target loop l0. refl proves
+# Id (Id A0 b0 b0) (circleApLoop A0 b0 l0) l0 only if the path beta-rule holds definitionally.
+test <PATH beta: circleApLoop A0 b0 l0 == l0  (ap (circRec) loop computes to the target loop)>
+  # PORT: a counter with no condition
+  # PORT: function ok(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   } catch (error) {
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`,
+  # PORT:     )
+  # PORT:   }
+  # PORT: }
+  # PORT: ok(
+  # PORT:   'PATH beta: circleApLoop A0 b0 l0 == l0  (ap (circRec) loop computes to the target loop)',
+  # PORT:   () => {
+  # PORT:     check(
+  # PORT:       context(),
+  # PORT:       refl(A0Path, kconst('l0')),
+  # PORT:       evaluate([], id(A0Path, apLoop, kconst('l0'))),
+  # PORT:     )
+  # PORT:   },
+  # PORT: )
+  want hold, false
+
+# 4. SOUNDNESS: the action on the loop is l0, NOT the different loop l1 -- must be rejected (the path beta-rule does not
+# collapse distinct targets).
+test <soundness: circleApLoop A0 b0 l0 != l1 (distinct loops stay distinct)>
+  # PORT: a counter with no condition
+  # PORT: function rejects(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  (expected a type error, but it checked)`,
+  # PORT:     )
+  # PORT:   } catch {
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   }
+  # PORT: }
+  # PORT: rejects(
+  # PORT:   'soundness: circleApLoop A0 b0 l0 != l1 (distinct loops stay distinct)',
+  # PORT:   () => {
+  # PORT:     check(
+  # PORT:       context(),
+  # PORT:       refl(A0Path, kconst('l0')),
+  # PORT:       evaluate([], id(A0Path, apLoop, kconst('l1'))),
+  # PORT:     )
+  # PORT:   },
+  # PORT: )
+  want hold, false
+
+# 5. the recursor stays STUCK on a neutral (non-base) circle element: with `x : circle` a variable, circleRec A0 b0 l0 x
+# does NOT reduce to b0, so refl does not prove them equal -- rejected. (The reduction fires only on the constructor.)
+test <recursor is stuck on a neutral scrutinee: circleRec A0 b0 l0 x != b0>
+  # PORT: a counter with no condition
+  # PORT: function rejects(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  (expected a type error, but it checked)`,
+  # PORT:     )
+  # PORT:   } catch {
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   }
+  # PORT: }
+  # PORT: rejects(
+  # PORT:   'recursor is stuck on a neutral scrutinee: circleRec A0 b0 l0 x != b0',
+  # PORT:   () => {
+  # PORT:     const ctx = contextWithSignature([
+  # PORT:       ...sig,
+  # PORT:       { name: 'x', type: kconst('circle') },
+  # PORT:     ])
+  # PORT:     resetMetas()
+  # PORT:     resetDefinitions()
+  # PORT:     enableCircle()
+  # PORT:     const recX = apps(
+  # PORT:       kconst('circleRec'),
+  # PORT:       kconst('A0'),
+  # PORT:       kconst('b0'),
+  # PORT:       kconst('l0'),
+  # PORT:       kconst('x'),
+  # PORT:     )
+  # PORT:     check(
+  # PORT:       ctx,
+  # PORT:       refl(kconst('A0'), kconst('b0')),
+  # PORT:       evaluate([], id(kconst('A0'), recX, kconst('b0'))),
+  # PORT:     )
+  # PORT:   },
+  # PORT: )
+  want hold, false
+
+# 6. SOUNDNESS: NOT enabled, the names are only names. A program's own task called `circleApLoop` was rewritten to its
+# third argument against its body until 2026-10-05: here the body answers 0, and `circleApLoop(1, 2, 3) == 3` must be
+# refused, and `== 0` proven
+test <a program's task named circleApLoop is not rewritten: (1, 2, 3) == 3 is refused>
+  # PORT: a counter with no condition
+  # PORT: function ok(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   } catch (error) {
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`,
+  # PORT:     )
+  # PORT:   }
+  # PORT: }
+  # PORT:   ok(
+  # PORT:     "a program's task named circleApLoop is not rewritten: (1, 2, 3) == 3 is refused",
+  # PORT:     () => {
+  # PORT:       if (compile({ file: 'c.tree', text: program(3) }).ok) {
+  # PORT:         throw new Error('proven equal to 3, against a body answering 0')
+  # PORT:       }
+  # PORT:     },
+  # PORT:   )
+  want hold, false
+
+test <and its body is what it computes: (1, 2, 3) == 0 is proven>
+  # PORT: a counter with no condition
+  # PORT: function ok(name: string, run: () => void): void {
+  # PORT:   try {
+  # PORT:     run()
+  # PORT:     pass++
+  # PORT:     console.log(`ok    ${name}`)
+  # PORT:   } catch (error) {
+  # PORT:     fail++
+  # PORT:     console.log(
+  # PORT:       `FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`,
+  # PORT:     )
+  # PORT:   }
+  # PORT: }
+  # PORT:   ok(
+  # PORT:     'and its body is what it computes: (1, 2, 3) == 0 is proven',
+  # PORT:     () => {
+  # PORT:       const result = compile({ file: 'c.tree', text: program(0) })
+  # PORT: 
+  # PORT:       if (!result.ok) {
+  # PORT:         throw new Error(
+  # PORT:           result.diagnostics.map(d => d.message).join(' | '),
+  # PORT:         )
+  # PORT:       }
+  # PORT:     },
+  # PORT:   )
+  want hold, false

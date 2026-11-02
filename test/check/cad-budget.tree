@@ -1,0 +1,71 @@
+note <THE N-VARIABLE CAD UNDER THE PROOF BUDGET (item term-self-host-001-0057)>
+
+# Ported from cad-budget.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+# whether one message holds both words: the two together on ONE line, which joined messages would weaken
+task says-both
+  take messages, like list, like text
+  take one, like text
+  take two, like text
+  like boolean
+
+  walk messages
+    take message
+    fork test, and(text-contains(message, one), text-contains(message, two))
+      hold
+        back true
+  back false
+
+# THE N-VARIABLE CAD UNDER THE PROOF BUDGET (item term-self-host-001-0057). check/cad-nvar.tree lifts root isolation
+# (check/sturm.tree) through a projection whose degree and coefficients grow with every variable: the goal
+# `9 + (b c + (d - c)) <= (b^2 d)(b^2 d)` over integer seats asks for the Sturm sequence of a degree-34 product, which
+# ran past 20 minutes with nothing to stop it. The lift now pays from the goal's budget and, run out, declines (never
+# false, never proven), and the prover goes on to what follows it: here the counterexample search, which finds the goal
+# false at zero. A goal the lift can decide is decided as before. Run: npx tsx test/check/cad-budget.ts
+# holds-pair round 65: b^4 d^2 - b c + c - d - 9 >= 0 is false (b = 0, d = 1), but only the n-variable lift reaches it
+host round-65, <\ntask sq\n  take n, like integer\n  like integer\n\n  back multiply(n, n)\n\nrule probe\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  seat d, like integer\n  show hold\n    call is-maximum\n      call add\n        code 9\n        call add\n          call multiply\n            read b\n            read c\n          call subtract\n            read d\n            read c\n      call multiply\n        call multiply\n          call sq\n            read b\n          read d\n        call multiply\n          call sq\n            read b\n          read d\n  calm hold\n>
+
+# x^2 y^2 + z^2 + 1 > 0 over three integer seats: decided as before, under the default budget
+host three-squares, <\nrule positive\n  seat x, like integer\n  seat y, like integer\n  seat z, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          call multiply\n            read x\n            read x\n          call multiply\n            read y\n            read y\n        call multiply\n          read z\n          read z\n      code 0\n  calm hold\n>
+
+# the Choi-Lam form x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 >= 0: true, not a sum of squares, so only the lift
+# reaches it, and its lift costs more than the default budget (test/check/cad-nvar.ts decides it with no budget, in
+# minutes). Stopped at the budget, it may still be true: never false
+host choi-lam, <\nrule choi-lam\n  seat x, like integer\n  seat y, like integer\n  seat z, like integer\n  show hold\n    call is-minimum\n      call add\n        call add\n          call multiply\n            call multiply\n              call multiply\n                read x\n                read x\n              call multiply\n                read x\n                read x\n            call multiply\n              read y\n              read y\n          call multiply\n            call multiply\n              call multiply\n                read y\n                read y\n              call multiply\n                read y\n                read y\n            call multiply\n              read z\n              read z\n        call multiply\n          call multiply\n            call multiply\n              read z\n              read z\n            call multiply\n              read z\n              read z\n          call multiply\n            read x\n            read x\n      call multiply\n        code 3\n        call multiply\n          call multiply\n            read x\n            read x\n          call multiply\n            call multiply\n              read y\n              read y\n            call multiply\n              read z\n              read z\n  calm hold\n>
+
+test <round 65 stops at the default budget, in under two minutes>
+  host result, compile-text(round-65)
+  host ms, result/ms
+  want hold, not(result/ok)
+  want hold, is-below(ms, 120000)
+
+test <and the prover goes on past the lift to the counterexample at zero>
+  host result, compile-text(round-65)
+  want hold, says-both(result/messages, <this rule is FALSE>, <a = 0, b = 0, c = 0, d = 0>)
+
+test <a small budget stops it at once>
+  host result, compile-text(round-65, make(compile-choice, bind(file, <cad-budget.tree>), bind(budget, <1000000>)))
+  host ms, result/ms
+  want hold, not(result/ok)
+  want hold, is-below(ms, 30000)
+
+test <a true goal whose lift costs more than the budget is stopped at the budget, not refuted>
+  host result, compile-text(choi-lam)
+  host ms, result/ms
+  want hold, not(result/ok)
+  want hold, is-below(ms, 120000)
+  want hold, text-contains(join(result/messages, <\n>), <was not proven within the proof budget>)
+
+test <a three-variable goal the lift can decide is still proven>
+  host result, compile-text(three-squares)
+  want hold, result/ok

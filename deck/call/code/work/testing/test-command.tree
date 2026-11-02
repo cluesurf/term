@@ -473,21 +473,23 @@ task find-test-files
     take folder
     fork test, node-file/exists-sync(folder)
       hold
-        walk walk-folder(folder, filter)
+        walk walk-folder(folder, filter, is-equal(folder, node-path/join(root, <test>)))
           take found
           results/push(found)
         save walked, true
   fork test, not(walked)
     hold
-      walk walk-folder(root, filter)
+      walk walk-folder(root, filter, false)
         take found
         results/push(found)
   back results
 
-# the test files under one folder, in the order its listing gives
+# the test files under one folder, in the order its listing gives. Under a project's `test` folder (`in-test`) a folder
+# with its own deck.tree is a fixture project a suite compiles, not this project's tests (decision 104, item 0544)
 task walk-folder
   take folder, like text
   take filter, like text
+  take in-test, like boolean
   like list, like text
   mark private
 
@@ -505,9 +507,9 @@ task walk-folder
         # shelved module (`draft.tree`) is out of the build, so its tests are out of the run too
         fork test, and(is-unequal(name, <node_modules>), is-unequal(name, <.base>))
           hold
-            fork test, not(node-file/exists-sync(node-path/join(full, <draft.tree>)))
+            fork test, and(not(node-file/exists-sync(node-path/join(full, <draft.tree>))), not(and(in-test, node-file/exists-sync(node-path/join(full, <deck.tree>)))))
               hold
-                walk walk-folder(full, filter)
+                walk walk-folder(full, filter, in-test)
                   take found
                   results/push(found)
       miss

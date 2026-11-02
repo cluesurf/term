@@ -31,7 +31,7 @@ import { runOn } from '../compile/shared/run-on'
 const HERE = resolve(process.cwd(), 'test/stdlib/text-format')
 const ZIP =
   process.env.TEXT_FORMAT_CLDR_ZIP ??
-  `${process.env.CLUESURF_LOCAL_DATASET_DIRECTORY?.trim() || '/Users/lancepollard/base/land/base/datasets'}/unicode/cldr-json-48.0.0/cldr-48.0.0-json-full.zip`
+  `${process.env.CLUESURF_LOCAL_DATASET_DIRECTORY?.trim() || '/Volumes/Data/datasets'}/unicode/cldr-json-48.0.0/cldr-48.0.0-json-full.zip`
 
 // the values, as JavaScript writes them, and the (fewest, most) pairs
 const VALUES = [

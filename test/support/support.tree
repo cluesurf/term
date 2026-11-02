@@ -1,0 +1,243 @@
+note <the harness itself: compile-text answers a typed outcome, temp-folder makes and removes folders>
+
+load ./compiling
+  find compile-text
+  find compile-choice
+  find compile-note
+  find compile-outcome
+  find compiling-source
+  find refused-as
+  find refused-saying
+  find compiling-options
+  find compiling-options-of
+
+load ./temp
+  find temp-folder
+  find remove-at-exit
+  find remove-temp-folders
+
+load @term/base/file/directory
+  find exists, name folder-exists
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+host clean, <task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+
+host open-claim, <rule double\n  note open\n  take n, like number\n  like number\n>
+
+host unfilled, <rule double\n  take n, like number\n  like number\n>
+
+host undefined-read, <task greet\n  like number\n  send back\n    read missing-variable\n>
+
+host lean-text, <task add-one\n  take n, like number\n  like number\n  back\n    add\n      n\n      1\n>
+
+host counted, <task first\n  take items, like list, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read items/length\n        code 0\n    hook hold\n      send back, read items/0\n  send back, code 0\n>
+
+# reaches a module that spells a platform load, which only a resolver with a native env can answer
+host platform-load, <load @term/base/file/directory\n  find exists\n\ntask here\n  like boolean\n  send back\n    call exists\n      text \<.\>\n>
+
+host reached-and-not, <task run\n  like number\n  send back, code 1\n\ntask never-reached\n  like number\n  send back, code 2\n>
+
+host helper-text, <task helper\n  like number\n  send back, code 8\n>
+
+host helper-load, <load ./helper\n  find helper\n\ntask run\n  like number\n  send back\n    call helper\n>
+
+host helper-and-stdlib, <load ./helper\n  find helper\n\nload @term/base/file/directory\n  find exists\n\ntask here\n  like boolean\n  send back\n    call exists\n      text \<.\>\n\ntask run\n  like number\n  send back\n    call helper\n>
+
+# a >= 2 gives a * a >= 2 a: a product of facts, so a budget of 10 stops the search (test/check/budget.ts)
+host square, <rule square-bound\n  seat a, like integer\n  have a-is-at-least-two\n    call is-minimum\n      read a\n      code 2\n  show hold\n    call is-minimum\n      call multiply\n        read a\n        read a\n      call multiply\n        code 2\n        read a\n>
+
+# the task's use first in the file, the host's below it and typed first (test/check/blame-order.ts)
+host blamed, <task label\n  take value\n\n  like text\n\n  back \<seen\>\n\ntask use\n  like void\n\n  save a, label(1)\n\nhost b, label(\<one\>)\n>
+
+bind support-env-set
+  take value, like text
+  like number
+  case node
+    text <(process.env.TERM_PROOF_BUDGET = $value, 0)>
+
+bind support-env-clear
+  take seed, like number
+  like number
+  case node
+    text <(delete process.env.TERM_PROOF_BUDGET, 0)>
+
+bind support-env-read
+  take seed, like number
+  like text
+  case node
+    text <(process.env.TERM_PROOF_BUDGET ?? "unset")>
+
+# a text the parser cannot read, so the driver raises
+bind support-not-a-text
+  take seed, like number
+  like text
+  case node
+    text <undefined>
+
+test <a program that compiles answers ok, with no diagnostics and a program>
+  host out, compile-text(clean)
+  want hold, out/ok
+  want hold, is-equal out/names/length, 0
+  want hold, is-equal out/messages/length, 0
+
+test <a refused program answers its diagnostic names and messages, parallel>
+  host out, compile-text(undefined-read)
+  want hold, not(out/ok)
+  want hold, is-above out/names/length, 0
+  want hold, is-equal out/names/length, out/messages/length
+
+test <refused-as is false on a program that compiled, and on another name>
+  want hold, not(refused-as(compile-text(clean), <open-claim>))
+  want hold, refused-as(compile-text(unfilled), <open-claim>)
+  want hold, not(refused-as(compile-text(unfilled), <no-such-diagnostic>))
+
+test <refused-saying reads the message of the diagnostic it names>
+  host out, compile-text(undefined-read)
+  host name, out/names/0
+  want hold, refused-saying(out, name, <missing-variable>)
+  want hold, not(refused-saying(out, name, <no such word>))
+
+test <open claims come back by name>
+  host out, compile-text(open-claim)
+  want hold, out/ok
+  want hold, is-equal out/open-claims/length, 1
+  want hold, is-equal out/open-claims/0, <double>
+
+test <the obligations come back counted>
+  host out, compile-text(counted)
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 1
+
+# today's compiler reads every small fixture alike in both surfaces, so the flag is held at the driver's own option
+bind support-reads-lean
+  take options, like dynamic
+  like boolean
+  case node
+    text <($options?.leanOf?.() === true)>
+
+test <a choice reads the text lean, and hands the driver leanOf only when it says so>
+  host chosen, make(compile-choice, bind(file, <lean.tree>), bind(lean, true))
+  want hold, compile-text(lean-text, chosen)/ok
+  want hold, support-reads-lean(compiling-options(true))
+  want hold, not(support-reads-lean(compiling-options(false)))
+
+test <a choice that says nothing hands the driver no options, as a suite with no choice>
+  want hold, support-no-options(compiling-options-of(make compile-choice))
+
+bind support-no-options
+  take options, like dynamic
+  like boolean
+  case node
+    text <($options === undefined)>
+
+test <stdlib names the native env of the resolver, so a platform load is answered>
+  want hold, not(compile-text(platform-load)/ok)
+  want hold, compile-text(platform-load, make(compile-choice, bind(stdlib, <node>)))/ok
+
+task helper-file
+  like list, like compiling-source
+
+  host files, make list
+  files/push(make(compiling-source, bind(file, <./helper>), bind(text, helper-text)))
+  back files
+
+test <files answers a load by its exact path, and nothing else with no stdlib>
+  want hold, not(compile-text(helper-load)/ok)
+  want hold, compile-text(helper-load, make(compile-choice, bind(files, helper-file())))/ok
+  want hold, not(compile-text(helper-and-stdlib, make(compile-choice, bind(files, helper-file())))/ok)
+
+test <files comes before the stdlib, and a path it does not hold goes on to it>
+  want hold, compile-text(helper-and-stdlib, make(compile-choice, bind(files, helper-file()), bind(stdlib, <node>)))/ok
+
+bind support-env-of
+  take options, like dynamic
+  like text
+  case node
+    text <($options?.env === undefined ? "none" : $options.env)>
+
+test <env is the driver's env, and left out when empty>
+  want hold, is-equal(support-env-of(compiling-options-of(make(compile-choice, bind(env, <browser>)))), <browser>)
+  want hold, is-equal(support-env-of(compiling-options-of(make compile-choice)), <none>)
+
+test <entry is the driver's one entry point: what it does not reach is not emitted>
+  host whole, compile-text(reached-and-not)
+  host entered, compile-text(reached-and-not, make(compile-choice, bind(entry, <run>)))
+  want hold, text-contains(whole/emitted, <neverReached>)
+  want hold, entered/ok
+  want hold, not(text-contains(entered/emitted, <neverReached>))
+
+test <budget stops a search, and a choice with none leaves it to the compiler>
+  want hold, compile-text(square)/ok
+  want hold, not(compile-text(square, make(compile-choice, bind(budget, <10>)))/ok)
+  want hold, compile-text(square)/ok
+
+test <budget puts back the value it found>
+  support-env-set(<500000000>)
+  host out, compile-text(clean, make(compile-choice, bind(budget, <10>)))
+  host seen, support-env-read(0)
+  support-env-clear(0)
+  want hold, out/ok
+  want hold, is-equal(seen, <500000000>)
+  want hold, is-equal(support-env-read(0), <unset>)
+
+test <budget puts back the value it found when the compile raises>
+  support-env-set(<500000000>)
+  save raised, false
+  fork
+    mark unsafe
+    host out, compile-text(support-not-a-text(0), make(compile-choice, bind(budget, <10>)))
+  halt take
+    take problem
+    save raised, true
+  host seen, support-env-read(0)
+  support-env-clear(0)
+  want hold, raised
+  want hold, is-equal(seen, <500000000>)
+
+test <emitted is the TypeScript of a program that compiled, and empty on a refusal>
+  want hold, text-contains(compile-text(clean)/emitted, <addOne>)
+  want hold, is-equal(compile-text(undefined-read)/emitted, <>)
+
+task marks-line
+  take note, like compile-note
+  take line, like number
+  take label, like text
+  like boolean
+
+  walk note/markers
+    take marker
+    fork test, and(is-equal(marker/line, line), is-equal(marker/label, label))
+      hold
+        back true
+  back false
+
+test <notes hold each diagnostic with its place and markers, parallel to names>
+  host out, compile-text(blamed, make(compile-choice, bind(stdlib, <node>), bind(env, <node>)))
+  want hold, is-equal(out/notes/length, out/names/length)
+  want hold, is-equal(out/notes/0/name, out/names/0)
+  want hold, is-equal(out/notes/0/message, out/messages/0)
+  want hold, is-equal(out/notes/0/line, 12)
+  want hold, is-above(out/notes/0/column, 0)
+  want hold, marks-line(out/notes/0, 10, <first used as number here>)
+
+test <ms is the time around the compile>
+  want hold, is-above(compile-text(clean)/ms, 0)
+
+test <temp-folder makes a new folder each call, and remove-temp-folders removes them>
+  host one, temp-folder(<support-test->)
+  host two, temp-folder(<support-test->)
+  want hold, is-unequal one, two
+  want hold, folder-exists(one)
+  want hold, folder-exists(two)
+  remove-temp-folders()
+  want hold, not(folder-exists(one))
+  want hold, not(folder-exists(two))
+
+# left on purpose: the exit hook removes it when the child ends (tmp witness in the item's proof)
+test <a folder left behind exists until the process ends>
+  want hold, folder-exists(temp-folder(<support-left->))

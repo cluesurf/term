@@ -1,0 +1,43 @@
+note <A case arm's field shadows an outer variable of its name in the kernel too, with a `miss` arm>
+
+# Ported from arm-shadow-kernel.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# A case arm's field shadows an outer variable of its name in the kernel too, with a `miss` arm. The kernel's statement
+# path checked each arm in the OUTER scope, binding no fields, so `case number / back value` beside a parameter named
+# `value` was checked as returning the parameter: "kernel: type mismatch, expected Number, found sample" for a program
+# the surface checker accepts and every backend emits right. The eliminator path (every case named, no `miss`) already
+# declined on a field. check/elaborate.ts now takes each arm's locals out of scope, so a use of one declines too.
+# Found by deck/test/code/property-check.tree, 2026-10-05. Run: npx tsx test/check/arm-shadow-kernel.ts
+task program-text
+  take other, like text
+  like text
+
+  back <form sample\n  case number\n    link value, like number\n  case flag\n    link value, like boolean\n\ntask number-in\n  take value, like sample\n  like number\n  fork case, read value\n    case number\n      send back, read value\n{other}\n\ntask run\n  like number\n  send back\n    call number-in\n      make number\n        bind value, code 7\n>
+
+test <with a miss arm: the field shadows the parameter, and the program builds>
+  host built, compile-text(program-text(<    hook miss\n      send back, code 0>), make(compile-choice, bind(file, <shadow.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, built/ok
+
+test <with a miss arm: the arm returns the field>
+  host built, compile-text(program-text(<    hook miss\n      send back, code 0>), make(compile-choice, bind(file, <shadow.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  host pattern-2, make pattern, <<const value = __at\d+\.value\s+return value>>
+  want hold, built/ok
+  want hold, matches(pattern-2, built/emitted)
+
+test <with every case named: the field shadows the parameter, and the program builds>
+  host built, compile-text(program-text(<    case flag\n      send back, code 0>), make(compile-choice, bind(file, <shadow.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, built/ok
+
+test <with every case named: the arm returns the field>
+  host built, compile-text(program-text(<    case flag\n      send back, code 0>), make(compile-choice, bind(file, <shadow.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  host pattern-2, make pattern, <<const value = __at\d+\.value\s+return value>>
+  want hold, built/ok
+  want hold, matches(pattern-2, built/emitted)

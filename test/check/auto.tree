@@ -1,0 +1,24 @@
+note <`auto` / firstorder automation>
+
+# Ported from auto.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# `auto` / firstorder automation: discharge a goal by a depth-bounded BACKTRACKING search over the HINT DATABASE (every
+# previously proven lemma in `lemmaRules`), applying each lemma as a single rewrite from the left side and checking
+# convertibility (which also runs computation) to the right. The user need not name the lemma. Sound and ADDITIVE: every
+# step is a proven equality or a reduction, so it can never close a false goal. Here `plus-zero` (`plus a 0 == a`,
+# proven by induction) is applied automatically inside `succ (plus a 0)` to prove `succ (plus a 0) == succ a`, which
+# `calm` alone cannot (it is not definitional for a symbolic `a`). Soundness control: a false goal is not closed.
+# Run: npx tsx test/check/auto.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask plus\n  take a, like nat\n  take b, like nat\n  like nat\n  fork case, read a\n    case zero\n      send back\n        read b\n    case succ\n      link prior\n      send back\n        make succ\n          bind prior\n            call plus\n              read prior\n              read b\n\nrule plus-zero\n  seat a, like nat\n  show hold\n    call is-equal\n      call plus\n        read a\n        make zero\n      read a\n  fold a\n>
+
+# 1. auto applies the proven lemma `plus a 0 == a` (inside a `succ`) without being told which lemma.
+test <auto applies a proven lemma: succ (plus a 0) == succ a>
+  want hold, compile-text(<{prelude}\nrule use-auto\n  seat a, like nat\n  show hold\n    call is-equal\n      make succ\n        bind prior\n          call plus\n            read a\n            make zero\n      make succ\n        bind prior\n          read a\n  seek\n>)/ok
+
+# 2. SOUNDNESS CONTROL: `succ (plus a 0) == a` is FALSE (it is succ a). No lemma + computation closes it; must be
+# rejected.
+test <auto does not close a false goal (succ (plus a 0) == a)>
+  want hold, not(compile-text(<{prelude}\nrule use-auto-wrong\n  seat a, like nat\n  show hold\n    call is-equal\n      make succ\n        bind prior\n          call plus\n            read a\n            make zero\n      read a\n  seek\n>)/ok)

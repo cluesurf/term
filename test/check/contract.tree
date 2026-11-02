@@ -1,0 +1,283 @@
+note <contracts and tier 0: have, must and down, and the obligations every task owes with nothing written>
+
+# Ported from test/check/contract.ts (item 0544), one test per expect() or tally(). A tally that does not compile fails
+# at its first want. Every refusal sits beside a control that must still be proven, because a checker that refused
+# everything would pass the refusals. See note/term/proof-by-default/ and check/contract.ts.
+
+load @term/base/text
+  find index-of
+  find substring
+
+load ../support/compiling
+  find compile-text
+  find refused-as
+
+# the text with the first `from` replaced, the one replacement the TypeScript made on a fixture
+task replace-once
+  take whole, like text
+  take from, like text
+  take into, like text
+  like text
+
+  host at, index-of(whole, from)
+  back <{substring(whole, 0, at)}{into}{substring(whole, add(at, from/length), whole/length)}>
+
+test <must: a true postcondition is proven>
+  host out, compile-text(<task next\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back\n    call add\n      read n\n      code 1\n>)
+  want hold, out/ok
+
+test <must: a false postcondition is refused>
+  host out, compile-text(<task same\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back, read n\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <must: every return is held to it, not only the last>
+  host out, compile-text(<task pick\n  take n, like natural-number\n  like number\n  must\n    call is-minimum\n      read back\n      code 1\n  fork test\n    hook test\n      call is-above\n        read n\n        code 3\n    hook hold\n      send back, code 0\n  send back, code 2\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <have: the body may assume it>
+  host out, compile-text(<task half\n  take n, like number\n  have\n    call is-minimum\n      read n\n      code 2\n  like number\n  must\n    call is-above\n      read back\n      code 0\n  send back\n    call subtract\n      read n\n      code 1\n>)
+  want hold, out/ok
+
+test <have: a caller that meets it is proven>
+  host out, compile-text(<task half\n  take n, like number\n  have\n    call is-minimum\n      read n\n      code 2\n  like number\n  send back, read n\n\ntask use\n  like number\n  send back\n    call half\n      code 5\n>)
+  want hold, out/ok
+
+test <have: a caller that does not meet it is refused>
+  host out, compile-text(<task half\n  take n, like number\n  have\n    call is-minimum\n      read n\n      code 2\n  like number\n  send back, read n\n\ntask use\n  like number\n  send back\n    call half\n      code 1\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <walk must: an invariant that holds is proven, and what follows may use it>
+  host out, compile-text(<task count\n  take n, like natural-number\n  like number\n  must\n    call is-equal\n      read back\n      read n\n  save i, code 0\n  walk test\n    must\n      call is-maximum\n        read i\n        read n\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  send back, read i\n>)
+  want hold, out/ok
+
+test <walk must: an invariant the body breaks is refused>
+  host out, compile-text(<task count\n  take n, like natural-number\n  like number\n  save i, code 0\n  walk test\n    must\n      call is-maximum\n        read i\n        read n\n    hook test\n      call is-maximum\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  send back, read i\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <walk down: a measure that falls is proven>
+  host out, compile-text(<task count\n  take n, like natural-number\n  like number\n  save i, code 0\n  walk test\n    down\n      call subtract\n        read n\n        read i\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  send back, read i\n>)
+  want hold, out/ok
+
+test <walk down: a measure that does not fall is refused>
+  host out, compile-text(<task count\n  take n, like natural-number\n  like number\n  save i, code 0\n  walk test\n    down\n      call subtract\n        read n\n        read i\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i, read i\n  send back, read i\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <tier 0: a read guarded by its bounds is proven>
+  host out, compile-text(<task first\n  take items, like list, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read items/length\n        code 0\n    hook hold\n      send back, read items/0\n  send back, code 0\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 1
+
+host first-task, <task first\n  take items, like list, like number\n  like number\n  send back, read items/0\n>
+
+test <tier 0: an accessor owes its read to its callers, not itself>
+  host out, compile-text(first-task)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 0
+  want hold, is-equal out/obligations/proven, 0
+
+test <tier 0: an unguarded caller of an accessor is counted as not proven>
+  host out, compile-text(<{first-task}\ntask use\n  take xs, like list, like number\n  like number\n  save v\n    call first\n      read xs\n  send back, read v\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 0
+
+test <tier 0: an accessor over an accessor lifts the read onward>
+  host out, compile-text(<{first-task}\ntask second-hand\n  take xs, like list, like number\n  like number\n  send back\n    call first\n      read xs\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 0
+  want hold, is-equal out/obligations/proven, 0
+
+test <tier 0: a caller that knows the list is not empty proves it>
+  host out, compile-text(<{first-task}\ntask use\n  take xs, like list, like number\n  have\n    call is-above\n      read xs/length\n      code 0\n  like number\n  send back\n    call first\n      read xs\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 1
+
+test <tier 0: a counted walk over a list reads inside it>
+  host out, compile-text(<task total\n  take items, like list, like number\n  like number\n  save sum, code 0\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read items/length\n    hook hold\n      save sum\n        call add\n          read sum\n          read items/\{i\}\n      save i\n        call add\n          read i\n          code 1\n  send back, read sum\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 3
+  want hold, is-equal out/obligations/proven, 3
+
+test <tier 0: a division by a checked divisor is proven, an unchecked one is not>
+  host out, compile-text(<task ratio\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read b\n        code 0\n    hook hold\n      send back\n        call divide\n          read a\n          read b\n  send back\n    call divide\n      read a\n      read b\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 2
+  want hold, is-equal out/obligations/proven, 1
+
+test <tier 0: a list filled by a counted walk is read inside its bounds afterwards>
+  host out, compile-text(<task fill\n  take n, like natural-number\n  like number\n  save xs, make list\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      call xs/push\n        read i\n      save i\n        call add\n          read i\n          code 1\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      send back\n        read xs/0\n  send back, code 0\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 3
+  want hold, is-equal out/obligations/proven, 3
+
+test <tier 0: a walk whose condition is `true` is not shown to end>
+  host out, compile-text(<task serve\n  save i, code 0\n  walk test\n    hook test\n      true\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 0
+
+test <tier 0: a walk whose counter never moves is not shown to end>
+  host out, compile-text(<task stuck\n  take n, like natural-number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i, read i\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 2
+  want hold, is-equal out/obligations/proven, 1
+
+test <must at the call: a caller may use what the callee promises>
+  host out, compile-text(<task bump\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back\n    call add\n      read n\n      code 1\n\ntask use\n  take k, like natural-number\n  like number\n  save m\n    call bump\n      read k\n  hold\n    call is-above\n      read m\n      code 0\n  send back, read m\n>)
+  want hold, out/ok
+
+test <must at the call: no more than the callee promises>
+  host out, compile-text(<task bump\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back\n    call add\n      read n\n      code 1\n\ntask use\n  take k, like natural-number\n  like number\n  save m\n    call bump\n      read k\n  hold\n    call is-above\n      read m\n      code 5\n  send back, read m\n>)
+  want hold, refused-as(out, <unproven>)
+
+host bump-task, <task bump\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back\n    call add\n      read n\n      code 1\n>
+
+test <must at the call: an assignment is owed the promise too>
+  host out, compile-text(<{bump-task}\ntask use\n  take k, like natural-number\n  like number\n  save m, code 0\n  save m\n    call bump\n      read k\n  hold\n    call is-above\n      read m\n      read k\n  send back, read m\n>)
+  want hold, out/ok
+
+test <must at the call: a promise about the value the assignment replaced is not kept>
+  host out, compile-text(<{bump-task}\ntask use\n  take k, like natural-number\n  like number\n  save m, read k\n  save m\n    call bump\n      read m\n  hold\n    call is-above\n      read m\n      read m\n  send back, read m\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <must at the call: a walk around a promising call still ends>
+  host out, compile-text(<{bump-task}\ntask use\n  take k, like natural-number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 10\n    hook hold\n      save m\n        call bump\n          read k\n      save i, call increment(read i)\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 2
+  want hold, is-equal out/obligations/proven, 2
+
+task channel
+  take red, like text
+  like text
+
+  back <form color\n  link red, like number\n\ntask shade\n  take c, like color\n  have\n    call is-maximum\n      read c/red\n      code 255\n  like number\n  send back, read c/red\n\ntask use\n  like number\n  send back\n    call shade\n      make color\n        bind red, code {red}\n>
+
+test <have on a field: a record built in place that meets it is proven>
+  host out, compile-text(channel(<200>))
+  want hold, out/ok
+
+test <have on a field: one that does not is refused>
+  host out, compile-text(channel(<300>))
+  want hold, refused-as(out, <unproven>)
+
+task made-box
+  take size, like text
+  like text
+
+  back <form box\n  link size, like number\n\ntask make-box\n  take n, like number\n  like box\n  must\n    call is-equal\n      read back/size\n      read n\n  save b\n    make box\n      bind size, {size}\n  send back, read b\n>
+
+test <must on a returned field: a record that keeps it is proven>
+  host out, compile-text(made-box(<read n>))
+  want hold, out/ok
+
+test <must on a returned field: one that breaks it is refused>
+  host out, compile-text(made-box(<code 7>))
+  want hold, refused-as(out, <unproven>)
+
+test <a `walk test` with its condition under `hook step` and no `hook test` is refused>
+  host out, compile-text(<task count\n  take n, like number\n  like number\n  save i, code 0\n  walk test\n    hook step\n      call is-below\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  send back, read i\n>)
+  want hold, refused-as(out, <unexpected-node>)
+
+test <a `walk test` with two bodies is refused>
+  host out, compile-text(<task count\n  take n, like number\n  like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook step\n      save i\n        call add\n          read i\n          code 1\n    hook hold\n      save i\n        call add\n          read i\n          code 2\n  send back, read i\n>)
+  want hold, refused-as(out, <unexpected-node>)
+
+test <tier 0: a walk in a task marked `note roam` owes no termination>
+  host out, compile-text(<task serve\n  note roam\n  save i, code 0\n  walk test\n    hook test\n      true\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 0
+  want hold, is-equal out/obligations/proven, 0
+
+test <a claim filled by a task that calls a roaming task is refused>
+  host out, compile-text(<task serve\n  note roam\n  like number\n  send back, code 1\n\nrule some-number\n  like number\n\ntask some-number\n  send back\n    call serve\n>)
+  want hold, refused-as(out, <impure-proof>)
+
+host fill-walk, <task fill\n  take box, like list, like number\n  like list\n    like number\n  must\n    call is-equal\n      read back/length\n      code 16\n  save out, make list\n  save c, code 0\n  walk test\n    hook test\n      call is-below\n        read c\n        code 4\n    hook hold\n      save r, code 0\n      walk test\n        hook test\n          call is-below\n            read r\n            code 4\n        hook hold\n          call out/push\n            read c\n          save r, call increment(read r)\n      save c, call increment(read c)\n  send back, read out\n>
+
+test <a 4 x 4 walk fills a list of exactly 16>
+  host out, compile-text(fill-walk)
+  want hold, out/ok
+
+test <an inner walk whose counter is not reset each turn is not counted>
+  host out, compile-text(replace-once(replace-once(fill-walk, <    hook hold\n      save r, code 0\n      walk test>, <    hook hold\n      walk test>), <  save c, code 0\n>, <  save c, code 0\n  save r, code 0\n>))
+  want hold, refused-as(out, <unproven>)
+
+test <an inner push under a branch is not a fixed step>
+  host out, compile-text(replace-once(fill-walk, <          call out/push\n            read c>, <          fork test\n            hook test\n              call is-above\n                read c\n                code 1\n            hook hold\n              call out/push\n                read c>))
+  want hold, refused-as(out, <unproven>)
+
+task length-two
+  take body, like text
+  like text
+
+  back <{body}\ntask use\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 2\n  call change\n    read xs\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>
+
+test <a callee that only sets inside a list keeps its length>
+  host out, compile-text(length-two(<task change\n  take xs, like list, like number\n  call xs/set\n    code 0\n    code 9\n>))
+  want hold, out/ok
+
+test <a callee that pushes onto its parameter does not>
+  host out, compile-text(length-two(<task change\n  take xs, like list, like number\n  call xs/push\n    code 9\n>))
+  want hold, refused-as(out, <unproven>)
+
+test <a callee that pushes through a second name for its parameter does not>
+  host out, compile-text(length-two(<task change\n  take xs, like list, like number\n  save s, read xs\n  call s/push\n    code 9\n>))
+  want hold, refused-as(out, <unproven>)
+
+test <a set on a list of lists does not keep the replaced element length>
+  host out, compile-text(<task use\n  take xs, like list, like list, like number\n  take row, like list, like number\n  have\n    call is-equal\n      read xs/0/length\n      code 2\n  have\n    call is-equal\n      read xs/length\n      code 1\n  call xs/set\n    code 0\n    read row\n  hold\n    call is-equal\n      read xs/0/length\n      code 2\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <a set in a walk keeps a parameter length across turns>
+  host out, compile-text(<task fold\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 16\n  save c, code 0\n  walk test\n    hook test\n      call is-below\n        read c\n        code 16\n    hook hold\n      call xs/set\n        read c\n        code 0\n      save c, call increment(read c)\n  hold\n    call is-equal\n      read xs/length\n      code 16\n>)
+  want hold, out/ok
+
+task two-lists
+  take second, like text
+  like text
+
+  back <task use\n  save a, make list\n  call a/push\n    code 1\n  save b, {second}\n  call b/push\n    code 2\n  hold\n    call is-equal\n      read a/length\n      code 1\n>
+
+task param-and-fresh
+  take rebind, like text
+  like text
+
+  back <task use\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 2\n  save m, make list\n{rebind}  call m/push\n    code 1\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>
+
+test <a push to a fresh list keeps a parameter length>
+  host out, compile-text(param-and-fresh(<>))
+  want hold, out/ok
+
+test <not the length of a list inside a parameter, which the fresh list may now be>
+  host out, compile-text(<task use\n  take rows, like list, like list, like number\n  have\n    call is-equal\n      read rows/length\n      code 1\n  have\n    call is-equal\n      read rows/0/length\n      code 0\n  save m, make list\n  call rows/set\n    code 0\n    read m\n  call m/push\n    code 1\n  hold\n    call is-equal\n      read rows/0/length\n      code 0\n>)
+  want hold, refused-as(out, <unproven>)
+
+test <not once the parameter is rebound to that list>
+  host out, compile-text(param-and-fresh(<  save xs, read m\n>))
+  want hold, refused-as(out, <unproven>)
+
+test <a reset counter leaves what it pinned: len - i == 0 and i == 3 give len == 3>
+  host out, compile-text(<task use\n  save xs, make list\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 3\n    hook hold\n      call xs/push\n        read i\n      save i, call increment(read i)\n  save i, code 0\n  hold\n    call is-equal\n      read xs/length\n      code 3\n>)
+  want hold, out/ok
+
+test <a push to one fresh list keeps another fresh list length>
+  host out, compile-text(two-lists(<make list>))
+  want hold, out/ok
+
+test <a push through a second name for the same list does not>
+  host out, compile-text(two-lists(<read a>))
+  want hold, refused-as(out, <unproven>)
+
+test <tier 0: a set owes its index like a read>
+  host out, compile-text(<task poke\n  take xs, like list, like number\n  call xs/set\n    code 5\n    code 1\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 0
+
+test <tier 0: a set inside the known length is proven>
+  host out, compile-text(<task poke\n  take xs, like list, like number\n  have\n    call is-minimum\n      read xs/length\n      code 6\n  call xs/set\n    code 5\n    code 1\n>)
+  want hold, out/ok
+  want hold, is-equal out/obligations/total, 1
+  want hold, is-equal out/obligations/proven, 1

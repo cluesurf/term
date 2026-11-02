@@ -1,0 +1,27 @@
+note <A case arm's renamed field (`case number / link n`) shadows a GLOBAL task of its name in the kernel too>
+
+# Ported from arm-rename-global.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+# A case arm's renamed field (`case number / link n`) shadows a GLOBAL task of its name in the kernel too. The kernel's
+# statement path took each arm local out of scope by deleting it, so a use fell through to the global table: with a
+# task `n` anywhere in the program, `back add(n, 1)` was checked against the task, "kernel: type mismatch, expected
+# Number, found (many x1 : Number) -> sample". check/elaborate.ts now keeps the local as a key with no level (`hide`),
+# and a use declines. Found by deck/test/test/weakest-precondition.tree, whose task `n` met smt-query.tree's
+# `case int-value / link n`, 2026-10-05. Run: npx tsx test/check/arm-rename-global.ts
+task program-text
+  take other, like text
+  like text
+
+  back <form sample\n  case number\n    link value, like number\n  case flag\n    link value, like boolean\n\ntask n\n  take value, like number\n  like sample\n  send back\n    make number\n      bind value, read value\n\ntask number-in\n  take s, like sample\n  like number\n  fork case, read s\n    case number\n      link n\n      send back\n        call add\n          read n\n          code 1\n{other}\n\ntask run\n  like number\n  send back\n    call number-in\n      call n\n        code 7\n>
+
+test <with a miss arm: the renamed field shadows the task n, and the program builds>
+  host built, compile-text(program-text(<    hook miss\n      send back, code 0>), make(compile-choice, bind(file, <rename.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, built/ok
+
+test <with every case named: the renamed field shadows the task n, and the program builds>
+  host built, compile-text(program-text(<    case flag\n      send back, code 0>), make(compile-choice, bind(file, <rename.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, built/ok

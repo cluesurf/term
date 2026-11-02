@@ -1555,15 +1555,48 @@ task box-pushed
   sift element-of(list-type)
     case some
       link element
-      fork test, is-unequal(rust-element(element, facts/context), <std::rc::Rc\<dyn std::any::Any\>>)
-        hold
+      back box-element(element, item, rendered, facts)
+    case none
+      back rendered
+
+# the same test for any place holding a boxed element: a list's item or a hash's value
+task box-element
+  take element, like type
+  take item, like expression
+  take rendered, like text
+  take facts, like rust-facts
+  like text
+  mark private
+
+  fork test, is-unequal(rust-element(element, facts/context), <std::rc::Rc\<dyn std::any::Any\>>)
+    hold
+      back rendered
+  save form, form-of(item)
+  save held, kind-of-node(item)
+  fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), is-equal(held, <variable>))
+    hold
+      back rendered
+  back box-unknown(make(some, unknown-type()), item, rendered, facts)
+
+# a hash literal's value, boxed when the hash's type holds the boxed dynamic (decision 011 of term/compiler)
+task box-map-value
+  take map-type, like maybe, like type
+  take item, like expression
+  take rendered, like text
+  take facts, like rust-facts
+  like text
+  mark private
+
+  sift map-type
+    case some
+      link known
+      sift known
+        case map
+          link map-key
+          link map-value
+          back box-element(map-value, item, rendered, facts)
+        miss
           back rendered
-      save form, form-of(item)
-      save held, kind-of-node(item)
-      fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), is-equal(held, <variable>))
-        hold
-          back rendered
-      back box-unknown(make(some, unknown-type()), item, rendered, facts)
     case none
       back rendered
 
@@ -3251,7 +3284,8 @@ task emit-array
       save items, make list
       walk array-items
         take item
-        push(items, owned(item, st, facts))
+        # a literal wanted as a list of the boxed dynamic boxes each item as it goes in (decision 011 of term/compiler)
+        push(items, bare(box-pushed(array-type, item, owned(item, st, facts), facts)))
       back <std::rc::Rc::new(std::cell::RefCell::new(vec![{join-texts(items, <, >)}]))>
     miss
       back <>
@@ -3652,7 +3686,8 @@ task emit-map
             save key, <TermKey::from({str-of(entry/key, st, facts)})>
           miss
             save key, emit-expr(entry/key, st, facts)
-        push(pairs, <({key}, {emit-expr(entry/value, st, facts)})>)
+        save entry-value, box-map-value(expression-type(node), entry/value, emit-expr(entry/value, st, facts), facts)
+        push(pairs, <({key}, {entry-value})>)
       back <std::rc::Rc::new(std::cell::RefCell::new(TermMap::from([{join-texts(pairs, <, >)}])))>
     miss
       back <>

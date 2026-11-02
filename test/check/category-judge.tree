@@ -1,0 +1,187 @@
+note <The category laws on the decided kernel (judge.ts)>
+
+# Ported from category-judge.ts by task/term/suite-port.ts, finished by hand.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind kv
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind kc
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind judge-type
+  take level, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $level \})>
+
+# a pi of a multiplicity, 0 or many
+bind pi-zero
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: 0, domain: $domain, codomain: $codomain \})>
+
+bind pi-many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: "many", domain: $domain, codomain: $codomain \})>
+
+bind lam-of
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind app-of
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind id-of
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind refl-of
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+task ty
+  like dynamic
+
+  back judge-type(judge-kernel/lit-level(0))
+
+# The category laws on the decided kernel (judge.ts): function composition is associative and the identity
+# function is a left and right unit. These are foundational (the category of types and functions), and they
+# exercise the kernel's computation (beta) and its observational equality (eta / funext): the composites reduce
+# to the same normal form, and the unit laws hold because a function equals its eta-expansion. Composition and
+# identity are transparent definitions so the proofs are reflexivity. Run: npx tsx test/check/category-judge.ts
+
+# compose : (0 X Y Z : Type) -> (Y -> Z) -> (X -> Y) -> (X -> Z)
+task compose-type
+  like dynamic
+
+  back pi-zero(ty(), pi-zero(ty(), pi-zero(ty(), pi-many(pi-many(kv(1), kv(1)), pi-many(pi-many(kv(3), kv(3)), pi-many(kv(4), kv(3)))))))
+
+# compose = \ X Y Z g f x. g (f x)
+task compose-value
+  like dynamic
+
+  back lam-of(lam-of(lam-of(lam-of(lam-of(lam-of(app-of(kv(2), app-of(kv(1), kv(0)))))))))
+
+# identity : (0 X : Type) -> X -> X = \ X x. x
+task identity-type
+  like dynamic
+
+  back pi-zero(ty(), pi-many(kv(0), kv(1)))
+
+task identity-value
+  like dynamic
+
+  back lam-of(lam-of(kv(0)))
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+# the signature's context, with compose and identity defined as the TypeScript suite defined them at its top
+task prepared
+  like dynamic
+
+  host signature, make list
+  signature/push(hyp(<A>, ty()))
+  signature/push(hyp(<B>, ty()))
+  signature/push(hyp(<C>, ty()))
+  signature/push(hyp(<D>, ty()))
+  signature/push(hyp(<f>, pi-many(kc(<A>), kc(<B>))))
+  signature/push(hyp(<g>, pi-many(kc(<B>), kc(<C>))))
+  signature/push(hyp(<h>, pi-many(kc(<C>), kc(<D>))))
+  signature/push(hyp(<compose>, compose-type()))
+  signature/push(hyp(<identity>, identity-type()))
+  host context, judge-kernel/context-with-signature(signature)
+  host empty, make list
+  judge-kernel/define-constant(<compose>, judge-kernel/evaluate(empty, compose-value()))
+  judge-kernel/define-constant(<identity>, judge-kernel/evaluate(empty, identity-value()))
+  back context
+
+# composition shorthand
+task comp
+  take from, like dynamic
+  take through, like dynamic
+  take to, like dynamic
+  take outer, like dynamic
+  take inner, like dynamic
+  like dynamic
+
+  back app-of(app-of(app-of(app-of(app-of(kc(<compose>), from), through), to), outer), inner)
+
+task id-at
+  take at, like dynamic
+  like dynamic
+
+  back app-of(kc(<identity>), at)
+
+# does this proof check against this goal? A kernel refusal raises
+task checks
+  take context, like dynamic
+  take proof, like dynamic
+  take goal, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    host empty, make list
+    judge-kernel/check(context, proof, judge-kernel/evaluate(empty, goal))
+    back true
+  halt take
+    take problem
+  back false
+
+# associativity: (h . g) . f  =  h . (g . f), both reduce to \ x. h (g (f x)).
+# Id between functions computes (funext) to the pointwise (x : domain) -> Id codomain (lhs x) (rhs x), so the
+# proof is the pointwise lambda \ x. refl codomain (lhs x): each side reduces to the same value at every point.
+test <composition is associative ((h . g) . f = h . (g . f))>
+  host context, prepared()
+  host left, comp(kc(<A>), kc(<B>), kc(<D>), comp(kc(<B>), kc(<C>), kc(<D>), kc(<h>), kc(<g>)), kc(<f>))
+  host right, comp(kc(<A>), kc(<C>), kc(<D>), kc(<h>), comp(kc(<A>), kc(<B>), kc(<C>), kc(<g>), kc(<f>)))
+  host proof, lam-of(refl-of(kc(<D>), app-of(left, kv(0))))
+  want hold, checks(context, proof, id-of(pi-many(kc(<A>), kc(<D>)), left, right))
+
+test <left identity (id . f = f), by funext>
+  host context, prepared()
+  host left, comp(kc(<A>), kc(<B>), kc(<B>), id-at(kc(<B>)), kc(<f>))
+  host proof, lam-of(refl-of(kc(<B>), app-of(left, kv(0))))
+  want hold, checks(context, proof, id-of(pi-many(kc(<A>), kc(<B>)), left, kc(<f>)))
+
+test <right identity (f . id = f), by funext>
+  host context, prepared()
+  host left, comp(kc(<A>), kc(<A>), kc(<B>), kc(<f>), id-at(kc(<A>)))
+  host proof, lam-of(refl-of(kc(<B>), app-of(left, kv(0))))
+  want hold, checks(context, proof, id-of(pi-many(kc(<A>), kc(<B>)), left, kc(<f>)))

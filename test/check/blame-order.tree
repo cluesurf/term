@@ -1,0 +1,103 @@
+note <A MISMATCH IS BLAMED ON THE LATER USE IN THE FILE, whichever was checked first (decisions-2026-10.md, D10)>
+
+# Ported from blame-order.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-choice
+  find compile-note
+  find compile-outcome
+  find compile-text
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+
+task blame-choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>))
+
+task mismatches
+  take out, like compile-outcome
+  like list, like compile-note
+
+  host found, make list
+  walk out/notes
+    take note
+    fork test, is-equal(note/name, <type-mismatch>)
+      hold
+        found/push(note)
+  back found
+
+task line-of
+  take whole, like text
+  take needle, like text
+  like number
+
+  save at, 0
+  walk split(whole, <\n>)
+    take line
+    fork test, text-contains(line, needle)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+task marks
+  take note, like compile-note
+  take line, like number
+  take label, like text
+  like boolean
+
+  walk note/markers
+    take marker
+    fork test, and(is-equal(marker/line, line), is-equal(marker/label, label))
+      hold
+        back true
+  back false
+
+# A MISMATCH IS BLAMED ON THE LATER USE IN THE FILE, whichever was checked first (decisions-2026-10.md, D10).
+# A parameter with no `like` is decided by its first use, and checking order is not source order: a top-level `host`
+# is typed before every task. So `label(1)` inside a task on line 7 was blamed for disagreeing with `label(<one>)` in a
+# `host` on line 10, three lines below it. check/expect.tree `turn-around` places the report at the later use and marks
+# the earlier one as the use that decided, which is what checking in source order reports. Held both ways: the same
+# program with the two uses swapped blames the same line, the later one.
+# Run: sh tmp/run-term-ts.sh test/check/blame-order.ts
+host label, <task label\n  take value\n\n  like text\n\n  back \<seen\>\n>
+
+# the task's use first in the file, the host's below it (and typed first)
+host task-first, <{label}\ntask use\n  like void\n\n  save a, label(1)\n\nhost b, label(\<one\>)\n>
+
+# the host's use first in the file, the task's below it
+host host-first, <{label}\nhost b, label(\<one\>)\n\ntask use\n  like void\n\n  save a, label(1)\n>
+
+test <one mismatch>
+  host found, mismatches(compile-text(task-first, blame-choice()))
+  want hold, is-equal(found/length, 1)
+
+test <the host checked first but written later is blamed>
+  host found, mismatches(compile-text(task-first, blame-choice()))
+  want hold, is-equal(found/0/line, line-of(task-first, <host b>))
+
+test <saying what the earlier use made it>
+  host found, mismatches(compile-text(task-first, blame-choice()))
+  want hold, is-equal(found/0/message, <argument: expected number, found text>)
+
+test <and marking the earlier use as the one that decided>
+  host found, mismatches(compile-text(task-first, blame-choice()))
+  want hold, marks(found/0, line-of(task-first, <save a>), <first used as number here>)
+
+test <swapped: the later use is still the one blamed>
+  host found, mismatches(compile-text(host-first, blame-choice()))
+  want hold, is-equal(found/0/line, line-of(host-first, <save a>))
+
+test <swapped: saying what the earlier use made it>
+  host found, mismatches(compile-text(host-first, blame-choice()))
+  want hold, is-equal(found/0/message, <argument: expected text, found number>)
+
+test <swapped: marking the earlier use>
+  host found, mismatches(compile-text(host-first, blame-choice()))
+  want hold, marks(found/0, line-of(host-first, <host b>), <first used as text here>)

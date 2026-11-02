@@ -1,0 +1,176 @@
+note <A minimal automated proof-search tactic over the decided kernel (judge.ts)>
+
+# Ported from auto-judge.ts by task/term/suite-port.ts.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind judge-const
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind judge-type
+  take level, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $level \})>
+
+bind judge-pi
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: "many", domain: $domain, codomain: $codomain \})>
+
+bind judge-app
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind judge-id
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind judge-is-id
+  take goal, like dynamic
+  like boolean
+  case node
+    text <($goal.tag === "id")>
+
+bind judge-refl-of
+  take goal, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $goal.type, value: $goal.left \})>
+
+bind judge-three
+  take a, like judge-hyp
+  take b, like judge-hyp
+  take c, like judge-hyp
+  like list, like judge-hyp
+  case node
+    text <[$a, $b, $c]>
+
+task kc
+  take name, like text
+  like dynamic
+
+  back judge-const(name)
+
+task ty
+  like dynamic
+
+  back judge-type(judge-kernel/lit-level(0))
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+task holds
+  take context, like dynamic
+  take term, like dynamic
+  take goal, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    host empty, make list
+    judge-kernel/check(context, term, judge-kernel/evaluate(empty, goal))
+    back true
+  halt take
+    take problem
+  back false
+
+# the tactic: assumption, then reflexivity, then one-step application, each candidate checked by the kernel
+task auto
+  take hyps, like list, like judge-hyp
+  take goal, like dynamic
+  like boolean
+
+  host context, judge-kernel/context-with-signature(hyps)
+  walk hyps
+    take h
+    fork test, holds(context, kc(h/name), goal)
+      hold
+        back true
+  fork test, judge-is-id(goal)
+    hold
+      fork test, holds(context, judge-refl-of(goal), goal)
+        hold
+          back true
+  walk hyps
+    take f
+    walk hyps
+      take x
+      fork test, holds(context, judge-app(kc(f/name), kc(x/name)), goal)
+        hold
+          back true
+  back false
+
+task hyps-of
+  take a, like judge-hyp
+  take b, like judge-hyp
+  take c, like judge-hyp
+  take d, like judge-hyp
+  like list, like judge-hyp
+
+  host out, judge-three(a, b, c)
+  out/push(d)
+  back out
+
+task hyps-of
+  take a, like judge-hyp
+  take b, like judge-hyp
+  like list, like judge-hyp
+
+  host out, make list
+  out/push(a)
+  out/push(b)
+  back out
+
+task hyps-of
+  take a, like judge-hyp
+  take b, like judge-hyp
+  take c, like judge-hyp
+  like list, like judge-hyp
+
+  back judge-three(a, b, c)
+
+# A minimal automated proof-search tactic over the decided kernel (judge.ts): the kernel-side ATP layer.
+# `auto` is given a context of named hypotheses and a goal type, and searches for a proof term that the kernel
+# accepts, trying, in order: assumption (a hypothesis whose type is the goal), reflexivity (for an Id goal whose
+# sides are convertible), and one-step application (a function hypothesis applied to another hypothesis). It is a
+# small bounded search whose every candidate is verified by the sound kernel, so a found proof is a real proof.
+# Run: npx tsx test/check/auto-judge.ts
+# the oracle: does this candidate proof term check against the goal in the given context?
+# the tactic: search for a proof term for `goal` from the hypotheses.
+# assumption: prove Id A x y when p : Id A x y is a hypothesis.
+test <auto closes a goal by assumption>
+  want hold, auto(hyps-of(hyp(<A>, ty()), hyp(<x>, kc(<A>)), hyp(<y>, kc(<A>)), hyp(<p>, judge-id(kc(<A>), kc(<x>), kc(<y>)))), judge-id(kc(<A>), kc(<x>), kc(<y>)))
+
+# reflexivity: prove Id A x x with no equality hypothesis, by refl.
+test <auto closes a reflexive Id goal by refl>
+  want hold, auto(hyps-of(hyp(<A>, ty()), hyp(<x>, kc(<A>))), judge-id(kc(<A>), kc(<x>), kc(<x>)))
+
+# application (modus ponens): prove B from f : A -> B and a : A.
+test <auto closes a goal by one-step application (modus ponens)>
+  want hold, auto(hyps-of(hyp(<A>, ty()), hyp(<B>, ty()), hyp(<f>, judge-pi(kc(<A>), kc(<B>))), hyp(<a>, kc(<A>))), kc(<B>))
+
+# negative: with no way to reach the goal, auto must report no proof (it does not hallucinate one).
+test <auto finds no proof when the goal is unreachable>
+  want hold, not(auto(hyps-of(hyp(<A>, ty()), hyp(<B>, ty()), hyp(<a>, kc(<A>))), kc(<B>)))

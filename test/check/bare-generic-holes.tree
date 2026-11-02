@@ -1,0 +1,30 @@
+note <A generic task whose signature names a generic form bare (native-dom-0044, 0046)>
+
+# Ported from bare-generic-holes.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# A generic task whose signature names a generic form bare (native-dom-0044, 0046): `like box` where `like box t` was
+# meant. The bare form is seeded one hole that is not among the task's generics. Each call now resolves it for itself:
+# linked by the body to a declared generic it takes that generic's fresh copy, still free (a module-level `host` is
+# checked before every function body) it takes a variable of its own. Shared, the first call to bind it decided it for
+# the whole program: a host making a box of text made every later box a box of text.
+# Run: npx tsx test/check/bare-generic-holes.ts
+host box, <form box\n  note shared\n  head t\n  link value, like t\n\n# bare: `like box`, not `like box t`\ntask make-box\n  head t\n  take value, like t\n  like box\n  send back\n    make box\n      bind value, read value\n>
+
+# the shape of native-dom-0044: a host makes it at text before any body is checked, a task at a number
+test <a host making a box of text does not make every box a box of text>
+  host result, compile-text(<{box}\nform held\n  note shared\n  link name, like box text\n\nhost kept\n  make held\n    bind name\n      call make-box\n        bind value, text \<hi\>\n\ntask count-box\n  like box number\n  send back\n    call make-box\n      bind value, code 3\n>)
+  want hold, result/ok
+
+# two hosts at two types
+test <two hosts make boxes of two types>
+  host result, compile-text(<{box}\nform held\n  note shared\n  link name, like box text\n  link size, like box number\n\nhost kept\n  make held\n    bind name\n      call make-box\n        bind value, text \<hi\>\n    bind size\n      call make-box\n        bind value, code 3\n>)
+  want hold, result/ok
+
+# the link the body makes still carries: called after its body is checked, the result follows the argument, so a
+# mismatch is still refused
+test <the body's link from argument to result still holds: a box of text is not a box of number>
+  host result, compile-text(<{box}\ntask wrong\n  like box number\n  send back\n    call make-box\n      bind value, text \<hi\>\n>)
+  want hold, not(result/ok)

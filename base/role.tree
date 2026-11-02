@@ -46,3 +46,20 @@ role book
 role code
   take @/code/**/*.tree
   take @/book/**/\{code,view\}/**/*.tree
+
+# the Term suites of test/ are lean (decision 104, item 0544). test/tree is the older longhand suites, and the other
+# folders named hold fixtures, not suites
+role code
+  mark lean
+  take @/test/**/*.tree
+    miss @/test/tree/**/*.tree
+    miss @/test/tmp/**/*.tree
+    miss @/test/assurance/**/*.tree
+    miss @/test/parser/file/**/*.tree
+    miss @/test/server/fixture/**/*.tree
+    miss @/test/view/catalog.tree
+    miss @/test/call/knit-fixture/**/*.tree
+    miss @/test/call/test-dock-fixture/**/*.tree
+    miss @/test/compile/inspect-native/**/*.tree
+    miss @/test/compile/meaning-native/**/*.tree
+    miss @/test/compile/raise-flow-native/**/*.tree

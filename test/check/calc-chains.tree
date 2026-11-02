@@ -1,0 +1,26 @@
+note <Calc / equational chains (`cite` and `link`)>
+
+# Ported from calc-chains.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Calc / equational chains (`cite` and `link`): a named ring-identity hold proven by the normalizer is now registered
+# as a citable LEMMA (and rewrite rule), so it can be reused via `cite` and chained transitively via `link` -- the same
+# as an induction- or kernel-discharged hold. Before, only checkProof- and induction-discharged holds became lemmas, so
+# a ring identity could not be cited. Soundness: a `cite` of the wrong identity is still rejected.
+# Run: npx tsx test/check/calc-chains.ts
+# two ring identities, proven as bare holds (so they register as lemmas via the normalizer)
+host lemmas, <rule assoc-add\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  show hold\n    call is-equal\n      call add\n        call add\n          read a\n          read b\n        read c\n      call add\n        read a\n        call add\n          read b\n          read c\n\nrule reorder\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  show hold\n    call is-equal\n      call add\n        read a\n        call add\n          read b\n          read c\n      call add\n        read a\n        call add\n          read c\n          read b\n>
+
+# 1. CITE a ring lemma.
+test <cite a ring identity>
+  want hold, compile-text(<{lemmas}\nrule cite-assoc\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  show hold\n    call is-equal\n      call add\n        call add\n          read a\n          read b\n        read c\n      call add\n        read a\n        call add\n          read b\n          read c\n  cite assoc-add\n>)/ok
+
+# 2. LINK / calc chain: (a+b)+c == a+(c+b) via assoc then reorder.
+test <link chains two ring lemmas>
+  want hold, compile-text(<{lemmas}\nrule chain\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  show hold\n    call is-equal\n      call add\n        call add\n          read a\n          read b\n        read c\n      call add\n        read a\n        call add\n          read c\n          read b\n  link\n    cite assoc-add\n    cite reorder\n>)/ok
+
+# 3. SOUNDNESS CONTROL: citing assoc to prove a non-identity must be rejected.
+test <wrong cite is rejected>
+  want hold, not(compile-text(<{lemmas}\nrule cite-wrong\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  show hold\n    call is-equal\n      call add\n        read a\n        read b\n      call add\n        read a\n        read c\n  cite assoc-add\n>)/ok)

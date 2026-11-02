@@ -1,0 +1,37 @@
+note <The CIRCLE as a higher inductive type (HIT)>
+
+# Ported from circle.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# The CIRCLE as a higher inductive type (HIT). S^1 has one POINT constructor `base` and one PATH constructor
+# `loop : base = base`. The path type is the genuine inductive identity family over the circle (`path a b`, with
+# `id c : path c c` the reflexivity proof) -- NOT a `mark prop`, so it is not proof-irrelevant and its inhabitants are
+# not collapsed. The loop is introduced as a POSTULATE (a bodyless `task` of type `path base base`): the kernel has no
+# axiom K (the dependent identity eliminator is not derivable), so the postulated loop is SOUND and stays genuinely
+# distinct from `id base` -- the circle does not secretly degenerate to a point. The recursion principle `circ-rec`
+# (mapping out by giving a point and a loop in the target) computes on `base`. Run: npx tsx test/check/circle.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform circle\n  case base\n\nform path\n  head a, like circle\n  head b, like circle\n  case id\n    link c, like circle\n    head\n      read c\n    head\n      read c\n\ntask loop\n  like path\n    head\n      make base\n    head\n      make base\n\nform eqn\n  head a, like nat\n  head b, like nat\n  case rfl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask circ-rec\n  take b, like nat\n  take l, like eqn\n    head\n      read b\n    head\n      read b\n  take c, like circle\n  like nat\n  fork case, read c\n    case base\n      send back\n        read b\n>
+
+# 1. the POINT computation rule (the recursor's beta on `base`): circ-rec b l base = b. Here b = 0.
+test <circ-rec computes on base: circ-rec 0 (rfl 0) base == 0>
+  want hold, compile-text(<{prelude}\nrule rec-base-zero\n  show hold\n    call is-equal\n      call circ-rec\n        make zero\n        make rfl\n          bind c\n            make zero\n        make base\n      make zero\n  calm hold\n>)/ok
+
+# 2. the same for a non-zero point: circ-rec 1 (rfl 1) base == 1.
+test <circ-rec reads the chosen point: circ-rec 1 (rfl 1) base == 1>
+  want hold, compile-text(<{prelude}\nrule rec-base-one\n  show hold\n    call is-equal\n      call circ-rec\n        make succ\n          bind prior\n            make zero\n        make rfl\n          bind c\n            make succ\n              bind prior\n                make zero\n        make base\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS of the recursor: circ-rec 1 (rfl 1) base is 1, not 0 -- must be rejected.
+test <soundness: circ-rec 1 (rfl 1) base != 0 is rejected>
+  want hold, not(compile-text(<{prelude}\nrule rec-base-wrong\n  show hold\n    call is-equal\n      call circ-rec\n        make succ\n          bind prior\n            make zero\n        make rfl\n          bind c\n            make succ\n              bind prior\n                make zero\n        make base\n      make zero\n  calm hold\n>)/ok)
+
+# 4. NON-TRIVIALITY: the loop is NOT the reflexivity path. `loop == id base` is not provable -- the circle does not
+# collapse to a point. (With axiom K it would be provable; the kernel has no K, so this correctly fails to compile.)
+test <non-triviality: loop == id base is NOT provable (the circle is not a point)>
+  want hold, not(compile-text(<{prelude}\nrule loop-is-refl\n  show hold\n    call is-equal\n      call loop\n      make id\n        bind c\n          make base\n  calm hold\n>)/ok)
+
+# 5. the loop is a genuine inhabitant of the identity type `base = base`: a task may return it at that type (the path
+# constructor exists and is well-typed), so the HIT really does carry the extra generator.
+test <loop inhabits the identity type base = base (the path constructor is well-typed)>
+  want hold, compile-text(<{prelude}\ntask use-loop\n  like path\n    head\n      make base\n    head\n      make base\n  send back\n    call loop\n>)/ok

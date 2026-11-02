@@ -1799,6 +1799,10 @@ task kt-expr
           sift element
             case function
               save spelled, true
+            case unknown
+              save spelled, true
+            case dynamic
+              save spelled, true
             case named
               link element-name
               fork test, facts/union-forms/has(element-name)
@@ -2291,6 +2295,26 @@ task kt-string
   back need(<text>, <TermText.{method}({join-texts(parts, <, >)})>, st)
 
 # a native map / list operation in kotlin's collection API, answering what the JS collection API answers
+# an argument written into a list of `unknown` or `dynamic`: a generic value crosses as `Any` explicitly, since kotlinc
+# refuses `T` where `Any` is wanted (decision term/compiler 011, the copy by name that decision names)
+task crossed-at
+  take arg, like list, like text
+  take args, like list, like expression
+  take at, like number
+  take element, like maybe, like type
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save said, arg-at(arg, at)
+  fork test, is-below(at, args/length)
+    hold
+      save kind, kind-of(element)
+      fork test, and(or(is-equal(kind, <unknown>), is-equal(kind, <dynamic>)), generic-letter(expression-type(get(args, at)), facts))
+        hold
+          back <({said} as Any)>
+  back said
+
 task kt-collection
   take op, like collection-op
   take args, like list, like expression
@@ -2332,7 +2356,7 @@ task kt-collection
       back <>
   fork test, is-equal(name, <push>)
     hold
-      back <{target}.also \{ __l -\> __l.add({arg-at(arg, 0)}) \}.size.toLong()>
+      back <{target}.also \{ __l -\> __l.add({crossed-at(arg, args, 0, element-of(target-type), facts)}) \}.size.toLong()>
   fork test, is-equal(name, <pop>)
     hold
       back <{target}.run \{ removeAt(lastIndex) \}>
@@ -2341,7 +2365,7 @@ task kt-collection
       back <{target}[Math.toIntExact({arg-at(arg, 0)})]>
   fork test, is-equal(name, <set>)
     hold
-      back <kotlin.run \{ {target}[Math.toIntExact({arg-at(arg, 0)})] = {arg-at(arg, 1)} \}>
+      back <kotlin.run \{ {target}[Math.toIntExact({arg-at(arg, 0)})] = {crossed-at(arg, args, 1, element-of(target-type), facts)} \}>
   fork test, is-equal(name, <includes>)
     hold
       back <{target}.contains({arg-at(arg, 0)})>

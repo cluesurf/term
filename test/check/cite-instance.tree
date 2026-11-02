@@ -1,0 +1,338 @@
+note <What a proof in one file may use from another, and the instantiating `cite`>
+
+# Ported from cite-instance.ts by task/term/suite-port.ts.
+
+# PORT: helpers of the suite this tool does not read
+# PORT: const LEAN = { leanOf: () => true }
+# PORT: const across = separately(USE, FLAG)
+# PORT: function separately(
+# PORT:   entry: string,
+# PORT:   theory: string,
+# PORT: ): { ok: boolean; messages: string[] } {
+# PORT:   const resolve: Resolver = path =>
+# PORT:     path === './theory'
+# PORT:       ? { file: 'theory.tree', text: theory }
+# PORT:       : undefined
+# PORT:   const result = compileSeparate(
+# PORT:     { file: 'entry.tree', text: entry },
+# PORT:     {
+# PORT:       resolve,
+# PORT:       cache: new CompileCache(),
+# PORT:       modules: file => `./${file.replace(/\W/g, '_')}.mjs`,
+# PORT:       ...LEAN,
+# PORT:     },
+# PORT:   )
+# PORT: 
+# PORT:   return {
+# PORT:     ok: result.ok,
+# PORT:     messages: result.ok
+# PORT:       ? []
+# PORT:       : result.diagnostics.map(d => `${d.name}: ${d.message}`),
+# PORT:   }
+# PORT: }
+# PORT: const acrossFalse = separately(USE_FALSE, FLAG)
+# PORT: const plain = separately(ACROSS_PLAIN, PLAIN)
+# PORT: const PLAIN = FLAG.slice(0, FLAG.indexOf('rule both-commutes'))
+# PORT: const plainMerged = compile(
+# PORT:   { file: 'entry.tree', text: ACROSS_PLAIN },
+# PORT:   {
+# PORT:     resolve: path =>
+# PORT:       path === './theory'
+# PORT:         ? { file: 'theory.tree', text: PLAIN }
+# PORT:         : undefined,
+# PORT:     ...LEAN,
+# PORT:   },
+# PORT: )
+
+# What a proof in one file may use from another, and the instantiating `cite`. Four things, each held by an acceptance
+# beside a refusal, so the suite cannot pass by refusing everything:
+#
+#   1. `cite <rule>` closes a goal that is an INSTANCE of an equation the kernel proved: one rewrite by it, at some
+#      values of its marks, makes the two sides the same (check/elaborate.ts `instanceOf`, judge.ts `normalTerm`). A
+#      goal that is not an instance, or is false, is refused.
+#   2. a case's fields may be `slot`s, filled by position: `make conjunction(p, q)` (check/extend.ts `fillVariant`).
+#   3. a form that aliases a task type is called as the task, in the checker and the kernel (`seat v, like assignment`).
+#   4. separately compiled, a rule may run a task and cite a rule of a THEORY in another file (a file that states rules),
+#      because the theory's stubs carry those bodies (compile/stub.ts `stubBody`). So does a file with no rules that a
+#      file with rules reaches (term-proof-0011); one no rule reaches carries none.
+#
+# Run: npx tsx test/check/cite-instance.ts
+# `want` is 'ok', or a text one of the refusals must contain
+host flag, <form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n\n  like flag\n\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask flip\n  take a, like flag\n\n  like flag\n\n  sift a\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule both-commutes\n  seat a, like flag\n  seat b, like flag\n  show hold, is-equal both(a, b), both(b, a)\n  fold a, b\n\nrule flip-twice\n  seat a, like flag\n  show hold, is-equal flip(flip(a)), a\n  fold a\n>
+
+host pair, <\nform pair\n  case two\n    slot left, like flag\n    slot right, like flag\n\ntask conjoin\n  take p, like pair\n\n  like flag\n\n  sift p\n    case two\n      back both(left, right)\n\nform assignment\n  like task\n    take n, like integer\n    like flag\n>
+
+# 1. the instantiating cite
+test <an instance at constructed values is proven>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <an instance at a call whose value is not known is proven>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <an instance deep inside a side is proven (flip twice, under both)>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <a TRUE goal that is not an instance of the cited rule is refused>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <a FALSE goal citing a rule is refused>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <one rewrite only: a goal needing the rule twice is refused>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+# 2. slots in a case
+test <a case with slots is built by position, and its rule computes>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <a case with slots refuses one value too many>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <a slot given by position and by name is refused>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <a case with link fields still refuses values by position>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+# 3. a task alias called as the task
+test <a mark typed by a task alias is called, and the kernel proves an instance at its values>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+test <and a goal about it that is no instance is refused>
+  # PORT: compile options this tool cannot read
+  # PORT:   const result = compile({ file: 'c.tree', text: source }, LEAN)
+  # PORT:   const messages = result.ok
+  # PORT:     ? []
+  # PORT:     : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  # PORT:   const good =
+  # PORT:     want === 'ok'
+  # PORT:       ? result.ok
+  # PORT:       : !result.ok && messages.some(m => m.includes(want))
+  # PORT:   report(
+  # PORT:     name,
+  # PORT:     good,
+  # PORT:     `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  # PORT:   )
+  want hold, false
+
+# 4. separate compilation: a theory in one file, rules about it in another
+host use, <load ./theory\n  find flag\n  find both\n  find flip\n  find both-commutes\n  find flip-twice\n\nrule computes-across-files\n  seat a, like flag\n  show hold\n    is-equal\n      both\n        make yes\n        a\n      a\n\nrule cites-across-files\n  seat a, like flag\n  seat b, like flag\n  show hold, is-equal both(flip(flip(a)), b), both(a, b)\n  cite flip-twice\n>
+
+host use-false, <load ./theory\n  find flag\n  find both\n  find flip\n  find flip-twice\n\nrule false-across-files\n  seat a, like flag\n  show hold, is-equal flip(a), a\n  cite flip-twice\n>
+
+test <separately, a rule runs a task and cites a rule of a theory in another file>
+  # PORT: the call compileSeparate()
+  # PORT:   const result = compileSeparate(
+  # PORT:     { file: 'entry.tree', text: entry },
+  # PORT:     {
+  # PORT:       resolve,
+  # PORT:       cache: new CompileCache(),
+  # PORT:       modules: file => `./${file.replace(/\W/g, '_')}.mjs`,
+  # PORT:       ...LEAN,
+  # PORT:     },
+  # PORT:   )
+  # PORT: report(
+  # PORT:   'separately, a rule runs a task and cites a rule of a theory in another file',
+  # PORT:   across.ok,
+  # PORT:   across.messages.join(' | '),
+  # PORT: )
+  want hold, false
+
+test <separately, a false rule citing across files is still refused>
+  # PORT: the call compileSeparate()
+  # PORT:   const result = compileSeparate(
+  # PORT:     { file: 'entry.tree', text: entry },
+  # PORT:     {
+  # PORT:       resolve,
+  # PORT:       cache: new CompileCache(),
+  # PORT:       modules: file => `./${file.replace(/\W/g, '_')}.mjs`,
+  # PORT:       ...LEAN,
+  # PORT:     },
+  # PORT:   )
+  # PORT: report(
+  # PORT:   'separately, a false rule citing across files is still refused',
+  # PORT:   !acrossFalse.ok &&
+  # PORT:     acrossFalse.messages.some(m => m.includes('not an instance of it')),
+  # PORT:   `ok=${acrossFalse.ok}: ${acrossFalse.messages.join(' | ')}`,
+  # PORT: )
+  want hold, false
+
+# The same theory with its rules removed is a plain file, and a rule in ANOTHER file runs one of its tasks. Until
+# term-proof-0011 (2026-10-21) the plain file's stubs carried no bodies, so the rule was refused separately while the
+# merged build proved it: the two builds disagreed, which a stub must never cause (Term's CLAUDE.md: a stub carries
+# whatever a whole-program analysis reads of a body). Now a file a proving file reaches carries the bodies of its pure
+# tasks shown to end (compile/separate.ts `underProof`), so both builds prove it. A file NO rule reaches still carries
+# none, and keeps its early cutoff: test/compile/claim-across-units.ts holds that
+host across-plain, <load ./theory\n  find flag\n  find both\n\nrule computes-across-files\n  seat a, like flag\n  show hold\n    is-equal\n      both\n        make yes\n        a\n      a\n>
+
+test <a rule runs a task of a file with no rules, separately as merged>
+  # PORT: the call compileSeparate()
+  # PORT:   const result = compileSeparate(
+  # PORT:     { file: 'entry.tree', text: entry },
+  # PORT:     {
+  # PORT:       resolve,
+  # PORT:       cache: new CompileCache(),
+  # PORT:       modules: file => `./${file.replace(/\W/g, '_')}.mjs`,
+  # PORT:       ...LEAN,
+  # PORT:     },
+  # PORT:   )
+  # PORT: report(
+  # PORT:   'a rule runs a task of a file with no rules, separately as merged',
+  # PORT:   plain.ok && plainMerged.ok,
+  # PORT:   `separate ok=${plain.ok}: ${plain.messages.join(' | ')}; merged ok=${plainMerged.ok}`,
+  # PORT: )
+  want hold, false

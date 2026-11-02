@@ -250,7 +250,8 @@ form infer-state
   link diagnostics, like list, like diagnostic
   # the file of the statement being checked: a merged program's top-level statement names its own module
   link current-file, like text
-  # the element type the next list literal takes, set by infer-wanted and taken by the `array` case
+  # the element type the next list literal takes, or the whole map type the next hash literal takes, set by infer-wanted
+  # and taken by the `array` and `map` cases
   link wanted-element, like maybe, like type
   # the unification substitution (check/substitution.tree); its `origin` is the original's `origin`
   link sub, like substitution

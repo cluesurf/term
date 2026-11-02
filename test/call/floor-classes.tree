@@ -1,0 +1,255 @@
+# The floor classifier (task/term/floor.ts and self-host-left.ts), decision 104 of change 001 "The floor, file by file":
+# GENERATED is a first-line header only, F6 reads the benchmark oracles and test/native, foreign source is walked, what is
+# not source is listed apart, and build output no git tracks is not counted. Item term-self-host-001-0711.
+#
+# Run from the Term package. The tools run from the repository root, as `pnpm term:floor` runs them. FLOOR_TOOLS names
+# another folder holding the two tools: tmp/self-host/0711 held the versions before the fix, and this file failed on them.
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find read, name floor-read
+  find write, name floor-write
+
+bind floor-has
+  take whole, like text
+  take part, like text
+  like boolean
+  case node
+    text <($whole.includes($part))>
+
+bind floor-words
+  take line, like text
+  like list, like text
+  case node
+    text <$line.split(" ")>
+
+bind floor-tools
+  take seed, like number
+  like text
+  case node
+    text <(process.env.FLOOR_TOOLS ?? "task/term")>
+
+host floor-home, <../../../..>
+
+task run-tool
+  take tool, like text
+  take rest, like text
+  like text
+
+  save line, <node_modules/tsx/dist/cli.mjs {floor-tools(0)}/{tool} {rest}>
+  save done, run(<node>, floor-words(line), floor-home)
+  back done/output
+
+task class-of
+  take path, like text
+  like text
+
+  back run-tool(<floor.ts>, <--class {path}>)
+
+test <hand-written files that mention GENERATED are ports>
+  want hold, floor-has(class-of(<test/call/commands.ts>), <port\tport\ttest/call/commands.ts>)
+  want hold, floor-has(class-of(<test/check/universal.ts>), <port\tport\ttest/check/universal.ts>)
+  want hold, floor-has(class-of(<test/compile/feed-mill-bench.ts>), <port\tport\ttest/compile/feed-mill-bench.ts>)
+  want hold, floor-has(class-of(<test/lint/catalog.ts>), <port\tport\ttest/lint/catalog.ts>)
+
+test <a first-line header and a generated name stay output>
+  want hold, floor-has(class-of(<deck/make/code/compile/cache-scope.generated.ts>), <F3 generated\t>)
+
+test <the benchmark oracles and test/native are F6>
+  want hold, floor-has(class-of(<mark/fasta/idiom.ts>), <F6 oracle\toracle\t>)
+  want hold, floor-has(class-of(<mark/fasta/idiom.rs>), <F6 oracle\toracle\t>)
+  want hold, floor-has(class-of(<deck/mark/demo/sum/same.ts>), <F6 oracle\toracle\t>)
+  want hold, floor-has(class-of(<deck/mark/kernels/n-body/same.kt>), <F6 oracle\toracle\t>)
+  want hold, floor-has(class-of(<test/native/swift/main.swift>), <F6 oracle\toracle\t>)
+
+test <a script a foreign host runs is no port>
+  want hold, floor-has(class-of(<task/launcher/term.go>), <F7 script\tscript\t>)
+  want hold, floor-has(class-of(<task/dev/bootstrap/start.ps1>), <F7 script\tscript\t>)
+
+test <what is not source sits apart in its own kind>
+  want hold, floor-has(class-of(<test/stdlib/url/urltestdata.json>), <\tdata\t>)
+  want hold, floor-has(class-of(<view/seed.png>), <\tdocs\t>)
+  want hold, floor-has(class-of(<deck/base/code/native/rust/Cargo.lock>), <F5 manifest\tmanifest\t>)
+
+test <the walk counts no build output and lists what is apart>
+  save report, run-tool(<floor.ts>, <--list>)
+  want hold, floor-has(report, <apart, not source:>)
+  want hold, not(floor-has(report, <deck/flow/make/server.js>))
+  want hold, not(floor-has(report, <deck/flow/make/extension.js>))
+  want hold, floor-has(report, <test/assurance/hold.sh>)
+
+test <the census counts foreign source and no untracked bundle>
+  save census, run-tool(<self-host-left.ts>, <--json>)
+  want hold, floor-has(census, <"path": "deck/base/code/native/rust/runtime/tcp.rs",>)
+  want hold, floor-has(census, <"path": "mark/fasta/idiom.ts",\n      "deck": "pkg/mark",\n      "bucket": "floor-f6">)
+  want hold, floor-has(census, <"path": "test/check/universal.ts",\n      "deck": "pkg/test",\n      "bucket": "unported">)
+  want hold, floor-has(census, <"apart": \{>)
+  want hold, not(floor-has(census, <deck/flow/make/server.js>))
+
+# The baseline's two lists, decision 108 of change 001, item term-self-host-001-0750. Each test runs the tool in a fresh
+# git repository under the system's temporary folder, holding the paths the lists name, so the real baseline is never
+# written. Those folders are left for the system to clear.
+
+host floor-young, <2026-11-01T12:00:00>
+host floor-old, <2026-01-01T12:00:00>
+host floor-t, <deck/term/deck/term>
+host floor-baseline, <note/project/term/self-host/floor.json>
+host floor-checklist, <note/project/term/self-host/change/001-finish-self-host/checklist.json>
+
+bind floor-trim
+  take line, like text
+  like text
+  case node
+    text <$line.trim()>
+
+task floor-do
+  take home, like text
+  take command, like text
+  take rest, like text
+
+  run(command, floor-words(rest), home)
+
+# the tool in that repository, its answer opening with its exit code
+task floor-run
+  take home, like text
+  take rest, like text
+  like text
+
+  save here, run(<pwd>, floor-words(<-L>), floor-home)
+  save repo, floor-trim(here/output)
+  save line, <{repo}/node_modules/tsx/dist/cli.mjs {repo}/{floor-tools(0)}/floor.ts {rest}>
+  save done, run(<node>, floor-words(line), home)
+  back <exit {done/code}\n{done/output}>
+
+task floor-items
+  take item-state, like text
+  like text
+
+  back <\{"item":[\{"id":"term-self-host-001-0721","state":"{item-state}"\}]\}>
+
+# a repository holding the named F1 files and one port file, with a baseline taken, and item 0721 in the state given
+task floor-fixture
+  take item-state, like text
+  like text
+
+  save made, run(<mktemp>, floor-words(<-d>), floor-home)
+  save home, floor-trim(made/output)
+  floor-do(home, <git>, <init -q>)
+  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/make/code/dev {floor-t}/deck/call/code {floor-t}/test/call deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
+  floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/deck/make/code/dev/client.ts {floor-t}/test/call/kept.ts>)
+  floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
+  floor-run(home, <--commit>)
+  back home
+
+task floor-commit
+  take home, like text
+  take date, like text
+
+  floor-do(home, <git>, <add -A>)
+  floor-do(home, <env>, <GIT_AUTHOR_DATE={date} GIT_COMMITTER_DATE={date} git -c user.name=floor -c user.email=floor@floor.test -c commit.gpgsign=false commit -q --no-verify -m floor>)
+
+test <a listed file younger than asOf is refused>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/test/call/commands.ts>)
+  floor-commit(home, floor-young)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 1\n>)
+  want hold, floor-has(gate, <test/call/commands.ts: its first commit, 2026-11-01>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 1\n>)
+  want hold, floor-has(report, <refusing --commit>)
+  want hold, not(floor-has(floor-read(<{home}/{floor-baseline}>), <commands.ts>))
+
+test <a listed file no commit holds is refused>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/test/call/commands.ts>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 1\n>)
+  want hold, floor-has(report, <test/call/commands.ts: no commit holds it>)
+  want hold, not(floor-has(floor-read(<{home}/{floor-baseline}>), <commands.ts>))
+
+test <a listed file first committed before asOf enters port>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/test/call/commands.ts>)
+  floor-commit(home, floor-old)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 0\n>)
+  want hold, floor-has(gate, <1 undercounted>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 0\n>)
+  want hold, floor-has(floor-read(<{home}/{floor-baseline}>), <test/call/commands.ts>)
+
+test <an unlisted new file is refused however old>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/test/call/nobody.ts>)
+  floor-commit(home, floor-old)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 1\n>)
+  want hold, floor-has(gate, <NEW outside the floor, 1 file>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 1\n>)
+  want hold, not(floor-has(floor-read(<{home}/{floor-baseline}>), <nobody.ts>))
+
+test <an owed file is not new and never reaches port>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/deck/call/code/launch-only.ts>)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 0\n>)
+  want hold, floor-has(gate, <owed: 1 file>)
+  want hold, floor-has(gate, <port: 1 file>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 0\n>)
+  save kept, floor-read(<{home}/{floor-baseline}>)
+  want hold, floor-has(kept, <"files": 1,>)
+  want hold, floor-has(kept, <"owed_files": 1,>)
+  want hold, floor-has(kept, <"item": "term-self-host-001-0721">)
+
+test <a row fails once its item closes or if it names no item>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/deck/call/code/launch-only.ts>)
+  floor-write(<{home}/{floor-checklist}>, floor-items(<done>))
+  save closed, floor-run(home, <>)
+  want hold, floor-has(closed, <exit 1\n>)
+  want hold, floor-has(closed, <launch-only.ts: its item term-self-host-001-0721 is done>)
+  save refused, floor-run(home, <--commit>)
+  want hold, floor-has(refused, <exit 1\n>)
+  want hold, not(floor-has(floor-read(<{home}/{floor-baseline}>), <launch-only.ts>))
+  floor-write(<{home}/{floor-checklist}>, floor-items(<rejected>))
+  want hold, floor-has(floor-run(home, <>), <0721 is rejected>)
+  floor-write(<{home}/{floor-checklist}>, <\{"item":[]\}>)
+  save none, floor-run(home, <>)
+  want hold, floor-has(none, <exit 1\n>)
+  want hold, floor-has(none, <0721 does not exist>)
+
+test <a row whose file has gone leaves, and is counted removed>
+  save home, floor-fixture(<open>)
+  floor-do(home, <touch>, <{floor-t}/deck/call/code/launch-only.ts>)
+  floor-run(home, <--commit>)
+  floor-do(home, <mv>, <{floor-t}/deck/call/code/launch-only.ts tmp/launch-only.ts>)
+  floor-write(<{home}/{floor-checklist}>, floor-items(<done>))
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 0\n>)
+  want hold, floor-has(gate, <1 baselined file(s) are gone: progress>)
+  save report, floor-run(home, <--commit>)
+  want hold, floor-has(report, <exit 0\n>)
+  save kept, floor-read(<{home}/{floor-baseline}>)
+  want hold, floor-has(kept, <"owed_files": 0,>)
+  want hold, not(floor-has(kept, <launch-only.ts>))
+
+test <a reclassified file is not called progress>
+  save home, floor-fixture(<open>)
+  floor-write(<{home}/{floor-t}/test/call/kept.ts>, <// GENERATED\n>)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 0\n>)
+  want hold, floor-has(gate, <1 reclassified>)
+  want hold, not(floor-has(gate, <progress>))
+
+test <a removed file is progress, and not reclassified>
+  save home, floor-fixture(<open>)
+  floor-do(home, <mv>, <{floor-t}/test/call/kept.ts tmp/kept.ts>)
+  save gate, floor-run(home, <>)
+  want hold, floor-has(gate, <exit 0\n>)
+  want hold, floor-has(gate, <1 baselined file(s) are gone: progress>)
+  want hold, not(floor-has(gate, <reclassified>))
