@@ -14,75 +14,141 @@ dock load
   load <@term/make/code/compile/compile>, name compiling-driver
   load <@term/make/code/resolve>, name compiling-resolve
   load <@term/make/code/compile/native>, name compiling-native
+  load <@term/make/code/compile/rust>, name compiling-rust
+  load <@term/make/code/compile/swift>, name compiling-swift
+  load <@term/make/code/compile/kotlin>, name compiling-kotlin
+  load <@term/make/code/compile/typescript>, name compiling-typescript
+  load <@term/call/code/make>, name compiling-project
+  load <@term/call/code/role-of>, name compiling-role
+  load <@term/call/code/deck-of>, name compiling-deck
+  load <node:path>, name compiling-path
 
+# `file` is the exact path a load asks for. `answer` is the file it comes back as, <> that same path, for a suite whose
+# modules answer under another name (`@app/x` as `x.tree`).
 form compiling-source
   link file, like text
   link text, like text
+  link answer, like text, fall <>
 
-# How to compile. `file` is the name diagnostics carry, and `lean` whether the text is read lean. `stdlib` is the native
-# env of the stdlib resolver, <> none, as <node>. `files` answers a load by its exact path before the stdlib, and a source's
-# `file` is both that path and the file it answers as. `env` and `entry` are the driver's env and one entry point, left out
-# when empty. `budget` is the proof budget, <> the one the run was started with or else the compiler's own.
+# a load path rewritten before anything resolves it: every match of `pattern` becomes `into`
+form compiling-rewrite
+  link pattern, like text
+  link into, like text
+
+# How to compile, each field left out of the driver's options when it holds its fall.
+#
+# `file` is the name diagnostics carry, and `lean` whether the text is read lean. `stdlib` is the native env of the stdlib
+# resolver, <> none, as <node>. `project` is a root to resolve from instead, relative to where the test runs, `project-env`
+# its env (the driver's default of <node> when <>), and `project-link` its second link root. `stdlib` with `project` is that
+# native env over the project. `files` answers a load by its exact path before any of them. `rewrites` change a path before
+# all of it. `closed` means a resolver that finds nothing, for a program that must load nothing. `resolver` is a suite's own
+# function, only for a shape none of these holds. `env` is the driver's env. `entry` is one entry point and `entries` more.
+# `budget` is the proof budget, <> the one the run was started with or else the compiler's own. `library`, `optimize`,
+# `roll`, `cover`, `expose-twins`, `cache`, `twins` and `modules` are the driver's own options of those names, `tree-shake`
+# is <> the driver's default, <true> or <false>. `project-lean`, `project-role` and `project-deck` read each file's lean, role
+# and deck as a project build does, `role` is one role for every file, and `lean-of` and `role-of` are a suite's own functions.
 form compile-choice
   link file, like text, fall <suite.tree>
   link lean, like boolean, fall false
   link stdlib, like text, fall <>
+  link project, like text, fall <>
+  link project-env, like text, fall <>
+  link project-link, like text, fall <>
+  link project-lean, like boolean, fall false
+  link project-role, like boolean, fall false
+  link project-deck, like boolean, fall false
   link files
     like list, like compiling-source
     fall make list
+  link rewrites
+    like list, like compiling-rewrite
+    fall make list
+  link closed, like boolean, fall false
+  link resolver, like dynamic, fall void
   link env, like text, fall <>
   link entry, like text, fall <>
+  link entries
+    like list, like text
+    fall make list
   link budget, like text, fall <>
+  link library, like boolean, fall false
+  link optimize, like boolean, fall true
+  link tree-shake, like text, fall <>
+  link roll, like boolean, fall false
+  link cover, like boolean, fall false
+  link expose-twins, like boolean, fall false
+  link role, like text, fall <>
+  link lean-of, like dynamic, fall void
+  link role-of, like dynamic, fall void
+  link cache, like dynamic, fall void
+  link twins, like dynamic, fall void
+  link modules, like dynamic, fall void
 
-# tier 0: how many obligations the program owes, how many are proven, and the messages of the rest
+# tier 0: how many obligations the program owes, how many are proven, the messages of the rest, and the driver's count by kind
 form obligation-tally
   link total, like number
   link proven, like number
   link failed, like list, like text
+  link kinds, like dynamic
 
 form compile-marker
   link line, like number
   link label, like text
 
-# a diagnostic with its place, the line and column from 0 as the driver counts them, both 0 on one with no span
+# a diagnostic with its place, the line and column from 0 as the driver counts them, both 0 on one with no span. `hint` is
+# <> when it has none. `severity` is the driver's word for it, `code` its number
 form compile-note
   link name, like text
   link message, like text
+  link file, like text
   link line, like number
   link column, like number
+  link hint, like text
+  link severity, like text
+  link code, like number
   link markers, like list, like compile-marker
+
+# one top-level statement of a checked program, <> for a name it has none of
+form compile-statement
+  link form, like text
+  link name, like text
 
 # What a compile came to. `names` and `messages` are parallel, the diagnostics of a refused program, and empty on one
 # that compiled. `notes` are the same diagnostics with their places. `warnings` are the names of a compiled program's
-# warnings. `program` is the checked program, for a helper that emits or runs it, and is void on a refusal. `emitted` is
-# the TypeScript of a program that compiled, else empty. `ms` is the time around the driver's compile only.
+# warnings, `warning-messages` their messages in the same order, and `warning-notes` the same with their places.
+# `program` is the checked program, for a helper that emits or runs it, and is void on a refusal. `emitted` is the
+# TypeScript of a program that compiled, else empty. `ms` is the time around the driver's compile only. `roll`, `wake`,
+# `twins`, `cover`, `css` and `modules` are the driver's answers of those names, void where it gave none.
 form compile-outcome
   link ok, like boolean
   link names, like list, like text
   link messages, like list, like text
   link notes, like list, like compile-note
   link warnings, like list, like text
+  link warning-messages, like list, like text
+  link warning-notes, like list, like compile-note
   link obligations, like obligation-tally
   link open-claims, like list, like text
   link program, like dynamic
   link emitted, like text
   link ms, like number
+  link roll, like dynamic
+  link wake, like dynamic
+  link twins, like dynamic
+  link cover, like dynamic
+  link css, like dynamic
+  link modules, like dynamic
 
+# the driver's options for a choice, each left out when empty: the compiler tells an env given from none (T-0495)
 bind compiling-options
-  take lean, like boolean
-  like dynamic
-  case node
-    text <($lean ? (\{ leanOf: () =\> true \}) : undefined)>
-
-# the rest of the driver's options, each left out when empty: the compiler tells an env given from none (T-0495)
-bind compiling-with-rest
-  take options, like dynamic
+  take choice, like compile-choice
   take resolver, like dynamic
-  take env, like text
-  take entry, like text
+  take lean, like dynamic
+  take role, like dynamic
+  take deck, like dynamic
   like dynamic
   case node
-    text <(() =\> \{ const given = \{ ...$options \}; if ($resolver) given.resolve = $resolver; if ($env !== "") given.env = $env; if ($entry !== "") given.entryPoints = [$entry]; return Object.keys(given).length === 0 ? undefined : given \})()>
+    text <(() =\> \{ const given = \{\}; const entries = [...($choice.entry !== "" ? [$choice.entry] : []), ...$choice.entries]; if ($lean) given.leanOf = $lean; if ($role) given.roleOf = $role; if ($deck) given.deckOf = $deck; if ($resolver) given.resolve = $resolver; if ($choice.env !== "") given.env = $choice.env; if (entries.length \> 0) given.entryPoints = entries; if ($choice.library) given.library = true; if ($choice.optimize === false) given.optimize = false; if ($choice.treeShake !== "") given.treeShake = $choice.treeShake === "true"; if ($choice.roll) given.roll = true; if ($choice.cover) given.cover = true; if ($choice.exposeTwins) given.exposeTwins = true; if ($choice.cache) given.cache = $choice.cache; if ($choice.twins) given.twins = $choice.twins; if ($choice.modules) given.modules = $choice.modules; return Object.keys(given).length === 0 ? undefined : given \})()>
 
 bind compiling-no-resolver
   take seed, like number
@@ -90,12 +156,50 @@ bind compiling-no-resolver
   case node
     text <undefined>
 
+bind compiling-finds-nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <(() =\> undefined)>
+
+bind compiling-always
+  take seed, like number
+  like dynamic
+  case node
+    text <(() =\> true)>
+
+bind compiling-one-role
+  take role, like text
+  like dynamic
+  case node
+    text <(() =\> $role)>
+
 bind compiling-with-files
   take files, like list, like compiling-source
   take below, like dynamic
   like dynamic
   case node
-    text <($files.length === 0 ? $below : (path, from, how) =\> \{ const found = $files.find(one =\> one.file === path); return found ? \{ file: found.file, text: found.text \} : $below?.(path, from, how) \})>
+    text <($files.length === 0 ? $below : (path, from, how) =\> \{ const found = $files.find(one =\> one.file === path); return found ? \{ file: found.answer || found.file, text: found.text \} : $below?.(path, from, how) \})>
+
+bind compiling-with-rewrites
+  take rewrites, like list, like compiling-rewrite
+  take below, like dynamic
+  like dynamic
+  case node
+    text <($rewrites.length === 0 ? $below : (path, from, how) =\> $below?.($rewrites.reduce((at, one) =\> at.replace(new RegExp(one.pattern), one.into), path), from, how))>
+
+bind compiling-maybe
+  take value, like text
+  like dynamic
+  case node
+    text <($value === "" ? undefined : $value)>
+
+bind compiling-field
+  take result, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$result[$name]>
 
 # The driver's compile, timed, with the budget set around it and the value it found put back, also when the compile
 # raises. The compile is synchronous, so no other test can see the value. If the Term driver of item 0707 awaits, this
@@ -155,13 +259,37 @@ bind compiling-notes
   take result, like dynamic
   like list, like compile-note
   case node
-    text <($result.diagnostics ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
+    text <($result.diagnostics ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", file: d.file ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, hint: d.hint ?? "", severity: d.severity ?? "", code: d.code ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
 
 bind compiling-warnings
   take result, like dynamic
   like list, like text
   case node
     text <($result.warnings ?? []).map(d =\> d.name ?? "")>
+
+bind compiling-warning-messages
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.warnings ?? []).map(d =\> d.message ?? "")>
+
+bind compiling-warning-notes
+  take result, like dynamic
+  like list, like compile-note
+  case node
+    text <($result.warnings ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", file: d.file ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, hint: d.hint ?? "", severity: d.severity ?? "", code: d.code ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
+
+bind compiling-kinds
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.obligations?.kinds>
+
+bind compiling-statements
+  take program, like dynamic
+  like list, like compile-statement
+  case node
+    text <($program ?? []).map(s =\> (\{ form: s.form ?? "", name: typeof s.name === "string" ? s.name : "" \}))>
 
 bind compiling-open
   take result, like dynamic
@@ -193,10 +321,45 @@ task compiling-options-of
   like dynamic
 
   save below, compiling-no-resolver(0)
-  fork test, is-unequal(choice/stdlib, <>)
+  save lean, compiling-no-resolver(0)
+  save role, choice/role-of
+  save deck, compiling-no-resolver(0)
+  fork test, is-unequal(choice/project, <>)
     hold
-      save below, compiling-native/with-native-env(choice/stdlib, compiling-resolve/stdlib-resolver())
-  back compiling-with-rest(compiling-options(choice/lean), compiling-with-files(choice/files, below), choice/env, choice/entry)
+      host root, compiling-path/resolve(choice/project)
+      save below, compiling-project/project-resolver(root, compiling-maybe(choice/project-env), compiling-maybe(choice/project-link))
+      fork test, is-unequal(choice/stdlib, <>)
+        hold
+          save below, compiling-native/with-native-env(choice/stdlib, below)
+      fork test, choice/project-lean
+        hold
+          save lean, compiling-role/project-lean-of(root)
+      fork test, choice/project-role
+        hold
+          save role, compiling-role/project-role-of(root)
+    miss
+      fork test, is-unequal(choice/stdlib, <>)
+        hold
+          save below, compiling-native/with-native-env(choice/stdlib, compiling-resolve/stdlib-resolver())
+  fork test, choice/closed
+    hold
+      save below, compiling-finds-nothing(0)
+  fork test, is-unequal(choice/resolver, void)
+    hold
+      save below, choice/resolver
+  fork test, choice/lean
+    hold
+      save lean, compiling-always(0)
+  fork test, is-unequal(choice/lean-of, void)
+    hold
+      save lean, choice/lean-of
+  fork test, is-unequal(choice/role, <>)
+    hold
+      save role, compiling-one-role(choice/role)
+  fork test, choice/project-deck
+    hold
+      save deck, compiling-deck/project-deck-of()
+  back compiling-options(choice, compiling-with-rewrites(choice/rewrites, compiling-with-files(choice/files, below)), lean, role, deck)
 
 # the driver's compile, a task so the budget can stand around it
 task compiling-now
@@ -226,8 +389,82 @@ task compile-text
   host notes, compiling-notes(result)
   host warnings, compiling-warnings(result)
   host open-claims, compiling-open(result)
-  host tally, make(obligation-tally, bind(total, compiling-total(result)), bind(proven, compiling-proven(result)), bind(failed, compiling-failed(result)))
-  back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(warnings, warnings), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)))
+  host tally, make(obligation-tally, bind(total, compiling-total(result)), bind(proven, compiling-proven(result)), bind(failed, compiling-failed(result)), bind(kinds, compiling-kinds(result)))
+  back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(warnings, warnings), bind(warning-messages, compiling-warning-messages(result)), bind(warning-notes, compiling-warning-notes(result)), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)), bind(roll, compiling-field(result, <roll>)), bind(wake, compiling-field(result, <wake>)), bind(twins, compiling-field(result, <twins>)), bind(cover, compiling-field(result, <cover>)), bind(css, compiling-field(result, <css>)), bind(modules, compiling-field(result, <modules>)))
+
+# a path under a root, as an absolute path from where the test runs
+task project-path
+  take root, like text
+  take path, like text
+  like text
+
+  back compiling-path/resolve(root, path)
+
+# the text of a file on disk, for a suite that compiles a real module
+bind file-text
+  take path, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:fs").readFileSync($path, "utf8")>
+
+# the text one emitter makes of a compiled program, <> for one that was refused: <rust>, <swift>, <kotlin>, <typescript>
+task emit-text
+  take outcome, like compile-outcome
+  take target, like text
+  like text
+
+  fork test, not(outcome/ok)
+    hold
+      back <>
+  fork test, is-equal(target, <rust>)
+    hold
+      back compiling-rust/emit-rust(outcome/program)
+  fork test, is-equal(target, <swift>)
+    hold
+      back compiling-swift/emit-swift(outcome/program)
+  fork test, is-equal(target, <kotlin>)
+    hold
+      back compiling-kotlin/emit-kotlin(outcome/program)
+  fork test, is-equal(target, <typescript>)
+    hold
+      back compiling-typescript/emit-type-script(outcome/program)
+  halt <no emitter of this name>
+
+bind compiling-runtime-reader
+  take seed, like number
+  like dynamic
+  case node
+    text <(path =\> \{ const fs = process.getBuiltinModule("node:fs"); return fs.existsSync(path) ? fs.readFileSync(path, "utf8") : undefined \})>
+
+# the native runtime a compiled program needs on an env, <> for one that was refused
+task prelude-text
+  take outcome, like compile-outcome
+  take env, like text
+  like text
+
+  fork test, not(outcome/ok)
+    hold
+      back <>
+  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader(0))
+
+# the same, held to what `code`, the program's emitted text, reaches
+task prelude-text
+  take outcome, like compile-outcome
+  take env, like text
+  take code, like text
+  like text
+
+  fork test, not(outcome/ok)
+    hold
+      back <>
+  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader(0), code)
+
+# the top-level statements of a compiled program, empty for one that was refused
+task statements-of
+  take outcome, like compile-outcome
+  like list, like compile-statement
+
+  back compiling-statements(outcome/program)
 
 # whether the program was refused, with a diagnostic of this name among the reasons
 task refused-as

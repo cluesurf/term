@@ -15,9 +15,9 @@
 // Run: npx tsx test/compile/hand-back-native.ts   (HAND_BACK_ONLY=typescript, rust, swift or kotlin runs one)
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, buildOn } from './shared/run-on'
 import type { Backend } from './shared/run-on'
@@ -39,7 +39,7 @@ const LIMIT = 20_000
 const DEFECT =
   'defect: the program waits on work that nothing can finish'
 
-const dir = mkdtempSync(join(tmpdir(), 'term-hand-back-native-'))
+const dir = tempDir('term-hand-back-native-')
 const only = process.env.HAND_BACK_ONLY ?? ''
 
 // a local server whose one route answers `pong` after 400 ms, in a process of its own: the program under test is run

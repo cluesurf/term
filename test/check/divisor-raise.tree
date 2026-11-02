@@ -1,0 +1,227 @@
+note <The raise sets with and without the checkedDivision predicate (decisions-2026-10 divisor-0001, spec.md section 3.1)>
+
+# Ported from divisor-raise.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/check/effects>, name effects-ts
+  load <@term/make/host/port/code/check/effects>, name effects-term
+
+# The raise sets with and without the checkedDivision predicate (decisions-2026-10 divisor-0001, spec.md section 3.1).
+# An integer `/` or `%` the predicate marks adds `defect` to its task, by name, and the callers inherit it. A guarded
+# division, a float division and a division the predicate refuses add nothing. Without a predicate nothing changes.
+# Both live copies are held to the same answers (check/effects.ts and effects.tree through its port, traps T002).
+host source, <task share\n  take total, like number\n  take parts, like number\n  like number\n  send back\n    call divide\n      read total\n      read parts\n\ntask caller\n  take total, like number\n  take parts, like number\n  like number\n  send back\n    call share\n      read total\n      read parts\n\ntask rest\n  take total, like number\n  take parts, like number\n  like number\n  send back\n    call modulo\n      read total\n      read parts\n\ntask rest-caller\n  take total, like number\n  take parts, like number\n  like number\n  send back\n    call rest\n      read total\n      read parts\n\ntask guarded\n  take total, like number\n  take parts, like number\n  like number\n  fork\n    mark unsafe\n    save got\n      call divide\n        read total\n        read parts\n    send back, read got\n  halt take\n    take problem\n    send back, code 0\n\ntask guarded-caller\n  take total, like number\n  take parts, like number\n  like number\n  send back\n    call guarded\n      read total\n      read parts\n\ntask ratio\n  take left, like float\n  take right, like float\n  like float\n  send back\n    call divide\n      read left\n      read right\n\ntask plain\n  take total, like number\n  like number\n  send back\n    call add\n      read total\n      code 1\n\ntask closing\n  take total, like number\n  take parts, like number\n  like task\n    like number\n  send back\n    task\n      like number\n      send back\n        call divide\n          read total\n          read parts\n>
+
+task program-of
+  like dynamic
+
+  back compile-text(source, make(compile-choice, bind(file, <divisor.tree>), bind(optimize, false)))/program
+
+bind raise-sets
+  take copy, like dynamic
+  take program, like dynamic
+  take check, like dynamic
+  like dynamic
+  case node
+    text <$copy.raiseSetsOf($program, [], $check)>
+
+bind no-check
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# a predicate answering true for every division, keeping what it was asked
+bind every-check
+  take seed, like number
+  like dynamic
+  case node
+    text <<(() => { const kept = { asked: 0, seen: [] }; kept.check = node => { kept.asked++; kept.seen.push(String(node.op)); return true }; return kept })()>>
+
+bind check-of
+  take kept, like dynamic
+  like dynamic
+  case node
+    text <$kept.check>
+
+bind asked-divisions-only
+  take kept, like dynamic
+  like boolean
+  case node
+    text <<($kept.asked > 0 && $kept.seen.every(op => op === "/" || op === "%"))>>
+
+# the predicate the emitters' own test is: no for a float division
+bind integers-only
+  take seed, like number
+  like dynamic
+  case node
+    text <<(node => node.left.type?.kind !== "float")>>
+
+bind answers-false
+  take seed, like number
+  like dynamic
+  case node
+    text <<(() => false)>>
+
+bind has-defect
+  take sets, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($sets.raises.get($name) ?? []).includes("defect")>
+
+bind raises-nothing
+  take sets, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <(($sets.raises.get($name) ?? []).length === 0)>
+
+bind no-defect-anywhere
+  take sets, like dynamic
+  like boolean
+  case node
+    text <<[...$sets.raises.keys()].every(name => !($sets.raises.get(name) ?? []).includes("defect"))>>
+
+bind holds-no-defect-form
+  take program, like dynamic
+  like boolean
+  case node
+    text <<!$program.some(s => s.form === "record-type" && s.name === "defect")>>
+
+bind copies-agree
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <<[...new Set([...$left.raises.keys(), ...$right.raises.keys()])].every(name => [...($left.raises.get(name) ?? [])].sort().join() === [...($right.raises.get(name) ?? [])].sort().join())>>
+
+task none-of
+  take copy, like dynamic
+  like dynamic
+
+  back raise-sets(copy, program-of(), no-check(0))
+
+task all-of
+  take copy, like dynamic
+  like dynamic
+
+  back raise-sets(copy, program-of(), check-of(every-check(0)))
+
+task floats-of
+  take copy, like dynamic
+  like dynamic
+
+  back raise-sets(copy, program-of(), integers-only(0))
+
+task asked-only
+  take copy, like dynamic
+  like boolean
+
+  host kept, every-check(0)
+  host sets, raise-sets(copy, program-of(), check-of(kept))
+  back asked-divisions-only(kept)
+
+test <effects.ts: (a) no predicate, share raises nothing>
+  want hold, raises-nothing(none-of(effects-ts), <share>)
+
+test <effects.ts: (a) no predicate, no task raises defect>
+  want hold, no-defect-anywhere(none-of(effects-ts))
+
+test <effects.ts: (b) share raises defect>
+  want hold, has-defect(all-of(effects-ts), <share>)
+
+test <effects.ts: (b) the caller of share raises defect>
+  want hold, has-defect(all-of(effects-ts), <caller>)
+
+test <effects.ts: (b) the predicate is asked of / and % nodes only>
+  want hold, asked-only(effects-ts)
+
+test <effects.ts: (c) a guarded division adds nothing>
+  want hold, not(has-defect(all-of(effects-ts), <guarded>))
+
+test <effects.ts: (c) a caller of a guarded division adds nothing>
+  want hold, not(has-defect(all-of(effects-ts), <guarded-caller>))
+
+test <effects.ts: (d) a float division raises nothing>
+  want hold, not(has-defect(floats-of(effects-ts), <ratio>))
+
+test <effects.ts: (d) the integer one beside it still raises defect>
+  want hold, has-defect(floats-of(effects-ts), <share>)
+
+test <effects.ts: (e) a predicate answering false adds nothing>
+  want hold, no-defect-anywhere(raise-sets(effects-ts, program-of(), answers-false(0)))
+
+test <effects.ts: (f) rest raises defect>
+  want hold, has-defect(all-of(effects-ts), <rest>)
+
+test <effects.ts: (f) the caller of rest raises defect>
+  want hold, has-defect(all-of(effects-ts), <rest-caller>)
+
+test <effects.ts: a task with no division raises nothing>
+  want hold, not(has-defect(all-of(effects-ts), <plain>))
+
+test <effects.ts: a division inside a closure raises on its maker>
+  want hold, has-defect(all-of(effects-ts), <closing>)
+
+test <effects.ts: defect is added by name, the program holds no such form>
+  want hold, and(has-defect(all-of(effects-ts), <share>), holds-no-defect-form(program-of()))
+
+test <effects.tree: (a) no predicate, share raises nothing>
+  want hold, raises-nothing(none-of(effects-term), <share>)
+
+test <effects.tree: (a) no predicate, no task raises defect>
+  want hold, no-defect-anywhere(none-of(effects-term))
+
+test <effects.tree: (b) share raises defect>
+  want hold, has-defect(all-of(effects-term), <share>)
+
+test <effects.tree: (b) the caller of share raises defect>
+  want hold, has-defect(all-of(effects-term), <caller>)
+
+test <effects.tree: (b) the predicate is asked of / and % nodes only>
+  want hold, asked-only(effects-term)
+
+test <effects.tree: (c) a guarded division adds nothing>
+  want hold, not(has-defect(all-of(effects-term), <guarded>))
+
+test <effects.tree: (c) a caller of a guarded division adds nothing>
+  want hold, not(has-defect(all-of(effects-term), <guarded-caller>))
+
+test <effects.tree: (d) a float division raises nothing>
+  want hold, not(has-defect(floats-of(effects-term), <ratio>))
+
+test <effects.tree: (d) the integer one beside it still raises defect>
+  want hold, has-defect(floats-of(effects-term), <share>)
+
+test <effects.tree: (e) a predicate answering false adds nothing>
+  want hold, no-defect-anywhere(raise-sets(effects-term, program-of(), answers-false(0)))
+
+test <effects.tree: (f) rest raises defect>
+  want hold, has-defect(all-of(effects-term), <rest>)
+
+test <effects.tree: (f) the caller of rest raises defect>
+  want hold, has-defect(all-of(effects-term), <rest-caller>)
+
+test <effects.tree: a task with no division raises nothing>
+  want hold, not(has-defect(all-of(effects-term), <plain>))
+
+test <effects.tree: a division inside a closure raises on its maker>
+  want hold, has-defect(all-of(effects-term), <closing>)
+
+test <effects.tree: defect is added by name, the program holds no such form>
+  want hold, and(has-defect(all-of(effects-term), <share>), holds-no-defect-form(program-of()))
+
+test <the two copies answer the same for every task>
+  host program, program-of()
+  want hold, copies-agree(raise-sets(effects-ts, program, answers-true(0)), raise-sets(effects-term, program, answers-true(0)))
+
+bind answers-true
+  take seed, like number
+  like dynamic
+  case node
+    text <<(() => true)>>

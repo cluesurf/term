@@ -1,0 +1,45 @@
+note <DEPENDENT MATCHING, the pieces well-founded induction needed (math-foundations-0005, seed.tree relation/well-founded)>
+
+# Ported from dependent-elimination.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+# DEPENDENT MATCHING, the pieces well-founded induction needed (math-foundations-0005, seed.tree relation/well-founded):
+# a match on a plain form whose result mentions the subject (`sift n` returning `box n`) uses the form's dependent
+# eliminator; a match on an indexed family whose index is constructor-headed (`below m (succ p)`) teaches each branch
+# that index's arguments (`next k` has p = k) even with no branch impossible; a function is checked against a type that
+# COMPUTES to a pi; and a claim's proof the kernel refuses is `unverified-proof`, which does not hide a looping proof
+# beside it. Each acceptance sits beside a refusal of the same shape. The inversion that omits an impossible branch is
+# the dependent-match suite.
+host forms, <form natural\n  case zero\n  case succ\n    link prior, like natural\n\nform box\n  head n, like natural\n  case hold\n    link at, like natural\n    head\n      read at\n\nform below\n  head m, like natural\n  head n, like natural\n\n  case next\n    link k, like natural\n    head\n      read k\n    head\n      make succ\n        bind prior, k\n\n  case further\n    link x, like natural\n    link y, like natural\n    link nearer, like below\n      head\n        read x\n      head\n        read y\n    head\n      read x\n    head\n      make succ\n        bind prior, y\n>
+
+host box-everywhere, <\nrule box-everywhere\n  take n, like natural\n  like box\n    head\n      read n\n>
+
+host learned, <\nrule learned\n  take j, like natural\n  take m, like natural\n  take evidence\n    like below\n      head\n        read m\n      head\n        make succ\n          bind prior, j\n  like task\n    take from\n      like box\n        head\n          read j\n    like box\n      head\n        read m\n>
+
+task compile-lean
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <d.tree>), bind(lean, true)))
+
+test <a match on a plain natural whose result mentions it>
+  want hold, compile-lean(<{forms}{box-everywhere}\ntask box-everywhere\n  take n\n  sift n\n    case zero\n      back\n        make hold\n          bind at, make zero\n    case succ\n      back\n        make hold\n          bind at\n            make succ\n              bind prior, prior\n>)/ok
+
+test <and a branch at the wrong constructor is refused>
+  want hold, refused-as(compile-lean(<{forms}{box-everywhere}\ntask box-everywhere\n  take n\n  sift n\n    case zero\n      back\n        make hold\n          bind at, make zero\n    case succ\n      back\n        make hold\n          bind at, prior\n>), <unverified-proof>)
+
+test <a constructor-headed index teaches every branch, and a function result computes to a pi>
+  want hold, compile-lean(<{forms}{learned}\ntask learned\n  take j\n  take m\n  take evidence\n  sift evidence\n    case next\n      back\n        task\n          take from\n            like box\n              head\n                read k\n          like box\n            head\n              read k\n          back from\n    case further\n      back\n        task\n          take from\n            like box\n              head\n                read y\n          like box\n            head\n              read x\n          back\n            make hold\n              bind at, x\n>)/ok
+
+test <and the branch cannot claim what it did not learn>
+  want hold, refused-as(compile-lean(<{forms}{learned}\ntask learned\n  take j\n  take m\n  take evidence\n  sift evidence\n    case next\n      back\n        task\n          take from\n            like box\n              head\n                read k\n          like box\n            head\n              read k\n          back from\n    case further\n      back\n        task\n          take from\n            like box\n              head\n                read y\n          like box\n            head\n              read x\n          back from\n>), <unverified-proof>)
+
+test <a looping proof is reported beside one the kernel refused>
+  host out, compile-lean(<{forms}\nrule looping\n  take n, like natural\n  like box\n    head\n      read n\n\ntask looping\n  take n\n  back looping(n)\n\nrule mistyped\n  take n, like natural\n  like box\n    head\n      read n\n\ntask mistyped\n  take n\n  back\n    make hold\n      bind at, make zero\n>)
+  want hold, refused-as(out, <unverified-proof>)
+  want hold, refused-as(out, <looping-proof>)

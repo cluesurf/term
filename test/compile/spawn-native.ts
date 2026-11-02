@@ -7,9 +7,8 @@
 // runtime/job.kt).
 // Run: npx tsx test/compile/spawn-native.ts   (SPAWN_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from './shared/run-on'
 
@@ -320,7 +319,7 @@ task run
   },
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'term-spawn-native-'))
+const dir = tempDir('term-spawn-native-')
 const only = process.env.SPAWN_ONLY ?? ''
 
 for (const one of CASES) {

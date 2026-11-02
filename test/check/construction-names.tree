@@ -1,0 +1,109 @@
+note <check/type-names.ts>
+
+# Ported from construction-names.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+# check/type-names.ts: every name a type or a construction uses is one the program has. A misspelled TYPE used to be
+# read as no type at all (2026-10-03). A misspelled CONSTRUCTION built: `make unit` wrote `{}` on TypeScript wherever
+# the slot was `like unknown`, and only the native compilers refused it (the compile/memo port, 2026-10-04).
+# Run: node host/line.js test test/check/construction-names.tree
+host head-text, <load @term/base/list\n  find list\n\nform box\n  link value, like unknown\n\nform light\n  case red\n  case green\n>
+
+task compile-named
+  take source, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <node>)))
+
+# a task whose body is a box with this value line, as each table row below compiles
+task one-with
+  take value, like text
+  like compile-outcome
+
+  back compile-named(<{head-text}\ntask one\n  like box\n\n  back\n    {value}\n>, <names.tree>)
+
+# a map of this word and these entry lines
+task map-with
+  take word, like text
+  take entries, like text
+  like compile-outcome
+
+  back compile-named(<task sizes\n  like number\n  save m\n    make {word}\n{entries}  back m/size\n>, <names.tree>)
+
+# whether the program was refused, a message holding this word
+task refused-with
+  take out, like compile-outcome
+  take word, like text
+  like boolean
+
+  fork test, out/ok
+    hold
+      back false
+  walk out/messages
+    take said
+    fork test, text-contains(said, word)
+      hold
+        back true
+  back false
+
+test <a form builds>
+  want hold, one-with(<make box\n      bind value, 1>)/ok
+
+test <a case builds>
+  want hold, one-with(<make box\n      bind value, make red>)/ok
+
+test <a qualified case builds>
+  want hold, one-with(<make box\n      bind value, make light/red>)/ok
+
+test <an empty hash builds>
+  want hold, one-with(<make box\n      bind value, make hash>)/ok
+
+test <an empty list builds>
+  want hold, one-with(<make box\n      bind value, make list>)/ok
+
+test <a list of values builds>
+  want hold, one-with(<make box\n      bind value, make list(1, 2)>)/ok
+
+test <`make unit` is refused>
+  want hold, refused-with(one-with(<make box\n      bind value, make unit>), <names no form>)
+
+test <a misspelled form is refused>
+  want hold, refused-with(one-with(<make box\n      bind value, make bxo>), <names no form>)
+
+test <a misspelled case is refused>
+  want hold, refused-with(one-with(<make box\n      bind value, make rde>), <names no form>)
+
+test <a misspelled type is refused, as before>
+  host typo, compile-named(<{head-text}\ntask one\n  take b, like bxo\n  like box\n\n  back b\n>, <names.tree>)
+  want hold, refused-with(typo, <the type "bxo" is not defined>)
+
+test <the refusal names the construction and the task>
+  host named, compile-named(<{head-text}\ntask one\n  like box\n\n  back\n    make box\n      bind value, make unit\n>, <names.tree>)
+  want hold, refused-with(named, <`make unit` names no form (in `one`)>)
+
+# `make hash` is the native map, its entries `save <key>, <value>` lines. With entries it built an EMPTY map until
+# 2026-10-05, the lines dropped without a word, while `make find`, a second spelling, kept them
+test <`make hash` keeps its `save` entries>
+  host literal, map-with(<hash>, <      save a, 1\n      save b, 2\n>)
+  want hold, literal/ok
+  want hold, text-contains(literal/emitted, <new Map([["a", 1], ["b", 2]])>)
+
+test <`make find` is refused, naming `make hash`>
+  want hold, refused-with(map-with(<find>, <      save a, 1\n>), <older spelling of `make hash`>)
+
+test <a `bind` under `make hash` is refused, not dropped>
+  want hold, refused-with(map-with(<hash>, <      bind a, 1\n>), <not a `bind`>)
+
+# a program's OWN `hash` (@term/host's `data` has `case hash / link list`) is built with `bind`, as any case is
+test <a `bind` under `make hash` builds the program's own `hash` case>
+  host own, compile-named(<form data\n  case hash\n    link list, like text\n  case none\n\ntask wrap\n  like data\n  back\n    make hash\n      bind list, \<a\>\n>, <own.tree>)
+  want hold, own/ok
+  want hold, text-contains(own/emitted, <"hash">)

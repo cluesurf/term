@@ -1,0 +1,114 @@
+# A construction with values under its name AND a part beside it. A comma after a closed call stays at that part's level
+# (deck/term/CLAUDE.md, comma chains), so `make list(<a>), b` is make > list(<a>), b, and the reader took `b` and lost
+# `<a>`: `probe-path/join(make list(<task>), false)` built `join([false])`, with a clean build (item 0818, trap T-0555).
+# The tree keeps nothing of the call around it, and the items the eye sees are not the items of the tree, so it is refused
+# with both ways to say it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(lean, true)))
+
+task said
+  take text, like text
+  like text
+
+  back join(built(text)/messages, < | >)
+
+task hints
+  take text, like text
+  like text
+
+  save lines, make list
+  walk built(text)/notes
+    take one
+    lines/push(one/hint)
+  back join(lines, < | >)
+
+host dock-head, <dock load\n  load \<node:path\>, name probe-path\n\n>
+
+host one-head, <task one\n  take x, like list, like text\n  like number\n\n  back x/length\n\n>
+
+host pair-head, <form pair\n  slot left, like number\n  slot right, like number\n\n>
+
+# ---- refused: the value under the name would be lost ----
+
+test <as a dock call's argument, where the count looks right>
+  host text, <{dock-head}task probe\n  like text\n\n  back probe-path/join(make list(\<a\>), false)\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <as the one argument of a task>
+  host text, <{one-head}task probe\n  like number\n\n  back one(make list(\<a\>), \<b\>)\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <beside a save>
+  host text, <task probe\n  like list, like text\n\n  save xs, make list(\<a\>), \<b\>\n  back xs\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <written in parentheses>
+  host text, <{one-head}task probe\n  like number\n\n  back one(make(list(\<a\>), \<b\>))\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <on the line below, which an indent puts under make>
+  host text, <task probe\n  like list, like text\n\n  save xs\n    make list(\<a\>)\n      \<b\>\n  back xs\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <with a bind beside the list>
+  host text, <{one-head}task probe\n  like number\n\n  back one(make list(\<a\>), bind(x, \<b\>))\n>
+  want hold, text-contains(said(text), <`make list` has values under its name and a part beside it>)
+
+test <a form's slots lose a value the same way>
+  host text, <{pair-head}task probe\n  like pair\n\n  back make pair(1), 2\n>
+  want hold, text-contains(said(text), <`make pair` has values under its name and a part beside it>)
+
+test <the hint gives both spellings>
+  host text, <{dock-head}task probe\n  like text\n\n  back probe-path/join(make list(\<a\>), false)\n>
+  want hold, text-contains(hints(text), <make(list, a), b>)
+  want hold, text-contains(hints(text), <make list(a, b)>)
+
+# ---- kept: every other spelling means what it did ----
+
+test <the next argument, with make in parentheses>
+  host out, built(<{dock-head}task probe\n  like text\n\n  back probe-path/join(make(list, \<a\>), false)\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <probePath.join(["a"], false)>)
+
+test <two items under the name>
+  host out, built(<{dock-head}task probe\n  like text\n\n  back probe-path/join(make list(\<a\>, \<b\>))\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <probePath.join(["a", "b"])>)
+
+test <two items beside the name>
+  host out, built(<{dock-head}task probe\n  like text\n\n  back probe-path/join(make list, \<a\>, \<b\>)\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <probePath.join(["a", "b"])>)
+
+test <two items after a space>
+  host out, built(<{dock-head}task probe\n  like text\n\n  back probe-path/join(make list \<a\>, \<b\>)\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <probePath.join(["a", "b"])>)
+
+test <one item under the name>
+  host out, built(<{dock-head}task probe\n  like text\n\n  back probe-path/join(make list(\<a\>))\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <probePath.join(["a"])>)
+
+test <a form's slots under the name>
+  host out, built(<{pair-head}task probe\n  like pair\n\n  back make pair(1, 2)\n>)
+  want hold, out/ok
+
+test <a call closed by its parenthesis under a bare head stays that head's next value>
+  host out, built(<task add\n  take a, like number\n  take b, like number\n  like number\n\n  back 1\n\ntask probe\n  like list, like number\n\n  back make list(add(1, 2), 3)\n>)
+  want hold, out/ok

@@ -99,6 +99,7 @@ load ./minting-reads
   find is-flow-head
   find is-fork-test-arm
   find outline-of
+  find word-type
 
 # ---- an integer past 2^53 ----
 
@@ -1479,6 +1480,7 @@ task is-list-type
 
 # a type written as one phrase: `stack number` is `stack` applied to `number`
 task phrase-type
+  take state, like mint-state
   take phrase, like text
   like type
 
@@ -1486,14 +1488,14 @@ task phrase-type
   save name, get(words, 0)
   fork test, is-equal(words/length, 1)
     hold
-      back type-of-word(name)
+      back word-type(state, name)
   save applied, make list
   save index, 0
   walk words
     take word
     fork test, is-above(index, 0)
       hold
-        push(applied, phrase-type(word))
+        push(applied, phrase-type(state, word))
     save index, add(index, 1)
   back named-type(name, applied, make list)
 
@@ -1565,7 +1567,7 @@ task type-of-heads
   sift text-of(value)
     case some
       link word
-      save phrased, phrase-type(word)
+      save phrased, phrase-type(state, word)
       back make(some, phrased)
     case none
       save nothing, 0
@@ -1595,8 +1597,9 @@ task type-of-heads
         push(applied, word)
     save index, add(index, 1)
 
-  # the native collections: their parts are nested `like` lines, and a bare one leaves its part FREE
-  fork test, is-equal(name, <list>)
+  # the native collections: their parts are nested `like` lines, and a bare one leaves its part FREE. A file whose own
+  # real form takes the word means that form (decision 110)
+  fork test, and(is-equal(name, <list>), not(state/words/has(name)))
     hold
       save element, type-or-free(type-at(children, 0))
       save built
@@ -1604,7 +1607,7 @@ task type-of-heads
           bind element, element
       back make(some, built)
 
-  fork test, is-equal(name, <hash>)
+  fork test, and(is-equal(name, <hash>), not(state/words/has(name)))
     hold
       # THE ONE-LINE SPELLING, `like hash, like text, like number`: each comma nests the next `like` under the one
       # before, so the value arrives as the KEY's own child. A key that is a primitive takes no argument
@@ -1623,7 +1626,7 @@ task type-of-heads
               link key-word
               fork test, and(not(contains(key-word, < >)), is-type-name(key-word))
                 hold
-                  save key-type, type-of-word(key-word)
+                  save key-type, word-type(state, key-word)
                   save key-base, make(some, key-type)
             case none
               save nothing, 0
@@ -1631,7 +1634,8 @@ task type-of-heads
       sift key-base
         case some
           link key-known
-          fork test, and(not(is-named-type(key-known)), is-equal(spilled/length, 1))
+          # the key's word is a named type only where this file may mean a real form by it (decision 110)
+          fork test, is-equal(spilled/length, 1)
             hold
               save spilled-first, get(spilled, 0)
               save spilled-type, type-or-free(type-of(state, make(some, spilled-first)))
@@ -1650,7 +1654,9 @@ task type-of-heads
           bind value, value-type
       back make(some, built)
 
-  fork test, is-equal(name, <task>)
+  # `like task` with a take, a halt or a result under it is the function type, which a form cannot be. A bare one where
+  # the file's own real form takes the word is that form
+  fork test, and(is-equal(name, <task>), or(not(state/words/has(name)), or(is-above(children/length, 0), or(is-above(forms-at(value, <take>)/length, 0), is-above(at(value, <halt>)/length, 0)))))
     hold
       save params, make list
       # `''` for a parameter with no name
@@ -1704,7 +1710,7 @@ task type-of-heads
 
   fork test, and(is-type-name(name), and(is-equal(applied/length, 0), is-equal(children/length, 0)))
     hold
-      save base, type-of-word(name)
+      save base, word-type(state, name)
       back make(some, base)
 
   # A `head` under a `like` is either a TYPE argument or a VALUE index: a type lands at a name or a nested `like`, a value
@@ -1719,7 +1725,7 @@ task type-of-heads
   save args, make list
   walk applied
     take word
-    push(args, phrase-type(word))
+    push(args, phrase-type(state, word))
   walk children
     take child
     sift child
@@ -1783,7 +1789,7 @@ task head-type
       link known
       back known
     case none
-      back type-of-word(text-or-empty(word-at(head-form, <name>)))
+      back word-type(state, text-or-empty(word-at(head-form, <name>)))
 
 task is-named-type
   take value, like type
@@ -2791,6 +2797,38 @@ task is-some-type
     case none
       back false
 
+# A construction with values under its name AND a part beside it. A comma after a closed call stays at that part's level,
+# so `make list(<a>), b` is make > list(<a>), b: `b` is not the next argument of the call around it, and the reader
+# below, which took the name's own values only when nothing stood beside the name, kept `b` and lost `<a>`. An indented
+# line under `make list(<a>)` is the same tree. Refused, item 0818: what the eye reads and what the tree holds differ
+# here, so neither reading is safe to guess
+task refuse-split-make
+  take state, like mint-state
+  take value, like minted
+  take name, like text
+  mark private
+
+  sift group-kids(node-of(value))
+    case some
+      link kids
+      fork test, is-above(kids/length, 2)
+        hold
+          sift node-in(kids, 1)
+            case some
+              link named
+              sift named
+                case group
+                  fork test, is-above(nodes/length, 1)
+                    hold
+                      save hint, <a comma after a closed call stays at its level, and an indented line goes under `make`, so the part beside the name is not the next argument of the call around it. For another argument write the name bare, `make({name}, a), b`. For one more value keep it under the name, `make {name}(a, b)`>
+                      push-problem(state, span-of(make(some, value)), <`make {name}` has values under its name and a part beside it, and only the part beside it would be kept>, make(some, hint))
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+
 # `make <form>` with `bind` children is a record construction; `make list` and `make hash` are the native collections
 task record-of
   take state, like mint-state
@@ -2812,6 +2850,7 @@ task record-of
     case some
       save nothing, 0
   save name, text-or-empty(word-at(held, <name>))
+  refuse-split-make(state, value, name)
   save fields, make list
   save positional, make list
   walk forms-at(held, <bind>)

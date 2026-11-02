@@ -7,9 +7,8 @@
 // runtime's `__term_spawn` says queued work does.
 // Run: npx tsx test/compile/tick-raise-native.ts   (TR_ONLY=typescript, rust, swift or kotlin runs one backend)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from './shared/run-on'
 
@@ -73,7 +72,7 @@ task run
 `
 
 const only = process.env.TR_ONLY
-const dir = mkdtempSync(join(tmpdir(), 'term-tick-raise-'))
+const dir = tempDir('term-tick-raise-')
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
   const ran = runOn({

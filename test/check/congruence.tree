@@ -1,0 +1,25 @@
+note <Term-level congruence closure under hypotheses>
+
+# Ported from congruence.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Term-level congruence closure under hypotheses: `convertMod` recurses structurally (giving congruence, `x = y` implies
+# `f x = f y`) and `matchesHypothesis` now closes the hypothesis equalities transitively (`x = y` and `y = z` give
+# `x = z`). Together these decide ground equality modulo a set of equational `have` hypotheses. The soundness control is
+# essential: two UNRELATED hypotheses must not connect their endpoints, or the prover would equate distinct things.
+# Run: npx tsx test/check/congruence.ts
+host prelude, <form thing\n  case a\n  case b\n  case c\n  case d\n\ntask wrap\n  take x, like thing\n  like thing\n  fork case, read x\n    case a\n      send back\n        make b\n    case b\n      send back\n        make c\n    case c\n      send back\n        make d\n    case d\n      send back\n        make a\n>
+
+# 1. TRANSITIVITY: x = y and y = z give x = z.
+test <transitive chain closes>
+  want hold, compile-text(<{prelude}\nrule transitive-chain\n  seat x, like thing\n  seat y, like thing\n  seat z, like thing\n  have h1\n    call is-equal\n      read x\n      read y\n  have h2\n    call is-equal\n      read y\n      read z\n  show hold\n    call is-equal\n      read x\n      read z\n  calm hold\n>)/ok
+
+# 2. CONGRUENCE: x = y gives wrap x = wrap y.
+test <congruence under a function>
+  want hold, compile-text(<{prelude}\nrule congruence-step\n  seat x, like thing\n  seat y, like thing\n  have h\n    call is-equal\n      read x\n      read y\n  show hold\n    call is-equal\n      call wrap\n        read x\n      call wrap\n        read y\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: x = y and z = w (disjoint) do NOT give x = z. Must be rejected.
+test <unrelated hypotheses do not connect>
+  want hold, not(compile-text(<{prelude}\nrule unrelated-hypotheses-do-not-connect\n  seat x, like thing\n  seat y, like thing\n  seat z, like thing\n  seat w, like thing\n  have h1\n    call is-equal\n      read x\n      read y\n  have h2\n    call is-equal\n      read z\n      read w\n  show hold\n    call is-equal\n      read x\n      read z\n  calm hold\n>)/ok)

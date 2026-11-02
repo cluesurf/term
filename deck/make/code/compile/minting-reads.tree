@@ -60,6 +60,11 @@ load ./mill-running
 load ./templates
   find span-of-whole
 
+load ./surface
+  find is-type-name
+  find is-language-word
+  find type-of-word
+
 # ---- the mint state ----
 
 # how many `walk size` loops the file has minted so far, shared by every copy a nested body makes
@@ -114,6 +119,8 @@ form mint-state
   link named, like hash, like text, like boolean
   # the top-level tasks the file defines itself (tasks-in-file)
   link own-tasks, like hash, like text, like boolean
+  # the language's words this file may mean a real form by (words-in-file), each minted as a named type
+  link words, like hash, like text, like boolean
   # the owning form's type parameters
   link owner-params
     like maybe, like list, like text
@@ -155,6 +162,7 @@ task new-mint-state
       bind host-task, named/has(<host>)
       bind named, named
       bind own-tasks, tasks-in-file(tree)
+      bind words, words-in-file(tree)
       bind aliases, make hash
       bind grammar, grammar
       bind twins, make list
@@ -536,6 +544,98 @@ task tasks-in-file
               miss
                 save nothing, 0
   back names
+
+# THE WORDS THIS FILE MAY MEAN A REAL FORM BY (decision 110), from its own text, since the mint's answer is cached by that
+# text alone. A top-level form named for a language word that writes a case, a link or a slot, and a plain `find` of a
+# word of the table, which only the binder can settle (check/scope.tree `settle-words`). `find list`, `find hash` and
+# `find task` are not listed: they mint the native shape, which holds nothing lost, and the binder turns it to the form
+# where the find reached one. A `find x, name y` is left out too: its local name is `y`
+task words-in-file
+  take tree, like root-node
+  like hash, like text, like boolean
+
+  save words, make hash
+  sift tree
+    case root
+      walk nodes
+        take group
+        sift group
+          case group
+            link group-nodes
+            fork test, head-word-is(group, <form>)
+              hold
+                sift word-of-at(group-nodes, 1)
+                  case some
+                    link named
+                    fork test, and(is-language-word(named), writes-data(group-nodes))
+                      hold
+                        save words/{named}, true
+                  case none
+                    save nothing, 0
+                turn next
+            fork test, not(head-word-is(group, <load>))
+              hold
+                turn next
+            walk group-nodes
+              take child
+              fork test, not(head-word-is(child, <find>))
+                hold
+                  turn next
+              sift child
+                case group
+                  link child-nodes
+                  fork test, has-head(child-nodes, <name>)
+                    hold
+                      turn next
+                  sift word-of-at(child-nodes, 1)
+                    case some
+                      link found
+                      fork test, is-type-name(found)
+                        hold
+                          save words/{found}, true
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+          miss
+            save nothing, 0
+  back words
+
+# whether a form's lines write a case, a link or a slot: what makes it a real form whatever its name
+task writes-data
+  take kids, like list, like node
+  like boolean
+  mark private
+
+  back or(has-head(kids, <case>), or(has-head(kids, <link>), has-head(kids, <slot>)))
+
+task has-head
+  take kids, like list, like node
+  take word, like text
+  like boolean
+  mark private
+
+  walk kids
+    take one
+    fork test, head-word-is(one, word)
+      hold
+        back true
+  back false
+
+# the type a word names in this file: a named type where the file may mean a real form by it, else the language's own
+task word-type
+  take state, like mint-state
+  take name, like text
+  like type
+
+  # the alias marks it as a word for the binder to settle, apart from the named `text` a `host x, text <a>` is minted with
+  fork test, state/words/has(name)
+    hold
+      back
+        make named
+          bind name, name
+          bind alias, make(some, name)
+  back type-of-word(name)
 
 # the names the file defines or imports that a body line may call: `task x` and `view x` at the top level, and `find x`
 # (or a `find y, name x`) under a `load`

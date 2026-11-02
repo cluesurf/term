@@ -8,9 +8,8 @@
 // Kotlin starts the coroutine where it stands (`termStart`).
 // Run: npx tsx test/compile/tick-native.ts
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { runOn } from './shared/run-on'
 import type { Backend } from './shared/run-on'
@@ -70,7 +69,7 @@ task run
   send back, text <{before} {count}>
 `
 
-const dir = mkdtempSync(join(tmpdir(), 'term-tick-native-'))
+const dir = tempDir('term-tick-native-')
 const only = process.env.TICK_ONLY ?? ''
 
 for (const backend of (

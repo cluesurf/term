@@ -72,6 +72,7 @@ load ./minting-reads
   find span-of
   find is-form-mark
   find is-width-word
+  find word-type
 
 load ./minting-values
   find push-problem
@@ -248,7 +249,7 @@ task field-of
       sift word-at(list-value, <form>)
         case some
           link element
-          save field-type, array-type(type-of-word(element))
+          save field-type, array-type(word-type(state, element))
         case none
           save nothing, 0
   save need, need-word(held)
@@ -284,7 +285,7 @@ task field-of
       sift word
         case some
           link known
-          fork test, is-width-word(known)
+          fork test, and(is-width-word(known), not(state/words/has(known)))
             hold
               save width, known
         case none
@@ -365,31 +366,35 @@ task form-of
       case none
         save nothing, 0
 
-  # A form NAMED for a primitive registers no record-type: its methods are still desugared, typed over the primitive
+  # A form NAMED for a primitive that writes no case, link or slot registers no record-type: its methods are still
+  # desugared, typed over the primitive. One that writes any of those is a real form, whatever its name (decision 110)
   save form-self, make none
-  fork test, is-type-name(name)
+  save writes-data, is-above(add(add(forms-at(held, <case>)/length, forms-at(held, <link>)/length), forms-at(held, <slot>)/length), 0)
+  fork test, not(writes-data)
     hold
-      save primitive, type-of-word(name)
-      save form-self, make(some, primitive)
-    miss
-      fork test, is-equal(name, <list>)
+      fork test, is-type-name(name)
         hold
-          save list-self, array-type(named-of(param-or(params, 0, <t>), make list))
-          save form-self, make(some, list-self)
+          save primitive, type-of-word(name)
+          save form-self, make(some, primitive)
         miss
-          fork test, is-equal(name, <hash>)
+          fork test, is-equal(name, <list>)
             hold
-              save hash-self
-                make map
-                  bind key, named-of(param-or(params, 0, <k>), make list)
-                  bind value, named-of(param-or(params, 1, <v>), make list)
-              save form-self, make(some, hash-self)
+              save list-self, array-type(named-of(param-or(params, 0, <t>), make list))
+              save form-self, make(some, list-self)
+            miss
+              fork test, is-equal(name, <hash>)
+                hold
+                  save hash-self
+                    make map
+                      bind key, named-of(param-or(params, 0, <k>), make list)
+                      bind value, named-of(param-or(params, 1, <v>), make list)
+                  save form-self, make(some, hash-self)
 
   sift form-self
     case none
       record-of-form(state, value, name, params, indices, out)
     case some
-      refuse-lost-data(state, held, name)
+      save nothing, 0
 
   save outer, state/owner
   save outer-self, state/self-type
@@ -405,6 +410,9 @@ task form-of
         take param-name
         push(param-types, named-of(param-name, make list))
       save own-self, named-of(name, param-types)
+      fork test, is-equal(param-types/length, 0)
+        hold
+          save own-self, word-type(state, name)
       save state/self-type, make(some, own-self)
   save state/owner-params, make(some, params)
 
@@ -459,24 +467,6 @@ task param-or
     hold
       back get(params, index)
   back fallback
-
-# A form named for a primitive registers no record-type, so a case or a field written under one would vanish, and the
-# first sign would be a `make` of it naming no form (`form size` in seed.tree's space/holography.tree, item
-# term-self-host-001-0790). Tasks are kept, which is what the stdlib's `form text` and `form list` hold, and a
-# `name <Native>` describes a host type's surface and declares no value of the program
-task refuse-lost-data
-  take state, like mint-state
-  take held, like maybe, like minted
-  take name, like text
-  mark private
-
-  fork test, is-above(forms-at(held, <nick>)/length, 0)
-    hold
-      back
-  save written, add(add(forms-at(held, <case>)/length, forms-at(held, <link>)/length), forms-at(held, <slot>)/length)
-  fork test, is-above(written, 0)
-    hold
-      push-problem(state, span-of(held), <primitive-form-name: `form {name}` declares cases or fields, and `{name}` names a primitive type, so the form registers no record and they would be lost>, make(some, <name the form something else, or keep only its tasks>))
 
 # The record-type of a form that is not a primitive, pushed onto `out`, and a `mark text` form's two conversions
 task record-of-form

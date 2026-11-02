@@ -1,0 +1,92 @@
+note <`like decimal` is refused, naming `like float` (note/project/term/decisions-2026-10/decisions-2026-10.md, D4)>
+
+# Ported from decimal-word.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-outcome
+  find compile-choice
+  find emit-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# `like decimal` is refused, naming `like float` (note/project/term/decisions-2026-10/decisions-2026-10.md, D4). `decimal` named the platform
+# float, where every other language's library means exact base 10 by it, so the type word went and the name is free for
+# a form. Run: npx tsx test/check/decimal-word.ts
+#
+# Every refusal sits beside the spelling that must still build, so a checker that refused every float fails here.
+# whether the program was refused, a message saying the old name of the type
+task refused-old-name
+  take source, like text
+  like boolean
+
+  host out, compile-text(source)
+  fork test, out/ok
+    hold
+      back false
+  walk out/messages
+    take said
+    fork test, text-contains(said, <`like decimal` is the old name of `like float`>)
+      hold
+        back true
+  back false
+
+test <a parameter and a result typed `like float` build>
+  host result, compile-text(<task half\n  take x, like float\n  like float\n  send back\n    call divide\n      read x\n      2.0\n>)
+  host good, result/ok
+  want hold, good
+
+test <a parameter typed `like decimal` is refused, naming `like float`>
+  want hold, refused-old-name(<task half\n  take x, like decimal\n  like float\n  send back, read x\n>)
+
+test <a result typed `like decimal` is refused>
+  want hold, refused-old-name(<task one\n  like decimal\n  send back, 1.0\n>)
+
+test <a field typed `like decimal` is refused>
+  want hold, refused-old-name(<form point\n  link x, like decimal\n>)
+
+test <an element typed `like decimal` is refused>
+  want hold, refused-old-name(<form path\n  link xs, like list, like decimal\n>)
+
+test <a float constant with no `like` still builds>
+  host result, compile-text(<host limit, 5.0\n\ntask twice\n  like float\n  send back\n    call multiply\n      read limit\n      2.0\n>)
+  host good, result/ok
+  want hold, good
+
+test <the name is free for a form of its own>
+  host result, compile-text(<form decimal\n  link digits, like text\n\ntask make-one\n  like decimal\n  send back\n    make decimal\n      bind digits, \<1.5\>\n>)
+  host good, result/ok
+  want hold, good
+
+# and natively that form is the form: every backend once read a named `decimal` as the float, so a program's own
+# `form decimal` would have been declared `Double` on Swift and Kotlin
+host own, <form decimal\n  link digits, like text\n\ntask make-one\n  like decimal\n  send back\n    make decimal\n      bind digits, \<1.5\>\n\ntask get-digits\n  take d, like decimal\n  like text\n  send back, read d/digits\n>
+
+test <swift: `form decimal` is that form, never the float>
+  host result, compile-text(own, make(compile-choice, bind(file, <s.tree>), bind(env, <swift>), bind(entries, make list(<make-one>, <get-digits>))))
+  host code-text, emit-text(result, <swift>)
+  host pattern-3, make pattern, <<-> DecimalForm\b>>
+  host pattern-4, make pattern, <<-> Double|\): Double|-> f64>>
+  host good, and(and(result/ok, matches(pattern-3, code-text)), not(matches(pattern-4, code-text)))
+  want hold, good
+
+test <kotlin: `form decimal` is that form, never the float>
+  host result, compile-text(own, make(compile-choice, bind(file, <s.tree>), bind(env, <kotlin>), bind(entries, make list(<make-one>, <get-digits>))))
+  host code-text, emit-text(result, <kotlin>)
+  host pattern-3, make pattern, <<\): Decimal\b>>
+  host pattern-4, make pattern, <<-> Double|\): Double|-> f64>>
+  host good, and(and(result/ok, matches(pattern-3, code-text)), not(matches(pattern-4, code-text)))
+  want hold, good
+
+test <rust: `form decimal` is that form, never the float>
+  host result, compile-text(own, make(compile-choice, bind(file, <s.tree>), bind(env, <rust>), bind(entries, make list(<make-one>, <get-digits>))))
+  host code-text, emit-text(result, <rust>)
+  host pattern-3, make pattern, <<-> Decimal\b>>
+  host pattern-4, make pattern, <<-> Double|\): Double|-> f64>>
+  host good, and(and(result/ok, matches(pattern-3, code-text)), not(matches(pattern-4, code-text)))
+  want hold, good

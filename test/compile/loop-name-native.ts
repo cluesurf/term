@@ -4,9 +4,8 @@
 // before a named `turn next` reaches it from inside a nested loop, or it would count the same row forever.
 // Run: npx tsx test/compile/loop-name-native.ts   (LOOP_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { BACKENDS, runOn } from './shared/run-on'
@@ -129,7 +128,7 @@ task run
 // list of lists written out, whose rows walked by position did not build on Rust or Swift before 2026-10-05
 const EXPECTED = '1+9 after 4 101 2 3 1:1'
 
-const dir = mkdtempSync(join(tmpdir(), 'term-loop-name-'))
+const dir = tempDir('term-loop-name-')
 const only = process.env.LOOP_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {

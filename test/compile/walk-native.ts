@@ -13,12 +13,11 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import {
   existsSync,
-  mkdtempSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import {
@@ -50,7 +49,7 @@ const have = (tool: string): boolean =>
 const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined =>
   existsSync(path) ? readFileSync(path, 'utf8') : undefined
-const dir = mkdtempSync(join(tmpdir(), 'walk-native-'))
+const dir = tempDir('walk-native-')
 const only = process.env.WN_ONLY ?? ''
 
 // the guide's two loops, and the counter named by a `take`: 4 x 4 turns, and 0 + 1 + 2 + 3 + 4

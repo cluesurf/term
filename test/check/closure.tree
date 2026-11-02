@@ -1,0 +1,33 @@
+note <First-class function values (inline closures / lambdas)>
+
+# Ported from closure.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# First-class function values (inline closures / lambdas). A closure `task f / take .. like .. / like .. / <body>`
+# written in VALUE position elaborates to a kernel LAMBDA from its own type annotations, so it can be passed to a
+# higher-order function and APPLIED (beta-reduced) inside a proof, and can fill a higher-order CONSTRUCTOR FIELD with a
+# DEPENDENT parameter type. This was the recurring gate for the generic well-founded recursor and for building
+# accessibility witnesses. Run: npx tsx test/check/closure.ts
+host nat, <form nat\n  case zero\n  case succ\n    link prior, like nat\n>
+
+host twice, <{nat}\ntask twice\n  take f, like task\n    take x, like nat\n    like nat\n  take x, like nat\n  like nat\n  send back\n    call f\n      call f\n        read x\n>
+
+# 1. an inline closure passed to a higher-order function REDUCES when applied: twice (\x. succ x) 0 == 2.
+test <inline closure reduces through a higher-order function (twice g 0 == 2)>
+  want hold, compile-text(<{twice}\nrule use-closure\n  show hold\n    call is-equal\n      call twice\n        task g\n          take x, like nat\n          like nat\n          send back\n            make succ\n              bind prior\n                read x\n        make zero\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: twice (\x. succ x) 0 is 2, not 3. The closure must reduce to the RIGHT value.
+test <closure reduces to the correct value (twice g 0 != 3)>
+  want hold, not(compile-text(<{twice}\nrule use-closure-wrong\n  show hold\n    call is-equal\n      call twice\n        task g\n          take x, like nat\n          like nat\n          send back\n            make succ\n              bind prior\n                read x\n        make zero\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make succ\n                bind prior\n                  make zero\n  calm hold\n>)/ok)
+
+# the `a < b` proof and the accessibility predicate `acc n`, whose `mkacc` constructor takes a HIGHER-ORDER field
+# `step : (m) -> lt m n -> acc m` -- a function returning the family at another index, with a DEPENDENT parameter type.
+host acc, <{nat}\nform lt\n  head a, like nat\n  head b, like nat\n  case ltself\n    link q, like nat\n    head\n      read q\n    head\n      make succ\n        bind prior\n          read q\n  case ltmore\n    link x, like nat\n    link y, like nat\n    link sub, like lt\n      head\n        read x\n      head\n        read y\n    head\n      read x\n    head\n      make succ\n        bind prior\n          read y\n\nform acc\n  head n, like nat\n  case mkacc\n    link step, like task\n      take m, like nat\n      take pf, like lt\n        head\n          read m\n        head\n          read n\n      like acc\n        head\n          read m\n>
+
+# 3. build a real accessibility witness `acc zero`: its step is an inline closure whose parameter `pf : lt m zero` is
+# uninhabited, so the body is an empty (ex-falso) match. This needs the closure's DEPENDENT parameter type AND the
+# higher-order constructor field to both carry their real types.
+test <accessibility witness acc-zero builds from a dependent inline closure (ex-falso step)>
+  want hold, compile-text(<{acc}\ntask acc-zero\n  like acc\n    head\n      make zero\n  send back\n    make mkacc\n      bind step\n        task f\n          take m, like nat\n          take pf, like lt\n            head\n              read m\n            head\n              make zero\n          like acc\n            head\n              read m\n          fork case, read pf\n>)/ok

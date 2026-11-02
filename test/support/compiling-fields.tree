@@ -1,0 +1,158 @@
+note <Each field of compile-choice and compile-outcome does what its comment says, the ones no suite has reached yet too>
+
+# Held here, not only through the suites that use them: a later batch must find a field working, and decision 106 owes
+# every field a fall so a landed suite reads unchanged. What decides the driver's own option is the option handed over.
+
+load ./compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find compiling-rewrite
+  find compiling-options-of
+  find refused-as
+  find emit-text
+  find prelude-text
+  find statements-of
+  find project-path
+  find file-text
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+host plain, <task f\n  like number\n  send back, code 1\n>
+
+host loads-list, <load @term/base/list\n  find push\n\ntask f\n  take xs, like list, like number\n  like list, like number\n  call push\n    read xs\n    code 1\n  send back, read xs\n>
+
+host loads-app, <load @app/x\n  find g\n\ntask f\n  like number\n  send back, call g\n>
+
+host app-module, <task g\n  like number\n  send back, code 2\n>
+
+host app-broken, <task g\n  like number\n  send back, text \<two\>\n>
+
+host lost-write, <task fill\n  take xs, like list, like number\n  xs/push(1)\n>
+
+# the driver's options a choice comes to, by name, in order. <> is no options at all
+bind option-names
+  take options, like dynamic
+  like text
+  case node
+    text <Object.keys($options ?? \{\}).sort().join(" ")>
+
+bind option-value
+  take options, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$options[$name]>
+
+test <a choice with nothing set hands the driver no options>
+  want hold, is-equal(option-names(compiling-options-of(make compile-choice)), <>)
+
+test <library, optimize, roll, cover and expose-twins are handed over by those names>
+  host given, compiling-options-of(make(compile-choice, bind(library, true), bind(optimize, false), bind(roll, true), bind(cover, true), bind(expose-twins, true)))
+  want hold, is-equal(option-names(given), <cover exposeTwins library optimize roll>)
+  want hold, is-equal(option-value(given, <optimize>), false)
+
+test <tree-shake is left out when empty, and is a boolean when set>
+  want hold, is-equal(option-names(compiling-options-of(make(compile-choice, bind(tree-shake, <>)))), <>)
+  want hold, is-equal(option-value(compiling-options-of(make(compile-choice, bind(tree-shake, <false>))), <treeShake>), false)
+  want hold, is-equal(option-value(compiling-options-of(make(compile-choice, bind(tree-shake, <true>))), <treeShake>), true)
+
+test <entry and entries both reach the driver's entry points>
+  host given, compiling-options-of(make(compile-choice, bind(entry, <a>), bind(entries, make list(<b>, <c>))))
+  want hold, is-equal(option-value(given, <entryPoints>), make list(<a>, <b>, <c>))
+
+test <project reads lean, role and deck only when it is asked to>
+  want hold, is-equal(option-names(compiling-options-of(make(compile-choice, bind(project, <.>)))), <resolve>)
+  want hold, is-equal(option-names(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-lean, true), bind(project-role, true), bind(project-deck, true)))), <deckOf leanOf resolve roleOf>)
+
+test <closed finds nothing, where the stdlib resolver finds the load>
+  want hold, compile-text(loads-list, make(compile-choice, bind(stdlib, <node>)))/ok
+  want hold, not(compile-text(loads-list, make(compile-choice, bind(closed, true)))/ok)
+
+test <project finds a package the stdlib resolver does not>
+  host program, <load @term/site/code/view/reactive\n  find make-signal\n\ntask f\n  like number\n  save s\n    call make-signal\n      bind value, code 3\n  send back, code 1\n>
+  want hold, compile-text(program, make(compile-choice, bind(project, <.>)))/ok
+  want hold, not(compile-text(program, make(compile-choice, bind(stdlib, <node>)))/ok)
+
+test <stdlib with project is that native env over the project>
+  want hold, compile-text(loads-list, make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(stdlib, <node>)))/ok
+
+test <a files entry answers its path, under its own name or another>
+  host same, make(compiling-source, bind(file, <@app/x>), bind(text, app-broken))
+  host other, make(compiling-source, bind(file, <@app/x>), bind(text, app-broken), bind(answer, <x.tree>))
+  want hold, is-equal(compile-text(loads-app, make(compile-choice, bind(files, make list(same))))/notes/0/file, <@app/x>)
+  want hold, is-equal(compile-text(loads-app, make(compile-choice, bind(files, make list(other))))/notes/0/file, <x.tree>)
+
+test <a rewrite changes the path before anything resolves it>
+  host module, make(compiling-source, bind(file, <@app/x>), bind(text, app-module))
+  host rewrite, make(compiling-rewrite, bind(pattern, <^@old/>), bind(into, <@app/>))
+  host program, <load @old/x\n  find g\n\ntask f\n  like number\n  send back, call g\n>
+  want hold, not(compile-text(program, make(compile-choice, bind(files, make list(module))))/ok)
+  want hold, compile-text(program, make(compile-choice, bind(files, make list(module)), bind(rewrites, make list(rewrite))))/ok
+
+test <the notes of a refusal carry their place, severity and code>
+  host out, compile-text(<task f\n  like text\n  send back, code 3\n>, make(compile-choice, bind(file, <f.tree>)))
+  host note, out/notes/0
+  want hold, is-equal(note/file, <f.tree>)
+  want hold, is-above(note/line, 0)
+  want hold, is-equal(note/severity, <error>)
+  want hold, is-above(note/code, 0)
+  want hold, is-equal(note/message, out/messages/0)
+
+test <warning-messages stand beside the warning names, and warning-notes hold the same with a place>
+  host out, compile-text(lost-write, make(compile-choice, bind(file, </gate/code/w.tree>), bind(lean, true)))
+  want hold, out/ok
+  want hold, is-equal(out/warnings/length, out/warning-messages/length)
+  want hold, is-equal(out/warning-notes/0/name, out/warnings/0)
+  want hold, text-contains(out/warning-messages/0, <sends nothing back: under value semantics>)
+  want hold, text-contains(out/warning-notes/0/message, <a collection `fill`>)
+
+test <each emitter answers its own text, and a refusal answers empty>
+  host out, compile-text(plain)
+  want hold, text-contains(emit-text(out, <rust>), <fn f>)
+  want hold, text-contains(emit-text(out, <swift>), <func f>)
+  want hold, text-contains(emit-text(out, <kotlin>), <fun f>)
+  want hold, text-contains(emit-text(out, <typescript>), <function f>)
+  want hold, is-equal(emit-text(compile-text(<task f\n  like text\n  send back, code 3\n>), <rust>), <>)
+
+test <the prelude of a program is text, held to what its code reaches when given the code>
+  host out, compile-text(plain, make(compile-choice, bind(stdlib, <rust>), bind(env, <rust>)))
+  host whole, prelude-text(out, <rust>)
+  host held, prelude-text(out, <rust>, emit-text(out, <rust>))
+  want hold, is-minimum(whole/length, held/length)
+
+test <statements-of names the definitions of a compiled program>
+  host out, compile-text(plain)
+  save named, make list
+  walk statements-of(out)
+    take one
+    named/push(one/name)
+  want hold, contains(named, <f>)
+
+test <optimize false keeps what the optimizer folds>
+  host program, <task one\n  like number\n  send back, code 1\n\ntask f\n  like number\n  send back, call one\n>
+  host kept, compile-text(program, make(compile-choice, bind(optimize, false)))
+  want hold, kept/ok
+  want hold, text-contains(kept/emitted, <one()>)
+
+test <roll and cover answer on the outcome when asked>
+  want hold, is-equal(compile-text(plain)/roll, void)
+  want hold, is-unequal(compile-text(plain, make(compile-choice, bind(roll, true)))/roll, void)
+  want hold, is-equal(compile-text(plain)/cover, void)
+  want hold, is-unequal(compile-text(plain, make(compile-choice, bind(cover, true)))/cover, void)
+
+test <role is one role for every file>
+  want hold, compile-text(plain)/ok
+  want hold, not(compile-text(plain, make(compile-choice, bind(role, <host>)))/ok)
+
+test <a path under a root and the text of a file reach a real module>
+  host path, project-path(<deck/make>, <code/compile/program-gate-probe.tree>)
+  want hold, text-contains(path, <deck/make/code/compile/program-gate-probe.tree>)
+  want hold, text-contains(file-text(path), <probe-gate>)

@@ -3,10 +3,9 @@
 // bare binary, which keeps its items under the service `term`. A secret is saved, read back, removed, found gone, and
 // a second removal finds nothing. The keychain is then asked, without -w so it never asks for a value or a password,
 // whether anything is left under the name. Skips without swiftc. Run: npx tsx test/compile/secret-native.ts
-import { mkdtempSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { runOn } from './shared/run-on'
 import { projectResolver } from '@term/call/code/make'
 
@@ -68,7 +67,7 @@ const ran = runOn({
   backend: 'swift',
   program: PROGRAM,
   resolve: () => projectResolver(ROOT, 'macos', ROOT),
-  dir: mkdtempSync(join(tmpdir(), 'secret-native-')),
+  dir: tempDir('secret-native-'),
   name: 'secret',
 })
 

@@ -6,9 +6,8 @@
 // backend must print what is written here, which is what TypeScript prints.
 // Run: npx tsx test/compile/key-native.ts   (KEY_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from './shared/run-on'
 
@@ -198,7 +197,7 @@ task run
   },
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'term-key-native-'))
+const dir = tempDir('term-key-native-')
 const only = process.env.KEY_ONLY ?? ''
 
 for (const one of CASES) {

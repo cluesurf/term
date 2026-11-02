@@ -1,0 +1,41 @@
+note <Arithmetic disequality goals (`L != R`) -- an omega/lia-flavored step>
+
+# Ported from disequality.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Arithmetic disequality goals (`L != R`) -- an omega/lia-flavored step. The kernel cannot prove arithmetic
+# disequalities (it views number literals opaquely, so it can never tell 6 from 8), and the linear prover previously
+# declined `!=` entirely. Now a disequality is provable when the assumptions force a STRICT SEPARATION -- `L < R`
+# everywhere or `L > R` everywhere -- which is sound over any ordered domain and discharges the recurring "unequal"
+# facts (`n + 1 != 0` for a natural n, `i != i + 1`) without a manual case split. Soundness controls: a disequality
+# that is NOT a tautology (`n != 0` for a natural n, which could be 0) is rejected, and a CONSTRUCTOR disequality is
+# left to the kernel's no-confusion (untouched). Run: npx tsx test/check/disequality.ts
+# 1. `n + 1 != 0` for a NATURAL n: n >= 0 forces n + 1 >= 1 > 0, a strict separation, so the disequality proves.
+test <n + 1 != 0 for a natural n (strict separation above)>
+  want hold, compile-text(<rule succ-not-zero\n  seat n, like natural-number\n  show hold\n    call is-unequal\n      call add\n        read n\n        code 1\n      code 0\n  calm hold\n>)/ok
+
+# 2. `n != n + 1` for ANY integer n: n < n + 1 always, a strict separation, so the disequality proves.
+test <n != n + 1 for any integer n (strict separation below)>
+  want hold, compile-text(<rule self-not-successor\n  seat n, like integer\n  show hold\n    call is-unequal\n      read n\n      call add\n        read n\n        code 1\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: `n != 0` for a natural n is NOT a tautology (n can be 0). It must be rejected -- there is no
+# strict separation (n could equal 0).
+test <non-tautological disequality is rejected (n != 0 for a natural n)>
+  want hold, not(compile-text(<rule maybe-zero\n  seat n, like natural-number\n  show hold\n    call is-unequal\n      read n\n      code 0\n  calm hold\n>)/ok)
+
+# 4. SOUNDNESS CONTROL: `n + 1 != 0` over a general INTEGER n is NOT a tautology (n could be -1). It must be rejected.
+test <integer n + 1 != 0 is rejected (n could be -1)>
+  want hold, not(compile-text(<rule succ-not-zero-int\n  seat n, like integer\n  show hold\n    call is-unequal\n      call add\n        read n\n        code 1\n      code 0\n  calm hold\n>)/ok)
+
+# 5. THE OMEGA GCD TEST: `2 a + 4 b != 3` is NOT settled by separation (both sides range over all integers), but the
+# equation `2 a + 4 b == 3` has no integer solution -- gcd(2, 4) = 2 does not divide 3 -- so the disequality is a
+# theorem. This is the integer-specific rung the rational Fourier-Motzkin prover alone cannot reach.
+test <gcd test: 2a + 4b != 3 (no integer solution, gcd 2 does not divide 3)>
+  want hold, compile-text(<rule gcd-refutes\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-unequal\n      call add\n        call multiply\n          code 2\n          read a\n        call multiply\n          code 4\n          read b\n      code 3\n  calm hold\n>)/ok
+
+# 6. SOUNDNESS CONTROL: `2 a + 4 b != 6` must be REJECTED -- gcd(2, 4) = 2 DOES divide 6, so `2 a + 4 b == 6` has an
+# integer solution (a = 1, b = 1) and the disequality is false.
+test <gcd test soundness: 2a + 4b != 6 is rejected (a = 1, b = 1 is a solution)>
+  want hold, not(compile-text(<rule gcd-allows\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-unequal\n      call add\n        call multiply\n          code 2\n          read a\n        call multiply\n          code 4\n          read b\n      code 6\n  calm hold\n>)/ok)

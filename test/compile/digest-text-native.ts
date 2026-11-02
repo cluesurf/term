@@ -10,14 +10,13 @@
 // Skips a backend whose toolchain is absent. Run: npx tsx test/compile/digest-text-native.ts (DIGEST_ONLY=<backend>)
 
 import {
-  mkdtempSync,
   readFileSync,
   existsSync,
   writeFileSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
@@ -137,7 +136,7 @@ function judge(backend: string, output: string): void {
   })
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-digest-text-'))
+const dir = tempDir('term-digest-text-')
 const only = process.env.DIGEST_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {

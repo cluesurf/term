@@ -1,0 +1,30 @@
+note <Coinduction (streams / M-types) via the FUNCTION ENCODING -- the sound route that needs no guarded evaluator>
+
+# Ported from coinduction.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Coinduction (streams / M-types) via the FUNCTION ENCODING -- the sound route that needs no guarded evaluator. A
+# stream over A is `nat -> A` (the final coalgebra / M-type for the functor F X = A x X): `head s = s zero`, `tail s =
+# \n. s (succ n)`, and a productive corecursive stream is structural recursion on the index. Coinductive equality
+# (BISIMULATION) is exactly function extensionality -- two streams are equal iff they agree at every index -- which the
+# kernel already provides (`melt` over a pointwise lemma, sound by observational equality at a function type). So
+# observations REDUCE and bisimulations are PROVABLE, with no `cofix` / codata / lazy-unfolding evaluator change.
+# Soundness control: two streams that differ at some index are NOT bisimilar (no pointwise lemma, so not equal).
+# Run: npx tsx test/check/coinduction.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask zeros\n  take n, like nat\n  like nat\n  send back\n    make zero\n\ntask ones\n  take n, like nat\n  like nat\n  send back\n    make succ\n      bind prior\n        make zero\n\ntask succ-of-zeros\n  take n, like nat\n  like nat\n  send back\n    make succ\n      bind prior\n        call zeros\n          read n\n\ntask head\n  take s\n    like task\n      take i, like nat\n      like nat\n  like nat\n  send back\n    call s\n      make zero\n>
+
+# 1. an OBSERVATION reduces: head of the all-ones stream is 1 (= s zero, by application).
+test <stream observation reduces (head ones = 1)>
+  want hold, compile-text(<{prelude}\nrule head-ones\n  show hold\n    call is-equal\n      call head\n        read ones\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 2. BISIMULATION: succ-of-zeros and ones agree at every index, so they are equal AS STREAMS, proven by funext
+# (`melt` over the pointwise lemma). This is coinductive equality.
+test <stream bisimulation via funext (succ-of-zeros == ones)>
+  want hold, compile-text(<{prelude}\nrule pointwise\n  seat n, like nat\n  show hold\n    call is-equal\n      call succ-of-zeros\n        read n\n      call ones\n        read n\n  calm hold\n\nrule bisimilar\n  show hold\n    call is-equal\n      read succ-of-zeros\n      read ones\n  melt pointwise\n>)/ok
+
+# 3. SOUNDNESS: zeros and ones differ at every index, so the pointwise equality `zeros n == ones n` is FALSE (zero is
+# not succ zero) and cannot be proven -- there is no bisimulation, so they are not equal.
+test <non-bisimilar streams have no pointwise proof (zeros n != ones n)>
+  want hold, not(compile-text(<{prelude}\nrule false-pointwise\n  seat n, like nat\n  show hold\n    call is-equal\n      call zeros\n        read n\n      call ones\n        read n\n  calm hold\n>)/ok)

@@ -399,11 +399,152 @@ function runRust(): void {
   }
 }
 
+// ---- A PROGRAM'S FORM NAMED FOR A WORD OF THE LANGUAGE (decision 110 of term/self-host/change/001-finish-self-host) ----
+//
+// Rule 3 gives such a form a split name so no emitter's word table reads it as the primitive. Each program goes through
+// the real CLI and the real toolchain on all four backends and answers one value. WORDS_ONLY=node|rust|swift|kotlin runs
+// one backend, WORDS_SKIP=1 skips this section, and the earlier sections are skipped with WORDS_ALONE=1.
+const LINE = join(TERM, 'host/line.js')
+const SIZE_FORM = `form size
+  case none
+  case more
+    link prior, like size
+
+task depth
+  take n, like number
+  like size
+  fork test, is-equal(n, 0)
+    hold
+      back make none
+  back make more, bind prior, depth(subtract(n, 1))
+
+task count
+  take s, like size
+  like number
+  sift s
+    case none
+      back 0
+    case more
+      link prior
+      back add(1, count(prior))
+`
+const WORD_PROGRAMS: Record<string, { text: string; answer: string }> = {
+  size: { text: `${SIZE_FORM}\ntask run\n  back count(depth(3))\n`, answer: '3' },
+  number: { text: 'form number\n  link reals, like text\n\ntask one\n  like number\n  back make number, bind reals, <r>\n\ntask run\n  back one()/reals\n', answer: 'r' },
+  unit: { text: 'form unit\n  link ring, like text\n\ntask one\n  like unit\n  back make unit, bind ring, <r>\n\ntask run\n  back one()/ring\n', answer: 'r' },
+  boolean: { text: 'form boolean\n  link encoding, like text\n\ntask one\n  like boolean\n  back make boolean, bind encoding, <r>\n\ntask run\n  back one()/encoding\n', answer: 'r' },
+  text: { text: 'form text\n  link data, like native-string\n\ntask one\n  like text\n  back make text, bind data, <r>\n\ntask run\n  back one()/data\n', answer: 'r' },
+  list: { text: 'form list\n  link zone, like native-string\n\ntask one\n  like list\n  back make list, bind zone, <r>\n\ntask run\n  back one()/zone\n', answer: 'r' },
+}
+
+const MANIFEST = '\ndeck @term/probe\n  head <check>\n  mark <0.0.2>\n  sort tool\n  lock mit\n'
+
+function wordPackage(name: string, files: Record<string, string>, extra = ''): string {
+  const pkg = join(dir, 'words', name)
+  mkdirSync(join(pkg, 'code'), { recursive: true })
+  writeFileSync(join(pkg, 'deck.tree'), MANIFEST + extra)
+  writeFileSync(
+    join(pkg, 'role.tree'),
+    `role code\n  mark lean\n${Object.keys(files).map(file => `  take @/code/${file}\n`).join('')}`,
+  )
+
+  for (const [file, text] of Object.entries(files)) {
+    writeFileSync(join(pkg, 'code', file), text)
+  }
+
+  return pkg
+}
+
+function runLine(pkg: string, args: string[]): { code: number; out: string } {
+  try {
+    const out = execFileSync('node', ['--max-old-space-size=8192', LINE, ...args], {
+      cwd: pkg,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NO_COLOR: '1', TERM_CACHE_HOME: join(dir, 'words-cache') },
+    }).toString()
+
+    return { code: 0, out }
+  } catch (error) {
+    const failed = error as { status?: number; stdout?: Buffer; stderr?: Buffer }
+
+    return {
+      code: failed.status ?? 1,
+      out: `${failed.stdout ?? ''}${failed.stderr ?? ''}`,
+    }
+  }
+}
+
+function runWords(): void {
+  const wanted = process.env.WORDS_ONLY
+  const tools: Record<string, string> = { node: 'node', rust: 'cargo', swift: 'swiftc', kotlin: 'kotlinc' }
+
+  for (const [back, tool] of Object.entries(tools)) {
+    if (wanted && wanted !== back) continue
+
+    if (!have(tool)) {
+      skip++
+      console.log(`skip  words on ${back} (${tool} not installed)`)
+      continue
+    }
+
+    for (const [name, { text, answer }] of Object.entries(WORD_PROGRAMS)) {
+      const pkg = wordPackage(`${name}-${back}`, { 'a.tree': text })
+      const ran = runLine(pkg, ['make', 'code/a.tree', '--emit', back, '--run', '--all'])
+      const said = ran.out.trim().split('\n').at(-1)?.trim() ?? ''
+      ok(`form ${name} on ${back} answers ${answer}`, ran.code === 0 && said === answer, `exit ${ran.code}, said ${said}\n${ran.out}`)
+    }
+  }
+
+  if (wanted && wanted !== 'node') return
+
+  // ONE PROGRAM HOLDS BOTH MEANINGS: a declares the form, b finds it, c never does and means the number
+  const three = wordPackage('three-files', {
+    'a.tree': SIZE_FORM,
+    'b.tree': 'load ./a\n  find size\n  find depth\n  find count\n\ntask twice\n  take s, like size\n  like number\n  back add(count(s), count(s))\n\ntask start\n  like size\n  back depth(2)\n',
+    'c.tree': 'load @term/base/hash\n  find hash\n\nload ./b\n  find twice\n  find start\n\ntask plain\n  take n, like size\n  like size\n  back add(n, twice(start()))\n\ntask holder\n  like hash, like text, like size\n  back make hash\n',
+  })
+
+  for (const mode of [['--all', '--merged'], ['--all']]) {
+    const made = runLine(three, ['make', ...mode])
+    const label = mode.join(' ')
+    ok(`three files build (${label})`, made.code === 0, made.out)
+
+    if (made.code !== 0) continue
+
+    // a separate build's own module text is its unit, and host/code re-exports it
+    const emitted = (name: string): string =>
+      readFileSync(
+        join(three, mode.length === 1 ? `host/.unit/_term_probe_code_${name}.ts` : `host/code/${name}.ts`),
+        'utf8',
+      )
+    const b = emitted('b')
+    const c = emitted('c')
+    ok(`the importer's size is the form (${label})`, /twice\(s: Size/.test(b), b.slice(0, 600))
+    ok(`the file that never found it means the number (${label})`, /plain\(n: number\): number/.test(c), c.slice(0, 600))
+    ok(`a type argument is the number there too (${label})`, /holder\(\): Map<string, number>/.test(c), c.slice(0, 600))
+  }
+
+  // A DOM TEXT IS A TEXT, NOT A STRING: bind's form is real under its native name
+  const dom = wordPackage(
+    'dom-text',
+    { 'a.tree': 'load @term/bind/browser/dom/text\n  find text\n\ntask whole\n  take t, like text\n  like native-string\n  back t/whole-text\n' },
+    '  link @term/bind, mark <0.0.x>\n',
+  )
+  const built = runLine(dom, ['make', '--all', '--merged'])
+  ok('a program reading a DOM Text builds', built.code === 0, built.out)
+  const emitted = existsSync(join(dom, 'host/code/a.ts')) ? readFileSync(join(dom, 'host/code/a.ts'), 'utf8') : ''
+  ok('a DOM Text is typed as the form', /whole\(t: Text/.test(emitted) && !/whole\(t: string/.test(emitted), emitted.slice(0, 600))
+}
+
 const only = process.env.SHADOW_ONLY
 
-if (!only || only === 'kotlin') runKotlin()
-if (!only || only === 'swift') runSwift()
-if (!only || only === 'rust') runRust()
+if (!process.env.WORDS_ALONE) {
+  if (!only || only === 'kotlin') runKotlin()
+  if (!only || only === 'swift') runSwift()
+  if (!only || only === 'rust') runRust()
+}
+
+if (!process.env.WORDS_SKIP && !only) runWords()
 
 console.log(`native-shadow: ${pass} pass, ${fail} fail, ${skip} skipped`)
 process.exit(fail ? 1 : 0)

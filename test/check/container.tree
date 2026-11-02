@@ -1,0 +1,29 @@
+note <Containers / polynomial functors -- the general theory of strictly-positive types>
+
+# Ported from container.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Containers / polynomial functors -- the general theory of strictly-positive types. A CONTAINER is a pair of SHAPES
+# `S` and POSITIONS `P : S -> type` (a type-returning function, one position-type per shape). Its EXTENSION (the
+# polynomial functor it denotes) is the dependent pair `[S < P] X = (s : S) * (P s -> X)`: a shape together with an
+# X at each of its positions. Here `shape` is `leaf | node`, `P leaf = one` (one position), `P node = two` (two
+# positions), and the extension `cext` over `X = nat` is the datatype `mk : (s : shape) -> (P s -> nat) -> cext`. It
+# type-checks and COMPUTES (projecting the shape of a built node), drawing on the type-returning position function, the
+# Sigma-type/dependent record, and type-level application of `P`. The W-type of a container (its least fixed point) is
+# the function-field W-type already covered (`wtype-function.ts`); the relation to indexed families is `ornament.ts`.
+# Run: npx tsx test/check/container.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform shape\n  case leaf\n  case node\n\nform one\n  case only\n\nform two\n  case pos0\n  case pos1\n\ntask pos\n  take s, like shape\n  like type\n  fork case, read s\n    case leaf\n      send back\n        read one\n    case node\n      send back\n        read two\n\nform cext\n  case mk\n    link s, like shape\n    link f\n      like task\n        take p\n          like pos\n            head\n              read s\n        like nat\n\ntask shape-of\n  take c, like cext\n  like shape\n  fork case, read c\n    case mk\n      link s\n      link f\n      send back\n        read s\n\ntask make-node\n  like cext\n  send back\n    make mk\n      bind s\n        make node\n      bind f\n        task g\n          take p\n            like two\n          like nat\n          send back\n            make zero\n>
+
+# 1. the polynomial-functor extension (S * (P s -> X)) type-checks and COMPUTES: the shape of a built node is `node`.
+test <container extension computes: shape-of (mk node f) == node>
+  want hold, compile-text(<{prelude}\nrule shape-ok\n  show hold\n    call is-equal\n      call shape-of\n        call make-node\n      make node\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: that container's shape is `node`, not `leaf`.
+test <wrong shape is rejected (shape-of (mk node f) != leaf)>
+  want hold, not(compile-text(<{prelude}\nrule shape-wrong\n  show hold\n    call is-equal\n      call shape-of\n        call make-node\n      make leaf\n  calm hold\n>)/ok)
+
+# 3. SOUNDNESS CONTROL: the shape field is ENFORCED -- `mk`'s first field must be a `shape`, so a `nat` is rejected.
+test <the shape field is enforced (a nat shape is rejected)>
+  want hold, not(compile-text(<{prelude}\ntask bad-shape\n  like cext\n  send back\n    make mk\n      bind s\n        make zero\n      bind f\n        task g\n          take p\n            like one\n          like nat\n          send back\n            make zero\n>)/ok)

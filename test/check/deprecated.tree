@@ -1,0 +1,105 @@
+note <`mark deprecated` WARNS WHERE ANOTHER FILE USES THE NAME (check/deprecated.tree)>
+
+# Ported from deprecated.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find compiling-source
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# `mark deprecated` WARNS WHERE ANOTHER FILE USES THE NAME (check/deprecated.tree). A task: a call. A form, since
+# 2026-10-05 (note/project/term/decisions-2026-10/decisions-2026-10.md, D13, `ordered-set` toward `set`): a `make` of it, and a task's input
+# or result typed by it. The file that defines the name may use it with no word. Two modules: `old.tree` defines a
+# deprecated task and form and uses both itself, and the entry uses each from outside.
+host old, <form old-box\n  mark deprecated\n  link value, like number\n\ntask old-way\n  take x, like number\n  like number\n  mark deprecated\n  back x\n\n# its own file uses both, with no word\ntask inside\n  like number\n  save b, make old-box, bind value, 1\n  back old-way(b/value)\n>
+
+host entry, <load ./old\n  find old-box\n  find old-way\n\ntask boxed\n  take box, like old-box\n  like number\n  back box/value\n\ntask outside\n  like number\n  save b, make old-box, bind value, 2\n  back old-way(boxed(b))\n>
+
+host both, <form plain-box\n  link value, like number\n\ntask use\n  like number\n  save b, make plain-box, bind value, 3\n  back b/value\n>
+
+task choice-at
+  take file, like text
+  like compile-choice
+
+  back make(compile-choice, bind(file, file), bind(files, make list(make(compiling-source, bind(file, <./old>), bind(text, old), bind(answer, </probe/code/old.tree>)))), bind(stdlib, <node>), bind(env, <node>))
+
+task built
+  like compile-outcome
+
+  back compile-text(entry, choice-at(</probe/code/main.tree>))
+
+# the warnings of a compiled program that say a name is marked deprecated
+task warned
+  take out, like compile-outcome
+  like list, like compile-note
+
+  save kept, make list
+  fork test, not(out/ok)
+    hold
+      back kept
+  walk out/warning-notes
+    take one
+    fork test, text-contains(one/message, <is marked deprecated>)
+      hold
+        kept/push(one)
+  back kept
+
+# whether a warning stands on this line, counted from one, naming this name
+task warned-at
+  take out, like compile-outcome
+  take line, like number
+  take name, like text
+  like boolean
+
+  walk warned(out)
+    take one
+    fork test, and(is-equal(add(one/line, 1), line), text-contains(one/message, <"{name}">))
+      hold
+        back true
+  back false
+
+task warned-in-old
+  take out, like compile-outcome
+  like boolean
+
+  host old-file, make pattern, <<old\.tree$>>
+  walk warned(out)
+    take one
+    fork test, matches(old-file, one/file)
+      hold
+        back true
+  back false
+
+test <the program builds>
+  want hold, built()/ok
+
+test <a call of a deprecated task from another file warns>
+  want hold, warned-at(built(), 13, <old-way>)
+
+test <a make of a deprecated form from another file warns>
+  want hold, warned-at(built(), 12, <old-box>)
+
+test <a task taking a deprecated form from another file warns>
+  want hold, warned-at(built(), 5, <old-box>)
+
+test <the defining file uses its own with no word>
+  want hold, not(warned-in-old(built()))
+
+test <a form not marked is no warning>
+  host out, compile-text(both, choice-at(</probe/code/plain.tree>))
+  save named, false
+  walk out/warning-messages
+    take said
+    fork test, text-contains(said, <deprecated>)
+      hold
+        save named, true
+  want hold, and(out/ok, not(named))

@@ -1,0 +1,141 @@
+note <A number where text is declared is refused (native-dom-0022)>
+
+# Ported from declared-text.ts by task/term/suite-port.ts.
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+# A number where text is declared is refused (native-dom-0022). The checker once accepted a `like task / like text`
+# getter whose body sent back a `read-signal` of a number signal, because `read-signal` returned `like any`;
+# TypeScript ran it and swiftc was the first to refuse. `read-signal` is generic now, and every shape below must be
+# refused at build time, on every backend, before any native compiler sees it.
+# Run: npx tsx test/check/declared-text.ts
+host reactive, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n>
+
+host getter, <task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n>
+
+test <node: a number sent back is refused>
+  host result, compile-text(<task f\n  like text\n  send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: through a local is refused>
+  host result, compile-text(<task f\n  like text\n  save n, code 3\n  send back, read n\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: from a number task is refused>
+  host result, compile-text(<task three\n  like number\n  send back, code 3\n\ntask f\n  like text\n  send back, call three\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: from a closure declared text is refused>
+  host result, compile-text(<task f\n  like text\n  save get\n    task inner\n      like text\n      send back, code 3\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: through a generic identity is refused>
+  host result, compile-text(<task same\n  head t\n  take x, like t\n  like t\n  send back, read x\n\ntask f\n  like text\n  send back\n    call same\n      code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: a read-signal of a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  send back\n    call read-signal\n      bind self, read s\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <node: a text getter closure over a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  save get\n    task inner\n      like text\n      send back\n        call read-signal\n          bind self, read s\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <node: a closure declared text passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <node: an undeclared closure passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(result/ok)
+
+test <swift: a number sent back is refused>
+  host result, compile-text(<task f\n  like text\n  send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: through a local is refused>
+  host result, compile-text(<task f\n  like text\n  save n, code 3\n  send back, read n\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: from a number task is refused>
+  host result, compile-text(<task three\n  like number\n  send back, code 3\n\ntask f\n  like text\n  send back, call three\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: from a closure declared text is refused>
+  host result, compile-text(<task f\n  like text\n  save get\n    task inner\n      like text\n      send back, code 3\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: through a generic identity is refused>
+  host result, compile-text(<task same\n  head t\n  take x, like t\n  like t\n  send back, read x\n\ntask f\n  like text\n  send back\n    call same\n      code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: a read-signal of a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  send back\n    call read-signal\n      bind self, read s\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <swift: a text getter closure over a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  save get\n    task inner\n      like text\n      send back\n        call read-signal\n          bind self, read s\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <swift: a closure declared text passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <swift: an undeclared closure passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <swift>), bind(env, <swift>)))
+  want hold, not(result/ok)
+
+test <kotlin: a number sent back is refused>
+  host result, compile-text(<task f\n  like text\n  send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: through a local is refused>
+  host result, compile-text(<task f\n  like text\n  save n, code 3\n  send back, read n\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: from a number task is refused>
+  host result, compile-text(<task three\n  like number\n  send back, code 3\n\ntask f\n  like text\n  send back, call three\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: from a closure declared text is refused>
+  host result, compile-text(<task f\n  like text\n  save get\n    task inner\n      like text\n      send back, code 3\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: through a generic identity is refused>
+  host result, compile-text(<task same\n  head t\n  take x, like t\n  like t\n  send back, read x\n\ntask f\n  like text\n  send back\n    call same\n      code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: a read-signal of a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  send back\n    call read-signal\n      bind self, read s\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <kotlin: a text getter closure over a number signal is refused>
+  host result, compile-text(<load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find signal\n\ntask f\n  like text\n  save s\n    call make-signal\n      bind value, code 3\n  save get\n    task inner\n      like text\n      send back\n        call read-signal\n          bind self, read s\n  send back, call get\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+  want hold, text-contains(join(result/messages, <\n>), <return value: expected text, found number>)
+
+test <kotlin: a closure declared text passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+test <kotlin: an undeclared closure passed as a text getter is refused>
+  host result, compile-text(<task show-it\n  take getter\n    like task\n      like text\n  like text\n  send back, call getter\n\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        send back, code 3\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <kotlin>), bind(env, <kotlin>)))
+  want hold, not(result/ok)
+
+# the control: the same getter with text in it compiles, so the refusals above are about the number
+test <the control, text in the getter, compiles>
+  host control, compile-text(<{getter}\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, text \<three\>\n>, make(compile-choice, bind(file, </tmp/declared-text.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, control/ok

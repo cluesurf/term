@@ -1,0 +1,30 @@
+note <Dependent pattern matching with per-branch index REFINEMENT>
+
+# Ported from dependent-match.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Dependent pattern matching with per-branch index REFINEMENT. When a match on an indexed family has a result type that
+# depends on the scrutinee's index, the dependent eliminator's motive must express the result through the DESTRUCTURED
+# index, not as a constant. For `vecnat (succ n)` the only reachable constructor is `vcons count ..` with index
+# `succ count`, and refining the result `vecnat n` to `vecnat count` under that branch is what types a SAFE vector tail
+# (`vecnat (succ n) -> vecnat n`) and a safe head. This is genuine dependent pattern matching: the impossible `vnil`
+# branch is omitted (ex-falso), and the result type refines per branch. Run: npx tsx test/check/dependent-match.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n>
+
+# 1. SAFE TAIL: `vecnat (succ n) -> vecnat n`. The result `vecnat n` must refine to `vecnat count` under the `vcons`
+# branch (whose index is `succ count`), and the impossible `vnil` is omitted. This only type-checks with per-branch
+# index refinement in the dependent motive.
+test <safe vector tail type-checks: vecnat (succ n) -\> vecnat n>
+  want hold, compile-text(<{prelude}\ntask vtail\n  take n, like nat\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          read n\n  like vecnat\n    head\n      read n\n  fork case, read v\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        read rest\n>)/ok
+
+host vhead, <{prelude}\ntask vhead\n  take n, like nat\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          read n\n  like nat\n  fork case, read v\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        read item\n>
+
+# 2. SAFE HEAD computes through the refined match: vhead (cons 1 nil) == 1.
+test <safe vector head computes: vhead (cons 1 nil) == 1>
+  want hold, compile-text(<{vhead}\nrule vhead-ok\n  show hold\n    call is-equal\n      call vhead\n        make zero\n        make vcons\n          bind count\n            make zero\n          bind item\n            make succ\n              bind prior\n                make zero\n          bind rest\n            make vnil\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: vhead (cons 1 nil) is 1, not 0. The refined match must compute the RIGHT value.
+test <wrong head value is rejected (vhead (cons 1 nil) != 0)>
+  want hold, not(compile-text(<{vhead}\nrule vhead-wrong\n  show hold\n    call is-equal\n      call vhead\n        make zero\n        make vcons\n          bind count\n            make zero\n          bind item\n            make succ\n              bind prior\n                make zero\n          bind rest\n            make vnil\n      make zero\n  calm hold\n>)/ok)

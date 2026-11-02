@@ -5,9 +5,8 @@
 // block before the call. Two shapes: a field read as an argument, and a field passed through a nested call.
 // Run: npx tsx test/compile/shared-borrow-native.ts   (SB_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from './shared/run-on'
 
@@ -66,7 +65,7 @@ task run
 `
 
 const only = process.env.SB_ONLY
-const dir = mkdtempSync(join(tmpdir(), 'term-shared-borrow-'))
+const dir = tempDir('term-shared-borrow-')
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
   const ran = runOn({

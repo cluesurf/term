@@ -1,0 +1,24 @@
+note <DEEP CASE SPLITTING IN A MULTI-VARIABLE FOLD>
+
+# Ported from deep-split.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# DEEP CASE SPLITTING IN A MULTI-VARIABLE FOLD. `fold m, n` over two variables of a RECORD type whose fields are
+# finite (a 2x2 matrix of residues) used to split each variable into its one constructor and leave the four fields
+# standing as variables, so no law about the matrices could close. The fold now also splits every finite-typed field
+# (check/elaborate.ts, `multiInduction` with `deep`), which is exhaustive case analysis and so sound. Each case has the
+# control that would catch it going unsound: a false law over the same carrier must still be refused.
+#
+# Run: npx tsx test/check/deep-split.ts
+# residues modulo two, and 2x2 matrices over them with the matrix product
+host matrices, <form bit\n  case off\n  case on\n\ntask bit-sum\n  take a, like bit\n  take b, like bit\n  like bit\n  fork case, read a\n    case off\n      send back\n        read b\n    case on\n      fork case, read b\n        case off\n          send back\n            make on\n        case on\n          send back\n            make off\n\ntask bit-product\n  take a, like bit\n  take b, like bit\n  like bit\n  fork case, read a\n    case off\n      send back\n        make off\n    case on\n      send back\n        read b\n\nform square\n  case grid\n    link a, like bit\n    link b, like bit\n    link c, like bit\n    link d, like bit\n\ntask row-column\n  take a, like bit\n  take b, like bit\n  take c, like bit\n  take d, like bit\n  like bit\n  send back\n    call bit-sum\n      call bit-product\n        read a\n        read b\n      call bit-product\n        read c\n        read d\n\ntask compose\n  take m, like square\n  take n, like square\n  like square\n  fork case, read m\n    case grid\n      link ma\n      link mb\n      link mc\n      link md\n      fork case, read n\n        case grid\n          link na\n          link nb\n          link nc\n          link nd\n          send back\n            make grid\n              bind a\n                call row-column\n                  read ma\n                  read na\n                  read mb\n                  read nc\n              bind b\n                call row-column\n                  read ma\n                  read nb\n                  read mb\n                  read nd\n              bind c\n                call row-column\n                  read mc\n                  read na\n                  read md\n                  read nc\n              bind d\n                call row-column\n                  read mc\n                  read nb\n                  read md\n                  read nd\n>
+
+test <a law over record variables closes by splitting their fields>
+  host result, compile-text(<{matrices}\nrule compose-is-associative\n  seat m, like square\n  seat n, like square\n  seat p, like square\n  show hold\n    call is-equal\n      call compose\n        call compose\n          read m\n          read n\n        read p\n      call compose\n        read m\n        call compose\n          read n\n          read p\n  fold m, n, p\n>)
+  want hold, result/ok
+
+test <a false law over the same records is refused>
+  host result, compile-text(<{matrices}\nrule compose-is-commutative\n  seat m, like square\n  seat n, like square\n  show hold\n    call is-equal\n      call compose\n        read m\n        read n\n      call compose\n        read n\n        read m\n  fold m, n\n>)
+  want hold, not(result/ok)

@@ -9,12 +9,11 @@
 
 import {
   mkdirSync,
-  mkdtempSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from './shared/run-on'
 
@@ -131,7 +130,7 @@ task run
 const HERE =
   import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const root = mkdtempSync(join(tmpdir(), 'term-presence-'))
+const root = tempDir('term-presence-')
 mkdirSync(join(root, 'link/@term'), { recursive: true })
 mkdirSync(join(root, 'code'), { recursive: true })
 symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))

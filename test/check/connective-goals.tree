@@ -1,0 +1,50 @@
+note <Boolean-connective goals>
+
+# Ported from connective-goals.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/list
+  find contains
+
+# Boolean-connective goals: `meet and` (conjunction) is discharged by proving BOTH operands, `meet or` (disjunction) by
+# proving ONE, recursively, with equality leaves settled by convertibility or the ring normalizer. No new surface
+# syntax (`meet` already existed). Soundness: a conjunction with a false conjunct must NOT be discharged.
+# Run: node host/line.js test test/check/connective-goals.tree
+
+# a true rule goal compiles clean with no unproven warning; a false one leaves an unproven hold (or errors)
+task discharges
+  take source, like text
+  like boolean
+
+  host out, compile-text(source, make(compile-choice, bind(file, <p.tree>)))
+  fork test, not(out/ok)
+    hold
+      back false
+  back and(not(contains(out/warnings, <unchecked-hold>)), not(contains(out/warnings, <unproven>)))
+
+host prelude, <form thing\n  case a\n  case b\n>
+
+task goal
+  take connective, like text
+  take left-first, like text
+  take left-second, like text
+  take right-first, like text
+  take right-second, like text
+  like text
+
+  back <{prelude}\nrule connective-goal\n  show hold\n    meet {connective}\n      call is-equal\n        make {left-first}\n        make {left-second}\n      call is-equal\n        make {right-first}\n        make {right-second}\n  calm hold\n>
+
+# conjunction: both conjuncts true -> discharges
+test <conjunction of two truths discharges>
+  want hold, discharges(goal(<and>, <a>, <a>, <b>, <b>))
+
+# disjunction: only the right disjunct true -> discharges
+test <disjunction with one true disjunct discharges>
+  want hold, discharges(goal(<or>, <a>, <b>, <a>, <a>))
+
+# SOUNDNESS: conjunction with a false conjunct must NOT discharge
+test <conjunction with a false conjunct does not discharge>
+  want hold, not(discharges(goal(<and>, <a>, <a>, <a>, <b>)))

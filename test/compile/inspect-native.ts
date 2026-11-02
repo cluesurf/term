@@ -10,9 +10,9 @@
 // Run: npx tsx test/compile/inspect-native.ts   (INSPECT_ONLY=typescript, rust, swift or kotlin runs one)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tempDir } from '../temp'
 import { fileURLToPath } from 'node:url'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
@@ -37,7 +37,7 @@ const HERE = join(
 )
 const read = (name: string): string =>
   readFileSync(join(HERE, name), 'utf8')
-const dir = mkdtempSync(join(tmpdir(), 'term-inspect-native-'))
+const dir = tempDir('term-inspect-native-')
 const only = process.env.INSPECT_ONLY ?? ''
 const golden = read('values.golden')
 const outputs = new Map<string, string>()

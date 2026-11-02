@@ -39,8 +39,10 @@ form primitive
   case unknown
   case none
 
-# a type word that is not a form: the primitive it names. A `form` whose NAME is one of these registers no record-type,
-# because the compiler uses the native representation; its methods are still desugared over the primitive kind
+# a type word: the primitive it names. A form with no case, link or slot named for one registers no record-type, and its
+# methods are desugared over the primitive kind. A form that writes any of those is a real form, and in the module that
+# declares it and a module whose `find` reaches it the word names that form (decision 110 of
+# term/self-host/change/001-finish-self-host: compile/minting-reads.tree `words-in-file`, check/scope.tree `settle-words`)
 task is-type-name
   take name, like text
   like boolean
@@ -50,6 +52,13 @@ task is-type-name
       back false
     miss
       back true
+
+# every word a real form can take from the language: the table, and the three the mint reads by name past it
+task is-language-word
+  take name, like text
+  like boolean
+
+  back or(is-type-name(name), one-of(name, <list hash task>))
 
 # the type a word names: its primitive, else the named type of that name
 task type-of-word

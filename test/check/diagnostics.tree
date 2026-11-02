@@ -1,0 +1,476 @@
+note <Phase 2 of note/project/term/guides/research/gaps/plan.md>
+
+# Ported from diagnostics.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find compiling-source
+  find project-path
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/type-text>, name type-text-check
+  load <@term/make/code/parser/diagnostic>, name diagnostic-check
+  load <@term/make/code/check/holds>, name holds-check
+  load <@term/call/code/test-preprocess>, name preprocess-check
+
+# Phase 2 of note/project/term/guides/research/gaps/plan.md: diagnostics that name the problem. Each block is a term.surf guide's own
+# sample, held two ways: the message a reader could not act on is gone, and the one they can is there.
+
+# every message the build gave, joined, or <> when it built
+task said
+  take text, like text
+  like text
+
+  back join(compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>)))/messages, < | >)
+
+# every diagnostic as `name: message`, joined
+task named-said
+  take out, like compile-outcome
+  like text
+
+  save lines, make list
+  walk out/notes
+    take one
+    lines/push(<{one/name}: {one/message}>)
+  back join(lines, < | >)
+
+# the notes whose message holds `word`
+task notes-saying
+  take notes, like list, like compile-note
+  take word, like text
+  like list, like compile-note
+
+  save kept, make list
+  walk notes
+    take one
+    fork test, text-contains(one/message, word)
+      hold
+        kept/push(one)
+  back kept
+
+task notes-named
+  take notes, like list, like compile-note
+  take name, like text
+  like list, like compile-note
+
+  save kept, make list
+  walk notes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        kept/push(one)
+  back kept
+
+# ---- types, basics/tour, basics/first-program: Term's names, not the checker's ----
+host argument-text, <task greet\n  take name, like text\n  like text\n  send back, text \<hello\>\n\ntask welcome\n  like text\n  send back\n    call greet\n      code 36\n>
+
+host nothing-text, <task greet\n  take name, like text\n  like text\n  send back, text \<hello\>\n\ntask welcome\n  take n, like void\n  like text\n  send back\n    call greet\n      read n\n>
+
+test <a number passed for text says `expected text`>
+  want hold, text-contains(said(argument-text), <expected text, found number>)
+
+test <and never the TypeScript name>
+  want hold, not(text-contains(said(argument-text), <string>))
+
+test <a void is `void`, not `unit`>
+  host nothing, said(nothing-text)
+  want hold, text-contains(nothing, <found void>)
+  want hold, not(text-contains(nothing, <unit>))
+
+# ---- the printer itself, one line per shape a message can hold ----
+bind written-type
+  take written, like text
+  like dynamic
+  case node
+    text <JSON.parse($written)>
+
+task shown
+  take written, like text
+  like text
+
+  back type-text-check/show-type(written-type(written))
+
+test <a list of text>
+  want hold, is-equal(shown(<<{"kind":"array","element":{"kind":"string"}}>>), <list, like text>)
+
+test <a hash from text to numbers>
+  want hold, is-equal(shown(<<{"kind":"map","key":{"kind":"string"},"value":{"kind":"number"}}>>), <hash, like text, like number>)
+
+test <a list whose element is not solved is a bare list, not `?2[]`>
+  want hold, is-equal(shown(<<{"kind":"array","element":{"kind":"variable","id":2}}>>), <list>)
+
+test <a generic form with its argument>
+  want hold, is-equal(shown(<<{"kind":"named","name":"chain","args":[{"kind":"number"}]}>>), <chain, like number>)
+
+test <a task, its compound parameter wrapped so its commas stay its own>
+  want hold, is-equal(shown(<<{"kind":"function","params":[{"kind":"array","element":{"kind":"string"}},{"kind":"number"}],"result":{"kind":"unit"}}>>), <<task((list, like text), number) -> void>>)
+
+# ---- commands/roll: a site counts from one, and a signature is in Term's names ----
+host store-text, <form missing\n  link thing, like text\n  link limit, like number, need false\n\ntask find-user\n  take key, like text\n  like text\n  send back, read key\n>
+
+bind rolled-task
+  take roll, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<$roll?.task.find(t => t.name === $name)>>
+
+bind task-site
+  take found, like dynamic
+  like text
+  case node
+    text <($found?.site ?? "")>
+
+bind task-json
+  take found, like dynamic
+  like text
+  case node
+    text <(JSON.stringify($found) ?? "")>
+
+task find-user-rolled
+  like dynamic
+
+  back rolled-task(compile-text(store-text, make(compile-choice, bind(file, </gate/code/store.tree>), bind(roll, true)))/roll, <find-user>)
+
+test <a task's site is its line counted from one, as an error frame counts>
+  host at-end, make pattern, <<store\.tree:5:1$>>
+  want hold, matches(at-end, task-site(find-user-rolled()))
+
+test <and its signature reads `text`>
+  host json, task-json(find-user-rolled())
+  want hold, text-contains(json, <"like":"text">)
+  want hold, not(text-contains(json, <string>))
+
+# ---- commands/lint: a lint rule's code is printed as the rule is numbered ----
+bind kink
+  take name, like text
+  take code, like number
+  take rule, like text
+  like dynamic
+  case node
+    text <<(() => { const span = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 4, offset: 4 } }; return { name: $name, message: "x", file: "a.tree", span, markers: [{ span }], severity: "warning", code: $code, ...($rule === "" ? {} : { rule: $rule }) } })()>>
+
+task rendered
+  take name, like text
+  take code, like number
+  take rule, like text
+  like text
+
+  host lines, split(<task>, <\n>)
+  back diagnostic-check/render-kink(kink(name, code, rule), lines, false)
+
+test <L023 prints as `L023`, not `0017`>
+  host lint, rendered(<line-layout>, 23, <L023>)
+  want hold, text-contains(lint, <code \<L023\>>)
+  want hold, not(text-contains(lint, <0017>))
+
+test <and a compiler code still prints in its own hexadecimal>
+  want hold, text-contains(rendered(<type-mismatch>, 7, <>), <code \<0007\>>)
+
+# ---- commands/test: an error in a test file points at the line as written ----
+# the bad argument is on line 9 of what the person wrote (index 8), at column 9
+host greet-text, <task greet\n  take name, like text\n  like text\n  send back, read name\n\ntest greets\n  want hold\n    call is-equal\n      call greet(36)\n      text \<hi\>\n>
+
+bind unit-text
+  take unit, like dynamic
+  like text
+  case node
+    text <$unit.text>
+
+# `place` reads a diagnostic's span and markers
+bind unit-placed
+  take unit, like dynamic
+  take line, like number
+  take column, like number
+  like dynamic
+  case node
+    text <<$unit.place({ span: { start: { line: $line, column: $column }, end: { line: $line, column: $column } }, markers: [] })>>
+
+bind placed-line
+  take placed, like dynamic
+  like number
+  case node
+    text <$placed.diagnostic.span.start.line>
+
+bind placed-text
+  take placed, like dynamic
+  like text
+  case node
+    text <$placed.text>
+
+task greet-unit
+  like dynamic
+
+  back preprocess-check/readable(greet-text)
+
+# with the resolver `term test` compiles it with: a `want` that compares two values loads the exception it raises
+task greet-built
+  like compile-outcome
+
+  back compile-text(unit-text(greet-unit()), make(compile-choice, bind(file, </gate/test/greet.tree>), bind(project, <.>)))
+
+test <a test file with a type error does not build>
+  host out, greet-built()
+  want hold, not(out/ok)
+  want hold, is-above(out/notes/length, 0)
+
+test <the compiler places it in the rewritten text, a line the person never wrote>
+  want hold, is-unequal(greet-built()/notes/0/line, 8)
+
+test <and the error is placed on the line the person wrote>
+  host first, greet-built()/notes/0
+  want hold, is-equal(placed-line(unit-placed(greet-unit(), first/line, first/column)), 8)
+  want hold, text-contains(split(greet-text, <\n>)/8, <greet(36)>)
+
+test <framed against the source, not the rewritten text>
+  host first, greet-built()/notes/0
+  want hold, is-equal(placed-text(unit-placed(greet-unit(), first/line, first/column)), greet-text)
+
+# ---- language/data, commands/mold: a key given twice is reported where it is given the second time ----
+host service-text, <host service\n  host retries, 3\n  host region, \<eu\>\n  host retries, 5\n>
+
+task twice-notes
+  like list, like compile-note
+
+  host out, compile-text(service-text, make(compile-choice, bind(file, </gate/data/service.tree>)))
+  back notes-saying(out/notes, <"retries" is given twice>)
+
+test <a key given twice is refused>
+  want hold, is-above(twice-notes()/length, 0)
+
+test <at the second `retries`, line 4>
+  want hold, is-equal(twice-notes()/0/line, 3)
+
+test <with a note that says what to do, not the generic syntax note>
+  want hold, text-contains(twice-notes()/0/hint, <keep one of the two>)
+
+# ---- proofs/equality: a kernel error names variables and cases as the source does ----
+host vec-text, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vec\n  head n, like nat\n  case empty\n    head make zero\n  case push\n    link count, like nat\n    link item, like nat\n    link rest, like vec\n      head read count\n    head make succ, bind prior, read count\n\ntask first\n  take count, like nat\n  take v, like vec, head make succ, bind prior, read count\n  like nat\n  sift v\n    case push\n      link item\n      send back, read item\n\ntask use-first\n  like nat\n  send back\n    call first\n      make zero\n      make empty\n>
+
+task vec-said
+  like text
+
+  back join(compile-text(vec-text, make(compile-choice, bind(file, </gate/code/vec.tree>)))/messages, < | >)
+
+test <a call with an empty vector is refused by the kernel>
+  want hold, text-contains(vec-said(), <kernel: type mismatch>)
+
+test <naming the cases `succ` and `zero`, not `nat__succ`>
+  host told, vec-said()
+  want hold, text-contains(told, <(vec (succ zero))>)
+  want hold, not(text-contains(told, <__>))
+
+# ---- proofs/equality: the convoy's wrong `refl` names `c` and `z`, which printed as `#1` and `#3` ----
+# the guide's `chain`, lean, with `make equal/refl, bind c, c` where it returns `r`
+host chain-text, <load @term/base/proof/equal\n  find equal\n\ntask chain\n  head a\n  take x, like a\n  take y, like a\n  take z, like a\n  take left\n    like\n      equal a\n      head read x\n      head read y\n\n  like task\n    take r\n      like\n        equal a\n        head read y\n        head read z\n    like\n      equal a\n      head read x\n      head read z\n\n  sift left\n    case refl\n      link c\n      back\n        task id\n          take r\n            like\n              equal a\n              head read c\n              head read z\n\n          like\n            equal a\n            head read c\n            head read z\n\n          back make equal/refl, bind c, c\n>
+
+task chain-said
+  like text
+
+  back join(compile-text(chain-text, make(compile-choice, bind(file, project-path(<test/check>, <convoy.tree>)), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(lean, true)))/messages, < | >)
+
+test <the convoy with `refl` for `r` is refused by the kernel>
+  want hold, text-contains(chain-said(), <kernel: type mismatch>)
+
+test <naming the arm's variable and the parameter>
+  host told, chain-said()
+  host found-part, make pattern, <<found\s+\(\(\(equal a\) c\) c\)>>
+  want hold, text-contains(told, <expected (((equal a) c) z)>)
+  want hold, matches(found-part, told)
+
+test <and no de Bruijn index>
+  host index-part, make pattern, <<#\d>>
+  want hold, not(matches(index-part, chain-said()))
+
+# ---- tests/laws: a hold out of reach says it may be true, and says where `mark open` goes ----
+host square-text, <task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask use\n  take n, like number\n  like number\n  hold\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        code 1\n  send back, read n\n>
+
+task unchecked-holds
+  like list, like compile-note
+
+  host out, compile-text(square-text, make(compile-choice, bind(file, </gate/code/square.tree>)))
+  fork test, out/ok
+    hold
+      back notes-named(out/warning-notes, <unchecked-hold>)
+  back notes-named(out/notes, <unchecked-hold>)
+
+test <a hold over a call to another task is reported as out of reach>
+  want hold, is-above(unchecked-holds()/length, 0)
+
+test <saying it was neither proven nor refuted>
+  want hold, text-contains(unchecked-holds()/0/message, <neither proven nor refuted>)
+
+test <and offering `mark open` only on a claim>
+  want hold, text-contains(unchecked-holds()/0/hint, <a `rule` with no `show`>)
+
+# ---- language/errors, library/exceptions: bounds and tells name the exception problem ----
+host check-text, <load @term/base/exception\n  find absence\n  find excess\n\ntask check-size\n  take size, like number\n  halt excess\n  halt absence\n  like number\n  fork test\n    hook test\n      call is-above\n        read size\n        code 40\n    hook hold\n      halt excess\n        bind thing, \<size\>\n        bind limit, code 40\n        bind actual, read size\n  send back, read size\n>
+
+host absence-line, <  halt absence\n>
+
+bind without
+  take whole, like text
+  take part, like text
+  like text
+  case node
+    text <$whole.replace($part, "")>
+
+task linked
+  take file, like text
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, project-path(<test/check>, file)), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+test <a bound on a standard exception the body never raises is refused>
+  want hold, not(linked(<bound.tree>, check-text)/ok)
+
+test <saying nothing it calls raises it, not that it is no exception form>
+  host told, named-said(linked(<bound.tree>, check-text))
+  want hold, text-contains(told, <nothing it calls raises "absence">)
+  want hold, not(text-contains(told, <not an exception form>))
+
+test <under a name about raise bounds>
+  want hold, text-contains(named-said(linked(<bound.tree>, check-text)), <raise-bound>)
+
+test <a file of tells alone is not judged on what the app reaches>
+  want hold, linked(<tells.tree>, <tell @term/base/excess, note \<Too large\>\n>)/ok
+
+test <a tell nothing raises is refused as `stale-tell`>
+  host stale, linked(<stale.tree>, <{without(check-text, absence-line)}\ntell @term/base/overage, note \<Too many requests\>\n>)
+  want hold, text-contains(named-said(stale), <stale-tell: "@term/base/overage" is a standard exception, but nothing in this program raises it>)
+
+# ---- language/notes: the build line names each obligation's kind ----
+host serve-text, <task serve\n  like void\n  save turns, code 0\n  walk test\n    hook test, true\n    hook hold\n      save turns\n        call add\n          read turns\n          code 1\n>
+
+bind ends-total
+  take kinds, like dynamic
+  like number
+  case node
+    text <($kinds?.ends?.total ?? -1)>
+
+task serve-built
+  like compile-outcome
+
+  back compile-text(serve-text, make(compile-choice, bind(file, </gate/code/serve.tree>)))
+
+test <a walk that may not end owes a termination proof, counted as one>
+  want hold, is-equal(ends-total(serve-built()/obligations/kinds), 1)
+
+test <and the build line names it, not list reads and division>
+  host out, serve-built()
+  want hold, out/ok
+  want hold, is-equal(holds-check/describe-owed(out/obligations), <0 of 1 walks shown to end>)
+
+# ---- language/tasks: a required argument left out is reported once ----
+host area-text, <task area\n  take w, like number\n  take h, like number\n  like number\n  send back\n    call multiply\n      read w\n      read h\n\ntask use\n  like number\n  send back\n    call area\n      code 3\n>
+
+test <a left-out argument is refused, naming it>
+  want hold, text-contains(said(area-text), <"area" needs "h", which this call leaves out>)
+
+test <and only once, not again as a mismatch with `void`>
+  host once, said(area-text)
+  want hold, is-equal(split(once, < | >)/length, 1)
+  want hold, not(text-contains(once, <void>))
+
+# ---- commands/view: a refused document says what a document allows, not where the brackets go ----
+host hostile-text, <view text/heading\n  \<Sounds\>\n\ntask steal\n  like text\n  send back, text \<x\>\n>
+
+task hostile-refusals
+  like list, like compile-note
+
+  host out, compile-text(hostile-text, make(compile-choice, bind(file, </gate/page/hostile.tree>), bind(role, <view>)))
+  back notes-saying(out/notes, <"task" is not part of a document>)
+
+test <a task in a document is refused>
+  want hold, is-above(hostile-refusals()/length, 0)
+
+test <as `document-refused`, with advice about documents>
+  host refused, hostile-refusals()/0
+  want hold, is-equal(refused/name, <document-refused>)
+  want hold, not(text-contains(refused/hint, <brackets>))
+
+# ---- language/templates: an error in an expansion points at the fuse that caused it ----
+host tags-text, <tree is-tag\n  take name\n  take tag\n  hook fuse\n    task is-\{name\}\n      take value, like number\n\n      like boolean\n\n      back is-equal(value, code \{tag\})\n\nfuse is-tag\n  bind name, red\n  bind tag, 0\n\nfuse is-tag\n  bind name, green\n>
+
+task tags-built
+  like compile-outcome
+
+  back compile-text(tags-text, make(compile-choice, bind(file, </gate/code/tags.tree>), bind(lean, true)))
+
+task all-in-fuse
+  take notes, like list, like compile-note
+  like boolean
+
+  walk notes
+    take one
+    fork test, not(or(is-equal(one/line, 14), is-equal(one/line, 15)))
+      hold
+        back false
+  back is-above(notes/length, 0)
+
+test <a fuse that leaves out a hole fails the build>
+  want hold, not(tags-built()/ok)
+
+test <and every error is in that fuse, lines 15 and 16, not at the `tree` on line 1>
+  want hold, all-in-fuse(tags-built()/notes)
+
+# ---- language/syntax: the one line the grammar could not read is named, in a longhand file too ----
+host typo-text, <task more\n  take n, like number\n  like number\n  save total, read n\n  fork test, is-above n, 0\n    hodl\n      send back, read total\n  send back, read n\n>
+
+test <an unreadable `fork` names the `fork` line>
+  want hold, text-contains(said(typo-text), <`fork` is a statement, and its grammar could not read this line>)
+
+test <and nothing else: not `test`, `hodl` or `back` as undefined names>
+  want hold, is-equal(split(said(typo-text), < | >)/length, 1)
+
+test <an argument too many names the call it landed in>
+  want hold, text-contains(said(<task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\ntask more\n  take n, like number\n  like number\n  send back\n    call add\n      call double\n        read n\n        code 1\n>), <"double" takes 1 argument, and this is one more>)
+
+# ---- a warning names the file it is about ----
+host helper-text, <task helper\n  take n, like number\n  like number\n  save spare, code 1\n  send back, read n\n>
+
+host main-text, <load ./helper\n  find helper\n\ntask main\n  like number\n  save extra, code 2\n  send back\n    call helper\n      code 3\n>
+
+task warned-built
+  like compile-outcome
+
+  host helper, make(compiling-source, bind(file, <./helper>), bind(text, helper-text), bind(answer, </gate/code/helper.tree>))
+  back compile-text(main-text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(files, make list(helper)), bind(closed, true)))
+
+test <the entry file's own unused binding is reported>
+  want hold, text-contains(join(warned-built()/warning-messages, < | >), <"extra" is never used>)
+
+test <and a loaded module's is not stamped with the entry file's name>
+  want hold, not(text-contains(join(warned-built()/warning-messages, < | >), <"spare">))
+
+# The TypeScript compares a warning's file with its span's file when the span has one, and no warning of this fixture has
+# one (tmp/self-host/0555/span-file.ts prints undefined), so its check always answered true. What it means is held here:
+# there is a warning, and each one names the file it is about.
+task all-in-main
+  take notes, like list, like compile-note
+  like boolean
+
+  walk notes
+    take one
+    fork test, is-unequal(one/file, </gate/code/main.tree>)
+      hold
+        back false
+  back is-above(notes/length, 0)
+
+test <every warning names the file its span is in>
+  want hold, all-in-main(warned-built()/warning-notes)

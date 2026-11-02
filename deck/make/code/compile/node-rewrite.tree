@@ -157,6 +157,16 @@ form rewrite-rule
   # type, raise and construction that means it, and every arm of a match over a caught exception that names it
   case separate-case
     link apart, like case-apart
+  # a language word's named type in a file that reaches no real form of it, back to what the word means, and a native
+  # shape in a file that reaches a real `list`, `hash` or `task`, to that form (check/scope.tree `settle-words`). What a
+  # word means is handed in: compile/surface.tree holds a form with a case `none`, and loaded here it stood in every
+  # closure of this module as a second owner of `make none`
+  case settle-words
+    link real, like list, like text
+    link meaning
+      like task
+        take word, like text
+        like maybe, like type
   # module scope: every named type, raise and construction of a form two files define bound by what its file imported,
   # and the alias it was written with dropped
   case bind-forms
@@ -874,6 +884,8 @@ task rewrites-types
   sift rule
     case separate-case
       back true
+    case settle-words
+      back true
     case bind-forms
       back true
     case shared-cases
@@ -916,6 +928,8 @@ task enters-arm-types
     case apply-aliases
       back true
     case kinds-apart
+      back true
+    case settle-words
       back true
     miss
       back false
@@ -1546,6 +1560,8 @@ task rule-type
   sift rule
     case separate-case
       back apart-type(given, apart)
+    case settle-words
+      back settled-type(given, real, meaning)
     case bind-forms
       back bind-type(given, binding)
     case apply-aliases
@@ -3220,6 +3236,109 @@ task rebind-form
         save bound, bind-group(binding, group, alias)
         back make(some, bound)
   back make none
+
+# one type of a file, by the words that file reaches a real form of (decision 110 rule 2)
+task settled-type
+  take given, like type
+  take real, like list, like text
+  take meaning
+    like task
+      take word, like text
+      like maybe, like type
+  like type
+  mark private
+
+  sift given
+    case named
+      save written-alias, read(alias)
+      save is-bare, and(is-equal(args/length, 0), is-equal(value-args/length, 0))
+      save is-reached, has-text(real, name)
+      sift written-alias
+        case some
+          link written
+          # the mint's own mark (minting-reads.tree `word-type`). A `find x, name y`'s alias is never the name itself
+          fork test, is-unequal(written, name)
+            hold
+              back given
+          fork test, is-reached
+            hold
+              save given/alias, make none
+              back given
+          fork test, is-bare
+            hold
+              sift meaning(name)
+                case some
+                  link meant
+                  back meant
+                case none
+                  save nothing, 0
+          save given/alias, make none
+          back given
+        case none
+          back given
+    case array
+      fork test, has-text(real, <list>)
+        hold
+          save parts, make list
+          fork test, not(is-free-slot(element))
+            hold
+              push(parts, element)
+          back real-form-type(<list>, parts)
+      back given
+    case map
+      fork test, has-text(real, <hash>)
+        hold
+          save parts, make list
+          fork test, not(and(is-free-slot(key), is-free-slot(value)))
+            hold
+              push(parts, key)
+              push(parts, value)
+          back real-form-type(<hash>, parts)
+      back given
+    case function
+      fork test, and(has-text(real, <task>), and(is-equal(params/length, 0), is-unit-type(result)))
+        hold
+          back real-form-type(<task>, make list)
+      back given
+    miss
+      back given
+
+task real-form-type
+  take name, like text
+  take parts, like list, like type
+  like type
+  mark private
+
+  back
+    make named
+      bind name, name
+      bind args, parts
+
+# the part a bare `like list` or `like hash` left to inference
+task is-free-slot
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case unknown
+      fork test, read(free)
+        hold
+          back true
+      back false
+    miss
+      back false
+
+task is-unit-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case unit
+      back true
+    miss
+      back false
 
 task bind-type
   take given, like type

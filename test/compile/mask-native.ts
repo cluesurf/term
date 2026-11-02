@@ -5,9 +5,8 @@
 // like any other: it was the gradual unknown, and every backend but Swift wrote it bare.
 // Run: npx tsx test/compile/mask-native.ts   (MASK_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -117,7 +116,7 @@ task run
 // box: 12 measured, 24 twice; ada: bonus 8 by the default, 16 doubled; reds: its own bonus 100, 200 doubled
 const EXPECTED = '24 12 16 200 8'
 
-const dir = mkdtempSync(join(tmpdir(), 'term-mask-'))
+const dir = tempDir('term-mask-')
 const only = process.env.MASK_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {

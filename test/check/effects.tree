@@ -1,0 +1,101 @@
+note <Effect checking>
+
+# Ported from effects.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+dock load
+  load <@term/make/code/check/effects>, name effects-check
+  load <@term/make/code/parser/tree>, name parse-step
+  load <@term/make/code/compile/mill>, name mill-step
+
+# Effect checking: the async / await discipline.
+host fetch, <task fetch\n  wait true\n  send back, code 42\n>
+
+host throw-text, <task boom\n  take n\n  halt \<boom\>\n\ntask relay\n  take n\n  send back\n    call boom\n      read n\n\ntask quiet\n  take n\n  send back\n    call add\n      read n\n      code 1\n>
+
+task compile-e
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <e.tree>)))
+
+# the effect rows of a text taken through parse and mill by hand, with no check after them
+bind rows-of
+  take parser, like dynamic
+  take miller, like dynamic
+  take effects, like dynamic
+  take source, like text
+  like dynamic
+  case node
+    text <<$effects.effectRows($miller.mill($parser.parse({ file: "e.tree", text: $source }).tree, "e.tree").program)>>
+
+bind row-throws
+  take rows, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <<($rows.get($name)?.includes("throw") === true)>>
+
+task rows-from
+  take source, like text
+  like dynamic
+
+  back rows-of(parse-step, mill-step, effects-check, source)
+
+# correct: an async task awaits another async task
+test <async task awaited from an async task>
+  want hold, compile-e(<{fetch}\ntask run\n  wait true\n  send back\n    call fetch\n      wait true\n>)/ok
+
+# a task that awaits is INFERRED async (no task-level marker needed) -- async resolution makes it async
+test <a task that awaits is inferred async>
+  want hold, compile-e(<{fetch}\ntask run\n  send back\n    call fetch\n      wait true\n>)/ok
+
+# awaiting a synchronous task
+test <awaiting a non-async task is rejected>
+  want hold, refused-as(compile-e(<task plain\n  send back, code 42\n\ntask run\n  wait true\n  send back\n    call plain\n      wait true\n>), <effect-error>)
+
+# an async call with no `wait true` is AUTO-AWAITED by inference (the caller becomes async), so it is not an error
+test <an unawaited async call is auto-awaited (inference)>
+  want hold, compile-e(<{fetch}\ntask run\n  send back\n    call fetch\n>)/ok
+
+# a parameter shadows a task of its name: calling a synchronous callback named `fetch` is not a call to the async
+# `fetch` task, so it is neither awaited nor refused. Both checks read names globally once, and `list/find-index`'s
+# callback `test` was awaited as the stdlib's async file `test`, which refused every program that loaded both
+test <a callback parameter shadows an async task of the same name>
+  want hold, compile-e(<{fetch}\ntask first\n  take items, like list, like number\n  take fetch\n    like task\n      take item, like number\n      like boolean\n  like number\n  save hit\n    call fetch\n      read items/0\n  fork test\n    hook test\n      read hit\n    hook hold\n      send back, code 0\n  send back, code 1\n>)/ok
+
+# fire-and-forget: an async call marked `wait false` is intentionally not awaited and the caller stays synchronous
+test <a `wait false` async call is allowed (fire-and-forget)>
+  want hold, compile-e(<{fetch}\ntask run\n  send back\n    code 0\n\ntask kick\n  call fetch\n    wait false\n  send back\n    code 0\n>)/ok
+
+# effect annotations on callbacks: an async callback parameter must be awaited (effect-row polymorphism --
+# the caller inherits the callback's async effect)
+test <async callback awaited inside an async task>
+  want hold, compile-e(<task run-cb\n  take f\n    like task\n      wait true\n      take x, like number\n      like number\n  take n, like number\n  like number\n  wait true\n  send back\n    call f\n      read n\n      wait true\n>)/ok
+
+# an async callback is awaited by default, the way a call to an async task is, and its caller becomes async. It was
+# refused, and before that `mark async` under `like task` was not read at all (guides: language/async, 2026-10-04)
+test <async callback called without `wait` is awaited, and its caller becomes async>
+  want hold, compile-e(<task run-cb\n  take f\n    like task\n      wait true\n      take x, like number\n      like number\n  take n, like number\n  like number\n  send back\n    call f\n      read n\n>)/ok
+
+test <awaiting a sync callback is rejected>
+  want hold, refused-as(compile-e(<task run-cb\n  take f\n    like task\n      take x, like number\n      like number\n  take n, like number\n  like number\n  wait true\n  send back\n    call f\n      read n\n      wait true\n>), <effect-error>)
+
+# effect-row inference: throw propagates transitively through the call graph
+test <a function that busts has the throw effect>
+  want hold, row-throws(rows-from(throw-text), <boom>)
+
+test <throw propagates to a caller (transitive row)>
+  want hold, row-throws(rows-from(throw-text), <relay>)
+
+test <a non-throwing function has no throw effect>
+  want hold, not(row-throws(rows-from(throw-text), <quiet>))
+
+# effect-row polymorphism: a function calling a throwing callback inherits the throw effect
+test <a function calling a throwing callback inherits throw>
+  want hold, row-throws(rows-from(<task apply-it\n  take f\n    like task\n      halt\n      take x, like number\n      like number\n  take n, like number\n  like number\n  send back\n    call f\n      read n\n>), <apply-it>)

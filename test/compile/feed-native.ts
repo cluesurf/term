@@ -9,12 +9,12 @@ import { execFileSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { parse } from '@term/make/code/parser/tree'
 import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
@@ -845,7 +845,7 @@ const SUITES: Suite[] = [
 ]
 
 const SEP = ''
-const dir = mkdtempSync(join(tmpdir(), 'term-feed-native-'))
+const dir = tempDir('term-feed-native-')
 
 function compare(
   env: string,

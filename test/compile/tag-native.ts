@@ -4,9 +4,8 @@
 // Before, every backend refused the read: `"shape" has no field "form"`.
 // Run: npx tsx test/compile/tag-native.ts   (TAG_ONLY=typescript, rust, swift or kotlin runs one)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { BACKENDS, runOn } from './shared/run-on'
@@ -94,7 +93,7 @@ task run
   },
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'term-tag-native-'))
+const dir = tempDir('term-tag-native-')
 const only = process.env.TAG_ONLY ?? ''
 
 for (const one of CASES) {

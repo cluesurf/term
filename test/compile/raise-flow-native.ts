@@ -12,9 +12,9 @@
 // Run: npx tsx test/compile/raise-flow-native.ts   (FLOW_ONLY=typescript, rust, swift or kotlin runs one)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tempDir } from '../temp'
 import { fileURLToPath } from 'node:url'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, buildOn } from './shared/run-on'
@@ -52,7 +52,7 @@ const HERE = join(
 )
 const read = (name: string): string =>
   readFileSync(join(HERE, name), 'utf8')
-const dir = mkdtempSync(join(tmpdir(), 'term-raise-flow-'))
+const dir = tempDir('term-raise-flow-')
 const only = process.env.FLOW_ONLY ?? ''
 const outs = new Map<string, string>()
 const errs = new Map<string, string>()

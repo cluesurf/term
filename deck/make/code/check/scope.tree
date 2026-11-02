@@ -57,6 +57,12 @@ load ../compile/import-scope
 load ../compile/node
   find statement
   find statement-span
+  find type
+
+load ../compile/surface
+  find is-language-word
+  find is-type-name
+  find type-of-word
 
 load ../compile/unit-graph
   find deck-root
@@ -379,7 +385,11 @@ task bind-forms-by-import
   like scope-result
 
   save roots, portable-roots(decks)
+  # first, so no pass below meets a word's named type that means the primitive
+  save program, settle-words(program, scopes)
   save program, separate-case-names(program, scopes)
+  # after the step above: a form renamed for a case of its name no longer stands under the word
+  save real-forms, real-form-words(program)
 
   # each name's definitions by file, files in the order first met
   save by-name, make list
@@ -422,7 +432,8 @@ task bind-forms-by-import
   walk by-name
     take named
     save files, get(files-of, at)
-    fork test, is-above(files/length, 1)
+    save is-word, has-text(real-forms, named/name)
+    fork test, or(is-above(files/length, 1), is-word)
       hold
         save sorted, portable-order(files, roots)
         save renamed, make list
@@ -430,7 +441,9 @@ task bind-forms-by-import
         walk sorted
           take file
           save given, <{named/name}__in0_{k}>
-          fork test, is-equal(file, entry)
+          # a real form named for a word takes a split name in the entry too: the native emitters hold word tables of
+          # their own, and the unsplit name would read as the primitive (decision 110 rule 3)
+          fork test, and(is-equal(file, entry), not(is-word))
             hold
               save given, named/name
           save entry-renamed
@@ -479,6 +492,143 @@ task bind-forms-by-import
     make scope-result
       bind program, program
       bind diagnostics, make list
+
+# THE WORDS OF THE LANGUAGE THAT NAME A REAL FORM IN THIS PROGRAM: a record-type under one exists only where a form wrote
+# a case, a link or a slot (compile/minting-forms.tree `form-of`, decision 110)
+task real-form-words
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, and(is-language-word(name), not(has-text(out, name)))
+          hold
+            push(out, name)
+      miss
+        save nothing, 0
+  back out
+
+# the files of `program` that define each real form named for `word`
+task files-defining
+  take program, like list, like statement
+  take word, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-equal(name, word)
+          hold
+            push(out, file-of(one))
+      miss
+        save nothing, 0
+  back out
+
+# whether `file` holds one of `definers`, or a plain `find` of `word` there reaches one, its `bear` chain included
+task reaches-real-form
+  take scopes, like list, like file-scope
+  take file, like text
+  take word, like text
+  take definers, like list, like text
+  like boolean
+  mark private
+
+  fork test, has-text(definers, file)
+    hold
+      back true
+  sift scope-of(scopes, file)
+    case some
+      link own
+      save finds-read, make list
+      walk read(own/plain)
+        take one-find
+        push(finds-read, one-find)
+      save targets, make list
+      sift targets-of(finds-read, word)
+        case some
+          link these
+          save targets, these
+        case none
+          sift targets-of(own/finds, word)
+            case some
+              link these
+              save targets, these
+            case none
+              save nothing, 0
+      save reach, new-file-set()
+      walk targets
+        take target
+        gather-exported(scopes, target, reach)
+      walk definers
+        take definer
+        fork test, holds-file(reach, definer)
+          hold
+            back true
+      back false
+    case none
+      back false
+
+# what a word of the table means, none for any other name
+task word-meaning
+  take word, like text
+  like maybe, like type
+  mark private
+
+  fork test, is-type-name(word)
+    hold
+      save meant, type-of-word(word)
+      back make(some, meant)
+  back make none
+
+# THE BINDER SETTLES A `find` OF A WORD (decision 110 rule 2). The mint reads only its own file, so a word it may mean a
+# real form by is a named type there. Here each such named type is settled by what its file reached: a real form, kept
+# for the binding below, else what the word means. The other way for the three words the mint does not list: a file that
+# reaches a real `list`, `hash` or `task` has its native shapes turned to the form
+task settle-words
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  like list, like statement
+  mark private
+
+  save words, real-form-words(program)
+  save definers, make list
+  walk words
+    take word
+    push(definers, files-defining(program, word))
+  save real-by-file
+    like hash
+      like text
+      like list, like text
+    make hash
+  save position, 0
+  walk program
+    take one
+    save file, file-of(one)
+    fork test, not(real-by-file/has(file))
+      hold
+        save reached, make list
+        save at, 0
+        walk words
+          take word
+          fork test, reaches-real-form(scopes, file, word, get(definers, at))
+            hold
+              push(reached, word)
+          save at, add(at, 1)
+        save real-by-file/{file}, reached
+    save rule
+      make settle-words
+        bind real, real-by-file/get(file)
+        bind meaning, word-meaning
+    save program/{position}, rewrite-statement(one, rule)
+    save position, add(position, 1)
+  back program
 
 task task-names
   take program, like list, like statement

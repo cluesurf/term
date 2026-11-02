@@ -1,0 +1,25 @@
+note <Dependent function types as datatype fields>
+
+# Ported from dependent-function-field.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Dependent function types as datatype fields. A constructor may carry a FUNCTION field whose later parameter's type
+# references an EARLIER parameter of the same function (and a sibling field). The accessibility predicate is exactly
+# this shape: `acc` carries `n : nat` and `step : (m) -> lt m n -> acc`, where the `step` function's second parameter
+# `lt m n` references its own first parameter `m` AND the sibling field `n`. This needs function types to carry their
+# parameter names so a dependent reference resolves (a `Pi`, not a bare arrow). The accessibility witness `acc zero`
+# builds (its `step` is the ex-falso on `lt m zero`) AND reduces -- projecting its `n` field computes. This is the data
+# shape automatic well-founded recursion (`Acc`) is built on. Run: npx tsx test/check/dependent-function-field.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform lt\n  head a, like nat\n  head b, like nat\n  case ltself\n    link q, like nat\n    head\n      read q\n    head\n      make succ\n        bind prior\n          read q\n  case ltmore\n    link x, like nat\n    link y, like nat\n    link sub, like lt\n      head\n        read x\n      head\n        read y\n    head\n      read x\n    head\n      make succ\n        bind prior\n          read y\n\nform acc\n  case mkacc\n    link n, like nat\n    link step\n      like task\n        take m, like nat\n        take pf\n          like lt\n            head\n              read m\n            head\n              read n\n        like acc\n\ntask acc-zero\n  like acc\n  send back\n    make mkacc\n      bind n\n        make zero\n      bind step\n        task s\n          take m, like nat\n          take pf\n            like lt\n              head\n                read m\n              head\n                make zero\n          like acc\n          fork case, read pf\n\ntask index\n  take a, like acc\n  like nat\n  fork case, read a\n    case mkacc\n      link n\n      link step\n      send back\n        read n\n>
+
+# 1. the accessibility witness `acc zero` BUILDS (its `step` field is a dependent function whose body ex-falsos on the
+# empty `lt m zero`) AND reduces: projecting its index field computes index (acc-zero) == 0.
+test <acc-zero (dependent function field, ex-falso step) builds and projects: index (acc-zero) == 0>
+  want hold, compile-text(<{prelude}\nrule index-zero\n  show hold\n    call is-equal\n      call index\n        call acc-zero\n      make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: index (acc-zero) is 0, not 1. The projection through the dependent-function-field constructor
+# must compute the RIGHT value.
+test <wrong projection is rejected (index (acc-zero) != 1)>
+  want hold, not(compile-text(<{prelude}\nrule index-wrong\n  show hold\n    call is-equal\n      call index\n        call acc-zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok)

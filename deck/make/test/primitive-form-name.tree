@@ -1,9 +1,10 @@
-note <a form named for a primitive registers no record-type, so one declaring cases or fields is refused at the form>
+note <a form with a case, a link or a slot is a real form whatever its name, and the word names it where it is in scope>
 
-# `form size` with two cases built nothing and said nothing: `size` is the primitive number, compile/minting-forms.tree
-# registers no record for it, and the first sign was `make none` naming no form, three lines from a form that is plainly
-# there (item term-self-host-001-0790, seed.tree's space/holography.tree). Holding only methods is what the stdlib's
-# `form text` and `form list` do, and a `name <Native>` describes a host type: neither loses anything it declared.
+# Decision 110 of term/self-host/change/001-finish-self-host, which replaced the refusal of item 0790. `form size` with
+# two cases built nothing and said nothing, and then the mill refused it. Now it registers its record, a form holding only
+# methods stays the primitive's methods, and the mill mints a word by what the file's own text says: a real form it
+# declares or a `find` of the word, and nothing else. What a `find` reached is the binder's, held by
+# test/compile/native-shadow.ts through real toolchains.
 
 load ../code/parser/tree
   find parse
@@ -24,6 +25,10 @@ load @term/base/maybe
 load @term/base/text
   find contains
 
+load ../code/compile/node
+  find statement
+  find type
+
 # the source milled
 task milled
   take source, like text
@@ -37,38 +42,112 @@ task milled
   host no-role, make maybe/none
   back mill(parsed/tree, <t.tree>, no-role, false)
 
-# whether the mill refused the source for its form's name
-task refused-for-name
+# whether the mill said nothing about the source
+task is-clean
   take source, like text
   like boolean
 
-  walk milled(source)/diagnostics
-    take found
-    fork test, contains(found/message, <primitive-form-name>)
+  back is-equal(milled(source)/diagnostics/length, 0)
+
+# whether the source mints a record-type of this name
+task has-record
+  take source, like text
+  take name, like text
+  like boolean
+
+  walk milled(source)/program
+    take one
+    fork test, is-record-named(one, name)
       hold
         back true
   back false
 
-test <a form named size with cases is refused>
-  want hold, refused-for-name(<form size\n  case none\n  case more\n    link prior, like size\n>)
+task is-record-named
+  take one, like statement
+  take wanted, like text
+  like boolean
 
-test <a form named number with a field is refused>
-  want hold, refused-for-name(<form number\n  link reals, like text\n>)
+  sift one
+    case record-type
+      back is-equal(name, wanted)
+    miss
+      back false
 
-test <a form named list with a field is refused>
-  want hold, refused-for-name(<form list\n  link zone, like text\n>)
+# the kind of the result of the source's task `probe`
+task result-kind
+  take source, like text
+  like text
 
-test <a form named for a width with a positional field is refused>
-  want hold, refused-for-name(<form u8\n  slot value, like text\n>)
+  walk milled(source)/program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, <probe>)
+          hold
+            back kind-of(result)
+      miss
+        save nothing, 0
+  back <no probe>
 
-test <a form holding only methods stays legal>
-  want hold, not(refused-for-name(<form text\n  task shout\n    take self\n    like text\n    back self\n>))
+task kind-of
+  take given, like maybe, like type
+  like text
 
-test <an empty form stays legal>
-  want hold, not(refused-for-name(<form void\n>))
+  sift given
+    case some
+      link known
+      back known/kind
+    case none
+      back <none>
 
-test <a native description stays legal>
-  want hold, not(refused-for-name(<form text, name \<Text\>\n  link data, like text\n>))
+test <a form named size with cases is a real form>
+  want hold, is-clean(<form size\n  case none\n  case more\n    link prior, like size\n>)
+  want hold, has-record(<form size\n  case none\n  case more\n    link prior, like size\n>, <size>)
 
-test <a form with a free name is not refused>
-  want hold, not(refused-for-name(<form scale\n  case none\n  case more\n    link prior, like scale\n>))
+test <a form named number with a field is a real form>
+  want hold, has-record(<form number\n  link reals, like text\n>, <number>)
+
+test <a form named list with a field is a real form>
+  want hold, has-record(<form list\n  link zone, like text\n>, <list>)
+
+test <a form named for a width with a positional field is a real form>
+  want hold, has-record(<form u8\n  slot value, like text\n>, <u8>)
+
+test <a native description with data is a real form>
+  want hold, has-record(<form text, name \<Text\>\n  link data, like native-string\n>, <text>)
+
+test <a form holding only methods stays the primitive's>
+  want hold, not(has-record(<form text\n  task shout\n    take self\n    like text\n    back self\n>, <text>))
+
+test <an empty form stays the primitive's>
+  want hold, not(has-record(<form void\n>, <void>))
+
+test <a form with a free name is a record as ever>
+  want hold, has-record(<form scale\n  case none\n  case more\n    link prior, like scale\n>, <scale>)
+
+test <the word means the file's own real form>
+  want hold, is-equal(result-kind(<form size\n  link depth, like number\n\ntask probe\n  like size\n  back make size, bind depth, 1\n>), <named>)
+
+test <another word of the table stays the primitive in that file>
+  want hold, is-equal(result-kind(<form size\n  link depth, like number\n\ntask probe\n  like number\n  back 1\n>), <number>)
+
+test <another spelling of the word reaches the primitive beside the form>
+  want hold, is-equal(result-kind(<form number\n  link reals, like text\n\ntask probe\n  like native-number\n  back 1\n>), <number>)
+
+test <a file that neither declares nor finds a word means the primitive>
+  want hold, is-equal(result-kind(<task probe\n  like size\n  back 1\n>), <number>)
+
+test <a found word is left to the binder>
+  want hold, is-equal(result-kind(<load ./a\n  find size\n\ntask probe\n  like size\n  back make size\n>), <named>)
+
+test <a found word under another name stays the primitive>
+  want hold, is-equal(result-kind(<load ./a\n  find size, name depth\n\ntask probe\n  like size\n  back 1\n>), <number>)
+
+test <a found list keeps the native shape>
+  want hold, is-equal(result-kind(<load ./a\n  find list\n\ntask probe\n  like list, like text\n  back make list\n>), <array>)
+
+test <a function type stays a function type beside a real form task>
+  want hold, is-equal(result-kind(<form task\n  link title, like native-string\n\ntask probe\n  like task\n    take n, like number\n  back make task, bind title, \<a\>\n>), <function>)
+
+test <a bare like task beside a real form task is the form>
+  want hold, is-equal(result-kind(<form task\n  link title, like native-string\n\ntask probe\n  like task\n  back make task, bind title, \<a\>\n>), <named>)

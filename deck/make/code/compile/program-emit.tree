@@ -34,6 +34,7 @@ load @term/base/maybe
 load @term/base/text
   find char-count
   find ends-with
+  find index-of
   find substring
 
 load ../parser/diagnostic
@@ -45,6 +46,9 @@ load ./node
 
 load ./program-run
   find program-run
+
+load ./surface
+  find is-language-word
 
 load ./ts-names
   find to-pascal
@@ -341,6 +345,29 @@ task entry-form-aliases
                 save args, <\<{arg-text}\>>
             save written-name, substring(name, 0, subtract(char-count(name), 6))
             push(lines, <export type {to-pascal(written-name)}{heads} = {to-pascal(name)}{args}>)
+        # a real form named for a language word is always split, the entry's too (decision 110 rule 3)
+        fork test, in-file
+          hold
+            save split-at, index-of(name, <__in0_>)
+            fork test, is-above(split-at, 0)
+              hold
+                save word-name, substring(name, 0, split-at)
+                fork test, is-language-word(word-name)
+                  hold
+                    save word-heads, <>
+                    save word-args, <>
+                    fork test, is-above(params/length, 0)
+                      hold
+                        save head-parts, make list
+                        save arg-parts, make list
+                        walk params
+                          take param
+                          push(head-parts, <{to-pascal(param)} = any>)
+                          push(arg-parts, to-pascal(param))
+                        save comma, <, >
+                        save word-heads, <\<{join(head-parts, comma)}\>>
+                        save word-args, <\<{join(arg-parts, comma)}\>>
+                    push(lines, <export type {to-pascal(word-name)}{word-heads} = {to-pascal(name)}{word-args}>)
       miss
         turn next
   fork test, is-equal(lines/length, 0)

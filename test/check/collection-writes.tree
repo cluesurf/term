@@ -1,0 +1,134 @@
+note <A write to a list or hash PARAMETER that its caller never sees under value semantics (self-hosting-0026, D1)>
+
+# Ported from collection-writes.ts by task/term/suite-port.ts, finished by hand.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+  find split
+
+load @term/base/list
+  find push
+
+# A write to a list or hash PARAMETER that its caller never sees under value semantics (self-hosting-0026, D1). Every
+# backend shares the caller's collection today, so each of these works now and silently stops working the day a list
+# is a value. check/lost-writes.ts `warnLostCollectionWrites` names them, as a warning until the corpus is clean.
+# Run: node host/line.js test test/check/collection-writes.tree
+
+bind sorted-texts
+  take texts, like list, like text
+  like list, like text
+  case node
+    text <[...$texts].sort()>
+
+task compile-at
+  take file, like text
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, file), bind(lean, true), bind(project, <.>), bind(project-env, <node>)))
+
+# the task a lost-write warning names, ? when it names none
+task task-named
+  take said, like text
+  like text
+
+  host parts, split(said, <a collection `>)
+  fork test, is-below(parts/length, 2)
+    hold
+      back <?>
+  back split(parts/1, <`>)/0
+
+# the lost-write warnings a program raises, by the task each names. A refused program answers its refusal, which no case wants
+task warned
+  take source, like text
+  like list, like text
+
+  host out, compile-at(</gate/code/writes.tree>, source)
+  save found, make list
+  fork test, not(out/ok)
+    hold
+      walk out/messages
+        take said
+        push(found, <refused: {said}>)
+      back found
+  walk out/warning-messages
+    take said
+    fork test, text-contains(said, <sends nothing back: under value semantics>)
+      hold
+        push(found, task-named(said))
+  back sorted-texts(found)
+
+# the second and third patterns: one collection, two holders, a write through one and a read of the other. Each is
+# counted by the message it raises
+task holders
+  take source, like text
+  like list, like text
+
+  host out, compile-at(</gate/code/holders.tree>, source)
+  save found, make list
+  fork test, not(out/ok)
+    hold
+      walk out/messages
+        take said
+        push(found, <refused: {said}>)
+      back found
+  walk out/warning-messages
+    take said
+    fork test, or(text-contains(said, <never sees the write>), text-contains(said, <keeps the collection as it was stored>))
+      hold
+        fork test, text-contains(said, <holds the same collection>)
+          hold
+            push(found, <alias>)
+          miss
+            push(found, <store>)
+  back found
+
+test <a native push onto a list parameter>
+  want hold, is-equal(warned(<task fill\n  take xs, like list, like number\n  xs/push(1)\n>), make list(<fill>))
+
+test <the stdlib push, a task that writes its first argument>
+  want hold, is-equal(warned(<load @term/base/list\n  find push\n\ntask fill\n  take xs, like list, like number\n  push(xs, 1)\n>), make list(<fill>))
+
+test <a hash parameter set>
+  want hold, is-equal(warned(<task note\n  take seen, like hash, like text, like number\n  seen/set(\<a\>, 1)\n>), make list(<note>))
+
+test <a write two calls down: both tasks are named>
+  want hold, is-equal(warned(<task inner\n  take xs, like list, like number\n  xs/push(1)\n\ntask outer\n  take ys, like list, like number\n  inner(ys)\n>), make list(<inner>, <outer>))
+
+test <a task that sends the list back is left alone>
+  want hold, is-equal(warned(<task fill\n  take xs, like list, like number\n  like list, like number\n  xs/push(1)\n  back xs\n>), make list())
+
+test <a copy read after the write is in use, and left alone>
+  want hold, is-equal(warned(<load @term/base/console\n  find log\n\ntask fill\n  take xs, like list, like number\n  xs/push(1)\n  log(\<\{xs/length\}\>)\n>), make list())
+
+test <a local list is its own, and left alone>
+  want hold, is-equal(warned(<task fill\n  take n, like number\n  save xs, make list\n  xs/push(n)\n>), make list())
+
+test <a list parameter only read is left alone>
+  want hold, is-equal(warned(<load @term/base/console\n  find log\n\ntask show\n  take xs, like list, like number\n  log(\<\{xs/length\}\>)\n>), make list())
+
+test <an alias written through one name and read through the other>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\ntask run\n  save a, make list\n  save b, a\n  b/push(1)\n  log(\<\{a/length\}\>)\n>), make list(<alias>))
+
+test <an alias written and read through the same name is left alone>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\ntask run\n  save a, make list\n  save b, a\n  b/push(1)\n  log(\<\{b/length\}\>)\n>), make list())
+
+test <an alias the other name never reads again is left alone>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\ntask run\n  save a, make list\n  log(\<\{a/length\}\>)\n  save b, a\n  b/push(1)\n>), make list())
+
+test <a list written after it was stored in a record, the record read after>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\nform box\n  link items, like list, like number\n\ntask run\n  save xs, make list\n  save r\n    make box\n      bind items, xs\n  xs/push(1)\n  log(\<\{r/items/length\}\>)\n>), make list(<store>))
+
+test <an alias bound again to a copy before the write is left alone (pattern/pike.tree)>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\ntask run\n  save a, make list\n  save b, a\n  save b, make list\n  b/push(1)\n  log(\<\{a/length\}\>)\n>), make list())
+
+test <a list written before it was stored is left alone>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\nform box\n  link items, like list, like number\n\ntask run\n  save xs, make list\n  xs/push(1)\n  save r\n    make box\n      bind items, xs\n  log(\<\{r/items/length\}\>)\n>), make list())
+
+test <a list written after it was pushed into another, the other read after>
+  want hold, is-equal(holders(<load @term/base/console\n  find log\n\ntask run\n  save rows, make list\n  save row, make list\n  rows/push(row)\n  row/push(1)\n  log(\<\{rows/length\}\>)\n>), make list(<store>))
