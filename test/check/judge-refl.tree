@@ -1,0 +1,310 @@
+note <What the kernel reads of a refl (term-self-host-001-0756)>
+
+# Checked against an identity goal, a refl is typed as infer types it and must name the goal: its written type converts
+# to the goal's, its value is checked there and converts to the goal's side, and the goal's two sides convert. So a kernel
+# never accepts a term it cannot type, and J keeps subject reduction: Id (Id A a a) (refl a) (refl b), which a wrong value
+# used to give through J, is not even a well formed goal (term-self-host-001-0758, which closed what 0756 pinned here).
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind kv
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind kc
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind judge-type
+  take level, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $level \})>
+
+bind pi-many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: "many", domain: $domain, codomain: $codomain \})>
+
+bind sigma-many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "sigma", mult: "many", domain: $domain, codomain: $codomain \})>
+
+bind pair-of
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pair", first: $first, second: $second \})>
+
+bind lam-of
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind app-of
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind ann-of
+  take held, like dynamic
+  take kind, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "ann", term: $held, type: $kind \})>
+
+bind id-of
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind refl-of
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+bind j-of
+  take evidence, like dynamic
+  take motive, like dynamic
+  take start, like dynamic
+  take height, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "j", proof: $evidence, motive: $motive, base: $start, level: $height \})>
+
+bind message-of-refusal
+  take problem, like dynamic
+  like text
+  case node
+    text <$problem.message>
+
+bind text-starts-with
+  take whole, like text
+  take opening, like text
+  like boolean
+  case node
+    text <$whole.startsWith($opening)>
+
+task ty
+  take at, like number
+  like dynamic
+
+  back judge-type(judge-kernel/lit-level(at))
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+task prepared
+  like dynamic
+
+  host signature, make list
+  signature/push(hyp(<A>, ty(0)))
+  signature/push(hyp(<B>, ty(0)))
+  signature/push(hyp(<a>, kc(<A>)))
+  signature/push(hyp(<b>, kc(<A>)))
+  signature/push(hyp(<c>, kc(<B>)))
+  back judge-kernel/context-with-signature(signature)
+
+# the refusal's message, empty when the kernel accepts. The goal is checked first, outside the guard, so no goal here
+# is ill formed and a refusal is a refusal of the proof
+task refusal
+  take context, like dynamic
+  take proof, like dynamic
+  take goal, like dynamic
+  like text
+
+  judge-kernel/infer(context, goal)
+  fork
+    mark unsafe
+    host empty, make list
+    judge-kernel/check(context, proof, judge-kernel/evaluate(empty, goal))
+    back <>
+  halt take
+    take problem
+    back message-of-refusal(problem)
+
+# the refusal of a goal itself, empty when it is well formed
+task goal-refusal
+  take goal, like dynamic
+  like text
+
+  host context, prepared()
+  fork
+    mark unsafe
+    judge-kernel/infer(context, goal)
+    back <>
+  halt take
+    take problem
+    back message-of-refusal(problem)
+
+task accepted
+  take proof, like dynamic
+  take goal, like dynamic
+  like boolean
+
+  back is-equal(refusal(prepared(), proof, goal), <>)
+
+task refused-for
+  take proof, like dynamic
+  take goal, like dynamic
+  take reason, like text
+  like boolean
+
+  back text-starts-with(refusal(prepared(), proof, goal), reason)
+
+task a-at
+  like dynamic
+
+  back kc(<a>)
+
+task b-at
+  like dynamic
+
+  back kc(<b>)
+
+task on-a
+  like dynamic
+
+  back id-of(kc(<A>), a-at(), a-at())
+
+# the transport of refl a along a proof of Id A a y, which computes to refl a whatever the proof's value
+task carried
+  take evidence, like dynamic
+  like dynamic
+
+  back j-of(evidence, lam-of(lam-of(id-of(kc(<A>), a-at(), kv(1)))), refl-of(kc(<A>), a-at()), judge-kernel/lit-level(0))
+
+# the attempt at Id (Id A a a) (refl a) (refl b) through J: it needs a refl of b at Id A a a, which is refused
+task lifted-proof
+  like dynamic
+
+  back j-of(ann-of(refl-of(kc(<A>), b-at()), on-a()), lam-of(lam-of(id-of(id-of(kc(<A>), a-at(), kv(1)), carried(kv(0)), kv(0)))), refl-of(on-a(), refl-of(kc(<A>), a-at())), judge-kernel/lit-level(0))
+
+task lifted-goal
+  like dynamic
+
+  back id-of(on-a(), refl-of(kc(<A>), a-at()), refl-of(kc(<A>), b-at()))
+
+# the family that tried to tell refl a from refl b
+task family-motive
+  like dynamic
+
+  host family, lam-of(j-of(kv(0), lam-of(lam-of(ty(0))), on-a(), judge-kernel/lit-level(1)))
+  back lam-of(lam-of(app-of(ann-of(family, pi-many(on-a(), ty(0))), kv(1))))
+
+task transported
+  like dynamic
+
+  back j-of(lifted-proof(), family-motive(), refl-of(kc(<A>), a-at()), judge-kernel/lit-level(0))
+
+test <the control: refl at its own type proves a = a>
+  want hold, accepted(refl-of(kc(<A>), a-at()), on-a())
+
+test <conversion, not spelling: a written value that computes to the side is accepted>
+  host same, ann-of(lam-of(kv(0)), pi-many(kc(<A>), kc(<A>)))
+  want hold, accepted(refl-of(kc(<A>), app-of(same, a-at())), on-a())
+
+test <under a binder, a value that follows the binder is accepted>
+  want hold, accepted(lam-of(refl-of(kc(<A>), kv(0))), pi-many(kc(<A>), id-of(kc(<A>), kv(0), kv(0))))
+
+test <in a higher universe, the universe's own refl is accepted>
+  want hold, accepted(refl-of(ty(1), kc(<A>)), id-of(ty(1), kc(<A>), kc(<A>)))
+
+# ---- checked: the written type is read
+test <a written type other than the goal's is refused>
+  want hold, refused-for(refl-of(kc(<B>), a-at()), on-a(), <refl: the written type>)
+
+test <a written type that is ill typed is refused>
+  want hold, refused-for(refl-of(app-of(ty(0), ty(0)), a-at()), on-a(), <applied a non-function>)
+
+test <a written type that is a value is refused>
+  want hold, refused-for(refl-of(a-at(), a-at()), on-a(), <expected a type>)
+
+test <a written type that is unbound is refused>
+  want hold, refused-for(refl-of(kv(99), a-at()), on-a(), <unbound variable>)
+
+test <a written type that never ends is refused, never run>
+  host twice, lam-of(app-of(kv(0), kv(0)))
+  want hold, refused-for(refl-of(app-of(twice, twice), a-at()), on-a(), <cannot infer a bare function>)
+
+# ---- checked: the value is the goal's side
+test <a value of the wrong type is refused>
+  want hold, refused-for(refl-of(kc(<A>), kc(<c>)), on-a(), <type mismatch>)
+
+test <another value of the right type is refused>
+  want hold, refused-for(refl-of(kc(<A>), b-at()), on-a(), <refl: the value>)
+
+test <a value that does not follow the binder is refused>
+  want hold, refused-for(lam-of(refl-of(kc(<A>), a-at())), pi-many(kc(<A>), id-of(kc(<A>), kv(0), kv(0))), <refl: the value>)
+
+test <a value that is unbound is refused>
+  want hold, refused-for(refl-of(kc(<A>), kv(99)), on-a(), <unbound variable>)
+
+# ---- inferred: both are read, as they always were
+test <inferred, as a J's proof is, the written type is read>
+  want hold, refused-for(j-of(refl-of(kc(<B>), a-at()), lam-of(lam-of(on-a())), refl-of(kc(<A>), a-at()), judge-kernel/lit-level(0)), on-a(), <type mismatch>)
+
+# ---- no false statement comes through
+test <a = b is refused, whichever side the refl names>
+  want hold, refused-for(refl-of(kc(<A>), a-at()), id-of(kc(<A>), a-at(), b-at()), <refl: the two sides>)
+  want hold, refused-for(refl-of(kc(<A>), b-at()), id-of(kc(<A>), a-at(), b-at()), <refl: the two sides>)
+
+test <A = B in the universe is refused>
+  want hold, refused-for(refl-of(ty(1), kc(<A>)), id-of(ty(1), kc(<A>), kc(<B>)), <refl: the two sides>)
+  want hold, refused-for(refl-of(ty(1), kc(<B>)), id-of(ty(1), kc(<A>), kc(<B>)), <refl: the two sides>)
+
+test <a side named by a meta solved to b is still not a>
+  host empty, make list
+  host solved, judge-kernel/fresh-meta(judge-kernel/evaluate(empty, kc(<A>)))
+  want hold, accepted(refl-of(kc(<A>), b-at()), id-of(kc(<A>), solved, b-at()))
+  want hold, refused-for(refl-of(kc(<A>), a-at()), id-of(kc(<A>), a-at(), solved), <refl: the two sides>)
+
+# ---- J over a wrong value: subject reduction, the reason for the rule
+test <refl a = refl b is not a well formed goal, so J cannot prove it>
+  want hold, text-starts-with(goal-refusal(lifted-goal()), <refl: the value>)
+  want hold, text-starts-with(goal-refusal(lifted-proof()), <refl: the value>)
+
+test <a family built from J over that proof is refused at the proof>
+  want hold, refused-for(transported(), on-a(), <refl: the value>)
+  want hold, refused-for(transported(), id-of(kc(<A>), a-at(), b-at()), <refl: the value>)
+
+test <J along a proof whose value is b is refused at the proof>
+  want hold, refused-for(j-of(ann-of(refl-of(kc(<A>), b-at()), on-a()), lam-of(lam-of(id-of(kc(<A>), a-at(), kv(1)))), refl-of(kc(<A>), a-at()), judge-kernel/lit-level(0)), id-of(kc(<A>), a-at(), b-at()), <refl: the value>)
+
+test <a cast from A to B along a proof whose value is B is refused at the proof>
+  host evidence, ann-of(refl-of(ty(1), kc(<B>)), id-of(ty(1), kc(<A>), kc(<A>)))
+  host cast, j-of(evidence, lam-of(lam-of(kv(1))), a-at(), judge-kernel/lit-level(1))
+  want hold, refused-for(cast, kc(<A>), <refl: the value>)
+  want hold, refused-for(cast, kc(<B>), <refl: the value>)
+
+test <the sigma route to a = b is not a well formed goal>
+  host left, pair-of(a-at(), refl-of(kc(<A>), b-at()))
+  host right, pair-of(b-at(), refl-of(kc(<A>), b-at()))
+  want hold, text-starts-with(goal-refusal(id-of(sigma-many(kc(<A>), id-of(kc(<A>), kv(0), kv(0))), left, right)), <refl: the value>)

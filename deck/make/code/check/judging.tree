@@ -3244,10 +3244,22 @@ task check
           fork test, is-equal(convert(st, ctx/level, left, right), false)
             hold
               halt <kernel-type:refl: the two sides of the identity are not definitionally equal>
+          # a refl is typed here as infer types it, and then must name the goal: a kernel never accepts a term it cannot
+          # type, and a J over a refl of another value would lose subject reduction (term-self-host-001-0758). A checked
+          # refl used to read neither its written type nor its value's identity. The fields are read by position: `type`
+          # above is the goal's
           sift trm
             case refl
+              link written
               link value
+              infer-universe(st, ctx, written)
+              fork test, is-equal(convert(st, ctx/level, evaluate(st, ctx/env, written), type), false)
+                hold
+                  halt <kernel-type:refl: the written type is not the identity's type>
               check(st, ctx, value, type)
+              fork test, is-equal(convert(st, ctx/level, evaluate(st, ctx/env, value), left), false)
+                hold
+                  halt <kernel-type:refl: the value is not a side of the identity>
             miss
               save nothing, 0
           back zero-usage(ctx/level)

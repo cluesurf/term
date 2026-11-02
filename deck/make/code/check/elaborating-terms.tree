@@ -2580,6 +2580,18 @@ task body-in
     case let
       link name
       link init
+      link mutable
+      # a bare `save x`, given its value by a later assignment: the kernel has only the unit placeholder to type it with,
+      # so the task goes to the command path, which declines it for the ordinary checker to type by its first assignment
+      # (elaborating-commands.tree). Bound at Unit here, `assign-term` refused the assignment as a type mismatch (item 0540)
+      sift init
+        case unit
+          fork test, mutable
+            hold
+              note-miss(ts, <a name declared and given its value later>)
+              back no-term()
+        miss
+          save name, name
       sift expr(ts, init, scope, ctx, no-value())
         case some
           link value

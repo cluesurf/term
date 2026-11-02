@@ -446,19 +446,6 @@ task is-made-in-place
     miss
       back false
 
-# what a literal wants of a parameter's type: that type when it is loose, none otherwise, so a generic or concrete
-# parameter leaves the literal to infer itself
-task wanted-if-loose
-  take st, like infer-state
-  take given, like type
-  like maybe, like type
-  mark private
-
-  fork test, holds-loose(st, given)
-    hold
-      back make(some, given)
-  back make none
-
 # THE TYPE A CALL'S LIST OR HASH LITERAL WANTS, at its position, read off the callee's signature instantiated for it: a
 # parameter loose at any depth, none for anything else. A literal handed a loose parameter is held by nothing else, so it
 # takes the parameter's type and each element boxes (decision 011 of term/compiler, rule 1). The name is a direct call

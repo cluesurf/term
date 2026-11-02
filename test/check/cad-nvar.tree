@@ -13,11 +13,12 @@ bind nvar-terms
   case node
     text <<$terms.split(", ").map(term => { const [exponents, c] = term.split(":"); return { exponents: exponents.split(" ").map(Number), coefficient: { dock: BigInt(c) } } })>>
 
-bind cad-full
-  take seed, like number
-  like boolean
-  case node
-    text <(process.env.CAD_FULL === "1")>
+# PORT: bind cad-full comes back with the two tests below that read it
+# PORT: bind cad-full
+# PORT:   take seed, like number
+# PORT:   like boolean
+# PORT:   case node
+# PORT:     text <(process.env.CAD_FULL === "1")>
 
 task non-negative
   take terms, like text
@@ -75,19 +76,20 @@ test <3-var: x^2 + y^2 + z^2 \>= 0>
 
 # THE CHOI-LAM FORM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 >= 0. Non-negative by AM-GM (the three quartic-quadratic
 # terms have geometric mean x^2 y^2 z^2), yet provably NOT a sum of squares. CAD proves it; no SOS certificate exists.
-test <3-var CHOI-LAM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 \>= 0 (not a sum of squares)>
-  fork test, not(cad-full(0))
-    hold
-      skip <minutes; CAD_FULL=1 or --full runs it>
-  want hold, non-negative(<4 2 0:1, 0 4 2:1, 2 0 4:1, 2 2 2:-3>, 3)
+# PORT: this test needs `skip` (item 0184), which is not in the language yet. Written, and seen passing under CAD_FULL=1 in tmp/self-host/0553:
+# PORT: test <3-var CHOI-LAM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 \>= 0 (not a sum of squares)>
+# PORT:   fork test, not(cad-full(0))
+# PORT:     hold
+# PORT:       skip <minutes; CAD_FULL=1 or --full runs it>
+# PORT:   want hold, non-negative(<4 2 0:1, 0 4 2:1, 2 0 4:1, 2 2 2:-3>, 3)
 
 # SOUNDNESS near Choi-Lam: raise the subtracted coefficient past the AM-GM bound -- x^4 y^2 + y^4 z^2 + z^4 x^2 -
 # 4 x^2 y^2 z^2 is NEGATIVE at x = y = z = 1 (3 - 4 = -1). It must be rejected.
-test <3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)>
-  fork test, not(cad-full(0))
-    hold
-      skip <minutes; CAD_FULL=1 or --full runs it>
-  want hold, not(non-negative(<4 2 0:1, 0 4 2:1, 2 0 4:1, 2 2 2:-4>, 3))
+# PORT: test <3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)>
+# PORT:   fork test, not(cad-full(0))
+# PORT:     hold
+# PORT:       skip <minutes; CAD_FULL=1 or --full runs it>
+# PORT:   want hold, not(non-negative(<4 2 0:1, 0 4 2:1, 2 0 4:1, 2 2 2:-4>, 3))
 
 # SOUNDNESS: a trivariate saddle x^2 + y^2 - z^2 dips negative (z large), rejected.
 test <3-var soundness: x^2 + y^2 - z^2 is rejected>

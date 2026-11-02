@@ -1,0 +1,38 @@
+note <A bare save x, given its value later, declines the kernel and builds, wherever the value is given>
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+# A bare `save x` is a let whose init is the unit placeholder. The kernel has no type for it but Unit, so it declines the
+# task and the ordinary checker, which types the name by its first assignment, checks it (the command path said so since
+# 2026-10-05). The pure lowering of 2026-10-20 (`assign-term`, item 0540) read the same let without that decline, bound
+# the name at Unit, and refused its first assignment as a kernel type mismatch.
+task built
+  take body, like text
+  like boolean
+
+  host text, <task pick\n  take flag, like boolean\n  like number\n{body}\n\ntask run\n  like number\n  send back\n    call pick\n      true\n>
+  host result, compile-text(text, make(compile-choice, bind(file, <declared.tree>), bind(stdlib, <node>), bind(entry, <run>)))
+  back result/ok
+
+test <given its value on the next line>
+  want hold, built(<  save x\n  save x, code 3\n  send back, read x>)
+
+test <given its value in both arms of a fork with a tail>
+  want hold, built(<  save x\n  fork test\n    hook test\n      read flag\n    hook hold\n      save x, code 3\n    hook miss\n      save x, code 4\n  send back, read x>)
+
+test <given its value in the arms of a fork that returns>
+  want hold, built(<  save x\n  fork test\n    hook test\n      read flag\n    hook hold\n      save x, code 3\n      send back, read x\n    hook miss\n      save x, code 4\n      send back, read x>)
+
+test <declared inside an arm and given its value there>
+  want hold, built(<  fork test\n    hook test\n      read flag\n    hook hold\n      save x\n      save x, code 3\n      send back, read x\n  send back, code 0>)
+
+test <declared and given a value of another type than the task returns>
+  want hold, built(<  save x\n  save x, text \<a\>\n  send back, code 1>)
+
+test <a save of another type than the first is still refused, by the ordinary checker>
+  want hold, is-equal(built(<  save x\n  save x, code 3\n  save x, text \<a\>\n  send back, read x>), false)
+
+test <a save given its value at the save is still held by the kernel>
+  want hold, is-equal(built(<  save x, code 3\n  save x, text \<a\>\n  send back, read x>), false)
