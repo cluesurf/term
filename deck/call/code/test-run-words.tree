@@ -14,6 +14,16 @@ load @term/base/text
   find to-lower-case
   find replace-all
   find contains, name text-contains
+  find split, name text-split
+  find trim, name text-trim
+
+load @term/host/base
+  find data
+  find data-entry
+
+load @term/host/stream
+  find make-reader, name report-reader
+  find feed, name report-feed
 
 # whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
 task case-matches
@@ -97,4 +107,323 @@ task taken-of
         bind values, get(texts, index)
     push(out, made)
     save index, add(index, 1)
+  back out
+
+# ---- the one report protocol, every target (decision 022 T5, item 0157) ----
+
+# a test as its report calls it: its task, and its `test` line as written, 0 for none
+form report-test
+  link name, like text
+  link line, like number
+
+# THE REPORT'S TEXT, for a native target, where the report is a module loading the test file. One task per test, calling
+# it inside a guard, then one entry written through call/code/test-report.tree, so what a test raised is on disk before the
+# next test starts. Node writes the same entries from call/code/test-report-node.tree. Every name is `term-test-`
+task report-text
+  take load, like text
+  take tests, like list, like report-test
+  like text
+
+  save lines, make list
+  push(lines, <load {load}>)
+  walk tests
+    take one, like report-test
+    push(lines, <  find {one/name}>)
+  push(lines, <>)
+  push(lines, <load @term/call/test-report>)
+  push(lines, <  find report-clock, name term-test-clock>)
+  push(lines, <  find report-entry, name term-test-entry>)
+  push(lines, <  find report-verdict, name term-test-verdict>)
+  push(lines, <>)
+  save at, 0
+  walk tests
+    take one, like report-test
+    push(lines, <task term-test-run-{at}>)
+    push(lines, <  mark async>)
+    push(lines, <  save term-test-started>)
+    push(lines, <    call term-test-clock>)
+    push(lines, <  save term-test-verdict-is, text \<missed\>>)
+    push(lines, <  save term-test-note-is, text \<\>>)
+    push(lines, <  save term-test-shown-is, text \<\>>)
+    push(lines, <  fork>)
+    push(lines, <    mark unsafe>)
+    push(lines, <    fork test>)
+    push(lines, <      hook test>)
+    push(lines, <        call {one/name}>)
+    push(lines, <      hook hold>)
+    push(lines, <        save term-test-verdict-is, text \<held\>>)
+    push(lines, <  halt take>)
+    push(lines, <    take term-test-problem>)
+    push(lines, <    save term-test-note-is, read term-test-problem/note>)
+    push(lines, <    save term-test-verdict-is>)
+    push(lines, <      call term-test-verdict>)
+    push(lines, <        read term-test-note-is>)
+    push(lines, <  call term-test-entry>)
+    push(lines, <    text \<{one/name}\>>)
+    push(lines, <    read term-test-verdict-is>)
+    push(lines, <    read term-test-note-is>)
+    push(lines, <    read term-test-shown-is>)
+    push(lines, <    code {one/line}>)
+    push(lines, <    read term-test-started>)
+    push(lines, <>)
+    save at, add(at, 1)
+  push(lines, <task {report-name()}>)
+  push(lines, <  mark async>)
+  save index, 0
+  walk test
+    hook test, is-below(index, at)
+    hook hold
+      push(lines, <  call term-test-run-{index}>)
+      save index, add(index, 1)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# the report task's name, as each backend spells it
+task report-name
+  like text
+
+  back <term-test-report>
+
+# one test's entry as the runner reads it. `ms` is 0 when the file does not say
+form report-entry
+  link test, like text
+  link verdict, like text
+  link note, like text
+  link shown, like text
+  link ms, like number
+
+# a report file read back: its tests' entries, and under `--update` what each `want snapshot` saw, in order
+form report-read
+  link entries, like list, like report-entry
+  link phrases, like list, like text
+  link values, like list, like text
+
+# the text a field of an entry holds, the empty text when it holds none
+task field-text
+  take fields, like list, like data-entry
+  take name, like text
+  like text
+  mark private
+
+  walk fields
+    take field, like data-entry
+    fork test, is-equal(field/name, name)
+      hold
+        save held, field/base
+        sift held
+          case text
+            link content
+            back content
+          case hash
+            back <>
+          case array
+            back <>
+          case number
+            back <>
+          case decimal
+            back <>
+          case flag
+            back <>
+          case blank
+            back <>
+          case graft
+            back <>
+  back <>
+
+# the number a field of an entry holds, 0 when it holds none
+task field-number
+  take fields, like list, like data-entry
+  take name, like text
+  like number
+  mark private
+
+  walk fields
+    take field, like data-entry
+    fork test, is-equal(field/name, name)
+      hold
+        save held, field/base
+        sift held
+          case number
+            link content
+            back content
+          case hash
+            back 0
+          case array
+            back 0
+          case text
+            back 0
+          case decimal
+            back 0
+          case flag
+            back 0
+          case blank
+            back 0
+          case graft
+            back 0
+  back 0
+
+# The report file's text, with the house reader. The file is written a line at a time, so a line the reader refuses is
+# one a killed child never finished: reading stops there, and what came before it stands
+task read-report
+  take text, like text
+  like report-read
+
+  save entries, make list
+  save phrases, make list
+  save values, make list
+  save reader, report-reader()
+  save torn, false
+  walk text-split(text, <\n>)
+    take line, like text
+    fork test, and(not(torn), is-unequal(text-trim(line), <>))
+      hold
+        fork
+          mark unsafe
+          # saved first: a `sift` directly on a call's result can read the wrong tag (T008)
+          save fed, report-feed(reader, line)
+          sift fed
+            case none
+              save blank-line, true
+            case some
+              link value
+              sift value
+                case array
+                  link items
+                  walk items
+                    take item, like data
+                    sift item
+                      case hash
+                        link fields
+                        save verdict, field-text(fields, <verdict>)
+                        fork test, is-equal(verdict, <taken>)
+                          hold
+                            push(phrases, field-text(fields, <phrase>))
+                            push(values, field-text(fields, <value>))
+                          miss
+                            save entry
+                              make report-entry
+                                bind test, field-text(fields, <test>)
+                                bind verdict, verdict
+                                bind note, field-text(fields, <note>)
+                                bind shown, field-text(fields, <shown>)
+                                bind ms, field-number(fields, <ms>)
+                            push(entries, entry)
+                      case array
+                        save torn, true
+                      case text
+                        save torn, true
+                      case number
+                        save torn, true
+                      case decimal
+                        save torn, true
+                      case flag
+                        save torn, true
+                      case blank
+                        save torn, true
+                      case graft
+                        save torn, true
+                case hash
+                  save torn, true
+                case text
+                  save torn, true
+                case number
+                  save torn, true
+                case decimal
+                  save torn, true
+                case flag
+                  save torn, true
+                case blank
+                  save torn, true
+                case graft
+                  save torn, true
+        halt take
+          take problem
+          save torn, true
+  back make(report-read, bind(entries, entries), bind(phrases, phrases), bind(values, values))
+
+# the seconds a test file may run: what `--limit` said, else 300
+task limit-seconds
+  take given, like number
+  like number
+
+  fork test, is-above(given, 0)
+    hold
+      back given
+  back 300
+
+# why a child's report ended early: its limit, else how it stopped and the first line it said on standard error
+task stop-note
+  take timed-out, like boolean
+  take seconds, like number
+  take exit, like text
+  take said, like text
+  like text
+
+  fork test, timed-out
+    hold
+      back <did not finish in {seconds} s>
+  fork test, is-equal(said, <>)
+    hold
+      back <the program stopped (exit {exit})>
+  back <the program stopped (exit {exit}): {said}>
+
+# what the runner says past the first test a child never reported
+task not-reached
+  like text
+
+  back <not reached>
+
+# one asked test, settled: its report's entry, or for a test the child never reported why not, in `said` words the
+# runner quotes as they are
+form settled-test
+  link test, like text
+  link verdict, like text
+  link note, like text
+  link shown, like text
+  link ms, like number
+  link said, like boolean
+
+# EVERY TEST ASKED, IN ORDER, against what its child reported. A reported entry stands. The first unreported test raised
+# `stop`, since the child was running it when it ended, and the rest are "not reached"
+task settle-report
+  take names, like list, like text
+  take entries, like list, like report-entry
+  take stop, like text
+  like list, like settled-test
+
+  save out, make list
+  save stopped, false
+  walk names
+    take name, like text
+    save found, false
+    walk entries
+      take entry, like report-entry
+      fork test, and(not(found), is-equal(entry/test, name))
+        hold
+          save found, true
+          save made
+            make settled-test
+              bind test, name
+              bind verdict, entry/verdict
+              bind note, entry/note
+              bind shown, entry/shown
+              bind ms, entry/ms
+              bind said, false
+          push(out, made)
+    fork test, not(found)
+      hold
+        save why, stop
+        fork test, stopped
+          hold
+            save why, not-reached()
+        save stopped, true
+        save unreported
+          make settled-test
+            bind test, name
+            bind verdict, <raised>
+            bind note, why
+            bind shown, <>
+            bind ms, 0
+            bind said, true
+        push(out, unreported)
   back out

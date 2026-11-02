@@ -1,0 +1,9 @@
+load @term/base/clock
+  find sleep
+
+test <held before the hang>
+  want hold, true
+
+test <this one never ends>
+  sleep(600000)
+  want hold, true

@@ -253,8 +253,48 @@ task want-failed
   fork test, is-raised-absent(found)
     hold
       back raised-absent()
-  save line, as-host-number(found)
+  back want-said(marker-text(raised), raise-shown(raised), source)
+
+# What a raise says in a test's report (work/testing/test-running.tree reads it back, in the runner, from the file): the
+# marker of a failing `want`, else what the raise says of itself. Runs in the test's own process, so it reads the raise
+# the host holds
+task raise-note
+  take raised, like dynamic
+  like text
+
   save marker, marker-text(raised)
+  fork test, starts-with(marker, want-failed-mark())
+    hold
+      back marker
+  back raised-message(raised)
+
+# what a comparing `want` held, as written in a report: `left 0, right 1`. The empty text for any other raise
+task raise-shown
+  take raised, like dynamic
+  like text
+
+  save link, raised-link(raised)
+  fork test, carries-values(link)
+    hold
+      back <left {shown(link-left(link), 0)}, right {shown(link-right(link), 0)}>
+  back <>
+
+# `err instanceof Error ? err.message : String(err)`
+bind raised-message
+  take raised, like dynamic
+  like text
+  case node
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+
+# The line a person acts on, from a marker and the two values shown beside it: `line 12 did not hold: want hold,
+# is-equal double(0), 1, left 0, right 1`. `source` is the file as written
+task want-said
+  take marker, like text
+  take values, like text
+  take source, like text
+  like text
+
+  save line, before-number(leading-number(text-after(marker, want-failed-mark())))
   # the part of an `and` that did not hold, when the `want` was one: `part 2 of 3`
   save part, part-of(marker)
   save part-said, <>
@@ -271,10 +311,9 @@ task want-failed
     hold
       save at-said, <, at {at}>
   save said, <line {after-number(line)} did not hold{part-said}: {source-line(source, line)}{at-said}>
-  save link, raised-link(raised)
-  fork test, carries-values(link)
+  fork test, is-unequal(values, <>)
     hold
-      back <{said}, left {shown(link-left(link), 0)}, right {shown(link-right(link), 0)}>
+      back <{said}, {values}>
   back said
 
 # the marker a failing `want` raised, the empty text when it raised none: its `thing` when it carries the compared

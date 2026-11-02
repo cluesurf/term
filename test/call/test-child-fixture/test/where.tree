@@ -1,0 +1,14 @@
+load @term/base/environment
+  find directory
+
+load @term/base/file
+  find file-exists
+
+load @term/base/text
+  find ends-with
+
+test <the working directory is the project root>
+  want hold, ends-with(directory(), <test-child-fixture>)
+
+test <a relative path means the project root>
+  want hold, file-exists(<deck.tree>)

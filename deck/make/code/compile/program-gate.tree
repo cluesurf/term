@@ -213,6 +213,31 @@ task add-root
 
   save run/roots/{name}, true
 
+# A real form named for a word takes a split name in the entry too (decision 110 rule 3), so a root of its written name
+# would keep nothing, and a file holding only that form would compile to no program. Its split name is the root
+task root-split-words
+  take run, like program-run
+  take entry, like text
+  mark private
+
+  walk run/program
+    take one
+    sift one
+      case record-type
+        save split-at, index-of(name, <__in0_>)
+        fork test, is-above(split-at, 0)
+          hold
+            sift span/file
+              case some
+                link written
+                fork test, and(is-equal(written, entry), run/roots/has(substring(name, 0, split-at)))
+                  hold
+                    add-root(run, name)
+              case none
+                save nothing, 0
+      miss
+        save nothing, 0
+
 # a file once, in the order first met
 task add-file
   take seen, like hash, like text, like boolean
@@ -663,6 +688,9 @@ task program-gate
     hold
       back refusal(form-scope/diagnostics, no-bound())
   save run/program, form-scope/program
+  fork test, given/has-roots
+    hold
+      root-split-words(run, given/naming)
 
   # a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
   save run/program, fill-mask-defaults(run/program, given/scoped, given/emit-only)

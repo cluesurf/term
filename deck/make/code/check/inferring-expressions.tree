@@ -114,6 +114,9 @@ load ./lean-nest
 load ./checker-switches
   find refuses-ambiguous
 
+load ./substitution
+  find holds-loose-clash
+
 load ./inferring-state
   find infer-state
   find hole
@@ -4361,6 +4364,11 @@ task fits-type
   fork test, or(is-wild(a), is-wild(p))
     hold
       back true
+  # a list, hash or form with a loose element on one side only does not fit, as the unifier refuses it (decision 011 of
+  # term/compiler)
+  fork test, holds-loose-clash(st/sub, a, p)
+    hold
+      back false
   sift a
     case named
       link a-name

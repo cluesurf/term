@@ -695,6 +695,9 @@ hook term
     # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
     take update
       like boolean
+    # The seconds a test file may run before it and its children are ended (default 300)
+    take limit
+      like text
     task test-project
 
   # Run benchmarks, or profile a file with --cpu / --memory
@@ -1200,6 +1203,7 @@ task test-project
   take env, like text
   take ride, like boolean
   take update, like boolean
+  take limit, like text
   like void
   call test-verb
     read filter
@@ -1208,6 +1212,7 @@ task test-project
     read env
     read ride
     read update
+    read limit
 
 task walk-project
   like void

@@ -4,7 +4,7 @@
 # the program ships there. Each test file is built on the backend with one more task beside its tests, the REPORT,
 # which calls each test in order inside a guard and answers one letter per test: `P` it held, `F` it did not, `E` it
 # raised. The program is built exactly as `term make --emit <env> --build` builds one (call/code/native-build.ts), with
-# the same main, run, and its last line read back into the same results `term test` reports for node.
+# the same main, and run as a child reporting to a file (decision 022 T5, call/code/test-run-words.tree `report-text`).
 #
 # The report is a module of its own under the project's `.base/`, loading the test file, so a lean test file is read
 # lean and the report is read as it is written. The resolver hands it the test file as `term test` rewrote it (its
@@ -24,6 +24,16 @@ load @term/make/term/hash
 load ./test-running
   find test-run
   find test-result
+
+load @term/call/test-run-words
+  find report-name
+  find report-test
+  find report-text
+  find settle-report
+  find settled-test
+
+load ./report-running
+  find run-reported
 
 load ../build/project-resolving
   find make-project-resolver
@@ -59,18 +69,6 @@ task native-test-envs
   envs/push(<kotlin>)
   back envs
 
-# the report task's name, as each backend spells it
-task report-name
-  like text
-
-  back <term-test-report>
-
-# what ends each test's entry in the report: a character no note holds
-task entry-end
-  like text
-
-  back <␞>
-
 form folder-make
   link recursive, like boolean
 
@@ -97,16 +95,6 @@ form build-ask
   link folder, like text
   link name, like text
   link entry, like text
-
-form run-ask
-  link encoding, like text
-  link timeout, like number
-  link max-buffer, like number
-
-# a built program's run: its standard output when it exited 0, else why it stopped
-form program-ran
-  link out, like text
-  link failure, like text
 
 # ---- the host values Term has no word for ----
 
@@ -166,35 +154,6 @@ bind reason-line
   case node
     text <($reason.split(String.fromCharCode(10))[0]?.slice(0, 240) ?? "")>
 
-# the last line of a program's output, after anything its tests printed: `out.trimEnd().split('\n').pop() ?? ''`
-bind last-line
-  take out, like text
-  like text
-  case node
-    text <($out.trimEnd().split(String.fromCharCode(10)).pop() ?? "")>
-
-# the report's entries: `answer.split(end).slice(0, -1)`
-bind entries-of
-  take answer, like text
-  take end, like text
-  like list, like text
-  case node
-    text <$answer.split($end).slice(0, -1)>
-
-# whether every entry starts with P, F or E
-bind entries-lettered
-  take entries, like list, like text
-  like boolean
-  case node
-    text <$entries.every((entry) =\> /^[PFE]/.test(entry))>
-
-# `JSON.stringify(answer.slice(0, 80))`
-bind quoted-start
-  take answer, like text
-  like text
-  case node
-    text <JSON.stringify($answer.slice(0, 80))>
-
 # a failing `want`'s report note, `/^want:(\d+)(?: sampled at (.*))?$/`, its match or null
 bind want-match
   take note, like text
@@ -212,40 +171,6 @@ bind why-of
   case node
     text <($want ? "line " + $want[1] + " did not hold on " + $env + ": " + ($source.split(String.fromCharCode(10))[Number($want[1]) - 1]?.trim() ?? "") + ($want[2] ? ", at " + $want[2] : "") : "it raised on " + $env + ($note ? ": " + $note : ""))>
 
-# `Number(want[1])`
-bind want-number
-  take want, like dynamic
-  like number
-  case node
-    text <Number($want[1])>
-
-# `entry.slice(1)` and `entry[0]`, by UTF-16 unit
-bind note-of
-  take entry, like text
-  like text
-  case node
-    text <$entry.slice(1)>
-
-bind letter-of
-  take entry, like text
-  like text
-  case node
-    text <($entry[0] ?? "")>
-
-# a program's status as the original printed it: `ran.status ?? ran.signal`
-bind status-of
-  take ran, like dynamic
-  like text
-  case node
-    text <String($ran.status ?? $ran.signal)>
-
-# the first line of standard error that is not blank, cut at 240 units
-bind said-of
-  take ran, like dynamic
-  like text
-  case node
-    text <((($ran.stderr ?? "").split(String.fromCharCode(10)).find((line) =\> line.trim() !== "") ?? "").slice(0, 240))>
-
 # a resolver called as the compiler calls one
 bind call-resolver
   take resolver, like dynamic
@@ -255,13 +180,6 @@ bind call-resolver
   like dynamic
   case node
     text <$resolver($path, $from, $how)>
-
-# `command.slice(1)`
-bind rest-of
-  take command, like dynamic
-  like dynamic
-  case node
-    text <$command.slice(1)>
 
 # ---- the tools ----
 
@@ -324,10 +242,16 @@ task run-native-test-file
   save report-file, node-path/join(cache-dir, <test-native>, <{hash-text(file)}.tree>)
   save load, load-path-of(report-file, file)
   save names, make list
+  save asked, make list
   walk input/tests
     take one, like dynamic
     names/push(host-text(one/name))
-  node-file/write-file-sync(report-file, report-text(load, names))
+    save line, 0
+    fork test, is-truthy(one/line)
+      hold
+        save line, one/line
+    asked/push(make(report-test, bind(name, host-text(one/name)), bind(line, line)))
+  node-file/write-file-sync(report-file, report-text(load, asked))
   save resolving, face-project-resolver(make-project-resolver(root, env))
   save real, host-text(node-file/realpath-sync(file))
   save rewritten, host-text(input/text)
@@ -372,53 +296,61 @@ task run-native-test-file
     hold
       save none, make list
       back failed(<the {env} build failed: {reason-line(host-text(built/reason))}>, none)
-  save ran, run-captured(built/command)
-  fork test, is-unequal(ran/failure, <>)
-    hold
-      save none, make list
-      back failed(ran/failure, none)
-  # the report is the end of what the program printed, after anything its tests printed
-  save answer, last-line(ran/out)
-  save entries, entries-of(answer, entry-end())
-  fork test, or(is-unequal(entries/length, input/tests/length), not(entries-lettered(entries)))
-    hold
-      save none, make list
-      back failed(<the {env} program answered {quoted-start(answer)} for {host-text(input/tests/length)} tests>, none)
+  # THE CHILD, its report the file every target writes, and what it reported stands however it ended
+  save ran, run-reported(built/command, root, file, limit-of(input/limit))
   save results, make list
   save all-held, true
   save at, 0
-  walk input/tests
-    take test-asked, like dynamic
-    save entry, entries/{at}
-    save one, result-of(test-asked, entry, env, host-text(input/source))
+  walk settle-report(names, ran/report/entries, ran/stop)
+    take settled, like settled-test
+    save one, result-of(input/tests/{at}, settled, env, host-text(input/source))
     fork test, not(one/held)
       hold
         save all-held, false
     results/push(one)
     save at, add(at, 1)
-  back make(test-run, bind(ok, all-held), bind(results, results))
+  save run, make(test-run, bind(ok, all-held), bind(results, results))
+  save run/printed, ran/printed
+  back run
 
-# one test's entry read back: held on `P`, its line as written when a `want` names it, what it raised on `E`
+# one test's entry read back: its line as written when a `want` names it, what it raised when it did
 task result-of
   take test-asked, like dynamic
-  take entry, like text
+  take settled, like settled-test
   take env, like text
   take source, like text
   like test-result
   mark private
 
-  save note, note-of(entry)
-  save want, want-match(note)
+  save want, want-match(settled/note)
   save line, test-asked/line
   fork test, is-truthy(want)
     hold
       save line, want-number(want)
-  save letter, letter-of(entry)
-  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, host-text(test-asked/label)), bind(held, is-equal(letter, <P>)), bind(line, line))
-  fork test, is-equal(letter, <E>)
+  save held, is-equal(settled/verdict, <held>)
+  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, host-text(test-asked/label)), bind(held, held), bind(ms, settled/ms), bind(line, line))
+  fork test, and(not(held), settled/said)
     hold
-      save one/error, why-of(want, note, env, source)
+      save one/error, settled/note
+      back one
+  fork test, and(not(held), or(is-equal(settled/verdict, <raised>), is-truthy(want)))
+    hold
+      save one/error, why-of(want, settled/note, env, source)
   back one
+
+# the seconds `--limit` said, 0 for nothing
+bind limit-of
+  take given, like dynamic
+  like number
+  case node
+    text <Number($given ?? 0)>
+
+# `Number(want[1])`
+bind want-number
+  take want, like dynamic
+  like number
+  case node
+    text <Number($want[1])>
 
 # the report's load of the test file, relative to the report's folder, without `.tree`, with forward slashes, and
 # starting with a dot
@@ -453,50 +385,3 @@ bind starts-with-dot
   like boolean
   case node
     text <$path.startsWith(".")>
-
-# one entry per test, each test called inside a guard and each entry ended by the entry end: `P` held, `F` did not,
-# `E` and the raise's note when it raised, which for a failing `want` names its line (`want:11`)
-task report-text
-  take load, like text
-  take names, like list, like text
-  like text
-
-  save end, entry-end()
-  save lines, make list
-  lines/push(<load {load}>)
-  walk names
-    take name
-    lines/push(<  find {name}>)
-  lines/push(<>)
-  lines/push(<task {report-name()}>)
-  lines/push(<  like text>)
-  lines/push(<  save out, text \<\>>)
-  walk names
-    take name
-    lines/push(<  fork>)
-    lines/push(<    mark unsafe>)
-    lines/push(<    fork test>)
-    lines/push(<      hook test>)
-    lines/push(<        call {name}>)
-    lines/push(<      hook hold>)
-    lines/push(<        save out, text \<\{out\}P{end}\>>)
-    lines/push(<      hook miss>)
-    lines/push(<        save out, text \<\{out\}F{end}\>>)
-    lines/push(<  halt take>)
-    lines/push(<    take problem>)
-    lines/push(<    save out, text \<\{out\}E\{problem/note\}{end}\>>)
-  lines/push(<  send back, read out>)
-  lines/push(<>)
-  back join(lines, <\n>)
-
-# Run a built program, a minute at most: its standard output when it exits 0, else why it stopped
-task run-captured
-  take command, like dynamic
-  like program-ran
-  mark private
-
-  save ran, child-process/spawn-sync(host-text(command/0), rest-of(command), make(run-ask, bind(encoding, <utf8>), bind(timeout, 60000), bind(max-buffer, 67108864)))
-  fork test, not(is-equal(ran/status, 0))
-    hold
-      back make(program-ran, bind(out, <>), bind(failure, <the program stopped (exit {status-of(ran)}): {said-of(ran)}>))
-  back make(program-ran, bind(out, host-text(ran/stdout)), bind(failure, <>))

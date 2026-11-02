@@ -114,8 +114,9 @@ bind hunt-text-length
     text <$value.length>
 
 bind hunt-list-of
+  head t
   take value, like dynamic
-  like list, like dynamic
+  like list, like t
   case node
     text <$value>
 

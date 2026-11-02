@@ -1,0 +1,130 @@
+# One test file's program run as a child, on every target, and what it reported read back (decision 022 T5, item 0157).
+# The command is `node <bundle>` or a native binary. Its working directory is the project root, and it gets
+# TERM_TEST_REPORT (the file it reports to), TERM_TEST_SELF and TERM_TEST_SELF_ENTRY (the program and script that run this
+# same `term`, so a suite tests the `term` under test and not whichever is on PATH). TERM_DEPTH is left out: this run is
+# not its parent, so a `term` a suite starts prints as one a person started. It runs in a process group of its own, ended
+# at the limit: TERM, then KILL 2000 ms later. Standard output and error are the lines quoted under its item.
+#
+# What a report means is call/code/test-run-words.tree. This holds the IO.
+
+load @term/base/list
+  find list
+
+load @term/make/term/hash
+  find hash-text
+
+load @term/call/test-run-words
+  find read-report
+  find report-read
+  find stop-note
+  find limit-seconds
+
+load ../need/running-install
+  find find-running-cli
+
+load ../cache/compile-store
+  find project-cache-dir
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+form folder-make
+  link recursive, like boolean
+
+# a child's run, as the runner reads it
+form report-ran
+  # why a test the child never reported did not finish
+  link stop, like text
+  link report, like report-read
+  link printed, like list, like text
+
+# `process.execPath`, absolute
+bind self-program
+  like text
+  case node
+    text <process.execPath>
+
+# whether this CLI is a single executable, which has no script
+bind self-is-binary
+  like boolean
+  case node
+    text <Boolean(process.getBuiltinModule("node:sea")?.isSea?.())>
+
+# The child, spawned, and its end: `{ code, timed, printed, said }`. `printed` is every line of both streams in the order
+# they came, `said` the first line of standard error that is not blank, cut at 240 units. A signal to this process ends
+# the group first, since the group is not this process's own. A child gone while another of its group holds a pipe ends
+# the run half a second later, and the group goes with it
+bind spawn-reported
+  take command, like list, like text
+  take root, like text
+  take report, like text
+  take self, like text
+  take entry, like text
+  take waiting, like number
+  like dynamic
+  case node
+    text <<(await new Promise((r_done) => { const r_child = process.getBuiltinModule("node:child_process").spawn($command[0], $command.slice(1), { cwd: $root, detached: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, TERM_DEPTH: undefined, TERM_TEST_REPORT: $report, TERM_TEST_SELF: $self, TERM_TEST_SELF_ENTRY: $entry } }); const r_chunks = new Array(); let r_error = ""; let r_timed = false; let r_ended = false; let r_code = 1; const r_group = (r_signal) => { try { process.kill(-r_child.pid, r_signal) } catch {} }; let r_grace; let r_after; const r_stop = (r_signal) => { r_group("SIGTERM"); r_off(); if (process.listenerCount(r_signal) === 0) { process.kill(process.pid, r_signal) } }; const r_int = () => r_stop("SIGINT"); const r_term = () => r_stop("SIGTERM"); const r_exit = () => r_group("SIGKILL"); const r_off = () => { process.off("SIGINT", r_int); process.off("SIGTERM", r_term); process.off("exit", r_exit) }; process.on("SIGINT", r_int); process.on("SIGTERM", r_term); process.on("exit", r_exit); const r_limit = setTimeout(() => { r_timed = true; r_group("SIGTERM"); r_grace = setTimeout(() => r_group("SIGKILL"), 2000) }, $waiting); const r_finish = () => { if (r_ended) { return } r_ended = true; clearTimeout(r_limit); clearTimeout(r_grace); clearTimeout(r_after); r_off(); r_group("SIGKILL"); r_child.stdout?.destroy(); r_child.stderr?.destroy(); const r_lines = r_chunks.join("").split(String.fromCharCode(10)); if (r_lines.at(-1) === "") { r_lines.pop() } const r_said = r_error.split(String.fromCharCode(10)).find((r_line) => r_line.trim() !== "") ?? ""; r_done({ code: String(r_code), timed: r_timed, printed: r_lines, said: r_said.slice(0, 240) }) }; r_child.stdout?.setEncoding("utf8"); r_child.stderr?.setEncoding("utf8"); r_child.stdout?.on("data", (r_chunk) => r_chunks.push(r_chunk)); r_child.stderr?.on("data", (r_chunk) => { r_chunks.push(r_chunk); r_error += r_chunk }); r_child.on("error", (r_problem) => { r_code = 127; r_error += String(r_problem); r_finish() }); r_child.on("exit", (r_status, r_signal) => { r_code = r_status ?? r_signal; r_after = setTimeout(r_finish, 500) }); r_child.on("close", r_finish) }))>>
+
+# a limit in seconds as the milliseconds a timer takes
+bind seconds-to-ms
+  take seconds, like number
+  like number
+  case node
+    text <($seconds * 1000)>
+
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+bind host-flag
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === true)>
+
+# the file a test file's child reports to, emptied, inside the project's cache. One per test file, so two files never
+# share one
+task report-file-of
+  take root, like text
+  take file, like text
+  like text
+
+  save folder, node-path/join(project-cache-dir(root), <test>, <report>)
+  node-file/mkdir-sync(folder, make(folder-make, bind(recursive, true)))
+  save path, node-path/join(folder, <{hash-text(file)}.tree>)
+  node-file/write-file-sync(path, <>)
+  back path
+
+# a report's text, the empty text when it is not there
+task report-text-of
+  take path, like text
+  like text
+  mark private
+
+  fork test, node-file/exists-sync(path)
+    hold
+      back host-text(node-file/read-file-sync(path, <utf8>))
+  back <>
+
+# the child run to its end or its limit, and what it reported. `given` is what `--limit` said, 0 for nothing
+task run-reported
+  take command, like list, like text
+  take root, like text
+  take file, like text
+  take given, like number
+  like report-ran
+  mark async
+
+  save seconds, limit-seconds(given)
+  save path, report-file-of(root, file)
+  save entry, <>
+  fork test, not(self-is-binary())
+    hold
+      save entry, find-running-cli()
+  save ended, spawn-reported(command, root, path, self-program(), entry, seconds-to-ms(seconds))
+  save report, read-report(report-text-of(path))
+  save stop, stop-note(host-flag(ended/timed), seconds, host-text(ended/code), host-text(ended/said))
+  back make(report-ran, bind(stop, stop), bind(report, report), bind(printed, ended/printed))

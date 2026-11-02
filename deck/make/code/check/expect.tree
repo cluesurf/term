@@ -34,6 +34,10 @@ load ./substitution
   find resolve-type
   find unify-types-at
   find is-width-clash
+  find holds-loose-clash
+
+load ./zonk
+  find zonk
 
 task expect-type
   take sub, like substitution
@@ -103,6 +107,19 @@ task expect-type
           back out
   save wanted-text, show-type(resolve-type(sub, wanted))
   save actual-text, show-type(resolve-type(sub, actual))
+  # a loose element on one side of a list, hash or form, the other settled (decision 011 of term/compiler): the three ways out
+  fork test, holds-loose-clash(sub, unfold-alias(actual, aliases), unfold-alias(wanted, aliases))
+    hold
+      save wanted-whole, show-type(zonk(wanted, sub))
+      save actual-whole, show-type(zonk(actual, sub))
+      save input
+        make diagnostic-input
+          bind file, file
+          bind span, at
+          bind message, make(some, <{what}: expected {wanted-whole}, found {actual-whole}: a list, hash or form holding unknown or dynamic does not fit one holding a settled type, in either direction. If the callee does not care what the elements are, make it generic (head t). If the source really holds mixed values, declare it loose from its first line. If a boxed list is wanted, copy it by name, walking and pushing>)
+      save kind, make type-mismatch
+      push(out, diagnose(kind, input))
+      back out
   # THE USE THAT IS BLAMED IS THE LATER ONE IN THE FILE, whichever was checked first. Checking order is not source
   # order: a top-level `host` is typed before every task, and a task's own body when the task is reached, so the call
   # that decided a parameter could sit below the one refused, and the frame then blamed the earlier line for

@@ -524,6 +524,11 @@ function runWords(): void {
     ok(`a type argument is the number there too (${label})`, /holder\(\): Map<string, number>/.test(c), c.slice(0, 600))
   }
 
+  // A FILE HOLDING ONLY SUCH A FORM IS A PROGRAM: seed.tree's number.tree, unit.tree and boolean.tree are this shape
+  const lone = wordPackage('lone', { 'a.tree': 'form number\n  link reals, like native-string\n' })
+  const emitted = runLine(lone, ['make', 'code/a.tree', '--emit', 'node', '--all'])
+  ok('a file holding only a form named for a word emits it', emitted.code === 0 && /interface Number/.test(emitted.out), emitted.out)
+
   // A DOM TEXT IS A TEXT, NOT A STRING: bind's form is real under its native name
   const dom = wordPackage(
     'dom-text',
@@ -532,8 +537,8 @@ function runWords(): void {
   )
   const built = runLine(dom, ['make', '--all', '--merged'])
   ok('a program reading a DOM Text builds', built.code === 0, built.out)
-  const emitted = existsSync(join(dom, 'host/code/a.ts')) ? readFileSync(join(dom, 'host/code/a.ts'), 'utf8') : ''
-  ok('a DOM Text is typed as the form', /whole\(t: Text/.test(emitted) && !/whole\(t: string/.test(emitted), emitted.slice(0, 600))
+  const domText = existsSync(join(dom, 'host/code/a.ts')) ? readFileSync(join(dom, 'host/code/a.ts'), 'utf8') : ''
+  ok('a DOM Text is typed as the form', /whole\(t: Text/.test(domText) && !/whole\(t: string/.test(domText), domText.slice(0, 600))
 }
 
 const only = process.env.SHADOW_ONLY

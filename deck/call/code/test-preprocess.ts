@@ -112,6 +112,16 @@ function guard(
     group[0]!.trim(),
   )
 
+  // a mode no guard knows is the test's own failure, said when it runs, as a sampled test's refused type is
+  if (!head) {
+    return {
+      lines: [
+        `  halt <line ${line + 1}: a want takes hold, miss or snapshot>`,
+      ],
+      from: [line],
+    }
+  }
+
   const mode = head?.[1] ?? 'hold'
   const inline = head?.[2]?.trim()
   // the body (everything under the `want` line) is the boolean condition; shift it +2 to sit under `hook test`

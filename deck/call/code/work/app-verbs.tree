@@ -95,6 +95,7 @@ form test-ask
   link env, like text
   link ride, like boolean
   link update, like boolean
+  link limit, like dynamic
 
 form host-ask
   link root, like text
@@ -114,6 +115,8 @@ task test
   take ride, like boolean
   # write what each `want snapshot` sees, instead of comparing against it (line.ts:1010)
   take update, like boolean
+  # the seconds a test file may run (a text as the console hands a flag, empty for the default of 300)
+  take limit, like text
 
   like void
 
@@ -130,6 +133,7 @@ task test
         bind env, read env
         bind ride, read ride
         bind update, read update
+        bind limit, read limit
   halt take
     take error
     log-fail format-error error

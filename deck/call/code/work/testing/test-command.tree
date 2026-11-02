@@ -212,6 +212,8 @@ form run-ask
   link select
     like dynamic
     need false
+  # the seconds `--limit` said, 0 for nothing
+  link limit, like number
 
 form native-ask
   link root, like text
@@ -223,6 +225,7 @@ form native-ask
   link role-of, like dynamic
   link lean-of, like dynamic
   link deck-of, like dynamic
+  link limit, like number
 
 # ---- this run's own state ----
 
@@ -236,6 +239,8 @@ form test-context
   # the native backend, the empty text for node
   link native, like text
   link update, like boolean
+  # the seconds a test file may run, as `--limit` said, 0 for the default
+  link limit, like number
   link role-of, like dynamic
   link lean-of, like dynamic
   link deck-of, like dynamic
@@ -370,13 +375,12 @@ bind with-file-types
   case node
     text <(\{ withFileTypes: true \})>
 
-# What a run prints to standard output and standard error, line by line, held back from the terminal while `run`
-# runs: `{ value, lines }`
-bind capture-printed
-  take run, like dynamic
-  like dynamic
+# `Number(value ?? 0)`, a `--limit` as given
+bind limit-given
+  take value, like dynamic
+  like number
   case node
-    text <(await (async () =\> \{ const chunks = []; const out = process.stdout.write.bind(process.stdout); const err = process.stderr.write.bind(process.stderr); const hold = (chunk) =\> \{ chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")); return true \}; process.stdout.write = hold; process.stderr.write = hold; try \{ const value = await $run(); const lines = chunks.join("").split(String.fromCharCode(10)); if (lines.at(-1) === "") \{ lines.pop() \} return \{ value, lines \} \} finally \{ process.stdout.write = out; process.stderr.write = err \} \})())>
+    text <Number($value ?? 0)>
 
 # A package script run for its output, both streams, never rejecting: `{ code, lines }`. `raw` passes it through
 # instead
@@ -554,7 +558,7 @@ task run-control
   save expected, number-of(digits)
   # ALWAYS MERGED. A control is judged by how many refusals it gets, and the unit-at-a-time build reports fewer of a
   # file's diagnostics than it refuses (2 for `vibe/group-control.tree`, whose 7 rules it refuses one by one)
-  save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, face-project-resolver(make-project-resolver(context/root))), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of))
+  save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, face-project-resolver(make-project-resolver(context/root))), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(limit, context/limit))
   save ran, run-test-file(ask)
   # a GOAL refused, counted once however many diagnostics say so
   save diagnostics, make list
@@ -715,18 +719,13 @@ task run-file
     hold
       save tally/skipped, add(tally/skipped, 1)
       back
-  # what the file's tests print, quoted under its item
-  save captured, nothing()
+  # the file runs as a child on every target, and what it printed is quoted under its item
+  save ran, nothing()
   fork test, and(is-unequal(context/native, <>), is-above(chosen/length, 0))
     hold
-      save native-run, make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of))
-      save native-runner
-        task
-          like dynamic
-          back run-native-test-file(native-run)
-      save captured, capture-printed(native-runner)
+      save ran, run-native-test-file(make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of), bind(limit, context/limit)))
     miss
-      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots))
+      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots), bind(limit, context/limit))
       fork test, is-unequal(context/chosen, <>)
         hold
           save phrase, context/chosen
@@ -735,13 +734,11 @@ task run-file
               take asked-test, like dynamic
               like boolean
               back case-matches(phrase, asked-test)
-      save node-runner
-        task
-          like dynamic
-          back run-test-file(ask)
-      save captured, capture-printed(node-runner)
-  save ran, captured/value
-  save printed, captured/lines
+      save ran, run-test-file(ask)
+  save printed, make list
+  fork test, is-truthy(ran/printed)
+    hold
+      save printed, ran/printed
   # under `--update`, the texts each test's `want snapshot`s saw replace the ones it had
   save recorded, false
   save written, 0
@@ -915,7 +912,7 @@ task run-seed-tests
   fork test, not(merged)
     hold
       save units, make(test-units, bind(root, root), bind(cache, project-cache(root)), bind(bundles, node-path/join(project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(finder, finder), bind(graph, graph))
-  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(graph, graph), bind(units, units))
+  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(limit, limit-given(input/limit)), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(graph, graph), bind(units, units))
   # the session's first round: everything it was handed, turned once here for every file of it (decision 097)
   turn-session(session, files)
   save graph/turned, true

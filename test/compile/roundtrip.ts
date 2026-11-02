@@ -1116,6 +1116,22 @@ function runKotlinCrypto(
 }
 
 // string ops running for real: prepend the per-target text shim, uppercase a string through the public interface.
+// a `compute` that can raise returns `Result<T, TermException>` (the result lowering), so main reports the raise and
+// exits non-zero, the way an unhandled raise ends a program on every backend. A native call raises failure in every
+// program (decision term/compiler/014), so any program that docks can reach this
+function rustComputeValue(emitted: string, value: string): string {
+  return /fn compute\(\)[^{]*-> std::result::Result</.test(emitted)
+    ? `${value}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })`
+    : value
+}
+
+// a `compute` that can raise `throws`, so the call is a `try!`: an unhandled raise ends the program, as everywhere
+function swiftComputeValue(emitted: string, value: string): string {
+  return /func compute\(\)[^{]*\bthrows\b/.test(emitted)
+    ? `try! ${value}`
+    : value
+}
+
 function runRustText(
   name: string,
   program: Program,
@@ -1130,11 +1146,10 @@ function runRustText(
   }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  const emitted = emitRust(program)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(
-      program,
-    )}\nfn main() { print!("{}", compute()); }\n`,
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}\nfn main() { print!("{}", ${rustComputeValue(emitted, 'compute()')}); }\n`,
   )
 
   const exe = file.replace(/\.rs$/, '')
@@ -1296,15 +1311,8 @@ function runRustCargo(
 
   const prelude = nativePrelude(program, 'rust', readRuntime)
   const emitted = emitRust(program)
-  // a `compute` that can raise returns `Result<T, TermException>` (the result lowering), so main reports the raise
-  // and exits non-zero, the way an unhandled raise ends a program on every backend
-  const raising = /fn compute\(\)[^{]*-> std::result::Result</.test(
-    emitted,
-  )
   const value = isAsync ? 'compute().await' : 'compute()'
-  const shown = raising
-    ? `${value}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })`
-    : value
+  const shown = rustComputeValue(emitted, value)
   const main = isAsync
     ? `\n#[tokio::main]\nasync fn main() { print!("{}", ${shown}); }\n`
     : `\nfn main() { print!("{}", ${shown}); }\n`
@@ -1340,11 +1348,10 @@ function runRustConsole(
   }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
+  const emitted = emitRust(program)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(
-      program,
-    )}\nfn main() { compute(); }\n`,
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}\nfn main() { ${rustComputeValue(emitted, 'compute()')}; }\n`,
   )
 
   const exe = file.replace(/\.rs$/, '')
@@ -1385,11 +1392,10 @@ function runSwiftConsole(
   }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
+  const emitted = emitSwift(program)
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
-      program,
-    )}\ncompute()\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\n${swiftComputeValue(emitted, 'compute()')}\n`,
   )
 
   const exe = file.replace(/\.swift$/, '')

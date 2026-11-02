@@ -123,8 +123,8 @@ bind support-reads-lean
 test <a choice reads the text lean, and hands the driver leanOf only when it says so>
   host chosen, make(compile-choice, bind(file, <lean.tree>), bind(lean, true))
   want hold, compile-text(lean-text, chosen)/ok
-  want hold, support-reads-lean(compiling-options(true))
-  want hold, not(support-reads-lean(compiling-options(false)))
+  want hold, support-reads-lean(compiling-options-of(chosen))
+  want hold, not(support-reads-lean(compiling-options-of(make(compile-choice, bind(file, <lean.tree>)))))
 
 test <a choice that says nothing hands the driver no options, as a suite with no choice>
   want hold, support-no-options(compiling-options-of(make compile-choice))

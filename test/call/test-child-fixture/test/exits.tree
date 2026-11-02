@@ -1,0 +1,12 @@
+load @term/base/process
+  find exit
+
+test <held before the exit>
+  want hold, true
+
+test <this one ends its process>
+  exit(0)
+  want hold, true
+
+test <this one is never reached>
+  want hold, true

@@ -46,8 +46,9 @@ bind running-severity
     text <$finding.severity>
 
 bind running-push-all
-  take shelf, like list, like dynamic
-  take items, like list, like dynamic
+  head t
+  take shelf, like list, like t
+  take items, like dynamic
   like void
   case node
     text <<$shelf.push(...$items)>>
@@ -95,9 +96,15 @@ task run-scan
 
   host do-deps, running-on(deps)
   host do-code, running-on(code)
-  save findings, make list
-  save consulted, make list
-  save unavailable, make list
+  save findings
+    like list, like dynamic
+    make list
+  save consulted
+    like list, like text
+    make list
+  save unavailable
+    like list, like text
+    make list
   save dependency-count, 0
   save file-count, 0
 

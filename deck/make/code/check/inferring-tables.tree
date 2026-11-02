@@ -586,6 +586,7 @@ task signature-of
       case variable
         link variable-id
         push(generic-ids, variable-id)
+        save st/sub/rigid/{variable-id}, true
         save generic-names/{variable-id}, generic-name
         fork test, is-above(generic-need/length, 0)
           hold

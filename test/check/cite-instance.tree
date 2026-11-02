@@ -90,7 +90,7 @@ test <a case with slots refuses one value too many>
   want hold, refused-with(<{flag}{pair}\nhost on, make yes\nhost bad, make two(on, on, on)\n>, <has 2 slots>)
 
 test <a slot given by position and by name is refused>
-  want hold, refused-with(<{flag}{pair}\nhost bad\n  make two(make yes)\n    bind left, make no\n>, <given twice>)
+  want hold, refused-with(<{flag}{pair}\nhost bad, make(two, make(yes), bind(left, make(no)))\n>, <given twice>)
 
 test <a case with link fields still refuses values by position>
   want hold, refused-with(<form box\n  case full\n    link left, like integer\n    link right, like integer\n\nhost bad, make full(1, 2)\n>, <takes its fields by name>)

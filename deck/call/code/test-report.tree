@@ -1,0 +1,187 @@
+# What a test file's report writes, on every target: the file `TERM_TEST_REPORT` names, one line of `.tree` data per
+# finished test, written with `@term/host`'s stream writer and on disk before the next test starts, so a child that stops
+# early leaves every verdict it reached (decision 022 T5, item 0157). The report task itself is generated per file
+# (call/code/test-run-words.tree `report-text`), and it runs in the test file's own process. Nothing here reads the
+# compiler or the CLI, and the runner reads the file back with the same package's reader.
+
+load @term/base/clock
+  find now, name report-now
+
+load @term/base/environment
+  find variable, name report-variable
+
+load @term/base/file/synchronous
+  find open, name report-open
+  find write, name report-write
+  find flush, name report-flush
+  find close, name report-close
+
+load @term/base/text
+  find starts-with, name report-starts-with
+
+load @term/host/base
+  find data
+  find data-entry
+
+load @term/host/stream
+  find make-writer, name report-writer
+  find emit, name report-emit
+
+# one named text of an entry
+task report-text-field
+  take name, like text
+  take value, like text
+  like data-entry
+  mark private
+  send back
+    make data-entry
+      bind name, read name
+      bind base
+        make text
+          bind value, read value
+
+# one named number of an entry
+task report-number-field
+  take name, like text
+  take value, like number
+  like data-entry
+  mark private
+  send back
+    make data-entry
+      bind name, read name
+      bind base
+        make number
+          bind value, read value
+
+# one entry as the one line it is in the file, ended, and on disk when this answers. Synchronous, so a test that ends its
+# process on the next line loses nothing, and a program of any target reaches it: `@term/base/file` on Rust and Swift
+# brings the watch shim in without its form (term-self-host-001-0821)
+task report-line
+  take fields
+    like list, like data-entry
+  mark private
+  save items, make list
+  call items/push
+    make hash
+      bind list, read fields
+  save line
+    call report-emit
+      call report-writer
+      make array
+        bind list, read items
+  save held
+    call report-open
+      call report-variable
+        text <TERM_TEST_REPORT>
+      bind read, false
+      bind write, true
+      bind create, true
+      bind append, true
+  call report-write
+    read held
+    text <{line}\n>
+  call report-flush
+    read held
+  call report-close
+    read held
+
+# the time a test starts, in the milliseconds `report-entry` is handed back
+task report-clock
+  like number
+  send back
+    call report-now
+
+# what a test that raised is: `missed` for a `want` that did not hold, `raised` for anything else
+task report-verdict
+  take note, like text
+  like text
+  fork test
+    hook test
+      call report-starts-with
+        read note
+        text <want:>
+    hook hold
+      send back, text <missed>
+  send back, text <raised>
+
+# one finished test: its task's name, its verdict, what it raised, the two values a comparing `want` held (shown), its
+# `test` line as written (0 for none) and how long it took
+task report-entry
+  mark async
+  take test, like text
+  take verdict, like text
+  take note, like text
+  take shown, like text
+  take line, like number
+  take started, like number
+  save fields, make list
+  call fields/push
+    call report-text-field
+      text <test>
+      read test
+  call fields/push
+    call report-text-field
+      text <verdict>
+      read verdict
+  call fields/push
+    call report-text-field
+      text <note>
+      read note
+  call fields/push
+    call report-text-field
+      text <shown>
+      read shown
+  call fields/push
+    call report-number-field
+      text <line>
+      read line
+  call fields/push
+    call report-number-field
+      text <ms>
+      call subtract
+        call report-now
+        read started
+  call report-line
+    read fields
+
+# under `--update`, what each `want snapshot` saw: one `taken` entry per text, its test's phrase and the value, in the
+# order taken. A key with no value beside it saw the empty text
+task report-taken
+  mark async
+  take phrases
+    like list, like text
+  take values
+    like list, like text
+  save at, code 0
+  walk list
+    read phrases
+    hook next
+      take site, name phrase
+      save value, text <>
+      fork test
+        hook test
+          call is-below
+            read at
+            read values/length
+        hook hold
+          save value
+            read values/{at}
+      save fields, make list
+      call fields/push
+        call report-text-field
+          text <verdict>
+          text <taken>
+      call fields/push
+        call report-text-field
+          text <phrase>
+          read phrase
+      call fields/push
+        call report-text-field
+          text <value>
+          read value
+      call report-line
+        read fields
+      save at
+        call add
+          read at
+          code 1

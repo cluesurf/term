@@ -144,6 +144,14 @@ bind want-mode
   case node
     text <(/^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.exec($head)?.[1] ?? "hold")>
 
+# whether a `want` line is one the guard can read: hold, miss, or no mode. Anything else matches no head above, so its
+# condition was left empty and the test file emitted `else` with no `if`
+bind want-is-known
+  take head, like text
+  like boolean
+  case node
+    text <(/^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.test($head))>
+
 # a one-line `want`'s condition after its comma, trimmed, the empty text when it has none
 bind want-inline
   take head, like text
@@ -595,6 +603,14 @@ task guard
       save suffix, <-{piece-at}>
   # the head line is `want <mode>` with the condition indented under it, or the one-line form `want <mode>, <expr>`
   save head, trim(group/0)
+  # a mode no guard knows is the test's own failure, said when it runs, as a sampled test's refused type is
+  fork test, not(want-is-known(head))
+    hold
+      save refused-lines, make list
+      save refused-from, make list
+      refused-lines/push(<  halt \<line {shown-line}: a want takes hold, miss or snapshot\>>)
+      refused-from/push(line)
+      back make(want-written, bind(lines, refused-lines), bind(from, refused-from))
   save mode, want-mode(head)
   save inline, want-inline(head)
   save is-inline, not(is-equal(inline, <>))

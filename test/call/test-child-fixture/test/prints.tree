@@ -1,0 +1,6 @@
+load @term/base/log
+  find info
+
+test <this one prints>
+  info(<from the test's own stdout>)
+  want hold, true

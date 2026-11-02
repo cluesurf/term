@@ -5,8 +5,13 @@
 //
 // Held: a list that really mixes its elements, made as an argument, a named argument, a field, a result and a declared
 // let, for `unknown` and for `dynamic`; a hash likewise; a list nested in a wanted list; an empty list; and the explicit
-// copy the refusal will name, `fix-explicit-copy` of tmp/self-host/0736/fixes.ts, which kotlinc refused. A list of T
-// handed to a list of unknown is NOT held here: decision 011 refuses it, in item 0740.
+// copy the refusal names, `fix-explicit-copy` of tmp/self-host/0736/fixes.ts, which kotlinc refused.
+//
+// THE REFUSAL, step 3, item 0740: a list, a hash or a form type argument with a loose element on one side only, the other
+// settled, in either direction, is refused by the checker on every backend, so no native compiler is the one to say so.
+// Every program of the 0541 probe (tmp/self-host/0541/probe.ts, 27 pass 41 fail before) either runs or is refused here,
+// each generic way out runs, and rule 3 holds: a list of unknown and a list of dynamic meet in both directions and a
+// callee's push is seen.
 // Run: npx tsx test/compile/list-loose-native.ts   (from deck/term/deck/term; SLOT_ONLY=typescript|rust|swift|kotlin,
 // SLOT_CASE=<name>)
 // A TypeScript test, not a `term test`: it builds with each native toolchain (P12 port debt, log.md 2026-11-01).
@@ -54,6 +59,58 @@ form holder
 form keeper
   link items, like hash, like text, like unknown
 `
+
+// the callees of the 0541 probe and decision 011's rule 3
+const PROBE = `task two-of
+  take got, like list, like unknown
+  like text
+  back <{got/length} {seen(got/0)}>
+
+task texts-made
+  like list, like text
+  save out, make list
+  out/push(<a>)
+  back out
+
+task extended
+  take got, like list, like unknown
+  like list, like unknown
+  save more, got
+  more/push(1)
+  back more
+
+task pushed-text
+  take got, like list, like text
+  like list, like text
+  save more, got
+  more/push(<b>)
+  back more
+
+task deep
+  take got, like list, like list, like unknown
+  like number
+  back got/length
+
+form parcel
+  head t
+  link item, like t
+`
+
+// what every refusal of a loose element says
+const CLASH = 'does not fit one holding a settled type'
+
+const refused = (name: string, body: string) => ({
+  name,
+  expected: '',
+  refused: CLASH,
+  body: `${PROBE}\n${body}`,
+})
+
+const runs = (name: string, expected: string, body: string) => ({
+  name,
+  expected,
+  body: `${PROBE}\n${body}`,
+})
 
 // `gap` names a backend this cannot pass on yet and why. `refused` holds that the rule does not reach too far: the program
 // must fail at compile, on every backend.
@@ -297,6 +354,346 @@ task run
   back walked(boxed-all(ns))
 `,
   },
+  // the 0541 probe, every shape of a list of T meeting a list of unknown
+  refused('probe-pushed-local-to-small-param', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  back two-of(xs)
+`),
+  refused('probe-pushed-local-to-walking-param', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  back walked(xs)
+`),
+  refused('probe-declared-text-to-param', `task run
+  like text
+  save xs, texts-made()
+  back walked(xs)
+`),
+  refused('probe-call-result-to-small-param', `task run
+  like text
+  back two-of(texts-made())
+`),
+  refused('probe-call-result-to-walking-param', `task run
+  like text
+  back walked(texts-made())
+`),
+  refused('probe-pushed-local-to-field', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  save h
+    make holder
+      bind items, xs
+  back walked(h/items)
+`),
+  refused('probe-declared-text-to-field', `task run
+  like text
+  save h
+    make holder
+      bind items, texts-made()
+  back walked(h/items)
+`),
+  refused('probe-field-write', `task run
+  like text
+  save first
+    like list, like unknown
+    make list
+  save h
+    make holder
+      bind items, first
+  save xs, texts-made()
+  save h/items, xs
+  back walked(h/items)
+`),
+  refused('probe-returned-non-empty-local', `task handed
+  like list, like unknown
+  save xs, texts-made()
+  back xs
+
+task run
+  like text
+  back walked(handed())
+`),
+  refused('probe-declared-let', `task run
+  like text
+  save ys
+    like list, like unknown
+    call texts-made
+  back walked(ys)
+`),
+  refused('probe-keeps-its-own-type', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  save said, walked(xs)
+  save first, xs/0
+  back <{said} {first}>
+`),
+  refused('probe-number-list', `task run
+  like text
+  save xs, make list
+  xs/push(7)
+  back walked(xs)
+`),
+  refused('probe-callee-extends-and-hands-back', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  back walked(extended(xs))
+`),
+  refused('probe-caller-reads-after-callee-extends', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  save ys, extended(xs)
+  back <{xs/length}>
+`),
+  refused('probe-list-of-list', `task run
+  like text
+  save xs, make list
+  xs/push(texts-made())
+  back <{deep(xs)}>
+`),
+  refused('probe-hash-of-unknown', `task run
+  like text
+  save xs
+    make hash
+      save <a>, <b>
+  back keyed(xs, <a>)
+`),
+  // a list has one identity: a callee's push is seen by its caller
+  runs('probe-baseline-callee-extends-caller-length', '2', `task run
+  like text
+  save xs, make list
+  xs/push(<a>)
+  save ys, pushed-text(xs)
+  back <{xs/length}>
+`),
+  // the other direction, and dynamic, and a form's type argument
+  refused('refused-unknown-into-text', `task loose-made
+  like list, like unknown
+  back make list(<a>, 1)
+
+task count-texts
+  take got, like list, like text
+  like number
+  back got/length
+
+task run
+  like text
+  back <{count-texts(loose-made())}>
+`),
+  refused('refused-text-into-dynamic', `task run
+  like text
+  back <{walked-host(texts-made())}>
+`),
+  refused('refused-dynamic-into-text', `task loose-made
+  like list, like dynamic
+  back make list(<a>, 1)
+
+task count-texts
+  take got, like list, like text
+  like number
+  back got/length
+
+task run
+  like text
+  back <{count-texts(loose-made())}>
+`),
+  refused('refused-hash-value-dynamic', `task keyed-host
+  take got, like hash, like text, like dynamic
+  like number
+  back got/size
+
+task run
+  like text
+  save xs
+    make hash
+      save <a>, <b>
+  back <{keyed-host(xs)}>
+`),
+  refused('refused-form-argument', `task open-box
+  take got, like parcel, like unknown
+  like text
+  back seen(got/item)
+
+task run
+  like text
+  save held
+    like parcel, like text
+    make parcel
+      bind item, <a>
+  back open-box(held)
+`),
+  refused('refused-form-argument-in-list', `task open-boxes
+  take got, like list, like parcel, like dynamic
+  like number
+  back got/length
+
+task run
+  like text
+  save held
+    like parcel, like text
+    make parcel
+      bind item, <a>
+  save all, make list
+  all/push(held)
+  back <{open-boxes(all)}>
+`),
+  // a literal the wanted type does not reach infers itself, so one of a single type is a list of T: decision 011 rule 1
+  // names an argument, a field, a result and a declared let, and an assignment is none of them
+  refused('refused-assigned-literal', `task run
+  like text
+  save h
+    make holder
+      bind items, make list(<z>, 1)
+  save h/items, make list(<a>, <b>)
+  back walked(h/items)
+`),
+  // an overload picks by fit, and agrees with the unifier: only the exact member fits
+  runs('overload-picks-the-exact-list', 'text', `task pick
+  take got, like list, like unknown
+  like text
+  back <loose>
+
+task pick
+  take got, like list, like text
+  like text
+  back <text>
+
+task run
+  like text
+  back pick(texts-made())
+`),
+  refused('overload-no-member-fits', `task pick
+  take got, like list, like unknown
+  like text
+  back <loose>
+
+task pick
+  take got, like list, like number
+  take more, like number, fall 0
+  like text
+  back <number>
+
+task run
+  like text
+  back pick(texts-made())
+`),
+  // a word not yet pinned takes the wanted element, and later pushes box (rule 2)
+  runs('variable-still-binds', 't:a n:1 ', `task run
+  like text
+  save xs, make list
+  save said, walked(xs)
+  xs/push(<a>)
+  xs/push(1)
+  back walked(xs)
+`),
+  // rule 3: two loose words meet, in both directions, and a callee's push is seen
+  runs('rule-3-dynamic-to-unknown', 't:a n:1 ', `task made
+  like list, like dynamic
+  back make list(<a>, 1)
+
+task run
+  like text
+  back walked(made())
+`),
+  runs('rule-3-aliases', '3', `task grown
+  take got, like list, like unknown
+  got/push(<c>)
+
+task run
+  like text
+  save xs
+    like list, like dynamic
+    make list(<a>, 1)
+  grown(xs)
+  back <{xs/length}>
+`),
+  runs('rule-3-unknown-to-dynamic', '2', `task made
+  like list, like unknown
+  back make list(<a>, 1)
+
+task run
+  like text
+  back <{walked-host(made())}>
+`),
+  runs('rule-3-aliases-back', '3', `task grown
+  take got, like list, like dynamic
+  got/push(<c>)
+
+task run
+  like text
+  save xs
+    like list, like unknown
+    make list(<a>, 1)
+  grown(xs)
+  back <{xs/length}>
+`),
+  runs('rule-3-hash', 'n:1', `task keyed-host
+  take got, like hash, like text, like dynamic
+  like number
+  back got/size
+
+task made
+  like hash, like text, like unknown
+  back
+    make hash
+      save <c>, 1
+
+task run
+  like text
+  save xs, made()
+  save size, keyed-host(xs)
+  back seen(size)
+`),
+  // the first way out: a generic callee takes the list as it is, and a push is seen
+  runs('way-out-generic', '1 t:a', `task two-of-any
+  head t
+  take got, like list, like t
+  like text
+  save first, got/0
+  back <{got/length} {seen(first)}>
+
+task run
+  like text
+  back two-of-any(texts-made())
+`),
+  runs('way-out-generic-aliases', '2', `task doubled
+  head t
+  take got, like list, like t
+  got/push(got/0)
+
+task run
+  like text
+  save xs, texts-made()
+  doubled(xs)
+  back <{xs/length}>
+`),
+  // a generic callee does not get past the rule by handing its list on
+  refused('generic-handed-on-is-refused', `task handed-on
+  head t
+  take got, like list, like t
+  like text
+  back walked(got)
+
+task run
+  like text
+  back handed-on(texts-made())
+`),
+  // the second way out: declared from its first line
+  runs('way-out-declared', 't:a n:1 ', `task run
+  like text
+  save xs
+    like list, like unknown
+    make list
+  xs/push(<a>)
+  xs/push(1)
+  back walked(xs)
+`),
 ]
 
 const dir = tempDir('list-loose-')

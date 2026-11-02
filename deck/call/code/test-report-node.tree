@@ -1,0 +1,107 @@
+# The report on node (decision 022 T5, item 0157). A program of its own, bundled apart from any test file, so what it loads
+# never reaches a test file's names: the start file hands it each test's task as the test file's bundle exports it, and
+# this calls each inside a guard and writes its entry through call/code/test-report.tree. A raise is read here, in the
+# test's own process, by the host's reflection (work/preprocess/failure-reading.tree), since a want's two values cannot
+# cross a file any other way.
+
+load @term/call/test-report
+  find report-clock
+  find report-entry
+  find report-verdict
+  find report-taken
+
+load @term/call/work/preprocess/failure-reading
+  find raise-note
+  find raise-shown
+
+# `Boolean(await loaded[name]())`
+bind call-exported
+  take loaded, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <Boolean(await $loaded[$name]())>
+
+# `await loaded[name]()`, a list of text, the empty list when the file exports no such task
+bind call-listed
+  take loaded, like dynamic
+  take name, like text
+  like list, like text
+  case node
+    text <((await $loaded[$name]?.()) ?? [])>
+
+bind test-name
+  take one, like dynamic
+  like text
+  case node
+    text <$one.name>
+
+bind test-exported
+  take one, like dynamic
+  like text
+  case node
+    text <$one.exported>
+
+bind test-line
+  take one, like dynamic
+  like number
+  case node
+    text <$one.line>
+
+task run-one
+  mark async
+  mark private
+  take one, like dynamic
+  take loaded, like dynamic
+  save started
+    call report-clock
+  save verdict, text <missed>
+  save note, text <>
+  save shown, text <>
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call call-exported
+          read loaded
+          call test-exported(read one)
+      hook hold
+        save verdict, text <held>
+  halt take
+    take problem
+    save note
+      call raise-note
+        read problem
+    save shown
+      call raise-shown
+        read problem
+    save verdict
+      call report-verdict
+        read note
+  call report-entry
+    call test-name(read one)
+    read verdict
+    read note
+    read shown
+    call test-line(read one)
+    read started
+
+# Each test in order, each entry on disk before the next starts, and under `--update` what each `want snapshot` saw
+task run-tests
+  mark async
+  take tests, like list, like dynamic
+  take loaded, like dynamic
+  walk list
+    read tests
+    hook next
+      take site, name one
+      call run-one
+        read one
+        read loaded
+  call report-taken
+    call call-listed
+      read loaded
+      text <termSnapshotTakenKeys>
+    call call-listed
+      read loaded
+      text <termSnapshotTakenValues>

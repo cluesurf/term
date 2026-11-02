@@ -1,0 +1,70 @@
+# `term test` runs a test file as a child, on every target, reporting to a file (decision 022 T5, item 0157). The fixture
+# project beside this file holds a file whose second test ends its process, a file whose test never ends, and a file that
+# reads where it runs. Each is run through TERM_TEST_SELF, the `term` under test: the runner must say what stopped each
+# one and keep what each reported, and the fixture's own run never ends this one.
+
+load @term/base/environment
+  find variable
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/text
+  find contains
+
+task run-fixture
+  take arguments, like list, like text
+  like run-result
+  mark async
+
+  save argument-list, make list
+  save entry, variable(<TERM_TEST_SELF_ENTRY>)
+  fork test, is-unequal(entry, <>)
+    hold
+      argument-list/push(entry)
+  argument-list/push(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  back run(variable(<TERM_TEST_SELF>), argument-list, <test/call/test-child-fixture>, bind(limit, 120000))
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <the runner names the program that runs this same term>
+  want hold, is-unequal(variable(<TERM_TEST_SELF>), <>)
+
+test <the report file is named to every child>
+  want hold, is-unequal(variable(<TERM_TEST_REPORT>), <>)
+
+test <a test that exits its process fails only its file>
+  save ran, run-fixture(make list(<exits>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 1 passed · 2 failed>)
+  want hold, contains(said(ran), <the program stopped (exit 0)>)
+  want hold, contains(said(ran), <not reached>)
+  want hold, contains(said(ran), <Test run failed>)
+
+test <a test that never ends is killed at its limit>
+  save ran, run-fixture(make list(<hangs>, <--limit>, <2>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 failed>)
+  want hold, contains(said(ran), <did not finish in 2 s>)
+
+test <what a test printed is quoted, and it cannot touch the report>
+  save ran, run-fixture(make list(<prints>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <from the test's own stdout>)
+  want hold, contains(said(ran), <1 test · 1 passed>)
+
+test <the working directory of a test is its project root>
+  save ran, run-fixture(make list(<where>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 2 passed>)

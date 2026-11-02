@@ -194,8 +194,9 @@ bind time-printer-face
     text <(\{ problemOf: $making \})>
 
 bind time-append
-  take list, like list, like dynamic
-  take more, like list, like dynamic
+  head t
+  take list, like list, like t
+  take more, like dynamic
   like void
   case node
     text <<($list.push(...$more), undefined)>>
@@ -235,9 +236,10 @@ bind time-folder-ask
 # a saved baseline's results: snake_case on disk, a pre-2026-10-04 baseline the mean alone. A result with no mean
 # compares as new
 bind time-baseline-results
+  head t
   take suites, like dynamic
   take text, like text
-  like list, like dynamic
+  like list, like t
   case node
     text <<((saved) => (saved.results ?? saved.benchmarks ?? []).filter((r) => typeof r.mean_ns === "number").map($suites.fromSaved))(JSON.parse($text))>>
 
@@ -397,9 +399,10 @@ task time-parts
 
 # a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
 task read-baseline
+  head t
   take root, like text
   take name, like text
-  like list, like dynamic
+  like list, like t
   mark private
 
   save where, project-home(root, time-parts(<{name}.json>))

@@ -20,6 +20,13 @@ load @term/call/test-run-words
   find unproven-note
   find taken-of
   find case-matches, name words-case-matches
+  find report-test
+  find report-text
+  find settle-report
+  find settled-test
+
+load ./report-running
+  find run-reported
 
 load @term/call/boot-plan
   find node-banner
@@ -29,6 +36,13 @@ load ../need/running-install
 
 load ../cache/compile-store
   find project-cache-dir
+  find project-cache
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
 
 load ../build/unit-naming
   find unit-slug
@@ -47,8 +61,7 @@ load ../preprocess/test-rewriting
   find readable
 
 load ../preprocess/failure-reading
-  find want-failed
-  find want-line
+  find want-said
 
 dock load
   load <node:fs>, name node-file
@@ -68,10 +81,11 @@ dock load
 # 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
 # 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
 # 5: keyed by hash-key, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
+# 6: run as a child, the report at the end of the test file (decision 022 T5, item 0157)
 task bundle-epoch
   like text
 
-  back <test-bundle-5>
+  back <test-bundle-6>
 
 # ---- what the runner answers ----
 
@@ -105,6 +119,10 @@ form test-run
     need false
   link taken
     like hash, like text, like list, like text
+    need false
+  # what the file's child printed, the lines quoted under its item
+  link printed
+    like list, like text
     need false
 
 # a test as `term test` lists it: its task, its label, and its `test` line as written when it has one
@@ -185,10 +203,11 @@ bind host-text
   case node
     text <$value>
 
-bind now-ms
-  like number
+# `process.execPath`: the program a node child runs under
+bind node-program
+  like text
   case node
-    text <Date.now()>
+    text <process.execPath>
 
 # `map.get(key)`
 bind map-get
@@ -228,45 +247,6 @@ bind unproven-of
   like dynamic
   case node
     text <($warnings ?? []).filter((d) =\> d.name === "unchecked-hold")>
-
-# the module at a file, imported as an instance of its own: the run's count in its address, as each run's own folder
-# made it before
-bind import-file
-  take file, like text
-  take count, like number
-  like dynamic
-  case node
-    text <(await import(process.getBuiltinModule("node:url").pathToFileURL($file).href + "?run=" + $count))>
-
-# a test task of the module called and its answer awaited, read as a boolean
-bind call-test-task
-  take loaded, like dynamic
-  take name, like text
-  like boolean
-  case node
-    text <Boolean(await $loaded[$name]())>
-
-# `await mod[name]?.()`: what an optional export answers, when the module has it
-bind call-optional
-  take loaded, like dynamic
-  take name, like text
-  like dynamic
-  case node
-    text <(await $loaded[$name]?.())>
-
-bind message-of
-  take problem, like dynamic
-  like text
-  case node
-    text <($problem instanceof Error ? $problem.message : String($problem))>
-
-# `wantFailed(error, source) ?? message`
-bind text-or
-  take value, like dynamic
-  take fallback, like text
-  like text
-  case node
-    text <($value ?? $fallback)>
 
 # ---- listing ----
 
@@ -779,13 +759,6 @@ bind is-unit-build
 
 # ---- running ----
 
-# how many test modules this process imported: each import is a new instance of its module
-form import-count
-  mark shared
-  link imports, like number
-
-host run-count, make(import-count, bind(imports, 0))
-
 # the project a test file is built in: the units' own, else the nearest folder above the file holding a `link/` or a
 # `deck.tree`, else the file's own folder
 task project-root-of
@@ -882,73 +855,190 @@ task run-test-file
       save bundled, bundle-docks(root, merged-entry, dir, project-banner(root), <node>)
       node-file/write-file-sync(out, bundled/text)
       link-install-modules(dir)
-  save run-count/imports, add(run-count/imports, 1)
-  save loaded, import-file(out, run-count/imports)
-  save results, make list
+  # THE CHILD: the test file's own bundle and the report's, joined by a start file, under its own node. What it reported
+  # stands however it ended
+  save report-bundle, reporter-bundle(root, input/units)
+  save asked, make list
   walk names
     take name
-    save label, label-of(made/labels, name)
     save head, map-get(made/heads, name)
+    save at-line, 0
+    fork test, not(is-nothing(head))
+      hold
+        save at-line, add(head, 1)
+    asked/push(make(child-test, bind(name, name), bind(exported, host-text(typescript-module/to-camel(name))), bind(line, at-line)))
+  save command, make list
+  command/push(node-program())
+  command/push(write-start(root, out, report-bundle, asked))
+  save ran, run-reported(command, root, file, limit-of(input/limit))
+  save results, make list
+  walk settle-report(names, ran/report/entries, ran/stop)
+    take one, like settled-test
+    save head, map-get(made/heads, one/test)
     save line, nothing()
     fork test, not(is-nothing(head))
       hold
         save line, add(head, 1)
-    save started, now-ms()
-    # a test that throws is a test that failed, with what it threw, and the tests after it still run
-    fork
-      mark unsafe
-      save held, call-test-task(loaded,host-text(typescript-module/to-camel(name)))
-      results/push(make(test-result, bind(name, name), bind(label, label), bind(held, held), bind(ms, subtract(now-ms(), started)), bind(line, line)))
-    halt take
-      take problem
-      results/push(failed-test(problem, source, name, label, started, line))
+    results/push(settled-result(one, label-of(made/labels, one/test), line, source))
   # under `--update`, what each `want snapshot` saw, by its test's phrase, in the order taken
   save taken, make hash
   save any-taken, false
-  fork test, and(is-truthy(input/snapshots), is-truthy(input/snapshots/update))
-    hold
-      save keys, call-optional(loaded, <termSnapshotTakenKeys>)
-      save values, call-optional(loaded, <termSnapshotTakenValues>)
-      fork test, is-nothing(keys)
-        hold
-          save keys, make list
-      fork test, is-nothing(values)
-        hold
-          save values, make list
-      walk taken-of(keys, values)
-        take one
-        save taken/{one/phrase}, one/values
-        save any-taken, true
+  walk taken-of(ran/report/phrases, ran/report/values)
+    take one
+    save taken/{one/phrase}, one/values
+    save any-taken, true
   save all-held, true
   walk results
-    take one, like dynamic
-    fork test, not(is-truthy(one/held))
+    take one, like test-result
+    fork test, not(one/held)
       hold
         save all-held, false
   save run, make(test-run, bind(ok, all-held), bind(results, results))
+  save run/printed, ran/printed
   fork test, any-taken
     hold
       save run/taken, taken
   back run
 
-# a test that threw: a failing `want` raises a marker naming its line, read back as the line itself with the two
-# values a comparison held, and placed on the `want`'s own line, else the test's `test` line
-task failed-test
-  take problem, like dynamic
-  take source, like text
-  take name, like text
+# a test as the start file calls it
+form child-test
+  link name, like text
+  link exported, like text
+  link line, like number
+
+# `JSON.stringify(value)` of the tests a start file names
+bind tests-json
+  take tests, like list, like child-test
+  like text
+  case node
+    text <<JSON.stringify($tests)>>
+
+bind file-url
+  take path, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:url").pathToFileURL($path).href>
+
+# the file a child runs: it imports the test file's bundle and the report's, hands the report each test's task, and leaves.
+# It docks nothing of its own, and it is named by what it holds
+task write-start
+  take root, like text
+  take bundle, like text
+  take report, like text
+  take tests, like list, like child-test
+  like text
+  mark private
+
+  save listed, tests-json(tests)
+  save text, <import * as tests from {json-text(file-url(bundle))}\nimport \{ termTestRun as run \} from {json-text(file-url(report))}\nawait run({listed}, tests)\nprocess.exit(0)\n>
+  save folder, node-path/join(project-cache-dir(root), <test>, <start>)
+  node-file/mkdir-sync(folder, make(folder-make, bind(recursive, true)))
+  save path, node-path/join(folder, <{hash-key(text)}.mjs>)
+  write-whole(path, text)
+  back path
+
+# THE REPORT'S OWN PROGRAM, built apart from any test file so nothing it loads reaches a test file's names: a test file's
+# closure stays what its `load` lines say. Kept under the project's cache by the compiler and the sources it is made of,
+# so a project builds it once. Answers the file to import
+task reporter-bundle
+  take root, like text
+  take units, like dynamic
+  like text
+  mark async
+  mark private
+
+  save install, find-install-root()
+  save sources, <>
+  walk reporter-sources()
+    take source, like text
+    save sources, <{sources}{source-hash(node-path/join(install, source))}>
+  save kept, node-path/join(project-cache-dir(root), <test>, <reporter>)
+  save cache, project-cache(root)
+  save version, host-text(cache/version-of(<unit>))
+  save key, hash-key(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{sources}>)
+  save at, node-path/join(kept, <{key}.mjs>)
+  fork test, node-file/exists-sync(at)
+    hold
+      link-install-modules(kept)
+      back at
+  node-file/mkdir-sync(kept, make(folder-make, bind(recursive, true)))
+  save dir, run-folder(root, <reporter>)
+  save written, node-path/join(dir, <reporter.tree>)
+  save text, <load @term/call/test-report-node\n  find run-tests\n\ntask term-test-run\n  take tests, like dynamic\n  take loaded, like dynamic\n  mark async\n  call run-tests\n    read tests\n    read loaded\n>
+  node-file/write-file-sync(written, text)
+  save built, compile-module/compile(make(source-ask, bind(file, written), bind(text, text)), make(reporter-ask, bind(resolve, face-project-resolver(make-project-resolver(root)))))
+  fork test, not(is-truthy(built/ok))
+    hold
+      halt <the report did not build: {render-first(built/diagnostics)}>
+  save prelude, host-text(native-module/native-prelude(built/program, <node>, runtime-reader()))
+  save merged, node-path/join(dir, <module.ts>)
+  node-file/write-file-sync(merged, <{prelude}\n{host-text(built/typescript)}>)
+  save bundled, bundle-docks(root, merged, dir, project-banner(root), <node>)
+  write-whole(at, bundled/text)
+  link-install-modules(kept)
+  back at
+
+# what the report's program is made of, under the install
+task reporter-sources
+  like list, like text
+  mark private
+
+  save sources, make list
+  sources/push(<deck/call/code/test-report.tree>)
+  sources/push(<deck/call/code/test-report-node.tree>)
+  sources/push(<deck/call/code/work/preprocess/failure-reading.tree>)
+  back sources
+
+form reporter-ask
+  link resolve, like dynamic
+
+# the first of a build's diagnostics, as a line
+bind render-first
+  take diagnostics, like dynamic
+  like text
+  case node
+    text <String($diagnostics[0]?.message ?? "")>
+
+# the file reader the native prelude reads a runtime with
+bind runtime-reader
+  like dynamic
+  case node
+    text <((p) =\> (process.getBuiltinModule("node:fs").existsSync(p) ? process.getBuiltinModule("node:fs").readFileSync(p, "utf8") : undefined))>
+
+# the seconds `--limit` said, 0 for nothing
+bind limit-of
+  take given, like dynamic
+  like number
+  case node
+    text <Number($given ?? 0)>
+
+# a reported test as `term test` shows it. A failing `want` is its line as written, with the two values a comparison
+# held, and is placed on that line, else on the test's `test` line. Anything else says what it raised
+task settled-result
+  take one, like settled-test
   take label, like text
-  take started, like number
   take line, like dynamic
+  take source, like text
   like test-result
 
-  save why, text-or(want-failed(problem, source), message-of(problem))
-  save wanted, want-line(problem)
-  save at, line
-  fork test, not(is-nothing(wanted))
+  save result, make(test-result, bind(name, one/test), bind(label, label), bind(held, is-equal(one/verdict, <held>)), bind(ms, one/ms), bind(line, line))
+  fork test, or(is-equal(one/verdict, <held>), is-equal(one/note, <>))
     hold
-      save at, add(wanted, 1)
-  back make(test-result, bind(name, name), bind(label, label), bind(held, false), bind(ms, subtract(now-ms(), started)), bind(error, why), bind(line, at))
+      back result
+  fork test, and(not(one/said), one/note/starts-with(<want:>))
+    hold
+      save result/error, want-said(one/note, one/shown, source)
+      save result/line, want-marker-line(one/note)
+      back result
+  save result/error, one/note
+  back result
+
+# the line, counted from one, a `want`'s marker names
+bind want-marker-line
+  take marker, like text
+  like number
+  case node
+    text <Number(/^want:(\d+)/.exec($marker)?.[1] ?? 0)>
 
 # `{ snapshots }`: what the preprocessor takes
 form preprocess-options

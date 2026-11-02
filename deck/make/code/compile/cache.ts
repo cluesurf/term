@@ -75,7 +75,9 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // and 0532), so a unit stored at '17' holds another emitted text and another checked type under the same key.
 // '22': a name's print leaves out what its stub carries, and a unit answer is stored under its name key plus the sorted
 // (locator, print) list its trace holds (decision 103 item 4, item term-self-host-001-0526), so every stored key moves.
-export const CACHE_EPOCH = '23'
+// '24': a list, hash or form with a loose element on one side only is refused (decision 011 of term/compiler, item
+// term-self-host-001-0740), so a stored answer of a program that fitted before may no longer stand.
+export const CACHE_EPOCH = '24'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

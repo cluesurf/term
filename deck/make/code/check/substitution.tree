@@ -33,6 +33,9 @@ form substitution
   # whether a list's element width is invariant (TERM_WIDTH_RANGES, check/width-range.ts), read once when the checker
   # makes its substitution
   link widths, like boolean
+  # the variables that stand for a signature's own `head` generics, which are settled types inside its body: a list of t
+  # is not a list of unknown (decision 011 of term/compiler)
+  link rigid, like hash, like number, like boolean
 
 # the width switch (check/width-range.ts publishes it as `globalThis.termWidthRanges`, which a Term module cannot import)
 bind width-switch
@@ -57,6 +60,7 @@ task new-substitution
       bind next, 0
       bind origin, make hash
       bind widths, width-switch()
+      bind rigid, make hash
 
 # a brand-new, unbound type variable
 task fresh-type
@@ -261,6 +265,124 @@ task is-width-clash
       back is-unequal(number-width(x), number-width(y))
   back false
 
+# one side `unknown` or `dynamic`, the other settled, as elements of a container: the pair a container's invariance refuses
+# in either direction (decision 011 of term/compiler). Two loose words meet, and a variable not yet pinned is no clash. A
+# signature's own generic is settled
+task is-loose-clash
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  like boolean
+  mark private
+
+  save x, resolve-type(sub, a)
+  save y, resolve-type(sub, b)
+  fork test, is-loose(x)
+    hold
+      back is-settled(sub, y)
+  fork test, is-loose(y)
+    hold
+      back is-settled(sub, x)
+  back false
+
+# neither loose nor a variable that can still bind
+task is-settled
+  take sub, like substitution
+  take given, like type
+  like boolean
+  mark private
+
+  fork test, is-loose(given)
+    hold
+      back false
+  save id, variable-id(given)
+  fork test, is-below(id, 0)
+    hold
+      back true
+  back sub/rigid/has(id)
+
+# the same pair, met by the unifier: answers whether it is refused. An element not yet pinned takes the loose word here, so
+# the list is a list of boxes from now on and later pushes box (decision 011, rule 2). Unifying the two elements alone
+# binds nothing, since a loose word fits a value without pinning it
+task refuses-loose-element
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  like boolean
+  mark private
+
+  save x, resolve-type(sub, a)
+  save y, resolve-type(sub, b)
+  fork test, is-loose-clash(sub, x, y)
+    hold
+      back true
+  save x-id, variable-id(x)
+  save y-id, variable-id(y)
+  fork test, and(is-loose(x), is-minimum(y-id, 0))
+    hold
+      save sub/bindings/{y-id}, x
+  fork test, and(is-loose(y), is-minimum(x-id, 0))
+    hold
+      save sub/bindings/{x-id}, y
+  back false
+
+# whether a list, a hash or a form's type arguments, at any depth, hold such a pair
+task holds-loose-clash
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  like boolean
+
+  save x, resolve-type(sub, a)
+  save y, resolve-type(sub, b)
+  sift x
+    case array
+      link x-element
+      sift y
+        case array
+          link y-element
+          fork test, is-loose-clash(sub, x-element, y-element)
+            hold
+              back true
+          back holds-loose-clash(sub, x-element, y-element)
+        miss
+          back false
+    case map
+      link x-key
+      link x-value
+      sift y
+        case map
+          link y-key
+          link y-value
+          fork test, or(is-loose-clash(sub, x-key, y-key), is-loose-clash(sub, x-value, y-value))
+            hold
+              back true
+          back or(holds-loose-clash(sub, x-key, y-key), holds-loose-clash(sub, x-value, y-value))
+        miss
+          back false
+    case named
+      link x-name
+      link x-args
+      sift y
+        case named
+          link y-name
+          link y-args
+          fork test, or(is-unequal(x-name, y-name), is-unequal(x-args/length, y-args/length))
+            hold
+              back false
+          walk x-args
+            take arg
+            take index
+            save other, get(y-args, index)
+            fork test, or(is-loose-clash(sub, arg, other), holds-loose-clash(sub, arg, other))
+              hold
+                back true
+          back false
+        miss
+          back false
+    miss
+      back false
+
 task bind-variable
   take sub, like substitution
   take id, like number
@@ -322,6 +444,10 @@ task unify-shapes
               fork test, is-width-clash(sub, x-element, y-element)
                 hold
                   back false
+          # and so is a loose element (decision 011 of term/compiler): a `Vec<String>` is not a list of boxes
+          fork test, refuses-loose-element(sub, x-element, y-element)
+            hold
+              back false
           back unify-types(sub, x-element, y-element)
         miss
           back false
@@ -332,6 +458,12 @@ task unify-shapes
         case map
           link y-key
           link y-value
+          fork test, refuses-loose-element(sub, x-key, y-key)
+            hold
+              back false
+          fork test, refuses-loose-element(sub, x-value, y-value)
+            hold
+              back false
           back and(unify-types(sub, x-key, y-key), unify-types(sub, x-value, y-value))
         miss
           back false
@@ -357,6 +489,9 @@ task unify-shapes
           walk x-args
             take arg
             take index
+            fork test, refuses-loose-element(sub, arg, get(ys, index))
+              hold
+                back false
             fork test, not(unify-types(sub, arg, get(ys, index)))
               hold
                 back false
