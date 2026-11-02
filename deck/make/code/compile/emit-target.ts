@@ -53,8 +53,8 @@ export function emitTarget(input: {
     input.program,
     input.typescript,
     input.target,
-    (program, target) =>
-      nativePrelude(program, target, input.readRuntime),
+    (program, target, emitted) =>
+      nativePrelude(program, target, input.readRuntime, undefined, emitted),
     joinTypeScriptPrelude,
     program => emitRust(program, { wake }),
     program => emitSwift(program, { wake }),
@@ -83,8 +83,8 @@ export function emitTargetUnits(input: {
   const written = source.emitTargetUnits(
     input.program,
     input.target,
-    (program, target) =>
-      nativePrelude(program, target, input.readRuntime),
+    (program, target, emitted) =>
+      nativePrelude(program, target, input.readRuntime, undefined, emitted),
     program => emitRust(program, { units: true, wake }),
     program => emitSwift(program, { units: true, wake }),
     program => emitKotlin(program, { units: true, wake }),

@@ -113,6 +113,7 @@ task emit-target
     like task
       take program, like list, like statement
       take target, like emit-target-name
+      take emitted, like text
       like text
   take join-prelude
     like task
@@ -137,17 +138,19 @@ task emit-target
       like text
   like text
 
-  save prelude, prelude-of(program, target)
   sift target
     case node
-      back join-prelude(prelude, typescript)
+      back join-prelude(prelude-of(program, target, <>), typescript)
     case rust
       save emitted, emit-rust(program)
+      save prelude, prelude-of(program, target, emitted)
       back <{prelude}\n{emitted}>
     case swift
+      save prelude, prelude-of(program, target, <>)
       save emitted, emit-swift(program)
       back <{prelude}\n{emitted}>
     case kotlin
+      save prelude, prelude-of(program, target, <>)
       save emitted, emit-kotlin(program)
       back hoist-imports(<{prelude}\n{emitted}>)
 
@@ -168,6 +171,7 @@ task emit-target-units
     like task
       take program, like list, like statement
       take target, like emit-target-name
+      take emitted, like text
       like text
   take emit-rust
     like task
@@ -187,10 +191,10 @@ task emit-target-units
       like text
   like unit-files
 
-  save prelude, prelude-of(program, to-emit-target(target))
   sift target
     case rust
       save emitted, emit-rust(program)
+      save prelude, prelude-of(program, to-emit-target(target), emitted)
       save cut, split-units(<{prelude}\n{emitted}>)
       save named, make list
       walk cut/units
@@ -208,6 +212,7 @@ task emit-target-units
         push(files, one)
       back make-unit-files(<main.rs>, files)
     case swift
+      save prelude, prelude-of(program, to-emit-target(target), <>)
       save emitted, emit-swift(program)
       save cut, split-units(<{prelude}\n{emitted}>)
       save imports, import-lines(cut/shared, false)
@@ -218,6 +223,7 @@ task emit-target-units
         push(files, make-file(<U_{unit-name(one/file)}.swift>, <{imports}{one/text}>))
       back make-unit-files(<Term.swift>, files)
     case kotlin
+      save prelude, prelude-of(program, to-emit-target(target), <>)
       save emitted, emit-kotlin(program)
       save cut, split-units(hoist-imports(<{prelude}\n{emitted}>))
       save imports, import-lines(cut/shared, true)

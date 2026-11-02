@@ -50,7 +50,7 @@ form type
     link free
       like boolean
       need false
-  # the host's dynamic value: a JS `any`, a rust `serde_json::Value`, a swift / kotlin `Any`
+  # the host's dynamic value: a JS `any`, a rust `Rc<dyn Any>`, a swift / kotlin `Any`, one thing with `unknown` (decision 011 of term/compiler)
   case dynamic
   # a raw byte buffer backed by the platform's native octet type
   case bytes

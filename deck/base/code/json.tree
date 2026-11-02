@@ -1,4 +1,4 @@
-# JSON. parse / stringify and navigation over the host JSON library, hidden per-env. The parsed value is the opaque dynamic value (a JS any, a rust serde_json::Value, a swift / kotlin Any); the accessors read it natively. No hand-rolled parser or value representation.
+# JSON. parse / stringify and navigation over the host JSON library, hidden per-env. The parsed value is the opaque dynamic value (a JS any, a rust Rc<dyn Any>, a swift / kotlin Any). A JSON text, number, boolean or null is the Term value itself, and an array or object is read through the accessors. No hand-rolled parser or value representation.
 
 mark stable
 

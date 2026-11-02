@@ -393,9 +393,50 @@ task is-script
       back true
   back false
 
+# What Rust's emitter says with no dock in the program: two loose values compare through compare.rs (decision 011 of
+# term/compiler). The shim is taken when the emitted code names it, once, whether or not a module docks it too
+task with-linked-docks
+  take docks, like list, like global-dock
+  take env, like native-env
+  take used-in, like maybe, like text
+  take linked-from, like text
+  like list, like global-dock
+  mark private
+
+  fork test, is-unequal(to-text(env), <rust>)
+    hold
+      back docks
+  walk docks
+    take dock
+    fork test, is-equal(dock/name, <compare>)
+      hold
+        back docks
+  save seen-in, linked-from
+  sift used-in
+    case some
+      link known
+      save seen-in, known
+    case none
+      save nothing, 0
+  fork test, not(has-word(seen-in, <compare_runtime>))
+    hold
+      back docks
+  save out, make list
+  walk docks
+    take dock
+    push(out, dock)
+  save linked
+    make global-dock
+      bind name, <compare>
+      bind alias, <compare-runtime>
+      bind file, make none
+  push(out, linked)
+  back out
+
 # The native prelude for a target: every runtime shim the program's global docks reference and that exists, each looked
 # up next to the module that docks it, joined so that none can continue the statement before it. `used-in` is the
-# emitted code the prelude will sit in front of, and none includes every dock
+# emitted code the prelude will sit in front of, and none includes every dock. `linked-from` is that code for a caller
+# that includes every dock, read only for what the emitter links with no dock
 task native-prelude
   take program, like list, like statement
   take env, like native-env
@@ -407,11 +448,12 @@ task native-prelude
   take stdlib-base
     like task
       like maybe, like text
+  take linked-from, like text, fall <>
   like prelude-answer
 
   save parts, make list
   save added, make hash
-  save docks, global-docks(program)
+  save docks, with-linked-docks(global-docks(program), env, used-in, linked-from)
   save taken, make hash
   save reach, used-in
   save grew, true

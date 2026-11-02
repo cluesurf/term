@@ -795,7 +795,7 @@ task rust-type-of
     case float
       back <f64>
     case dynamic
-      back <serde_json::Value>
+      back <std::rc::Rc\<dyn std::any::Any\>>
     case bytes
       back <Vec\<u8\>>
     case variable

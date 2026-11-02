@@ -57,9 +57,8 @@ form keeper
   link items, like hash, like text, like unknown
 `
 
-// `gap` names a backend this cannot pass on yet and why: Rust spells `dynamic` serde_json::Value and has no conversion of
-// a value into it, so what a list of dynamic holds there waits on its own Decide item (log.md, item 0738). `refused`
-// holds that the rule does not reach too far: the program must fail at compile, on every backend.
+// `gap` names a backend this cannot pass on yet and why. `refused` holds that the rule does not reach too far: the program
+// must fail at compile, on every backend.
 const CASES: {
   name: string
   body: string
@@ -177,7 +176,6 @@ task run
   {
     name: 'list-dynamic-argument',
     expected: '2',
-    gap: { rust: 'dynamic is serde_json::Value on Rust, and no value converts into it' },
     body: `task run
   like text
   back <{walked-host(make list(<a>, 1))}>

@@ -1512,7 +1512,7 @@ task plain-list
       save nothing, 0
   back <Vec::new()>
 
-# A value flowing into an `unknown` slot boxes, a literal integer pinned to `i64` and a list or a hash naming its own
+# A value flowing into an `unknown` or `dynamic` slot boxes, a literal integer pinned to `i64` and a list or a hash naming its own
 # type. A read or a call whose own type is unknown is already the boxed dynamic, and so is one whose type is `dynamic`,
 # a native module's answer: a channel's `receive` hands back the `Rc<dyn Any>` it was sent, and boxing that again put
 # an `Rc` where the receiver's downcast wanted the message (test/compile/roundtrip.ts, the two Rust channel programs)
@@ -1524,7 +1524,7 @@ task box-unknown
   like text
   mark private
 
-  fork test, is-unequal(kind-of(into), <unknown>)
+  fork test, and(is-unequal(kind-of(into), <unknown>), is-unequal(kind-of(into), <dynamic>))
     hold
       back rendered
   save form, form-of(value)
@@ -2839,6 +2839,17 @@ task emit-binary
           back <(({left} {op} {right}) as i64)>
       save left, binary-operand(binary-left, op, node, st, facts)
       save right, binary-operand(binary-right, op, node, st, facts)
+      # a loose value compares as it does on TypeScript, Swift and Kotlin, deeply, through the runtime's deep_equal. It is
+      # generic since an identity task inlined away leaves a side concrete, and runtime-prelude.tree links it by this name
+      fork test, and(or(is-equal(op, <==>), is-equal(op, <!=>)), or(or(is-equal(left-kind, <unknown>), is-equal(left-kind, <dynamic>)), or(is-equal(right-kind, <unknown>), is-equal(right-kind, <dynamic>))))
+        hold
+          note-clone(expression-type(binary-left), st, facts)
+          note-clone(expression-type(binary-right), st, facts)
+          save compared, <compare_runtime::deep_equal(({left}).clone(), ({right}).clone())>
+          fork test, is-equal(op, <!=>)
+            hold
+              back <(!{compared})>
+          back <({compared})>
       fork test, opens-block(left)
         hold
           back <(({left}) {op} {right})>
@@ -3267,7 +3278,7 @@ task emit-array
       link array-span
       link array-type
       save element-kind-of, element-kind(array-type)
-      fork test, and(and(is-equal(array-items/length, 0), is-equal(kind-of(array-type), <array>)), and(is-unequal(element-kind-of, <variable>), is-unequal(element-kind-of, <unknown>)))
+      fork test, and(and(is-equal(array-items/length, 0), is-equal(kind-of(array-type), <array>)), and(is-unequal(element-kind-of, <variable>), and(is-unequal(element-kind-of, <unknown>), is-unequal(element-kind-of, <dynamic>))))
         hold
           back <std::rc::Rc::new(std::cell::RefCell::new(Vec::\<{spell-element(array-type, facts)}\>::new()))>
       # a list of functions: each task is a type of its own in Rust, so each is cast to the element
@@ -4017,7 +4028,7 @@ task emit-expr
     case unit
       back <()>
     case null
-      back <serde_json::Value::Null>
+      back <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
     case variable
       link variable-name
       back emit-name(node, variable-name, st, facts)
@@ -5501,8 +5512,8 @@ task emit-let
               save ann, <: {spell-type(made, facts)}>
         miss
           save nothing, 0
-      # a local declared `like unknown` boxes its concrete init
-      fork test, and(is-equal(kind-of(let-type), <unknown>), is-unequal(init-kind, <unknown>))
+      # a local declared `like unknown` or `like dynamic` boxes its concrete init, and a boxed init is boxed already
+      fork test, and(or(is-equal(kind-of(let-type), <unknown>), is-equal(kind-of(let-type), <dynamic>)), and(is-unequal(init-kind, <unknown>), is-unequal(init-kind, <dynamic>)))
         hold
           back <let {mut-of(let-name, st)}{vname(let-name)}: std::rc::Rc\<dyn std::any::Any\> = std::rc::Rc::new({owned(let-init, st, facts)});>
       # a call whose type argument nothing constrains: the argument is any type, so the binding names it `()`
@@ -5960,7 +5971,7 @@ task emit-return
           note-clone(result, st, facts)
       # a bare `send back` in a task whose synthesized result is the boxed dynamic answers the boxed unit
       save boxed-unit, <>
-      fork test, and(not(has-value), is-equal(result-kind, <unknown>))
+      fork test, and(not(has-value), or(is-equal(result-kind, <unknown>), is-equal(result-kind, <dynamic>)))
         hold
           save boxed-unit, <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
       save answer, casted

@@ -63,12 +63,14 @@ export function joinTypeScriptPrelude(
 // reference and that actually exists. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
 // `usedIn` is the emitted code the prelude will sit in front of: when given, a shim is included only if its alias
 // appears there (or in a shim already taken), so a dock the program never calls does not pull its dependency in. Omit
-// it to include every dock
+// it to include every dock. `linkedFrom` is that code for a caller that includes every dock: it decides only what the
+// emitter links with no dock (Rust's compare.rs)
 export function nativePrelude(
   program: Program,
   env: NativeEnv,
   readRuntime: (path: string) => string | undefined,
   usedIn?: string,
+  linkedFrom?: string,
 ): string {
   const answer = prelude.nativePrelude(
     program,
@@ -76,6 +78,7 @@ export function nativePrelude(
     path => maybeOf(readRuntime(path)),
     maybeOf(usedIn),
     () => maybeOf(stdlibBase()),
+    linkedFrom ?? '',
   )
 
   if (answer.form === 'refused') {

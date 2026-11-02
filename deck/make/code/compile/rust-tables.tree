@@ -203,8 +203,9 @@ task field-qualifies
       back true
     case float
       back not(hash)
+    # the boxed dynamic has no equality of its own, as `unknown` never did (decision 011 of term/compiler)
     case dynamic
-      back not(hash)
+      back false
     case array
       link element
       back and(not(hash), field-qualifies(element, params, forms, false, sets, context))
