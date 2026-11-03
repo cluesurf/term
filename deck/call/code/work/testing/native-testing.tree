@@ -32,6 +32,8 @@ load @term/call/test-run-words
   find settle-report
   find settled-test
   find skip-reason
+  find labeled-case
+  find case-matches
 
 load ./report-running
   find run-reported
@@ -247,6 +249,11 @@ task run-native-test-file
   save load, load-path-of(report-file, file)
   save names, make list
   save asked, make list
+  # what `--case` asked, which an enumerated test the phrase did not choose whole hands its cases (decision 022 T6)
+  save phrase, <>
+  fork test, is-truthy(input/chosen)
+    hold
+      save phrase, host-text(input/chosen)
   walk input/tests
     take one, like dynamic
     names/push(host-text(one/name))
@@ -254,7 +261,15 @@ task run-native-test-file
     fork test, is-truthy(one/line)
       hold
         save line, one/line
-    asked/push(make(report-test, bind(name, host-text(one/name)), bind(line, line)))
+    save cases, <>
+    fork test, is-truthy(one/cases)
+      hold
+        save cases, host-text(one/cases)
+    save chosen, <>
+    fork test, and(is-unequal(phrase, <>), not(case-matches(phrase, host-text(one/name), host-text(one/label))))
+      hold
+        save chosen, phrase
+    asked/push(make(report-test, bind(name, host-text(one/name)), bind(line, line), bind(cases, cases), bind(label, host-text(one/label)), bind(chosen, chosen)))
   node-file/write-file-sync(report-file, report-text(load, asked))
   save resolving, face-project-resolver(make-project-resolver(root, env))
   save real, host-text(node-file/realpath-sync(file))
@@ -304,15 +319,20 @@ task run-native-test-file
   save ran, run-reported(built/command, root, file, limit-of(input/limit))
   save results, make list
   save all-held, true
-  save at, 0
   walk settle-report(names, ran/report/entries, ran/stop)
     take settled, like settled-test
-    save one, result-of(input/tests/{at}, settled, env, host-text(input/source))
+    # the asked test this entry is of: an enumerated test settles as one entry per case
+    save asked-test, input/tests/0
+    walk input/tests
+      take one, like dynamic
+      fork test, is-equal(host-text(one/name), settled/test)
+        hold
+          save asked-test, one
+    save one, result-of(asked-test, settled, env, host-text(input/source))
     fork test, and(not(one/held), not(one/skipped))
       hold
         save all-held, false
     results/push(one)
-    save at, add(at, 1)
   save run, make(test-run, bind(ok, all-held), bind(results, results))
   save run/printed, ran/printed
   back run
@@ -333,7 +353,7 @@ task result-of
       save line, want-number(want)
   save held, is-equal(settled/verdict, <held>)
   save skipped, is-equal(settled/verdict, <skipped>)
-  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, host-text(test-asked/label)), bind(held, held), bind(skipped, skipped), bind(ms, settled/ms), bind(line, line))
+  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, labeled-case(host-text(test-asked/label), settled/case-label)), bind(held, held), bind(skipped, skipped), bind(ms, settled/ms), bind(line, line))
   fork test, skipped
     hold
       save one/reason, skip-reason(settled/note)

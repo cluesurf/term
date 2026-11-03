@@ -1063,6 +1063,8 @@ export type Preprocessed = {
   origin: number[]
   // each test's `test <phrase>` line, counted from zero, by its task name: where a failing test points
   heads: Map<string, number>
+  // each enumerated test (decision 022 T6): `text` when its input is text, and its cases are labeled by it, else `value`
+  cases: Map<string, string>
 }
 
 // The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it
@@ -1196,6 +1198,7 @@ export function preprocessTests(
   const origin: number[] = []
   const labels = new Map<string, string>()
   const heads = new Map<string, number>()
+  const cases = new Map<string, string>()
   const taken = takenNames(lines)
 
   // whether a `want` compares two values, so the file needs WANT_PRELUDE
@@ -1258,6 +1261,31 @@ export function preprocessTests(
     const takes = groups.filter(
       group => lines[group[0]!]!.trim().split(/[\s,]/)[0] === 'take',
     )
+
+    // unless its take walks a list: then it is ENUMERATED, one case per element
+    const walked = enumeratedWalk(lines, groups)
+
+    if (walked >= 0) {
+      const written = enumeratedTest({
+        slug,
+        label,
+        at,
+        lines,
+        groups,
+        walked,
+        snapshots: options.snapshots,
+        plain: options.plainWants === true,
+      })
+
+      if (written.kind !== '') {
+        cases.set(slug, written.kind)
+      }
+
+      compares ||= written.compares
+      snapshotted ||= written.snapshotted
+      written.lines.forEach((text, n) => emit(text, written.from[n]!))
+      continue
+    }
 
     if (takes.length > 0) {
       sampled = true
@@ -1348,5 +1376,295 @@ export function preprocessTests(
     origin.unshift(...prelude.map(() => 0))
   }
 
-  return { text: out.join('\n'), labels, origin, heads }
+  return { text: out.join('\n'), labels, origin, heads, cases }
+}
+
+// the line, by its number, of a `walk` under a `take` of the test: what makes the test ENUMERATED. -1 for none
+function enumeratedWalk(lines: string[], groups: number[][]): number {
+  for (const group of groups) {
+    if (headOf(lines[group[0]!]!) !== 'take') {
+      continue
+    }
+
+    for (const n of group.slice(1)) {
+      if (headOf(lines[n]!) === 'walk') {
+        return n
+      }
+    }
+  }
+
+  return -1
+}
+
+const headOf = (line: string): string => line.trim().split(/[\s,]/)[0] ?? ''
+
+type CasesWritten = {
+  lines: string[]
+  from: number[]
+  kind: string
+  compares: boolean
+  snapshotted: boolean
+}
+
+function refusedCases(slug: string, at: number, why: string): CasesWritten {
+  return {
+    lines: [`task ${slug}`, '  like boolean', `  halt <${why}>`, ''],
+    from: [at, at, at, at],
+    kind: '',
+    compares: false,
+    snapshotted: false,
+  }
+}
+
+// An ENUMERATED TEST (decision 022 T6, item 0185): a `take x, like t` with a `walk <list>` under it runs its body once
+// per element, each a CASE labeled `<phrase> [<element>]`. Kept in step with work/preprocess/test-rewriting.tree
+// `enumerated-test`, which `term test` runs: `<slug>-cases` the list, raising when it is empty, `<slug>-case` the body
+// over one element and its label, and `<slug>` every case in turn
+function enumeratedTest(input: {
+  slug: string
+  label: string
+  at: number
+  lines: string[]
+  groups: number[][]
+  walked: number
+  snapshots: Snapshots | undefined
+  plain: boolean
+}): CasesWritten {
+  const { slug, label, at, lines, groups, walked, snapshots, plain } = input
+  const walkLine = walked + 1
+  const takes = groups.filter(group => headOf(lines[group[0]!]!) === 'take')
+
+  if (takes.length > 1) {
+    return refusedCases(
+      slug,
+      at,
+      `line ${takes[1]![0]! + 1}: a test whose take walks a list takes nothing else`,
+    )
+  }
+
+  const holder = takes[0]!
+  const listText =
+    /^\s*walk\s+(.*\S)\s*$/.exec(lines[walked]!)?.[1] ?? ''
+
+  if (listText === '') {
+    return refusedCases(
+      slug,
+      at,
+      `line ${walkLine}: a walk of cases names its list`,
+    )
+  }
+
+  // the take's own lines, the walk and anything under it left out
+  const walkIndent = indentOf(lines[walked]!)
+  const typed: number[] = []
+  let underWalk = false
+
+  for (const n of holder) {
+    if (n === walked) {
+      underWalk = true
+      continue
+    }
+
+    if (
+      underWalk &&
+      !blank(lines[n]!) &&
+      indentOf(lines[n]!) > walkIndent
+    ) {
+      return refusedCases(
+        slug,
+        at,
+        `line ${walkLine}: a walk of cases is written on one line`,
+      )
+    }
+
+    underWalk = false
+    typed.push(n)
+  }
+
+  const rest =
+    /^\s*take\s+[^\s,]+\s*,\s*(.*\S)\s*$/.exec(lines[holder[0]!]!)?.[1] ??
+    ''
+  const kind =
+    rest === 'like text' ||
+    (rest === '' &&
+      typed.length === 2 &&
+      lines[typed[1]!]!.trim() === 'like text')
+      ? 'text'
+      : 'value'
+
+  const out: string[] = []
+  const from: number[] = []
+  const emit = (text: string, line: number): void => {
+    out.push(text)
+    from.push(line)
+  }
+
+  // the list
+  emit(`task ${slug}-cases`, at)
+  emit(rest === '' ? '  like list' : `  like list, ${rest}`, holder[0]!)
+  typed.slice(1).forEach(n => emit(lines[n]!, n))
+  emit(`  save term-cases, ${listText}`, walked)
+  emit('  fork test, is-equal(term-cases/length, 0)', walked)
+  emit('    hold', walked)
+  emit(`      halt <line ${walkLine}: the walk gave no case>`, walked)
+  emit('  back term-cases', walked)
+  emit('', at)
+
+  // no cases, of the list's type: what a native report holds before the list is asked, so the list is asked in a guard
+  // of its own and each case in another, never one guard inside another
+  emit(`task ${slug}-no-cases`, at)
+  emit(rest === '' ? '  like list' : `  like list, ${rest}`, holder[0]!)
+  typed.slice(1).forEach(n => emit(lines[n]!, n))
+  emit('  back make list', at)
+  emit('', at)
+
+  // the body over one element and its label
+  emit(`task ${slug}-case`, at)
+  typed.forEach(n => emit(lines[n]!, n))
+  emit('  take term-case-label, like text', at)
+  emit('  mark async', at)
+  emit('  like boolean', at)
+
+  let compares = false
+  let snapshotted = false
+  let snapshotsTaken = 0
+
+  for (const group of groups) {
+    const head = headOf(lines[group[0]!]!)
+
+    if (head === 'take') {
+      continue
+    }
+
+    if (head !== ASSERTION) {
+      group.forEach(n => emit(lines[n]!, n))
+      continue
+    }
+
+    const written = SNAPSHOT_HEAD.test(lines[group[0]!]!.trim())
+      ? caseSnapshotWant(
+          group.map(n => lines[n]!),
+          group,
+          label,
+          snapshotsTaken++,
+          snapshots,
+          plain,
+        )
+      : guard(
+          group.map(n => lines[n]!),
+          group,
+          plain,
+        )
+
+    if (SNAPSHOT_HEAD.test(lines[group[0]!]!.trim())) {
+      snapshotted = true
+    }
+
+    compares ||= written.lines.some(
+      text => text.trim() === 'halt want-missed',
+    )
+    written.lines.forEach((text, n) =>
+      emit(text, written.from[n] ?? group[0]!),
+    )
+  }
+
+  emit('  send back', at)
+  emit('    true', at)
+  emit('', at)
+
+  // the test as listed: every case in turn, each labeled by its place
+  emit(`task ${slug}`, at)
+  emit('  mark async', at)
+  emit('  like boolean', at)
+  emit('  save term-case-at, 0', at)
+  emit(`  walk ${slug}-cases()`, at)
+  emit('    take term-case-value', at)
+  emit(`    ${slug}-case(term-case-value, <#{term-case-at}>)`, at)
+  emit('    save term-case-at, add(term-case-at, 1)', at)
+  emit('  back true', at)
+
+  return { lines: out, from, kind, compares, snapshotted }
+}
+
+// One `want snapshot` inside a case: as `snapshotWant`, keyed by the case's label, which is known only as the case runs.
+// Under `--update` the key is the phrase and the case's own label, and otherwise every stored text of this place is
+// written in, and the case picks its own by its label
+function caseSnapshotWant(
+  group: string[],
+  numbers: number[],
+  label: string,
+  taken: number,
+  snapshots: Snapshots | undefined,
+  plain: boolean,
+): { lines: string[]; from: number[] } {
+  const line = numbers[0]!
+  const shownLine = line + 1
+  const inline = SNAPSHOT_HEAD.exec(group[0]!.trim())?.[1]?.trim()
+  const name = `want-snapshot-${shownLine}`
+  const lines: string[] = []
+  const from: number[] = []
+
+  if (inline) {
+    lines.push(`  save ${name}, term-snapshot-of(${inline})`)
+    from.push(line)
+  } else {
+    lines.push(`  save ${name}`, '    call term-snapshot-of')
+    from.push(line, line)
+    group.slice(1).forEach((text, n) => {
+      lines.push(blank(text) ? text : `  ${text}`)
+      from.push(numbers[n + 1]!)
+    })
+  }
+
+  if (snapshots?.update) {
+    lines.push(
+      `  term-snapshot-take(<${escapeText(label)} [{term-case-label}]>, ${name})`,
+    )
+    from.push(line)
+    return { lines, from }
+  }
+
+  const storedName = `want-stored-${shownLine}`
+  const foundName = `want-found-${shownLine}`
+
+  lines.push(`  save ${storedName}, <>`, `  save ${foundName}, false`)
+  from.push(line, line)
+
+  for (const [key, texts] of snapshots?.stored ?? new Map()) {
+    const text = texts[taken]
+
+    if (
+      !key.startsWith(`${label} [`) ||
+      !key.endsWith(']') ||
+      text === undefined
+    ) {
+      continue
+    }
+
+    lines.push(
+      `  fork test, is-equal(term-case-label, <${escapeText(key.slice(label.length + 2, -1))}>)`,
+      '    hold',
+      `      save ${storedName}, <${escapeText(text)}>`,
+      `      save ${foundName}, true`,
+    )
+    from.push(line, line, line, line)
+  }
+
+  lines.push(
+    `  fork test, not(${foundName})`,
+    '    hold',
+    `      halt <no snapshot is stored for line ${shownLine} in case {term-case-label}: term test --update writes it>`,
+  )
+  from.push(line, line, line)
+
+  const held = guard(
+    [`want hold, is-equal ${name}, ${storedName}`],
+    [line],
+    plain,
+  )
+
+  return {
+    lines: [...lines, ...held.lines],
+    from: [...from, ...held.from],
+  }
 }

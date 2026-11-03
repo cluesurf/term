@@ -44,12 +44,14 @@ form want-written
   link from, like list, like number
 
 # a test file rewritten: the text, each test's label and `test` line by its task name, and for every line of the text
-# the source line it came from
+# the source line it came from. `cases` names each enumerated test (decision 022 T6): `text` when its input is text,
+# and its cases are labeled by it, else `value`
 form preprocessed
   link text, like text
   link labels, like hash, like text, like text
   link origin, like list, like number
   link heads, like hash, like text, like number
+  link cases, like hash, like text, like text
 
 # a file as the compiler reads it, and how a diagnostic on that text is put back on the lines the person wrote
 form readable-text
@@ -177,6 +179,38 @@ bind skip-literal
   like text
   case node
     text <<(/^\s*skip\s+(<.*>)\s*$/.exec($line)?.[1] ?? "")>>
+
+# a `walk <list>` line's list as written, the empty text when the walk names none
+bind walk-expression
+  take line, like text
+  like text
+  case node
+    text <<(/^\s*walk\s+(.*\S)\s*$/.exec($line)?.[1] ?? "")>>
+
+# a `take <name>, <type>` line's type as written on the line, the empty text when the type is written under it
+bind take-rest
+  take line, like text
+  like text
+  case node
+    text <<(/^\s*take\s+[^\s,]+\s*,\s*(.*\S)\s*$/.exec($line)?.[1] ?? "")>>
+
+# the cases of a test that have a stored snapshot at its `taken`th place, each by its own part of `<phrase> [<case>]`
+bind stored-case-labels
+  take snapshots, like dynamic
+  take label, like text
+  take taken, like number
+  like list, like text
+  case node
+    text <<[...($snapshots?.stored ?? new Map()).entries()].filter((entry) => entry[0].startsWith($label + " [") && entry[0].endsWith("]") && entry[1][$taken] !== undefined).map((entry) => entry[0].slice($label.length + 2, -1))>>
+
+# and the stored text of each, in the same order
+bind stored-case-texts
+  take snapshots, like dynamic
+  take label, like text
+  take taken, like number
+  like list, like text
+  case node
+    text <<[...($snapshots?.stored ?? new Map()).entries()].filter((entry) => entry[0].startsWith($label + " [") && entry[0].endsWith("]") && entry[1][$taken] !== undefined).map((entry) => entry[1][$taken])>>
 
 bind line-lead
   take line, like text
@@ -1147,6 +1181,339 @@ task lowered-skip
       back <{lead}halt \<\<skip:{rewrite-cut(literal, 2)}>
   back <{lead}halt \<skip:{rewrite-cut(literal, 1)}>
 
+# ---- enumerated cases ----
+
+# A test's cases, written: the lines and the source line each came from, what the `cases` table says of the test
+# (`text` when its input is text, else `value`, the empty text when the test was refused), and which preludes they need
+form cases-written
+  link lines, like list, like text
+  link from, like list, like number
+  link kind, like text
+  link compares, like boolean
+  link snapshotted, like boolean
+
+# the line, by its number, of a `walk` under a `take` of the test: what makes the test ENUMERATED. -1 for none
+task enumerated-walk
+  take lines, like list, like text
+  take groups, like list, like list, like number
+  like number
+
+  walk groups
+    take group, like list, like number
+    fork test, is-equal(statement-head(lines/{get(group, 0)}), <take>)
+      hold
+        save first, true
+        walk group
+          take n, like number
+          fork test, and(not(first), is-equal(statement-head(lines/{n}), <walk>))
+            hold
+              back n
+          save first, false
+  back -1
+
+# one line made into a test's refusal, said when it runs, as a `want` of no known mode is
+task refused-cases
+  take slug, like text
+  take at, like number
+  take why, like text
+  like cases-written
+
+  save lines, make list
+  save from, make list
+  lines/push(<task {slug}>)
+  lines/push(<  like boolean>)
+  lines/push(<  halt \<{why}\>>)
+  lines/push(<>)
+  walk lines
+    take one, like text
+    from/push(at)
+  back make(cases-written, bind(lines, lines), bind(from, from), bind(kind, <>), bind(compares, false), bind(snapshotted, false))
+
+# An ENUMERATED TEST (decision 022 T6, item 0185): a `take x, like t` with a `walk <list>` under it runs its body once per
+# element of the list, in list order, each a CASE: one counted test, labeled `<phrase> [<element>]` by its text when it
+# is text (cut at 80 characters) and `#<index>` when it is not. It becomes three tasks: `<slug>-cases`, the list, which
+# raises when it is empty, naming the walk's line; `<slug>-case`, the body over one element and its label, so a failing
+# `want` ends that case only; and `<slug>` itself, the test as listed, which runs every case in turn. The report runs the
+# cases one by one (call/code/test-report-node.tree, call/code/test-run-words.tree `report-text`), each in its own guard,
+# and `<slug>` is what any other caller of a test task runs. A `want snapshot` in a case is keyed by the case's label.
+task enumerated-test
+  take slug, like text
+  take label, like text
+  take at, like number
+  take lines, like list, like text
+  take groups, like list, like list, like number
+  take walked, like number
+  take snapshots, like dynamic
+  take plain, like boolean
+  like cases-written
+
+  save walk-line, add(walked, 1)
+  # the take that holds the walk, and any other: one input, and never beside a sampled one
+  save holder, make list
+  walk groups
+    take group, like list, like number
+    save start, get(group, 0)
+    fork test, is-equal(statement-head(lines/{start}), <take>)
+      hold
+        fork test, is-minimum(holder/length, 1)
+          hold
+            back refused-cases(slug, at, <line {add(start, 1)}: a test whose take walks a list takes nothing else>)
+        save holder, group
+  walk groups
+    take group, like list, like number
+    save start, get(group, 0)
+    fork test, and(is-equal(statement-head(lines/{start}), <take>), not(is-equal(start, get(holder, 0))))
+      hold
+        back refused-cases(slug, at, <line {add(start, 1)}: a test whose take walks a list takes nothing else>)
+  save list-text, walk-expression(lines/{walked})
+  fork test, is-equal(list-text, <>)
+    hold
+      back refused-cases(slug, at, <line {walk-line}: a walk of cases names its list>)
+  # the take's own lines, the walk and anything under it left out
+  save walk-indent, rewrite-indent(lines/{walked})
+  save typed, make list
+  save under-walk, false
+  walk holder
+    take n, like number
+    fork test, is-equal(n, walked)
+      hold
+        save under-walk, true
+        turn next
+    fork test, and(under-walk, and(not(rewrite-is-blank(lines/{n})), is-above(rewrite-indent(lines/{n}), walk-indent)))
+      hold
+        back refused-cases(slug, at, <line {walk-line}: a walk of cases is written on one line>)
+    save under-walk, false
+    typed/push(n)
+  save head-line, lines/{get(holder, 0)}
+  save rest, take-rest(head-line)
+  save kind, <value>
+  fork test, is-equal(rest, <like text>)
+    hold
+      save kind, <text>
+  fork test, and(is-equal(rest, <>), and(is-equal(typed/length, 2), is-equal(trim(lines/{get(typed, 1)}), <like text>)))
+    hold
+      save kind, <text>
+
+  save out, make list
+  save from, make list
+  # the list
+  out/push(<task {slug}-cases>)
+  from/push(at)
+  fork test, is-equal(rest, <>)
+    hold
+      out/push(<  like list>)
+    miss
+      out/push(<  like list, {rest}>)
+  from/push(get(holder, 0))
+  save index, 0
+  walk typed
+    take n, like number
+    fork test, is-above(index, 0)
+      hold
+        out/push(lines/{n})
+        from/push(n)
+    save index, add(index, 1)
+  out/push(<  save term-cases, {list-text}>)
+  from/push(walked)
+  out/push(<  fork test, is-equal(term-cases/length, 0)>)
+  from/push(walked)
+  out/push(<    hold>)
+  from/push(walked)
+  out/push(<      halt \<line {walk-line}: the walk gave no case\>>)
+  from/push(walked)
+  out/push(<  back term-cases>)
+  from/push(walked)
+  out/push(<>)
+  from/push(at)
+
+  # no cases, of the list's type: what a native report holds before the list is asked, so the list is asked in a guard
+  # of its own and each case in another, never one guard inside another (traps.md T-0185)
+  out/push(<task {slug}-no-cases>)
+  from/push(at)
+  fork test, is-equal(rest, <>)
+    hold
+      out/push(<  like list>)
+    miss
+      out/push(<  like list, {rest}>)
+  from/push(get(holder, 0))
+  save index, 0
+  walk typed
+    take n, like number
+    fork test, is-above(index, 0)
+      hold
+        out/push(lines/{n})
+        from/push(n)
+    save index, add(index, 1)
+  out/push(<  back make list>)
+  from/push(at)
+  out/push(<>)
+  from/push(at)
+
+  # the body over one element and its label
+  out/push(<task {slug}-case>)
+  from/push(at)
+  walk typed
+    take n, like number
+    out/push(lines/{n})
+    from/push(n)
+  out/push(<  take term-case-label, like text>)
+  from/push(at)
+  out/push(<  mark async>)
+  from/push(at)
+  out/push(<  like boolean>)
+  from/push(at)
+  save compares, false
+  save snapshotted, false
+  save snapshots-taken, 0
+  walk groups
+    take group, like list, like number
+    save group-start, get(group, 0)
+    save first, trim(lines/{group-start})
+    save head, statement-head(lines/{group-start})
+    fork test, is-equal(head, <take>)
+      hold
+        turn next
+    save written, make(want-written, bind(lines, make list), bind(from, make list))
+    save is-want, false
+    fork test, and(is-equal(head, <want>), is-snapshot-head(first))
+      hold
+        save written, case-snapshot-want(group-lines(lines, group), group, label, snapshots-taken, snapshots, plain)
+        save snapshots-taken, add(snapshots-taken, 1)
+        save snapshotted, true
+        save is-want, true
+      miss
+        fork test, is-equal(head, <want>)
+          hold
+            save written, guard(group-lines(lines, group), group, plain, 0, 0)
+            save is-want, true
+    fork test, is-want
+      hold
+        fork test, raises-values(written/lines)
+          hold
+            save compares, true
+        walk written/lines
+          take text, like text
+          out/push(text)
+        walk written/from
+          take one, like number
+          from/push(one)
+      miss
+        walk group
+          take n, like number
+          out/push(lines/{n})
+          from/push(n)
+  out/push(<  send back>)
+  from/push(at)
+  out/push(<    true>)
+  from/push(at)
+  out/push(<>)
+  from/push(at)
+
+  # the test as listed: every case in turn, each labeled by its place
+  out/push(<task {slug}>)
+  from/push(at)
+  out/push(<  mark async>)
+  from/push(at)
+  out/push(<  like boolean>)
+  from/push(at)
+  out/push(<  save term-case-at, 0>)
+  from/push(at)
+  out/push(<  walk {slug}-cases()>)
+  from/push(at)
+  out/push(<    take term-case-value>)
+  from/push(at)
+  out/push(<    {slug}-case(term-case-value, \<#\{term-case-at\}\>)>)
+  from/push(at)
+  out/push(<    save term-case-at, add(term-case-at, 1)>)
+  from/push(at)
+  out/push(<  back true>)
+  from/push(at)
+  back make(cases-written, bind(lines, out), bind(from, from), bind(kind, kind), bind(compares, compares), bind(snapshotted, snapshotted))
+
+# One `want snapshot` inside a case, the `taken`th of its body: as `snapshot-want`, keyed by the case's label, which is
+# known only as the case runs. So under `--update` the label is the test's phrase and the case's own, and otherwise
+# every stored text of this place in the test is written in, and the case picks its own by its label
+task case-snapshot-want
+  take group, like list, like text
+  take numbers, like list, like number
+  take label, like text
+  take taken, like number
+  take snapshots, like dynamic
+  take plain, like boolean
+  like want-written
+
+  save line, numbers/0
+  save shown-line, add(line, 1)
+  save inline, snapshot-inline(trim(group/0))
+  save name, <want-snapshot-{shown-line}>
+  save lines, make list
+  save from, make list
+  fork test, not(is-equal(inline, <>))
+    hold
+      lines/push(<  save {name}, term-snapshot-of({inline})>)
+      from/push(line)
+    miss
+      lines/push(<  save {name}>)
+      from/push(line)
+      lines/push(<    call term-snapshot-of>)
+      from/push(line)
+      save at, 1
+      walk test
+        hook test
+          is-below(at, group/length)
+        hook hold
+          save text, group/{at}
+          fork test, rewrite-is-blank(text)
+            hold
+              lines/push(text)
+            miss
+              lines/push(<  {text}>)
+          from/push(numbers/{at})
+          save at, add(at, 1)
+  save escaped, host-text-module/escape-text(label)
+  fork test, snapshots-updating(snapshots)
+    hold
+      lines/push(<  term-snapshot-take(\<{escaped} [\{term-case-label\}]\>, {name})>)
+      from/push(line)
+      back make(want-written, bind(lines, lines), bind(from, from))
+  save stored-name, <want-stored-{shown-line}>
+  save found-name, <want-found-{shown-line}>
+  lines/push(<  save {stored-name}, \<\>>)
+  from/push(line)
+  lines/push(<  save {found-name}, false>)
+  from/push(line)
+  save texts, stored-case-texts(snapshots, label, taken)
+  save index, 0
+  walk stored-case-labels(snapshots, label, taken)
+    take one, like text
+    lines/push(<  fork test, is-equal(term-case-label, \<{host-text-module/escape-text(one)}\>)>)
+    from/push(line)
+    lines/push(<    hold>)
+    from/push(line)
+    lines/push(<      save {stored-name}, \<{host-text-module/escape-text(get(texts, index))}\>>)
+    from/push(line)
+    lines/push(<      save {found-name}, true>)
+    from/push(line)
+    save index, add(index, 1)
+  lines/push(<  fork test, not({found-name})>)
+  from/push(line)
+  lines/push(<    hold>)
+  from/push(line)
+  lines/push(<      halt \<no snapshot is stored for line {shown-line} in case \{term-case-label\}: term test --update writes it\>>)
+  from/push(line)
+  save held-group, make list
+  held-group/push(<want hold, is-equal {name}, {stored-name}>)
+  save held-numbers, make list
+  held-numbers/push(line)
+  save held, guard(held-group, held-numbers, plain, 0, 0)
+  walk held/lines
+    take text, like text
+    lines/push(text)
+  walk held/from
+    take one, like number
+    from/push(one)
+  back make(want-written, bind(lines, lines), bind(from, from))
+
 # ---- the file ----
 
 # `plain-wants`: every `want` raises the plain marker, never the two values it compared. A native backend's report
@@ -1164,6 +1531,7 @@ task preprocess-tests
   save origin, make list
   save labels, make hash
   save heads, make hash
+  save cases, make hash
   save taken, taken-names(lines)
   # whether a `want` compares two values, a test takes inputs, or one takes a snapshot: which preludes the file needs
   save compares, false
@@ -1214,7 +1582,8 @@ task preprocess-tests
                 take n, like number
                 save lines/{n}, lowered-skip(lines/{n}, n)
           save groups, statements(lines, body, 2)
-          # a test that TAKES inputs is a property, checked on sampled values of their types
+          # a test that TAKES inputs is a property, checked on sampled values of their types, unless its take walks a
+          # list: then it is ENUMERATED, one case per element
           save takes, false
           walk groups
             take group, like list, like number
@@ -1222,6 +1591,26 @@ task preprocess-tests
             fork test, is-equal(statement-head(lines/{group-start}), <take>)
               hold
                 save takes, true
+          save walked, enumerated-walk(lines, groups)
+          fork test, is-minimum(walked, 0)
+            hold
+              save enumerated, enumerated-test(slug, label, at, lines, groups, walked, snapshots, plain)
+              fork test, not(is-equal(enumerated/kind, <>))
+                hold
+                  save cases/{slug}, enumerated/kind
+              fork test, enumerated/compares
+                hold
+                  save compares, true
+              fork test, enumerated/snapshotted
+                hold
+                  save snapshotted, true
+              walk enumerated/lines
+                take text, like text
+                out/push(text)
+              walk enumerated/from
+                take one, like number
+                origin/push(one)
+              turn next
           fork test, takes
             hold
               save sampled, true
@@ -1305,7 +1694,7 @@ task preprocess-tests
   walk origin
     take one, like number
     placed/push(one)
-  back make(preprocessed, bind(text, rewrite-joined(text-lines)), bind(labels, labels), bind(origin, placed), bind(heads, heads))
+  back make(preprocessed, bind(text, rewrite-joined(text-lines)), bind(labels, labels), bind(origin, placed), bind(heads, heads), bind(cases, cases))
 
 # A position on the rewritten text moved back onto the line the person wrote. A rewritten line keeps its source line's
 # text, perhaps at another indent, so a column moves by the difference; a line the rewrite made up (a guard, `send

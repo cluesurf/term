@@ -113,10 +113,117 @@ task taken-of
 
 # ---- the one report protocol, every target (decision 022 T5, item 0157) ----
 
-# a test as its report calls it: its task, and its `test` line as written, 0 for none
+# a test as its report calls it: its task, and its `test` line as written, 0 for none. An enumerated test (decision 022
+# T6) says so in `cases`, `text` when its cases are labeled by their text and `value` when by their place, and is
+# reported case by case: `label` is its phrase and `chosen` what `term test --case` asked of its cases, the empty text
+# for all of them
 form report-test
   link name, like text
   link line, like number
+  link cases, like text
+  link label, like text
+  link chosen, like text
+
+# a text as a text literal of `.tree` source writes it
+task literal-of
+  take value, like text
+  like text
+
+  save out, replace-all(value, <\\>, <\\\\>)
+  save out, replace-all(out, <\<>, <\\\<>)
+  save out, replace-all(out, <\>>, <\\\>>)
+  save out, replace-all(out, <\{>, <\\\{>)
+  back replace-all(out, <\}>, <\\\}>)
+
+# the lines that run one enumerated test in a native report: its list in a guard, an entry per case asked for, each in a
+# guard of its own, then `ended`. A list that raised is the test's one entry, and its cases are none
+task case-run-lines
+  take one, like report-test
+  take at, like number
+  like list, like text
+
+  save lines, make list
+  push(lines, <task term-test-run-{at}>)
+  push(lines, <  mark async>)
+  push(lines, <  save term-test-started>)
+  push(lines, <    call term-test-clock>)
+  push(lines, <  save term-test-listed, false>)
+  push(lines, <  save term-test-values>)
+  push(lines, <    call {one/name}-no-cases>)
+  # the list in a guard of its own, and each case in another below: a guard inside a guard does not build on Rust
+  push(lines, <  fork>)
+  push(lines, <    mark unsafe>)
+  push(lines, <    save term-test-values>)
+  push(lines, <      call {one/name}-cases>)
+  push(lines, <    save term-test-listed, true>)
+  push(lines, <  halt take>)
+  push(lines, <    take term-test-problem>)
+  push(lines, <    save term-test-note-is, read term-test-problem/note>)
+  push(lines, <    call term-test-entry>)
+  push(lines, <      text \<{one/name}\>>)
+  push(lines, <      call term-test-verdict>)
+  push(lines, <        read term-test-note-is>)
+  push(lines, <      read term-test-note-is>)
+  push(lines, <      text \<\>>)
+  push(lines, <      code {one/line}>)
+  push(lines, <      read term-test-started>)
+  push(lines, <  save term-test-at, code 0>)
+  push(lines, <  walk list>)
+  push(lines, <    read term-test-values>)
+  push(lines, <    hook next>)
+  push(lines, <      take site, name term-test-value>)
+  push(lines, <      save term-test-case, text \<#\{term-test-at\}\>>)
+  fork test, is-equal(one/cases, <text>)
+    hold
+      push(lines, <      save term-test-case>)
+      push(lines, <        call term-test-case-text>)
+      push(lines, <          read term-test-value>)
+  push(lines, <      fork test>)
+  push(lines, <        hook test>)
+  push(lines, <          call term-test-case-chosen>)
+  push(lines, <            text \<{literal-of(one/chosen)}\>>)
+  push(lines, <            text \<{literal-of(one/label)}\>>)
+  push(lines, <            read term-test-case>)
+  push(lines, <        hook hold>)
+  push(lines, <          save term-test-case-started>)
+  push(lines, <            call term-test-clock>)
+  push(lines, <          save term-test-verdict-is, text \<missed\>>)
+  push(lines, <          save term-test-case-note, text \<\>>)
+  push(lines, <          fork>)
+  push(lines, <            mark unsafe>)
+  push(lines, <            fork test>)
+  push(lines, <              hook test>)
+  push(lines, <                call {one/name}-case>)
+  push(lines, <                  read term-test-value>)
+  push(lines, <                  read term-test-case>)
+  push(lines, <              hook hold>)
+  push(lines, <                save term-test-verdict-is, text \<held\>>)
+  push(lines, <          halt take>)
+  push(lines, <            take term-test-case-problem>)
+  push(lines, <            save term-test-case-note, read term-test-case-problem/note>)
+  push(lines, <            save term-test-verdict-is>)
+  push(lines, <              call term-test-verdict>)
+  push(lines, <                read term-test-case-note>)
+  push(lines, <          call term-test-case-entry>)
+  push(lines, <            text \<{one/name}\>>)
+  push(lines, <            read term-test-case>)
+  push(lines, <            read term-test-verdict-is>)
+  push(lines, <            read term-test-case-note>)
+  push(lines, <            text \<\>>)
+  push(lines, <            code {one/line}>)
+  push(lines, <            read term-test-case-started>)
+  push(lines, <      save term-test-at>)
+  push(lines, <        call add>)
+  push(lines, <          read term-test-at>)
+  push(lines, <          code 1>)
+  push(lines, <  fork test>)
+  push(lines, <    hook test>)
+  push(lines, <      read term-test-listed>)
+  push(lines, <    hook hold>)
+  push(lines, <      call term-test-ended>)
+  push(lines, <        text \<{one/name}\>>)
+  push(lines, <>)
+  back lines
 
 # THE REPORT'S TEXT, for a native target, where the report is a module loading the test file. One task per test, calling
 # it inside a guard, then one entry written through call/code/test-report.tree, so what a test raised is on disk before the
@@ -128,18 +235,38 @@ task report-text
 
   save lines, make list
   push(lines, <load {load}>)
+  save any-cases, false
   walk tests
     take one, like report-test
     push(lines, <  find {one/name}>)
+    fork test, is-unequal(one/cases, <>)
+      hold
+        save any-cases, true
+        push(lines, <  find {one/name}-cases>)
+        push(lines, <  find {one/name}-no-cases>)
+        push(lines, <  find {one/name}-case>)
   push(lines, <>)
   push(lines, <load @term/call/test-report>)
   push(lines, <  find report-clock, name term-test-clock>)
   push(lines, <  find report-entry, name term-test-entry>)
   push(lines, <  find report-verdict, name term-test-verdict>)
+  fork test, any-cases
+    hold
+      push(lines, <  find report-case-entry, name term-test-case-entry>)
+      push(lines, <  find report-ended, name term-test-ended>)
+      push(lines, <  find report-case-text, name term-test-case-text>)
+      push(lines, <  find report-case-chosen, name term-test-case-chosen>)
   push(lines, <>)
   save at, 0
   walk tests
     take one, like report-test
+    fork test, is-unequal(one/cases, <>)
+      hold
+        walk case-run-lines(one, at)
+          take text, like text
+          push(lines, text)
+        save at, add(at, 1)
+        turn next
     push(lines, <task term-test-run-{at}>)
     push(lines, <  mark async>)
     push(lines, <  save term-test-started>)
@@ -186,9 +313,11 @@ task report-name
 
   back <term-test-report>
 
-# one test's entry as the runner reads it. `ms` is 0 when the file does not say
+# one test's entry as the runner reads it. `ms` is 0 when the file does not say. `case` is a case's own part of its
+# label, the empty text for a test of one case
 form report-entry
   link test, like text
+  link case-label, like text
   link verdict, like text
   link note, like text
   link shown, like text
@@ -305,6 +434,7 @@ task read-report
                             save entry
                               make report-entry
                                 bind test, field-text(fields, <test>)
+                                bind case-label, field-text(fields, <case>)
                                 bind verdict, verdict
                                 bind note, field-text(fields, <note>)
                                 bind shown, field-text(fields, <shown>)
@@ -378,6 +508,17 @@ task skip-reason
   save first, get(text-split(note, < sampled at >), 0)
   back substring(first, 5, char-count(first))
 
+# a case's whole label, `<phrase> [<case>]`, or the test's own for a test of one case (decision 022 T6)
+task labeled-case
+  take label, like text
+  take case-label, like text
+  like text
+
+  fork test, is-equal(case-label, <>)
+    hold
+      back label
+  back <{label} [{case-label}]>
+
 # what the runner says past the first test a child never reported
 task not-reached
   like text
@@ -388,14 +529,17 @@ task not-reached
 # runner quotes as they are
 form settled-test
   link test, like text
+  link case-label, like text
   link verdict, like text
   link note, like text
   link shown, like text
   link ms, like number
   link said, like boolean
 
-# EVERY TEST ASKED, IN ORDER, against what its child reported. A reported entry stands. The first unreported test raised
-# `stop`, since the child was running it when it ended, and the rest are "not reached"
+# EVERY TEST ASKED, IN ORDER, against what its child reported. A reported entry stands, and an enumerated test stands as
+# each case it reported (decision 022 T6), none when `--case` asked for none of them. The first unreported test raised
+# `stop`, since the child was running it when it ended, and the rest are "not reached". An enumerated test with cases and
+# no `ended` entry is one the child stopped inside: what it reported stands, and one more entry says why it stopped
 task settle-report
   take names, like list, like text
   take entries, like list, like report-entry
@@ -407,20 +551,51 @@ task settle-report
   walk names
     take name, like text
     save found, false
+    save ended, false
+    save any-case, false
     walk entries
       take entry, like report-entry
-      fork test, and(not(found), is-equal(entry/test, name))
+      fork test, is-equal(entry/test, name)
         hold
-          save found, true
-          save made
-            make settled-test
-              bind test, name
-              bind verdict, entry/verdict
-              bind note, entry/note
-              bind shown, entry/shown
-              bind ms, entry/ms
-              bind said, false
-          push(out, made)
+          fork test, is-equal(entry/verdict, <ended>)
+            hold
+              save found, true
+              save ended, true
+            miss
+              # a test of one case stands as its first entry
+              fork test, or(not(found), is-unequal(entry/case-label, <>))
+                hold
+                  save found, true
+                  fork test, is-unequal(entry/case-label, <>)
+                    hold
+                      save any-case, true
+                  save made
+                    make settled-test
+                      bind test, name
+                      bind case-label, entry/case-label
+                      bind verdict, entry/verdict
+                      bind note, entry/note
+                      bind shown, entry/shown
+                      bind ms, entry/ms
+                      bind said, false
+                  push(out, made)
+    fork test, and(any-case, not(ended))
+      hold
+        save why, stop
+        fork test, stopped
+          hold
+            save why, not-reached()
+        save stopped, true
+        save cut-short
+          make settled-test
+            bind test, name
+            bind case-label, <>
+            bind verdict, <raised>
+            bind note, why
+            bind shown, <>
+            bind ms, 0
+            bind said, true
+        push(out, cut-short)
     fork test, not(found)
       hold
         save why, stop
@@ -431,6 +606,7 @@ task settle-report
         save unreported
           make settled-test
             bind test, name
+            bind case-label, <>
             bind verdict, <raised>
             bind note, why
             bind shown, <>

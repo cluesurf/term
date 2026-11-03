@@ -18,6 +18,10 @@ load @term/base/file/synchronous
 
 load @term/base/text
   find starts-with, name report-starts-with
+  find substring, name report-substring
+  find char-count, name report-char-count
+  find to-lower-case, name report-lower
+  find contains, name report-contains
 
 load @term/host/base
   find data
@@ -151,6 +155,105 @@ task report-entry
         read started
   call report-line
     read fields
+
+# one finished case of an enumerated test (decision 022 T6): as `report-entry`, and `case` its own part of the label
+task report-case-entry
+  mark async
+  take test, like text
+  take case-label, like text
+  take verdict, like text
+  take note, like text
+  take shown, like text
+  take line, like number
+  take started, like number
+  save fields, make list
+  call fields/push
+    call report-text-field
+      text <test>
+      read test
+  call fields/push
+    call report-text-field
+      text <case>
+      read case-label
+  call fields/push
+    call report-text-field
+      text <verdict>
+      read verdict
+  call fields/push
+    call report-text-field
+      text <note>
+      read note
+  call fields/push
+    call report-text-field
+      text <shown>
+      read shown
+  call fields/push
+    call report-number-field
+      text <line>
+      read line
+  call fields/push
+    call report-number-field
+      text <ms>
+      call subtract
+        call report-now
+        read started
+  call report-line
+    read fields
+
+# an enumerated test whose every case ran: the runner reads a test with cases and no such entry as one its child
+# stopped inside
+task report-ended
+  mark async
+  take test, like text
+  save fields, make list
+  call fields/push
+    call report-text-field
+      text <test>
+      read test
+  call fields/push
+    call report-text-field
+      text <verdict>
+      text <ended>
+  call report-line
+    read fields
+
+# a case's own part of its label when its input is text: the text, cut at 80 characters
+task report-case-text
+  take value, like text
+  like text
+  fork test
+    hook test
+      call is-above
+        call report-char-count
+          read value
+        code 80
+    hook hold
+      send back
+        call report-substring
+          read value
+          code 0
+          code 80
+  send back, read value
+
+# whether `term test --case <chosen>` asks for this case: nothing chosen, or the phrase in `<label> [<case>]`, in any case
+task report-case-chosen
+  take chosen, like text
+  take label, like text
+  take case-label, like text
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read chosen
+        text <>
+    hook hold
+      send back, true
+  send back
+    call report-contains
+      call report-lower
+        text <{label} [{case-label}]>
+      call report-lower
+        read chosen
 
 # under `--update`, what each `want snapshot` saw: one `taken` entry per text, its test's phrase and the value, in the
 # order taken. A key with no value beside it saw the empty text

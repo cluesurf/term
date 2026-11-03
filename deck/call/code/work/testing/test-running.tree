@@ -25,6 +25,7 @@ load @term/call/test-run-words
   find settle-report
   find settled-test
   find skip-reason
+  find labeled-case
 
 load ./report-running
   find run-reported
@@ -131,13 +132,15 @@ form test-run
     like list, like text
     need false
 
-# a test as `term test` lists it: its task, its label, and its `test` line as written when it has one
+# a test as `term test` lists it: its task, its label, and its `test` line as written when it has one. `cases` is what an
+# enumerated test's input is (decision 022 T6), `text` or `value`, the empty text for a test of one case
 form listed-test
   link name, like text
   link label, like text
   link line
     like number
     need false
+  link cases, like text
 
 form listed-tests
   link text, like text
@@ -285,6 +288,18 @@ task label-of
       back test-label(name, false, <>)
   back test-label(name, true, host-text(label))
 
+# what an enumerated test's input is, `text` or `value`, the empty text for a test of one case
+task cases-of
+  take cases, like dynamic
+  take name, like text
+  like text
+
+  save kind, map-get(cases, name)
+  fork test, is-nothing(kind)
+    hold
+      back <>
+  back host-text(kind)
+
 # A test file's tests in source order, each with its label and the line its `test` stands on as written, and the file
 # as `term test` rewrites it (`term test --case`, `term test --env`). `options` as the preprocessor takes it: a native
 # run writes every `want` as the plain marker, and `term test` hands in the file's snapshots
@@ -299,7 +314,7 @@ task tests-of
   walk discover-tests(host-text(made/text), file)
     take name
     save head, map-get(made/heads, name)
-    save one, make(listed-test, bind(name, name), bind(label, label-of(made/labels, name)))
+    save one, make(listed-test, bind(name, name), bind(label, label-of(made/labels, name)), bind(cases, cases-of(made/cases, name)))
     fork test, not(is-nothing(head))
       hold
         save one/line, add(head, 1)
@@ -808,6 +823,9 @@ task run-test-file
   save made, preprocess-tests(source, make-preprocess-options(input/snapshots))
   save rewritten, host-text(made/text)
   save names, make list
+  # what `--case` asks of each enumerated test's cases: its phrase when the test itself does not answer it, so the
+  # child runs the cases that do (decision 022 T6)
+  save chosen-of, make hash
   walk discover-tests(rewritten, file)
     take name
     fork test, not(is-truthy(input/select))
@@ -817,6 +835,11 @@ task run-test-file
         fork test, is-truthy(input/select(make(case-ask, bind(name, name), bind(label, label-of(made/labels, name)))))
           hold
             names/push(name)
+          miss
+            fork test, is-unequal(cases-of(made/cases, name), <>)
+              hold
+                names/push(name)
+                save chosen-of/{name}, host-text(input/chosen)
   save entry, make(source-ask, bind(file, file), bind(text, rewritten))
   save result, nothing()
   fork test, is-truthy(input/units)
@@ -872,7 +895,11 @@ task run-test-file
     fork test, not(is-nothing(head))
       hold
         save at-line, add(head, 1)
-    asked/push(make(child-test, bind(name, name), bind(exported, host-text(typescript-module/to-camel(name))), bind(line, at-line)))
+    save chosen, <>
+    fork test, not(is-nothing(map-get(chosen-of, name)))
+      hold
+        save chosen, host-text(map-get(chosen-of, name))
+    asked/push(make(child-test, bind(name, name), bind(exported, host-text(typescript-module/to-camel(name))), bind(line, at-line), bind(cases, cases-of(made/cases, name)), bind(cases-exported, host-text(typescript-module/to-camel(<{name}-cases>))), bind(case-exported, host-text(typescript-module/to-camel(<{name}-case>))), bind(label, label-of(made/labels, name)), bind(chosen, chosen)))
   save command, make list
   command/push(node-program())
   command/push(write-start(root, out, report-bundle, asked))
@@ -885,7 +912,7 @@ task run-test-file
     fork test, not(is-nothing(head))
       hold
         save line, add(head, 1)
-    results/push(settled-result(one, label-of(made/labels, one/test), line, source))
+    results/push(settled-result(one, labeled-case(label-of(made/labels, one/test), one/case-label), line, source))
   # under `--update`, what each `want snapshot` saw, by its test's phrase, in the order taken
   save taken, make hash
   save any-taken, false
@@ -911,6 +938,13 @@ form child-test
   link name, like text
   link exported, like text
   link line, like number
+  # an enumerated test (decision 022 T6): what its input is, `text` or `value`, the empty text for a test of one case,
+  # the tasks of its list and of one case as the bundle exports them, its phrase, and what `--case` asked of its cases
+  link cases, like text
+  link cases-exported, like text
+  link case-exported, like text
+  link label, like text
+  link chosen, like text
 
 # `JSON.stringify(value)` of the tests a start file names
 bind tests-json

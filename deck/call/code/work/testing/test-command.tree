@@ -16,6 +16,7 @@
 load @term/base/list
   find list
   find join
+  find contains
 
 load @term/call/test-plan
   find is-control
@@ -214,6 +215,8 @@ form run-ask
   link select
     like dynamic
     need false
+  # what `--case` said, the empty text for nothing: an enumerated test `select` does not answer runs the cases it does
+  link chosen, like text, fall <>
   # the seconds `--limit` said, 0 for nothing
   link limit, like number
 
@@ -228,6 +231,8 @@ form native-ask
   link lean-of, like dynamic
   link deck-of, like dynamic
   link limit, like number
+  # what `--case` said, the empty text for nothing
+  link chosen, like text, fall <>
 
 # ---- this run's own state ----
 
@@ -281,6 +286,21 @@ bind nothing
   like dynamic
   case node
     text <undefined>
+
+# a hash's keys, in the order they were set
+bind hash-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <[...($value?.keys() ?? [])]>
+
+# whether a snapshot phrase is one of a test's cases: `<label> [<case>]`
+bind is-case-phrase
+  take phrase, like text
+  take label, like text
+  like boolean
+  case node
+    text <($phrase.startsWith($label + " [") && $phrase.endsWith("]"))>
 
 # whether a host value is truthy, as `if (value)` reads it
 bind is-truthy
@@ -715,7 +735,8 @@ task run-file
   save chosen, make list
   walk listed/tests
     take listed-test, like dynamic
-    fork test, or(is-equal(context/chosen, <>), case-matches(context/chosen, listed-test))
+    # an enumerated test runs too, for the cases whose label holds the phrase (decision 022 T6)
+    fork test, or(or(is-equal(context/chosen, <>), case-matches(context/chosen, listed-test)), is-unequal(host-text(listed-test/cases), <>))
       hold
         chosen/push(listed-test)
   # `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all
@@ -727,9 +748,9 @@ task run-file
   save ran, nothing()
   fork test, and(is-unequal(context/native, <>), is-above(chosen/length, 0))
     hold
-      save ran, run-native-test-file(make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of), bind(limit, context/limit)))
+      save ran, run-native-test-file(make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of), bind(limit, context/limit), bind(chosen, context/chosen)))
     miss
-      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots), bind(limit, context/limit))
+      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots), bind(limit, context/limit), bind(chosen, context/chosen))
       fork test, is-unequal(context/chosen, <>)
         hold
           save phrase, context/chosen
@@ -749,9 +770,30 @@ task run-file
   fork test, and(context/update, is-truthy(ran/taken))
     hold
       save phrases, make list
+      # an enumerated test's snapshots are by each case's label: the cases that took one this run, and the stored ones of
+      # a test that took none, or of a run `--case` cut down, which ran only some of its cases
+      save taken-keys, hash-keys(ran/taken)
+      save stored-keys, hash-keys(stored)
       walk listed/tests
         take listed-test, like dynamic
-        phrases/push(host-text(listed-test/label))
+        save label, host-text(listed-test/label)
+        phrases/push(label)
+        fork test, is-unequal(host-text(listed-test/cases), <>)
+          hold
+            save took, false
+            walk taken-keys
+              take key, like text
+              fork test, is-case-phrase(key, label)
+                hold
+                  save took, true
+                  phrases/push(key)
+            fork test, or(not(took), is-unequal(context/chosen, <>))
+              hold
+                walk stored-keys
+                  take key, like text
+                  fork test, and(is-case-phrase(key, label), not(contains(phrases, key)))
+                    hold
+                      phrases/push(key)
       save written, write-snapshots(file, stored, ran/taken, phrases)
       save recorded, true
   fork test, is-truthy(ran/failure)
@@ -768,6 +810,11 @@ task run-file
       report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
       back
   save total, ran/results/length
+  # `--case` chose no case of the enumerated tests it ran, and no other test: the file held none of what it asked for
+  fork test, and(is-unequal(context/chosen, <>), is-equal(total, 0))
+    hold
+      save tally/skipped, add(tally/skipped, 1)
+      back
   save held, 0
   save skips, 0
   save reasons, make list

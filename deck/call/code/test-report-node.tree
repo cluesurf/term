@@ -7,6 +7,10 @@
 load @term/call/test-report
   find report-clock
   find report-entry
+  find report-case-entry
+  find report-ended
+  find report-case-text
+  find report-case-chosen
   find report-verdict
   find report-taken
 
@@ -48,7 +52,191 @@ bind test-line
   case node
     text <$one.line>
 
+# what an enumerated test's input is (decision 022 T6): `text`, `value`, or the empty text for a test of one case
+bind test-cases
+  take one, like dynamic
+  like text
+  case node
+    text <($one.cases ?? "")>
+
+bind test-label
+  take one, like dynamic
+  like text
+  case node
+    text <($one.label ?? "")>
+
+# what `term test --case` asked of this test's cases, the empty text for every case
+bind test-chosen
+  take one, like dynamic
+  like text
+  case node
+    text <($one.chosen ?? "")>
+
+# `await loaded[casesExported]()`: an enumerated test's list
+bind call-cases
+  take loaded, like dynamic
+  take one, like dynamic
+  like list, like dynamic
+  case node
+    text <(await $loaded[$one.casesExported]())>
+
+# `Boolean(await loaded[caseExported](value, label))`: one case run
+bind call-case
+  take loaded, like dynamic
+  take one, like dynamic
+  take value, like dynamic
+  take label, like text
+  like boolean
+  case node
+    text <Boolean(await $loaded[$one.caseExported]($value, $label))>
+
+bind no-values
+  like list, like dynamic
+  case node
+    text <[]>
+
+bind value-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# one case of an enumerated test, in its own guard, so a failing `want` ends this case only
+task run-case
+  mark async
+  mark private
+  take one, like dynamic
+  take loaded, like dynamic
+  take value, like dynamic
+  take label, like text
+  save started
+    call report-clock
+  save verdict, text <missed>
+  save note, text <>
+  save shown, text <>
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call call-case
+          read loaded
+          read one
+          read value
+          read label
+      hook hold
+        save verdict, text <held>
+  halt take
+    take problem
+    save note
+      call raise-note
+        read problem
+    save shown
+      call raise-shown
+        read problem
+    save verdict
+      call report-verdict
+        read note
+  call report-case-entry
+    call test-name(read one)
+    read label
+    read verdict
+    read note
+    read shown
+    call test-line(read one)
+    read started
+
+# An enumerated test: its list, then each case it holds in order, labeled by its text or its place, and those `--case`
+# asks for run. A list that raised (an empty walk, a corpus that is not there) is the test's one entry. Its last entry
+# says every case ran
+task run-cases
+  mark async
+  mark private
+  take one, like dynamic
+  take loaded, like dynamic
+  save started
+    call report-clock
+  save listed, false
+  save values
+    call no-values
+  fork
+    mark unsafe
+    save values
+      call call-cases
+        read loaded
+        read one
+    save listed, true
+  halt take
+    take problem
+    save note
+      call raise-note
+        read problem
+    call report-entry
+      call test-name(read one)
+      call report-verdict
+        read note
+      read note
+      text <>
+      call test-line(read one)
+      read started
+  fork test
+    hook test
+      read listed
+    hook hold
+      save at, code 0
+      walk list
+        read values
+        hook next
+          take site, name value
+          save label, text <#{at}>
+          fork test
+            hook test
+              call is-equal
+                call test-cases(read one)
+                text <text>
+            hook hold
+              save label
+                call report-case-text
+                  call value-text(read value)
+          fork test
+            hook test
+              call report-case-chosen
+                call test-chosen(read one)
+                call test-label(read one)
+                read label
+            hook hold
+              call run-case
+                read one
+                read loaded
+                read value
+                read label
+          save at
+            call add
+              read at
+              code 1
+      call report-ended
+        call test-name(read one)
+
 task run-one
+  mark async
+  mark private
+  take one, like dynamic
+  take loaded, like dynamic
+  fork test
+    hook test
+      call is-unequal
+        call test-cases(read one)
+        text <>
+    hook hold
+      call run-cases
+        read one
+        read loaded
+    hook miss
+      call run-single
+        read one
+        read loaded
+
+# a test of one case
+task run-single
   mark async
   mark private
   take one, like dynamic
