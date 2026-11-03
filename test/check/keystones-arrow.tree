@@ -1,0 +1,147 @@
+note <The arrow-of-time keystone, discharged by the refinement prover (refine.ts)>
+
+# Ported from keystones-arrow.ts by tmp/self-host/suite-kernel-port.mjs. check/refine is the subject (decision 106).
+# The arrow-of-time keystone, discharged by the refinement prover (refine.ts). The arrow is the one-way order of
+# the integers, and the integers are the UNIQUE totally ordered rung of the tower: in any ordered ring every
+# square is at least zero, which the integers satisfy, but the very next rung carries a square root of minus one
+# whose square is below zero, so no order can place it. So the order stops at the integers, and a one-way order
+# is the arrow. The orderability and its failure one rung up are linear-arithmetic facts the prover discharges.
+# Run: npx tsx test/check/keystones-arrow.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/refine>, name refine-prover
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind linear-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0, $a1)>
+
+bind linear-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0)>
+
+bind at-least-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atLeast($a0, $a1)>
+
+bind proves-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.proves($a0, $a1)>
+
+bind below-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.below($a0, $a1)>
+
+bind at-most-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atMost($a0, $a1)>
+
+task lit
+  take n, like dynamic
+  like dynamic
+
+  back linear-2(refine-prover, make-record(empty-list()), n)
+
+host isquared, linear-1(refine-prover, make-record(make(list, <isquared>, 1)))
+
+# ===== the next rung cannot be ordered: i^2 = -1 contradicts orderability =====
+# assume the rung is ordered, so its squares are non-negative (i^2 >= 0), and that it carries i with i^2 = -1
+# (i.e. i^2 <= -1 and i^2 >= -1). These are jointly unsatisfiable: 0 <= i^2 = -1 is false. So from them the prover
+# proves even an absurd goal (ex falso), which is exactly the contradiction that forbids an order past the integers.
+host ordered, at-least-2(refine-prover, isquared, lit(0))
+
+host i-is-minus-one-low, at-most-2(refine-prover, isquared, lit(-1))
+
+# ===== the integers are orderable: every square is non-negative =====
+test <a square is non-negative: 2*2 = 4 \>= 0>
+  want hold, truth(proves-2(refine-prover, empty-list(), at-least-2(refine-prover, lit(4), lit(0))))
+
+test <a square is non-negative: (-3)*(-3) = 9 \>= 0>
+  want hold, truth(proves-2(refine-prover, empty-list(), at-least-2(refine-prover, lit(9), lit(0))))
+
+test <a square is non-negative: 0*0 = 0 \>= 0>
+  want hold, truth(proves-2(refine-prover, empty-list(), at-least-2(refine-prover, lit(0), lit(0))))
+
+# the order is one-way (strict, antisymmetric): if a < b then not b < a. with a = 2, b = 5: 2 < 5 holds,
+# and 5 < 2 does not.
+test <the order is one-way: 2 \< 5 holds>
+  want hold, truth(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(2), lit(5))))
+
+test <the order is one-way: 5 \< 2 does not hold>
+  want hold, not(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(5), lit(2))))
+
+test <orderability together with i^2 = -1 is contradictory (the loss of order)>
+  want hold, truth(proves-2(refine-prover, make(list, ordered, i-is-minus-one-low), below-2(refine-prover, lit(0), lit(-1))))
+
+# control: orderability ALONE (without i^2 = -1) is consistent, so the absurd goal does NOT follow.
+test <control: orderability alone is consistent (no contradiction)>
+  want hold, not(proves-2(refine-prover, make(list, ordered), below-2(refine-prover, lit(0), lit(-1))))

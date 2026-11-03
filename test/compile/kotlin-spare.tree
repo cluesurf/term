@@ -1,0 +1,73 @@
+note <Kotlin's spare node: a move keeps its own, a pop that does not build goes through the program's>
+
+# Ported from kotlin-spare.ts by hand (item 0572).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find file-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+bind task-of
+  take text, like text
+  take name, like text
+  like text
+  case node
+    text <(() =\> \{ const start = $text.indexOf(`fun $\{$name\}(`); return start \< 0 ? "" : $text.slice(start, $text.indexOf("\n\}\n", start)) \})()>
+
+# Towers' older shape, the pop and the push called straight from the recursive move, which nothing is inlined into
+bind older-of
+  take stack, like text
+  like text
+  case node
+    text <$stack.replace(/  call move-top\n    read piles\n    read from\n    read to\n/g, "  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n").replace(/      call move-top\n        read piles\n        read from\n        read to\n/, "      call push-disk\n        read piles\n        call pop-disk\n          read piles\n          read from\n        read to\n")>
+
+bind moved-off
+  take older, like text
+  like boolean
+  case node
+    text <!/call move-top\n    read piles/.test($older.slice($older.indexOf("task move-disks")))>
+
+task kotlin
+  take file, like text
+  take source, like text
+  like text
+
+  host built, compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <kotlin>), bind(env, <kotlin>), bind(entry, <towers>)))
+  fork test, not(built/ok)
+    hold
+      halt <{file} was refused>
+  back emit-text(built, <kotlin>)
+
+host stack, file-text(<mark/towers/term.tree>)
+host move-top, task-of(kotlin(<mark/towers/term.tree>, stack), <moveTop>)
+host older, older-of(stack)
+host pop-disk, task-of(kotlin(<older-towers.tree>, older), <popDisk>)
+
+# 1. Towers' move keeps the popped node in its own spare and builds the pushed one in it, with no clear between
+test <towers: the move keeps the node in its own spare>
+  want hold, matches(make(pattern, <<__spareStackDisk = top\d+>>), move-top)
+
+test <towers: and does not clear its links first>
+  want hold, not(text-contains(move-top, <.below = StackEmpty>))
+
+test <towers: the push builds in the spare>
+  want hold, matches(make(pattern, <<val __h\d+ = __spareStackDisk>>), move-top)
+
+# 2. the pop keeps a node it does not build, so it goes through the program's spare, its links cleared first
+test <older towers: the move no longer calls move-top>
+  want hold, is-unequal(older, stack)
+  want hold, moved-off(older)
+
+test <older towers: the pop keeps the node for the program's spare>
+  want hold, matches(make(pattern, <<termSpareStackDisk = top\d*(\n|$)>>), pop-disk)
+
+test <older towers: and clears its links first>
+  want hold, matches(make(pattern, <<\.below = StackEmpty\n\s+termSpareStackDisk = >>), pop-disk)

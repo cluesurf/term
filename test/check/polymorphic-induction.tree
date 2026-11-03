@@ -1,0 +1,44 @@
+note <Polymorphic structural induction>
+
+# Ported from polymorphic-induction.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+# Polymorphic structural induction: `fold` over a value of a POLYMORPHIC datatype (`stack a`). The induction machinery
+# previously bailed because the variable's type is `apply(stack, natural)` (tag 'app'), not a bare constant, and built
+# constructor values without the erased type-parameter witnesses. It now peels the type former (`headConstantName`),
+# inserts the witnesses, and recognises recursive fields by their type former -- so structural induction over a
+# polymorphic container works (and polymorphic functions over it reduce). Run: npx tsx test/check/polymorphic-induction.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform stack\n  head a\n  case empty\n  case push\n    link top, like a\n    link rest, like stack\n      head a\n\ntask length\n  take s, like stack\n    head nat\n  like nat\n  fork case, read s\n    case empty\n      send back\n        make zero\n    case push\n      link top\n      link rest\n      send back\n        make succ\n          bind prior\n            call length\n              read rest\n\ntask append\n  take s, like stack\n    head nat\n  take t, like stack\n    head nat\n  like stack\n    head nat\n  fork case, read s\n    case empty\n      send back\n        read t\n    case push\n      link top\n      link rest\n      send back\n        make push\n          bind top\n            read top\n          bind rest\n            call append\n              read rest\n              read t\n>
+
+# 1. structural induction over the polymorphic stack closes a reflexive goal (the induction splits + each case reduces).
+test <fold over a polymorphic datatype works>
+  want hold, compile-text(<{prelude}\nrule length-refl\n  seat s, like stack\n    head nat\n  show hold\n    call is-equal\n      call length\n        read s\n      call length\n        read s\n  fold s\n>)/ok
+
+# 2. a polymorphic recursive function reduces (append over the parameterised stack).
+test <polymorphic recursive function reduces>
+  want hold, compile-text(<{prelude}\nrule append-empty\n  seat t, like stack\n    head nat\n  show hold\n    call is-equal\n      call append\n        make empty\n        read t\n      read t\n  calm hold\n>)/ok
+
+# 3. the LENGTH HOMOMORPHISM -- the key length-indexed-vector shape law -- proven by INDUCTION over a polymorphic
+# container, USING the induction hypothesis on the recursive tail: length (append s t) = length s + length t.
+test <length-append homomorphism over a polymorphic container (IH-using)>
+  want hold, compile-text(<{prelude}\ntask plus\n  take a, like nat\n  take b, like nat\n  like nat\n  fork case, read a\n    case zero\n      send back\n        read b\n    case succ\n      link prior\n      send back\n        make succ\n          bind prior\n            call plus\n              read prior\n              read b\n\nrule length-append\n  seat s, like stack\n    head nat\n  seat t, like stack\n    head nat\n  show hold\n    call is-equal\n      call length\n        call append\n          read s\n          read t\n      call plus\n        call length\n          read s\n        call length\n          read t\n  fold s\n>)/ok
+
+# a GENERIC path, whose laws need the induction hypothesis at another start (generalized over x) and are stated with a
+# generic call inside a generic call. The case value must carry the subject's own type argument and its fields read
+# their types with it (`next : a`), or nothing built from them types and the inner call's type argument stays unsolved
+# (math-foundations-0004, 2026-10-05). Lean, as code/relation/closure.tree is
+host paths, <form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\nform path\n  head a\n  case stop\n  case through\n    slot next, like a\n    slot rest, like path a\n\ntask finish\n  head a\n  take x, like a\n  take p, like path a\n  like a\n  sift p\n    case stop\n      back x\n    case through\n      back finish(next, rest)\n\ntask follows\n  head a\n  take r\n    like task\n      take x, like a\n      take y, like a\n      like flag\n  take x, like a\n  take p, like path a\n  like flag\n  sift p\n    case stop\n      back make yes\n    case through\n      back both(r(x, next), follows(r, next, rest))\n\ntask join\n  head a\n  take p, like path a\n  take q, like path a\n  like path a\n  sift p\n    case stop\n      back q\n    case through\n      back make through(next, join(rest, q))\n>
+
+host marks, <  head a\n  seat r\n    like task\n      take x, like a\n      take y, like a\n      like flag\n  seat x, like a\n  seat p, like path a\n  seat q, like path a\n>
+
+test <a generic path ends, after a join, where its second part ends from where the first does>
+  want hold, compile-text(<{paths}\nrule join-finishes\n  head a\n  seat x, like a\n  seat p, like path a\n  seat q, like path a\n  show hold, is-equal finish(x, join(p, q)), finish(finish(x, p), q)\n  fold p\n>, make(compile-choice, bind(file, <p.tree>), bind(lean, true)))/ok
+
+test <and follows r exactly when both parts do, the hypothesis taken at the next element>
+  want hold, compile-text(<{paths}\nrule join-follows\n{marks}  show hold, is-equal follows(r, x, join(p, q)), both(follows(r, x, p), follows(r, finish(x, p), q))\n  fold p\n>, make(compile-choice, bind(file, <p.tree>), bind(lean, true)))/ok
+
+test <SOUNDNESS: the second part does not start at x>
+  want hold, not(compile-text(<{paths}\nrule join-follows-from-x\n{marks}  show hold, is-equal follows(r, x, join(p, q)), both(follows(r, x, p), follows(r, x, q))\n  fold p\n>, make(compile-choice, bind(file, <p.tree>), bind(lean, true)))/ok)

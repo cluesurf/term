@@ -641,6 +641,10 @@ task reach-statement-in
             fork test, enters(out, <body>)
               hold
                 reach-block(out, arm/body)
+            # the type an arm over an `unknown` tests for (term/compiler decision 012): a form may be named nowhere else
+            fork test, enters(out, <type>)
+              hold
+                reach-maybe-type(out, arm/type)
       fork test, enters(out, <otherwise>)
         hold
           reach-maybe-block(out, otherwise)

@@ -1,0 +1,89 @@
+note <THE TWO INFERENCE REFUSALS (check/strict.ts, decisions-2026-10.md, D10)>
+
+# Ported from infer-strict.ts by hand (item 0558). A parameter no call and no use gives a type, and a call several same-arity definitions
+# fit equally. Decided 2026-10-07: the ambiguous call is refused by default (TERM_INFER_AMBIGUOUS=0 turns it off), and the parameter waits
+# behind the strict switch until its census is zero. On, each is refused naming what to write. check/strict is the subject (decision 106),
+# and each test sets its switches and puts them back, where the original sets them around a run of tests.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/check/strict>, name strict-switches
+
+# a parameter nothing gives a type
+host lonely, <task lonely\n  take value\n\n  like text\n\n  back \<seen\>\n>
+
+# a parameter a call gives a type
+host called, <{lonely}\ntask use\n  like text\n\n  back lonely(1)\n>
+
+# two definitions of one name and arity, typed apart, and a call whose argument's type nothing has decided yet
+host ambiguous, <task show\n  take n, like number\n\n  like text\n\n  back \<number\>\n\ntask show\n  take n, like text\n\n  like text\n\n  back \<text\>\n\ntask pass-on\n  take x\n\n  like text\n\n  back show(x)\n\ntask use\n  like text\n\n  back show(1)\n>
+
+bind some-ambiguous
+  take messages, like list, like text
+  like boolean
+  case node
+    text <$messages.some(m =\> m.startsWith("ambiguous call: 2 definitions of \"show\""))>
+
+bind some-naming-both
+  take messages, like list, like text
+  like boolean
+  case node
+    text <$messages.some(m =\> m.startsWith("ambiguous call: 2 definitions of \"show\"") && m.includes("(number)") && m.includes("(text)"))>
+
+bind some-holding
+  take messages, like list, like text
+  take word, like text
+  like boolean
+  case node
+    text <$messages.some(m =\> m.includes($word))>
+
+bind ambiguous-count
+  take messages, like list, like text
+  like number
+  case node
+    text <$messages.filter(m =\> m.startsWith("ambiguous call")).length>
+
+task said
+  take source, like text
+  like list, like text
+
+  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>)))/messages
+
+task said-strict
+  take source, like text
+  like list, like text
+
+  strict-switches/set-infer-strict(true)
+  host messages, said(source)
+  strict-switches/set-infer-strict(false)
+  back messages
+
+test <off: an unconstrained parameter builds>
+  strict-switches/set-infer-strict(false)
+  want hold, is-equal(said(lonely)/length, 0)
+
+# D10, decided 2026-10-07: the ambiguous-call refusal is on by default, the strict switch off
+test <default: a call two definitions fit equally is refused, the strict switch off>
+  strict-switches/set-infer-strict(false)
+  want hold, some-ambiguous(said(ambiguous))
+
+test <TERM_INFER_AMBIGUOUS=0: an ambiguous call builds>
+  strict-switches/set-ambiguous-refused(false)
+  host messages, said(ambiguous)
+  strict-switches/set-ambiguous-refused(true)
+  want hold, is-equal(messages/length, 0)
+
+test <on: a parameter no call and no use types is refused, naming it>
+  want hold, some-holding(said-strict(lonely), <"value" of "lonely" is never given a type>)
+
+test <on: a parameter a call types builds>
+  want hold, is-equal(said-strict(called)/length, 0)
+
+test <on: a call two definitions fit equally is refused, naming both>
+  want hold, some-naming-both(said-strict(ambiguous))
+
+test <on: a call one definition fits is not>
+  want hold, is-equal(ambiguous-count(said-strict(ambiguous)), 1)

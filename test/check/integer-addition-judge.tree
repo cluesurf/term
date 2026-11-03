@@ -1,0 +1,278 @@
+note <Integer addition on the decided kernel (judge.ts)>
+
+# Ported from integer-addition-judge.ts by hand (item 0558). check/judge is the subject (decision 106). Signed subtraction and addition, all
+# four sign cases, type-check and compute. The motive answers a function type, which the impredicative bottom universe allows.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind j-var
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind j-const
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind j-type
+  take module, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $module.litLevel($size) \})>
+
+bind j-pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: $mult, domain: $domain, codomain: $codomain \})>
+
+bind j-lam
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind j-app
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind j-id
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind j-refl
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+bind j-self
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "self", body: $body \})>
+
+bind j-define
+  take module, like dynamic
+  take name, like text
+  take term, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($name, $module.evaluate([], $term))>
+
+bind j-context
+  take module, like dynamic
+  take hyps, like list, like judge-hyp
+  like dynamic
+  case node
+    text <$module.contextWithSignature($hyps)>
+
+bind j-check
+  take module, like dynamic
+  take context, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.check($context, $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+task kc
+  take name, like text
+  like dynamic
+
+  back j-const(name)
+
+task v
+  take index, like number
+  like dynamic
+
+  back j-var(index)
+
+task a2
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+
+  back j-app(callee, given)
+
+task a3
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  like dynamic
+
+  back a2(a2(callee, one), two)
+
+task a4
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  take three, like dynamic
+  like dynamic
+
+  back a2(a3(callee, one, two), three)
+
+task many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back j-pi(<many>, domain, codomain)
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back j-lam(body)
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+host ty-zero, j-type(judge-kernel, 0)
+
+# naturals
+host nat-step, many(kc(<Nat>), many(a2(v(2), v(0)), a2(v(3), a2(kc(<succ>), v(1)))))
+host nat-body, j-pi(0, many(kc(<Nat>), ty-zero), many(a2(v(0), kc(<zero>)), many(nat-step, a2(v(2), v(3)))))
+host nat-term, j-self(nat-body)
+host zero-value, lam(lam(lam(v(1))))
+host succ-value, lam(lam(lam(lam(a2(a2(v(0), v(3)), a4(v(3), v(2), v(1), v(0)))))))
+host plus-value, lam(lam(a4(v(1), lam(kc(<Nat>)), v(0), lam(lam(a2(kc(<succ>), v(0)))))))
+
+# integers
+host int-body, j-pi(0, many(kc(<Int>), ty-zero), many(many(kc(<Nat>), a2(v(1), a2(kc(<pos>), v(0)))), many(many(kc(<Nat>), a2(v(2), a2(kc(<negSucc>), v(0)))), a2(v(2), v(3)))))
+host int-term, j-self(int-body)
+host pos-value, lam(lam(lam(lam(a2(v(1), v(3))))))
+host neg-succ-value, lam(lam(lam(lam(a2(v(0), v(3))))))
+host int-motive, lam(kc(<Int>))
+host nat-to-int, many(nat-term, int-term)
+host int-to-int, many(int-term, int-term)
+host nat-to-nat-to-int, many(nat-term, nat-to-int)
+host nat-to-nat-to-nat, many(nat-term, many(nat-term, nat-term))
+
+# signed subtraction: intSub m n = m - n as an integer, by recursion on m with motive (\ _. Nat -> Int)
+# base (m = 0): \ n. n (\_.Int) (pos 0) (\ k _. negSucc k), 0 - 0 = 0, 0 - (k+1) = negSucc k = -(k+1)
+host int-sub-base, lam(a4(v(0), int-motive, a2(kc(<pos>), kc(<zero>)), lam(lam(a2(kc(<negSucc>), v(1))))))
+# step (m = succ m'): \ m' rec n. n (\_.Int) (pos (succ m')) (\ k _. rec k), (succ m') - 0 = pos (succ m'), (succ m') - (succ k) = rec k
+host int-sub-step, lam(lam(lam(a4(v(0), int-motive, a2(kc(<pos>), a2(kc(<succ>), v(2))), lam(lam(a2(v(3), v(1))))))))
+# intSub = \ m. m (\ _. Nat -> Int) base step
+host int-sub-value, lam(a4(v(0), lam(nat-to-int), kc(<intSubBase>), kc(<intSubStep>)))
+
+# addition: add x y, by recursion on x with motive (\ _. Int -> Int)
+# add (pos a) = \ y. y (\_.Int) (\ b. pos (a + b)) (\ b. intSub a (succ b))
+host add-pos-case, lam(lam(a4(v(0), int-motive, lam(a2(kc(<pos>), a3(kc(<plus>), v(2), v(0)))), lam(a3(kc(<intSub>), v(2), a2(kc(<succ>), v(0)))))))
+# add (negSucc a) = \ y. y (\_.Int) (\ b. intSub b (succ a)) (\ b. negSucc (succ (a + b)))
+host add-neg-case, lam(lam(a4(v(0), int-motive, lam(a3(kc(<intSub>), v(0), a2(kc(<succ>), v(2)))), lam(a2(kc(<negSucc>), a2(kc(<succ>), a3(kc(<plus>), v(2), v(0))))))))
+# add = \ x. x (\ _. Int -> Int) addPosCase addNegCase
+host add-value, lam(a4(v(0), lam(int-to-int), kc(<addPosCase>), kc(<addNegCase>)))
+
+task make-context
+  like dynamic
+
+  host context, j-context(judge-kernel, make(list, hyp(<Nat>, ty-zero), hyp(<zero>, kc(<Nat>)), hyp(<succ>, many(kc(<Nat>), kc(<Nat>))), hyp(<plus>, nat-to-nat-to-nat), hyp(<Int>, ty-zero), hyp(<pos>, many(kc(<Nat>), kc(<Int>))), hyp(<negSucc>, many(kc(<Nat>), kc(<Int>))), hyp(<intSubBase>, nat-to-int), hyp(<intSubStep>, many(nat-term, many(nat-to-int, nat-to-int))), hyp(<intSub>, nat-to-nat-to-int), hyp(<addPosCase>, many(nat-term, int-to-int)), hyp(<addNegCase>, many(nat-term, int-to-int))))
+  j-define(judge-kernel, <Nat>, nat-term)
+  j-define(judge-kernel, <zero>, zero-value)
+  j-define(judge-kernel, <succ>, succ-value)
+  j-define(judge-kernel, <plus>, plus-value)
+  j-define(judge-kernel, <Int>, int-term)
+  j-define(judge-kernel, <pos>, pos-value)
+  j-define(judge-kernel, <negSucc>, neg-succ-value)
+  j-define(judge-kernel, <intSubBase>, int-sub-base)
+  j-define(judge-kernel, <intSubStep>, int-sub-step)
+  j-define(judge-kernel, <intSub>, int-sub-value)
+  j-define(judge-kernel, <addPosCase>, add-pos-case)
+  j-define(judge-kernel, <addNegCase>, add-neg-case)
+  j-define(judge-kernel, <add>, add-value)
+  back context
+
+host context, make-context()
+
+task nat
+  take size, like number
+  like dynamic
+
+  fork test, is-equal(size, 0)
+    hold
+      back kc(<zero>)
+  back a2(kc(<succ>), nat(subtract(size, 1)))
+
+task pos-n
+  take size, like number
+  like dynamic
+
+  back a2(kc(<pos>), nat(size))
+
+# neg-n(k) = -(k), that is negSucc (k-1)
+task neg-n
+  take size, like number
+  like dynamic
+
+  back a2(kc(<negSucc>), nat(subtract(size, 1)))
+
+task computes
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like boolean
+
+  back j-check(judge-kernel, context, j-refl(kc(<Int>), rhs), j-id(kc(<Int>), lhs, rhs))
+
+test <intSub : Nat -\> Nat -\> Int type-checks (motive returns a function type, impredicative)>
+  want hold, j-check(judge-kernel, context, int-sub-value, nat-to-nat-to-int)
+
+test <intSub 2 0 = pos 2>
+  want hold, computes(a3(kc(<intSub>), nat(2), nat(0)), pos-n(2))
+
+test <intSub 2 2 = pos 0>
+  want hold, computes(a3(kc(<intSub>), nat(2), nat(2)), pos-n(0))
+
+test <intSub 3 1 = pos 2>
+  want hold, computes(a3(kc(<intSub>), nat(3), nat(1)), pos-n(2))
+
+test <intSub 0 2 = -2>
+  want hold, computes(a3(kc(<intSub>), nat(0), nat(2)), neg-n(2))
+
+test <intSub 1 3 = -2>
+  want hold, computes(a3(kc(<intSub>), nat(1), nat(3)), neg-n(2))
+
+test <add : Int -\> Int -\> Int type-checks>
+  want hold, j-check(judge-kernel, context, add-value, many(int-term, int-to-int))
+
+test <add (pos 1) (pos 2) = pos 3>
+  want hold, computes(a3(kc(<add>), pos-n(1), pos-n(2)), pos-n(3))
+
+test <add (pos 2) (-1) = pos 1>
+  want hold, computes(a3(kc(<add>), pos-n(2), neg-n(1)), pos-n(1))
+
+test <add (-1) (-1) = -2>
+  want hold, computes(a3(kc(<add>), neg-n(1), neg-n(1)), neg-n(2))
+
+test <add (pos 1) (-2) = -1>
+  want hold, computes(a3(kc(<add>), pos-n(1), neg-n(2)), neg-n(1))
+
+test <add (-2) (pos 3) = pos 1>
+  want hold, computes(a3(kc(<add>), neg-n(2), pos-n(3)), pos-n(1))
+
+test <add (pos 0) (pos 0) = pos 0>
+  want hold, computes(a3(kc(<add>), pos-n(0), pos-n(0)), pos-n(0))

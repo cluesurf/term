@@ -1,0 +1,174 @@
+note <The data tools: form, analyze, the compile driver and roles, streams and keys>
+
+# Ported from host-tools.ts by tmp/self-host/0572/fact-suites.mjs (item 0572). parser, analyze, compile and host are the subject (decision 106), and the driver is called directly, since roleOf is the thing under test. Its temp role folders are host folders the system removes. Every test reads the fact the original's ok of that name
+# held, and the statements that make the facts are the original's, compiled from its own text, as host code in one bind.
+
+dock load
+  load <@term/make/code/parser/tree>, name tools-parser
+  load <@term/make/code/analyze>, name tools-analyze
+  load <@term/make/code/compile/compile>, name tools-driver
+  load <@term/make/code/compile/host>, name tools-host
+  load <@term/call/code/role-of>, name tools-role
+
+bind fact-table
+  take toolsparser, like dynamic
+  take toolsanalyze, like dynamic
+  take toolsdriver, like dynamic
+  take toolshost, like dynamic
+  take toolsrole, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const __facts = []; const \{ mkdirSync, mkdtempSync, readFileSync, writeFileSync \} = process.getBuiltinModule("node:fs"); const \{ tmpdir \} = process.getBuiltinModule("node:os"); const \{ join \} = process.getBuiltinModule("node:path"); const \{ parse \} = $toolsparser; const \{ analyze \} = $toolsanalyze; const \{ compile \} = $toolsdriver; const \{ dataKeys, expandData, formatData, isCompactTree, readDataText, readStream, writeLong \} = $toolshost; const \{ projectRoleOf \} = $toolsrole; let pass = 0; let fail = 0; const HERE = process.cwd() + "/test/compile"; const FIXTURE = join(HERE, '../../deck/host/test/fixture'); const fixture = (name) =\> readFileSync(join(FIXTURE, name), 'utf8'); for (const name of [ 'basic.tree', 'anchors.tree', 'basic.line', 'anchors.line', 'stream.line', ]) \{ const text = fixture(name); const tree = parse(\{ file: name, text \}); __facts.push([`$\{name\} parses`, Boolean(tree.ok)]); if (tree.ok) \{ __facts.push([`$\{name\} is $\{name.endsWith('.line') ? '' : 'not '\}compact`, Boolean(isCompactTree(tree.tree) === name.endsWith('.line'))]); __facts.push([`$\{name\} formats to itself`, Boolean(formatData(tree.tree, name) === text)]); \} \} const commented = [ '# the anchor', 'tree base', '  host env, \<prod\>', '', '# the service', 'host x', '  # nested', '  host y, 1', '  list a', '    # numbers', '    5, 6', '  list m', '    # first', '    mesh', '      fuse base', '      host n, \<a\>', '', ].join('\\n'); const commentedTree = parse(\{ file: 'c.tree', text: commented \}); __facts.push(['comments are kept where they were written', Boolean(commentedTree.ok && formatData(commentedTree.tree, 'c.tree') === commented)]); const compactCommented = '# one\\nh(x,1)\\n# two\\nm(h(y,2))\\n'; const compactTree = parse(\{ file: 'c.line', text: compactCommented \}); __facts.push(['a compact file keeps its comments', Boolean(compactTree.ok && formatData(compactTree.tree, 'c.line') === '# one\\nh(x,1)\\n# two\\nm(h(y,2))\\n')]); const loose = 'host x\\n  host y, 1\\nlist a\\n  5\\n  6\\nlist m\\n  mesh\\n    host n, \<a\>\\n'; const looseTree = parse(\{ file: 'l.tree', text: loose \}); const looseRead = readDataText(\{ file: 'l.tree', text: loose \}); __facts.push(['a loose layout formats to what the writer gives', Boolean(looseTree.ok && looseRead.ok && formatData(looseTree.tree, 'l.tree') === writeLong(looseRead.data.root))]); const analysis = analyze(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); __facts.push(['a data file has no program', Boolean(analysis.program === null)]); __facts.push(['a data file has no diagnostics', Boolean(analysis.diagnostics.length === 0)]); __facts.push(['a data file formats canonically', Boolean(analysis.format() === fixture('basic.tree'))]); __facts.push(['a clean data file has no findings', Boolean(analysis.lint().length === 0)]); __facts.push(['a clean data file checks clean', Boolean(analysis.check().length === 0)]); const twice = analyze(\{ file: 'twice.tree', text: fixture('bad/twice.tree'), \}); const findings = twice.lint(); __facts.push(['a broken data file lints under L040', Boolean(findings.length \> 0 && findings.every(f =\> f.code === 'L040'))]); __facts.push(['the finding carries the grammar rule', Boolean(findings.some(f =\> f.message.includes('given twice')))]); __facts.push(['a broken data file is left as written by form', Boolean(twice.format() === fixture('bad/twice.tree'))]); __facts.push(['a broken data file checks with the same message', Boolean(twice.check().some(d =\> d.message.includes('given twice')))]); const code = analyze(\{ file: 'go.tree', text: 'task go\\n  send back, code 1\\n', \}); __facts.push(['a program still mills', Boolean(code.program !== null)]); const compiled = compile(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); __facts.push(['a data file compiles to a data module', Boolean(compiled.ok && compiled.typescript.includes('export default data'))]); const asHost = compile(\{ file: 'basic.tree', text: fixture('basic.tree') \}, \{ roleOf: () =\> 'host' \}); __facts.push(['a host role compiles data', Boolean(asHost.ok && asHost.typescript.includes('export default data'))]); const asCode = compile(\{ file: 'basic.tree', text: fixture('basic.tree') \}, \{ roleOf: () =\> 'code' \}); __facts.push(['a code role skips the data reader', Boolean(!(asCode.ok && asCode.typescript.includes('export default data')))]); const constants = 'host x, code 10\\n'; const forcedData = compile(\{ file: 'k.tree', text: constants \}, \{ roleOf: () =\> 'host' \}); __facts.push(['a host role on code reports the grammar', Boolean(!forcedData.ok && forcedData.diagnostics.some(d =\> d.message.includes('is not data')))]); const root = mkdtempSync(join(tmpdir(), 'term-role-')); mkdirSync(join(root, 'data'), \{ recursive: true \}); mkdirSync(join(root, 'code'), \{ recursive: true \}); writeFileSync(join(root, 'deck.tree'), 'deck @probe/role\\n  code \<0.0.0\>\\n'); writeFileSync(join(root, 'role.tree'), 'role host\\n  take @/data/**/*.tree\\n\\nrole code\\n  take @/code/**/*.tree\\n'); const roleOf = projectRoleOf(root); __facts.push(['role.tree names a data file', Boolean(roleOf(join(root, 'data/config.tree')) === 'host')]); __facts.push(['role.tree names a code file', Boolean(roleOf(join(root, 'code/main.tree')) === 'code')]); __facts.push(['an unlisted file has no role', Boolean(roleOf(join(root, 'other/x.tree')) === null)]); const bare = mkdtempSync(join(tmpdir(), 'term-norole-')); __facts.push(['no role.tree means no role', Boolean(projectRoleOf(bare)(join(bare, 'x.tree')) === null)]); const pointed = mkdtempSync(join(tmpdir(), 'term-role-dir-')); mkdirSync(join(pointed, 'roles'), \{ recursive: true \}); writeFileSync(join(pointed, 'deck.tree'), 'deck @probe/pointed\\n  code \<0.0.0\>\\n  role ./roles\\n'); writeFileSync(join(pointed, 'roles/role.tree'), 'role host\\n  take @/**/*.tree\\n'); __facts.push(['the manifest can point at a role directory', Boolean(projectRoleOf(pointed)(join(pointed, 'any.tree')) === 'host')]); const stream = readStream(\{ file: 'stream.line', text: fixture('stream.line'), \}); __facts.push(['the stream fixture reads', Boolean(stream.ok && stream.lines === 2)]); if (stream.ok) \{ const keys = dataKeys(stream.data); __facts.push(['the stream expanded its anchor', Boolean(keys.some(k =\> k.path === 'vars/prod-service/config/env' && k.value === '\<prod\>'))]); \} const redeclared = readStream(\{ file: 's.line', text: 't(a,h(x,1))\\nh(p,f(a))\\n\\n# later\\nt(a,h(x,2))\\nh(q,f(a))\\n', \}); __facts.push(['a later anchor replaces the earlier one from that line on', Boolean(redeclared.ok && writeLong(redeclared.data) === 'host p\\n  host x, 1\\nhost q\\n  host x, 2\\n')]); const mixed = readStream(\{ file: 's.line', text: 'h(p,1)\\nm(h(x,2))\\n', \}); __facts.push(['a stream that mixes entries and items is refused at the line', Boolean(!mixed.ok && mixed.diagnostics[0]?.span.start.line === 1 && mixed.diagnostics[0].message.includes('never both'))]); const items = readStream(\{ file: 's.line', text: 'm(h(name,\<foo\>))\\nm(h(name,\<bar\>))\\n', \}); __facts.push(['a stream of items is a list', Boolean(items.ok && writeLong(items.data) === 'mesh\\n  host name, \<foo\>\\nmesh\\n  host name, \<bar\>\\n')]); const repeated = readStream(\{ file: 's.line', text: 'h(event,\<start\>)\\nh(event,\<stop\>)\\n', \}); __facts.push(['a key a later line gives again is refused at that line, naming the first', Boolean(!repeated.ok && repeated.diagnostics[0]?.span.start.line === 1 && repeated.diagnostics[0].message.includes('line 1 gave it first'))]); const broken = readStream(\{ file: 's.line', text: 'h(p,1)\\nh(q,f(nothing))\\n', \}); __facts.push(['a fuse of an unknown anchor names its line', Boolean(!broken.ok && broken.diagnostics.some(d =\> d.message.includes('nothing')))]); const basic = readDataText(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); const expanded = basic.ok ? expandData(basic.data, 'basic.tree') : basic; if (expanded.ok) \{ const keys = dataKeys(expanded.data); __facts.push(['every key has a row', Boolean(keys.length === 13)]); __facts.push(['a map row says what it holds', Boolean(keys.some(k =\> k.path === 'x' && k.kind === 'map' && k.value === '4 entries'))]); __facts.push(['a list item has an index', Boolean(keys.some(k =\> k.path === 'x/a/1' && k.value === '6'))]); __facts.push(['a text value is written as text', Boolean(keys.some(k =\> k.path === 'x/w' && k.value === '\<foo\>'))]); \} console.log(`\\nhost-tools: $\{pass\} pass, $\{fail\} fail`); if (fail \> 0) \{ 0; \} ; return new Map(__facts) \})()>
+
+bind fact
+  take facts, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$facts.get($name) === true>
+
+host facts, fact-table(tools-parser, tools-analyze, tools-driver, tools-host, tools-role)
+
+test <basic.tree parses>
+  want hold, fact(facts, <basic.tree parses>)
+
+test <basic.tree is not compact>
+  want hold, fact(facts, <basic.tree is not compact>)
+
+test <basic.tree formats to itself>
+  want hold, fact(facts, <basic.tree formats to itself>)
+
+test <anchors.tree parses>
+  want hold, fact(facts, <anchors.tree parses>)
+
+test <anchors.tree is not compact>
+  want hold, fact(facts, <anchors.tree is not compact>)
+
+test <anchors.tree formats to itself>
+  want hold, fact(facts, <anchors.tree formats to itself>)
+
+test <basic.line parses>
+  want hold, fact(facts, <basic.line parses>)
+
+test <basic.line is compact>
+  want hold, fact(facts, <basic.line is compact>)
+
+test <basic.line formats to itself>
+  want hold, fact(facts, <basic.line formats to itself>)
+
+test <anchors.line parses>
+  want hold, fact(facts, <anchors.line parses>)
+
+test <anchors.line is compact>
+  want hold, fact(facts, <anchors.line is compact>)
+
+test <anchors.line formats to itself>
+  want hold, fact(facts, <anchors.line formats to itself>)
+
+test <stream.line parses>
+  want hold, fact(facts, <stream.line parses>)
+
+test <stream.line is compact>
+  want hold, fact(facts, <stream.line is compact>)
+
+test <stream.line formats to itself>
+  want hold, fact(facts, <stream.line formats to itself>)
+
+test <comments are kept where they were written>
+  want hold, fact(facts, <comments are kept where they were written>)
+
+test <a compact file keeps its comments>
+  want hold, fact(facts, <a compact file keeps its comments>)
+
+test <a loose layout formats to what the writer gives>
+  want hold, fact(facts, <a loose layout formats to what the writer gives>)
+
+test <a data file has no program>
+  want hold, fact(facts, <a data file has no program>)
+
+test <a data file has no diagnostics>
+  want hold, fact(facts, <a data file has no diagnostics>)
+
+test <a data file formats canonically>
+  want hold, fact(facts, <a data file formats canonically>)
+
+test <a clean data file has no findings>
+  want hold, fact(facts, <a clean data file has no findings>)
+
+test <a clean data file checks clean>
+  want hold, fact(facts, <a clean data file checks clean>)
+
+test <a broken data file lints under L040>
+  want hold, fact(facts, <a broken data file lints under L040>)
+
+test <the finding carries the grammar rule>
+  want hold, fact(facts, <the finding carries the grammar rule>)
+
+test <a broken data file is left as written by form>
+  want hold, fact(facts, <a broken data file is left as written by form>)
+
+test <a broken data file checks with the same message>
+  want hold, fact(facts, <a broken data file checks with the same message>)
+
+test <a program still mills>
+  want hold, fact(facts, <a program still mills>)
+
+test <a data file compiles to a data module>
+  want hold, fact(facts, <a data file compiles to a data module>)
+
+test <a host role compiles data>
+  want hold, fact(facts, <a host role compiles data>)
+
+test <a code role skips the data reader>
+  want hold, fact(facts, <a code role skips the data reader>)
+
+test <a host role on code reports the grammar>
+  want hold, fact(facts, <a host role on code reports the grammar>)
+
+test <role.tree names a data file>
+  want hold, fact(facts, <role.tree names a data file>)
+
+test <role.tree names a code file>
+  want hold, fact(facts, <role.tree names a code file>)
+
+test <an unlisted file has no role>
+  want hold, fact(facts, <an unlisted file has no role>)
+
+test <no role.tree means no role>
+  want hold, fact(facts, <no role.tree means no role>)
+
+test <the manifest can point at a role directory>
+  want hold, fact(facts, <the manifest can point at a role directory>)
+
+test <the stream fixture reads>
+  want hold, fact(facts, <the stream fixture reads>)
+
+test <the stream expanded its anchor>
+  want hold, fact(facts, <the stream expanded its anchor>)
+
+test <a later anchor replaces the earlier one from that line on>
+  want hold, fact(facts, <a later anchor replaces the earlier one from that line on>)
+
+test <a stream that mixes entries and items is refused at the line>
+  want hold, fact(facts, <a stream that mixes entries and items is refused at the line>)
+
+test <a stream of items is a list>
+  want hold, fact(facts, <a stream of items is a list>)
+
+test <a key a later line gives again is refused at that line, naming the first>
+  want hold, fact(facts, <a key a later line gives again is refused at that line, naming the first>)
+
+test <a fuse of an unknown anchor names its line>
+  want hold, fact(facts, <a fuse of an unknown anchor names its line>)
+
+test <every key has a row>
+  want hold, fact(facts, <every key has a row>)
+
+test <a map row says what it holds>
+  want hold, fact(facts, <a map row says what it holds>)
+
+test <a list item has an index>
+  want hold, fact(facts, <a list item has an index>)
+
+test <a text value is written as text>
+  want hold, fact(facts, <a text value is written as text>)

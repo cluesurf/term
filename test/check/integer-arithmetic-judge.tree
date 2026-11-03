@@ -1,0 +1,281 @@
+note <Integer arithmetic on the decided kernel (judge.ts), the rung above natural arithmetic>
+
+# Ported from integer-arithmetic-judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# Integer arithmetic on the decided kernel (judge.ts), the rung above natural arithmetic. An integer is pos n (the
+# natural n) or negSucc n (the negative -(n+1)). Negation and the integer successor each case-analyse an integer AND
+# the natural index inside it, so the Int eliminator must contain the Nat eliminator -- a large elimination into Int.
+# This is exactly what the impredicative bottom universe unblocks (both Nat and Int live in Type0, so a recursor
+# may return an Int). The operations type-check and reduce: neg is an involution, succ and pred step correctly
+# across zero. This is the integer ring taking shape from the carrier built in integers-judge. Run:
+# npx tsx test/check/integer-arithmetic-judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind evaluate-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate($a0, $a1)>
+
+bind define-constant-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($a0, $a1)>
+
+bind check-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.check($a0, $a1, $a2)>
+
+task v
+  take i, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, i))
+
+task kc
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, n))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task pi
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <lam>, <body>, body))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task self-of
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <self>, <body>, body))
+
+task idt
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+task refl
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <refl>, <type>, type, <value>, value))
+
+# ===== the naturals: Nat = Self n. (P:Nat->Type0) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n =====
+host nat-step, pi(<many>, kc(<Nat>), pi(<many>, app(v(2), v(0)), app(v(3), app(kc(<succ>), v(1)))))
+
+host nat-body, pi(0, pi(<many>, kc(<Nat>), ty(0)), pi(<many>, app(v(0), kc(<zero>)), pi(<many>, nat-step, app(v(2), v(3)))))
+
+host nat-term, self-of(nat-body)
+
+host zero-value, lam(lam(lam(v(1))))
+
+host succ-value, lam(lam(lam(lam(app(app(v(0), v(3)), app(app(app(v(3), v(2)), v(1)), v(0)))))))
+
+# ===== the integers: Int = Self i. (P:Int->Type0) -> ((n:Nat) -> P (pos n)) -> ((n:Nat) -> P (negSucc n)) -> P i ==
+host int-body, pi(0, pi(<many>, kc(<Int>), ty(0)), pi(<many>, pi(<many>, kc(<Nat>), app(v(1), app(kc(<pos>), v(0)))), pi(<many>, pi(<many>, kc(<Nat>), app(v(2), app(kc(<negSucc>), v(0)))), app(v(2), v(3)))))
+
+host int-term, self-of(int-body)
+
+host pos-value, lam(lam(lam(lam(app(v(1), v(3))))))
+
+host neg-succ-value, lam(lam(lam(lam(app(v(0), v(3))))))
+
+# the constant motive \ _. Int, reused by every integer eliminator (well typed because Int : Type0).
+host int-motive, lam(kc(<Int>))
+
+# negation. neg i = i (\_. Int) posCase negCase, where
+#   posCase n = n (\_. Int) (pos zero) (\ k _. negSucc k)   -- neg (pos 0) = pos 0 , neg (pos (k+1)) = negSucc k
+#   negCase n = pos (succ n)                                 -- neg (negSucc n) = pos (n+1)
+host neg-pos-case, lam(app(app(app(v(0), int-motive), app(kc(<pos>), kc(<zero>))), lam(lam(app(kc(<negSucc>), v(1))))))
+
+host neg-neg-case, lam(app(kc(<pos>), app(kc(<succ>), v(0))))
+
+host neg-value, lam(app(app(app(v(0), int-motive), kc(<negPosCase>)), kc(<negNegCase>)))
+
+# integer successor. isucc i = i (\_. Int) posCase negCase, where
+#   posCase n = pos (succ n)                                 -- succ (pos n) = pos (n+1)
+#   negCase n = n (\_. Int) (pos zero) (\ k _. negSucc k)    -- succ (negSucc 0) = pos 0 , succ (negSucc (k+1)) = negSucc k
+host isucc-pos-case, lam(app(kc(<pos>), app(kc(<succ>), v(0))))
+
+host isucc-neg-case, lam(app(app(app(v(0), int-motive), app(kc(<pos>), kc(<zero>))), lam(lam(app(kc(<negSucc>), v(1))))))
+
+host isucc-value, lam(app(app(app(v(0), int-motive), kc(<isuccPosCase>)), kc(<isuccNegCase>)))
+
+host nat-to-int, pi(<many>, nat-term, int-term)
+
+host int-to-int, pi(<many>, int-term, int-term)
+
+host context, context-with-signature-1(judge-kernel, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <zero>, <type>, kc(<Nat>))), make-record(make(list, <name>, <succ>, <type>, pi(<many>, kc(<Nat>), kc(<Nat>)))), make-record(make(list, <name>, <Int>, <type>, ty(0))), make-record(make(list, <name>, <pos>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <negSucc>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <negPosCase>, <type>, nat-to-int)), make-record(make(list, <name>, <negNegCase>, <type>, nat-to-int)), make-record(make(list, <name>, <isuccPosCase>, <type>, nat-to-int)), make-record(make(list, <name>, <isuccNegCase>, <type>, nat-to-int))))
+
+# numerals
+host one, app(kc(<succ>), kc(<zero>))
+
+host pos-zero, app(kc(<pos>), kc(<zero>))
+
+host pos-one, app(kc(<pos>), one)
+
+host neg-one, app(kc(<negSucc>), kc(<zero>))
+
+task prepare
+  like dynamic
+
+  save done, define-constant-2(judge-kernel, <Nat>, evaluate-2(judge-kernel, empty-list(), nat-term))
+  save done, define-constant-2(judge-kernel, <zero>, evaluate-2(judge-kernel, empty-list(), zero-value))
+  save done, define-constant-2(judge-kernel, <succ>, evaluate-2(judge-kernel, empty-list(), succ-value))
+  save done, define-constant-2(judge-kernel, <Int>, evaluate-2(judge-kernel, empty-list(), int-term))
+  save done, define-constant-2(judge-kernel, <pos>, evaluate-2(judge-kernel, empty-list(), pos-value))
+  save done, define-constant-2(judge-kernel, <negSucc>, evaluate-2(judge-kernel, empty-list(), neg-succ-value))
+  save done, define-constant-2(judge-kernel, <negPosCase>, evaluate-2(judge-kernel, empty-list(), neg-pos-case))
+  save done, define-constant-2(judge-kernel, <negNegCase>, evaluate-2(judge-kernel, empty-list(), neg-neg-case))
+  save done, define-constant-2(judge-kernel, <neg>, evaluate-2(judge-kernel, empty-list(), neg-value))
+  save done, define-constant-2(judge-kernel, <isuccPosCase>, evaluate-2(judge-kernel, empty-list(), isucc-pos-case))
+  save done, define-constant-2(judge-kernel, <isuccNegCase>, evaluate-2(judge-kernel, empty-list(), isucc-neg-case))
+  save done, define-constant-2(judge-kernel, <isucc>, evaluate-2(judge-kernel, empty-list(), isucc-value))
+  back true
+
+# the module state every test reads
+host ready, prepare()
+
+test <neg : Int -\> Int type-checks (Int eliminator containing the Nat eliminator)>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, neg-value, evaluate-2(judge-kernel, empty-list(), int-to-int))
+  want hold, true
+
+test <neg (pos 0) = pos 0>
+  want hold, truth(ready)
+  host lhs, app(kc(<neg>), pos-zero)
+  host rhs, pos-zero
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <neg (pos 1) = -1>
+  want hold, truth(ready)
+  host lhs, app(kc(<neg>), pos-one)
+  host rhs, neg-one
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <neg (-1) = pos 1>
+  want hold, truth(ready)
+  host lhs, app(kc(<neg>), neg-one)
+  host rhs, pos-one
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <neg is an involution: neg (neg (pos 1)) = pos 1>
+  want hold, truth(ready)
+  host lhs, app(kc(<neg>), app(kc(<neg>), pos-one))
+  host rhs, pos-one
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <isucc : Int -\> Int type-checks>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, isucc-value, evaluate-2(judge-kernel, empty-list(), int-to-int))
+  want hold, true
+
+test <isucc (pos 0) = pos 1>
+  want hold, truth(ready)
+  host lhs, app(kc(<isucc>), pos-zero)
+  host rhs, pos-one
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <isucc (-1) = pos 0 (the integer successor steps across zero)>
+  want hold, truth(ready)
+  host lhs, app(kc(<isucc>), neg-one)
+  host rhs, pos-zero
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true

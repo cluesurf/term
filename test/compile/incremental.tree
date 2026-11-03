@@ -1,0 +1,103 @@
+note <The query-engine compiler: what an edit re-runs>
+
+# Ported from incremental.ts by tmp/self-host/0572/fact-suites.mjs (item 0572). compile/incremental is the subject (decision 106). The suite is one async sequence over one engine, and the table holds what it saw. Every test reads the fact the original's ok of that name
+# held, and the statements that make the facts are the original's, compiled from its own text, as host code in one bind.
+
+dock load
+  load <@term/make/code/compile/incremental>, name query-module
+
+bind fact-table
+  take querymodule, like dynamic
+  mark async
+  like dynamic
+  case node
+    text <(globalThis.__factTable ??= (async () =\> \{ const __facts = []; const \{ QueryCompiler \} = $querymodule; let pass = 0; let fail = 0; const run = (c, fn) =\> c.db.transaction(fn); const A = 'a.tree'; const B = 'b.tree'; const aV1 = `task a-value\\n  like number\\n  send back\\n    code 1\\n`; const bV1 = `task b-value\\n  like number\\n  send back\\n    code 2\\n`; async function main() \{ const qc = new QueryCompiler(); qc.setSource(A, aV1); qc.setSource(B, bV1); const first = await run(qc, cx =\> qc.program(cx, [A, B])); __facts.push(['merges both modules', Boolean(first.ok && first.program.length === 2)]); const afterFirst = qc.db.recomputes; await run(qc, cx =\> qc.program(cx, [A, B])); __facts.push(['a no-op recompile does no work', Boolean(qc.db.recomputes === afterFirst)]); const before = qc.db.recomputes; qc.setSource(A, `# just a comment\\n$\{aV1\}`); const afterComment = await run(qc, cx =\> qc.program(cx, [A, B])); __facts.push(['comment-only edit keeps the program correct', Boolean(afterComment.ok && afterComment.program.length === 2)]); const commentDelta = qc.db.recomputes - before; __facts.push(['comment-only edit re-runs only parse + mill of A, not the merged program', Boolean(commentDelta === 2)]); const before2 = qc.db.recomputes; qc.setSource(A, `task a-value\\n  like number\\n  send back\\n    code 99\\n`); const afterReal = await run(qc, cx =\> qc.program(cx, [A, B])); __facts.push(['real edit rebuilds the program', Boolean(afterReal.ok)]); const realDelta = qc.db.recomputes - before2; __facts.push(['real edit re-runs parse + mill + the merged program', Boolean(realDelta === 3)]); const before3 = qc.db.recomputes; qc.setSource(A, `task a-value\\n  like number\\n  send back\\n    code 7\\n`); await run(qc, cx =\> qc.program(cx, [A, B])); const onlyADelta = qc.db.recomputes - before3; __facts.push(['editing A never re-mills the unchanged B', Boolean(onlyADelta === 3)]); \{ const X = 'x.tree'; const callerSrc = `task caller\\n  like number\\n  send back\\n    call helper\\n      code 5\\n`; const otherSrc = `task other\\n  like number\\n  send back\\n    code 0\\n`; const withHelper = (helper) =\> `$\{helper\}\\n$\{callerSrc\}\\n$\{otherSrc\}`; const helperV1 = `task helper\\n  take n, like number\\n  like number\\n  send back\\n    read n\\n`; const fw = new QueryCompiler(); const files = [X]; fw.setSource(X, withHelper(helperV1)); const checkAll = () =\> run(fw, async (cx) =\> \{ for (const n of await fw.defNames(cx, files)) \{ await fw.checkDef(cx, files, n); \} \}); __facts.push(['finds the three definitions', Boolean((await run(fw, cx =\> fw.defNames(cx, files))).join(',') === 'caller,helper,other')]); await checkAll(); __facts.push(['caller resolves its call to the defined helper', Boolean((await run(fw, cx =\> fw.checkDef(cx, files, 'caller'))).unresolved .length === 0)]); const callerRuns = fw.db.runs('checkDef:caller'); const helperRuns = fw.db.runs('checkDef:helper'); fw.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    code 42\\n`)); await checkAll(); __facts.push(['editing the callee BODY re-checks the callee', Boolean(fw.db.runs('checkDef:helper') === helperRuns + 1)]); __facts.push(['editing the callee BODY does NOT re-check the caller (firewall)', Boolean(fw.db.runs('checkDef:caller') === callerRuns)]); fw.setSource(X, withHelper(`task helper\\n  take n, like text\\n  like number\\n  send back\\n    code 42\\n`)); await checkAll(); __facts.push(['editing the callee SIGNATURE re-checks the caller', Boolean(fw.db.runs('checkDef:caller') === callerRuns + 1)]); const callerRuns2 = fw.db.runs('checkDef:caller'); fw.setSource(X, withHelper(`task helper\\n  take n, like text\\n  like number\\n  send back\\n    code 42\\n`).replace('code 0', 'code 1')); await checkAll(); __facts.push(['editing an unrelated definition does NOT re-check the caller', Boolean(fw.db.runs('checkDef:caller') === callerRuns2)]); \} \{ const X = 'r.tree'; const otherSrc = `task other\\n  like number\\n  send back\\n    code 0\\n`; const callerSrc = `task caller\\n  like number\\n  send back\\n    call helper\\n      code 5\\n`; const withHelper = (helper) =\> `$\{helper\}\\n$\{callerSrc\}\\n$\{otherSrc\}`; const helperV1 = `task helper\\n  take n, like number\\n  like number\\n  send back\\n    read n\\n`; const rc = new QueryCompiler(); const files = [X]; rc.setSource(X, withHelper(helperV1)); const resolveAll = () =\> run(rc, async (cx) =\> \{ for (const n of await rc.defNames(cx, files)) \{ await rc.resolvedDef(cx, files, n); \} \}); const caller = await run(rc, cx =\> rc.resolvedDef(cx, files, 'caller')); __facts.push(['resolvedDef: a valid call resolves with no diagnostics', Boolean(caller.diagnostics.length === 0)]); __facts.push(['resolvedDef: returns a resolved definition', Boolean(caller.def?.name === 'caller')]); await resolveAll(); const callerRuns = rc.db.runs('resolved:caller'); rc.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    code 9\\n`)); await resolveAll(); __facts.push(['resolvedDef: editing the callee body does NOT re-resolve the caller', Boolean(rc.db.runs('resolved:caller') === callerRuns)]); __facts.push(['resolvedDef: the callee is re-resolved', Boolean(rc.db.runs('resolved:helper') \>= 2)]); rc.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    call missing-fn\\n      read n\\n`)); const broken = await run(rc, cx =\> rc.resolvedDef(cx, files, 'helper')); __facts.push(['resolvedDef: an undefined call is reported (real resolver diagnostic)', Boolean(broken.diagnostics.length \> 0)]); __facts.push(['resolvedDef: an unrelated function stays clean', Boolean((await run(rc, cx =\> rc.resolvedDef(cx, files, 'other'))) .diagnostics.length === 0)]); \} \{ const X = 't.tree'; const otherSrc = `task other\\n  like number\\n  send back\\n    code 0\\n`; const callerSrc = `task caller\\n  like number\\n  send back\\n    call helper\\n      code 5\\n`; const withHelper = (helper) =\> `$\{helper\}\\n$\{callerSrc\}\\n$\{otherSrc\}`; const helperOk = `task helper\\n  take n, like number\\n  like number\\n  send back\\n    read n\\n`; const tc = new QueryCompiler(); const files = [X]; tc.setSource(X, withHelper(helperOk)); const caller = await run(tc, cx =\> tc.typedDef(cx, files, 'caller')); __facts.push(['typedDef: a well-typed function checks clean (real inference)', Boolean(caller.diagnostics.length === 0)]); const callerType = structureKeyOf(caller.def); tc.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    call multiply\\n      read n\\n      code 2\\n`)); const caller2 = await run(tc, cx =\> tc.typedDef(cx, files, 'caller')); __facts.push(['typedDef: a callee body edit leaves the caller typed-result unchanged (firewall via backdating)', Boolean(structureKeyOf(caller2.def) === callerType)]); tc.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    text \<oops\>\\n`)); const broken = await run(tc, cx =\> tc.typedDef(cx, files, 'helper')); __facts.push(['typedDef: a real type mismatch is reported (real inference, per definition)', Boolean(broken.diagnostics.some(d =\> d.name === 'type-mismatch'))]); __facts.push(['typedDef: an unrelated function stays clean under the error', Boolean((await run(tc, cx =\> tc.typedDef(cx, files, 'other'))).diagnostics .length === 0)]); \} \{ const X = 'e.tree'; const otherSrc = `task other\\n  like number\\n  send back\\n    code 0\\n`; const callerSrc = `task caller\\n  like number\\n  send back\\n    call helper\\n      code 5\\n`; const withHelper = (helper) =\> `$\{helper\}\\n$\{callerSrc\}\\n$\{otherSrc\}`; const helperV1 = `task helper\\n  take n, like number\\n  like number\\n  send back\\n    read n\\n`; const ec = new QueryCompiler(); const files = [X]; ec.setSource(X, withHelper(helperV1)); const emitted = await run(ec, cx =\> ec.emitProgram(cx, files)); __facts.push(['emitProgram emits every function', Boolean(/function caller/.test(emitted) && /function helper/.test(emitted) && /function other/.test(emitted))]); const callerEmit = await run(ec, cx =\> ec.emitDef(cx, files, 'caller')); const callerEmitRuns = ec.db.runs('emit:caller'); ec.setSource(X, withHelper(`task helper\\n  take n, like number\\n  like number\\n  send back\\n    call multiply\\n      read n\\n      code 2\\n`)); await run(ec, cx =\> ec.emitProgram(cx, files)); __facts.push(['emitDef: editing the callee body does NOT re-emit the caller', Boolean(ec.db.runs('emit:caller') === callerEmitRuns)]); __facts.push(['emitDef: the callee is re-emitted', Boolean(ec.db.runs('emit:helper') \>= 2)]); __facts.push(['emitDef: the caller emit is unchanged', Boolean((await run(ec, cx =\> ec.emitDef(cx, files, 'caller'))) === callerEmit)]); \} console.log(`\\nincremental: $\{pass\} pass, $\{fail\} fail`); if (fail \> 0) \{ 0; \} \} function structureKeyOf(value) \{ return JSON.stringify(value, (k, v) =\> (k === 'span' ? undefined : v)); \} await main(); ; return new Map(__facts) \})())>
+
+bind fact
+  take facts, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$facts.get($name) === true>
+
+
+test <merges both modules>
+  want hold, fact(fact-table(query-module), <merges both modules>)
+
+test <a no-op recompile does no work>
+  want hold, fact(fact-table(query-module), <a no-op recompile does no work>)
+
+test <comment-only edit keeps the program correct>
+  want hold, fact(fact-table(query-module), <comment-only edit keeps the program correct>)
+
+test <comment-only edit re-runs only parse + mill of A, not the merged program>
+  want hold, fact(fact-table(query-module), <comment-only edit re-runs only parse + mill of A, not the merged program>)
+
+test <real edit rebuilds the program>
+  want hold, fact(fact-table(query-module), <real edit rebuilds the program>)
+
+test <real edit re-runs parse + mill + the merged program>
+  want hold, fact(fact-table(query-module), <real edit re-runs parse + mill + the merged program>)
+
+test <editing A never re-mills the unchanged B>
+  want hold, fact(fact-table(query-module), <editing A never re-mills the unchanged B>)
+
+test <finds the three definitions>
+  want hold, fact(fact-table(query-module), <finds the three definitions>)
+
+test <caller resolves its call to the defined helper>
+  want hold, fact(fact-table(query-module), <caller resolves its call to the defined helper>)
+
+test <editing the callee BODY re-checks the callee>
+  want hold, fact(fact-table(query-module), <editing the callee BODY re-checks the callee>)
+
+test <editing the callee BODY does NOT re-check the caller (firewall)>
+  want hold, fact(fact-table(query-module), <editing the callee BODY does NOT re-check the caller (firewall)>)
+
+test <editing the callee SIGNATURE re-checks the caller>
+  want hold, fact(fact-table(query-module), <editing the callee SIGNATURE re-checks the caller>)
+
+test <editing an unrelated definition does NOT re-check the caller>
+  want hold, fact(fact-table(query-module), <editing an unrelated definition does NOT re-check the caller>)
+
+test <resolvedDef: a valid call resolves with no diagnostics>
+  want hold, fact(fact-table(query-module), <resolvedDef: a valid call resolves with no diagnostics>)
+
+test <resolvedDef: returns a resolved definition>
+  want hold, fact(fact-table(query-module), <resolvedDef: returns a resolved definition>)
+
+test <resolvedDef: editing the callee body does NOT re-resolve the caller>
+  want hold, fact(fact-table(query-module), <resolvedDef: editing the callee body does NOT re-resolve the caller>)
+
+test <resolvedDef: the callee is re-resolved>
+  want hold, fact(fact-table(query-module), <resolvedDef: the callee is re-resolved>)
+
+test <resolvedDef: an undefined call is reported (real resolver diagnostic)>
+  want hold, fact(fact-table(query-module), <resolvedDef: an undefined call is reported (real resolver diagnostic)>)
+
+test <resolvedDef: an unrelated function stays clean>
+  want hold, fact(fact-table(query-module), <resolvedDef: an unrelated function stays clean>)
+
+test <typedDef: a well-typed function checks clean (real inference)>
+  want hold, fact(fact-table(query-module), <typedDef: a well-typed function checks clean (real inference)>)
+
+test <typedDef: a callee body edit leaves the caller typed-result unchanged (firewall via backdating)>
+  want hold, fact(fact-table(query-module), <typedDef: a callee body edit leaves the caller typed-result unchanged (firewall via backdating)>)
+
+test <typedDef: a real type mismatch is reported (real inference, per definition)>
+  want hold, fact(fact-table(query-module), <typedDef: a real type mismatch is reported (real inference, per definition)>)
+
+test <typedDef: an unrelated function stays clean under the error>
+  want hold, fact(fact-table(query-module), <typedDef: an unrelated function stays clean under the error>)
+
+test <emitProgram emits every function>
+  want hold, fact(fact-table(query-module), <emitProgram emits every function>)
+
+test <emitDef: editing the callee body does NOT re-emit the caller>
+  want hold, fact(fact-table(query-module), <emitDef: editing the callee body does NOT re-emit the caller>)
+
+test <emitDef: the callee is re-emitted>
+  want hold, fact(fact-table(query-module), <emitDef: the callee is re-emitted>)
+
+test <emitDef: the caller emit is unchanged>
+  want hold, fact(fact-table(query-module), <emitDef: the caller emit is unchanged>)

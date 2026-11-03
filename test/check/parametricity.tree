@@ -1,0 +1,26 @@
+note <Parametricity / free theorems>
+
+# Ported from parametricity.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Parametricity / free theorems. The general relational translation's CONTENT -- representation independence and the
+# naturality of polymorphic functions -- is delivered constructively: a free theorem is proven by the relational
+# method (induction over the polymorphic container, using the IH on the tail, for an ARBITRARY element function `f`).
+# Here `map f (append s t) == append (map f s) (map f t)` -- the naturality of `append`, a free theorem that holds for
+# every `f` because `append` cannot inspect the element type. (The general AUTO-derivation of such theorems from a
+# type alone -- the abstraction theorem as a term translation -- is the research-grade remainder; the practical
+# free-theorem capability is here.) Soundness control: a false "naturality" with the arguments swapped is rejected.
+# Run: npx tsx test/check/parametricity.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform stack\n  head a\n  case empty\n  case push\n    link top, like a\n    link rest, like stack\n      head a\n\ntask append\n  take s, like stack\n    head nat\n  take t, like stack\n    head nat\n  like stack\n    head nat\n  fork case, read s\n    case empty\n      send back\n        read t\n    case push\n      link top\n      link rest\n      send back\n        make push\n          bind top\n            read top\n          bind rest\n            call append\n              read rest\n              read t\n\ntask map\n  take f\n    like task\n      take x, like nat\n      like nat\n  take s, like stack\n    head nat\n  like stack\n    head nat\n  fork case, read s\n    case empty\n      send back\n        make empty\n    case push\n      link top\n      link rest\n      send back\n        make push\n          bind top\n            call f\n              read top\n          bind rest\n            call map\n              read f\n              read rest\n>
+
+# 1. the NATURALITY free theorem for append, for an arbitrary element function f, proven by induction over the
+# polymorphic container: map f (append s t) == append (map f s) (map f t).
+test <free theorem: map f (append s t) == append (map f s) (map f t)>
+  want hold, compile-text(<{prelude}\nrule map-append-natural\n  seat f\n    like task\n      take x, like nat\n      like nat\n  seat s, like stack\n    head nat\n  seat t, like stack\n    head nat\n  show hold\n    call is-equal\n      call map\n        read f\n        call append\n          read s\n          read t\n      call append\n        call map\n          read f\n          read s\n        call map\n          read f\n          read t\n  fold s\n>)/ok
+
+# 2. SOUNDNESS CONTROL: the SWAPPED claim map f (append s t) == append (map f t) (map f s) is false in general (append
+# is not commutative) and must be rejected.
+test <swapped (false) naturality is rejected>
+  want hold, not(compile-text(<{prelude}\nrule map-append-wrong\n  seat f\n    like task\n      take x, like nat\n      like nat\n  seat s, like stack\n    head nat\n  seat t, like stack\n    head nat\n  show hold\n    call is-equal\n      call map\n        read f\n        call append\n          read s\n          read t\n      call append\n        call map\n          read f\n          read t\n        call map\n          read f\n          read s\n  fold s\n>)/ok)

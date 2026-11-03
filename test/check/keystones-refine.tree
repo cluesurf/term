@@ -1,0 +1,173 @@
+note <The Vibe Theory pinch-point keystones, discharged by the chosen stack's automated refinement prover>
+
+# Ported from keystones-refine.ts by tmp/self-host/suite-kernel-port.mjs. check/refine is the subject (decision 106).
+# The Vibe Theory pinch-point keystones, discharged by the chosen stack's automated refinement prover
+# (refine.ts, the Fourier-Motzkin linear decision procedure that backs `hold` clauses). The pinch-point is the
+# meeting of two pressures on the dimension, and that meeting is pure linear arithmetic, exactly the prover's
+# fragment. The floor's spinor-vs-vector crossing and the ceiling's dimension bound are checked as concrete
+# linear facts. Run: npx tsx test/check/keystones-refine.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/refine>, name refine-prover
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind linear-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0, $a1)>
+
+bind linear-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0)>
+
+bind below-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.below($a0, $a1)>
+
+bind proves-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.proves($a0, $a1)>
+
+bind at-most-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atMost($a0, $a1)>
+
+bind at-least-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atLeast($a0, $a1)>
+
+bind above-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.above($a0, $a1)>
+
+task lit
+  take n, like dynamic
+  like dynamic
+
+  back linear-2(refine-prover, make-record(empty-list()), n)
+
+host d, linear-1(refine-prover, make-record(make(list, <dimension>, 1)))
+
+# ===== the pinch-point: ceiling meets floor, the dimension is forced to eight =====
+# from the ceiling (dimension <= 8) and the floor (dimension >= 8), the dimension is pinned to exactly eight: it
+# is not below eight and not above eight. This is the keystone, and it is a linear deduction the prover closes.
+host pinch, make(list, at-most-2(refine-prover, d, lit(8)), at-least-2(refine-prover, d, lit(8)))
+
+# ===== the one-substance floor =====
+# vector size is n, the half-spinor size is 2^(n/2 - 1). They cross exactly at eight: below eight the spinor is
+# smaller, at eight they are equal, above eight the spinor is larger. So eight is the unique dimension where the
+# directions you move (the vector) and the matter that moves (the spinor) are the same size. The half-spinor
+# sizes are the concrete constants, the comparison is what the prover discharges.
+test <floor: at dim 2, spinor 1 \< vector 2>
+  want hold, truth(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(1), lit(2))))
+
+test <floor: at dim 4, spinor 2 \< vector 4>
+  want hold, truth(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(2), lit(4))))
+
+test <floor: at dim 6, spinor 4 \< vector 6>
+  want hold, truth(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(4), lit(6))))
+
+test <floor: at dim 8, spinor 8 = vector 8 (at most)>
+  want hold, truth(proves-2(refine-prover, empty-list(), at-most-2(refine-prover, lit(8), lit(8))))
+
+test <floor: at dim 8, spinor 8 = vector 8 (at least)>
+  want hold, truth(proves-2(refine-prover, empty-list(), at-least-2(refine-prover, lit(8), lit(8))))
+
+test <floor: at dim 8, spinor is NOT below vector>
+  want hold, not(proves-2(refine-prover, empty-list(), below-2(refine-prover, lit(8), lit(8))))
+
+test <floor: at dim 10, spinor 16 \> vector 10>
+  want hold, truth(proves-2(refine-prover, empty-list(), above-2(refine-prover, lit(16), lit(10))))
+
+# ===== the reversibility ceiling =====
+# the composition algebras run out at dimension eight, the next doubling, the sedenions at sixteen, is past the
+# ceiling, where the norm dies. So the reversible dimension is at most eight, and sixteen exceeds it.
+test <ceiling: the sedenion dimension 16 exceeds the ceiling 8>
+  want hold, truth(proves-2(refine-prover, empty-list(), above-2(refine-prover, lit(16), lit(8))))
+
+test <ceiling: eight is not above eight (it is the top rung)>
+  want hold, not(proves-2(refine-prover, empty-list(), above-2(refine-prover, lit(8), lit(8))))
+
+test <pinch: ceiling and floor give dimension at most 8>
+  want hold, truth(proves-2(refine-prover, pinch, at-most-2(refine-prover, d, lit(8))))
+
+test <pinch: ceiling and floor give dimension at least 8>
+  want hold, truth(proves-2(refine-prover, pinch, at-least-2(refine-prover, d, lit(8))))
+
+test <pinch: the dimension cannot be below 8>
+  want hold, not(proves-2(refine-prover, pinch, below-2(refine-prover, d, lit(8))))
+
+test <pinch: the dimension cannot be above 8>
+  want hold, not(proves-2(refine-prover, pinch, above-2(refine-prover, d, lit(8))))

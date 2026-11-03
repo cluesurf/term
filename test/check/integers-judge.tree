@@ -1,0 +1,233 @@
+note <The integers as a self-typed inductive on the decided kernel (judge.ts), the rung above the naturals>
+
+# Ported from integers-judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# The integers as a self-typed inductive on the decided kernel (judge.ts), the rung above the naturals. An integer
+# is either pos n (the natural n) or negSucc n (the negative -(n+1)), the standard two-constructor encoding. Int is
+# a self type carrying its eliminator, a concrete integer types as Int and its eliminator computes to the matching
+# case. With the self-typed naturals already working, this is the integers built, not postulated. Run:
+# npx tsx test/check/integers-judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind evaluate-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate($a0, $a1)>
+
+bind define-constant-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($a0, $a1)>
+
+bind check-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.check($a0, $a1, $a2)>
+
+task v
+  take i, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, i))
+
+task kc
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, n))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task pi
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <lam>, <body>, body))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task ann
+  take term, like dynamic
+  take type, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <ann>, <term>, term, <type>, type))
+
+task self-of
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <self>, <body>, body))
+
+task idt
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+task refl
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <refl>, <type>, type, <value>, value))
+
+# Int = Self i. (P : Int -> Type0) -> ((n:Nat) -> P (pos n)) -> ((n:Nat) -> P (negSucc n)) -> P i
+host int-body, pi(0, pi(<many>, kc(<Int>), ty(0)), pi(<many>, pi(<many>, kc(<Nat>), app(v(1), app(kc(<pos>), v(0)))), pi(<many>, pi(<many>, kc(<Nat>), app(v(2), app(kc(<negSucc>), v(0)))), app(v(2), v(3)))))
+
+host int-term, self-of(int-body)
+
+# the unfolded type of (pos nn): Int body with the self value replaced by (pos nn).
+host unfold-pos-nn, pi(0, pi(<many>, kc(<Int>), ty(0)), pi(<many>, pi(<many>, kc(<Nat>), app(v(1), app(kc(<pos>), v(0)))), pi(<many>, pi(<many>, kc(<Nat>), app(v(2), app(kc(<negSucc>), v(0)))), app(v(2), app(kc(<pos>), kc(<nn>))))))
+
+# the unfolded type of (negSucc nn): Int body with the self value replaced by (negSucc nn).
+host unfold-neg-succ-nn, pi(0, pi(<many>, kc(<Int>), ty(0)), pi(<many>, pi(<many>, kc(<Nat>), app(v(1), app(kc(<pos>), v(0)))), pi(<many>, pi(<many>, kc(<Nat>), app(v(2), app(kc(<negSucc>), v(0)))), app(v(2), app(kc(<negSucc>), kc(<nn>))))))
+
+# pos = \ n P p q. p n   ,   negSucc = \ n P p q. q n
+host pos-value, lam(lam(lam(lam(app(v(1), v(3))))))
+
+host neg-succ-value, lam(lam(lam(lam(app(v(0), v(3))))))
+
+host signature, make(list, make-record(make(list, <name>, <Int>, <type>, ty(1))), make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <nn>, <type>, kc(<Nat>))), make-record(make(list, <name>, <pos>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <negSucc>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <M>, <type>, pi(<many>, kc(<Int>), ty(0)))), make-record(make(list, <name>, <pcase>, <type>, pi(<many>, kc(<Nat>), app(kc(<M>), app(kc(<pos>), v(0)))))), make-record(make(list, <name>, <qcase>, <type>, pi(<many>, kc(<Nat>), app(kc(<M>), app(kc(<negSucc>), v(0)))))), make-record(make(list, <name>, <Bool>, <type>, ty(0))), make-record(make(list, <name>, <tru>, <type>, kc(<Bool>))), make-record(make(list, <name>, <fls>, <type>, kc(<Bool>))))
+
+host context, context-with-signature-1(judge-kernel, signature)
+
+# A non-dependent fold is the recursor with a constant motive: it defines a total recursive function over the
+# integers by giving one value per constructor. The sign map sends every non-negative (pos n) to true and every
+# negative (negSucc n) to false. It must compute distinctly on the two constructors -- this is the recursor doing
+# the work every integer operation (negation, addition, comparison) is built from. signMotive = \ i. Bool.
+host sign-motive, lam(kc(<Bool>))
+
+host sign-pos, lam(kc(<tru>))
+
+host sign-neg, lam(kc(<fls>))
+
+task prepare
+  like dynamic
+
+  save done, define-constant-2(judge-kernel, <Int>, evaluate-2(judge-kernel, empty-list(), int-term))
+  save done, define-constant-2(judge-kernel, <pos>, evaluate-2(judge-kernel, empty-list(), pos-value))
+  save done, define-constant-2(judge-kernel, <negSucc>, evaluate-2(judge-kernel, empty-list(), neg-succ-value))
+  back true
+
+# the module state every test reads
+host ready, prepare()
+
+test <Int is a self type at Type 1>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, int-term, evaluate-2(judge-kernel, empty-list(), ty(1)))
+  want hold, true
+
+test <pos nn : Int (a concrete integer types as Int)>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, app(kc(<pos>), kc(<nn>)), evaluate-2(judge-kernel, empty-list(), kc(<Int>)))
+  want hold, true
+
+test <negSucc nn : Int (a concrete negative integer types as Int)>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, app(kc(<negSucc>), kc(<nn>)), evaluate-2(judge-kernel, empty-list(), kc(<Int>)))
+  want hold, true
+
+test <the eliminator on (pos nn) computes to the pos case (pcase nn)>
+  want hold, truth(ready)
+  host elim, app(app(app(ann(app(kc(<pos>), kc(<nn>)), unfold-pos-nn), kc(<M>)), kc(<pcase>)), kc(<qcase>))
+  host t, app(kc(<M>), app(kc(<pos>), kc(<nn>)))
+  save done, check-3(judge-kernel, context, refl(t, app(kc(<pcase>), kc(<nn>))), evaluate-2(judge-kernel, empty-list(), idt(t, elim, app(kc(<pcase>), kc(<nn>)))))
+  want hold, true
+
+test <sign (pos nn) computes to true (the fold on a non-negative)>
+  want hold, truth(ready)
+  host elim, app(app(app(ann(app(kc(<pos>), kc(<nn>)), unfold-pos-nn), sign-motive), sign-pos), sign-neg)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), kc(<tru>)), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), elim, kc(<tru>))))
+  want hold, true
+
+test <sign (negSucc nn) computes to false (the fold on a negative)>
+  want hold, truth(ready)
+  host elim, app(app(app(ann(app(kc(<negSucc>), kc(<nn>)), unfold-neg-succ-nn), sign-motive), sign-pos), sign-neg)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), kc(<fls>)), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), elim, kc(<fls>))))
+  want hold, true

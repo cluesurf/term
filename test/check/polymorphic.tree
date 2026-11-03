@@ -1,0 +1,52 @@
+note <Polymorphic datatypes>
+
+# Ported from polymorphic.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Polymorphic datatypes: a `form box / head a` declares a type parameter; `like box / head natural` applies it. The
+# datatype is encoded with leading ERASED type-parameter binders (constructors and the eliminator), use sites insert
+# the witnesses, and a polymorphic function (fork case over the parameterised subject) is transparent so a structural
+# law reduces. Soundness gate: a FALSE polymorphic law must be rejected. (Recursive self-referential parameters -- a
+# field `like box / head a` -- are a further step, tracked in the plan; this covers the non-recursive case.)
+# Run: npx tsx test/check/polymorphic.ts
+host prelude, <form natural\n  case zero\n  case succ\n    link prior, like natural\n\nform box\n  head a\n  case wrap\n    link val, like a\n\ntask unwrap\n  take b, like box\n    head natural\n  like natural\n  fork case, read b\n    case wrap\n      link val\n      send back\n        read val\n>
+
+# 1. A polymorphic function reduces: unwrap (wrap x) = x, for the box parameterised at natural.
+test <polymorphic projection law reduces>
+  want hold, compile-text(<{prelude}\nrule unwrap-wrap\n  seat x, like natural\n  show hold\n    call is-equal\n      call unwrap\n        make wrap\n          bind val\n            read x\n      read x\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: unwrap (wrap zero) = succ zero is false. Must be rejected.
+test <false polymorphic law is rejected>
+  want hold, not(compile-text(<{prelude}\nrule unwrap-wrong\n  show hold\n    call is-equal\n      call unwrap\n        make wrap\n          bind val\n            make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok)
+
+# a RECURSIVE polymorphic datatype (a stack with a self-referential tail `like stack / head a`) and a function that
+# recurses through it
+host stack, <form natural\n  case zero\n  case succ\n    link prior, like natural\n\nform stack\n  head a\n  case empty\n  case push\n    link top, like a\n    link rest, like stack\n      head a\n\ntask depth\n  take s, like stack\n    head natural\n  like natural\n  fork case, read s\n    case empty\n      send back\n        make zero\n    case push\n      link top\n      link rest\n      send back\n        make succ\n          bind prior\n            call depth\n              read rest\n>
+
+# 3. RECURSIVE polymorphic reduction: depth (push x s) = succ (depth s).
+test <recursive polymorphic structural law reduces>
+  want hold, compile-text(<{stack}\nrule depth-push\n  seat x, like natural\n  seat s, like stack\n    head natural\n  show hold\n    call is-equal\n      call depth\n        make push\n          bind top\n            read x\n          bind rest\n            read s\n      make succ\n        bind prior\n          call depth\n            read s\n  calm hold\n>)/ok
+
+# 4. SOUNDNESS CONTROL on the recursive case: depth (push x s) = depth s is false. Must be rejected.
+test <false recursive polymorphic law is rejected>
+  want hold, not(compile-text(<{stack}\nrule depth-push-wrong\n  seat x, like natural\n  seat s, like stack\n    head natural\n  show hold\n    call is-equal\n      call depth\n        make push\n          bind top\n            read x\n          bind rest\n            read s\n      call depth\n        read s\n  calm hold\n>)/ok)
+
+# 5. A FIELD-LESS constructor resolves its parameter from FIELD context: depth (push zero empty) = succ zero, where
+# `empty`'s element type is fixed by the enclosing `push`.
+test <field-less constructor resolves in field context>
+  want hold, compile-text(<{stack}\nrule depth-singleton\n  show hold\n    call is-equal\n      call depth\n        make push\n          bind top\n            make zero\n          bind rest\n            make empty\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 6. A FIELD-LESS constructor (`empty`) as a BARE top-level argument resolves its type parameter from the called
+# function's parameter type: depth (empty) = zero, where `depth` takes a `stack natural`.
+test <field-less constructor in bare argument position resolves>
+  want hold, compile-text(<{stack}\nrule depth-empty\n  show hold\n    call is-equal\n      call depth\n        make empty\n      make zero\n  calm hold\n>)/ok
+
+# A generic STRUCT in a signature is a type former too. Only an enum used to record its parameter count, so a struct
+# with a `head` was registered as a bare type, `holder text` applied a non-function, and every caller of a task returning
+# one failed the kernel with "applied a non-function" (native-dom-0012, the reactive `signal t`).
+host holder, <form holder\n  head t\n  link item, like t\n\ntask hold-text\n  take value, like text\n  like holder text\n  send back\n    make holder\n      bind item, read value\n>
+
+test <a task returning a generic struct can be called>
+  want hold, compile-text(<{holder}\ntask use-it\n  like text\n  save held\n    call hold-text\n      text \<x\>\n  send back, text \<done\>\n>)/ok

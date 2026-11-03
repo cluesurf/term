@@ -1,0 +1,57 @@
+note <Induction-recursion>
+
+# Ported from induction-recursion.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Induction-recursion: a universe as DATA. A type `univ` of CODES and a decoder `el : univ -> type` (a type-returning
+# function) defined together, where `el` is recursive on `univ`. `el natcode = nat`, `el boolcode = bool`, and for a
+# recursive code `el (listcode c) = el c`. The decoder COMPUTES: `el (listcode natcode) == nat`. This is the road to a
+# universe-as-data / intrinsically-typed syntax. Three pieces make it work: `type` is the UNIVERSE (a first-class type
+# of types, kept through inference and lowered to Type0); a TYPE used as a value resolves to its self-encoding (so a
+# branch may return `nat`); and a type-RETURNING match uses the LARGE eliminator `matchType` (motive into Type1), so a
+# branch may itself be a type. Soundness: `el natcode = nat`, NOT `bool`. Run: npx tsx test/check/induction-recursion.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform bool\n  case true\n  case false\n\nform univ\n  case natcode\n  case boolcode\n  case listcode\n    link elem, like univ\n\ntask el\n  take u, like univ\n  like type\n  fork case, read u\n    case natcode\n      send back\n        read nat\n    case boolcode\n      send back\n        read bool\n    case listcode\n      link elem\n      send back\n        call el\n          read elem\n>
+
+# 1. the decoder COMPUTES at a base code: el natcode == nat (as types).
+test <universe decoder computes: el natcode == nat>
+  want hold, compile-text(<{prelude}\nrule el-nat\n  show hold\n    call is-equal\n      call el\n        make natcode\n      read nat\n  calm hold\n>)/ok
+
+# 2. the RECURSIVE decoder computes: el (listcode natcode) == nat -- `el` calls itself on the sub-code.
+test <recursive decoder computes: el (listcode natcode) == nat>
+  want hold, compile-text(<{prelude}\nrule el-list\n  show hold\n    call is-equal\n      call el\n        make listcode\n          bind elem\n            make natcode\n      read nat\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: el natcode is nat, NOT bool. The decoder must compute the right type.
+test <decoder is sound (el natcode != bool)>
+  want hold, not(compile-text(<{prelude}\nrule el-wrong\n  show hold\n    call is-equal\n      call el\n        make natcode\n      read bool\n  calm hold\n>)/ok)
+
+# the decoder used IN A TYPE position -- TYPE-LEVEL APPLICATION. `identity-at : (a : univ) -> el a -> el a` takes a value
+# of the DECODED type `el a` and returns it. `el a` is the function `el` applied inside a type, reducing to the type the
+# code denotes.
+host tlapp, <{prelude}\ntask identity-at\n  take a, like univ\n  take x\n    like el\n      head\n        read a\n  like el\n    head\n      read a\n  send back\n    read x\n>
+
+# 4. type-level application COMPUTES: identity-at natcode 1 == 1, where the argument has type el natcode = nat.
+test <type-level application of the decoder computes: identity-at natcode 1 == 1>
+  want hold, compile-text(<{tlapp}\nrule idat\n  show hold\n    call is-equal\n      call identity-at\n        make natcode\n        make succ\n          bind prior\n            make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 5. SOUNDNESS CONTROL: the decoded type is ENFORCED -- el natcode is nat, so `identity-at natcode true` (true : bool)
+# must be rejected.
+test <type-level application enforces the decoded type (identity-at natcode true is rejected)>
+  want hold, not(compile-text(<{tlapp}\ntask bad\n  like univ\n  send back\n    call identity-at\n      make natcode\n      make true\n>)/ok)
+
+# FULL induction-recursion: the universe's CONSTRUCTOR references the decoder. `sigcode` carries a code `base` and a
+# VALUE of the decoded type (`val : el base`), so `univ` is defined SIMULTANEOUSLY with `el` -- each mentions the other.
+# `el (sigcode base v) = el base`. This is the defining shape of induction-recursion (a type and a function on it
+# defined together, the type's constructors using the function). The large eliminator's branch field types now carry the
+# preceding-field scope, so `el base` (a type-level application referencing a sibling) resolves.
+host full, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform bool\n  case true\n  case false\n\nform univ\n  case natcode\n  case sigcode\n    link base, like univ\n    link val\n      like el\n        head\n          read base\n\ntask el\n  take u, like univ\n  like type\n  fork case, read u\n    case natcode\n      send back\n        read nat\n    case sigcode\n      link base\n      link val\n      send back\n        call el\n          read base\n>
+
+# 6. the decoder computes through a constructor that REFERENCES it: el (sigcode natcode 1) == nat.
+test <full induction-recursion: constructor references decoder, el (sigcode natcode 1) == nat>
+  want hold, compile-text(<{full}\nrule el-sig\n  show hold\n    call is-equal\n      call el\n        make sigcode\n          bind base\n            make natcode\n          bind val\n            make succ\n              bind prior\n                make zero\n      read nat\n  calm hold\n>)/ok
+
+# 7. SOUNDNESS CONTROL: the decoder-referencing field is ENFORCED -- `sigcode natcode true` has `val : el natcode = nat`,
+# so a `bool` value is rejected.
+test <constructor decoder-field enforces the decoded type (sigcode natcode true is rejected)>
+  want hold, not(compile-text(<{full}\ntask bad-sig\n  like univ\n  send back\n    make sigcode\n      bind base\n        make natcode\n      bind val\n        make true\n>)/ok)

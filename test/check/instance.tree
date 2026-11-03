@@ -1,0 +1,27 @@
+note <Call-site instance resolution>
+
+# Ported from instance.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find refused-as
+
+# Call-site instance resolution: a `need`-bounded generic, called at a concrete type, requires an instance of
+# that trait for that type. Run: npx tsx test/check/instance.ts
+host mask-and-generic, <mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n\ntask pick\n  head t, need comparison\n  take item, like t\n  like t\n  send back item\n>
+
+test <bounded call resolves when instance exists>
+  host result, compile-text(<{mask-and-generic}\nform thing\n  link x, like u64\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n\ntask run\n  take a, like thing\n  send back\n    call pick\n      read a\n>)
+  want hold, result/ok
+
+test <bounded call rejected when no instance>
+  host result, compile-text(<{mask-and-generic}\nform other\n  link y, like u64\n\ntask run\n  take b, like other\n  send back\n    call pick\n      read b\n>)
+  want hold, refused-as(result, <no-instance>)
+
+test <bound propagates through a generic call>
+  host result, compile-text(<{mask-and-generic}\ntask choose\n  head u, need comparison\n  take a, like u\n  like u\n  send back\n    call pick\n      read a\n>)
+  want hold, result/ok
+
+test <unbounded generic cannot satisfy a callee bound>
+  host result, compile-text(<{mask-and-generic}\ntask choose\n  head u\n  take a, like u\n  like u\n  send back\n    call pick\n      read a\n>)
+  want hold, refused-as(result, <no-instance>)

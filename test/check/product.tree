@@ -1,0 +1,248 @@
+note <The product prover (check/product.ts)>
+
+# Ported from product.ts by tmp/self-host/suite-kernel-port.mjs. check/product is the subject (decision 106).
+# The product prover (check/product.ts): nonlinear goals from nonlinear hypotheses by products of the facts, with a
+# certificate the replay checker recomputes. Run: npx tsx test/check/product.ts
+#
+# It must prove the ordered-field steps a squared inequality needs, refuse their false neighbors, and its checker
+# must refuse a certificate that is not one.
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/product>, name product-module
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind read-at
+  take items, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$items[$at]>
+
+bind big-number
+  take digits, like text
+  like dynamic
+  case node
+    text <BigInt($digits)>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind product-proves-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.productProves($a0, $a1, $a2)>
+
+bind rational-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.rational($a0)>
+
+bind replay-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.replay($a0, $a1)>
+
+bind refute-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.refute($a0)>
+
+# a polynomial from monomials written with a space, stored NUL-joined the way holds.ts keys them
+# a polynomial from monomials written with a space, stored NUL-joined the way holds.ts keys them
+bind p-with
+  take module, like dynamic
+  take terms, like dynamic
+  like dynamic
+  case node
+    text <new Map(Object.entries($terms).map(([k, c]) =\> [k.split(" ").filter(Boolean).sort().join("\\u0000"), $module.rational(BigInt(c))]))>
+
+task p
+  take terms, like dynamic
+  like dynamic
+
+  back p-with(product-module, terms)
+
+# a found certificate with one thing changed, each read by replay
+bind tampered
+  take module, like dynamic
+  take found, like dynamic
+  take how, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const used = $found.multipliers.findIndex(k =\> k.n !== 0n); return (\{ negated: () =\> (\{ ...$found, multipliers: $found.multipliers.map(k =\> $module.rational(-k.n, k.d)) \}), zeroed: () =\> (\{ ...$found, multipliers: $found.multipliers.map(() =\> $module.rational(0n)) \}), shortened: () =\> (\{ rows: $found.rows.filter((_, i) =\> i !== used), multipliers: $found.multipliers.filter((_, i) =\> i !== used) \}), forged: () =\> (\{ ...$found, rows: $found.rows.map(() =\> (\{ fact: 99 \})) \}) \})[$how]() \})()>
+
+task at
+  take poly, like dynamic
+  take relation, like dynamic, fall <nonnegative>
+  like dynamic
+
+  back make-record(make(list, <polynomial>, poly, <relation>, relation))
+
+# y >= 0 and x^2 <= y^2 give x <= y
+host root, make(list, at(p(make-record(make(list, <y>, 1)))), at(p(make-record(make(list, <y y>, 1, <x x>, -1)))))
+
+# THE TRIANGLE INEQUALITY'S LAST STEP. With p, q the cosh and s, t the sinh of two sides, the Gram bound is
+# (r - p q)^2 <= (s t)^2, and the third side's cosh r lies between cosh(a - b) = p q - s t and cosh(a + b) = p q + s t.
+host gram, make(list, at(p(make-record(make(list, <s>, 1)))), at(p(make-record(make(list, <t>, 1)))), at(p(make-record(make(list, <s s t t>, 1, <r r>, -1, <p q r>, 2, <p p q q>, -1)))))
+
+# the same step from the form metric.tree proves, the Gram determinant (p^2 - 1)(q^2 - 1) - (r - p q)^2 >= 0, with
+# the sinh given by its equation s^2 = p^2 - 1: the equations enter multiplied by monomials
+host sinh, make(list, at(p(make-record(make(list, <s>, 1)))), at(p(make-record(make(list, <t>, 1)))), at(p(make-record(make(list, <s s>, 1, <p p>, -1, <>, 1))), <zero>), at(p(make-record(make(list, <t t>, 1, <q q>, -1, <>, 1))), <zero>), at(p(make-record(make(list, <>, 1, <p p>, -1, <q q>, -1, <r r>, -1, <p q r>, 2)))))
+
+# LINE-CIRCLE CONTINUITY in the Klein disk, circle about the origin of Klein radius^2 m: a line through a with
+# direction v meets it when the quarter discriminant m |v|^2 - (a1 v2 - a2 v1)^2 is >= 0, which holds whenever a is
+# inside (m - |a|^2 >= 0), through d = a . v (Lagrange: |a|^2 |v|^2 = d^2 + cross^2)
+host klein, make(list, at(p(make-record(make(list, <m>, 1, <a1 a1>, -1, <a2 a2>, -1)))), at(p(make-record(make(list, <d>, 1, <a1 v1>, -1, <a2 v2>, -1))), <zero>))
+
+# ---- the checker refuses what is not a certificate ----
+host facts, make(list, at(p(make-record(make(list, <y>, 1)))), at(p(make-record(make(list, <y y>, 1, <x x>, -1)))), at(p(make-record(make(list, <x>, 1, <y>, -1))), <positive>))
+
+host found, refute-1(product-module, facts)
+
+# (found) the certificate refute gives, each of these with one thing changed
+test <a negated multiplier on an inequality row is refused>
+  want hold, not(truth(replay-2(product-module, facts, tampered(product-module, found, <negated>))))
+
+test <all-zero multipliers are refused>
+  want hold, not(truth(replay-2(product-module, facts, tampered(product-module, found, <zeroed>))))
+
+# drop a row the certificate actually leans on
+test <dropping a row it uses breaks the identity>
+  want hold, not(truth(replay-2(product-module, facts, tampered(product-module, found, <shortened>))))
+
+test <a row naming no fact is refused>
+  want hold, not(truth(replay-2(product-module, facts, tampered(product-module, found, <forged>))))
+
+test <the square-root step>
+  want hold, truth(product-proves-3(product-module, root, p(make-record(make(list, <y>, 1, <x>, -1))), false))
+
+test <refuses it strict (x = y)>
+  want hold, truth(not(product-proves-3(product-module, root, p(make-record(make(list, <y>, 1, <x>, -1))), true)))
+
+test <refuses it without y \>= 0 (x = 1, y = -1)>
+  want hold, truth(not(product-proves-3(product-module, make(list, read-at(root, 1)), p(make-record(make(list, <y>, 1, <x>, -1))), false)))
+
+test <a product of non-negatives>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <a>, 1)))), at(p(make-record(make(list, <b>, 1))))), p(make-record(make(list, <a b>, 1))), false))
+
+test <opposite signs give a negative product>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <a>, 1))), <positive>), at(p(make-record(make(list, <b>, -1))), <positive>)), p(make-record(make(list, <a b>, -1))), true))
+
+test <the sign of a factor>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <a b>, 1))), <positive>), at(p(make-record(make(list, <a>, 1))), <positive>)), p(make-record(make(list, <b>, 1))), true))
+
+test <refuses a b \>= 0 gives a \>= 0>
+  want hold, truth(not(product-proves-3(product-module, make(list, at(p(make-record(make(list, <a b>, 1))))), p(make-record(make(list, <a>, 1))), false)))
+
+# an equation used as a fact: x y = 1 and x > 0 give y > 0
+test <an equation as a fact>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <x y>, 1, <>, -1))), <zero>), at(p(make-record(make(list, <x>, 1))), <positive>)), p(make-record(make(list, <y>, 1))), true))
+
+# AM-GM in two variables, no hypotheses: a^2 + b^2 >= 2 a b
+test <a square of a difference>
+  want hold, truth(product-proves-3(product-module, empty-list(), p(make-record(make(list, <a a>, 1, <b b>, 1, <a b>, -2))), false))
+
+# a sinh written as S with S^2 = p^2 - 1 (p a cosh): the equation alone gives p^2 >= 1
+test <p^2 - 1 = S^2 gives p^2 \>= 1>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <p p>, 1, <>, -1, <S S>, -1))), <zero>)), p(make-record(make(list, <p p>, 1, <>, -1))), false))
+
+test <r \<= p q + s t, cosh of the sum>
+  want hold, truth(product-proves-3(product-module, gram, p(make-record(make(list, <p q>, 1, <s t>, 1, <r>, -1))), false))
+
+test <r \>= p q - s t, cosh of the difference>
+  want hold, truth(product-proves-3(product-module, gram, p(make-record(make(list, <r>, 1, <p q>, -1, <s t>, 1))), false))
+
+test <refuses r \<= p q>
+  want hold, truth(not(product-proves-3(product-module, gram, p(make-record(make(list, <p q>, 1, <r>, -1))), false)))
+
+test <cosh of the sum, from the Gram determinant>
+  want hold, truth(product-proves-3(product-module, sinh, p(make-record(make(list, <p q>, 1, <s t>, 1, <r>, -1))), false))
+
+test <cosh of the difference, from the Gram determinant>
+  want hold, truth(product-proves-3(product-module, sinh, p(make-record(make(list, <r>, 1, <p q>, -1, <s t>, 1))), false))
+
+test <refuses the strict bound (a degenerate triangle meets it)>
+  want hold, truth(not(product-proves-3(product-module, sinh, p(make-record(make(list, <p q>, 1, <s t>, 1, <r>, -1))), true)))
+
+# PASCH'S SIGN STEP, not both: u v < 0 (the line crosses a b) and w^2 > 0 (c is off it) with u w < 0 would force
+# v w > 0, so `u w < 0` and `v w < 0` together give u v > 0, against the hypothesis
+test <the line cannot cross both other sides>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <u w>, -1))), <positive>), at(p(make-record(make(list, <v w>, -1))), <positive>), at(p(make-record(make(list, <w w>, 1))), <positive>)), p(make-record(make(list, <u v>, 1))), true))
+
+# and at least one: u v < 0, w^2 > 0 and u w >= 0 give v w < 0
+test <the line crosses one of the other sides>
+  want hold, truth(product-proves-3(product-module, make(list, at(p(make-record(make(list, <u v>, -1))), <positive>), at(p(make-record(make(list, <w w>, 1))), <positive>), at(p(make-record(make(list, <u w>, 1))))), p(make-record(make(list, <v w>, -1))), true))
+
+test <a line through an inside point meets the circle>
+  want hold, truth(product-proves-3(product-module, klein, p(make-record(make(list, <m v1 v1>, 1, <m v2 v2>, 1, <a1 a1 v2 v2>, -1, <a1 a2 v1 v2>, 2, <a2 a2 v1 v1>, -1))), false))
+
+test <refuses it for a point outside>
+  want hold, truth(not(product-proves-3(product-module, make(list, read-at(klein, 1)), p(make-record(make(list, <m v1 v1>, 1, <m v2 v2>, 1, <a1 a1 v2 v2>, -1, <a1 a2 v1 v2>, 2, <a2 a2 v1 v1>, -1))), false)))
+
+# an equation is never multiplied by a monomial unless it IS an equation
+test <a non-negative fact times a monomial is refused by the checker>
+  want hold, truth(not(replay-2(product-module, make(list, at(p(make-record(make(list, <x>, 1))))), make-record(make(list, <rows>, make(list, make-record(make(list, <fact>, 0, <times>, <x>))), <multipliers>, make(list, rational-1(product-module, big-number(<1>))))))))
+
+test <a certificate is found>
+  want hold, truth(not(is-equal(found, void)))
+
+test <and it replays>
+  want hold, truth(and(not(is-equal(found, void)), replay-2(product-module, facts, found)))
+
+# a satisfiable set has no certificate: x >= 0, y >= 0, x y <= 1
+test <no certificate for a satisfiable set>
+  want hold, truth(is-equal(refute-1(product-module, make(list, at(p(make-record(make(list, <x>, 1)))), at(p(make-record(make(list, <y>, 1)))), at(p(make-record(make(list, <>, 1, <x y>, -1)))))), void))

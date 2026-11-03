@@ -1,0 +1,29 @@
+note <Induction-induction>
+
+# Ported from induction-induction.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Induction-induction: two TYPES defined SIMULTANEOUSLY, the second INDEXED by the first. `ctx` is a type of contexts
+# and `ty : ctx -> type` is a type of types-in-context (indexed by `ctx`). They are mutually defined: `ctx`'s `extend`
+# constructor takes a `ty` of the context being extended (`a : ty g`), and `ty`'s `base` constructor takes the context
+# it lives in (`base : (gg : ctx) -> ty gg`, the standard presentation where the index is a constructor argument). A
+# function `length : ctx -> nat` computes through it: `length (extend empty (base empty)) == 1`. The dependency is
+# type-safe -- `extend`'s `a` field must be a `ty`, not (say) a `nat`. With induction-recursion, this completes
+# "define a type and a function/type on it simultaneously". Run: npx tsx test/check/induction-induction.ts
+# `ctx` (contexts) and `ty` (types in context, indexed by ctx), defined together: ctx.extend mentions ty, ty.base
+# mentions ctx.
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform ctx\n  case empty\n  case extend\n    link g, like ctx\n    link a\n      like ty\n        head\n          read g\n\nform ty\n  head g, like ctx\n  case base\n    link gg, like ctx\n    head\n      read gg\n\ntask length\n  take c, like ctx\n  like nat\n  fork case, read c\n    case empty\n      send back\n        make zero\n    case extend\n      link g\n      link a\n      send back\n        make succ\n          bind prior\n            call length\n              read g\n>
+
+# 1. the mutual definition COMPUTES: length (extend empty (base empty)) == 1.
+test <induction-induction computes: length (extend empty (base empty)) == 1>
+  want hold, compile-text(<{prelude}\nrule length-ok\n  show hold\n    call is-equal\n      call length\n        make extend\n          bind g\n            make empty\n          bind a\n            make base\n              bind gg\n                make empty\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: that context has length 1, not 2.
+test <wrong length is rejected (length (extend empty (base empty)) != 2)>
+  want hold, not(compile-text(<{prelude}\nrule length-wrong\n  show hold\n    call is-equal\n      call length\n        make extend\n          bind g\n            make empty\n          bind a\n            make base\n              bind gg\n                make empty\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)/ok)
+
+# 3. SOUNDNESS CONTROL: the index-DEPENDENCY is type-safe -- `extend`'s `a` field must be a `ty`, so a `nat` is rejected.
+test <the ty-typed field is enforced (extend with a nat field is rejected)>
+  want hold, not(compile-text(<{prelude}\ntask bad-extend\n  like ctx\n  send back\n    make extend\n      bind g\n        make empty\n      bind a\n        make zero\n>)/ok)

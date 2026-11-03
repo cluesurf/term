@@ -1,0 +1,5 @@
+note <Lean, second pass: not ported yet>
+
+# PORT: test/compile/lean-second.ts (754 lines, 56 oks through a helper that compiles on three native envs) is not ported in item 0572. Its
+# port is held by the split item named in log.md, as it did not fit the run that landed the rest of compile-04. Until then this file holds no
+# test and term test does not collect it, and the TypeScript suite stands.

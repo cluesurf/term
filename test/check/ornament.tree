@@ -1,0 +1,41 @@
+note <Ornaments>
+
+# Ported from ornament.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Ornaments: the relation between an INDEXED family and its UNINDEXED version. The canonical ornament is the
+# length-indexed vector `vecnat n` over the plain list `stack nat`: the vector is the list "ornamented" with a length
+# index. The forgetful map `forget : vecnat n -> stack nat` drops the index; the ORNAMENT LAW is that the dropped index
+# is recoverable as a property of the unindexed image -- `length (forget v) == n`. Here we verify that recovery law on
+# concrete vectors (length 1 and length 2): the index the family was carrying is exactly the length of the forgetful
+# list, so the indexed family really is the unindexed one decorated with a recomputable measure. Soundness control: a
+# wrong recovered index is rejected. Run: npx tsx test/check/ornament.ts
+# nat, the plain list `stack a`, and the length-indexed `vecnat n`; the forgetful map `forget` and the `length` measure.
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform stack\n  head a\n  case empty\n  case push\n    link top, like a\n    link rest, like stack\n      head a\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\ntask length\n  take s, like stack\n    head nat\n  like nat\n  fork case, read s\n    case empty\n      send back\n        make zero\n    case push\n      link top\n      link rest\n      send back\n        make succ\n          bind prior\n            call length\n              read rest\n\ntask forget\n  take n, like nat\n  take v, like vecnat\n    head\n      read n\n  like stack\n    head nat\n  fork case, read v\n    case vnil\n      send back\n        make empty\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        make push\n          bind top\n            read item\n          bind rest\n            call forget\n              read count\n              read rest\n>
+
+# 1. Recovery on a length-1 vector: length (forget [0]) == 1. The forgetful map throws the index away, the length
+# measure recomputes it, and they agree -- the ornament round-trips.
+test <ornament recovers the index: length (forget v1) == 1>
+  want hold, compile-text(<{prelude}\nrule recover-one\n  show hold\n    call is-equal\n      call length\n        call forget\n          make succ\n            bind prior\n              make zero\n          make vcons\n            bind count\n              make zero\n            bind item\n              make zero\n            bind rest\n              make vnil\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 2. Recovery on a length-2 vector: length (forget [0,0]) == 2.
+test <ornament recovers the index: length (forget v2) == 2>
+  want hold, compile-text(<{prelude}\nrule recover-two\n  show hold\n    call is-equal\n      call length\n        call forget\n          make succ\n            bind prior\n              make succ\n                bind prior\n                  make zero\n          make vcons\n            bind count\n              make succ\n                bind prior\n                  make zero\n            bind item\n              make zero\n            bind rest\n              make vcons\n                bind count\n                  make zero\n                bind item\n                  make zero\n                bind rest\n                  make vnil\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: length (forget v1) is 1, not 2. A wrong recovered index must be rejected.
+test <wrong recovered index is rejected (length (forget v1) != 2)>
+  want hold, not(compile-text(<{prelude}\nrule recover-wrong\n  show hold\n    call is-equal\n      call length\n        call forget\n          make succ\n            bind prior\n              make zero\n          make vcons\n            bind count\n              make zero\n            bind item\n              make zero\n            bind rest\n              make vnil\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)/ok)
+
+# 4. The GENERAL ornament law, for EVERY n and every vector of that length: length (forget v) == n. This is proven by
+# DEPENDENT INDUCTION over the indexed family -- `fold v` refines the length index per constructor (vnil -> the index is
+# zero; vcons count .. -> the index is succ count) in both the case goal and the induction hypothesis, so the recursive
+# case closes from the hypothesis at `count`. This is the real ornament theorem: the index is recoverable on all data.
+test <general ornament law by dependent induction: forall v, length (forget v) == n>
+  want hold, compile-text(<{prelude}\nrule recover-all\n  seat n, like nat\n  seat v, like vecnat\n    head\n      read n\n  show hold\n    call is-equal\n      call length\n        call forget\n          read n\n          read v\n      read n\n  fold v\n>)/ok
+
+# 5. SOUNDNESS CONTROL for the general law: length (forget v) is n, not succ n. The dependent induction must NOT close a
+# false universal -- the vnil case would need 0 == succ 0.
+test <wrong general ornament law is rejected (length (forget v) != succ n)>
+  want hold, not(compile-text(<{prelude}\nrule recover-all-wrong\n  seat n, like nat\n  seat v, like vecnat\n    head\n      read n\n  show hold\n    call is-equal\n      call length\n        call forget\n          read n\n          read v\n      make succ\n        bind prior\n          read n\n  fold v\n>)/ok)

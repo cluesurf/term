@@ -1,0 +1,28 @@
+note <The identity type as an indexed family>
+
+# Ported from identity.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# The identity type as an indexed family. `eq a b` (the proof that a equals b) is the two-index family whose single
+# constructor `refl c : eq c c` carries the shared point. It is a first-class TYPE that values inhabit (not only a goal
+# discharged by a tactic): `refl` constructs it, and its eliminator computes -- the diagonal recursor `diag : eq a b ->
+# nat` reads back the shared point. This is the constructive content of the identity type's recursor (non-dependent J).
+# The fully DEPENDENT eliminator (J with a motive `C : (b) -> eq a b -> Type`, i.e. value-level transport) additionally
+# needs per-branch refinement of the scrutinee's index variables (the convoy pattern); the substitution form of
+# transport -- `a == b |- f a == f b` -- is already proven in `identity-subst.ts`. Run: npx tsx test/check/identity.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform eq\n  head a, like nat\n  head b, like nat\n  case refl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask mkrefl\n  take n, like nat\n  like eq\n    head\n      read n\n    head\n      read n\n  send back\n    make refl\n      bind c\n        read n\n\ntask diag\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  like nat\n  fork case, read e\n    case refl\n      link c\n      send back\n        read c\n>
+
+# 1. `refl` constructs via a task whose RESULT type is the indexed `eq n n`, and the eliminator computes:
+# diag (refl 0) == 0.
+test <refl constructs (eq n n) and the eliminator computes: diag (refl 0) == 0>
+  want hold, compile-text(<{prelude}\nrule diag-zero\n  show hold\n    call is-equal\n      call diag\n        make zero\n        make zero\n        call mkrefl\n          make zero\n      make zero\n  calm hold\n>)/ok
+
+# 2. the eliminator reads back a non-zero point too: diag (refl 1) == 1.
+test <eliminator reads the shared point: diag (refl 1) == 1>
+  want hold, compile-text(<{prelude}\nrule diag-one\n  show hold\n    call is-equal\n      call diag\n        make succ\n          bind prior\n            make zero\n        make succ\n          bind prior\n            make zero\n        call mkrefl\n          make succ\n            bind prior\n              make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: diag (refl 1) is 1, not 0. Must be rejected.
+test <wrong diagonal value is rejected (diag (refl 1) != 0)>
+  want hold, not(compile-text(<{prelude}\nrule diag-wrong\n  show hold\n    call is-equal\n      call diag\n        make succ\n          bind prior\n            make zero\n        make succ\n          bind prior\n            make zero\n        call mkrefl\n          make succ\n            bind prior\n              make zero\n      make zero\n  calm hold\n>)/ok)

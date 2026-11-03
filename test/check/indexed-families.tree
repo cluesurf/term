@@ -1,0 +1,94 @@
+note <Value-indexed inductive families (length-typed vectors)>
+
+# Ported from indexed-families.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Value-indexed inductive families (length-typed vectors). A form declares a VALUE index with `head <n>, like <type>`,
+# and each constructor states its output index with `head <expr>` (`vnil -> zero`, `vcons -> succ count`). The index
+# rides in the TYPE, so `vecnat zero` and `vecnat (succ (succ zero))` are DISTINCT types, checked by ordinary
+# conversion. The payoff is type safety from the index alone: a function whose parameter is a length-2 vector accepts a
+# length-2 value and REJECTS the empty vector, with no runtime check. This exercises the full pipeline -- value
+# arguments in types survive parsing, inference (seedType / zonk), and the kernel encoding (a relevant index binder on
+# the type former + per-constructor index result types). The dependent eliminator (a motive that refines the index per
+# branch) is the next step; construction and application are sound now. Run: npx tsx test/check/indexed-families.ts
+# a length-indexed vector of naturals, and a function whose parameter is a length-TWO vector (so its type fixes the
+# index to `succ (succ zero)`).
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\ntask expects-two\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  like nat\n  send back\n    make zero\n>
+
+# a length-2 vector value: cons(1)(cons(0)(nil)), whose index computes to succ (succ zero).
+host length-two, <make vcons\n        bind count\n          make succ\n            bind prior\n              make zero\n        bind item\n          make zero\n        bind rest\n          make vcons\n            bind count\n              make zero\n            bind item\n              make zero\n            bind rest\n              make vnil>
+
+# 1. the indexed family declares and the length-typed function compiles (value arguments in types are accepted).
+test <indexed family + length-typed parameter compile>
+  want hold, compile-text(prelude)/ok
+
+# 2. a length-2 vector is ACCEPTED where a length-2 vector is expected (the index matches: succ (succ zero)).
+test <length-2 vector accepted by a length-2 parameter>
+  want hold, compile-text(<{prelude}\ntask use-good\n  like nat\n  send back\n    call expects-two\n      {length-two}\n>)/ok
+
+# 3. SOUNDNESS / the type-safety win: the EMPTY vector (index zero) is REJECTED where a length-2 vector is expected.
+# This is enforced purely by the index in the type, with no runtime check.
+test <empty vector rejected by a length-2 parameter (index zero != succ (succ zero))>
+  want hold, not(compile-text(<{prelude}\ntask use-bad\n  like nat\n  send back\n    call expects-two\n      make vnil\n>)/ok)
+
+# 4. SOUNDNESS: a length-ONE vector is also REJECTED (succ zero != succ (succ zero)).
+test <length-1 vector rejected by a length-2 parameter>
+  want hold, not(compile-text(<{prelude}\ntask use-one\n  like nat\n  send back\n    call expects-two\n      make vcons\n        bind count\n          make zero\n        bind item\n          make zero\n        bind rest\n          make vnil\n>)/ok)
+
+# a length-tagging family + functions that PATTERN MATCH on an indexed value (the non-dependent eliminator: `fork
+# case` reduces on `vecnat <index>`). The match peels the subject's full type spine -- type args AND index args -- and
+# feeds them as the eliminator's leading witnesses, and a dependent field (`rest : vecnat count`) binds correctly in
+# the branch.
+host match-prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform bit\n  case off\n  case on\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\ntask tag-empty\n  take v, like vecnat\n    head\n      make zero\n  like bit\n  fork case, read v\n    case vnil\n      send back\n        make on\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        make off\n\ntask tag-one\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          make zero\n  like bit\n  fork case, read v\n    case vnil\n      send back\n        make on\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        make off\n>
+
+# a length-1 vector value, indented to sit directly under `call tag-one` (8 spaces for `make vcons`, deeper for its
+# bindings) so it nests correctly when interpolated.
+host one, <        make vcons\n          bind count\n            make zero\n          bind item\n            make zero\n          bind rest\n            make vnil>
+
+# 5. `fork case` on an indexed value REDUCES through the empty (0-field) branch: tag-empty (vnil) = on.
+test <fork case reduces on an indexed value (vnil branch)>
+  want hold, compile-text(<{match-prelude}\nrule empty-on\n  show hold\n    call is-equal\n      call tag-empty\n        make vnil\n      make on\n  calm hold\n>)/ok
+
+# 6. `fork case` reduces through the dependent-field (3-field, `rest : vecnat count`) branch: tag-one (cons ..) = off.
+test <fork case reduces on an indexed value (dependent vcons branch)>
+  want hold, compile-text(<{match-prelude}\nrule one-off\n  show hold\n    call is-equal\n      call tag-one\n{one}\n      make off\n  calm hold\n>)/ok
+
+# 7. SOUNDNESS: the match reduces to the RIGHT branch -- tag-one (cons ..) is off, NOT on. Must be rejected.
+test <match reduces to the correct branch (cons is not on)>
+  want hold, not(compile-text(<{match-prelude}\nrule one-not-on\n  show hold\n    call is-equal\n      call tag-one\n{one}\n      make on\n  calm hold\n>)/ok)
+
+# VALUE-GENERIC function parameter: `is-empty : (n : nat) -> vecnat n -> bit` abstracts over the index value, so one
+# function works at any length. This is a dependent function parameter (the type of `v` mentions the earlier value
+# param `n`). The match then reduces once the index is concrete at the call site.
+host generic-prelude, <{match-prelude}\ntask is-empty\n  take n, like nat\n  take v, like vecnat\n    head\n      read n\n  like bit\n  fork case, read v\n    case vnil\n      send back\n        make on\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        make off\n>
+
+# 8. value-generic matching reduces at a concrete call: is-empty zero (vnil) = on.
+test <value-generic function over vecnat n: is-empty zero vnil = on>
+  want hold, compile-text(<{generic-prelude}\nrule generic-empty\n  show hold\n    call is-equal\n      call is-empty\n        make zero\n        make vnil\n      make on\n  calm hold\n>)/ok
+
+# 9. and through the cons branch at a concrete length: is-empty (succ zero) (cons ..) = off.
+test <value-generic function: is-empty (succ zero) (cons ..) = off>
+  want hold, compile-text(<{generic-prelude}\nrule generic-cons\n  show hold\n    call is-equal\n      call is-empty\n        make succ\n          bind prior\n            make zero\n{one}\n      make off\n  calm hold\n>)/ok
+
+# INVERSION: a total `head : (n) -> vecnat (succ n) -> nat` that handles ONLY the `vcons` case. At a `succ`-headed
+# index the `vnil` case is impossible, so it may be omitted -- the match auto-discharges it via a discriminator motive
+# (impossible index -> Unit) built on the large eliminator. This is the convoy/inversion that makes a total head/tail
+# expressible.
+host head-text, <{match-prelude}\ntask head\n  take n, like nat\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          read n\n  like nat\n  fork case, read v\n    case vcons\n      link count\n      link item\n      link rest\n      send back\n        read item\n>
+
+host head-call, <call head\n        make zero\n        make vcons\n          bind count\n            make zero\n          bind item\n            make succ\n              bind prior\n                make zero\n          bind rest\n            make vnil>
+
+# 10. total head: head of the length-1 vector [1] reduces to 1, with the empty case omitted.
+test <inversion: total head (vnil omitted) reduces, head [1] = 1>
+  want hold, compile-text(<{head-text}\nrule head-one\n  show hold\n    call is-equal\n      {head-call}\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 11. SOUNDNESS: head [1] is 1, not 0 -- must be rejected.
+test <inversion: head reduces to the right value (not zero)>
+  want hold, not(compile-text(<{head-text}\nrule head-wrong\n  show hold\n    call is-equal\n      {head-call}\n      make zero\n  calm hold\n>)/ok)
+
+# 12. SOUNDNESS: omitting a REACHABLE branch (only vnil, while the subject is succ-headed so vcons is reachable) is
+# still non-exhaustive and must be rejected -- the relaxation only forgives IMPOSSIBLE omissions.
+test <inversion does not forgive omitting a reachable branch>
+  want hold, not(compile-text(<{match-prelude}\ntask bad-head\n  take n, like nat\n  take v, like vecnat\n    head\n      make succ\n        bind prior\n          read n\n  like nat\n  fork case, read v\n    case vnil\n      send back\n        make zero\n>)/ok)

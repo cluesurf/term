@@ -1,0 +1,73 @@
+note <Integer-literal soundness>
+
+# Ported from integer-soundness.ts by hand (item 0559). Each distinct numeric literal is its OWN postulated kernel constant, so the kernel can
+# tell `24` from `999`. A false equality slipped through whenever the closed-arithmetic linear prover did not also cover the goal: a non-linear
+# TASK CALL that the kernel reduces to a literal (`order(tee) == 999` where `order(tee) = 24`) was wrongly discharged.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/list
+  find contains
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))
+
+# a hold with no working proof must fail compilation outright (an unproven hold is an error, not a warning)
+task rejected
+  take source, like text
+  like boolean
+
+  back not(built(source)/ok)
+
+# a true hold compiles with no unproven / unchecked-hold complaint
+task discharges
+  take source, like text
+  like boolean
+
+  host out, built(source)
+  back and(out/ok, not(or(contains(out/warnings, <unchecked-hold>), contains(out/warnings, <unproven>))))
+
+# a task that returns a concrete integer, so a hold can compare its reduced result against a literal
+host prelude, <form kind\n  case tee\n\ntask order\n  take k, like kind\n  like integer\n  fork case, read k\n    case tee\n      send back\n        code 24\n>
+
+task hold-text
+  take name, like text
+  take left, like text
+  take right, like text
+  like text
+
+  back <{prelude}\nhold {name}\n  call is-equal\n{left}\n{right}\n>
+
+host lit24, <    code 24>
+host lit999, <    code 999>
+host lit120, <    code 120>
+host order-tee, <    call order\n      make tee>
+host mul-60-2, <    call multiply\n      code 60\n      code 2>
+
+# 1. DIRECT literals: equal passes, unequal is rejected
+test <direct 120 == 120 discharges>
+  want hold, discharges(hold-text(<a>, lit120, lit120))
+
+test <direct 120 == 999 is rejected>
+  want hold, rejected(hold-text(<b>, lit120, lit999))
+
+# 2. CLOSED ARITHMETIC: a true product passes (via the linear prover), a false one is rejected
+test <product 120 == 60*2 discharges>
+  want hold, discharges(hold-text(<c>, lit120, mul-60-2))
+
+test <product 999 == 60*2 is rejected>
+  want hold, rejected(hold-text(<d>, lit999, mul-60-2))
+
+# 3. THE KEY REGRESSION: a task call the kernel reduces to 24. True passes, false is rejected: the kernel can no longer treat 24 and 999 as
+# convertible, and the non-linear task call means the linear prover never even sees it
+test <task order(tee) == 24 discharges>
+  want hold, discharges(hold-text(<e>, order-tee, lit24))
+
+test <task order(tee) == 999 is rejected>
+  want hold, rejected(hold-text(<f>, order-tee, lit999))

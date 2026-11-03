@@ -1,0 +1,157 @@
+note <Soundness of the impredicative bottom universe>
+
+# Ported from large-elim-judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# Soundness of the impredicative bottom universe. Making Type0 impredicative is what unblocks large recursion (an
+# operation that returns the inductive type itself, like plus : Nat -> Nat -> Nat -- see naturals-judge), because a
+# self-encoded Nat then lives in Type0, the universe of its own motive, instead of floating one level above it. But
+# impredicativity is the rule that, combined the wrong way, gives Girard / Coquand paradoxes. This test pins down
+# that the change is the bounded, consistent fragment (the impredicative-Set discipline, as in Coq), not Type : Type:
+#   - the bottom IS impredicative: a Pi into Type0 stays in Type0 regardless of the domain's universe.
+#   - everything ABOVE stays predicative: a Pi into Type1 takes the max, it does not collapse.
+#   - the universe is still stratified: Type0 : Type1, and Type0 : Type0 is rejected (no Type : Type).
+#   - Sigma stays predicative: there are no impredicative strong sums (those reintroduce the paradox).
+# Run: npx tsx test/check/large-elim-judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind infer-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.infer($a0, $a1)>
+
+task kc
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, n))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task pi
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+task sigma
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <sigma>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+# postulated types dwelling at known universes, used as Pi codomains. "Into Type k" means the codomain is a type
+# that LIVES in Type k (like A : Type0, the universe a self-encoded Nat dwells in), not the universe Type k itself.
+host context, context-with-signature-1(judge-kernel, make(list, make-record(make(list, <name>, <A>, <type>, ty(0))), make-record(make(list, <name>, <B>, <type>, ty(1))), make-record(make(list, <name>, <C>, <type>, ty(2)))))
+
+
+
+task level-is
+  take type-term, like dynamic
+  take want, like number
+  like boolean
+
+  host universe, read-field(infer-2(judge-kernel, context, type-term), <type>)
+  back and(is-equal(read-field(universe, <v>), <type>), is-equal(read-field(read-field(universe, <level>), <constant>), want))
+
+task rejected-1
+  like dynamic
+
+  # a value of type Type0 whose own type is Type0 would be Type : Type. Type0 has type Type1, so checking it AT
+  # Type0 must fail.
+  host universe, read-field(infer-2(judge-kernel, context, ty(0)), <type>)
+  save done, assert-true(and(is-equal(read-field(universe, <v>), <type>), is-equal(read-field(read-field(universe, <level>), <constant>), 0)))
+  back void
+
+test <Type 0 : Type 0 is rejected (no Type : Type, the inconsistent collapse)>
+  want hold, throws-type-error(judge-kernel, rejected-1)
+
+test <a Pi into A:Type0 stays in Type 0 even from a B:Type1 domain (impredicative)>
+  want hold, level-is(pi(<many>, kc(<B>), kc(<A>)), 0)
+
+test <a Pi into A:Type0 stays in Type 0 from a C:Type2 domain (impredicative)>
+  want hold, level-is(pi(<many>, kc(<C>), kc(<A>)), 0)
+
+test <a Pi into B:Type1 from a C:Type2 domain takes the max, Type 2 (predicative above)>
+  want hold, level-is(pi(<many>, kc(<C>), kc(<B>)), 2)
+
+test <a Pi into B:Type1 from an A:Type0 domain is Type 1 (predicative above)>
+  want hold, level-is(pi(<many>, kc(<A>), kc(<B>)), 1)
+
+test <Type 0 : Type 1 (the bottom universe is itself one level up)>
+  want hold, level-is(ty(0), 1)
+
+test <Sigma into A:Type0 from a B:Type1 domain is Type 1, not Type 0 (no impredicative strong sums)>
+  want hold, level-is(sigma(<many>, kc(<B>), kc(<A>)), 1)

@@ -1,0 +1,218 @@
+note <the type a sift's arm tests for is reached by every walk, and bound as its file imports it>
+
+# Item term-self-host-001-0830, term/compiler decision 012. A sift over an unknown narrows through an arm: `case list` / `like point`
+# writes the arm's `type`, and `case point` names the form by the label alone. compile/node-reach.tree and compile/node-children.tree
+# never entered that field, so ir/prune.tree read no mention of a form named only there and dropped it: the merged build and `--emit` said
+# "an unsolved type" where the separate build was clean. And check/scope's binding left the arm under the written name, so a form two files
+# define was refused by both builds, however it was imported. The native runs are test/compile/arm-type-native.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find compiling-options-of
+
+load @term/base/list
+  find contains
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/make/code/compile/node-reach>, name node-reach
+  load <@term/make/code/compile/node-children>, name node-children
+  load <@term/make/code/compile/node-rebuild>, name node-rebuild
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind slugs
+  take seed, like number
+  like dynamic
+  case node
+    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+# a match whose one arm tests for a list of `point`, as the mill writes it
+bind match-node
+  like dynamic
+  case node
+    text <(\{ form: "match", subject: \{ form: "variable", name: "value", span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 1 \} \} \}, cases: [\{ label: "list", body: [], binds: [], type: \{ kind: "array", element: \{ kind: "named", name: "point", args: [] \} \} \}], span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 1 \} \} \})>
+
+bind handle-of
+  take node, like dynamic
+  like dynamic
+  case node
+    text <(\{ of: "statement-handle", node: $node \})>
+
+bind list-of
+  take one, like dynamic
+  like dynamic
+  case node
+    text <[$one]>
+
+bind none-of
+  take seed, like number
+  like dynamic
+  case node
+    text <[]>
+
+bind key-list
+  take one, like text
+  like dynamic
+  case node
+    text <[$one]>
+
+bind count-of
+  take given, like dynamic
+  like number
+  case node
+    text <$given.length>
+
+bind rebuilt-arm-type
+  take handle, like dynamic
+  like dynamic
+  case node
+    text <$handle.node.cases[0].type>
+
+bind same-object
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <$left === $right>
+
+bind names-of
+  take reached, like dynamic
+  like list, like text
+  case node
+    text <$reached.names>
+
+bind types-of
+  take reached, like dynamic
+  like dynamic
+  case node
+    text <$reached.types>
+
+task one-file
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <./{name}>), bind(text, text), bind(answer, <{name}.tree>))
+
+task merged
+  take files, like list, like compiling-source
+  take entry, like text
+  like boolean
+
+  back compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files), bind(stdlib, <node>), bind(tree-shake, <true>), bind(cache, new-cache(cache-module))))/ok
+
+task separate
+  take files, like list, like compiling-source
+  take entry, like text
+  like boolean
+
+  host options, compiling-options-of(make(compile-choice, bind(files, files), bind(stdlib, <node>)))
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), slugs(0)))/ok
+
+# one sift over an unknown: a list of `point`, or else 0
+host list-arm, <task pick\n  take value, like unknown\n  like number\n\n  sift value\n    case list\n      like point\n      back 1\n    miss\n      back 0\n>
+host run-three, <\ntask run\n  like number\n\n  back pick(3)\n>
+host point-x, <form point\n  link x, like number\n>
+host point-name, <form point\n  link name, like text\n>
+host make-b, <\ntask make-b\n  like unknown\n\n  back\n    make point\n      bind name, <<n>>\n>
+
+task shapes-files
+  like list, like compiling-source
+
+  back make(list, one-file(<shapes>, <{point-x}\nform other\n  link y, like number\n>))
+
+task dep-files
+  like list, like compiling-source
+
+  back make(list, one-file(<dep>, <{point-x}\n{list-arm}>))
+
+task split-files
+  like list, like compiling-source
+
+  back make(list, one-file(<a>, point-x), one-file(<b>, <{point-name}{make-b}>))
+
+test <a form imported and named only in a list arm: merged keeps it>
+  want hold, merged(shapes-files(), <load ./shapes\n  find point\n\n{list-arm}{run-three}>)
+
+test <a form imported and named only in a list arm: separate agrees>
+  want hold, separate(shapes-files(), <load ./shapes\n  find point\n\n{list-arm}{run-three}>)
+
+test <the same in a hash arm: merged keeps it>
+  want hold, merged(shapes-files(), <load ./shapes\n  find point\n\ntask pick\n  take value, like unknown\n  like number\n\n  sift value\n    case hash\n      like text\n      like point\n      back 1\n    miss\n      back 0\n{run-three}>)
+
+test <an arm in a dependency, its form private to it: merged keeps it>
+  want hold, merged(dep-files(), <load ./dep\n  find pick\n{run-three}>)
+
+test <an arm in a dependency, its form private to it: separate agrees>
+  want hold, separate(dep-files(), <load ./dep\n  find pick\n{run-three}>)
+
+test <a list arm over a form two files define takes the one its file finds: merged>
+  want hold, merged(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\n{list-arm}\ntask run\n  like number\n\n  back pick(make-b())\n>)
+
+test <a list arm over a form two files define takes the one its file finds: separate>
+  want hold, separate(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\n{list-arm}\ntask run\n  like number\n\n  back pick(make-b())\n>)
+
+test <a form's own arm over a form two files define takes the one its file finds: merged>
+  want hold, merged(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\ntask pick\n  take value, like unknown\n  like number\n\n  sift value\n    case point\n      back value/x\n    miss\n      back 0\n\ntask run\n  like number\n\n  back pick(make-b())\n>)
+
+test <a form's own arm over a form two files define takes the one its file finds: separate>
+  want hold, separate(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\ntask pick\n  take value, like unknown\n  like number\n\n  sift value\n    case point\n      back value/x\n    miss\n      back 0\n\ntask run\n  like number\n\n  back pick(make-b())\n>)
+
+test <an arm over a union's case named like a form two files define stays that case: merged>
+  want hold, merged(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\nform spot\n  case point\n    link at, like number\n  case far\n\ntask pick\n  take value, like spot\n  like number\n\n  sift value\n    case point\n      back at\n    case far\n      back 0\n\ntask run\n  like number\n\n  save held, make-b()\n  back pick(make far)\n>)
+
+test <a named arm of a known record of a form two files define: merged>
+  want hold, merged(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\ntask pick\n  take value, like point\n  like number\n\n  sift value\n    case point\n      back x\n\ntask run\n  like number\n\n  save held, make-b()\n  save p\n    make point\n      bind x, 1\n  back pick(p)\n>)
+
+test <node-reach enters an arm's type and reads the names inside it>
+  host reached, node-reach/reachStatements(list-of(match-node()), none-of(0))
+  want hold, is-equal(count-of(types-of(reached)), 2)
+  want hold, contains(names-of(reached), <point>)
+
+test <a skip list naming type stops node-reach at the arm>
+  host reached, node-reach/reachStatements(list-of(match-node()), key-list(<type>))
+  want hold, is-equal(count-of(types-of(reached)), 0)
+
+test <node-children hands an arm's type out after the subject>
+  host children, node-children/nodeChildren(handle-of(match-node()), none-of(0))
+  want hold, is-equal(count-of(children), 2)
+
+test <a skip list naming type stops node-children at the arm>
+  host children, node-children/nodeChildren(handle-of(match-node()), key-list(<type>))
+  want hold, is-equal(count-of(children), 1)
+
+test <node-rebuild takes an arm's type back from the children it is given>
+  host node, match-node()
+  host children, node-children/nodeChildren(handle-of(node), none-of(0))
+  host made, node-rebuild/rebuildNode(handle-of(node), children, none-of(0))
+  want hold, not(same-object(rebuilt-arm-type(handle-of(node)), void))
+  want hold, is-equal(count-of(children), 2)
+  want hold, not(same-object(made, void))

@@ -1,0 +1,648 @@
+note <Tests for the dependent type judgment>
+
+# Ported from judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# Tests for the dependent type judgment: universe-polymorphic hierarchy, quantities (linearity), the identity
+# type, and observational function extensionality (funext that COMPUTES, derivable as the identity).
+# Run: npx tsx test/check/judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return error instanceof $module.TypeError \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind var-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.varLevel($a0)>
+
+bind infer-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.infer($a0, $a1)>
+
+bind eq-level-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.eqLevel($a0, $a1)>
+
+bind check-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.check($a0, $a1, $a2)>
+
+bind checks-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.checks($a0, $a1)>
+
+bind instantiate-level-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.instantiateLevel($a0, $a1, $a2)>
+
+bind reset-metas-0
+  take module, like dynamic
+  like dynamic
+  case node
+    text <$module.resetMetas()>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind fresh-meta-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.freshMeta($a0)>
+
+bind evaluate-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate($a0, $a1)>
+
+bind bind-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.bind($a0, $a1, $a2)>
+
+bind reset-definitions-0
+  take module, like dynamic
+  like dynamic
+  case node
+    text <$module.resetDefinitions()>
+
+bind define-constant-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($a0, $a1)>
+
+task v
+  take index, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, index))
+
+task kconst
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, name))
+
+task ann
+  take term, like dynamic
+  take type, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <ann>, <term>, term, <type>, type))
+
+task sigma
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <sigma>, <mult>, mult, <domain>, domain, <codomain>, codomain))
+
+task pair-of
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pair>, <first>, first, <second>, second))
+
+task first-of
+  take p, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <fst>, <pair>, p))
+
+task second-of
+  take p, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <snd>, <pair>, p))
+
+task self-of
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <self>, <body>, body))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task ty-var
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, var-level-1(judge-kernel, name)))
+
+task pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, mult, <domain>, domain, <codomain>, codomain))
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <lam>, <body>, body))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task id-of
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+task refl
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <refl>, <type>, type, <value>, value))
+
+task type-value
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <v>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+# ---- universe POLYMORPHISM: an identity polymorphic over a level variable u ----
+host id-type-poly, pi(0, ty-var(<u>), pi(1, v(0), v(1)))
+
+host id-term, lam(lam(v(0)))
+
+# ---- metavariables: unification solves a type argument from a value argument ----
+# identity : (0 A : Type0) -> (1 x : A) -> A, applied to a fresh meta and a value of type Nat. The meta must be
+# solved to Nat for the application to check at Nat.
+host id-type, pi(0, ty(0), pi(1, v(0), v(1)))
+
+host signature, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <Bool>, <type>, ty(0))), make-record(make(list, <name>, <value>, <type>, kconst(<Nat>))), make-record(make(list, <name>, <identity>, <type>, id-type)))
+
+# ---- linear regions: mutation tied to the `1` multiplicity (a region is used exactly once, no aliasing) ----
+host region-sig, make(list, make-record(make(list, <name>, <Region>, <type>, ty(0))))
+
+# ---- Miller pattern unification: a metavariable applied to distinct bound variables ----
+host miller-sig, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <value>, <type>, kconst(<Nat>))))
+
+host nat-to-nat, pi(<many>, kconst(<Nat>), kconst(<Nat>))
+
+# ---- transparent definitions (delta reduction) ----
+host delta-sig, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <identityFn>, <type>, pi(<many>, kconst(<Nat>), kconst(<Nat>)))), make-record(make(list, <name>, <value>, <type>, kconst(<Nat>))))
+
+# ---- dependent pairs (sigma) ----
+host data, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <Bool>, <type>, ty(0))), make-record(make(list, <name>, <value>, <type>, kconst(<Nat>))))
+
+host nat-pair, sigma(<many>, kconst(<Nat>), kconst(<Nat>))
+
+# ---- the dead-to-live wall (term-proof-0001, tmp/mult-zero-wall-probe.ts) ----
+# J over refl at Type 1, with a constant motive to Type 0, so its result has the base's type and IS the base
+task j-over
+  take base, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <j>, <proof>, refl(ty(1), ty(0)), <motive>, lam(lam(ty(0))), <base>, base, <level>, lit-level-1(judge-kernel, 1)))
+
+task closed
+  take term, like dynamic
+  take type, like dynamic
+  like dynamic
+
+  back check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), term, evaluate-2(judge-kernel, empty-list(), type))
+
+# ---- universe hierarchy ----
+test <Type 0 : Type 1>
+  host t, read-field(infer-2(judge-kernel, read-field(judge-kernel, <emptyContext>), ty(0)), <type>)
+  want hold, truth(and(is-equal(read-field(t, <v>), <type>), eq-level-2(judge-kernel, read-field(t, <level>), lit-level-1(judge-kernel, 1))))
+
+test <Type 0 checks against Type 1>
+  save done, check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), ty(0), type-value(1))
+  want hold, true
+
+test <cumulativity: Type 0 against Type 2>
+  save done, check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), ty(0), type-value(2))
+  want hold, true
+
+task rejected-1
+  like dynamic
+
+  save done, check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), ty(1), type-value(0))
+  back void
+
+test <Type 1 not against Type 0>
+  want hold, throws-type-error(judge-kernel, rejected-1)
+
+test <level-polymorphic identity checks abstractly>
+  save done, checks-2(judge-kernel, id-term, id-type-poly)
+  want hold, true
+
+test <instantiate u := 0 and it still checks>
+  host id-type0, instantiate-level-3(judge-kernel, id-type-poly, <u>, lit-level-1(judge-kernel, 0))
+  want hold, truth(checks-2(judge-kernel, id-term, id-type0))
+
+test <instantiate u := 5 and it still checks>
+  host id-type5, instantiate-level-3(judge-kernel, id-type-poly, <u>, lit-level-1(judge-kernel, 5))
+  want hold, truth(checks-2(judge-kernel, id-term, id-type5))
+
+# ---- quantities / linearity ----
+test <linear used once>
+  save done, checks-2(judge-kernel, lam(v(0)), pi(1, ty(0), ty(0)))
+  want hold, true
+
+task rejected-2
+  like dynamic
+
+  save done, checks-2(judge-kernel, lam(ty(0)), pi(1, ty(0), ty(1)))
+  back void
+
+test <linear used zero times>
+  want hold, throws-type-error(judge-kernel, rejected-2)
+
+task rejected-3
+  like dynamic
+
+  save done, checks-2(judge-kernel, lam(v(0)), pi(0, ty(0), ty(0)))
+  back void
+
+test <erased argument used>
+  want hold, throws-type-error(judge-kernel, rejected-3)
+
+test <many used zero times>
+  save done, checks-2(judge-kernel, lam(ty(0)), pi(<many>, ty(0), ty(1)))
+  want hold, true
+
+# ---- identity type ----
+test <refl of a type>
+  want hold, truth(checks-2(judge-kernel, refl(ty(1), ty(0)), id-of(ty(1), ty(0), ty(0))))
+
+task rejected-4
+  like dynamic
+
+  save done, check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), refl(ty(2), ty(0)), make-record(make(list, <v>, <id>, <type>, type-value(2), <left>, type-value(0), <right>, type-value(1))))
+  back void
+
+test <refl with unequal sides>
+  want hold, throws-type-error(judge-kernel, rejected-4)
+
+# J on refl
+test <J on refl type-checks>
+  host motive, lam(lam(id-of(ty(1), ty(0), v(1))))
+  host base, refl(ty(1), ty(0))
+  host proof, refl(ty(1), ty(0))
+  host j-term, make-record(make(list, <tag>, <j>, <proof>, proof, <motive>, motive, <base>, base, <level>, lit-level-1(judge-kernel, 2)))
+  save done, check-3(judge-kernel, read-field(judge-kernel, <emptyContext>), j-term, make-record(make(list, <v>, <id>, <type>, type-value(1), <left>, type-value(0), <right>, type-value(0))))
+  want hold, true
+
+# ---- observational funext: DERIVABLE (the identity function), because Id at a function type computes ----
+test <funext is the identity (computes, not postulated)>
+  # funext : (0 A:Type0)(0 B:(1 A)->Type0)(0 f:(1 A)->B)(0 g:(1 A)->B)
+  #          (1 _:(1 x:A)->Id (B x)(f x)(g x)) -> Id ((1 A)->B) f g
+  host funext-type, pi(0, ty(0), pi(0, pi(1, v(0), ty(0)), pi(0, pi(1, v(1), app(v(1), v(0))), pi(0, pi(1, v(2), app(v(2), v(0))), pi(1, pi(1, v(3), id-of(app(v(3), v(0)), app(v(2), v(0)), app(v(1), v(0)))), id-of(pi(1, v(4), app(v(4), v(0))), v(2), v(1)))))))
+  # the proof is just: lambda A. lambda B. lambda f. lambda g. lambda h. h
+  host funext-term, lam(lam(lam(lam(lam(v(0))))))
+  want hold, truth(checks-2(judge-kernel, funext-term, funext-type))
+
+test <metavariable solved by unification (polymorphic identity at a concrete type)>
+  save done, reset-metas-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, signature)
+  host meta, fresh-meta-1(judge-kernel, type-value(0))
+  host term, app(app(kconst(<identity>), meta), kconst(<value>))
+  save done, check-3(judge-kernel, context, term, evaluate-2(judge-kernel, empty-list(), kconst(<Nat>)))
+  want hold, true
+
+task rejected-5
+  like dynamic
+
+  save done, reset-metas-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, signature)
+  host meta, fresh-meta-1(judge-kernel, type-value(0))
+  host term, app(app(kconst(<identity>), meta), kconst(<value>))
+  save done, check-3(judge-kernel, context, term, evaluate-2(judge-kernel, empty-list(), kconst(<Bool>)))
+  back void
+
+test <metavariable solving rejects an inconsistent result type>
+  want hold, throws-type-error(judge-kernel, rejected-5)
+
+task rejected-6
+  like dynamic
+
+  save done, reset-metas-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, signature)
+  host a, fresh-meta-1(judge-kernel, type-value(0))
+  host x, fresh-meta-1(judge-kernel, evaluate-2(judge-kernel, empty-list(), a))
+  # checking ?x against (?a -> Nat) tries to solve ?a := (?a -> Nat), the occurs check must refuse
+  host cyclic, pi(1, a, kconst(<Nat>))
+  save done, check-3(judge-kernel, context, x, evaluate-2(judge-kernel, empty-list(), cyclic))
+  back void
+
+test <occurs check blocks a cyclic solution>
+  want hold, throws-type-error(judge-kernel, rejected-6)
+
+test <a linear region is consumed exactly once>
+  host context, context-with-signature-1(judge-kernel, region-sig)
+  # \ r. r  :  (1 r : Region) -> Region  -- uses the region exactly once
+  save done, check-3(judge-kernel, context, lam(v(0)), evaluate-2(judge-kernel, empty-list(), pi(1, kconst(<Region>), kconst(<Region>))))
+  want hold, true
+
+task rejected-7
+  like dynamic
+
+  host context, context-with-signature-1(judge-kernel, region-sig)
+  # \ r. (r, r)  :  (1 r : Region) -> Region * Region  -- uses the region twice, violating linearity
+  save done, check-3(judge-kernel, context, lam(pair-of(v(0), v(0))), evaluate-2(judge-kernel, empty-list(), pi(1, kconst(<Region>), sigma(<many>, kconst(<Region>), kconst(<Region>)))))
+  back void
+
+test <aliasing a linear region is rejected (used twice)>
+  want hold, throws-type-error(judge-kernel, rejected-7)
+
+task rejected-8
+  like dynamic
+
+  host context, context-with-signature-1(judge-kernel, joined-list(region-sig, make(list, make-record(make(list, <name>, <unit>, <type>, ty(0))), make-record(make(list, <name>, <nothing>, <type>, kconst(<unit>))))))
+  # \ r. nothing  :  (1 r : Region) -> unit  -- never uses the region, violating linearity
+  save done, check-3(judge-kernel, context, lam(kconst(<nothing>)), evaluate-2(judge-kernel, empty-list(), pi(1, kconst(<Region>), kconst(<unit>))))
+  back void
+
+test <dropping a linear region is rejected (used zero times)>
+  want hold, throws-type-error(judge-kernel, rejected-8)
+
+test <Miller pattern: ?m x = x solves ?m to the identity, then computes>
+  save done, reset-metas-0(judge-kernel)
+  host context, bind-3(judge-kernel, context-with-signature-1(judge-kernel, miller-sig), <many>, evaluate-2(judge-kernel, empty-list(), kconst(<Nat>)))
+  host m, fresh-meta-1(judge-kernel, evaluate-2(judge-kernel, empty-list(), nat-to-nat))
+  # checking refl against Id Nat (?m x) x forces (?m x) == x, solving ?m := \x. x
+  host goal, id-of(kconst(<Nat>), app(m, v(0)), v(0))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), v(0)), evaluate-2(judge-kernel, read-field(context, <env>), goal))
+  # the solution must compute: (?m value) reduces to value
+  host computed, id-of(kconst(<Nat>), app(m, kconst(<value>)), kconst(<value>))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), kconst(<value>)), evaluate-2(judge-kernel, read-field(context, <env>), computed))
+  want hold, true
+
+task rejected-9
+  like dynamic
+
+  save done, reset-metas-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, miller-sig)
+  host m, fresh-meta-1(judge-kernel, evaluate-2(judge-kernel, empty-list(), nat-to-nat))
+  # ?m value -- the argument is a constant, not a bound variable, so this is not a Miller pattern
+  host goal, id-of(kconst(<Nat>), app(m, kconst(<value>)), kconst(<value>))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), kconst(<value>)), evaluate-2(judge-kernel, empty-list(), goal))
+  back void
+
+test <a non-pattern spine (argument is not a distinct variable) does not solve>
+  want hold, throws-type-error(judge-kernel, rejected-9)
+
+test <a transparent definition unfolds during conversion (delta)>
+  save done, reset-metas-0(judge-kernel)
+  save done, reset-definitions-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, delta-sig)
+  save done, define-constant-2(judge-kernel, <identityFn>, evaluate-2(judge-kernel, empty-list(), lam(v(0))))
+  # refl proves Id Nat (identityFn value) value only if identityFn delta-unfolds to the identity
+  host goal, id-of(kconst(<Nat>), app(kconst(<identityFn>), kconst(<value>)), kconst(<value>))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), kconst(<value>)), evaluate-2(judge-kernel, empty-list(), goal))
+  want hold, true
+
+task rejected-10
+  like dynamic
+
+  save done, reset-metas-0(judge-kernel)
+  save done, reset-definitions-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, delta-sig)
+  host goal, id-of(kconst(<Nat>), app(kconst(<identityFn>), kconst(<value>)), kconst(<value>))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), kconst(<value>)), evaluate-2(judge-kernel, empty-list(), goal))
+  back void
+
+test <an opaque constant does not unfold>
+  want hold, throws-type-error(judge-kernel, rejected-10)
+
+task rejected-11
+  like dynamic
+
+  save done, reset-metas-0(judge-kernel)
+  save done, reset-definitions-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <loopy>, <type>, kconst(<Nat>))), make-record(make(list, <name>, <other>, <type>, kconst(<Nat>)))))
+  save done, define-constant-2(judge-kernel, <loopy>, evaluate-2(judge-kernel, empty-list(), kconst(<loopy>)))
+  # converting loopy with other would unfold forever, fuel makes it terminate (and correctly fail) rather than hang
+  host goal, id-of(kconst(<Nat>), kconst(<loopy>), kconst(<other>))
+  save done, check-3(judge-kernel, context, refl(kconst(<Nat>), kconst(<loopy>)), evaluate-2(judge-kernel, empty-list(), goal))
+  back void
+
+test <fuel-bounded delta terminates on a recursive / self-referential definition>
+  want hold, throws-type-error(judge-kernel, rejected-11)
+
+test <a pair checks against its sigma type>
+  host context, context-with-signature-1(judge-kernel, data)
+  save done, check-3(judge-kernel, context, pair-of(kconst(<value>), kconst(<value>)), evaluate-2(judge-kernel, empty-list(), nat-pair))
+  want hold, true
+
+test <projections fst/snd type-check>
+  host context, context-with-signature-1(judge-kernel, data)
+  host annotated, ann(pair-of(kconst(<value>), kconst(<value>)), nat-pair)
+  save done, check-3(judge-kernel, context, first-of(annotated), evaluate-2(judge-kernel, empty-list(), kconst(<Nat>)))
+  save done, check-3(judge-kernel, context, second-of(annotated), evaluate-2(judge-kernel, empty-list(), kconst(<Nat>)))
+  want hold, true
+
+task rejected-12
+  like dynamic
+
+  host context, context-with-signature-1(judge-kernel, joined-list(data, make(list, make-record(make(list, <name>, <flag>, <type>, kconst(<Bool>))))))
+  save done, check-3(judge-kernel, context, pair-of(kconst(<value>), kconst(<flag>)), evaluate-2(judge-kernel, empty-list(), nat-pair))
+  back void
+
+test <a pair with a wrong component is rejected>
+  want hold, throws-type-error(judge-kernel, rejected-12)
+
+# ---- observational equality beyond Pi: Id at a product is a product of Ids (pair extensionality computes) ----
+test <pair extensionality computes (Id at a product reduces to a product of Ids)>
+  host context, context-with-signature-1(judge-kernel, data)
+  host point, pair-of(kconst(<value>), kconst(<value>))
+  host identity, id-of(nat-pair, point, point)
+  host proof, pair-of(refl(kconst(<Nat>), kconst(<value>)), refl(kconst(<Nat>), kconst(<value>)))
+  save done, check-3(judge-kernel, context, proof, evaluate-2(judge-kernel, empty-list(), identity))
+  want hold, true
+
+# dependent-sigma observational equality: Id at a dependent pair computes through transport
+test <dependent pair extensionality computes (Id at a dependent sigma, via transport)>
+  host signature, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <Vec>, <type>, pi(<many>, kconst(<Nat>), ty(0)))), make-record(make(list, <name>, <n>, <type>, kconst(<Nat>))), make-record(make(list, <name>, <vn>, <type>, app(kconst(<Vec>), kconst(<n>)))))
+  host context, context-with-signature-1(judge-kernel, signature)
+  host dependent, sigma(<many>, kconst(<Nat>), app(kconst(<Vec>), v(0)))
+  host point, pair-of(kconst(<n>), kconst(<vn>))
+  host identity, id-of(dependent, point, point)
+  # a pair of refls inhabits it: the second's type Id (Vec n) (transport refl vn) vn reduces to Id (Vec n) vn vn
+  host proof, pair-of(refl(kconst(<Nat>), kconst(<n>)), refl(app(kconst(<Vec>), kconst(<n>)), kconst(<vn>)))
+  save done, check-3(judge-kernel, context, proof, evaluate-2(judge-kernel, empty-list(), identity))
+  want hold, true
+
+# ---- self types (the inductive foundation) ----
+test <self introduction: a value checks against a non-dependent self type>
+  host context, context-with-signature-1(judge-kernel, data)
+  save done, check-3(judge-kernel, context, kconst(<value>), evaluate-2(judge-kernel, empty-list(), self-of(kconst(<Nat>))))
+  want hold, true
+
+test <self elimination: a self-typed variable is usable at the unfolded type>
+  host context, bind-3(judge-kernel, context-with-signature-1(judge-kernel, data), <many>, evaluate-2(judge-kernel, empty-list(), self-of(kconst(<Nat>))))
+  save done, check-3(judge-kernel, context, v(0), evaluate-2(judge-kernel, read-field(context, <env>), kconst(<Nat>)))
+  want hold, true
+
+task rejected-13
+  like dynamic
+
+  host context, context-with-signature-1(judge-kernel, data)
+  save done, check-3(judge-kernel, context, kconst(<value>), evaluate-2(judge-kernel, empty-list(), self-of(kconst(<Bool>))))
+  back void
+
+test <self introduction rejects a mismatched body>
+  want hold, throws-type-error(judge-kernel, rejected-13)
+
+# an inductive type with its dependent eliminator is expressible as a self type: this is the encoding the
+# surface enum compiles to. Bool = Self x. (P : Bool -> Type0) -> P true -> P false -> P x, where the recursive
+# reference `Bool` is the type itself (a transparent definition, so the self-variable is usable where Bool is).
+test <an inductive (Bool) is derivable as a self-type encoding>
+  save done, reset-metas-0(judge-kernel)
+  save done, reset-definitions-0(judge-kernel)
+  host context, context-with-signature-1(judge-kernel, make(list, make-record(make(list, <name>, <Bool>, <type>, ty(0))), make-record(make(list, <name>, <true>, <type>, kconst(<Bool>))), make-record(make(list, <name>, <false>, <type>, kconst(<Bool>)))))
+  host bool-encoding, self-of(pi(<many>, pi(<many>, kconst(<Bool>), ty(0)), pi(<many>, app(v(0), kconst(<true>)), pi(<many>, app(v(1), kconst(<false>)), app(v(2), v(3))))))
+  save done, define-constant-2(judge-kernel, <Bool>, evaluate-2(judge-kernel, empty-list(), bool-encoding))
+  # the encoding is a well-formed type (its dependent eliminator is exactly application of a Bool)
+  host inferred, infer-2(judge-kernel, context, bool-encoding)
+  want hold, truth(not(not(is-equal(read-field(read-field(inferred, <type>), <v>), <type>))))
+
+task rejected-14
+  like dynamic
+
+  save done, closed(lam(j-over(v(0))), pi(0, ty(0), ty(0)))
+  back void
+
+test <an erased binder returned through the base of J>
+  want hold, throws-type-error(judge-kernel, rejected-14)
+
+task rejected-15
+  like dynamic
+
+  save done, closed(lam(pair-of(j-over(v(0)), v(0))), pi(1, ty(0), sigma(<many>, ty(0), ty(0))))
+  back void
+
+test <a linear binder used twice, once hidden in the base of J>
+  want hold, throws-type-error(judge-kernel, rejected-15)
+
+task rejected-16
+  like dynamic
+
+  save done, closed(lam(first-of(ann(pair-of(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(0)))
+  back void
+
+test <an erased binder packed as an erased first component, then projected live by fst>
+  want hold, throws-type-error(judge-kernel, rejected-16)
+
+test <control: a linear binder returned once through the base of J>
+  save done, closed(lam(j-over(v(0))), pi(1, ty(0), ty(0)))
+  want hold, true
+
+test <control: fst of a pair whose first component is live>
+  save done, closed(lam(first-of(ann(pair-of(v(0), ty(0)), sigma(<many>, ty(0), ty(1))))), pi(<many>, ty(0), ty(0)))
+  want hold, true
+
+test <control: snd of a pair whose first component is erased>
+  save done, closed(lam(second-of(ann(pair-of(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(1)))
+  want hold, true

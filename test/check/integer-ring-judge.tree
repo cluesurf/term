@@ -1,0 +1,391 @@
+note <The integer ring completed on the decided kernel (judge.ts)>
+
+# Ported from integer-ring-judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# The integer ring completed on the decided kernel (judge.ts): multiplication (all four sign cases) and the
+# decidable order, both computing. Multiplication is a fold of natural multiplication with sign bookkeeping, the
+# order leb (a <= b) is a decision returning Bool. Each rests on Nat operations lifted through the Int eliminator,
+# and several motives return function types (Nat -> Bool, Int -> Bool), in Type0 only because the bottom universe is
+# impredicative. With addition (integer-addition-judge) this is the ordered ring Z, built and reducing in the
+# kernel, the arrow keystone's one-way order now a computation over the construction. Run:
+# npx tsx test/check/integer-ring-judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind evaluate-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate($a0, $a1)>
+
+bind define-constant-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($a0, $a1)>
+
+bind check-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.check($a0, $a1, $a2)>
+
+task v
+  take i, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, i))
+
+task kc
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, n))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task pi
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <lam>, <body>, body))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task self-of
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <self>, <body>, body))
+
+task idt
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+task refl
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <refl>, <type>, type, <value>, value))
+
+# ===== naturals: zero, succ, plus, times =====
+host nat-step, pi(<many>, kc(<Nat>), pi(<many>, app(v(2), v(0)), app(v(3), app(kc(<succ>), v(1)))))
+
+host nat-body, pi(0, pi(<many>, kc(<Nat>), ty(0)), pi(<many>, app(v(0), kc(<zero>)), pi(<many>, nat-step, app(v(2), v(3)))))
+
+host nat-term, self-of(nat-body)
+
+host zero-value, lam(lam(lam(v(1))))
+
+host succ-value, lam(lam(lam(lam(app(app(v(0), v(3)), app(app(app(v(3), v(2)), v(1)), v(0)))))))
+
+host plus-value, lam(lam(app(app(app(v(1), lam(kc(<Nat>))), v(0)), lam(lam(app(kc(<succ>), v(0)))))))
+
+# times a b = a (\_. Nat) zero (\ _ r. plus b r)
+host times-value, lam(lam(app(app(app(v(1), lam(kc(<Nat>))), kc(<zero>)), lam(lam(app(app(kc(<plus>), v(2)), v(0)))))))
+
+# ===== integers: pos, negSucc =====
+host int-body, pi(0, pi(<many>, kc(<Int>), ty(0)), pi(<many>, pi(<many>, kc(<Nat>), app(v(1), app(kc(<pos>), v(0)))), pi(<many>, pi(<many>, kc(<Nat>), app(v(2), app(kc(<negSucc>), v(0)))), app(v(2), v(3)))))
+
+host int-term, self-of(int-body)
+
+host pos-value, lam(lam(lam(lam(app(v(1), v(3))))))
+
+host neg-succ-value, lam(lam(lam(lam(app(v(0), v(3))))))
+
+host int-motive, lam(kc(<Int>))
+
+host bool-motive, lam(kc(<Bool>))
+
+host nat-to-int, pi(<many>, nat-term, int-term)
+
+host int-to-int, pi(<many>, int-term, int-term)
+
+host nat-to-bool, pi(<many>, nat-term, kc(<Bool>))
+
+host int-to-bool, pi(<many>, int-term, kc(<Bool>))
+
+host nat-to-nat-to-nat, pi(<many>, nat-term, pi(<many>, nat-term, nat-term))
+
+# ===== negation (for the mixed-sign multiplication cases) =====
+host neg-pos-case, lam(app(app(app(v(0), int-motive), app(kc(<pos>), kc(<zero>))), lam(lam(app(kc(<negSucc>), v(1))))))
+
+host neg-neg-case, lam(app(kc(<pos>), app(kc(<succ>), v(0))))
+
+host neg-value, lam(app(app(app(v(0), int-motive), kc(<negPosCase>)), kc(<negNegCase>)))
+
+# ===== multiplication =====
+# mult (pos a) = \ y. y (\_.Int) (\ b. pos (a*b)) (\ b. neg (pos (a*(b+1))))
+host mul-pos, lam(lam(app(app(app(v(0), int-motive), lam(app(kc(<pos>), app(app(kc(<times>), v(2)), v(0))))), lam(app(kc(<neg>), app(kc(<pos>), app(app(kc(<times>), v(2)), app(kc(<succ>), v(0)))))))))
+
+# mult (negSucc a) = \ y. y (\_.Int) (\ b. neg (pos ((a+1)*b))) (\ b. pos ((a+1)*(b+1)))
+host mul-neg, lam(lam(app(app(app(v(0), int-motive), lam(app(kc(<neg>), app(kc(<pos>), app(app(kc(<times>), app(kc(<succ>), v(2))), v(0)))))), lam(app(kc(<pos>), app(app(kc(<times>), app(kc(<succ>), v(2))), app(kc(<succ>), v(0))))))))
+
+host mult-value, lam(app(app(app(v(0), lam(int-to-int)), kc(<mulPos>)), kc(<mulNeg>)))
+
+# ===== the order: lebNat (m <= n) then lebInt (a <= b), both returning Bool =====
+# lebNat = \ m. m (\ _. Nat -> Bool) (\ n. true) (\ m' rec n. n (\_.Bool) false (\ k _. rec k))
+host leb-nat-base, lam(kc(<true>))
+
+host leb-nat-step, lam(lam(lam(app(app(app(v(0), bool-motive), kc(<false>)), lam(lam(app(v(3), v(1))))))))
+
+host leb-nat-value, lam(app(app(app(v(0), lam(nat-to-bool)), kc(<lebNatBase>)), kc(<lebNatStep>)))
+
+# lebInt (pos x) = \ b. b (\_.Bool) (\ y. lebNat x y) (\ y. false)        -- pos x <= pos y , pos x <= neg = false
+# lebInt (negSucc x) = \ b. b (\_.Bool) (\ y. true) (\ y. lebNat y x)     -- neg <= pos = true , -(x+1) <= -(y+1) iff y<=x
+host leb-int-pos, lam(lam(app(app(app(v(0), bool-motive), lam(app(app(kc(<lebNat>), v(2)), v(0)))), lam(kc(<false>)))))
+
+host leb-int-neg, lam(lam(app(app(app(v(0), bool-motive), lam(kc(<true>))), lam(app(app(kc(<lebNat>), v(0)), v(2))))))
+
+host leb-int-value, lam(app(app(app(v(0), lam(int-to-bool)), kc(<lebIntPos>)), kc(<lebIntNeg>)))
+
+host context, context-with-signature-1(judge-kernel, make(list, make-record(make(list, <name>, <Nat>, <type>, ty(0))), make-record(make(list, <name>, <zero>, <type>, kc(<Nat>))), make-record(make(list, <name>, <succ>, <type>, pi(<many>, kc(<Nat>), kc(<Nat>)))), make-record(make(list, <name>, <plus>, <type>, nat-to-nat-to-nat)), make-record(make(list, <name>, <times>, <type>, nat-to-nat-to-nat)), make-record(make(list, <name>, <Int>, <type>, ty(0))), make-record(make(list, <name>, <pos>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <negSucc>, <type>, pi(<many>, kc(<Nat>), kc(<Int>)))), make-record(make(list, <name>, <Bool>, <type>, ty(0))), make-record(make(list, <name>, <true>, <type>, kc(<Bool>))), make-record(make(list, <name>, <false>, <type>, kc(<Bool>))), make-record(make(list, <name>, <negPosCase>, <type>, nat-to-int)), make-record(make(list, <name>, <negNegCase>, <type>, nat-to-int)), make-record(make(list, <name>, <neg>, <type>, int-to-int)), make-record(make(list, <name>, <mulPos>, <type>, pi(<many>, nat-term, int-to-int))), make-record(make(list, <name>, <mulNeg>, <type>, pi(<many>, nat-term, int-to-int))), make-record(make(list, <name>, <lebNatBase>, <type>, nat-to-bool)), make-record(make(list, <name>, <lebNatStep>, <type>, pi(<many>, nat-term, pi(<many>, nat-to-bool, nat-to-bool)))), make-record(make(list, <name>, <lebNat>, <type>, pi(<many>, nat-term, nat-to-bool))), make-record(make(list, <name>, <lebIntPos>, <type>, pi(<many>, nat-term, int-to-bool))), make-record(make(list, <name>, <lebIntNeg>, <type>, pi(<many>, nat-term, int-to-bool)))))
+
+task def
+  take n, like dynamic
+  take t, like dynamic
+  like dynamic
+
+  back define-constant-2(judge-kernel, n, evaluate-2(judge-kernel, empty-list(), t))
+
+task nat
+  take k, like dynamic
+  like dynamic
+
+  fork test, truth(is-equal(k, 0))
+    hold
+      back kc(<zero>)
+  back app(kc(<succ>), nat(subtract(k, 1)))
+
+task pos-n
+  take k, like dynamic
+  like dynamic
+
+  back app(kc(<pos>), nat(k))
+
+task neg-n
+  take k, like dynamic
+  like dynamic
+
+  back app(kc(<negSucc>), nat(subtract(k, 1)))
+
+task prepare
+  like dynamic
+
+  save done, def(<Nat>, nat-term)
+  save done, def(<zero>, zero-value)
+  save done, def(<succ>, succ-value)
+  save done, def(<plus>, plus-value)
+  save done, def(<times>, times-value)
+  save done, def(<Int>, int-term)
+  save done, def(<pos>, pos-value)
+  save done, def(<negSucc>, neg-succ-value)
+  save done, def(<negPosCase>, neg-pos-case)
+  save done, def(<negNegCase>, neg-neg-case)
+  save done, def(<neg>, neg-value)
+  save done, def(<mulPos>, mul-pos)
+  save done, def(<mulNeg>, mul-neg)
+  save done, def(<mult>, mult-value)
+  save done, def(<lebNatBase>, leb-nat-base)
+  save done, def(<lebNatStep>, leb-nat-step)
+  save done, def(<lebNat>, leb-nat-value)
+  save done, def(<lebIntPos>, leb-int-pos)
+  save done, def(<lebIntNeg>, leb-int-neg)
+  save done, def(<lebInt>, leb-int-value)
+  back true
+
+# the module state every test reads
+host ready, prepare()
+
+# multiplication, all four sign cases plus the absorbing zero and unit.
+test <mult : Int -\> Int -\> Int type-checks>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, mult-value, evaluate-2(judge-kernel, empty-list(), pi(<many>, int-term, int-to-int)))
+  want hold, true
+
+test <mult (pos 2) (pos 3) = pos 6>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), pos-n(2)), pos-n(3))
+  host rhs, pos-n(6)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <mult (-2) (pos 3) = -6>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), neg-n(2)), pos-n(3))
+  host rhs, neg-n(6)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <mult (pos 2) (-3) = -6>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), pos-n(2)), neg-n(3))
+  host rhs, neg-n(6)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <mult (-2) (-3) = pos 6>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), neg-n(2)), neg-n(3))
+  host rhs, pos-n(6)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <mult (pos 0) (pos 5) = pos 0>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), pos-n(0)), pos-n(5))
+  host rhs, pos-n(0)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+test <mult (pos 1) (pos 5) = pos 5>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<mult>), pos-n(1)), pos-n(5))
+  host rhs, pos-n(5)
+  save done, check-3(judge-kernel, context, refl(kc(<Int>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Int>), lhs, rhs)))
+  want hold, true
+
+# the decidable order, the arrow's one-way order as a computation over the integers.
+test <lebInt : Int -\> Int -\> Bool type-checks>
+  want hold, truth(ready)
+  save done, check-3(judge-kernel, context, leb-int-value, evaluate-2(judge-kernel, empty-list(), pi(<many>, int-term, int-to-bool)))
+  want hold, true
+
+test <2 \<= 5 is true>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), pos-n(2)), pos-n(5))
+  host rhs, kc(<true>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <5 \<= 2 is false (one-way)>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), pos-n(5)), pos-n(2))
+  host rhs, kc(<false>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <-3 \<= -1 is true>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), neg-n(3)), neg-n(1))
+  host rhs, kc(<true>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <-1 \<= -3 is false>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), neg-n(1)), neg-n(3))
+  host rhs, kc(<false>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <-1 \<= pos 2 is true (negatives below non-negatives)>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), neg-n(1)), pos-n(2))
+  host rhs, kc(<true>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <pos 2 \<= -1 is false>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), pos-n(2)), neg-n(1))
+  host rhs, kc(<false>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true
+
+test <pos 0 \<= pos 0 is true (reflexive at a point)>
+  want hold, truth(ready)
+  host lhs, app(app(kc(<lebInt>), pos-n(0)), pos-n(0))
+  host rhs, kc(<true>)
+  save done, check-3(judge-kernel, context, refl(kc(<Bool>), rhs), evaluate-2(judge-kernel, empty-list(), idt(kc(<Bool>), lhs, rhs)))
+  want hold, true

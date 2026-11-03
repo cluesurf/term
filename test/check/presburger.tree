@@ -1,0 +1,185 @@
+note <Presburger arithmetic -- INTEGER-exact linear reasoning (the divisibility core)>
+
+# Ported from presburger.ts by tmp/self-host/suite-kernel-port.mjs. check/refine is the subject (decision 106).
+# Presburger arithmetic -- INTEGER-exact linear reasoning (the divisibility core). The linear prover eliminates
+# variables by Fourier-Motzkin (existential quantifier elimination), but over the rationals that is INCOMPLETE for the
+# integers: `2x = 3` has the rational solution x = 1.5, yet NO integer solution. The Omega-style INTEGER TIGHTENING
+# added to `normalize` closes that gap: a constraint `Sigma <= b` whose coefficients share a gcd `g` is EXACTLY
+# `Sigma <= g * floor(b / g)`, since `Sigma` is always a multiple of `g`. With it the prover DECIDES divisibility --
+# `2x = 3` becomes `x <= 1 AND x >= 2`, a contradiction. It stays sound (a genuinely satisfiable system, `2x = 4`, is
+# not refuted). This is the integer-completeness half of Presburger (full modular projection for free multi-variable
+# divisibility, `2x = y => y even`, is the remaining Omega dark-shadow piece). Run: npx tsx test/check/presburger.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/refine>, name refine-prover
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind read-at
+  take items, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$items[$at]>
+
+bind big-number
+  take digits, like text
+  like dynamic
+  case node
+    text <BigInt($digits)>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind linear-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0)>
+
+bind linear-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.linear($a0, $a1)>
+
+bind below-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.below($a0, $a1)>
+
+bind at-most-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atMost($a0, $a1)>
+
+bind at-least-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.atLeast($a0, $a1)>
+
+bind proves-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.proves($a0, $a1)>
+
+host x, linear-1(refine-prover, make-record(make(list, <x>, 1)))
+
+host two-x, linear-1(refine-prover, make-record(make(list, <x>, 2)))
+
+task k
+  take n, like dynamic
+  like dynamic
+
+  back linear-2(refine-prover, make-record(empty-list()), n)
+
+host contradiction, below-2(refine-prover, k(0), k(0))
+
+host y, linear-1(refine-prover, make-record(make(list, <y>, 1)))
+
+task eq
+  take a, like dynamic
+  take b, like dynamic
+  like dynamic
+
+  back make(list, at-most-2(refine-prover, a, b), at-least-2(refine-prover, a, b))
+
+# 1. divisibility: 2x == 3 has no INTEGER solution, so the system is unsatisfiable (Fourier-Motzkin over the rationals
+# would accept x = 1.5).
+test <integer: 2x = 3 is unsatisfiable (divisibility)>
+  want hold, truth(proves-2(refine-prover, make(list, at-most-2(refine-prover, two-x, k(3)), at-least-2(refine-prover, two-x, k(3))), contradiction))
+
+# 2. SOUNDNESS: 2x == 4 DOES have an integer solution (x = 2), so the system must NOT be refuted.
+test <soundness: 2x = 4 is satisfiable (not refuted)>
+  want hold, truth(not(proves-2(refine-prover, make(list, at-most-2(refine-prover, two-x, k(4)), at-least-2(refine-prover, two-x, k(4))), contradiction)))
+
+# 3. integer floor: 2x <= 3 implies x <= 1 (since x <= 1.5 and x is an integer). Over the rationals it would not.
+test <integer: 2x \<= 3 implies x \<= 1>
+  want hold, truth(proves-2(refine-prover, make(list, at-most-2(refine-prover, two-x, k(3))), at-most-2(refine-prover, x, k(1))))
+
+# 4. SOUNDNESS: 2x <= 3 does NOT imply x <= 0 (x = 1 satisfies the premise).
+test <soundness: 2x \<= 3 does not imply x \<= 0>
+  want hold, truth(not(proves-2(refine-prover, make(list, at-most-2(refine-prover, two-x, k(3))), at-most-2(refine-prover, x, k(0)))))
+
+# 5. divisibility with a larger modulus: 4x = 6 is unsatisfiable over the integers (gcd 4 does not divide 6).
+test <integer: 4x = 6 is unsatisfiable>
+  want hold, truth(proves-2(refine-prover, make(list, at-most-2(refine-prover, linear-1(refine-prover, make-record(make(list, <x>, 4))), k(6)), at-least-2(refine-prover, linear-1(refine-prover, make-record(make(list, <x>, 4))), k(6))), contradiction))
+
+# 6. SOUNDNESS: 3x = 6 is satisfiable (x = 2).
+test <soundness: 3x = 6 is satisfiable (not refuted)>
+  want hold, truth(not(proves-2(refine-prover, make(list, at-most-2(refine-prover, linear-1(refine-prover, make-record(make(list, <x>, 3))), k(6)), at-least-2(refine-prover, linear-1(refine-prover, make-record(make(list, <x>, 3))), k(6))), contradiction)))
+
+# 7. MULTI-VARIABLE divisibility: 2x = y AND y = 3 is unsatisfiable -- exact (unit-coefficient) elimination of `y`
+# reduces it to 2x = 3, which the integer tightening then refutes. Plain Fourier-Motzkin, eliminating `x` first, would
+# lose the `2 | y` information and wrongly accept it.
+test <multivar: 2x = y AND y = 3 is unsatisfiable>
+  want hold, truth(proves-2(refine-prover, joined-list(eq(two-x, y), eq(y, k(3))), contradiction))
+
+# 8. SOUNDNESS: 2x = y AND y = 4 is satisfiable (x = 2, y = 4).
+test <soundness: 2x = y AND y = 4 is satisfiable (not refuted)>
+  want hold, truth(not(proves-2(refine-prover, joined-list(eq(two-x, y), eq(y, k(4))), contradiction)))
+
+# 9. CHAINED: 2x = y, 2y = z, z = 2 forces y = 1, then 2x = 1 -- unsatisfiable through two exact eliminations.
+test <chained: 2x = y, 2y = z, z = 2 is unsatisfiable>
+  want hold, truth(proves-2(refine-prover, joined-list(joined-list(eq(two-x, y), eq(linear-1(refine-prover, make-record(make(list, <y>, 2))), linear-1(refine-prover, make-record(make(list, <z>, 1))))), eq(linear-1(refine-prover, make-record(make(list, <z>, 1))), k(2))), contradiction))
+
+# 10. multi-variable GCD: 2x + 4y = 1 is unsatisfiable -- gcd(2,4)=2 does not divide 1, caught directly by the tightening.
+test <multivar gcd: 2x + 4y = 1 is unsatisfiable>
+  want hold, truth(proves-2(refine-prover, eq(linear-1(refine-prover, make-record(make(list, <x>, 2, <y>, 4))), k(1)), contradiction))

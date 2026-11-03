@@ -838,6 +838,35 @@ task is-equality
     miss
       back false
 
+# whether an operator is a division or a remainder whose divisor is not written as a nonzero literal
+task may-divide-by-zero
+  take op, like binary-op
+  take divisor, like expression
+  like boolean
+  mark private
+
+  sift op
+    case divide
+      back not(is-nonzero-literal(divisor))
+    case remainder
+      back not(is-nonzero-literal(divisor))
+    miss
+      back false
+
+task is-nonzero-literal
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back is-unequal(integer-text(node), <0>)
+    case float
+      link value
+      back is-unequal(value, 0)
+    miss
+      back false
+
 task binary-term
   take ts, like term-state
   take op, like binary-op
@@ -849,6 +878,12 @@ task binary-term
   mark private
 
   save st, ts/st
+  # inside a guarded fork, a division or a remainder may raise `defect`, which its term does not say
+  # (term-self-host-001-0853). A divisor written as a nonzero literal cannot
+  fork test, and(is-above(ts/guards/length, 0), may-divide-by-zero(op, right-node))
+    hold
+      note-miss(ts, <a division that may raise inside a guarded fork>)
+      back no-term()
   fork test, is-equality(op)
     hold
       # polymorphic equality: one operand elaborated, its type synthesized, the other elaborated against it
@@ -929,9 +964,11 @@ task call-term
   sift callee
     case variable
       link callee-name
-      # inside a guarded fork, a call that may raise would take the handler's path, which its term does not: a task
-      # value, whose raises nothing here knows, or a task that raises (proof-by-default-0011)
-      fork test, and(is-above(ts/guards/length, 0), or(scope/has(callee-name), ts/raising/has(callee-name)))
+      # inside a guarded fork, a call that may raise would take the handler's path, which its term does not
+      # (proof-by-default-0011). Every call counts as one that may: a task's effect row says `throw` only for a `halt`
+      # it reaches, and never saw a division by zero, a host bind, a dock call, or a raising task value handed down, so
+      # two guards over one call proved their different handlers equal (term-self-host-001-0853)
+      fork test, is-above(ts/guards/length, 0)
         hold
           note-miss(ts, <a call that may raise inside a guarded fork>)
           back no-term()

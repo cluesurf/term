@@ -1,0 +1,25 @@
+note <The identity type's substitution principle (subst / the computational content of J / transport)>
+
+# Ported from identity-subst.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# The identity type's substitution principle (subst / the computational content of J / transport): from a proof that
+# `a == b`, any property of `a` transfers to `b`. The kernel discharges this by CONGRUENCE rewriting modulo the
+# equation in scope -- `a == b |- f a == f b` for any `f` -- which is exactly transport along the equality. Here the
+# equation is introduced as a path hypothesis (a branch on `n == m`), and the goal `is-zero n == is-zero m` (which
+# `calm` alone cannot prove, since n and m are distinct variables) is discharged from it. Sound: the assumption is
+# true on that path, so rewriting by it preserves truth. Soundness control: WITHOUT the equation, the goal is not
+# provable. Run: npx tsx test/check/identity-subst.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform bit\n  case off\n  case on\n\ntask is-zero\n  take n, like nat\n  like bit\n  fork case, read n\n    case zero\n      send back\n        make on\n    case succ\n      link prior\n      send back\n        make off\n>
+
+# 1. SUBST / transport: from the equation `n == m`, derive `is-zero n == is-zero m` (congruence under the function
+# `is-zero`). The equation is a path hypothesis (the `n == m` branch).
+test <subst: n == m discharges is-zero n == is-zero m (congruence / J)>
+  want hold, compile-text(<{prelude}\ntask subst\n  take n, like nat\n  take m, like nat\n  like bit\n  fork test\n    hook test\n      call is-equal\n        read n\n        read m\n    hook hold\n      hold\n        call is-equal\n          call is-zero\n            read n\n          call is-zero\n            read m\n      send back\n        make on\n    hook miss\n      send back\n        make off\n>)/ok
+
+# 2. SOUNDNESS CONTROL: WITHOUT the equation in scope, `is-zero n == is-zero m` is NOT provable (n and m are distinct
+# free variables, so the congruence has nothing to rewrite by). Must be rejected.
+test <without the equation, the congruence goal is not provable>
+  want hold, not(compile-text(<{prelude}\nrule no-hypothesis\n  seat n, like nat\n  seat m, like nat\n  show hold\n    call is-equal\n      call is-zero\n        read n\n      call is-zero\n        read m\n  calm hold\n>)/ok)

@@ -918,7 +918,7 @@ task enters-type-key
       back true
 
 # whether a rule enters the type a match arm tests for: mint-bridge.ts's applyAliases and elaborate.ts's kindsApart
-# walked every key
+# walked every key, and the two rules that rename a form must reach it, or the arm names no form at all (item 0830)
 task enters-arm-types
   take rule, like rewrite-rule
   like boolean
@@ -930,6 +930,10 @@ task enters-arm-types
     case kinds-apart
       back true
     case settle-words
+      back true
+    case separate-case
+      back true
+    case bind-forms
       back true
     miss
       back false
@@ -3466,9 +3470,62 @@ task bind-statement
           save one/raise, bound
         case none
           save nothing, 0
+    case match
+      save arms, make list
+      walk cases
+        take arm
+        sift bound-arm-label(binding, arm/label)
+          case some
+            link bound
+            save arm/label, bound
+          case none
+            save nothing, 0
+        push(arms, arm)
+      save one/cases, arms
     miss
       save nothing, 0
   back one
+
+# AN ARM THAT NAMES A FORM BY ITS LABEL (`case point` over an unknown, or a record's own name) names it as a `like` does, so
+# a form two files define takes the split name its file means. Only where the file defines or finds the form: a label
+# means the case of a union first, and a union's case named like a form is a name of its own by now (`separate-case`).
+# The six words an arm over an unknown tests by the label keep their meaning (item 0830)
+task bound-arm-label
+  take binding, like form-binding
+  take label, like text
+  like maybe, like text
+  mark private
+
+  fork test, has-text(make(list, <number>, <float>, <text>, <boolean>, <list>, <hash>), label)
+    hold
+      back make none
+  fork test, not(file-names-form(binding, label))
+    hold
+      back make none
+  back rebind-form(binding, label, make none)
+
+# whether the file of the statement being rewritten defines a form two files define, or finds it
+task file-names-form
+  take binding, like form-binding
+  take name, like text
+  like boolean
+  mark private
+
+  walk binding/groups
+    take group
+    fork test, and(is-equal(group/name, name), has-text(group/files, binding/file))
+      hold
+        back true
+  sift scope-of(binding/scopes, binding/file)
+    case some
+      link own
+      sift targets-of(own/finds, name)
+        case some
+          back true
+        case none
+          back false
+    case none
+      back false
 
 # the owner of a case two modules' forms share, ONLY where nothing else could be meant, a fact of the file (decision
 # 101): the one owner that reaches it, its own or the one its finds import. Two or more reaching, or none, it is left to

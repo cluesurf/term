@@ -1,0 +1,270 @@
+note <The tree/code codec: its worked example, its round trips, the canonical spelling and nothing else>
+
+# Ported from host-code.ts by hand (item 0572). compile/host and compile/host-code are the suite's subject (decision 106). Every test below reads one
+# answer. The original's helpers are host code over bytes, a seeded float and a host exception, so they stay host code in one bind, written as
+# they are written there. Its sizes table only prints and is not ported. Two test names held a computed count in the original, written here
+# without it: `...and it is smaller than its minified JSON`, `the stream fixture, one frame each`.
+
+dock load
+  load <@term/make/code/compile/host>, name host-module
+  load <@term/make/code/compile/host-code>, name code-module
+
+bind helpers-with
+  take host, like dynamic
+  take code, like dynamic
+  like dynamic
+  case node
+    text <(($host, $code, fs, zlib) =\> \{ ; const FIXTURE = 'deck/host/test/fixture' ; const compress = plain =\> new Uint8Array(zlib.zstdCompressSync(plain)) ; const decompress = (packed, size) =\> new Uint8Array(zlib.zstdDecompressSync(packed, \{ maxOutputLength: size \})) ; const hex = bytes =\> [...bytes].map(b =\> b.toString(16).padStart(2, '0')).join(' ') ; const bytes = text =\> Uint8Array.from(text.split(/\\s+/).filter(Boolean).map(b =\> Number.parseInt(b, 16))) ; const treeOf = (text, file = 'x.tree') =\> \{ const read = $host.readDataText(\{ file, text \}); if (!read.ok) throw new Error(read.diagnostics.map(d =\> d.message).join(' | ')); const expanded = $host.expandData(read.data, file); if (!expanded.ok) throw new Error(expanded.diagnostics.map(d =\> d.message).join(' | ')); return expanded.data \} ; const same = (a, b) =\> JSON.stringify(a) === JSON.stringify(b) ; const roundTrips = values =\> \{ const encoded = $code.encodeTree(values); const decoded = $code.decodeTree(encoded); if (!decoded.ok) return false; return same(values, decoded.values) && hex($code.encodeTree(decoded.values)) === hex(encoded) \} ; const refusal = (stream, options = \{\}) =\> \{ const decoded = $code.decodeTree(bytes(stream), options); return decoded.ok ? 'accepted' : decoded.problem.name \} ; const encodeRefusal = value =\> \{ try \{ $code.encodeTree(value); return 'accepted' \} catch (cause) \{ return cause instanceof $code.TreeCodeError ? cause.problem.name : String(cause) \} \} ; const generator = seed =\> \{ let state = seed \>\>\> 0; return () =\> \{ state = (state + 0x6d2b79f5) \>\>\> 0; let t = state; t = Math.imul(t ^ (t \>\>\> 15), t | 1); t ^= t + Math.imul(t ^ (t \>\>\> 7), t | 61); return ((t ^ (t \>\>\> 14)) \>\>\> 0) / 4294967296 \} \} ; const WORDS = ['name', 'age', 'active', 'tags', 'a', 'b', '', 'é', '世界', '😀', 'x-y', 'id', '\<\>\{\}', 'line\\nbreak'] ; const KEYS = ['name', 'age', 'active', 'tags', 'id', 'kind', 'size', 'note'] ; const generated = (random, depth) =\> \{ const pick = list =\> list[Math.floor(random() * list.length)]; const roll = random(); if (depth \> 0 && roll \< 0.15) \{ const size = Math.floor(random() * 6); return \{ kind: 'list', list: Array.from(\{ length: size \}, () =\> generated(random, depth - 1)) \} \} if (depth \> 0 && roll \< 0.3) \{ const keys = KEYS.filter(() =\> random() \< 0.5); return \{ kind: 'hash', list: keys.map(name =\> (\{ name, base: generated(random, depth - 1) \})) \} \} switch (Math.floor(random() * 8)) \{ case 0: return \{ kind: 'number', value: Math.floor((random() - 0.5) * 2 ** Math.floor(random() * 60)) \}; case 1: return \{ kind: 'number', value: pick([0, 1, 27, 28, -1, -28, -29, 255, 2 ** 53, -(2 ** 53), 2 ** 60, -(2 ** 70)]) \}; case 2: return \{ kind: 'decimal', value: pick([0, 1, -1, 0.5, 0.1, -2.75, 1e300, -1e-300, 3.25, 2 ** 53, 2 ** 60, 123456.789, -0]) \}; case 3: return \{ kind: 'decimal', value: (random() - 0.5) * 10 ** Math.floor(random() * 20) \}; case 4: return \{ kind: 'text', value: pick(WORDS) \}; case 5: return \{ kind: 'flag', value: random() \< 0.5 \}; case 6: return \{ kind: 'void' \}; default: return \{ kind: 'text', value: pick(WORDS) + pick(WORDS) \} \} \} ; const varint = n =\> \{ const out = []; let rest = n; do \{ const low = Number(rest & 0x7fn); rest \>\>= 7n; out.push(rest \> 0n ? low | 0x80 : low) \} while (rest \> 0n); return Uint8Array.from(out) \} ; const frame = body =\> \{ const value = bytes(body); return '01 ' + hex(varint(BigInt(value.length))) + ' ' + hex(value) \} ; const dataset = count =\> \{ const random = generator(7); const roles = ['admin', 'editor', 'viewer']; const list = []; for (let at = 0; at \< count; at++) \{ list.push(\{ kind: 'hash', list: [\{ name: 'id', base: \{ kind: 'number', value: 100000 + at \} \}, \{ name: 'name', base: \{ kind: 'text', value: 'user-' + Math.floor(random() * 5000) \} \}, \{ name: 'role', base: \{ kind: 'text', value: roles[at % 3] \} \}, \{ name: 'active', base: \{ kind: 'flag', value: random() \< 0.8 \} \}, \{ name: 'score', base: \{ kind: 'decimal', value: Math.round(random() * 10000) / 100 \} \}, \{ name: 'tags', base: \{ kind: 'list', list: [\{ kind: 'text', value: 'a' \}, \{ kind: 'text', value: random() \< 0.5 ? 'b' : 'c' \}] \} \}] \}) \} return \{ kind: 'hash', list: [\{ name: 'users', base: \{ kind: 'list', list \} \}] \} \} ; const fixture = name =\> fs.readFileSync(FIXTURE + '/' + name, 'utf8') ; const example = () =\> treeOf('list member\\n  mesh\\n    host name, \<ada\>\\n    host age, 36\\n    host active, true\\n  mesh\\n    host name, \<alan\>\\n    host age, 41\\n    host active, false\\n') ; const stream = () =\> \{ const whole = treeOf(fixture('stream.line'), 'stream.line'); return whole.kind === 'list' ? whole.list : whole.kind === 'hash' ? whole.list.map(entry =\> entry.base) : [whole] \} ; const generatedFailures = () =\> \{ const random = generator(20261006); let failures = 0; for (let at = 0; at \< 3000; at++) \{ const value = generated(random, 4); const encoded = $code.encodeTree(value); const decoded = $code.decodeTree(encoded); if (!decoded.ok || !same([value], decoded.values) || hex($code.encodeTree(decoded.values)) !== hex(encoded) || hex($code.encodeTree(value)) !== hex(encoded)) failures++ \} return failures \} ; const H = 'd3 54 52 01' ; const streams = \{ 'simple-past': () =\> refusal(H + ' ' + frame('e5 1c ' + hex(varint(2n ** 53n - 28n)))), 'simple-under': () =\> refusal(H + ' ' + frame('e5 1c ' + hex(varint(2n ** 53n - 29n)))), 'list-claim': () =\> refusal(H + ' 01 07 9c ' + hex(varint(2n ** 40n))), 'too-deep': () =\> refusal(H + ' 01 0a ' + '81 '.repeat(9) + 'e0', \{ limits: \{ depth: 5 \} \}) \} ; const unencodable = \{ nan: \{ kind: 'decimal', value: Number.NaN \}, infinity: \{ kind: 'decimal', value: Number.POSITIVE_INFINITY \}, surrogate: \{ kind: 'text', value: 'a\\ud800b' \}, twice: \{ kind: 'hash', list: [\{ name: 'a', base: \{ kind: 'void' \} \}, \{ name: 'a', base: \{ kind: 'void' \} \}] \}, fuse: \{ kind: 'fuse', name: 'x' \} \} ; const carried = \{ emoji: [\{ kind: 'text', value: '😀 👩‍👩‍👧 \\u\{10ffff\}' \}], integers: [\{ kind: 'list', list: [2 ** 60, -(2 ** 70), Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER].map(value =\> (\{ kind: 'number', value \})) \}], 'negative-zero': [\{ kind: 'decimal', value: -0 \}] \} ; const records = dataset(1000); const plain = $code.encodeTree(records); const packed = $code.encodeTree(records, \{ compress \}); const unpacked = $code.decodeTree(packed, \{ decompress \}); const limited = $code.decodeTree(packed, \{ decompress, limits: \{ frame: 100 \} \}); const tiny = $code.encodeTree(\{ kind: 'flag', value: true \}, \{ compress \}) ; return \{ hex, bytes, example, fixture, treeOf, roundTrips, refusal, frame, streams, unencodable, encodeRefusal, carried, stream, generatedFailures, same, records, plain, packed, unpacked, limited, tiny, toJson: $host.toJson, encodeTree: $code.encodeTree, decodeTree: $code.decodeTree \} ; \})($host, $code, process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:zlib"))>
+
+bind example-hex
+  take h, like dynamic
+  like text
+  case node
+    text <$h.hex($h.encodeTree($h.example()))>
+
+bind example-smaller
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.encodeTree($h.example()).length \< $h.toJson($h.example()).length>
+
+bind fixture-trips
+  take h, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$h.roundTrips([$h.treeOf($h.fixture($name), $name)])>
+
+bind stream-trips
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.roundTrips($h.stream())>
+
+bind generated-failures
+  take h, like dynamic
+  like number
+  case node
+    text <$h.generatedFailures()>
+
+bind long-count-reads
+  take h, like dynamic
+  like boolean
+  case node
+    text <JSON.stringify($h.decodeTree($h.bytes("d3 54 52 01 01 02 1c 00")).values) === '[\{"kind":"number","value":28\}]'>
+
+bind refusal-of
+  take h, like dynamic
+  take stream, like text
+  like text
+  case node
+    text <$h.refusal($stream)>
+
+bind framed-refusal
+  take h, like dynamic
+  take body, like text
+  like text
+  case node
+    text <$h.refusal("d3 54 52 01 " + $h.frame($body))>
+
+bind stream-refusal
+  take h, like dynamic
+  take name, like text
+  like text
+  case node
+    text <$h.streams[$name]()>
+
+bind encode-refusal
+  take h, like dynamic
+  take name, like text
+  like text
+  case node
+    text <$h.encodeRefusal($h.unencodable[$name])>
+
+bind carried
+  take h, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$h.roundTrips($h.carried[$name])>
+
+bind stored-compressed
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.packed[4] === 0x02 && $h.packed.length \< $h.plain.length>
+
+bind unpacked-same
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.unpacked.ok && $h.same([$h.records], $h.unpacked.values)>
+
+bind no-decompressor
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.refusal($h.hex($h.packed)) === "no-decompressor">
+
+bind limit-refused
+  take h, like dynamic
+  like boolean
+  case node
+    text <!$h.limited.ok && $h.limited.problem.name === "too-large">
+
+bind tiny-plain
+  take h, like dynamic
+  like boolean
+  case node
+    text <$h.tiny[4] === 0x01 && $h.tiny.length === 7>
+
+host h, helpers-with(host-module, code-module)
+
+# the spec's worked example is what the encoder writes
+test <the worked example in 10-code.md is byte for byte what the encoder writes>
+  want hold, is-equal(example-hex(h), <d3 54 52 01 01 2a a1 46 6d 65 6d 62 65 72 82 a3 44 6e 61 6d 65 43 61 67 65 46 61 63 74 69 76 65 43 61 64 61 1c 08 e1 c1 44 61 6c 61 6e 1c 0d e0>)
+
+test <...and it is smaller than its minified JSON>
+  want hold, example-smaller(h)
+
+# fixtures
+test <fixture basic.tree round trips, and decode then encode is the identity>
+  want hold, fixture-trips(h, <basic.tree>)
+
+test <fixture anchors.tree round trips, and decode then encode is the identity>
+  want hold, fixture-trips(h, <anchors.tree>)
+
+# the stream declares its anchors first and fuses them later, so it is read whole and sent a record per frame
+test <the stream fixture, one frame each>
+  want hold, stream-trips(h)
+
+# generated values
+test <3000 generated values: each round trips, encodes the same twice, and decode then encode is the identity>
+  want hold, is-equal(generated-failures(h), 0)
+
+# the canonical spelling, and nothing else
+test <a count under 28 written long (28 and a varint) cannot be spelled: 28 + varint is always 28 or more>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 02 1c 00>), <accepted>)
+  want hold, long-count-reads(h)
+
+test <a list of 2 is accepted written canonically>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 03 82 00 01>), <accepted>)
+
+test <a varint with a trailing zero group is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 03 1c 80 00>), <non-canonical>)
+
+test <a text written again where a reference belongs is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 07 82 42 68 69 42 68 69>), <non-canonical>)
+
+test <a reference to the first copy is the canonical spelling>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 05 82 42 68 69 60>), <accepted>)
+
+test <the decimal 1.0 written as a double is refused (it is simple 5)>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 09 e3 3f f0 00 00 00 00 00 00>), <non-canonical>)
+
+test <the decimal 0.5 written as a double is refused (a single holds it)>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 09 e3 3f e0 00 00 00 00 00 00>), <non-canonical>)
+
+test <the decimal 0.1 as a double is accepted (no single holds it)>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 09 e3 3f b9 99 99 99 99 99 9a>), <accepted>)
+
+test <a stream without the header is refused>
+  want hold, is-equal(refusal-of(h, <7b 7d>), <not-tree-code>)
+
+test <a version this decoder does not read is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 02 01 01 e0>), <unknown-version>)
+
+test <an unknown frame kind is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 07 01 e0>), <unknown-tag>)
+
+test <a reserved simple (bytes, 6) is refused until it is defined>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 02 e6 00>), <unknown-tag>)
+
+test <minor 29 is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 01 1d>), <unknown-tag>)
+
+test <a frame longer than the input is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 09 e0>), <truncated>)
+
+test <bytes left in a frame after its value are refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 02 e0 e0>), <frame-length>)
+
+test <bytes after the end of the stream are refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 01 e0 00 e0>), <frame-length>)
+
+test <the end of the stream marker is accepted>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 01 e0 00>), <accepted>)
+
+test <invalid UTF-8 in a text is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 03 42 c3 28>), <bad-text>)
+
+test <a reference to a text that does not exist is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 01 63>), <bad-reference>)
+
+test <a reference to a shape that does not exist is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 01 c0>), <bad-reference>)
+
+test <a key twice in one shape is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 06 a2 41 61 60 00 01>), <repeated-key>)
+
+test <a key that is not a text is refused>
+  want hold, is-equal(refusal-of(h, <d3 54 52 01 01 03 a1 00 00>), <unknown-tag>)
+
+test <a shape written again where a reference belongs is refused>
+  want hold, is-equal(framed-refusal(h, <82 a1 41 61 00 a1 60 01>), <non-canonical>)
+
+test <...and the reference to it is the canonical spelling>
+  want hold, is-equal(framed-refusal(h, <82 a1 41 61 00 c0 01>), <accepted>)
+
+test <a whole decimal past 2^53 inside simple 5 is refused>
+  want hold, is-equal(stream-refusal(h, <simple-past>), <non-canonical>)
+
+test <...and one just under it is accepted>
+  want hold, is-equal(stream-refusal(h, <simple-under>), <accepted>)
+
+test <a list claiming 2^40 items in 6 bytes is refused before anything is allocated>
+  want hold, is-equal(stream-refusal(h, <list-claim>), <truncated>)
+
+test <nesting past the depth limit is refused, not a stack overflow>
+  want hold, is-equal(stream-refusal(h, <too-deep>), <too-deep>)
+
+# the encoder refuses what the model does not hold
+test <NaN is refused by the encoder>
+  want hold, is-equal(encode-refusal(h, <nan>), <unencodable>)
+
+test <infinity is refused by the encoder>
+  want hold, is-equal(encode-refusal(h, <infinity>), <unencodable>)
+
+test <a lone surrogate is refused, never written as U+FFFD>
+  want hold, is-equal(encode-refusal(h, <surrogate>), <unencodable>)
+
+test <a key twice in one map is refused>
+  want hold, is-equal(encode-refusal(h, <twice>), <unencodable>)
+
+test <an unexpanded fuse is refused>
+  want hold, is-equal(encode-refusal(h, <fuse>), <unencodable>)
+
+test <a surrogate pair (an emoji) is carried exactly>
+  want hold, carried(h, <emoji>)
+
+test <integers past 2^53, both signs, carried exactly as the model holds them>
+  want hold, carried(h, <integers>)
+
+test <negative zero as a decimal stays negative zero>
+  want hold, carried(h, <negative-zero>)
+
+# Zstandard frames
+test <a large frame is stored as Zstandard, and is smaller>
+  want hold, stored-compressed(h)
+
+test <...and decodes to the same value>
+  want hold, unpacked-same(h)
+
+test <...and a decoder without a decompressor says so>
+  want hold, no-decompressor(h)
+
+test <...and one that declares more than the limit is refused before decompressing>
+  want hold, limit-refused(h)
+
+test <a tiny value stays a plain frame even when compression is offered>
+  want hold, tiny-plain(h)

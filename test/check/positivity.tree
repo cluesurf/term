@@ -1,0 +1,45 @@
+note <Structural positivity, the nonlinear companion the linear (Fourier-Motzkin) prover lacks>
+
+# Ported from positivity.ts by tmp/self-host/suite-unroll.mjs (item 0561). A SQUARE `a * a` is >= 0 for any value, and sums and products of
+# non-negative parts stay non-negative. These are outside the linear fragment yet trivially true, and the kernel cannot see them either.
+# `holds.ts` discharges a goal `e >= 0` or `e > 0` whose non-zero side is structurally non-negative or positive. Soundness controls: a
+# square is only >= 0, and a non-square product is not certified.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/list
+  find contains
+
+# a hold is genuinely PROVEN when the file compiles AND carries no `unchecked-hold` or `unproven` warning for it
+task compiles
+  take source, like text
+  like boolean
+
+  host out, compile-text(source, make(compile-choice, bind(file, <p.tree>)))
+  fork test, not(out/ok)
+    hold
+      back false
+  back not(or(contains(out/warnings, <unchecked-hold>), contains(out/warnings, <unproven>)))
+
+# a hold is genuinely PROVEN when the file compiles AND carries no `unchecked-hold` / `unproven` diagnostic for it.
+# (A nonlinear goal positivity does NOT prove is left as an `unchecked-hold` warning -- still `ok` -- so checking
+# `.ok` alone cannot tell "proven" from "silently unverified". This distinguishes them.)
+# 1. a SQUARE is non-negative: `x * x >= 0` for any integer x (the base's sign is irrelevant).
+test <square is non-negative: x * x \>= 0>
+  want hold, compiles(<rule square-nonneg\n  seat x, like integer\n  show hold\n    call is-minimum\n      call multiply\n        read x\n        read x\n      code 0\n  calm hold\n>)
+
+# 2. a SUM OF SQUARES is non-negative: `x*x + y*y >= 0`.
+test <sum of squares is non-negative: x*x + y*y \>= 0>
+  want hold, compiles(<rule sum-of-squares-nonneg\n  seat x, like integer\n  seat y, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          read x\n          read x\n        call multiply\n          read y\n          read y\n      code 0\n  calm hold\n>)
+
+# 3. SOUNDNESS CONTROL: a square is only >= 0, NOT strictly > 0 (it is zero when the base is zero). `x*x > 0` must be
+# rejected.
+test <square is not strictly positive: x * x \> 0 is rejected>
+  want hold, not(compiles(<rule square-positive-wrong\n  seat x, like integer\n  show hold\n    call is-above\n      call multiply\n        read x\n        read x\n      code 0\n  calm hold\n>))
+
+# 4. SOUNDNESS CONTROL: a non-square product is not certified -- `x * y >= 0` is false for opposite signs and must be
+# rejected.
+test <non-square product is not certified: x * y \>= 0 is rejected>
+  want hold, not(compiles(<rule product-nonneg-wrong\n  seat x, like integer\n  seat y, like integer\n  show hold\n    call is-minimum\n      call multiply\n        read x\n        read y\n      code 0\n  calm hold\n>))

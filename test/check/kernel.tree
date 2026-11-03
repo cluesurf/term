@@ -1,0 +1,207 @@
+note <Kernel test: the Boolean double-negation theorem>
+
+# Ported from kernel.ts by hand (item 0559). check/kernel-terms is the subject (decision 106). Build the Boolean double-negation theorem
+# (the IIT-CoC reference corpus) against the kernel API and confirm every definition checks, that a deliberate type mismatch is caught, and
+# that a definition whose check does not end is refused alone, out of its step budget (decision 047). A binder is a term (spec 4.6). Here a
+# binder names its placeholder, and `pi-of` is a binder whose name is never read.
+
+dock load
+  load <@term/make/code/check/kernel-terms>, name coc-terms
+
+bind coc-named
+  take module, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$module.makeVariable(-1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7))>
+
+bind coc-abstract
+  take module, like dynamic
+  take name, like text
+  take term, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const m = $module; const level = -1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7); const walk = (t, d) =\> \{ switch (t.tag) \{ case "variable": return t.level === level ? m.makeBound(d) : t; case "pi": return m.makePi(walk(t.input, d), walk(t.body, d + 1)); case "lambda": return m.makeLambda(walk(t.body, d + 1)); case "self": return m.makeSelf(walk(t.body, d + 1)); case "apply": return m.makeApply(walk(t.fun, d), walk(t.arg, d)); case "annotate": return m.makeAnnotate(walk(t.value, d), walk(t.type, d)); default: return t \} \}; return walk($term, 0) \})()>
+
+bind result-ok
+  take results, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$results.some(r =\> r.name === $name && r.ok)>
+
+bind results-size
+  take results, like dynamic
+  like number
+  case node
+    text <$results.length>
+
+# a mismatch raises a `failure` whose note carries the kind `kernel-mismatch:` (the original's TypeMismatch)
+bind rejects-annotation
+  take module, like dynamic
+  take book, like dynamic
+  take term, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.normalize($book, $term, 0); return false \} catch (error) \{ const note = error?.note; return typeof note === "string" && note.startsWith("kernel-mismatch:") && $module.messageOf(note).startsWith("type mismatch") \} \})()>
+
+bind with-entry
+  take book, like dynamic
+  take added, like dynamic
+  like dynamic
+  case node
+    text <[...$book, $added]>
+
+bind refused-alone
+  take results, like dynamic
+  take size, like number
+  like boolean
+  case node
+    text <(() =\> \{ const loop = $results.find(result =\> result.name === "loop"); const others = $results.filter(result =\> result.name !== "loop"); return Boolean(loop && !loop.ok && /^the check did not finish within \d+ reduction steps$/.test(loop.error) && others.length === $size && others.every(result =\> result.ok)) \})()>
+
+host universe, coc-terms/make-universe()
+
+task v
+  take name, like text
+  like dynamic
+
+  back coc-named(coc-terms, name)
+
+task r
+  take name, like text
+  like dynamic
+
+  back coc-terms/make-reference(name)
+
+task a2
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+
+  back coc-terms/make-apply(callee, given)
+
+task a3
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  like dynamic
+
+  back a2(a2(callee, one), two)
+
+task a4
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  take three, like dynamic
+  like dynamic
+
+  back a2(a3(callee, one, two), three)
+
+task lambda-of
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-lambda(coc-abstract(coc-terms, name, body))
+
+task pi-named
+  take input, like dynamic
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-pi(input, coc-abstract(coc-terms, name, body))
+
+task pi-of
+  take input, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-pi(input, body)
+
+task self-of
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-self(coc-abstract(coc-terms, name, body))
+
+task eq
+  take x, like dynamic
+  take y, like dynamic
+  like dynamic
+
+  back a3(r(<Equal>), x, y)
+
+task entry
+  take name, like text
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back coc-terms/make-entry(name, type, value)
+
+task make-book
+  like list, like dynamic
+
+  host refl-any, a2(r(<refl>), universe)
+  # Self : * = lambda F. self s. { s : (F s) }
+  host self-entry, entry(<Self>, universe, lambda-of(<F>, self-of(<s>, coc-terms/make-annotate(v(<s>), a2(v(<F>), v(<s>))))))
+  # Equal : * = lambda a. lambda b. forall (P: forall (x: *) *) forall (x: (P a)) (P b)
+  host equal-entry, entry(<Equal>, universe, lambda-of(<a>, lambda-of(<b>, pi-named(pi-of(universe, universe), <P>, pi-of(a2(v(<P>), v(<a>)), a2(v(<P>), v(<b>)))))))
+  # refl : forall (a: *) (Equal a a) = lambda a. lambda P. lambda x. x
+  host refl-entry, entry(<refl>, pi-named(universe, <a>, eq(v(<a>), v(<a>))), lambda-of(<_a>, lambda-of(<_P>, lambda-of(<x>, v(<x>)))))
+  # Bool : * = (Self lambda self. forall (P: *) forall (t: forall (e: Equal true self) P) forall (f: forall (e: Equal false self) P) P)
+  host bool-entry, entry(<Bool>, universe, a2(r(<Self>), lambda-of(<s>, pi-named(universe, <P>, pi-of(pi-of(eq(r(<true>), v(<s>)), v(<P>)), pi-of(pi-of(eq(r(<false>), v(<s>)), v(<P>)), v(<P>)))))))
+  # true : Bool = lambda P. lambda t. lambda f. (t (refl *))
+  host true-entry, entry(<true>, r(<Bool>), lambda-of(<_P>, lambda-of(<t>, lambda-of(<_f>, a2(v(<t>), refl-any)))))
+  # false : Bool = lambda P. lambda t. lambda f. (f (refl *))
+  host false-entry, entry(<false>, r(<Bool>), lambda-of(<_P>, lambda-of(<_t>, lambda-of(<f>, a2(v(<f>), refl-any)))))
+  # match : forall (b: Bool) forall (P: forall (x: Bool) *) forall (t: P true) forall (f: P false) (P b)
+  host match-entry, entry(<match>, pi-named(r(<Bool>), <b>, pi-named(pi-of(r(<Bool>), universe), <P>, pi-of(a2(v(<P>), r(<true>)), pi-of(a2(v(<P>), r(<false>)), a2(v(<P>), v(<b>)))))), lambda-of(<b>, lambda-of(<P>, lambda-of(<t>, lambda-of(<f>, a3(a2(v(<b>), a2(v(<P>), v(<b>))), lambda-of(<e>, a3(v(<e>), v(<P>), v(<t>))), lambda-of(<e>, a3(v(<e>), v(<P>), v(<f>)))))))))
+  # not : forall (b: Bool) Bool = lambda b. (match b lambda b.(Bool) false true)
+  host not-entry, entry(<not>, pi-of(r(<Bool>), r(<Bool>)), lambda-of(<b>, a4(a2(r(<match>), v(<b>)), lambda-of(<_b>, r(<Bool>)), r(<false>), r(<true>))))
+  # theorem : forall (b: Bool) (Equal (not (not b)) b) = lambda b. (match b lambda b.(Equal (not (not b)) b) (refl *) (refl *))
+  host theorem-entry, entry(<theorem>, pi-named(r(<Bool>), <b>, eq(a2(r(<not>), a2(r(<not>), v(<b>))), v(<b>))), lambda-of(<b>, a4(a2(r(<match>), v(<b>)), lambda-of(<b2>, eq(a2(r(<not>), a2(r(<not>), v(<b2>))), v(<b2>))), refl-any, refl-any)))
+  back make(list, self-entry, equal-entry, refl-entry, bool-entry, true-entry, false-entry, match-entry, not-entry, theorem-entry)
+
+host book, make-book()
+host results, coc-terms/check-book(book)
+
+test <Self>
+  want hold, is-equal(results-size(results), 9)
+  want hold, result-ok(results, <Self>)
+
+test <Equal>
+  want hold, result-ok(results, <Equal>)
+
+test <refl>
+  want hold, result-ok(results, <refl>)
+
+test <Bool>
+  want hold, result-ok(results, <Bool>)
+
+test <true>
+  want hold, result-ok(results, <true>)
+
+test <false>
+  want hold, result-ok(results, <false>)
+
+test <match>
+  want hold, result-ok(results, <match>)
+
+test <not>
+  want hold, result-ok(results, <not>)
+
+test <theorem>
+  want hold, result-ok(results, <theorem>)
+
+# a value annotated as `true` re-annotated as `false`
+test <rejects a bad annotation>
+  want hold, rejects-annotation(coc-terms, book, coc-terms/make-annotate(coc-terms/make-annotate(coc-terms/make-variable(0), r(<true>)), r(<false>)))
+
+# loop : * = (lambda x. (x x)) (lambda x. (x x)) reduces to itself forever
+test <refuses a check that does not end, alone>
+  host omega, lambda-of(<x>, a2(v(<x>), v(<x>)))
+  host looping, with-entry(book, entry(<loop>, universe, a2(omega, omega)))
+  want hold, refused-alone(coc-terms/check-book(looping), 9)

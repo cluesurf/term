@@ -1,0 +1,53 @@
+note <Kotlin tests a field-less case by identity, every other case by is, held both ways>
+
+# Ported from kotlin-identity.ts by hand (item 0572). Two forms naming a case alike keep each its own test: `none` has no fields in `flag` and a
+# field in `slot`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find file-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+task kotlin
+  take source, like text
+  take entry, like text
+  take file, like text
+  like text
+
+  host built, compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <kotlin>), bind(env, <kotlin>), bind(entry, entry)))
+  fork test, not(built/ok)
+    hold
+      halt <{file} was refused>
+  back emit-text(built, <kotlin>)
+
+host list-kotlin, kotlin(file-text(<mark/list/term.tree>), <list-runs>, <mark/list/term.tree>)
+host shared, kotlin(<form flag\n  case none\n  case some\n    link value, like number\n\nform slot\n  case none\n    link reason, like text\n  case full\n    link value, like number\n\ntask use\n  take f, like flag\n  take s, like slot\n  like number\n  fork case, read f\n    case none\n      send back, code 0\n    case some\n      send back, read value\n  fork case, read s\n    case none\n      send back, code 1\n    case full\n      send back, read value\n>, <use>, <main.tree>)
+
+# 1. List: the empty case by identity, the other by `is` with its smart cast, in a `when` with no subject
+test <list: the empty case by identity>
+  want hold, matches(make(pattern, <<\w+ === ChainEnd -> \{>>), list-kotlin)
+  want hold, not(text-contains(list-kotlin, <is ChainEnd>))
+
+test <list: the other case keeps `is`>
+  want hold, matches(make(pattern, <<\w+ is ChainLink -> \{>>), list-kotlin)
+
+test <list: a `when` with no subject>
+  want hold, text-contains(list-kotlin, <when \{>)
+  want hold, not(matches(make(pattern, <<when \(\w+\) \{\n\s+\w+ ===>>), list-kotlin))
+
+# 2. two forms naming a case alike
+test <the field-less `none` by identity>
+  want hold, or(matches(make(pattern, <<f === (\w+\.)?FlagNone -> \{|f === None -> \{>>), shared), matches(make(pattern, <<f === \w*None\b>>), shared))
+
+# a form with no field-less case keeps the `when (s)` it had, every arm by `is`
+test <the `none` with a field keeps `is`>
+  want hold, matches(make(pattern, <<when \(s\) \{\n\s+is \w*None -> \{>>), shared)
+  want hold, not(text-contains(shared, <s === >))

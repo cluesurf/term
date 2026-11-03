@@ -1,0 +1,46 @@
+note <Multi-index inversion (no-confusion across EVERY index position)>
+
+# Ported from inversion-multi.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Multi-index inversion (no-confusion across EVERY index position). A value-indexed family may carry several indices
+# (`lt a b`, the proof that a < b, is indexed by both a and b). When a match's subject pins an index to a constructor
+# (`lt m zero`), every variant whose OUTPUT index at that position has a different head is impossible there, so the
+# match may omit it -- and a match where ALL variants are impossible is vacuously exhaustive (ex-falso: from `lt m zero`
+# you may produce anything, since nothing is below zero). The earlier inversion only inspected the FIRST index; this
+# checks that the relaxation now ranges over all positions, while still REQUIRING reachable branches (soundness).
+# Run: npx tsx test/check/inversion-multi.ts
+# nat and the two-index `lt a b` (a < b): `ltself : lt q (succ q)` and `ltmore : lt x y -> lt x (succ y)`. Both
+# constructors' SECOND index is headed by `succ`, so `lt _ zero` is uninhabited.
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform lt\n  head a, like nat\n  head b, like nat\n  case ltself\n    link q, like nat\n    head\n      read q\n    head\n      make succ\n        bind prior\n          read q\n  case ltmore\n    link x, like nat\n    link y, like nat\n    link sub, like lt\n      head\n        read x\n      head\n        read y\n    head\n      read x\n    head\n      make succ\n        bind prior\n          read y\n>
+
+# 1. ex-falso: a match on `lt m zero` with NO branches is accepted, because the impossible head is on the SECOND index
+# (the single-index relaxation would have missed it and demanded the cases).
+test <empty match on lt m zero is vacuously exhaustive (ex-falso on the second index)>
+  want hold, compile-text(<{prelude}\ntask absurd-below-zero\n  take m, like nat\n  take pf, like lt\n    head\n      read m\n    head\n      make zero\n  like nat\n  fork case, read pf\n>)/ok
+
+# 2. SOUNDNESS CONTROL: when the subject index is NOT pinned to a constructor (`lt a b`, both indices variable), no
+# variant is impossible, so an empty / partial match must be REJECTED as non-exhaustive.
+test <unconstrained lt a b still requires its branches (no spurious exclusion)>
+  want hold, not(compile-text(<{prelude}\ntask bad-open-match\n  take a, like nat\n  take b, like nat\n  take pf, like lt\n    head\n      read a\n    head\n      read b\n  like nat\n  fork case, read pf\n>)/ok)
+
+# 3. SOUNDNESS CONTROL: at `lt m (succ zero)` BOTH constructors are reachable (their second index is `succ ..`), so an
+# empty match must be rejected -- the relaxation must not exclude a genuinely reachable variant.
+test <lt m (succ zero) keeps its reachable branches (empty match rejected)>
+  want hold, not(compile-text(<{prelude}\ntask bad-succ-match\n  take m, like nat\n  take pf, like lt\n    head\n      read m\n    head\n      make succ\n        bind prior\n          make zero\n  like nat\n  fork case, read pf\n>)/ok)
+
+# the kernel COMPUTES through a multi-index inversion, not only type-checks it. `pickb a b` has `pzero : pickb a zero`
+# and `psucc : pickb a (succ y)`; at `pickb a zero` the `psucc` branch is impossible (second index `succ` != `zero`),
+# so a match may omit it AND the eliminator reduces to the reachable `pzero` branch. This needs the kernel discriminator
+# motive to discriminate on the SECOND index. (The earlier inversion only handled the first index.)
+host pickb, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform pickb\n  head a, like nat\n  head b, like nat\n  case pzero\n    link va, like nat\n    head\n      read va\n    head\n      make zero\n  case psucc\n    link wa, like nat\n    link wb, like nat\n    head\n      read wa\n    head\n      make succ\n        bind prior\n          read wb\n\ntask get\n  take a, like nat\n  take p\n    like pickb\n      head\n        read a\n      head\n        make zero\n  like nat\n  fork case, read p\n    case pzero\n      link va\n      send back\n        read va\n>
+
+# 4. the reachable branch COMPUTES with the impossible one omitted: get 0 (pzero 0) == 0.
+test <multi-index inversion COMPUTES the reachable branch: get 0 (pzero 0) == 0>
+  want hold, compile-text(<{pickb}\nrule get-ok\n  show hold\n    call is-equal\n      call get\n        make zero\n        make pzero\n          bind va\n            make zero\n      make zero\n  calm hold\n>)/ok
+
+# 5. SOUNDNESS CONTROL: get 0 (pzero 0) is 0, not 1. The inverted match must compute the RIGHT value.
+test <wrong value through a multi-index inversion is rejected (get 0 (pzero 0) != 1)>
+  want hold, not(compile-text(<{pickb}\nrule get-wrong\n  show hold\n    call is-equal\n      call get\n        make zero\n        make pzero\n          bind va\n            make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok)

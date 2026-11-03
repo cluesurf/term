@@ -6,7 +6,7 @@
 #   - the parent is a new node, and every record between it and a child is new too (a branch, a field value, a map
 #     entry, a parameter, a dock's parts), each child written where the old one stood. The input is never written
 #   - a key named in `skip` is not entered, at every depth, as node-children does not enter it: the field stays as it
-#     was and takes no child. A match arm's `type`, which node-children never enters, stays as it was
+#     was and takes no child
 #   - a `need false` list is rebuilt only when it holds something, so no key the input lacked is added
 #   - the children must be exactly node-children's list: one too few, one too many or one of another kind raises
 #     `failure`, naming where
@@ -2648,6 +2648,16 @@ task rebuild-part-match-case
         take one-134
         push(made-134, next-statement(cursor))
       save copy/body, made-134
+  fork test, enters(skip, <type>)
+    hold
+      save held-135, given/type
+      sift held-135
+        case some
+          link inner-135
+          save made-136, next-type(cursor)
+          save copy/type, make(some, made-136)
+        case none
+          save ignored-135, 0
   back copy
 
 task rebuild-part-catch-clause
@@ -2660,11 +2670,11 @@ task rebuild-part-catch-clause
   save copy, node-rebuild-copy-catch-clause(given)
   fork test, enters(skip, <body>)
     hold
-      save made-135, make list
+      save made-137, make list
       walk given/body
-        take one-135
-        push(made-135, next-statement(cursor))
-      save copy/body, made-135
+        take one-137
+        push(made-137, next-statement(cursor))
+      save copy/body, made-137
   back copy
 
 task rebuild-part-function-param
@@ -2677,24 +2687,24 @@ task rebuild-part-function-param
   save copy, node-rebuild-copy-function-param(given)
   fork test, enters(skip, <type>)
     hold
-      save held-136, given/type
-      sift held-136
-        case some
-          link inner-136
-          save made-137, next-type(cursor)
-          save copy/type, make(some, made-137)
-        case none
-          save ignored-136, 0
-  fork test, enters(skip, <fallback>)
-    hold
-      save held-138, given/fallback
+      save held-138, given/type
       sift held-138
         case some
           link inner-138
-          save made-139, next-expression(cursor)
-          save copy/fallback, make(some, made-139)
+          save made-139, next-type(cursor)
+          save copy/type, make(some, made-139)
         case none
           save ignored-138, 0
+  fork test, enters(skip, <fallback>)
+    hold
+      save held-140, given/fallback
+      sift held-140
+        case some
+          link inner-140
+          save made-141, next-expression(cursor)
+          save copy/fallback, make(some, made-141)
+        case none
+          save ignored-140, 0
   back copy
 
 task rebuild-part-universal
@@ -2707,15 +2717,15 @@ task rebuild-part-universal
   save copy, node-rebuild-copy-universal(given)
   fork test, enters(skip, <expr>)
     hold
-      save made-140, next-expression(cursor)
-      save copy/expr, made-140
+      save made-142, next-expression(cursor)
+      save copy/expr, made-142
   fork test, and(enters(skip, <types>), is-above(given/types/length, 0))
     hold
-      save made-141, make list
+      save made-143, make list
       walk given/types
-        take one-141
-        push(made-141, rebuild-part-declared-param(cursor, skip, one-141))
-      save copy/types, made-141
+        take one-143
+        push(made-143, rebuild-part-declared-param(cursor, skip, one-143))
+      save copy/types, made-143
   back copy
 
 task rebuild-part-declared-param
@@ -2728,14 +2738,14 @@ task rebuild-part-declared-param
   save copy, node-rebuild-copy-declared-param(given)
   fork test, enters(skip, <type>)
     hold
-      save held-142, given/type
-      sift held-142
+      save held-144, given/type
+      sift held-144
         case some
-          link inner-142
-          save made-143, next-type(cursor)
-          save copy/type, make(some, made-143)
+          link inner-144
+          save made-145, next-type(cursor)
+          save copy/type, make(some, made-145)
         case none
-          save ignored-142, 0
+          save ignored-144, 0
   back copy
 
 task rebuild-part-declared-signature
@@ -2748,21 +2758,21 @@ task rebuild-part-declared-signature
   save copy, node-rebuild-copy-declared-signature(given)
   fork test, enters(skip, <params>)
     hold
-      save made-144, make list
+      save made-146, make list
       walk given/params
-        take one-144
-        push(made-144, rebuild-part-declared-param(cursor, skip, one-144))
-      save copy/params, made-144
+        take one-146
+        push(made-146, rebuild-part-declared-param(cursor, skip, one-146))
+      save copy/params, made-146
   fork test, enters(skip, <result>)
     hold
-      save held-145, given/result
-      sift held-145
+      save held-147, given/result
+      sift held-147
         case some
-          link inner-145
-          save made-146, next-type(cursor)
-          save copy/result, make(some, made-146)
+          link inner-147
+          save made-148, next-type(cursor)
+          save copy/result, make(some, made-148)
         case none
-          save ignored-145, 0
+          save ignored-147, 0
   back copy
 
 task rebuild-part-type-index
@@ -2775,8 +2785,8 @@ task rebuild-part-type-index
   save copy, node-rebuild-copy-type-index(given)
   fork test, enters(skip, <type>)
     hold
-      save made-147, next-type(cursor)
-      save copy/type, made-147
+      save made-149, next-type(cursor)
+      save copy/type, made-149
   back copy
 
 task rebuild-part-form-field
@@ -2789,18 +2799,18 @@ task rebuild-part-form-field
   save copy, node-rebuild-copy-form-field(given)
   fork test, enters(skip, <type>)
     hold
-      save made-148, next-type(cursor)
-      save copy/type, made-148
+      save made-150, next-type(cursor)
+      save copy/type, made-150
   fork test, enters(skip, <fallback>)
     hold
-      save held-149, given/fallback
-      sift held-149
+      save held-151, given/fallback
+      sift held-151
         case some
-          link inner-149
-          save made-150, next-expression(cursor)
-          save copy/fallback, make(some, made-150)
+          link inner-151
+          save made-152, next-expression(cursor)
+          save copy/fallback, make(some, made-152)
         case none
-          save ignored-149, 0
+          save ignored-151, 0
   back copy
 
 task rebuild-part-form-variant
@@ -2813,18 +2823,18 @@ task rebuild-part-form-variant
   save copy, node-rebuild-copy-form-variant(given)
   fork test, enters(skip, <fields>)
     hold
-      save made-151, make list
+      save made-153, make list
       walk given/fields
-        take one-151
-        push(made-151, rebuild-part-variant-field(cursor, skip, one-151))
-      save copy/fields, made-151
+        take one-153
+        push(made-153, rebuild-part-variant-field(cursor, skip, one-153))
+      save copy/fields, made-153
   fork test, and(enters(skip, <indexValues>), is-above(given/index-values/length, 0))
     hold
-      save made-152, make list
+      save made-154, make list
       walk given/index-values
-        take one-152
-        push(made-152, next-expression(cursor))
-      save copy/index-values, made-152
+        take one-154
+        push(made-154, next-expression(cursor))
+      save copy/index-values, made-154
   back copy
 
 task rebuild-part-variant-field
@@ -2837,8 +2847,8 @@ task rebuild-part-variant-field
   save copy, node-rebuild-copy-variant-field(given)
   fork test, enters(skip, <type>)
     hold
-      save made-153, next-type(cursor)
-      save copy/type, made-153
+      save made-155, next-type(cursor)
+      save copy/type, made-155
   back copy
 
 task rebuild-part-form-extend
@@ -2851,29 +2861,29 @@ task rebuild-part-form-extend
   save copy, node-rebuild-copy-form-extend(given)
   fork test, enters(skip, <base>)
     hold
-      save made-154, next-type(cursor)
-      save copy/base, made-154
+      save made-156, next-type(cursor)
+      save copy/base, made-156
   fork test, enters(skip, <heads>)
     hold
-      save made-155, make list
+      save made-157, make list
       walk given/heads
-        take one-155
-        push(made-155, rebuild-part-extend-head(cursor, skip, one-155))
-      save copy/heads, made-155
+        take one-157
+        push(made-157, rebuild-part-extend-head(cursor, skip, one-157))
+      save copy/heads, made-157
   fork test, enters(skip, <links>)
     hold
-      save made-156, make list
+      save made-158, make list
       walk given/links
-        take one-156
-        push(made-156, rebuild-part-form-field(cursor, skip, one-156))
-      save copy/links, made-156
+        take one-158
+        push(made-158, rebuild-part-form-field(cursor, skip, one-158))
+      save copy/links, made-158
   fork test, enters(skip, <pins>)
     hold
-      save made-157, make list
+      save made-159, make list
       walk given/pins
-        take one-157
-        push(made-157, rebuild-part-field-value(cursor, skip, one-157))
-      save copy/pins, made-157
+        take one-159
+        push(made-159, rebuild-part-field-value(cursor, skip, one-159))
+      save copy/pins, made-159
   back copy
 
 task rebuild-part-extend-head
@@ -2886,21 +2896,21 @@ task rebuild-part-extend-head
   save copy, node-rebuild-copy-extend-head(given)
   fork test, enters(skip, <type>)
     hold
-      save held-158, given/type
-      sift held-158
+      save held-160, given/type
+      sift held-160
         case some
-          link inner-158
-          save made-159, next-type(cursor)
-          save copy/type, make(some, made-159)
+          link inner-160
+          save made-161, next-type(cursor)
+          save copy/type, make(some, made-161)
         case none
-          save ignored-158, 0
+          save ignored-160, 0
   fork test, and(enters(skip, <links>), is-above(given/links/length, 0))
     hold
-      save made-160, make list
+      save made-162, make list
       walk given/links
-        take one-160
-        push(made-160, rebuild-part-head-link(cursor, skip, one-160))
-      save copy/links, made-160
+        take one-162
+        push(made-162, rebuild-part-head-link(cursor, skip, one-162))
+      save copy/links, made-162
   back copy
 
 task rebuild-part-head-link
@@ -2913,8 +2923,8 @@ task rebuild-part-head-link
   save copy, node-rebuild-copy-head-link(given)
   fork test, enters(skip, <type>)
     hold
-      save made-161, next-type(cursor)
-      save copy/type, made-161
+      save made-163, next-type(cursor)
+      save copy/type, made-163
   back copy
 
 task rebuild-part-mask-task
@@ -2927,8 +2937,8 @@ task rebuild-part-mask-task
   save copy, node-rebuild-copy-mask-task(given)
   fork test, enters(skip, <signature>)
     hold
-      save made-162, rebuild-part-declared-signature(cursor, skip, given/signature)
-      save copy/signature, made-162
+      save made-164, rebuild-part-declared-signature(cursor, skip, given/signature)
+      save copy/signature, made-164
   back copy
 
 task rebuild-part-bind-param
@@ -2941,14 +2951,14 @@ task rebuild-part-bind-param
   save copy, node-rebuild-copy-bind-param(given)
   fork test, enters(skip, <type>)
     hold
-      save held-163, given/type
-      sift held-163
+      save held-165, given/type
+      sift held-165
         case some
-          link inner-163
-          save made-164, next-type(cursor)
-          save copy/type, make(some, made-164)
+          link inner-165
+          save made-166, next-type(cursor)
+          save copy/type, make(some, made-166)
         case none
-          save ignored-163, 0
+          save ignored-165, 0
   back copy
 
 task rebuild-step-view-node
@@ -2970,50 +2980,50 @@ task rebuild-step-view-node
       link f7
       fork test, enters(skip, <attributes>)
         hold
-          save made-165, make list
+          save made-167, make list
           walk f2
-            take one-165
-            push(made-165, rebuild-part-view-attribute(cursor, skip, one-165))
-          save copy/attributes, made-165
+            take one-167
+            push(made-167, rebuild-part-view-attribute(cursor, skip, one-167))
+          save copy/attributes, made-167
       fork test, enters(skip, <props>)
         hold
-          save made-166, make list
+          save made-168, make list
           walk f3
-            take one-166
-            push(made-166, rebuild-part-field-value(cursor, skip, one-166))
-          save copy/props, made-166
+            take one-168
+            push(made-168, rebuild-part-field-value(cursor, skip, one-168))
+          save copy/props, made-168
       fork test, enters(skip, <children>)
         hold
-          save made-167, make list
+          save made-169, make list
           walk f4
-            take one-167
-            push(made-167, next-view(cursor))
-          save copy/children, made-167
+            take one-169
+            push(made-169, next-view(cursor))
+          save copy/children, made-169
     case read
       link f1
       link f2
       fork test, enters(skip, <value>)
         hold
-          save made-168, next-expression(cursor)
-          save copy/value, made-168
+          save made-170, next-expression(cursor)
+          save copy/value, made-170
     case fork
       link f1
       link f2
       link f3
       fork test, enters(skip, <branches>)
         hold
-          save made-169, make list
+          save made-171, make list
           walk f1
-            take one-169
-            push(made-169, rebuild-part-view-branch(cursor, skip, one-169))
-          save copy/branches, made-169
+            take one-171
+            push(made-171, rebuild-part-view-branch(cursor, skip, one-171))
+          save copy/branches, made-171
       fork test, and(enters(skip, <otherwise>), is-above(f2/length, 0))
         hold
-          save made-170, make list
+          save made-172, make list
           walk f2
-            take one-170
-            push(made-170, next-view(cursor))
-          save copy/otherwise, made-170
+            take one-172
+            push(made-172, next-view(cursor))
+          save copy/otherwise, made-172
     case walk
       link f1
       link f2
@@ -3021,30 +3031,30 @@ task rebuild-step-view-node
       link f4
       fork test, enters(skip, <iterable>)
         hold
-          save made-171, next-expression(cursor)
-          save copy/iterable, made-171
+          save made-173, next-expression(cursor)
+          save copy/iterable, made-173
       fork test, enters(skip, <body>)
         hold
-          save made-172, make list
+          save made-174, make list
           walk f3
-            take one-172
-            push(made-172, next-view(cursor))
-          save copy/body, made-172
+            take one-174
+            push(made-174, next-view(cursor))
+          save copy/body, made-174
     case save
       link f1
       link f2
       link f3
       fork test, enters(skip, <value>)
         hold
-          save made-173, next-expression(cursor)
-          save copy/value, made-173
+          save made-175, next-expression(cursor)
+          save copy/value, made-175
     case call
       link f1
       link f2
       fork test, enters(skip, <value>)
         hold
-          save made-174, next-expression(cursor)
-          save copy/value, made-174
+          save made-176, next-expression(cursor)
+          save copy/value, made-176
     miss
       save nothing, 0
   back copy
@@ -3059,8 +3069,8 @@ task rebuild-part-view-attribute
   save copy, node-rebuild-copy-view-attribute(given)
   fork test, enters(skip, <value>)
     hold
-      save made-175, next-expression(cursor)
-      save copy/value, made-175
+      save made-177, next-expression(cursor)
+      save copy/value, made-177
   back copy
 
 task rebuild-part-view-branch
@@ -3073,15 +3083,15 @@ task rebuild-part-view-branch
   save copy, node-rebuild-copy-view-branch(given)
   fork test, enters(skip, <cond>)
     hold
-      save made-176, next-expression(cursor)
-      save copy/cond, made-176
+      save made-178, next-expression(cursor)
+      save copy/cond, made-178
   fork test, enters(skip, <body>)
     hold
-      save made-177, make list
+      save made-179, make list
       walk given/body
-        take one-177
-        push(made-177, next-view(cursor))
-      save copy/body, made-177
+        take one-179
+        push(made-179, next-view(cursor))
+      save copy/body, made-179
   back copy
 
 task rebuild-part-dock-route
@@ -3094,63 +3104,63 @@ task rebuild-part-dock-route
   save copy, node-rebuild-copy-dock-route(given)
   fork test, enters(skip, <takes>)
     hold
-      save made-178, make list
+      save made-180, make list
       walk given/takes
-        take one-178
-        push(made-178, rebuild-part-dock-take(cursor, skip, one-178))
-      save copy/takes, made-178
+        take one-180
+        push(made-180, rebuild-part-dock-take(cursor, skip, one-180))
+      save copy/takes, made-180
   fork test, enters(skip, <methods>)
     hold
-      save made-179, make list
+      save made-181, make list
       walk given/methods
-        take one-179
-        push(made-179, rebuild-part-dock-method(cursor, skip, one-179))
-      save copy/methods, made-179
+        take one-181
+        push(made-181, rebuild-part-dock-method(cursor, skip, one-181))
+      save copy/methods, made-181
   fork test, enters(skip, <calls>)
     hold
-      save made-180, make list
+      save made-182, make list
       walk given/calls
-        take one-180
-        push(made-180, rebuild-part-dock-call(cursor, skip, one-180))
-      save copy/calls, made-180
+        take one-182
+        push(made-182, rebuild-part-dock-call(cursor, skip, one-182))
+      save copy/calls, made-182
   fork test, enters(skip, <component>)
     hold
-      save held-181, given/component
-      sift held-181
+      save held-183, given/component
+      sift held-183
         case some
-          link inner-181
-          save made-182, rebuild-part-dock-component(cursor, skip, inner-181)
-          save copy/component, make(some, made-182)
+          link inner-183
+          save made-184, rebuild-part-dock-component(cursor, skip, inner-183)
+          save copy/component, make(some, made-184)
         case none
-          save ignored-181, 0
+          save ignored-183, 0
   fork test, enters(skip, <directives>)
     hold
-      save made-183, make list
+      save made-185, make list
       walk given/directives
-        take one-183
-        push(made-183, rebuild-part-dock-send(cursor, skip, one-183))
-      save copy/directives, made-183
+        take one-185
+        push(made-185, rebuild-part-dock-send(cursor, skip, one-185))
+      save copy/directives, made-185
   fork test, enters(skip, <sends>)
     hold
-      save made-184, make list
+      save made-186, make list
       walk given/sends
-        take one-184
-        push(made-184, rebuild-part-dock-send(cursor, skip, one-184))
-      save copy/sends, made-184
+        take one-186
+        push(made-186, rebuild-part-dock-send(cursor, skip, one-186))
+      save copy/sends, made-186
   fork test, enters(skip, <hooks>)
     hold
-      save made-185, make list
+      save made-187, make list
       walk given/hooks
-        take one-185
-        push(made-185, rebuild-part-dock-hook(cursor, skip, one-185))
-      save copy/hooks, made-185
+        take one-187
+        push(made-187, rebuild-part-dock-hook(cursor, skip, one-187))
+      save copy/hooks, made-187
   fork test, enters(skip, <children>)
     hold
-      save made-186, make list
+      save made-188, make list
       walk given/children
-        take one-186
-        push(made-186, rebuild-part-dock-route(cursor, skip, one-186))
-      save copy/children, made-186
+        take one-188
+        push(made-188, rebuild-part-dock-route(cursor, skip, one-188))
+      save copy/children, made-188
   back copy
 
 task rebuild-part-dock-take
@@ -3163,14 +3173,14 @@ task rebuild-part-dock-take
   save copy, node-rebuild-copy-dock-take(given)
   fork test, enters(skip, <type>)
     hold
-      save held-187, given/type
-      sift held-187
+      save held-189, given/type
+      sift held-189
         case some
-          link inner-187
-          save made-188, next-type(cursor)
-          save copy/type, make(some, made-188)
+          link inner-189
+          save made-190, next-type(cursor)
+          save copy/type, make(some, made-190)
         case none
-          save ignored-187, 0
+          save ignored-189, 0
   back copy
 
 task rebuild-part-dock-method
@@ -3183,25 +3193,25 @@ task rebuild-part-dock-method
   save copy, node-rebuild-copy-dock-method(given)
   fork test, enters(skip, <takes>)
     hold
-      save made-189, make list
+      save made-191, make list
       walk given/takes
-        take one-189
-        push(made-189, rebuild-part-dock-take(cursor, skip, one-189))
-      save copy/takes, made-189
+        take one-191
+        push(made-191, rebuild-part-dock-take(cursor, skip, one-191))
+      save copy/takes, made-191
   fork test, enters(skip, <calls>)
     hold
-      save made-190, make list
+      save made-192, make list
       walk given/calls
-        take one-190
-        push(made-190, rebuild-part-dock-call(cursor, skip, one-190))
-      save copy/calls, made-190
+        take one-192
+        push(made-192, rebuild-part-dock-call(cursor, skip, one-192))
+      save copy/calls, made-192
   fork test, enters(skip, <sends>)
     hold
-      save made-191, make list
+      save made-193, make list
       walk given/sends
-        take one-191
-        push(made-191, rebuild-part-dock-send(cursor, skip, one-191))
-      save copy/sends, made-191
+        take one-193
+        push(made-193, rebuild-part-dock-send(cursor, skip, one-193))
+      save copy/sends, made-193
   back copy
 
 task rebuild-part-dock-call
@@ -3214,11 +3224,11 @@ task rebuild-part-dock-call
   save copy, node-rebuild-copy-dock-call(given)
   fork test, enters(skip, <args>)
     hold
-      save made-192, make list
+      save made-194, make list
       walk given/args
-        take one-192
-        push(made-192, rebuild-part-dock-argument(cursor, skip, one-192))
-      save copy/args, made-192
+        take one-194
+        push(made-194, rebuild-part-dock-argument(cursor, skip, one-194))
+      save copy/args, made-194
   back copy
 
 task rebuild-part-dock-argument
@@ -3231,8 +3241,8 @@ task rebuild-part-dock-argument
   save copy, node-rebuild-copy-dock-argument(given)
   fork test, enters(skip, <value>)
     hold
-      save made-193, next-expression(cursor)
-      save copy/value, made-193
+      save made-195, next-expression(cursor)
+      save copy/value, made-195
   back copy
 
 task rebuild-part-dock-send
@@ -3245,14 +3255,14 @@ task rebuild-part-dock-send
   save copy, node-rebuild-copy-dock-send(given)
   fork test, enters(skip, <value>)
     hold
-      save held-194, given/value
-      sift held-194
+      save held-196, given/value
+      sift held-196
         case some
-          link inner-194
-          save made-195, next-expression(cursor)
-          save copy/value, make(some, made-195)
+          link inner-196
+          save made-197, next-expression(cursor)
+          save copy/value, make(some, made-197)
         case none
-          save ignored-194, 0
+          save ignored-196, 0
   back copy
 
 task rebuild-part-dock-component
@@ -3265,11 +3275,11 @@ task rebuild-part-dock-component
   save copy, node-rebuild-copy-dock-component(given)
   fork test, enters(skip, <props>)
     hold
-      save made-196, make list
+      save made-198, make list
       walk given/props
-        take one-196
-        push(made-196, rebuild-part-dock-argument(cursor, skip, one-196))
-      save copy/props, made-196
+        take one-198
+        push(made-198, rebuild-part-dock-argument(cursor, skip, one-198))
+      save copy/props, made-198
   back copy
 
 task rebuild-part-dock-hook
@@ -3282,11 +3292,11 @@ task rebuild-part-dock-hook
   save copy, node-rebuild-copy-dock-hook(given)
   fork test, enters(skip, <calls>)
     hold
-      save made-197, make list
+      save made-199, make list
       walk given/calls
-        take one-197
-        push(made-197, rebuild-part-dock-call(cursor, skip, one-197))
-      save copy/calls, made-197
+        take one-199
+        push(made-199, rebuild-part-dock-call(cursor, skip, one-199))
+      save copy/calls, made-199
   back copy
 
 task rebuild-part-value-branch
@@ -3299,10 +3309,10 @@ task rebuild-part-value-branch
   save copy, node-rebuild-copy-value-branch(given)
   fork test, enters(skip, <cond>)
     hold
-      save made-198, next-expression(cursor)
-      save copy/cond, made-198
+      save made-200, next-expression(cursor)
+      save copy/cond, made-200
   fork test, enters(skip, <value>)
     hold
-      save made-199, next-expression(cursor)
-      save copy/value, made-199
+      save made-201, next-expression(cursor)
+      save copy/value, made-201
   back copy

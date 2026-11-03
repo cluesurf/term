@@ -1,0 +1,409 @@
+note <K0: the paradoxes of an impredicative bottom universe, written out and refused (math-port-0010)>
+
+# Ported from paradox.ts by hand (item 0561). check/judge is the subject (decision 106).
+#
+# `Type 0` is impredicative (judge.ts `piLevel`) and a form gets a LARGE eliminator `matchType__T` into `Type 1` (elaborate.ts). Each is
+# consistent alone. Together, for a form whose constructor takes a TYPE, they prove false: the constructor `wrap : Type0 -> code` and the decoder
+# `el (wrap t) = t` make `Type 0` a retract of `code`, a type that itself lives in `Type 0`. Hurkens' paradox then goes through on codes. This is
+# Coquand's observation, and the reason Rocq refuses strong elimination of a LARGE inductive in an impredicative sort.
+#
+# The suite has three parts, so it cannot pass by refusing everything:
+#   1. Hurkens over the bare kernel, with `*` = Type0 and the kinds one universe up. REFUSED, by predicativity above the bottom.
+#   2. Hurkens over the signature a large form WOULD get. CHECKS, closing `(A : Type0) -> A`. The witness is written against the kernel directly
+#      so that no elaborator change can hide it.
+#   3. The elaborator. A form with a field typed `type` gets no large eliminator. A SMALL form keeps its large eliminator.
+#
+# The original's Logic holds two closures for how a proposition is read and packed. They differ in one way only, so `retract` says which.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/list
+  find contains
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind v
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ k: "var", name: $name \})>
+
+bind c
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ k: "const", name: $name \})>
+
+bind ty
+  take level, like number
+  like dynamic
+  case node
+    text <(\{ k: "type", level: $level \})>
+
+bind pi
+  take name, like text
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ k: "pi", name: $name, domain: $domain, codomain: $codomain \})>
+
+bind lam
+  take name, like text
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ k: "lam", name: $name, body: $body \})>
+
+bind ann
+  take term, like dynamic
+  take type, like dynamic
+  like dynamic
+  case node
+    text <(\{ k: "ann", term: $term, type: $type \})>
+
+bind a2
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+  case node
+    text <(\{ k: "app", fun: $fun, arg: $arg \})>
+
+# capture is not a concern for the closed terms this suite substitutes
+bind at
+  take p, like dynamic
+  take x, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const substitute = (term, name, value) =\> \{ switch (term.k) \{ case "var": return term.name === name ? value : term; case "const": case "type": return term; case "pi": return \{ ...term, domain: substitute(term.domain, name, value), codomain: term.name === name ? term.codomain : substitute(term.codomain, name, value) \}; case "lam": return term.name === name ? term : \{ ...term, body: substitute(term.body, name, value) \}; case "app": return \{ k: "app", fun: substitute(term.fun, name, value), arg: substitute(term.arg, name, value) \}; case "ann": return \{ k: "ann", term: substitute(term.term, name, value), type: substitute(term.type, name, value) \} \} \}; return $p.k === "lam" ? substitute($p.body, $p.name, $x) : \{ k: "app", fun: $p, arg: $x \} \})()>
+
+# a named term as the kernel's, each binder its de Bruijn index, an unbound name a throw
+bind to-term
+  take module, like dynamic
+  take term, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const walk = (term, scope) =\> \{ switch (term.k) \{ case "var": \{ const index = scope.indexOf(term.name); if (index \< 0) throw new Error(`unbound $\{term.name\}`); return \{ tag: "var", index \} \} case "const": return \{ tag: "const", name: term.name \}; case "type": return \{ tag: "type", level: $module.litLevel(term.level) \}; case "pi": return \{ tag: "pi", mult: "many", domain: walk(term.domain, scope), codomain: walk(term.codomain, [term.name, ...scope]) \}; case "lam": return \{ tag: "lam", body: walk(term.body, [term.name, ...scope]) \}; case "app": return \{ tag: "app", fun: walk(term.fun, scope), arg: walk(term.arg, scope) \}; case "ann": return \{ tag: "ann", term: walk(term.term, scope), type: walk(term.type, scope) \} \} \}; return walk($term, []) \})()>
+
+# a signature built one definition at a time: each body is checked against its type in the context of the ones before it, then made transparent
+bind signature-new
+  take module, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ $module.resetDefinitions(); $module.resetMetas(); return \{ context: \{ ...$module.emptyContext, globals: new Map() \}, error: null \} \})()>
+
+bind signature-add
+  take sig, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$sig.context.globals.set($name, $value)>
+
+bind evaluated
+  take module, like dynamic
+  take term, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate([], $term)>
+
+# a definition: checked when `typed`, else a COMPUTING RULE registered as the elaborator registers one, which is what makes
+# `matchType Q b (wrap t)` reduce to `b t`
+bind define-in
+  take module, like dynamic
+  take sig, like dynamic
+  take name, like text
+  take type, like dynamic
+  take body, like dynamic
+  take typed, like boolean
+  like dynamic
+  case node
+    text <(() =\> \{ if ($sig.error) return; const typeValue = $module.evaluate([], $type); if ($typed) \{ try \{ $module.check($sig.context, $body, typeValue) \} catch (error) \{ $sig.error = `$\{$name\}: $\{error instanceof Error ? error.message : String(error)\}`; return \} \} $sig.context.globals.set($name, typeValue); $module.defineConstant($name, $module.evaluate([], $body)) \})()>
+
+bind error-of
+  take sig, like dynamic
+  like text
+  case node
+    text <$sig.error ?? "">
+
+bind starts-with
+  take whole, like text
+  take head, like text
+  like boolean
+  case node
+    text <$whole.startsWith($head)>
+
+bind holds-global
+  take sig, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$sig.context.globals.has($name)>
+
+bind joined
+  take names, like list, like text
+  take messages, like list, like text
+  like text
+  case node
+    text <$names.map((name, at) =\> `$\{name\}: $\{$messages[at]\}`).join(" | ")>
+
+bind holds-text
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+bind wrapped-at
+  take value, like text
+  take spaces, like number
+  like text
+  case node
+    text <["make wrap", "  bind v", `    make $\{$value\}`].map(line =\> " ".repeat($spaces) + line).join("\n")>
+
+form logic
+  link prop, like dynamic
+  link retract, like boolean
+  link kind, like dynamic
+  link home, like number
+
+task arrow
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back pi(<_>, domain, codomain)
+
+task a3
+  take f, like dynamic
+  take x, like dynamic
+  take y, like dynamic
+  like dynamic
+
+  back a2(a2(f, x), y)
+
+task holds-in
+  take l, like logic
+  take p, like dynamic
+  like dynamic
+
+  fork test, l/retract
+    hold
+      back a2(c(<el>), p)
+  back p
+
+task pack-in
+  take l, like logic
+  take a, like dynamic
+  like dynamic
+
+  fork test, l/retract
+    hold
+      back a2(c(<wrap>), a)
+  back a
+
+task p1
+  take l, like logic
+  take x, like dynamic
+  like dynamic
+
+  back arrow(x, l/prop)
+
+task p2
+  take l, like logic
+  take x, like dynamic
+  like dynamic
+
+  back arrow(p1(l, x), l/prop)
+
+task tau
+  take t, like dynamic
+  like dynamic
+
+  back a2(c(<tau>), t)
+
+task sigma
+  take s, like dynamic
+  like dynamic
+
+  back a2(c(<sigma>), s)
+
+task bot
+  like dynamic
+
+  back pi(<A>, ty(0), v(<A>))
+
+task neg
+  take a, like dynamic
+  like dynamic
+
+  back arrow(a, bot())
+
+# U := (X : kind) -> (P2 X -> X) -> P2 X. Used INLINE (a notation, as in Rocq's file), since `check` meets it where a Pi is wanted
+task big-u
+  take l, like logic
+  like dynamic
+
+  back pi(<X>, l/kind, arrow(arrow(p2(l, v(<X>)), v(<X>)), p2(l, v(<X>))))
+
+# the claim Delta y denies: every p that sigma y holds of, holds of tau (sigma y)
+task delta-claim
+  take l, like logic
+  take y, like dynamic
+  like dynamic
+
+  back pi(<p>, p1(l, big-u(l)), arrow(holds-in(l, a2(sigma(y), v(<p>))), holds-in(l, a2(v(<p>), tau(sigma(y))))))
+
+task inductive
+  take l, like logic
+  take p, like dynamic
+  like dynamic
+
+  back pi(<x>, big-u(l), arrow(holds-in(l, a2(sigma(v(<x>)), p)), holds-in(l, at(p, v(<x>)))))
+
+# the predicate p shifted along tau . sigma
+task shift
+  take p, like dynamic
+  like dynamic
+
+  back lam(<y>, a2(p, tau(sigma(v(<y>)))))
+
+task add-definition
+  take sig, like dynamic
+  take name, like text
+  take type, like dynamic
+  take body, like dynamic
+  take typed, like boolean
+  like dynamic
+
+  back define-in(judge-kernel, sig, name, to-term(judge-kernel, type), to-term(judge-kernel, body), typed)
+
+# Hurkens' paradox (A. J. C. Hurkens, "A simplification of Girard's paradox", TLCA 1995), the proof term of Rocq's `Coq.Logic.Hurkens`, with the
+# conversions it relies on spelled out as ascriptions, since this kernel's `check` does not unfold a definition to find a function type
+task hurkens
+  take sig, like dynamic
+  take l, like logic
+  like dynamic
+
+  host u, big-u(l)
+  add-definition(sig, <U>, ty(l/home), u, true)
+  # tau t X f p := t (\x. p (f (x X f)))
+  add-definition(sig, <tau>, arrow(p2(l, u), u), lam(<t>, lam(<X>, lam(<f>, lam(<p>, a2(v(<t>), lam(<x>, a2(v(<p>), a2(v(<f>), a3(v(<x>), v(<X>), v(<f>)))))))))), true)
+  # sigma s := s U tau
+  add-definition(sig, <sigma>, arrow(u, p2(l, u)), lam(<s>, a3(v(<s>), u, c(<tau>))), true)
+  add-definition(sig, <Delta>, p1(l, u), lam(<y>, pack-in(l, neg(delta-claim(l, v(<y>))))), true)
+  # Omega := tau (\p. forall x, sigma x p -> p x)
+  add-definition(sig, <Omega>, u, tau(lam(<p>, pack-in(l, inductive(l, v(<p>))))), true)
+  host omega, c(<Omega>)
+  host delta, c(<Delta>)
+  host lemma0-type, pi(<p>, p1(l, u), arrow(inductive(l, v(<p>)), holds-in(l, a2(v(<p>), omega))))
+  # lemma0 p h := h Omega (\x. h (tau (sigma x)))
+  add-definition(sig, <lemma0>, lemma0-type, lam(<p>, lam(<h>, a2(ann(a2(v(<h>), omega), arrow(inductive(l, shift(v(<p>))), holds-in(l, a2(v(<p>), omega)))), lam(<x>, a2(v(<h>), tau(sigma(v(<x>)))))))), true)
+  # lemma h0 := h0 Delta (\x h2 h3. h3 Delta h2 (\p. h3 (shift p))) (\p. h0 (shift p))
+  host inner, lam(<x>, lam(<h2>, lam(<h3>, a2(ann(a3(v(<h3>), delta, v(<h2>)), neg(delta-claim(l, tau(sigma(v(<x>)))))), lam(<p>, a2(v(<h3>), shift(v(<p>))))))))
+  host before-inner, ann(a2(v(<h0>), delta), arrow(pi(<x>, u, arrow(holds-in(l, a2(sigma(v(<x>)), delta)), neg(delta-claim(l, v(<x>))))), holds-in(l, a2(delta, omega))))
+  add-definition(sig, <lemma>, neg(lemma0-type), lam(<h0>, a2(ann(a2(before-inner, inner), neg(delta-claim(l, omega))), lam(<p>, a2(v(<h0>), shift(v(<p>)))))), true)
+  add-definition(sig, <paradox>, bot(), a2(c(<lemma>), c(<lemma0>)), true)
+  back sig
+
+# 1. the bare kernel: propositions are Type0 itself, the kinds live in Type1. Refused
+task bare-kernel
+  like dynamic
+
+  back hurkens(signature-new(judge-kernel), make(logic, bind(prop, ty(0)), bind(retract, false), bind(kind, ty(1)), bind(home, 2)))
+
+test <Hurkens over the bare kernel (kinds in Type1) is refused>
+  want hold, is-unequal(error-of(bare-kernel()), <>)
+
+# the refusal must be the universe, at `sigma` instantiating X := U, and nowhere earlier: a typo in the proof term would also be "refused" and
+# prove nothing about the kernel
+test <and it is refused at sigma, where U : Type2 does not fit X : Type1>
+  want hold, starts-with(error-of(bare-kernel()), <sigma:>)
+
+# the same with the kinds in Type0: P2 X is then a Pi into Type1, so U lands in Type1 and is still too big for X
+test <Hurkens with the kinds in Type0 is refused (U : Type1, predicative above the bottom)>
+  host sig, hurkens(signature-new(judge-kernel), make(logic, bind(prop, ty(0)), bind(retract, false), bind(kind, ty(0)), bind(home, 0)))
+  want hold, starts-with(error-of(sig), <U:>)
+
+# 2. the signature a LARGE form would get: Type0 a retract of code : Type0. Checks
+test <Hurkens over a large form checks: the retract proves (A : Type0) -\> A>
+  host sig, signature-new(judge-kernel)
+  signature-add(sig, <code>, evaluated(judge-kernel, to-term(judge-kernel, ty(0))))
+  # the constructor and the large eliminator, with the computing rules the elaborator registers for them
+  add-definition(sig, <wrap>, arrow(ty(0), c(<code>)), lam(<t>, lam(<Q>, lam(<b>, a2(v(<b>), v(<t>))))), false)
+  add-definition(sig, <matchType>, pi(<Q>, arrow(c(<code>), ty(1)), arrow(pi(<t>, ty(0), a2(v(<Q>), a2(c(<wrap>), v(<t>)))), pi(<x>, c(<code>), a2(v(<Q>), v(<x>))))), lam(<Q>, lam(<b>, lam(<x>, a3(v(<x>), v(<Q>), v(<b>))))), false)
+  # the decoder, CHECKED: el x := matchType (\_. Type0) (\t. t) x, so el (wrap t) computes to t
+  add-definition(sig, <el>, arrow(c(<code>), ty(0)), lam(<x>, a2(a3(c(<matchType>), lam(<_>, ty(0)), lam(<t>, v(<t>))), v(<x>))), true)
+  hurkens(sig, make(logic, bind(prop, c(<code>)), bind(retract, true), bind(kind, ty(0)), bind(home, 0)))
+  want hold, is-equal(error-of(sig), <>)
+  want hold, holds-global(sig, <paradox>)
+
+# 3. the elaborator refuses the large eliminator, and keeps the small ones
+task compiled
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))
+
+# refused for the RIGHT reason: the large-form refusal, not a typo in the probe
+task refused-large
+  take source, like text
+  like boolean
+
+  host out, compiled(source)
+  back and(not(out/ok), holds-text(joined(out/names, out/messages), <is large>))
+
+host types, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform bool\n  case true\n  case false\n>
+host retract, <{types}\nform code\n  case wrap\n    link t, like type\n\ntask el\n  take c, like code\n  like type\n  fork case, read c\n    case wrap\n      link t\n      send back\n        read t\n>
+host el-wrap-nat, <      call el\n        make wrap\n          bind t\n            read nat>
+
+# a rule that the decoding `left` (a call, stacked at six spaces) computes to the type `right`
+task decodes
+  take left, like text
+  take right, like text
+  like text
+
+  back <\nrule decodes\n  show hold\n    call is-equal\n{left}\n      read {right}\n  calm hold\n>
+
+test <a form with a field typed `type` gets no large eliminator: el (wrap nat) == nat is refused>
+  host rule-text, decodes(el-wrap-nat, <nat>)
+  want hold, refused-large(<{retract}{rule-text}>)
+
+test <control: el (wrap nat) == bool is refused>
+  host rule-text, decodes(el-wrap-nat, <bool>)
+  want hold, not(compiled(<{retract}{rule-text}>)/ok)
+
+# a field typed a FUNCTION into `type` is large too: it carries a family of types, and a decoder recovers each
+test <a field typed nat -\> type is large: its decoder is refused>
+  host rule-text, decodes(<      call at-zero\n        make pack\n          bind f\n            read the-nat>, <nat>)
+  want hold, refused-large(<{types}\nform family\n  case pack\n    link f\n      like task\n        take n, like nat\n        like type\n\ntask at-zero\n  take x, like family\n  like type\n  fork case, read x\n    case pack\n      link f\n      send back\n        call f\n          make zero\n{rule-text}\ntask the-nat\n  take n, like nat\n  like type\n  send back\n    read nat\n>)
+
+# the SMALL forms keep the large eliminator. An enum decodes into `type` (Rocq allows strong elimination of a small inductive in impredicative
+# Set), and so does a universe of codes whose constructors carry codes, not types
+test <small: an enum still decodes into type (meaning on == nat)>
+  host rule-text, decodes(<      call meaning\n        make on>, <nat>)
+  want hold, compiled(<{types}\nform flag\n  case on\n  case off\n\ntask meaning\n  take x, like flag\n  like type\n  fork case, read x\n    case on\n      send back\n        read nat\n    case off\n      send back\n        read bool\n{rule-text}>)/ok
+
+test <small: a recursive universe of codes still decodes (el (listcode natcode) == nat)>
+  host rule-text, decodes(<      call el\n        make listcode\n          bind elem\n            make natcode>, <nat>)
+  want hold, compiled(<{types}\nform univ\n  case natcode\n  case listcode\n    link elem, like univ\n\ntask el\n  take u, like univ\n  like type\n  fork case, read u\n    case natcode\n      send back\n        read nat\n    case listcode\n      link elem\n      send back\n        call el\n          read elem\n{rule-text}>)/ok
+
+# 4. proof irrelevance holds for a truncation's constructor at its own arity, and nowhere past it. `mark prop` makes any two `wrap x` equal. The
+# eliminator's computing rule applies `wrap x` to a motive and branches, and then the LAST argument is a branch: `out1 (wrap true)` and
+# `out2 (wrap true)` were convertible until 2026-10-05, though in every model of the eliminator they are true and false
+host truncation, <{types}\nform trunc\n  mark prop\n  case wrap\n    link v, like bool\n\ntask out1\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make true\n\ntask out2\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make false\n>
+
+test <a truncation is irrelevant: wrap true == wrap false>
+  host left, wrapped-at(<true>, 6)
+  host right, wrapped-at(<false>, 6)
+  want hold, compiled(<{truncation}\nrule irrelevant\n  show hold\n    call is-equal\n{left}\n{right}\n  calm hold\n>)/ok
+
+test <and only at its arity: out1 (wrap true) == out2 (wrap true) is refused>
+  host wrapped, wrapped-at(<true>, 8)
+  host out, compiled(<{truncation}\nrule past-the-arity\n  show hold\n    call is-equal\n      call out1\n{wrapped}\n      call out2\n{wrapped}\n  calm hold\n>)
+  want hold, not(out/ok)
+  want hold, holds-text(joined(out/names, out/messages), <invalid-proof: this proof does not establish the equality>)

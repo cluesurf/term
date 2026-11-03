@@ -1,0 +1,49 @@
+note <Incremental parse: the splitter, a cold pass, and an edit that re-parses one definition>
+
+# Ported from incremental-parse.ts by hand (item 0572). parser/tree and compile/incremental-parse are the subject (decision 106).
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-module
+  load <@term/make/code/compile/incremental-parse>, name split-module
+
+bind report
+  take parser, like dynamic
+  take splitter, like dynamic
+  take source, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const drop = new Set(["parent", "next", "previous"]); const ser = tree =\> JSON.stringify(tree, (k, v) =\> (drop.has(k) ? undefined : v)); const whole = text =\> ser($parser.parse(\{ file: "f.tree", text \}).tree); const blocks = $splitter.splitTopLevel($source); const cold = $splitter.incrementalParse("f.tree", $source, new Map()); const cache = new Map(); $splitter.incrementalParse("f.tree", $source, cache); const edited = $source.replace("code 2", "code 99"); const re = $splitter.incrementalParse("f.tree", edited, cache); return \{ three: blocks.length === 3, partition: blocks.map(b =\> b.text).join("\n") === $source, comment: !!blocks[1] && blocks[1].text.includes("# a note for two") && blocks[1].text.includes("task two"), equal: ser(cold.tree) === whole($source), cold: cold.parsed === 3 && cold.reused === 0, edit: re.parsed === 1 && re.reused === 2, editEqual: ser(re.tree) === whole(edited) \} \})()>
+
+bind fact
+  take facts, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$facts[$name]>
+
+host source, <task one\n  send back, code 1\n\n# a note for two\ntask two\n  send back, code 2\n\nform point\n  link x, like number\n>
+host facts, report(parser-module, split-module, source)
+
+# the splitter partitions the source exactly and attaches a leading comment to its definition
+test <splitTopLevel finds three definitions>
+  want hold, fact(facts, <three>)
+
+test <splitTopLevel partitions the source exactly>
+  want hold, fact(facts, <partition>)
+
+test <the comment rides with `task two`'s block>
+  want hold, fact(facts, <comment>)
+
+# a cold incremental parse equals a whole-file parse, byte for byte (spans included)
+test <incremental parse equals a whole-file parse>
+  want hold, fact(facts, <equal>)
+
+test <cold pass parses every block>
+  want hold, fact(facts, <cold>)
+
+# editing one definition re-parses only that one, the others are reused (re-positioned by a span shift)
+test <an edit re-parses only the changed definition>
+  want hold, fact(facts, <edit>)
+
+test <the incremental result still equals a whole-file parse of the edit>
+  want hold, fact(facts, <editEqual>)

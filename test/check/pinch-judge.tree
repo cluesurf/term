@@ -1,0 +1,174 @@
+note <The pinch-point keystone proved STRUCTURALLY as a judge.ts proof term (not numerically via the refinement>
+
+# Ported from pinch-judge.ts by tmp/self-host/suite-kernel-port.mjs. check/judge is the subject (decision 106).
+# The pinch-point keystone proved STRUCTURALLY as a judge.ts proof term (not numerically via the refinement
+# layer). The dimension is caught between the reversibility ceiling (dimension <= 8) and the one-substance floor
+# (8 <= dimension), and antisymmetry of the order forces it to equal 8. The proof is antisymmetry applied to the
+# two pressures: a real kernel proof term the sound kernel checks. Run: npx tsx test/check/pinch-judge.ts
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind make-record
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind empty-list
+  like dynamic
+  case node
+    text <[]>
+
+bind joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[...$first, ...$second]>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind assert-true
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
+
+bind throws-type-error
+  take module, like dynamic
+  take run, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
+
+bind lit-level-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.litLevel($a0)>
+
+bind context-with-signature-1
+  take module, like dynamic
+  take a0, like dynamic
+  like dynamic
+  case node
+    text <$module.contextWithSignature($a0)>
+
+bind evaluate-2
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  like dynamic
+  case node
+    text <$module.evaluate($a0, $a1)>
+
+bind check-3
+  take module, like dynamic
+  take a0, like dynamic
+  take a1, like dynamic
+  take a2, like dynamic
+  like dynamic
+  case node
+    text <$module.check($a0, $a1, $a2)>
+
+task v
+  take index, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, index))
+
+task kc
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, name))
+
+task ty
+  take n, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, lit-level-1(judge-kernel, n)))
+
+task pi
+  take m, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, m, <domain>, domain, <codomain>, codomain))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task id-of
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+# Le a b  =  the order relation "a is at most b" on dimensions.
+task le
+  take a, like dynamic
+  take b, like dynamic
+  like dynamic
+
+  back app(app(kc(<Le>), a), b)
+
+# antisymmetry: (a b : Dim) -> Le a b -> Le b a -> Id Dim a b
+# de Bruijn, tracking the binders [a, b, (Le a b), (Le b a)].
+host antisym-type, pi(<many>, kc(<Dim>), pi(<many>, kc(<Dim>), pi(<many>, le(v(1), v(0)), pi(<many>, le(v(1), v(2)), id-of(kc(<Dim>), v(3), v(2))))))
+
+host signature, make(list, make-record(make(list, <name>, <Dim>, <type>, ty(0))), make-record(make(list, <name>, <Le>, <type>, pi(<many>, kc(<Dim>), pi(<many>, kc(<Dim>), ty(0))))), make-record(make(list, <name>, <antisym>, <type>, antisym-type)), make-record(make(list, <name>, <dimension>, <type>, kc(<Dim>))), make-record(make(list, <name>, <eight>, <type>, kc(<Dim>))), make-record(make(list, <name>, <ceiling>, <type>, le(kc(<dimension>), kc(<eight>)))), make-record(make(list, <name>, <floor>, <type>, le(kc(<eight>), kc(<dimension>)))))
+
+host context, context-with-signature-1(judge-kernel, signature)
+
+# the pinch-point proof term: antisym dimension eight ceiling floor : Id Dim dimension eight.
+host pinch-proof, app(app(app(app(kc(<antisym>), kc(<dimension>)), kc(<eight>)), kc(<ceiling>)), kc(<floor>))
+
+host pinch-goal, id-of(kc(<Dim>), kc(<dimension>), kc(<eight>))
+
+test <the pinch-point: the dimension equals eight, proved structurally by antisymmetry>
+  save done, check-3(judge-kernel, context, pinch-proof, evaluate-2(judge-kernel, empty-list(), pinch-goal))
+  want hold, true
+
+# soundness: the same proof does NOT establish a wrong conclusion (dimension equals something else).
+task rejected-1
+  like dynamic
+
+  save done, check-3(judge-kernel, context, pinch-proof, evaluate-2(judge-kernel, empty-list(), id-of(kc(<Dim>), kc(<dimension>), kc(<Dim>))))
+  back void
+
+test <the proof does not establish a false equality (dimension = Le)>
+  want hold, throws-type-error(judge-kernel, rejected-1)
+
+# soundness: without the floor, antisymmetry cannot conclude (only the ceiling is not enough).
+task rejected-2
+  like dynamic
+
+  save done, check-3(judge-kernel, context, app(app(app(app(kc(<antisym>), kc(<dimension>)), kc(<eight>)), kc(<ceiling>)), kc(<ceiling>)), evaluate-2(judge-kernel, empty-list(), pinch-goal))
+  back void
+
+test <only the ceiling, without the floor, does not force eight>
+  want hold, throws-type-error(judge-kernel, rejected-2)

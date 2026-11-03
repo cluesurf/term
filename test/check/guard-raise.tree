@@ -1,0 +1,46 @@
+note <inside a guarded fork, a raise the term does not represent must keep the fork out of the kernel, or two guards over one call prove 1 equal to 2>
+
+# Item term-self-host-001-0853. `over` raises at the run on any input, through a division by zero, so safe-a(1) answers 1
+# and safe-b(1) answers 2. A kernel that lowers the call in the guard reads both tasks as the same call and proves them
+# equal. The effect row of a task says `throw` only for a `halt` it reaches, so it never saw a division, a raising task
+# handed to a higher order task, or a host bind. Each sits beside a control that must still be proven.
+
+load ../support/compiling
+  find compile-text
+  find refused-as
+
+task over-guards
+  take call-text, like text
+  take before, like text
+  like text
+  back <{before}\ntask safe-a\n  take x, like number\n  like number\n  fork\n    mark unsafe\n    back {call-text}\n  halt take\n    take problem\n    back 1\n\ntask safe-b\n  take x, like number\n  like number\n  fork\n    mark unsafe\n    back {call-text}\n  halt take\n    take problem\n    back 2\n\nhold\n  is-equal\n    safe-a(1)\n    safe-b(1)\n>
+
+test <a division by zero inside a guard does not read as the division>
+  host out, compile-text(over-guards(<divide(x, 0)>, <>))
+  want hold, refused-as(out, <unchecked-hold>)
+
+test <a division by zero in a callee does not read as the callee>
+  host out, compile-text(over-guards(<over(x)>, <task over\n  take x, like number\n  like number\n  back divide(x, 0)\n>))
+  want hold, refused-as(out, <unchecked-hold>)
+
+test <a remainder by zero in a callee does not read as the callee>
+  host out, compile-text(over-guards(<over(x)>, <task over\n  take x, like number\n  like number\n  back modulo(x, 0)\n>))
+  want hold, refused-as(out, <unchecked-hold>)
+
+test <a raising task handed to a higher order task does not read as the call>
+  host out, compile-text(over-guards(<apply(risky, x)>, <task risky\n  take x, like number\n  like number\n  fork test, is-above(x, 0)\n    hold\n      halt \<no\>\n  back x\n\ntask apply\n  take f\n    like task\n      take y, like number\n      like number\n  take x, like number\n  like number\n  back f(x)\n>))
+  want hold, refused-as(out, <unchecked-hold>)
+
+test <a host bind that throws does not read as the call>
+  host out, compile-text(over-guards(<boom(x)>, <bind boom\n  take x, like number\n  like number\n  case node\n    text \<JSON.parse("[" + $x)\>\n>))
+  want hold, refused-as(out, <unchecked-hold>)
+
+test <CONTROL: a guard whose statements cannot raise is still decided, and its false twin refused>
+  host out, compile-text(<task safe\n  like number\n  save a, 1\n  fork\n    mark unsafe\n    save a, add(a, 1)\n  halt take\n    take problem\n    save a, 100\n  back a\n\nhold\n  is-equal\n    safe()\n    2\n>)
+  want hold, out/ok
+  host twin, compile-text(<task safe\n  like number\n  save a, 1\n  fork\n    mark unsafe\n    save a, add(a, 1)\n  halt take\n    take problem\n    save a, 100\n  back a\n\nhold\n  is-equal\n    safe()\n    100\n>)
+  want hold, refused-as(twin, <unchecked-hold>)
+
+test <CONTROL: a raise written in the guard still takes the handler>
+  host out, compile-text(<task safe\n  like number\n  save a, 1\n  fork\n    mark unsafe\n    save a, 2\n    halt \<no\>\n  halt take\n    take problem\n    save a, add(a, 10)\n  back a\n\nhold\n  is-equal\n    safe()\n    12\n>)
+  want hold, out/ok

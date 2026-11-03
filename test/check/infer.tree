@@ -1,0 +1,146 @@
+note <Inference-engine tests>
+
+# Ported from infer.ts by tmp/self-host/suite-unroll.mjs and by hand (item 0558). Each fixture sits once, in its test, as in the original.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+  find refused-saying
+
+load @term/base/list
+  find size
+
+load @term/base/text
+  find contains, name text-contains
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <i.tree>)))
+
+# an unused-binding warning whose message holds `word`. <> asks for any
+task warned-holding
+  take out, like compile-outcome
+  take word, like text
+  like boolean
+
+  save at, 0
+  walk out/warnings
+    take found
+    fork test, and(is-equal(found, <unused-binding>), text-contains(out/warning-messages/{at}, word))
+      hold
+        back true
+    save at, add(at, 1)
+  back false
+
+# LET-POLYMORPHISM: a single generic identity called at a number AND at a string in the same program.
+# Without per-call instantiation, the generic result variable would unify to both and conflict.
+test <generic identity used at two types>
+  want hold, built(<task identity\n  head t\n  take x, like t\n  like t\n  send back x\n\ntask use-number\n  send back\n    call identity\n      code 5\n\ntask use-text\n  send back\n    call identity\n      text \<hi\>\n>)/ok
+
+# DECLARED ANNOTATION ENFORCED: a boolean parameter used in arithmetic is a type error (the annotation is
+# honored, not inferred away).
+test <boolean param used as number>
+  want hold, refused-as(built(<task wrong\n  take b, like boolean\n  send back\n    call add\n      read b\n      code 1\n>), <type-mismatch>)
+
+# FIELD-EXISTENCE: accessing a field the record does not declare is an error.
+test <access to missing field>
+  want hold, refused-as(built(<form point\n  link x, like u64\n  link y, like u64\n\ntask bad\n  take p, like point\n  send back\n    read p/z\n>), <unknown-name>)
+
+# a valid field access on a declared record type still works
+test <access to present field>
+  want hold, built(<form point\n  link x, like u64\n  link y, like u64\n\ntask good\n  take p, like point\n  send back\n    read p/x\n>)/ok
+
+# unused-binding warning: the program still compiles, but warns
+test <unused binding warned (not fatal)>
+  host out, built(<task waste\n  take n\n  save unused, code 5\n  send back n\n>)
+  want hold, out/ok
+  want hold, warned-holding(out, <unused>)
+
+# unused-binding and closures (beat-term-0017): a `save` read only inside a `task` closure handed to a call is read, so it is NOT
+# warned, and a `save` nothing reads anywhere still IS. Both through compile(), the checker entry the CLI builds with
+test <a save read only inside a task closure is not warned as unused>
+  host out, built(<task apply\n  take body, like task\n  call body\n\ntask outer\n  save at, code 5\n  call apply\n    task inner\n      call add\n        read at\n        code 1\n>)
+  want hold, out/ok
+  want hold, not(warned-holding(out, <>))
+
+test <a save read nowhere is still warned beside a closure>
+  host out, built(<task apply\n  take body, like task\n  call body\n\ntask outer\n  save spare, code 5\n  call apply\n    task inner\n      call add\n        code 7\n        code 1\n>)
+  want hold, out/ok
+  want hold, warned-holding(out, <spare>)
+
+# dead private function: a `mark private` task nothing calls is warned, a used one and a public (unmarked) one are not (a public
+# definition may be called from outside this compilation)
+test <an unused private function is warned>
+  host out, built(<task helper\n  mark private\n  send back, code 1\n\ntask main\n  send back, code 2\n>)
+  want hold, out/ok
+  want hold, warned-holding(out, <private>)
+
+test <a used private function is not warned>
+  host out, built(<task helper\n  mark private\n  send back, code 1\n\ntask main\n  send back\n    call helper\n>)
+  want hold, not(and(out/ok, warned-holding(out, <private>)))
+
+test <an unused PUBLIC function is not warned>
+  host out, built(<task helper\n  send back, code 1\n\ntask main\n  send back, code 2\n>)
+  want hold, not(and(out/ok, warned-holding(out, <private>)))
+
+# a fully-used function produces no warnings
+test <no warnings when all used>
+  host out, built(<task clean\n  take n\n  save m, read n\n  back m\n>)
+  want hold, out/ok
+  want hold, is-equal(size(out/warnings), 0)
+
+# unused-binding warning: the program still compiles, but warns
+# unused-binding and closures (beat-term-0017): a `save` read only inside a `task` closure handed to a call is read,
+# so it is NOT warned, and a `save` nothing reads anywhere still IS. Both through compile(), the checker entry the
+# CLI builds with
+# dead private function: a `mark private` task nothing calls is warned, a used one and a public (unmarked) one are
+# not (a public definition may be called from outside this compilation).
+# a fully-used function produces no warnings
+# MAP TYPING: a map literal infers a homogeneous map type, inconsistent values are caught (no longer `unknown`)
+test <consistent map literal type-checks>
+  want hold, built(<task scores\n  host table\n    make hash\n      save alice, code 1\n      save bob, code 2\n  send back table\n>)/ok
+
+test <inconsistent map values are caught>
+  want hold, refused-as(built(<task bad\n  host table\n    make hash\n      save alice, code 1\n      save bob, true\n  send back table\n>), <type-mismatch>)
+
+# FIRST-CLASS FUNCTIONS: passing a wrong-typed task is caught by unifying the function types
+test <passing a wrong-typed function is rejected>
+  want hold, refused-as(built(<task takes-number-fn\n  take f\n    like task\n      take x, like number\n      like number\n  like number\n  send back\n    call f\n      code 1\n\ntask wrong\n  take b, like boolean\n  like boolean\n  send back b\n\ntask run\n  like number\n  send back\n    call takes-number-fn\n      read wrong\n>), <type-mismatch>)
+
+# LET-GENERALIZATION: a generic task bound to an immutable local stays polymorphic, so it is usable at two types
+test <a bound generic task is used at two types (let-generalization)>
+  want hold, built(<task identity\n  head t\n  take x, like t\n  like t\n  send back x\n\ntask run\n  like number\n  host id\n    read identity\n  save a\n    call id\n      code 1\n  save b\n    call id\n      text \<hello\>\n  send back a\n>)/ok
+
+# ARITY OVERLOADING: two functions may share a name at different arities, each call resolves by argument count.
+test <same-name functions at different arities (overloading)>
+  want hold, built(<task render\n  take n, like number\n  like text\n  send back\n    text \<one\>\n\ntask render\n  take n, like number\n  take base, like number\n  like text\n  send back\n    text \<two\>\n\ntask use-one\n  like text\n  send back\n    call render\n      code 42\n\ntask use-two\n  like text\n  send back\n    call render\n      code 42\n      code 16\n>)/ok
+
+# same name AND same parameters in ONE file is not an overload, and it is refused rather than letting the last win in
+# silence (check/duplicates.ts, note/project/term/guides/research/gaps/plan.md phase 1). Overloading distinguishes arity or a written
+# parameter type, and a second file's definition (a native shim) is the overload binder's business
+test <same-name same-parameters in one file is refused (not an overload, not last-wins)>
+  want hold, refused-as(built(<task render\n  take n, like number\n  like text\n  send back\n    text \<a\>\n\ntask render\n  take m, like number\n  like text\n  send back\n    text \<b\>\n>), <duplicate-definition>)
+
+# NESTED NAMED TASK: the language has none (a task is top-level, a local function is a closure in value position). Under a `hook hold` it
+# reached checkFunction with no registered signature and THREW (found by `term hunt`, 2026-10-02), directly under a task it was dropped
+# in silence. Each position is now one `unexpected-node` and never a throw.
+test <nested task under hook hold is refused, not a crash>
+  want hold, refused-saying(built(<task pick\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read a\n        read b\n    hook hold\n      task back\n        read a\n    hook miss\n      send back\n        read b\n>), <unexpected-node>, <cannot be defined inside a body>)
+
+test <nested task directly under a task is refused, not dropped>
+  want hold, refused-saying(built(<task pick\n  take a, like number\n  like number\n  task twice\n    take n, like number\n    like number\n    send back\n      call add\n        read n\n        read n\n  send back\n    read a\n>), <unexpected-node>, <cannot be defined inside a body>)
+
+test <nested task inside a walk body is refused, not a crash>
+  want hold, refused-saying(built(<task total\n  take items, like list, like number\n  like number\n  save sum, code 0\n  walk list, read items\n    hook next\n      take site, name item\n      task inner\n        read item\n  send back, read sum\n>), <unexpected-node>, <cannot be defined inside a body>)
+
+# NESTED NAMED TASK: the language has none (a task is top-level, a local function is a closure in value
+# position). Under a `hook hold` it reached checkFunction with no registered signature and THREW
+# `Cannot read properties of undefined (reading 'bounds')` (found by `term hunt`, 2026-10-02), directly under a
+# task it was dropped in silence. Each position is now one `unexpected-node` and never a throw.
+# the control: the same helper written at the top level compiles and is called
+test <the helper at the top level compiles>
+  want hold, built(<task twice\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask pick\n  take a, like number\n  like number\n  send back\n    call twice\n      read a\n>)/ok

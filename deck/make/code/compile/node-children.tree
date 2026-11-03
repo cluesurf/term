@@ -601,6 +601,10 @@ task statement-children
             fork test, enters(at, <body>)
               hold
                 add-block(at, arm/body)
+            # the type an arm over an `unknown` tests for (term/compiler decision 012)
+            fork test, enters(at, <type>)
+              hold
+                add-maybe-type(at, arm/type)
       fork test, enters(at, <otherwise>)
         hold
           add-maybe-block(at, otherwise)
