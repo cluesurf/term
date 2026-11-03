@@ -16,12 +16,21 @@ bind source-of
   case node
     text <(\{ file: $file, text: $text \})>
 
-bind with-code
+load ../support/reading
+  find all-with, name with-field
+  find any-field-holding
+
+load @term/base/text
+  find split
+  find trim
+
+# the findings with the code
+task with-code
   take found, like dynamic
   take code, like text
   like dynamic
-  case node
-    text <$found.filter(f =\> f.code === $code)>
+
+  back with-field(found, <code>, code)
 
 bind size-of
   take found, like dynamic
@@ -42,12 +51,12 @@ bind first-says
   case node
     text <($found[0]?.message ?? "").includes($word)>
 
-bind any-says
+task any-says
   take found, like dynamic
   take word, like text
   like boolean
-  case node
-    text <$found.some(f =\> f.message.includes($word))>
+
+  back any-field-holding(found, <message>, word)
 
 bind says
   take text, like text
@@ -56,12 +65,24 @@ bind says
   case node
     text <$text.includes($word)>
 
-bind later-line-is
+# true when a line after the first, trimmed, is the line
+task later-line-is
   take text, like text
   take line, like text
   like boolean
-  case node
-    text <$text.split("\\n").slice(1).some(l =\> l.trim() === $line)>
+
+  host lines, split(text, <\n>)
+  save first, true
+  walk lines
+    take one, like text
+    fork test, first
+      hold
+        save first, false
+      miss
+        fork test, is-equal(trim(one), line)
+          hold
+            back true
+  back false
 
 bind x-run
   take size, like number

@@ -1,5 +1,626 @@
-note <Lean, second pass: not ported yet>
+note <The second pass over the lean surface: what the compiler emits for each spelling, on every backend>
 
-# PORT: test/compile/lean-second.ts (754 lines, 56 oks through a helper that compiles on three native envs) is not ported in item 0572. Its
-# port is held by the split item named in log.md, as it did not fit the run that landed the rest of compile-04. Until then this file holds no
-# test and term test does not collect it, and the TypeScript suite stands.
+# Ported from lean-second.ts by hand (item 0880, decision 113). Each section is held by what the compiler EMITS, never by what
+# the parser builds alone (note/project/term/lean/lean-surface-second-pass.md). `built-by` holds what the original's build()
+# held: a compile for TypeScript, then one compile per native env and its emitter's text. Each of the original's ten same()
+# sites is five tests: every native backend built, then TypeScript, Rust, Swift and Kotlin equal. The formatter, analyze, the
+# lint fixes, the parser and the milled meaning are the suite's subject and docked (decision 106). The original's regular
+# expressions that spell a plain text are a contains here, and the ones that need a pattern are a pattern.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/reading
+  find any-holding
+  find any-with
+  find all-with
+  find lines-of
+
+load ../support/judging
+  find truth
+
+load ../support/walking
+  find kind-of
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find replace
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/format/format>, name format-module
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/lint/lint>, name lint-module
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/format/meaning>, name meaning-module
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+form lint-choice
+  link lean, like boolean
+
+# every backend's output for one source, or the messages when it does not build
+form built
+  link ok, like boolean
+  link messages, like list, like text
+  link ts, like text
+  link rs, like text
+  link swift, like text
+  link kotlin, like text
+
+host second-file, </gate/code/second.tree>
+
+task built-by
+  take source, like text
+  take lean, like boolean
+  like built
+
+  host out, compile-text(source, make(compile-choice, bind(file, second-file), bind(lean, lean)))
+  fork test, not(out/ok)
+    hold
+      back make(built, bind(ok, false), bind(messages, out/messages), bind(ts, <>), bind(rs, <>), bind(swift, <>), bind(kotlin, <>))
+  host rust, compile-text(source, make(compile-choice, bind(file, second-file), bind(lean, lean), bind(env, <rust>)))
+  host swift, compile-text(source, make(compile-choice, bind(file, second-file), bind(lean, lean), bind(env, <swift>)))
+  host kotlin, compile-text(source, make(compile-choice, bind(file, second-file), bind(lean, lean), bind(env, <kotlin>)))
+  back make(built, bind(ok, true), bind(messages, out/messages), bind(ts, out/emitted), bind(rs, emit-text(rust, <rust>)), bind(swift, emit-text(swift, <swift>)), bind(kotlin, emit-text(kotlin, <kotlin>)))
+
+host rust-function, make pattern, <<\bfn \w>>
+host swift-function, make pattern, <<\bfunc \w>>
+host kotlin-function, make pattern, <<\bfun \w>>
+
+task both-built
+  take left, like built
+  take right, like built
+  like boolean
+
+  back and(left/ok, right/ok)
+
+# an empty native program on both sides would compare equal and prove nothing
+task natives-built
+  take left, like built
+  take right, like built
+  like boolean
+
+  fork test, not(both-built(left, right))
+    hold
+      back false
+  back and(matches(rust-function, left/rs), and(matches(swift-function, left/swift), matches(kotlin-function, left/kotlin)))
+
+# the tree a source parses to, printed canonically, for "these two spellings are one tree"
+task shape-of
+  take source, like text
+  like text
+
+  host parsed, parser-tree/parse(make(file-and-text, bind(file, <s.tree>), bind(text, source)))
+  fork test, truth(parsed/ok)
+    hold
+      back parser-tree/print-tree(parsed/tree)
+  back <PARSE FAILED>
+
+task formatted-of
+  take source, like text
+  like text
+
+  back format-module/format(make(file-and-text, bind(file, <f.tree>), bind(text, source)))
+
+task findings-of
+  take file, like text
+  take source, like text
+  take lean, like boolean
+  like dynamic
+
+  host analysis, analyze-module/analyze(make(file-and-text, bind(file, file), bind(text, source)), make(lint-choice, bind(lean, lean)))
+  back analysis/lint()
+
+# ---- 1. `sift x` is `fork case, x` ----
+
+host shape-form, <\nform shape\n  case circle\n    link radius, like number\n  case square\n    link side, like number\n>
+
+host fork-built, built-by(<{shape-form}\ntask area\n  take s, like shape\n  like number\n  fork case, read s\n    case circle\n      send back\n        call multiply\n          code 3\n          call multiply\n            read radius\n            read radius\n    case square\n      send back\n        call multiply\n          read side\n          read side\n>, false)
+host sift-built, built-by(<{shape-form}\ntask area\n  take s, like shape\n  like number\n  sift read s\n    case circle\n      send back\n        call multiply\n          code 3\n          call multiply\n            read radius\n            read radius\n    case square\n      send back\n        call multiply\n          read side\n          read side\n>, false)
+
+test <1. `sift read s` emits what `fork case, read s` emits: every native backend built>
+  want hold, natives-built(fork-built, sift-built)
+
+test <1. `sift read s` emits what `fork case, read s` emits: TypeScript>
+  want hold, both-built(fork-built, sift-built)
+  want hold, is-equal(fork-built/ts, sift-built/ts)
+
+test <1. `sift read s` emits what `fork case, read s` emits: Rust>
+  want hold, both-built(fork-built, sift-built)
+  want hold, is-equal(fork-built/rs, sift-built/rs)
+
+test <1. `sift read s` emits what `fork case, read s` emits: Swift>
+  want hold, both-built(fork-built, sift-built)
+  want hold, is-equal(fork-built/swift, sift-built/swift)
+
+test <1. `sift read s` emits what `fork case, read s` emits: Kotlin>
+  want hold, both-built(fork-built, sift-built)
+  want hold, is-equal(fork-built/kotlin, sift-built/kotlin)
+
+host tag-match, make pattern, <<case "circle"|\.form === "circle"|switch>>
+
+test <1. ...and that is a match on the tag>
+  want hold, fork-built/ok
+  want hold, matches(tag-match, fork-built/ts)
+
+host lean-fork-built, built-by(<{shape-form}\ntask area\n  take s, like shape\n  like number\n  fork case, s\n    case circle\n      back multiply(3, multiply(radius, radius))\n    case square\n      back multiply(side, side)\n>, true)
+host lean-sift-built, built-by(<{shape-form}\ntask area\n  take s, like shape\n  like number\n  sift s\n    case circle\n      back multiply(3, multiply(radius, radius))\n    case square\n      back multiply(side, side)\n>, true)
+
+test <1. lean `sift s` emits what lean `fork case, s` emits: every native backend built>
+  want hold, natives-built(lean-fork-built, lean-sift-built)
+
+test <1. lean `sift s` emits what lean `fork case, s` emits: TypeScript>
+  want hold, both-built(lean-fork-built, lean-sift-built)
+  want hold, is-equal(lean-fork-built/ts, lean-sift-built/ts)
+
+test <1. lean `sift s` emits what lean `fork case, s` emits: Rust>
+  want hold, both-built(lean-fork-built, lean-sift-built)
+  want hold, is-equal(lean-fork-built/rs, lean-sift-built/rs)
+
+test <1. lean `sift s` emits what lean `fork case, s` emits: Swift>
+  want hold, both-built(lean-fork-built, lean-sift-built)
+  want hold, is-equal(lean-fork-built/swift, lean-sift-built/swift)
+
+test <1. lean `sift s` emits what lean `fork case, s` emits: Kotlin>
+  want hold, both-built(lean-fork-built, lean-sift-built)
+  want hold, is-equal(lean-fork-built/kotlin, lean-sift-built/kotlin)
+
+test <1. lean `sift s` emits what longhand `fork case, read s` emits: every native backend built>
+  want hold, natives-built(fork-built, lean-sift-built)
+
+test <1. lean `sift s` emits what longhand `fork case, read s` emits: TypeScript>
+  want hold, both-built(fork-built, lean-sift-built)
+  want hold, is-equal(fork-built/ts, lean-sift-built/ts)
+
+test <1. lean `sift s` emits what longhand `fork case, read s` emits: Rust>
+  want hold, both-built(fork-built, lean-sift-built)
+  want hold, is-equal(fork-built/rs, lean-sift-built/rs)
+
+test <1. lean `sift s` emits what longhand `fork case, read s` emits: Swift>
+  want hold, both-built(fork-built, lean-sift-built)
+  want hold, is-equal(fork-built/swift, lean-sift-built/swift)
+
+test <1. lean `sift s` emits what longhand `fork case, read s` emits: Kotlin>
+  want hold, both-built(fork-built, lean-sift-built)
+  want hold, is-equal(fork-built/kotlin, lean-sift-built/kotlin)
+
+# a `case` arm's `link` renames and a fallback arm ride through unchanged (check/arm.ts is one rule for both)
+host link-fork-built, built-by(<{shape-form}\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case circle\n      link r\n      send back, read r\n    case square\n      send back, code 0\n>, false)
+host link-sift-built, built-by(<{shape-form}\ntask size\n  take s, like shape\n  like number\n  sift read s\n    case circle\n      link r\n      send back, read r\n    case square\n      send back, code 0\n>, false)
+
+test <1. a renaming `link` under a `sift` arm binds as under `fork case`: every native backend built>
+  want hold, natives-built(link-fork-built, link-sift-built)
+
+test <1. a renaming `link` under a `sift` arm binds as under `fork case`: TypeScript>
+  want hold, both-built(link-fork-built, link-sift-built)
+  want hold, is-equal(link-fork-built/ts, link-sift-built/ts)
+
+test <1. a renaming `link` under a `sift` arm binds as under `fork case`: Rust>
+  want hold, both-built(link-fork-built, link-sift-built)
+  want hold, is-equal(link-fork-built/rs, link-sift-built/rs)
+
+test <1. a renaming `link` under a `sift` arm binds as under `fork case`: Swift>
+  want hold, both-built(link-fork-built, link-sift-built)
+  want hold, is-equal(link-fork-built/swift, link-sift-built/swift)
+
+test <1. a renaming `link` under a `sift` arm binds as under `fork case`: Kotlin>
+  want hold, both-built(link-fork-built, link-sift-built)
+  want hold, is-equal(link-fork-built/kotlin, link-sift-built/kotlin)
+
+# ---- 2. `{x}` interpolates, and the compiler decides when ----
+
+host program-built, built-by(<\nhost per-day, 86400\nhost area, \<north\>\nhost started, now()\n\ntree greeter\n  take lang\n  hook fuse\n    task greet-\{lang\}\n      take name, like text\n      like text\n      send back, \<hello \{name\} in \{lang\}\>\n\nfuse greeter\n  bind lang, english\n\ntask now\n  like number\n  send back, code 7\n\ntask folded\n  like text\n  send back, \<\{per-day\} seconds in \{area\}\>\n\ntask folded-call\n  like text\n  send back, \<\{add(per-day, per-day)\} after\>\n\ntask at-run\n  take n, like number\n  like text\n  send back, \<n is \{n\}\>\n\ntask local\n  like text\n  save x, code 5\n  send back, \<x is \{x\}\>\n\ntask late\n  like text\n  send back, \<started \{started\}\>\n\ntask shadow\n  take area, like text\n  like text\n  send back, \<in \{area\}\>\n>, false)
+
+# one exported function of the program's TypeScript, <> when it has none of that name
+task function-of
+  take name, like text
+  like text
+
+  host whole, program-built/ts
+  host at, index-of(whole, <export function {name}(>)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  host end, index-of(whole, <\n\}\n>, at)
+  fork test, is-below(end, 0)
+    hold
+      back <>
+  back substring(whole, at, add(end, 2))
+
+host program-native, <{program-built/rs}\n{program-built/swift}\n{program-built/kotlin}>
+
+test <2. the program builds>
+  want hold, program-built/ok
+
+# a template parameter: substituted when the template expands, the other hole left for run time
+test <2. a template parameter is filled at expansion>
+  want hold, text-contains(function-of(<greetEnglish>), <return `hello $\{name\} in english`>)
+
+# a module constant that folds: a plain literal, no template literal, on every backend
+test <2. a module constant is filled at compile time>
+  want hold, text-contains(function-of(<folded>), <return "86400 seconds in north">)
+
+test <2. ...with no run-time interpolation left in it>
+  want hold, not(text-contains(function-of(<folded>), <`>))
+  want hold, not(text-contains(function-of(<folded>), <$\{>))
+
+test <2. ...nor on Rust, Swift or Kotlin>
+  want hold, text-contains(program-native, <"86400 seconds in north">)
+  want hold, not(text-contains(program-native, <format!("\{\} seconds>))
+
+test <2. a call over module constants folds the same way>
+  want hold, text-contains(function-of(<foldedCall>), <return "172800 after">)
+
+# anything else: filled at run time
+test <2. a parameter is filled at run time>
+  want hold, text-contains(function-of(<atRun>), <return `n is $\{n\}`>)
+
+test <2. ...as `format!` on Rust>
+  want hold, text-contains(program-built/rs, <format!("n is \{\}">)
+
+test <2. a local is filled at run time>
+  want hold, text-contains(function-of(<local>), <$\{>)
+
+test <2. a constant that does not fold is filled at run time>
+  want hold, text-contains(function-of(<late>), <$\{started\}>)
+
+test <2. a parameter shadowing a module constant is the parameter>
+  want hold, text-contains(function-of(<shadow>), <$\{area\}>)
+
+host unknown-built, built-by(<\ntask greet\n  like text\n  send back, \<hello \{nobody\}\>\n>, false)
+
+test <2. a name in braces that names nothing is an unknown name>
+  want hold, not(unknown-built/ok)
+  want hold, any-holding(unknown-built/messages, <nobody>)
+
+host single-built, built-by(<\ntask greet\n  take name, like text\n  like text\n  send back, \<hello \{name\}\>\n>, false)
+host double-built, built-by(<\ntask greet\n  take name, like text\n  like text\n  send back, \<hello \{\{name\}\}\>\n>, false)
+
+test <2. `\{\{x\}\}` is still accepted and emits what `\{x\}` emits: every native backend built>
+  want hold, natives-built(single-built, double-built)
+
+test <2. `\{\{x\}\}` is still accepted and emits what `\{x\}` emits: TypeScript>
+  want hold, both-built(single-built, double-built)
+  want hold, is-equal(single-built/ts, double-built/ts)
+
+test <2. `\{\{x\}\}` is still accepted and emits what `\{x\}` emits: Rust>
+  want hold, both-built(single-built, double-built)
+  want hold, is-equal(single-built/rs, double-built/rs)
+
+test <2. `\{\{x\}\}` is still accepted and emits what `\{x\}` emits: Swift>
+  want hold, both-built(single-built, double-built)
+  want hold, is-equal(single-built/swift, double-built/swift)
+
+test <2. `\{\{x\}\}` is still accepted and emits what `\{x\}` emits: Kotlin>
+  want hold, both-built(single-built, double-built)
+  want hold, is-equal(single-built/kotlin, double-built/kotlin)
+
+host braces-built, built-by(<\ntask greet\n  like text\n  send back, \<hello \\\{name\\\}\>\n>, false)
+
+test <2. `\\\{` and `\\\}` stay the literal braces>
+  want hold, braces-built/ok
+  want hold, text-contains(braces-built/ts, <return "hello \{name\}">)
+
+# ---- 3. a comma after a call or a literal pops nothing ----
+
+host parens-built, built-by(<task f\n  take n, like number\n  like boolean\n  back is-equal(add(n, 1), 14)\n>, true)
+host comma-built, built-by(<task f\n  take n, like number\n  like boolean\n  back is-equal add(n, 1), 14\n>, true)
+
+test <3. `back is-equal add(n, 1), 14` is `is-equal(add(n, 1), 14)`: every native backend built>
+  want hold, natives-built(parens-built, comma-built)
+
+test <3. `back is-equal add(n, 1), 14` is `is-equal(add(n, 1), 14)`: TypeScript>
+  want hold, both-built(parens-built, comma-built)
+  want hold, is-equal(parens-built/ts, comma-built/ts)
+
+test <3. `back is-equal add(n, 1), 14` is `is-equal(add(n, 1), 14)`: Rust>
+  want hold, both-built(parens-built, comma-built)
+  want hold, is-equal(parens-built/rs, comma-built/rs)
+
+test <3. `back is-equal add(n, 1), 14` is `is-equal(add(n, 1), 14)`: Swift>
+  want hold, both-built(parens-built, comma-built)
+  want hold, is-equal(parens-built/swift, comma-built/swift)
+
+test <3. `back is-equal add(n, 1), 14` is `is-equal(add(n, 1), 14)`: Kotlin>
+  want hold, both-built(parens-built, comma-built)
+  want hold, is-equal(parens-built/kotlin, comma-built/kotlin)
+
+test <3. a comma after a literal stays at the literal's level>
+  want hold, is-equal(shape-of(<code \<1\>, \<2\>\nx y \<1\>, \<2\>\n>), shape-of(<code\n  \<1\>\n  \<2\>\nx\n  y\n    \<1\>\n    \<2\>\n>))
+
+# ---- 4 and 5. a simple value goes inline, and a view body takes the same shape ----
+
+host stacked, <form shape\n  case circle\n    link radius, like number\n\ntask total\n  take xs\n    like list\n      like number\n  like list\n    like number\n  save result\n    make list\n  is-equal\n    text-cursor-peek(cursor)\n    \<,\>\n  back result\n\nview home\n  take host, like view\n  view h1\n    \<Home\>\n\nview about\n  take host, like view\n  take who, like text\n  view p\n    who\n>
+host formatted, formatted-of(stacked)
+host formatted-lines, lines-of(formatted)
+
+# the fifth shape needs the comma rule: a comma after a closed call stays at its level
+host stacked-want, <task found\n  want hold\n    is-equal\n      get(found, 1)\n      14\n>
+host fifth, formatted-of(stacked-want)
+
+test <4. `term form` writes `want hold, is-equal get(found, 1), 14`>
+  want hold, text-contains(fifth, <  want hold, is-equal get(found, 1), 14\n>)
+
+test <4. ...which parses to the stacked tree>
+  want hold, is-equal(shape-of(fifth), shape-of(stacked-want))
+
+test <4. `term form` writes `take xs, like list, like number`>
+  want hold, contains(formatted-lines, <  take xs, like list, like number>)
+
+test <4. `term form` writes `like list, like number`>
+  want hold, contains(formatted-lines, <  like list, like number>)
+
+test <4. `term form` writes `save result, make list`>
+  want hold, contains(formatted-lines, <  save result, make list>)
+
+test <4. `term form` writes `is-equal text-cursor-peek(cursor), \<,\>`>
+  want hold, contains(formatted-lines, <  is-equal text-cursor-peek(cursor), \<,\>>)
+
+test <4. `term form` writes `view h1, \<Home\>`>
+  want hold, contains(formatted-lines, <  view h1, \<Home\>>)
+
+test <4. `term form` writes `view p, who`>
+  want hold, contains(formatted-lines, <  view p, who>)
+
+test <4. a blank line still parts a task's signature from its body>
+  want hold, text-contains(formatted, <like list, like number\n\n  save result>)
+
+test <4. the formatted file parses to the same tree>
+  want hold, is-equal(shape-of(stacked), shape-of(formatted))
+
+test <5. a top-level `view` definition stays stacked>
+  want hold, text-contains(formatted, <view about\n  take host>)
+
+test <5. a placement with markup under it stays stacked>
+  want hold, text-contains(formatted-of(<view a\n  view p\n    view b, \<x\>\n    view i, \<y\>\n>), <  view p\n    view b, \<x\>>)
+
+# ---- 5. a view placement takes a text or a bare variable, stacked or after a comma ----
+
+host page-head, <\nview about\n  take host, like view\n  take who, like text\n>
+
+host read-built, built-by(<{page-head}  view p\n    read who\n>, false)
+host bare-built, built-by(<{page-head}  view p\n    who\n>, false)
+host bare-lean-built, built-by(<{page-head}  view p\n    who\n>, true)
+host comma-who-built, built-by(<{page-head}  view p, who\n>, false)
+host comma-who-lean-built, built-by(<{page-head}  view p, who\n>, true)
+
+test <5. `view p` over `read who` builds>
+  want hold, read-built/ok
+
+test <5. `view p` over a bare `who` builds>
+  want hold, bare-built/ok
+
+test <5. `view p` over a bare `who` emits what `view p` over `read who` emits>
+  want hold, both-built(bare-built, read-built)
+  want hold, is-equal(bare-built/ts, read-built/ts)
+
+test <5. `view p` over a bare `who` (lean) builds>
+  want hold, bare-lean-built/ok
+
+test <5. `view p` over a bare `who` (lean) emits what `view p` over `read who` emits>
+  want hold, both-built(bare-lean-built, read-built)
+  want hold, is-equal(bare-lean-built/ts, read-built/ts)
+
+test <5. `view p, who` builds>
+  want hold, comma-who-built/ok
+
+test <5. `view p, who` emits what `view p` over `read who` emits>
+  want hold, both-built(comma-who-built, read-built)
+  want hold, is-equal(comma-who-built/ts, read-built/ts)
+
+test <5. `view p, who` (lean) builds>
+  want hold, comma-who-lean-built/ok
+
+test <5. `view p, who` (lean) emits what `view p` over `read who` emits>
+  want hold, both-built(comma-who-lean-built, read-built)
+  want hold, is-equal(comma-who-lean-built/ts, read-built/ts)
+
+host text-built, built-by(<{page-head}  view h1, \<Home\>\n>, false)
+host stacked-text-built, built-by(<{page-head}  view h1\n    \<Home\>\n>, false)
+
+test <5. `view h1, \<Home\>` is `view h1` over `\<Home\>`: every native backend built>
+  want hold, natives-built(stacked-text-built, text-built)
+
+test <5. `view h1, \<Home\>` is `view h1` over `\<Home\>`: TypeScript>
+  want hold, both-built(stacked-text-built, text-built)
+  want hold, is-equal(stacked-text-built/ts, text-built/ts)
+
+test <5. `view h1, \<Home\>` is `view h1` over `\<Home\>`: Rust>
+  want hold, both-built(stacked-text-built, text-built)
+  want hold, is-equal(stacked-text-built/rs, text-built/rs)
+
+test <5. `view h1, \<Home\>` is `view h1` over `\<Home\>`: Swift>
+  want hold, both-built(stacked-text-built, text-built)
+  want hold, is-equal(stacked-text-built/swift, text-built/swift)
+
+test <5. `view h1, \<Home\>` is `view h1` over `\<Home\>`: Kotlin>
+  want hold, both-built(stacked-text-built, text-built)
+  want hold, is-equal(stacked-text-built/kotlin, text-built/kotlin)
+
+# ---- 4 and 5, as lint rules: `term lint --fix` makes the same layout, and the program does not change ----
+
+host lint-lean, <form shape\n  case circle\n    link radius, like number\n  case square\n    link side, like number\n\ntask area\n  take s, like shape\n  like number\n\n  fork case, s\n    case circle\n      back multiply(3, multiply(radius, radius))\n    case square\n      back\n        multiply(side, side)\n\ntask label\n  take n, like number\n  like text\n\n  back \<n is \{\{n\}\}\>\n>
+host lint-findings, findings-of(<l.tree>, lint-lean, true)
+
+test <1. L042 prefer-sift reports `fork case` in a lean file>
+  want hold, any-with(lint-findings, <code>, <L042>)
+
+test <2. L043 prefer-single-brace reports `\{\{n\}\}`>
+  want hold, any-with(lint-findings, <code>, <L043>)
+
+test <4. L044 line-layout reports `back` over one value>
+  want hold, any-with(lint-findings, <code>, <L044>)
+
+host lint-fixed, lint-module/apply-fixes(lint-lean, lint-findings)
+
+test <1. the L042 fix writes `sift s`>
+  want hold, text-contains(lint-fixed, <  sift s\n    case circle>)
+
+test <2. the L043 fix writes `\<n is \{n\}\>`>
+  want hold, text-contains(lint-fixed, <back \<n is \{n\}\>>)
+
+test <4. the L044 fix writes `back multiply(side, side)`>
+  want hold, text-contains(lint-fixed, <    case square\n      back multiply(side, side)\n>)
+
+host lint-lean-built, built-by(lint-lean, true)
+host lint-fixed-built, built-by(lint-fixed, true)
+
+test <the fixed file emits what the written one emits: every native backend built>
+  want hold, natives-built(lint-lean-built, lint-fixed-built)
+
+test <the fixed file emits what the written one emits: TypeScript>
+  want hold, both-built(lint-lean-built, lint-fixed-built)
+  want hold, is-equal(lint-lean-built/ts, lint-fixed-built/ts)
+
+test <the fixed file emits what the written one emits: Rust>
+  want hold, both-built(lint-lean-built, lint-fixed-built)
+  want hold, is-equal(lint-lean-built/rs, lint-fixed-built/rs)
+
+test <the fixed file emits what the written one emits: Swift>
+  want hold, both-built(lint-lean-built, lint-fixed-built)
+  want hold, is-equal(lint-lean-built/swift, lint-fixed-built/swift)
+
+test <the fixed file emits what the written one emits: Kotlin>
+  want hold, both-built(lint-lean-built, lint-fixed-built)
+  want hold, is-equal(lint-lean-built/kotlin, lint-fixed-built/kotlin)
+
+host lint-view, <view about\n  take host, like view\n  take who, like text\n  view p\n    who\n  view h1\n    \<Home\>\n>
+host lint-view-fixed, lint-module/apply-fixes(lint-view, findings-of(<v.tree>, lint-view, true))
+
+test <5. L044 collapses `view p` over `who` to `view p, who`>
+  want hold, text-contains(lint-view-fixed, <  view p, who\n>)
+
+test <5. ...and `view h1` over `\<Home\>` to `view h1, \<Home\>`>
+  want hold, text-contains(lint-view-fixed, <  view h1, \<Home\>\n>)
+
+host lint-view-built, built-by(lint-view, true)
+host lint-view-fixed-built, built-by(lint-view-fixed, true)
+
+test <5. the collapsed view emits what the stacked one emits: every native backend built>
+  want hold, natives-built(lint-view-built, lint-view-fixed-built)
+
+test <5. the collapsed view emits what the stacked one emits: TypeScript>
+  want hold, both-built(lint-view-built, lint-view-fixed-built)
+  want hold, is-equal(lint-view-built/ts, lint-view-fixed-built/ts)
+
+test <5. the collapsed view emits what the stacked one emits: Rust>
+  want hold, both-built(lint-view-built, lint-view-fixed-built)
+  want hold, is-equal(lint-view-built/rs, lint-view-fixed-built/rs)
+
+test <5. the collapsed view emits what the stacked one emits: Swift>
+  want hold, both-built(lint-view-built, lint-view-fixed-built)
+  want hold, is-equal(lint-view-built/swift, lint-view-fixed-built/swift)
+
+test <5. the collapsed view emits what the stacked one emits: Kotlin>
+  want hold, both-built(lint-view-built, lint-view-fixed-built)
+  want hold, is-equal(lint-view-built/kotlin, lint-view-fixed-built/kotlin)
+
+# L044 is the five rules of format-rules.md "Where each part of a line goes", as `term form` lays them out. In a lean file a
+# bare head under a call is a LABEL or a call, and only the checker knows which, so a part written on its own line stays there
+# and one written closed stays closed: `shout` over `greet <ada>` is left alone, and `shout` over `greet(<ada>)` joins as
+# `shout greet(<ada>)`
+host spaced, <task greet\n  take name, like text\n  like text\n\n  back name\n\ntask shout\n  take line, like text\n\n  back\n\ntask boot\n  shout\n    greet \<ada\>\n>
+
+test <3. L044 leaves a lean argument written open on its own line (`shout` over `greet \<ada\>`)>
+  want hold, not(any-with(findings-of(<s.tree>, spaced, true), <code>, <L044>))
+
+host closed, replace(spaced, <greet \<ada\>>, <greet(\<ada\>)>)
+host closed-fixed, lint-module/apply-fixes(closed, all-with(findings-of(<s.tree>, closed, true), <code>, <L044>))
+
+test <3. ...and joins one written closed: `shout greet(\<ada\>)`>
+  want hold, text-contains(closed-fixed, <  shout greet(\<ada\>)\n>)
+
+host spaced-built, built-by(spaced, true)
+host closed-fixed-built, built-by(closed-fixed, true)
+
+test <3. ...which emits what the stacked call emits: every native backend built>
+  want hold, natives-built(spaced-built, closed-fixed-built)
+
+test <3. ...which emits what the stacked call emits: TypeScript>
+  want hold, both-built(spaced-built, closed-fixed-built)
+  want hold, is-equal(spaced-built/ts, closed-fixed-built/ts)
+
+test <3. ...which emits what the stacked call emits: Rust>
+  want hold, both-built(spaced-built, closed-fixed-built)
+  want hold, is-equal(spaced-built/rs, closed-fixed-built/rs)
+
+test <3. ...which emits what the stacked call emits: Swift>
+  want hold, both-built(spaced-built, closed-fixed-built)
+  want hold, is-equal(spaced-built/swift, closed-fixed-built/swift)
+
+test <3. ...which emits what the stacked call emits: Kotlin>
+  want hold, both-built(spaced-built, closed-fixed-built)
+  want hold, is-equal(spaced-built/kotlin, closed-fixed-built/kotlin)
+
+# The page's own before and after: the fix writes the right-hand column, blank lines aside. Only L044's findings are applied,
+# since another rule's fix on the same line (`save` to `host` for a name never reassigned) wins an overlap. Compared by milled
+# program here, because this suite builds without the stdlib that holds `push`, `map` and `sum`; the guide's copy of the sample
+# is built against it (tmp/lean-guide/page.sh)
+host list-load, <load @term/base/list\n  find list\n\n>
+host before, <task list-demo\n  like number\n  save items\n    make list\n      3\n      1\n  push\n    items\n    2\n  save doubled\n    map\n      items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n>
+host after, <task list-demo\n  like number\n  save items, make list, 3, 1\n  push items, 2\n  save doubled\n    map items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n>
+host demo, <{list-load}{before}>
+host demo-fixed, lint-module/apply-fixes(demo, all-with(findings-of(<d.tree>, demo, true), <code>, <L044>))
+
+# the text with its blank lines left out
+task dense
+  take source, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk lines-of(source)
+    take one, like text
+    fork test, is-unequal(trim(one), <>)
+      hold
+        fork test, first
+          hold
+            save out, one
+            save first, false
+          miss
+            save out, <{out}\n{one}>
+  back out
+
+# the milled program of a lean text, void when it does not parse
+task program-at
+  take source, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(make(file-and-text, bind(file, <d.tree>), bind(text, source)))
+  fork test, truth(parsed/ok)
+    hold
+      back meaning-module/program-of(parsed/tree, <d.tree>, true)
+  back void
+
+test <1 to 5. the L044 fix writes format-rules.md's after column>
+  want hold, is-equal(dense(demo-fixed), dense(<{list-load}{after}>))
+
+host demo-program, program-at(demo)
+
+test <1 to 5. ...and it mills to the program the before column mills to>
+  want hold, is-equal(kind-of(demo-program), <string>)
+  want hold, is-equal(demo-program, program-at(demo-fixed))
+
+test <1 to 5. the after column has no L044 finding>
+  want hold, not(any-with(findings-of(<a.tree>, <{list-load}{after}>, true), <code>, <L044>))
+
+test <L044 leaves a longhand file alone>
+  want hold, not(any-with(findings-of(<l.tree>, demo, false), <code>, <L044>))
+
+test <1. L042 leaves a longhand file alone>
+  want hold, not(any-with(findings-of(<l.tree>, <form shape\n  case circle\n\ntask f\n  take s, like shape\n  fork case, read s\n    case circle\n      send back\n>, false), <code>, <L042>))

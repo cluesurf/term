@@ -5,9 +5,7 @@ note <Incremental parse: the splitter, a cold pass, and an edit that re-parses o
 # leaving out the three back-pointers (`parent`, `next`, `previous`), so two trees are equal when their texts are, spans included.
 
 load ../support/walking
-  find kind-of
-  find fields-of
-  find field-of
+  find json-without
 
 load ../support/judging
   find read-at
@@ -24,13 +22,6 @@ dock load
   load <@term/make/code/parser/tree>, name parser-module
   load <@term/make/code/compile/incremental-parse>, name split-module
 
-# host value: a scalar as JSON writes it, the one leaf of the walk
-bind json-of
-  take value, like dynamic
-  like text
-  case node
-    text <JSON.stringify($value)>
-
 bind new-map
   like dynamic
   case node
@@ -40,60 +31,12 @@ form parse-input
   link file, like text
   link text, like text
 
-# a back-pointer the serialization leaves out, as the original's `drop` set did
-task is-dropped
-  take field, like text
-  like boolean
-
-  back or(is-equal(field, <parent>), or(is-equal(field, <next>), is-equal(field, <previous>)))
-
-# JSON writes no key for a value that is undefined or a function
-task is-written
-  take value, like dynamic
-  like boolean
-
-  host kind, kind-of(value)
-  back and(is-unequal(kind, <undefined>), is-unequal(kind, <function>))
-
-# JSON.stringify(tree, (k, v) => (drop.has(k) ? undefined : v)), in Term
+# JSON.stringify(tree, (k, v) => (drop.has(k) ? undefined : v)), in Term: the three back-pointers the original's `drop` set left out
 task tree-json
   take value, like dynamic
   like text
 
-  host kind, kind-of(value)
-  save out, <>
-  save first, true
-  fork test, is-equal(kind, <list>)
-    hold
-      walk value
-        take one, like dynamic
-        save part, <null>
-        fork test, is-written(one)
-          hold
-            save part, tree-json(one)
-        fork test, first
-          hold
-            save out, part
-          miss
-            save out, <{out},{part}>
-        save first, false
-      back <[{out}]>
-  fork test, is-equal(kind, <object>)
-    hold
-      walk fields-of(value)
-        take field, like text
-        host held, field-of(value, field)
-        fork test, and(not(is-dropped(field)), is-written(held))
-          hold
-            host entry, <{json-of(field)}:{tree-json(held)}>
-            fork test, first
-              hold
-                save out, entry
-              miss
-                save out, <{out},{entry}>
-            save first, false
-      back <\{{out}\}>
-  back json-of(value)
+  back json-without(value, make list(<parent>, <next>, <previous>))
 
 # the whole-file parse of a text, serialized
 task whole-json

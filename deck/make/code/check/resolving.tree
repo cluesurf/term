@@ -908,6 +908,15 @@ task resolve-expression
       save node/fields, fields
     case member
       save node/target, resolve-member-root(state, resolve-expression(state, target))
+      # a computed segment, `roles/{remainder(at, 3)}`, holds names like any other expression: left unresolved, an
+      # unknown one built clean and failed at run time (item 0894)
+      sift index
+        case some
+          link known
+          save kept-index, resolve-expression(state, known)
+          save node/index, make(some, kept-index)
+        case none
+          save nothing, 0
     case template
       save at, 0
       walk parts

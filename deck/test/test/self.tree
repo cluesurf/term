@@ -1,0 +1,74 @@
+note <the term under test run from a test: its command, an added variable and the inherited rest reaching it, and its standard input>
+
+# Decision 111 of note/project/term/self-host/change/001-finish-self-host. `term test` hands this file's child
+# TERM_TEST_SELF and TERM_TEST_SELF_ENTRY, and run-self runs that `term` on the fixture project beside this file, whose two
+# tests read the variables the child was started with. Standard input is seen through `term mold`, which reads data from
+# it when it is given no file.
+
+load ../code/self
+  find self-command
+  find run-self
+  find run-self-with-input
+
+load @term/base/environment
+  find variable
+  find set-variable
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find contains
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <self-command is the program the runner named, then its script when it has one>
+  save expected, make list
+  expected/push(variable(<TERM_TEST_SELF>))
+  save entry, variable(<TERM_TEST_SELF_ENTRY>)
+  fork test, is-unequal(entry, <>)
+    hold
+      expected/push(entry)
+  want hold, is-unequal(variable(<TERM_TEST_SELF>), <>)
+  want hold, is-equal(join(self-command(), <|>), join(expected, <|>))
+
+test <an added variable reaches the child, and the rest of the environment is inherited>
+  set-variable(<TERM_SELF_INHERITED>, <from the parent>)
+  save environment, make hash
+  save key, <TERM_SELF_PROBE>
+  save environment/{key}, <reached>
+  save arguments, make list(<test>, <--color>, <never>)
+  save ran, run-self(arguments, <test/self-fixture>, 280000, environment)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 2 passed>)
+
+test <without the environment the variable is not there, and its test fails>
+  set-variable(<TERM_SELF_INHERITED>, <from the parent>)
+  save arguments, make list(<test>, <--color>, <never>)
+  save ran, run-self(arguments, <test/self-fixture>, 280000)
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 failed>)
+
+test <input reaches the child's standard input>
+  save arguments, make list(<mold>, <--json>)
+  save ran, run-self-with-input(arguments, <host greeting, \<from standard input\>\n>, <test/self-fixture>, 280000)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(ran/output, <from standard input>)
+
+test <input and an added variable go together>
+  save environment, make hash
+  save key, <TERM_SELF_PROBE>
+  save environment/{key}, <reached>
+  save arguments, make list(<mold>, <--json>)
+  save ran, run-self-with-input(arguments, <host greeting, \<both\>\n>, <test/self-fixture>, 280000, environment)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(ran/output, <both>)

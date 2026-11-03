@@ -8,6 +8,10 @@ load ./reading
   find first-with
   find lines-of
   find joined-names
+  find any-starting
+  find any-field-holding
+  find values-at
+  find first-with-both
 
 form finding
   link code, like text
@@ -49,3 +53,20 @@ test <joined-names joins one field of each item, by a bar unless told>
   want hold, is-equal joined-names(findings, <code>), <L040 | L044 | L040>
   want hold, is-equal joined-names(findings, <code>, <,>), <L040,L044,L040>
   want hold, is-equal joined-names(make(list), <code>), <>
+
+test <any-starting finds a text that opens with the word, and not one that only holds it>
+  want hold, any-starting(make(list, <dup a>, <drop b>), <drop>)
+  want hold, not(any-starting(make(list, <dup a>, <a drop>), <drop>))
+
+test <any-field-holding finds a word in one field of an item>
+  want hold, any-field-holding(findings, <message>, <laid>)
+  want hold, not(any-field-holding(findings, <message>, <L044>))
+
+test <values-at answers the field of every item, in order>
+  host codes, values-at(findings, <code>)
+  want hold, is-equal codes/length, 3
+  want hold, is-equal codes/1, <L044>
+
+test <first-with-both needs both fields at their values>
+  want hold, is-equal first-with-both(findings, <code>, <L040>, <message>, <another twice key>)/message, <another twice key>
+  want hold, is-equal first-with-both(findings, <code>, <L044>, <message>, <a twice key>), void

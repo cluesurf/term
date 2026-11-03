@@ -16,12 +16,16 @@ bind source-of
   case node
     text <(\{ file: "main.tree", text: $text \})>
 
-bind kept-holds
+load ../support/reading
+  find any-with
+
+# true when a statement of the kept program has the name
+task kept-holds
   take program, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$program.flatMap(n =\> "name" in n && typeof n.name === "string" ? [n.name] : []).includes($name)>
+
+  back any-with(program, <name>, name)
 
 task shaped
   like dynamic

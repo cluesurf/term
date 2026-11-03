@@ -2,18 +2,42 @@ note <A NATIVE MEMBER CALL HOLDS ITS ARGUMENT TO THE SLOT, whatever either type 
 
 # Ported from member-pin.ts by task/term/suite-port.ts.
 
-bind out-line
+# the lines of the text holding the word out, joined by a bar
+task out-line
   take text, like text
   like text
-  case node
-    text <$text.split("\n").filter(l =\> /\bout\b/.test(l)).join(" | ")>
 
-bind argument-mismatch
+  host word-out, make pattern, <<\bout\b>>
+  host lines, split(text, <\n>)
+  save joined, <>
+  save first, true
+  walk lines
+    take line, like text
+    fork test, matches(word-out, line)
+      hold
+        fork test, first
+          hold
+            save joined, line
+            save first, false
+          miss
+            save joined, <{joined} | {line}>
+  back joined
+
+# true when a type-mismatch among the names has a message about an argument
+task argument-mismatch
   take names, like list, like text
   take messages, like list, like text
   like boolean
-  case node
-    text <$names.some((name, at) =\> name === "type-mismatch" && /argument/.test($messages[at]))>
+
+  save at, 0
+  walk names
+    take name, like text
+    host message, messages/{at}
+    fork test, and(is-equal(name, <type-mismatch>), text-contains(message, <argument>))
+      hold
+        back true
+    save at, add(at, 1)
+  back false
 
 task said
   take messages, like list, like text

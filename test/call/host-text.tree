@@ -1,0 +1,94 @@
+# The host-text check (task/term/host-text.ts, pnpm term:host-text), decision 113 of change 001 "A suite is .tree": a
+# fact table, a statement bind and a declared bind each read as the rule says. Item term-self-host-001-0882.
+#
+# Each test writes three suites into a fresh Term root under the system's temporary folder and runs the tool there with
+# `--root`, so the real tree and the real baseline are never read. Run from the Term package. HOST_TEXT_TOOLS names
+# another folder holding host-text.ts: tmp/self-host/0882/broken held a copy that reads every bind as a call and
+# counts no fact, and this file failed on it.
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name text-write
+
+load ../support/temp
+  find temp-folder
+
+bind text-has
+  take whole, like text
+  take part, like text
+  like boolean
+  case node
+    text <($whole.includes($part))>
+
+bind text-words
+  take line, like text
+  like list, like text
+  case node
+    text <$line.split(" ")>
+
+bind text-tools
+  take seed, like number
+  like text
+  case node
+    text <(process.env.HOST_TEXT_TOOLS ?? "task/term")>
+
+host text-home, <../../../..>
+
+host fact-suite, <test \<the lookup holds its own title\>\n  want hold, facts-of(\<the lookup holds its own title\>)\n>
+
+host statement-suite, <bind add-up\n  take a, like number\n  like number\n  case node\n    text \<const b = $a; b\>\n\ntest \<adds\>\n  want hold, is-equal(add-up(1), 1)\n>
+
+host declared-suite, <# host reflect: a shape only the host makes\nbind make-thing\n  take a, like text\n  like dynamic\n  case node\n    text \<const o = $a; o\>\n\ntest \<makes\>\n  want hold, true\n>
+
+# a Term root holding the three suites under test/
+task text-root
+  like text
+
+  save home, temp-folder(<host-text->)
+  run(<mkdir>, text-words(<-p {home}/test>), text-home)
+  text-write(<{home}/test/fact.tree>, fact-suite)
+  text-write(<{home}/test/statement.tree>, statement-suite)
+  text-write(<{home}/test/declared.tree>, declared-suite)
+  back home
+
+# the tool over that root, its answer opening with its exit code, then what it wrote to both streams
+task text-run
+  take home, like text
+  take rest, like text
+  like text
+
+  save line, <node_modules/tsx/dist/cli.mjs {text-tools(0)}/host-text.ts --root {home} {rest}>
+  save done, run(<node>, text-words(line), text-home)
+  back <exit {done/code}\n{done/output}{done/error}>
+
+test <a test whose hold carries its own title is a fact table>
+  save home, text-root()
+  save listed, text-run(home, <--list test/fact.tree>)
+  want hold, text-has(listed, <facts 1, runs text false>)
+  save failed, text-run(home, <--fail test/fact.tree>)
+  want hold, text-has(failed, <exit 1\n>)
+  want hold, text-has(failed, <hold logic in a bind (decision 113): test/fact.tree>)
+
+test <a bind holding a statement is refused and holds its file>
+  save home, text-root()
+  save listed, text-run(home, <--list test/statement.tree>)
+  want hold, text-has(listed, <refused 15 add-up: const b = $a; b>)
+  save failed, text-run(home, <--fail test/statement.tree>)
+  want hold, text-has(failed, <exit 1\n>)
+  want hold, text-has(failed, <test/statement.tree>)
+
+test <a statement under a host line is declared and passes>
+  save home, text-root()
+  save listed, text-run(home, <--list test/declared.tree>)
+  want hold, text-has(listed, <declared 15 make-thing: const o = $a; o>)
+  save passed, text-run(home, <--fail test/declared.tree>)
+  want hold, text-has(passed, <exit 0\n>)
+  want hold, text-has(passed, <HOST TEXT: clean>)
+
+test <the totals count each of the three once>
+  save home, text-root()
+  save whole, text-run(home, <>)
+  want hold, text-has(whole, <"refused":1,>)
+  want hold, text-has(whole, <"declared":1,"facts":1,"heldFiles":2,>)

@@ -1,0 +1,33 @@
+note <the CLI a suite runs: the Term root and the bundle under test>
+
+# Tests of test/support/cli.tree, beside it rather than in it: a loaded file's test blocks are not rewritten (T-0878).
+
+load ./cli
+  find term-root
+  find term-line
+  find line-in-install
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+
+load @term/base/text
+  find ends-with
+
+test <the Term root is the folder holding the package's deck.tree>
+  want hold, file-exists(<{term-root()}/deck.tree>)
+  want hold, ends-with(term-root(), <deck/term/deck/term>)
+
+test <the built CLI sits at host/line.js inside an install>
+  want hold, is-equal(line-in-install, <host/line.js>)
+
+test <the CLI under test is TERM_LINE when set, else the Term root's own bundle>
+  host named, variable(<TERM_LINE>)
+  host root, term-root()
+  save wanted, <{root}/host/line.js>
+  fork test, is-unequal(named, <>)
+    hold
+      save wanted, named
+  want hold, ends-with(term-line(), wanted)

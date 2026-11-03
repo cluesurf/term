@@ -1,0 +1,32 @@
+note <the CLI a suite runs, found in one place>
+
+# Ported from test/call/cli.ts (decision 013 part 1 of cli-in-term, item 0547). TERM_LINE names another bundle, such as
+# host/term-line.js built from the console before host/line.js switches to it, so a suite can be tried against it
+# without replacing the CLI a running gate uses. Unset, it is the built CLI of this checkout, <term>/host/line.js. A suite
+# that runs the `term` it was started by uses `run-self` from @term/test/self instead: these are for a suite that names
+# the bundle itself, as a path to copy, read or hand to node.
+
+load @term/base/environment
+  find variable
+
+dock load
+  load <node:path>, name cli-path
+
+# where the built CLI sits inside an install or a payload, relative to its root
+host line-in-install, <host/line.js>
+
+# the Term package root, deck/term/deck/term: the working directory a suite of this project runs in (D022)
+task term-root
+  like text
+
+  back cli-path/resolve(<.>)
+
+# the CLI under test: TERM_LINE resolved from the working directory when it is set, else the Term root's own
+task term-line
+  like text
+
+  save named, variable(<TERM_LINE>)
+  fork test, is-unequal(named, <>)
+    hold
+      back cli-path/resolve(named)
+  back cli-path/join(term-root(), line-in-install)

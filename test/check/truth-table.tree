@@ -14,13 +14,25 @@ load ../support/compiling
 load @term/base/list
   find contains
 
-bind said-holds
+load @term/base/text
+  find contains, name text-contains
+
+# true when `name: message` of a refusal holds the word
+task said-holds
   take names, like list, like text
   take messages, like list, like text
   take word, like text
   like boolean
-  case node
-    text <$names.some((name, at) =\> `$\{name\}: $\{$messages[at]\}`.includes($word))>
+
+  save at, 0
+  walk names
+    take name, like text
+    host message, messages/{at}
+    fork test, text-contains(<{name}: {message}>, word)
+      hold
+        back true
+    save at, add(at, 1)
+  back false
 
 task built
   take text, like text

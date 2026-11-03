@@ -68,3 +68,72 @@ task nodes-of
         hold
           found/push(node)
   back found
+
+# host value: a scalar as JSON writes it, the one leaf of json-without
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# JSON writes no key for a value that is undefined or a function
+task is-written
+  take value, like dynamic
+  like boolean
+
+  host kind, kind-of(value)
+  back and(is-unequal(kind, <undefined>), is-unequal(kind, <function>))
+
+task is-listed
+  take name, like text
+  take names, like list, like text
+  like boolean
+
+  save found, false
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        save found, true
+  back found
+
+# the value as JSON.stringify writes it, leaving out every field whose name is in dropped, at any depth
+task json-without
+  take value, like dynamic
+  take dropped, like list, like text
+  like text
+
+  host kind, kind-of(value)
+  save out, <>
+  save first, true
+  fork test, is-equal(kind, <list>)
+    hold
+      walk value
+        take one, like dynamic
+        save part, <null>
+        fork test, is-written(one)
+          hold
+            save part, json-without(one, dropped)
+        fork test, first
+          hold
+            save out, part
+          miss
+            save out, <{out},{part}>
+        save first, false
+      back <[{out}]>
+  fork test, is-equal(kind, <object>)
+    hold
+      walk fields-of(value)
+        take field, like text
+        host held, field-of(value, field)
+        fork test, and(not(is-listed(field, dropped)), is-written(held))
+          hold
+            host entry, <{json-of(field)}:{json-without(held, dropped)}>
+            fork test, first
+              hold
+                save out, entry
+              miss
+                save out, <{out},{entry}>
+            save first, false
+      back <\{{out}\}>
+  back json-of(value)

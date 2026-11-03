@@ -1,0 +1,7 @@
+load @term/test/corpus
+  find tree-files
+
+test <a corpus of shelved files only>
+  take file, like text
+    walk tree-files(<corpus-empty>)
+  want hold, is-unequal(file, <>)

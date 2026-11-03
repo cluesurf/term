@@ -1,0 +1,13 @@
+load @term/test/corpus
+  find tree-files
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/text
+  find contains
+
+test <every corpus file says hello>
+  take file, like text
+    walk tree-files(<corpus>)
+  want hold, contains(read-file(file), <hello>)

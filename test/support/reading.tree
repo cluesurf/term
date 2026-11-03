@@ -9,6 +9,7 @@ load @term/base/list
 load @term/base/text
   find contains, name text-contains
   find split, name text-split
+  find starts-with, name text-starts-with
 
 # true when a text of the list contains the word
 task any-holding
@@ -22,6 +23,62 @@ task any-holding
       hold
         back true
   back false
+
+# true when a text of the list starts with the word
+task any-starting
+  take texts, like dynamic
+  take word, like text
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, text-starts-with(one, word)
+      hold
+        back true
+  back false
+
+# true when the field of an item of the list, a text, contains the word
+task any-field-holding
+  take items, like dynamic
+  take field, like text
+  take word, like text
+  like boolean
+
+  walk items
+    take one, like dynamic
+    host found, one/{field}
+    fork test, text-contains(found, word)
+      hold
+        back true
+  back false
+
+# the field of every item, in order
+task values-at
+  take items, like dynamic
+  take field, like text
+  like list, like dynamic
+
+  host found, make list
+  walk items
+    take one, like dynamic
+    found/push(one/{field})
+  back found
+
+# the first item of the list with one field at one value and another at another, else void
+task first-with-both
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  take other, like text
+  take other-value, like dynamic
+  like dynamic
+
+  walk items
+    take one, like dynamic
+    fork test, and(is-equal(one/{field}, value), is-equal(one/{other}, other-value))
+      hold
+        back one
+  back void
 
 # true when an item of the list has the field at the value
 task any-with

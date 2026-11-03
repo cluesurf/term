@@ -1,0 +1,9 @@
+load @term/base/environment
+  find variable
+
+test <the variable the parent added reached this child>
+  want hold, is-equal(variable(<TERM_SELF_PROBE>), <reached>)
+
+test <the rest of the environment came with it>
+  want hold, is-unequal(variable(<PATH>), <>)
+  want hold, is-equal(variable(<TERM_SELF_INHERITED>), <from the parent>)

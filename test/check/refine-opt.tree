@@ -33,11 +33,19 @@ bind no-facts
   case node
     text <[]>
 
-bind steps
+# 0 up to the size, the size left out
+task steps
   take size, like number
-  like dynamic
-  case node
-    text <Array.from(\{ length: $size \}, (_, i) =\> i)>
+  like list, like number
+
+  host found, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      found/push(at)
+      save at, add(at, 1)
+  back found
 
 task v
   take name, like text

@@ -1,0 +1,48 @@
+note <the .tree files under a folder, sorted by code point, shelved files left out, and a missing folder an absence>
+
+load ../code/corpus
+  find tree-files
+
+load @term/base/exception
+  find absence
+  find failure
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find contains
+
+# the `thing` of the absence `tree-files` raised, or `none` when it raised nothing
+task absent-thing
+  take directory, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    tree-files(directory)
+    back <none>
+  halt take
+    take problem
+    sift problem
+      case absence
+        back thing
+      case failure
+        back <failure>
+
+test <every tree file under the folder and below it, in code point order>
+  save found, tree-files(<test/corpus-fixture>)
+  want hold, is-equal(join(found, <|>), <test/corpus-fixture/Z.tree|test/corpus-fixture/a.tree|test/corpus-fixture/a/z.tree|test/corpus-fixture/deck.tree|test/corpus-fixture/kept.tree|test/corpus-fixture/ｚ.tree|test/corpus-fixture/𝔸.tree>)
+
+test <a folder written with a trailing slash reads the same paths>
+  want hold, is-equal(join(tree-files(<test/corpus-fixture/>), <|>), join(tree-files(<test/corpus-fixture>), <|>))
+
+test <a file shelved by a mark draft line is left out, and one whose mark draft is indented is kept>
+  save found, join(tree-files(<test/corpus-fixture>), <|>)
+  want miss, contains(found, <shelved.tree>)
+  want hold, contains(found, <kept.tree>)
+
+test <a folder that is not there raises absence naming it>
+  want hold, is-equal(absent-thing(<test/no-such-corpus>), <test/no-such-corpus>)

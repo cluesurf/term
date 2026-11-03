@@ -14,12 +14,17 @@ bind from-json
     text <JSON.parse($written)>
 
 # a Gram target, a map from a monomial's key: `[[monomial, coefficient], ...]`, keyed by check/certificate's own gram-key
-bind gram-target
+task gram-target
   take checker, like dynamic
   take written, like text
   like dynamic
-  case node
-    text <<new Map(JSON.parse($written).map(([monomial, coefficient]) => [$checker.gramKey(monomial), coefficient]))>>
+
+  host pairs, from-json(written)
+  host found, make hash
+  walk pairs
+    take pair, like dynamic
+    found/set(checker/gram-key(pair/0), pair/1)
+  back found
 
 bind gram-claim
   take basis, like dynamic

@@ -1,0 +1,4 @@
+test <each word is shown>
+  take word, like text
+    walk make list(<one>, <two>)
+  want snapshot, <[{word}]>

@@ -1,0 +1,130 @@
+note <where Swift's try goes: a raising call writes its own, and under and or or it covers the whole expression>
+
+# Ported from swift-try.ts by hand (item 0547), the exemplar of a toolchain suite: find-tool, then skip, then the
+# toolchain run through test/support/running.
+#
+# Where Swift's `try` goes (compile/swift.ts, `openTry`): a call to a raising task writes its own `(try f())`, which an
+# arithmetic or comparison operator beside it takes as it is, and a second `try` over the whole expression warns that
+# it covers nothing. Under `&&` and `||` the right side is an autoclosure, which refuses a `try` inside it, so there
+# the `try` covers the whole expression. Each program is typechecked by swiftc with warnings as errors.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load ../support/reading
+  find lines-of
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# the raising task every program calls, then `compute`, whose body is the expression under test
+task swift-program
+  take body, like text
+  like text
+
+  back <task half\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      halt \<negative\>\n  send back\n    call divide\n      read n\n      code 2\n\ntask compute\n  take n, like number\n  like boolean\n{body}>
+
+# a comparison over a raising call: the call's own `try`, none over the operator
+host comparison, <  send back\n    call is-equal\n      call half\n        read n\n      code 2\n>
+
+# arithmetic over a raising call, inside a comparison. `n` has no proven range, so the add goes through the prelude's
+# overflow-stopping termAdd (term-stdlib-parity-0015); the call keeps its own `try` as an argument to it
+host sum, <  send back\n    call is-above\n      call add\n        read n\n        call half\n          read n\n      code 3\n>
+
+# `&&` with the raising call on its right, an autoclosure: the `try` in front of the whole
+host both, <  send back\n    call and\n      call is-above\n        read n\n        code 0\n      call is-equal\n        call half\n          read n\n        code 2\n>
+
+# the body of a case by its name
+task body-of
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <comparison>)
+    hold
+      back comparison
+  fork test, is-equal(name, <sum>)
+    hold
+      back sum
+  back both
+
+# what the return line of a case must read. The call may carry its Term frame, `(try termCall("site") { try half(n: n) })`
+# (term/hive decision 001)
+task want-of
+  take name, like text
+  like pattern
+
+  fork test, is-equal(name, <comparison>)
+    hold
+      back make pattern, <<return \(\(try (termCall\("[^"]*"\) \{ try )?half\(n: n\)( \})?\) == 2\)>>
+  fork test, is-equal(name, <sum>)
+    hold
+      back make pattern, <<return \(\(termAdd\(n, \(try (termCall\("[^"]*"\) \{ try )?half\(n: n\)( \})?\)\)\) > 3\)>>
+  back make pattern, <<return \(try >>
+
+# the Swift a case compiles to, unoptimized, <> for one refused
+task swift-of
+  take name, like text
+  like text
+
+  save out, compile-text(swift-program(body-of(name)), make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+  back emit-text(out, <swift>)
+
+# the first line of the Swift that returns and calls `half`, <> when none does
+task return-line
+  take swift, like text
+  like text
+
+  walk lines-of(swift)
+    take line, like text
+    fork test, and(text-contains(line, <return>), text-contains(line, <half>))
+      hold
+        back line
+  back <>
+
+# swiftc's errors typechecking a case's Swift with warnings as errors, <> when it has none
+task swiftc-errors
+  take name, like text
+  like text
+
+  save swift, swift-of(name)
+  fork test, is-equal(swift, <>)
+    hold
+      back <the program was refused>
+  save folder, temp-folder(<swift-try->)
+  save file, <{folder}/{name}.swift>
+  write-file(file, swift)
+  back run-tool(make list(<swiftc>, <-typecheck>, <-warnings-as-errors>, file))
+
+test <typechecks with no warning>
+  take name, like text
+    walk make list(<comparison>, <sum>, <both>)
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      skip <no swiftc>
+  want hold, is-equal(swiftc-errors(name), <>)
+
+test <the try sits where it must>
+  take name, like text
+    walk make list(<comparison>, <sum>, <both>)
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      skip <no swiftc>
+  want hold, matches(want-of(name), return-line(swift-of(name)))

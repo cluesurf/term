@@ -14,24 +14,51 @@ load ../support/compiling
 load @term/base/list
   find contains
 
-bind imports-of
+load @term/base/text
+  find split
+  find starts-with
+
+# the import lines of an emitted Swift file
+task imports-of
   take swift, like text
   like list, like text
-  case node
-    text <$swift.split("\n").filter(line =\> /^import /.test(line))>
+
+  host lines, split(swift, <\n>)
+  host found, make list
+  walk lines
+    take line, like text
+    fork test, starts-with(line, <import >)
+      hold
+        found/push(line)
+  back found
 
 # the real case's program must hold both, or the test proves nothing
-bind holds-dotted-type
+task holds-dotted-type
   take program, like dynamic
   like boolean
-  case node
-    text <$program.some(n =\> n.form === "native" && n.kind === "type" && n.module === "watchFile.Watcher")>
 
-bind holds-kebab-alias
+  walk program
+    take one, like dynamic
+    fork test, is-equal(one/form, <native>)
+      hold
+        fork test, and(is-equal(one/kind, <type>), is-equal(one/module, <watchFile.Watcher>))
+          hold
+            back true
+  back false
+
+task holds-kebab-alias
   take program, like dynamic
   like boolean
-  case node
-    text <$program.some(n =\> n.form === "native" && n.module.startsWith("global:") && n.alias === "watch-file")>
+
+  walk program
+    take one, like dynamic
+    fork test, is-equal(one/form, <native>)
+      hold
+        host module, one/module
+        fork test, and(starts-with(module, <global:>), is-equal(one/alias, <watch-file>))
+          hold
+            back true
+  back false
 
 task built
   take source, like text

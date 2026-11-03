@@ -11,6 +11,9 @@ load ../support/compiling
   find compile-choice
   find compile-note
 
+load ../support/reading
+  find lines-of
+
 dock load
   load <@term/make/code/parser/tree>, name parser-tree
   load <@term/make/code/compile/mill-run>, name mill-run
@@ -27,11 +30,18 @@ bind source-of
   case node
     text <(\{ file: $file, text: $text \})>
 
-bind head-nodes
+# the head of each top-level group, none when the parse failed
+task head-nodes
   take parsed, like dynamic
   like list, like dynamic
-  case node
-    text <($parsed.ok ? $parsed.tree.nodes.map(n =\> n.nodes[0]) : [])>
+
+  host found, make list
+  fork test, parsed/ok
+    hold
+      walk parsed/tree/nodes
+        take group, like dynamic
+        found/push(group/nodes/0)
+  back found
 
 bind span-line
   take span, like dynamic
@@ -52,12 +62,21 @@ bind line-at
   case node
     text <($text.split("\\n")[$at] ?? "")>
 
-bind first-line-holding
+# the number of the first line holding the word, -1 when none does
+task first-line-holding
   take text, like text
   take word, like text
   like number
-  case node
-    text <$text.split("\\n").findIndex(line =\> line.includes($word))>
+
+  host lines, lines-of(text)
+  save at, 0
+  walk lines
+    take line, like text
+    fork test, says(line, word)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
 
 bind opens-with
   take text, like text

@@ -520,6 +520,9 @@ form frame
   mark shared
   link members, like hash, like text, like text
   link path, like list, like expression
+  # the task's `descends` and `param-forms` (form walked), carried so a call's descent is judged where it was made
+  link descends, like hash, like text, like boolean
+  link param-forms, like hash, like text, like text
 
 form call-at
   link callee, like text
@@ -532,6 +535,14 @@ form walked
   link calls, like list, like call-at
   link values, like list, like text
   link variant-fields, like hash, like text, like list, like text
+  # whether a field is a STRUCTURAL DESCENT (decision 114 of change 001): a field of a form not `mark shared`, and not
+  # `need false`. A shared form is a reference that may hold itself, and a need-false field typed by a form has no
+  # empty value, so neither field is smaller than what holds it. Keys (`field-keys`): `f <form> <field>` a field of a
+  # form (its own or a case's), `n <field>` every form's field of that name, `v <form> <case> <field>` a case's field,
+  # `c <case> <field>` every case of that name. A name with two definitions descends only if both do
+  link descends, like hash, like text, like boolean
+  # the task's parameters whose declared type names a form of the program, to that form
+  link param-forms, like hash, like text, like text
 
 task copy-members
   take members, like hash, like text, like text
@@ -693,6 +704,8 @@ task walk-calls
     make frame
       bind members, copy-members(members)
       bind path, guards
+      bind descends, out/descends
+      bind param-forms, out/param-forms
   walk body
     take one
     visit-statement(out, frame, one)
@@ -715,6 +728,54 @@ task locally-bound
           back false
     case none
       back false
+
+# is `subject/field` a structural descent (decision 114)? Read in the subject's own form when it is a parameter whose
+# declared type names a form declaring the field, else in every form declaring a field of that name. A field no form
+# of the program declares (a list's, a text's) is read as before
+task field-descends
+  take frame, like frame
+  take subject, like text
+  take field, like text
+  like boolean
+  mark private
+
+  fork test, frame/param-forms/has(subject)
+    hold
+      save form-name, frame/param-forms/get(subject)
+      save own, <f {form-name} {field}>
+      fork test, frame/descends/has(own)
+        hold
+          back frame/descends/get(own)
+  save any, <n {field}>
+  fork test, frame/descends/has(any)
+    hold
+      back frame/descends/get(any)
+  back true
+
+# is the field `field` of the case `label`, bound by an arm of a match on `subject`, a structural descent (decision
+# 114)? Read in the subject's own form when it is a parameter whose declared type names a form with that case, else in
+# every case of that name. A case the program declares without the field descends through nothing, and a case it does
+# not declare at all is read as before
+task case-field-descends
+  take frame, like frame
+  take subject, like text
+  take label, like text
+  take field, like text
+  like boolean
+  mark private
+
+  fork test, frame/param-forms/has(subject)
+    hold
+      save form-name, frame/param-forms/get(subject)
+      save own, <v {form-name} {label} {field}>
+      fork test, frame/descends/has(own)
+        hold
+          back frame/descends/get(own)
+  save any, <c {label} {field}>
+  fork test, frame/descends/has(any)
+    hold
+      back frame/descends/get(any)
+  back not(frame/descends/has(<k {label}>))
 
 task visit-expression
   take out, like walked
@@ -923,11 +984,29 @@ task visit-statement
         # the fields are bound afresh in the branch: members of the subject when it is a plain variable, and of
         # nothing a parameter is when it is not (a field of `g(x)` named `prior` is not the `prior` of an outer match)
         save branch-members, members-without(frame/members, fields)
+        # only a field that is a structural descent (decision 114): a field of a shared form, or a need-false one,
+        # is bound afresh and is a member of nothing
         fork test, is-unequal(subject-name, <>)
           hold
+            save declared, out/variant-fields/get-or-default(arm/label, make list)
+            save renamed, false
             walk fields
               take field-name
-              save branch-members/{field-name}, subject-name
+              fork test, not(contains(declared, field-name))
+                hold
+                  save renamed, true
+            save at, 0
+            walk fields
+              take field-name
+              # a `link` that renames binds the case's fields in order (check/arm.ts)
+              save declared-name, field-name
+              fork test, and(renamed, is-below(at, declared/length))
+                hold
+                  save declared-name, get(declared, at)
+              save at, add(at, 1)
+              fork test, case-field-descends(frame, subject-name, arm/label, declared-name)
+                hold
+                  save branch-members/{field-name}, subject-name
         walk-calls(out, arm/body, branch-members, without(frame/path, fields))
       sift otherwise
         case some
@@ -948,7 +1027,7 @@ task visit-statement
 task strictly-decreases
   take arg, like expression
   take param, like text
-  take members, like hash, like text, like text
+  take frame, like frame
   take guards, like list, like expression
   take proves
     like task
@@ -960,21 +1039,21 @@ task strictly-decreases
 
   sift arg
     case variable
-      fork test, member-of-param(members, name, param)
+      fork test, member-of-param(frame/members, name, param)
         hold
           back true
     case member
       sift target
         case variable
           link target-name
-          back is-equal(target-name, param)
+          back and(is-equal(target-name, param), field-descends(frame, target-name, name))
         miss
           back false
     case call
       sift callee
         case variable
           link callee-name
-          fork test, member-of-param(members, callee-name, param)
+          fork test, member-of-param(frame/members, callee-name, param)
             hold
               back true
         miss
@@ -1106,7 +1185,7 @@ task classify
       back <?>
   save arg, get(call/args, p)
   save param, get(param-names, p)
-  fork test, strictly-decreases(arg, param, call/frame/members, call/guards, proves)
+  fork test, strictly-decreases(arg, param, call/frame, call/guards, proves)
     hold
       back <\<>
   # the argument is the parameter passed UNCHANGED (a non-increase at this position)
@@ -1266,6 +1345,52 @@ task calls-to
         push(out, call)
   back out
 
+# the keys of `descends` (form walked) a field of the form `form-name` sets, `case-name` empty for the form's own field
+task field-keys
+  take form-name, like text
+  take case-name, like text
+  take field-name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-unequal(case-name, <>)
+    hold
+      push(out, <v {form-name} {case-name} {field-name}>)
+      push(out, <c {case-name} {field-name}>)
+  push(out, <f {form-name} {field-name}>)
+  push(out, <n {field-name}>)
+  back out
+
+# a task's parameters whose declared type names a form of the program, to that form's name
+task param-forms-of
+  take one, like statement
+  take form-names, like hash, like text, like boolean
+  like hash, like text, like text
+  mark private
+
+  save out, make hash
+  sift one
+    case function
+      walk params
+        take param
+        sift param/type
+          case some
+            link param-type
+            sift param-type
+              case named
+                link type-name
+                fork test, form-names/has(type-name)
+                  hold
+                    save out/{param/name}, type-name
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
 task termination-verdict
   take program, like list, like statement
   take proves
@@ -1283,6 +1408,8 @@ task termination-verdict
       bind value-edges, make hash
       bind walks, make hash
   save variant-fields, make hash
+  save descends, make hash
+  save form-names, make hash
   walk program
     take one
     sift one
@@ -1292,12 +1419,37 @@ task termination-verdict
             push(known/order, name)
         save known/functions/{name}, one
       case record-type
+        save form-names/{name}, true
+        save by-value, true
+        fork test, is-equal(shared, true)
+          hold
+            save by-value, false
+        walk fields
+          take field
+          save ok, and(by-value, not(is-equal(field/optional, true)))
+          walk field-keys(name, <>, field/name)
+            take key
+            fork test, descends/has(key)
+              hold
+                save descends/{key}, and(descends/get(key), ok)
+              miss
+                save descends/{key}, ok
         walk variants
           take variant
+          save known-case, <k {variant/name}>
+          save descends/{known-case}, true
           save field-names, make list
           walk variant/fields
             take field
             push(field-names, field/name)
+            save ok, and(by-value, not(is-equal(field/optional, true)))
+            walk field-keys(name, variant/name, field/name)
+              take key
+              fork test, descends/has(key)
+                hold
+                  save descends/{key}, and(descends/get(key), ok)
+                miss
+                  save descends/{key}, ok
           save variant-fields/{variant/name}, field-names
       miss
         save nothing, 0
@@ -1311,6 +1463,8 @@ task termination-verdict
         bind calls, make list
         bind values, make list
         bind variant-fields, variant-fields
+        bind descends, descends
+        bind param-forms, param-forms-of(one, form-names)
     save no-members, make hash
     save no-guards, make list
     walk-calls(found, body-of(one), no-members, no-guards)
@@ -1420,7 +1574,7 @@ task verdict-of
     walk test
       hook test, and(is-below(i, param-names/length), is-below(i, call/args/length))
       hook hold
-        fork test, strictly-decreases(get(call/args, i), get(param-names, i), call/frame/members, joined(bounds, call/guards), proves)
+        fork test, strictly-decreases(get(call/args, i), get(param-names, i), call/frame, joined(bounds, call/guards), proves)
           hold
             save decreasing/{i}, true
         save i, add(i, 1)
@@ -1475,7 +1629,7 @@ task verdict-of
           hold
             save every, false
             halt
-        fork test, not(strictly-decreases(get(call/args, p), get(params, p), call/frame/members, call/guards, proves))
+        fork test, not(strictly-decreases(get(call/args, p), get(params, p), call/frame, call/guards, proves))
           hold
             save every, false
             halt

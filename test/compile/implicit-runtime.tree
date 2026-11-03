@@ -48,12 +48,23 @@ bind make-folders
   case node
     text <process.getBuiltinModule("node:fs").mkdirSync($folder, \{ recursive: true \})>
 
-bind count-ending
+load @term/base/text
+  find ends-with
+
+# how many sources the walk returned are a file ending so
+task count-ending
   take walked, like dynamic
   take ending, like text
   like number
-  case node
-    text <$walked.sources.filter(s =\> s.file.endsWith($ending)).length>
+
+  save count, 0
+  walk walked/sources
+    take source, like dynamic
+    host file, source/file
+    fork test, ends-with(file, ending)
+      hold
+        save count, add(count, 1)
+  back count
 
 bind diagnostic-count
   take walked, like dynamic

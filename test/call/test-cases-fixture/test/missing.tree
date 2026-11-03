@@ -1,0 +1,7 @@
+load @term/test/corpus
+  find tree-files
+
+test <a corpus that is not there>
+  take file, like text
+    walk tree-files(<no-such-corpus>)
+  want hold, is-unequal(file, <>)

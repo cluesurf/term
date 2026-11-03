@@ -1,0 +1,7 @@
+test <a case can skip>
+  take name, like text
+    walk make list(<ready>, <later>)
+  fork test, is-equal(name, <later>)
+    hold
+      skip <later is not ready>
+  want hold, is-equal(name, <ready>)

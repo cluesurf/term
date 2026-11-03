@@ -16,11 +16,15 @@ bind source-of
   case node
     text <(\{ file: "t.tree", text: $text \})>
 
-bind self-count
+load ../support/reading
+  find count-with
+
+# how many self-assignment findings
+task self-count
   take found, like dynamic
   like number
-  case node
-    text <$found.filter(f =\> f.code === "L010").length>
+
+  back count-with(found, <code>, <L010>)
 
 task self-assignments
   take target, like text

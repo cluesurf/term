@@ -13,42 +13,49 @@ task copy-given
 
   back copy-program(value)
 
+# host subject: the copy of a Map, a Set, -0, NaN, a bigint and an absent field, read against structuredClone, is the subject
 bind same-as-clone
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ const given = \{ form: 'function', name: 'f', none: undefined, list: [1, -0, NaN, 'x', null, undefined, 5n, true], map: new Map([['a', \{ b: 1 \}], ['c', [2]]]), set: new Set(['s', 't']), deep: \{ z: 1, a: \{ y: 2, b: [] \} \} \}; const write = function (v) \{ return JSON.stringify(v, function (k, x) \{ return x === undefined ? 'absent' : typeof x === 'bigint' ? 'n' + x : Object.is(x, -0) ? 'minus' : x !== x ? 'nan' : x instanceof Map ? ['m', ...x] : x instanceof Set ? ['s', ...x] : x \}) \}; const one = $copy(given); return write(one) === write(structuredClone(given)) && write(one) === write(given) && one !== given && one.map !== given.map && one.set !== given.set && one.deep.a !== given.deep.a \})()>
 
+# host subject: object identity of a node met twice is the subject, and Term has no identity test on a record
 bind one-shared
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ const shared = \{ form: 'number' \}; const out = $copy([shared, \{ type: shared \}]); return out[0] === out[1].type && out[0] !== shared \})()>
 
+# host subject: a cycle is the subject, and no Term value can hold one
 bind one-cycle
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ const cycle = \{ form: 'loop' \}; cycle.self = cycle; const out = $copy(cycle); return out.self === out && out !== cycle \})()>
 
+# host subject: a Date handed on to structuredClone is the subject, and Term has no Date
 bind a-date-copied
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ const when = new Date(5); const out = $copy(\{ when \}); return out.when instanceof Date && out.when !== when && out.when.getTime() === 5 \})()>
 
+# host subject: the DataCloneError structuredClone raises for a function is the subject
 bind a-function-refused
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ try \{ $copy(\{ run: function () \{ return 1 \} \}); return false \} catch (raised) \{ return raised.name === 'DataCloneError' \} \})()>
 
+# host subject: a write through the copy, read back on the given object, is the subject
 bind a-write-stays-home
   take copy, like dynamic
   like boolean
   case node
     text <(function () \{ const given = \{ list: [\{ name: 'a' \}] \}; const out = $copy(given); out.list[0].name = 'b'; out.list.push(1); return given.list.length === 1 && given.list[0].name === 'a' \})()>
 
+# host subject: a JSON key named __proto__ and the prototype it must not set are the subject
 bind a-proto-key-stays-a-key
   take copy, like dynamic
   like boolean

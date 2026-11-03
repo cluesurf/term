@@ -1,0 +1,5 @@
+test <a walked take beside another take>
+  take name, like text
+    walk make list(<a>)
+  take n, like number
+  want hold, is-below(n, 3)

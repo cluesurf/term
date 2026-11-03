@@ -39,12 +39,16 @@ bind milled-program
   case node
     text <$milled.program>
 
-bind first-of-form
+load ../support/reading
+  find first-with
+
+# the first statement of the program of this form
+task first-of-form
   take program, like dynamic
   take name, like text
   like dynamic
-  case node
-    text <$program.find(s =\> s.form === $name)>
+
+  back first-with(program, <form>, name)
 
 bind text-holds
   take whole, like text

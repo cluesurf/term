@@ -1,0 +1,188 @@
+# ENTRY MODE BUILDS WHAT ITS CALLER ASKS (decision 094 rule 1 of term/self-host/change/001-finish-self-host, item
+# term-self-host-001-0495). An entry request of work/build/build-graph.tree `build-request` takes four fields beside the
+# file: the caller's text (term test's file as its preprocessor rewrote it), compiled as given, the empty text meaning
+# the disk's through `buildable`; `env`, the platform emitted for, the empty text being no env at all; `keep-program`,
+# the checked program handed back; and `resolve`, a resolver in place of the graph's own (term boot's app resolver).
+# Every text below carries the run's own stamp, so no unit it builds was stored by an earlier run.
+#
+# Run with: term test (in deck/call)
+
+load ../../code/work/build/build-graph
+  find build-graph
+  find make-build-graph
+  find build-request
+  find entry-ask
+  find document-of
+
+load ../../code/work/cache/compile-store
+  find project-cache
+
+dock load
+  load <node:fs>, name node-file
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+
+form folder-ask
+  link recursive, like boolean
+
+# the loads a caller's resolver was asked for
+form asked-count
+  mark shared
+  link count, like number
+
+host asked, make(asked-count, bind(count, 0))
+
+# a stamp no earlier run wrote
+bind run-stamp
+  like text
+  case node
+    text <(String(process.pid) + "-" + String(Date.now()))>
+
+host stamp, run-stamp()
+
+# every module a build emitted, none when it emitted nothing
+bind emitted-modules
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <[...((($result) && ($result).modules) || new Map()).values()]>
+
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# every module a build emitted, as JSON, one a line
+task emitted-text
+  take result, like dynamic
+  like text
+
+  host modules, emitted-modules(result)
+  save joined, <>
+  save first, true
+  walk modules
+    take one, like dynamic
+    host line, json-of(one)
+    fork test, first
+      hold
+        save joined, line
+        save first, false
+      miss
+        save joined, <{joined}\n{line}>
+  back joined
+
+bind is-missing
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) === undefined)>
+
+bind diagnostic-count
+  take result, like dynamic
+  like number
+  case node
+    text <((($result) && ($result).diagnostics) || []).length>
+
+# a project of two modules in a fresh temporary folder: code/lib.tree, and code/base.tree loading it
+task make-project
+  like text
+
+  save root, node-file/realpath-sync(node-file/mkdtemp-sync(node-path/join(node-os/tmpdir(), <build-entry-ask->)))
+  node-file/mkdir-sync(node-path/join(root, <code>), make(folder-ask, bind(recursive, true)))
+  node-file/write-file-sync(node-path/join(root, <deck.tree>), <deck @probe/entry\n  mark \<0.0.1\>\n>)
+  node-file/write-file-sync(node-path/join(root, <code>, <lib.tree>), <# {stamp}\ntask lib-value\n  like number\n  send back, code 7\n>)
+  node-file/write-file-sync(node-path/join(root, <code>, <base.tree>), <# {stamp}\nload ./lib\n  find lib-value\n\ntask disk-only\n  like number\n  send back, lib-value()\n>)
+  back root
+
+host root, make-project()
+
+host graph, make-build-graph(root)
+
+host store, project-cache(root)
+
+task entry-of
+  like text
+
+  back node-path/join(root, <code>, <base.tree>)
+
+# an entry request's compiler answer
+task built-of
+  take ask, like dynamic
+  like dynamic
+
+  save answer, document-of(build-request(graph, ask, store))
+  back answer/result
+
+task is-built
+  take ask, like dynamic
+  like boolean
+
+  save answer, document-of(build-request(graph, ask, store))
+  back answer/ok
+
+# a caller's resolver: lib.tree's text from memory, every other load nowhere
+task resolve-lib
+  take path, like text
+  take from, like text
+  take how, like dynamic
+  like dynamic
+
+  save asked/count, add(asked/count, 1)
+  fork test, is-equal(path, <./lib>)
+    hold
+      back make-source(node-path/join(root, <code>, <lib.tree>), <# {stamp} resolved\ntask lib-value\n  like number\n  send back, code 8\n>)
+  back void
+
+bind make-source
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+test <an ask with no caller text builds the disk's file>
+  save result, built-of(entry-ask(entry-of()))
+  want hold, contains-text(emitted-text(result), <diskOnly>)
+  want hold, is-missing(result/program)
+
+test <the caller's text is compiled in place of the disk's>
+  save result, built-of(entry-ask(entry-of(), <# {stamp} given\nload ./lib\n  find lib-value\n\ntask caller-only\n  like number\n  send back, lib-value()\n>))
+  want hold, contains-text(emitted-text(result), <callerOnly>)
+  want miss, contains-text(emitted-text(result), <diskOnly>)
+
+test <a caller's text that fails answers not ok, with its diagnostics>
+  save ask, entry-ask(entry-of(), <# {stamp} broken\ntask broken\n  like number\n  send back, read nowhere-at-all\n>)
+  want miss, is-built(ask)
+  want hold, is-above(diagnostic-count(built-of(ask)), 0)
+
+test <keep-program hands back the checked program of a unit built in the request>
+  save result, built-of(entry-ask(entry-of(), <# {stamp} kept\ntask kept-only\n  like number\n  send back, code 5\n>, <>, true))
+  want miss, is-missing(result/program)
+
+test <env keys the entry apart, and the empty env is no env>
+  save text, <# {stamp} booted\ntask boot\n  like number\n  send back, code 1\n>
+  save browser, built-of(entry-ask(entry-of(), text, <browser>))
+  save none, built-of(entry-ask(entry-of(), text))
+  save empty, built-of(entry-ask(entry-of(), text, <>))
+  want miss, is-equal(key-of(browser), key-of(none))
+  want hold, is-equal(key-of(empty), key-of(none))
+
+test <a caller's resolver is asked for the loads>
+  save before, asked/count
+  save ask, entry-ask(entry-of(), <# {stamp} resolving\nload ./lib\n  find lib-value\n\ntask resolved-only\n  like number\n  send back, lib-value()\n>, <>, false, resolve-lib)
+  want hold, is-built(ask)
+  want hold, is-above(asked/count, before)
+
+bind key-of
+  take result, like dynamic
+  like text
+  case node
+    text <String((($result) && ($result).closureKey) || "")>
+
+bind contains-text
+  take text, like text
+  take part, like text
+  like boolean
+  case node
+    text <$text.includes($part)>

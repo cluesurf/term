@@ -64,11 +64,28 @@ bind filtered-source-of
   case node
     text <(\{ text: $text, file: "t.tree", filter: $filter \})>
 
-bind names-of
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+# the names of the benchmarks found, sorted
+task names-of
   take found, like dynamic
   like list, like text
-  case node
-    text <$found.benchmarks.map(b =\> b.name).sort()>
+
+  host names, make list
+  walk found/benchmarks
+    take one, like dynamic
+    names/push(name-of(one))
+  back sort(names, from-texts)
+
+task name-of
+  take one, like dynamic
+  like text
+
+  back one/name
 
 bind driver-input
   take text, like text

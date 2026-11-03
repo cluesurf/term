@@ -11,12 +11,8 @@ load ../support/compiling
 
 host forms, <form literal\n  case integer\n    link value, like number\n  case word\n    link value, like text\n\nform outcome\n  case integer\n    link value, like text\n  case nothing\n\nform expression\n  case integer\n    link value, like literal\n  case name\n    link text, like text\n\nform statement\n  case expression\n    link body, like expression\n  case stop\n>
 
-bind any-says
-  take texts, like list, like text
-  take word, like text
-  like boolean
-  case node
-    text <$texts.some(t =\> t.includes($word))>
+load ../support/reading
+  find any-holding, name any-says
 
 task build
   take body, like text

@@ -1200,7 +1200,8 @@ task enumerated-walk
 
   walk groups
     take group, like list, like number
-    fork test, is-equal(statement-head(lines/{get(group, 0)}), <take>)
+    save group-start, get(group, 0)
+    fork test, is-equal(statement-head(lines/{group-start}), <take>)
       hold
         save first, true
         walk group
@@ -1284,15 +1285,19 @@ task enumerated-test
         back refused-cases(slug, at, <line {walk-line}: a walk of cases is written on one line>)
     save under-walk, false
     typed/push(n)
-  save head-line, lines/{get(holder, 0)}
+  save holder-start, get(holder, 0)
+  save head-line, lines/{holder-start}
   save rest, take-rest(head-line)
   save kind, <value>
   fork test, is-equal(rest, <like text>)
     hold
       save kind, <text>
-  fork test, and(is-equal(rest, <>), and(is-equal(typed/length, 2), is-equal(trim(lines/{get(typed, 1)}), <like text>)))
+  fork test, and(is-equal(rest, <>), is-equal(typed/length, 2))
     hold
-      save kind, <text>
+      save typed-line, get(typed, 1)
+      fork test, is-equal(trim(lines/{typed-line}), <like text>)
+        hold
+          save kind, <text>
 
   save out, make list
   save from, make list

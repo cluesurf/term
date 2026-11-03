@@ -28,11 +28,12 @@ form shape-source
 form shape-options
   link resolve, like dynamic
 
-bind shape-no-resolve
-  take seed, like number
+# the program loads nothing, so no path resolves
+task shape-no-resolve
+  take path, like dynamic
   like dynamic
-  case node
-    text <(() =\> undefined)>
+
+  back void
 
 bind shape-compiled
   take result, like dynamic
@@ -40,12 +41,54 @@ bind shape-compiled
   case node
     text <$result.ok>
 
-# the record types of a compiled program, by name: what the checker hands a record type's fields as
-bind record-table-of
+bind program-of
   take result, like dynamic
+  like list, like dynamic
+  case node
+    text <($result.program ?? [])>
+
+bind field-read
+  take value, like dynamic
+  take field, like text
   like dynamic
   case node
-    text <<new Map(($result.program ?? []).filter(one_ => one_?.form === "record-type" && one_.name && one_.fields).map(one_ => [one_.name, one_.fields]))>>
+    text <$value?.[$field]>
+
+bind is-set
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the compiler's record table is a host Map, read by the docked module with `get`
+bind empty-table
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+bind table-put
+  take table, like dynamic
+  take name, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$table.set($name, $value)>
+
+# the record types of a compiled program, by name: what the checker hands a record type's fields as
+task record-table-of
+  take result, like dynamic
+  like dynamic
+
+  host table, empty-table(0)
+  walk program-of(result)
+    take one, like dynamic
+    host name, field-read(one, <name>)
+    host fields, field-read(one, <fields>)
+    fork test, and(is-equal(field-read(one, <form>), <record-type>), and(is-set(name), is-set(fields)))
+      hold
+        table-put(table, name, fields)
+  back table
 
 bind table-has
   take table, like dynamic
@@ -66,7 +109,7 @@ host source, <form point\n  link a, like number\n  link b, like number\n\nform l
 task compiled
   like dynamic
 
-  back shape-compiling/compile(make(shape-source, bind(file, <shapes.tree>), bind(text, source)), make(shape-options, bind(resolve, shape-no-resolve(0))))
+  back shape-compiling/compile(make(shape-source, bind(file, <shapes.tree>), bind(text, source)), make(shape-options, bind(resolve, shape-no-resolve)))
 
 task records
   like dynamic

@@ -15,6 +15,13 @@ load ../support/compiling
 load @term/base/list
   find contains
 
+load @term/base/text
+  find char-count
+  find substring
+  find ends-with
+  find index-of
+  find split
+
 load ../support/judging
   find make-record
   find empty-list
@@ -32,11 +39,26 @@ bind new-cache
   case node
     text <new (($module).CompileCache)()>
 
-bind slugs
-  take seed, like number
-  like dynamic
-  case node
-    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+host word-chars, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+
+# the module path of a file: its name without .tree, every character outside a word one written _
+task slug-path
+  take file, like text
+  like text
+
+  save stem, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stem, substring(file, 0, subtract(char-count(file), 5))
+  save out, <>
+  walk split(stem, <>)
+    take one, like text
+    fork test, is-above(index-of(word-chars, one), -1)
+      hold
+        save out, <{out}{one}>
+      miss
+        save out, <{out}_>
+  back <./{out}.mjs>
 
 bind entry-of
   take text, like text
@@ -148,8 +170,30 @@ task separate
   take entry, like text
   like boolean
 
+  back separate-answer(files, entry)/ok
+
+# the separate build's whole answer: `modules` holds each file's emitted code, its imports written by slug-path
+task separate-answer
+  take files, like list, like compiling-source
+  take entry, like text
+  like dynamic
+
   host options, compiling-options-of(make(compile-choice, bind(files, files), bind(stdlib, <node>)))
-  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), slugs(0)))/ok
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), slug-path))
+
+bind module-code
+  take answer, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($answer.modules?.get($file)?.code ?? "")>
+
+task holds-text
+  take whole, like text
+  take part, like text
+  like boolean
+
+  back is-above(index-of(whole, part), -1)
 
 # one sift over an unknown: a list of `point`, or else 0
 host list-arm, <task pick\n  take value, like unknown\n  like number\n\n  sift value\n    case list\n      like point\n      back 1\n    miss\n      back 0\n>
@@ -167,6 +211,11 @@ task dep-files
   like list, like compiling-source
 
   back make(list, one-file(<dep>, <{point-x}\n{list-arm}>))
+
+task nested-dep-files
+  like list, like compiling-source
+
+  back make(list, one-file(<lib/dep-x>, <{point-x}\n{list-arm}>))
 
 task split-files
   like list, like compiling-source
@@ -187,6 +236,27 @@ test <an arm in a dependency, its form private to it: merged keeps it>
 
 test <an arm in a dependency, its form private to it: separate agrees>
   want hold, separate(dep-files(), <load ./dep\n  find pick\n{run-three}>)
+
+test <slug-path names a file's module: .tree cut, ./ before, .mjs after>
+  want hold, is-equal(slug-path(<dep.tree>), <./dep.mjs>)
+  want hold, is-equal(slug-path(<entry.tree>), <./entry.mjs>)
+
+test <slug-path writes every character outside a word one as _>
+  want hold, is-equal(slug-path(<lib/dep-x.tree>), <./lib_dep_x.mjs>)
+  want hold, is-equal(slug-path(<a b.c_d9.tree>), <./a_b_c_d9.mjs>)
+
+test <slug-path cuts only a closing .tree>
+  want hold, is-equal(slug-path(<notes.txt>), <./notes_txt.mjs>)
+  want hold, is-equal(slug-path(<x.tree.tree>), <./x_tree.mjs>)
+  want hold, is-equal(slug-path(<tree>), <./tree.mjs>)
+
+test <the separate build's entry imports its dependency by the slug-path module>
+  host answer, separate-answer(dep-files(), <load ./dep\n  find pick\n{run-three}>)
+  want hold, holds-text(module-code(answer, <entry.tree>), <from "./dep.mjs">)
+
+test <a dependency in a folder is imported by its flattened slug-path module>
+  host answer, separate-answer(nested-dep-files(), <load ./lib/dep-x\n  find pick\n{run-three}>)
+  want hold, holds-text(module-code(answer, <entry.tree>), <from "./lib_dep_x.mjs">)
 
 test <a list arm over a form two files define takes the one its file finds: merged>
   want hold, merged(split-files(), <load ./a\n  find point\n\nload ./b\n  find make-b\n\n{list-arm}\ntask run\n  like number\n\n  back pick(make-b())\n>)

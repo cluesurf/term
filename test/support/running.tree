@@ -1,0 +1,454 @@
+note <one program compiled for a backend, built by its toolchain and run, answering what its run task returned>
+
+# Ported from test/compile/shared/run-on.ts (item 0547, decision 104 "Tests", decision 111 point 4). `build-text` compiles a
+# program for one backend and builds it, answering the command that runs it. `run-text` runs that command and answers
+# exactly the text the program's `run` task returned: nothing is added, so a test can compare a painted screen byte for
+# byte. TypeScript runs under node with tsx's loader, Rust through rustc (or cargo when the program names a crate of the
+# stdlib's), Swift through swiftc, Kotlin through kotlinc and java.
+#
+# A backend whose toolchain is absent answers `skipped`, never `failed`: the test reads it and says `skip` itself, since a
+# `skip` stands only inside a test. Each program is written to `folder` under `<name>-<backend>`, so two tests never share
+# a file. The trailing `environment` is added over the inherited variables of every child, the toolchain's and the
+# program's.
+#
+# `choice` says how the program resolves its loads, as for `compile-text`, and the backend's env is set on it here: on
+# `project-env` when it names a project, on `stdlib` when it names one, and with neither the project is the working
+# directory (the suite's project root, D022), which is what most suites of run-on.ts asked.
+#
+# `native-flags` is ported from test/compile/native-flags.ts: the dependency flags swiftc and kotlinc need to see the
+# stdlib's standard stacks, read from task/term/native/<env>.sh, held for the process.
+
+load ./compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/log
+  find warn, name log-warn
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find starts-with
+  find trim
+  find trim-start
+  find substring
+  find to-lower-case
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+dock load
+  load <@term/make/code/compile/native-main>, name running-main
+  load <@term/make/code/compile/kotlin>, name running-kotlin
+  load <node:path>, name running-path
+  load <node:os>, name running-os
+
+# A program built, or why not. `state` is <built>, <failed> or <skipped>. `stage` is <compile> or <build> on a failure,
+# `reason` what went wrong or what is missing, and `command` the program and its arguments that run it once built.
+form built-program
+  link state, like text
+  link stage, like text, fall <>
+  link reason, like text, fall <>
+  link command
+    like list, like text
+    fall make list
+
+# A program run, or why not. `state` is <ran>, <failed> or <skipped>, `stage` <compile>, <build> or <run> on a failure,
+# and `output` exactly what the program printed.
+form ran-program
+  link state, like text
+  link stage, like text, fall <>
+  link reason, like text, fall <>
+  link output, like text, fall <>
+
+# the node running this suite, which runs a TypeScript program with tsx's loader
+bind running-node
+  take seed, like number
+  like text
+  case node
+    text <process.execPath>
+
+# the backends a program can be built for
+task backends
+  like list, like text
+
+  back make list(<typescript>, <rust>, <swift>, <kotlin>)
+
+# the env a backend compiles under, which fills a `{platform}` slot before any resolver sees the path
+task backend-env
+  take backend, like text
+  like text
+
+  fork test, is-equal(backend, <typescript>)
+    hold
+      back <node>
+  back backend
+
+# the toolchain a backend needs beyond node
+task backend-tools
+  take backend, like text
+  like list, like text
+
+  fork test, is-equal(backend, <rust>)
+    hold
+      back make list(<rustc>)
+  fork test, is-equal(backend, <swift>)
+    hold
+      back make list(<swiftc>)
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      back make list(<kotlinc>, <java>)
+  back make list
+
+# the tools of the list that are nowhere to be found, joined by a comma, <> when every one is there
+task missing-tools
+  take tools, like list, like text
+  like text
+
+  save missing, <>
+  walk tools
+    take tool, like text
+    fork test, is-equal(find-tool(tool), <>)
+      hold
+        fork test, is-equal(missing, <>)
+          hold
+            save missing, tool
+          miss
+            save missing, <{missing}, {tool}>
+  back missing
+
+# a line of a toolchain's output that reports an error, not a warning in front of one
+task error-line
+  take line, like text
+  like boolean
+
+  fork test, text-contains(line, <error:>)
+    hold
+      back true
+  fork test, or(starts-with(line, <e: >), starts-with(line, <error[>))
+    hold
+      back true
+  back and(is-unequal(trim-start(line), line), starts-with(trim-start(line), <--\>>))
+
+# the errors in a toolchain's output, else the whole of it, at most 1600 characters
+task toolchain-errors
+  take said, like text
+  like text
+
+  save errors, <>
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, error-line(line)
+      hold
+        fork test, is-equal(errors, <>)
+          hold
+            save errors, line
+          miss
+            save errors, <{errors}\n{line}>
+  fork test, is-equal(errors, <>)
+    hold
+      save errors, said
+  back substring(errors, 0, 1600)
+
+# run a toolchain to its end: <> when it exits 0, else its errors
+task run-tool
+  take argument-list, like list, like text
+  take directory, like text, fall <>
+  take environment
+    like hash, like text, like text
+    need false
+  like text
+
+  save rest, make list
+  save at, 0
+  walk argument-list
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  save result, run(argument-list/0, rest, bind(directory, directory), bind(environment, environment))
+  fork test, is-equal(result/code, 0)
+    hold
+      back <>
+  back toolchain-errors(<{result/error}{result/output}>)
+
+# a failure at the build when `reason` says one, else the program built, run by `command`
+task built-or-failed
+  take reason, like text
+  take command, like list, like text
+  like built-program
+
+  fork test, is-unequal(reason, <>)
+    hold
+      back make(built-program, bind(state, <failed>), bind(stage, <build>), bind(reason, reason))
+  back make(built-program, bind(state, <built>), bind(command, command))
+
+# the stdlib's crates a Rust source names, each as its manifest line. The manifest is read from the Term root, where a
+# suite of this project runs
+task crates-of
+  take source, like text
+  like list, like text
+
+  save manifest, <deck/base/code/native/rust/Cargo.toml>
+  save cargo, <>
+  fork test, file-exists(manifest)
+    hold
+      save cargo, read-file(manifest)
+  back running-main/crates-named(source, cargo)
+
+# the choice a program compiles under on `env`, read from `choice` and written to `source`
+task choice-on
+  take choice, like compile-choice
+  take env, like text
+  take source, like text
+  like compile-choice
+
+  save given, choice
+  save given/file, source
+  save given/env, env
+  fork test, is-unequal(given/project, <>)
+    hold
+      save given/project-env, env
+    miss
+      fork test, is-unequal(given/stdlib, <>)
+        hold
+          save given/stdlib, env
+        miss
+          save given/project, <.>
+          save given/project-env, env
+  back given
+
+# the first six distinct messages of a refused program, joined
+task refusal-of
+  take outcome, like compile-outcome
+  like text
+
+  save seen, make list
+  save out, <>
+  walk outcome/messages
+    take message, like text
+    fork test, and(not(contains(seen, message)), is-below(seen/length, 6))
+      hold
+        seen/push(message)
+        fork test, is-equal(out, <>)
+          hold
+            save out, message
+          miss
+            save out, <{out} | {message}>
+  back out
+
+# the name of a cargo package for a test name: letters and digits kept, anything else a dash, in lower case
+task cargo-name
+  take name, like text
+  like text
+
+  save other, make(pattern, <<[^a-zA-Z0-9]>>)
+  save dashed, replace-matches(other, name, <->)
+  save lower, to-lower-case(dashed)
+  back <term-{lower}>
+
+# compile `program` for `backend` and build it, answering the command that runs its `run` task and prints what it returned
+task build-text
+  take program, like text
+  take backend, like text
+  take folder, like text
+  take name, like text
+  take choice, like compile-choice, fall make compile-choice
+  take file, like text, fall <>
+  take environment
+    like hash, like text, like text
+    need false
+  like built-program
+
+  save missing, missing-tools(backend-tools(backend))
+  fork test, is-unequal(missing, <>)
+    hold
+      back make(built-program, bind(state, <skipped>), bind(reason, <{missing} not installed>))
+  save env, backend-env(backend)
+  save stem, running-path/join(folder, <{name}-{backend}>)
+  save source, file
+  fork test, is-equal(source, <>)
+    hold
+      save source, <{stem}.tree>
+  write-file(source, program)
+  save out, compile-text(program, choice-on(choice, env, source))
+  fork test, not(out/ok)
+    hold
+      back make(built-program, bind(state, <failed>), bind(stage, <compile>), bind(reason, refusal-of(out)))
+  fork test, is-equal(backend, <typescript>)
+    hold
+      save code, out/emitted
+      save prelude, prelude-text(out, env, code)
+      save main, running-main/native-main(<node>, code)
+      write-file(<{stem}.ts>, <{prelude}\n{code}\n{main}\n>)
+      back make(built-program, bind(state, <built>), bind(command, make list(running-node(0), <--import>, <tsx>, <{stem}.ts>)))
+  fork test, is-equal(backend, <rust>)
+    hold
+      back build-rust(out, folder, name, stem, environment)
+  fork test, is-equal(backend, <swift>)
+    hold
+      save code, emit-text(out, <swift>)
+      save prelude, prelude-text(out, env, code)
+      save main, running-main/native-main(<swift>, code)
+      write-file(<{stem}.swift>, <import Foundation\n{prelude}\n{code}\n{main}\n>)
+      save swiftc, make list(<swiftc>, <-o>, stem, <{stem}.swift>)
+      back built-or-failed(run-tool(swiftc, <>, environment), make list(stem))
+  save code, emit-text(out, <kotlin>)
+  save prelude, prelude-text(out, env, code)
+  save main, running-main/native-main(<kotlin>, code)
+  save hoisted, running-kotlin/hoist-kotlin-imports(<{prelude}\n{code}\n{main}>)
+  write-file(<{stem}.kt>, <{hoisted}\n>)
+  save kotlinc, make list(<kotlinc>, <{stem}.kt>, <-include-runtime>, <-nowarn>, <-d>, <{stem}.jar>)
+  back built-or-failed(run-tool(kotlinc, <>, environment), make list(<java>, <-jar>, <{stem}.jar>))
+
+# The Rust leg of `build-text`: rustc on edition 2021 (2015 has no `async`, and the executor is async blocks). A program
+# that names a crate of the stdlib's (`num_bigint::`, `regex::`) builds as a cargo project with those crates alone, every
+# such project sharing one target folder so a crate compiles once
+task build-rust
+  take out, like compile-outcome
+  take folder, like text
+  take name, like text
+  take stem, like text
+  take environment
+    like hash, like text, like text
+    need false
+  like built-program
+
+  save code, emit-text(out, <rust>)
+  save prelude, prelude-text(out, <rust>, code)
+  save main, running-main/native-main(<rust>, code)
+  save source, <{prelude}\n{code}\n{main}\n>
+  save crates, crates-of(source)
+  fork test, is-equal(crates/length, 0)
+    hold
+      write-file(<{stem}.rs>, source)
+      save rustc, make list(<rustc>, <--edition>, <2021>, <-A>, <warnings>, <-o>, stem, <{stem}.rs>)
+      back built-or-failed(run-tool(rustc, <>, environment), make list(stem))
+  fork test, is-equal(find-tool(<cargo>), <>)
+    hold
+      save named, crates/join(<, >)
+      back make(built-program, bind(state, <skipped>), bind(reason, <cargo not installed, and the program names {named}>))
+  save project, running-path/join(folder, <{name}-rust-cargo>)
+  save binary, cargo-name(name)
+  save lines, crates/join(<\n>)
+  make-folder(running-path/join(project, <src>))
+  write-file(running-path/join(project, <Cargo.toml>), <[package]\nname = "{binary}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n{lines}\n>)
+  write-file(running-path/join(project, <src/main.rs>), source)
+  save target, running-path/join(running-os/tmpdir(), <seed-rust-runtime>, <target>)
+  save cargo, make list(<cargo>, <build>, <--quiet>, <--target-dir>, target)
+  save failed, run-tool(cargo, project, environment)
+  back built-or-failed(failed, make list(running-path/join(target, <debug>, binary)))
+
+# compile, build and run `program` on `backend`, answering what its `run` task returned
+task run-text
+  take program, like text
+  take backend, like text
+  take folder, like text
+  take name, like text
+  take choice, like compile-choice, fall make compile-choice
+  take file, like text, fall <>
+  take environment
+    like hash, like text, like text
+    need false
+  like ran-program
+
+  save built, build-text(program, backend, folder, name, choice, file, environment)
+  fork test, is-unequal(built/state, <built>)
+    hold
+      back make(ran-program, bind(state, built/state), bind(stage, built/stage), bind(reason, built/reason))
+  save rest, make list
+  save at, 0
+  walk built/command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  save result, run(built/command/0, rest, bind(environment, environment))
+  fork test, is-equal(result/code, 0)
+    hold
+      back make(ran-program, bind(state, <ran>), bind(output, result/output))
+  back make(ran-program, bind(state, <failed>), bind(stage, <run>), bind(reason, <exit {result/code}: {substring(result/error, 0, 800)}>))
+
+form running-flags
+  mark shared
+  link swift, like list, like text
+  link kotlin, like list, like text
+  link swift-read, like boolean
+  link kotlin-read, like boolean
+
+host running-held, make(running-flags, bind(swift, make list), bind(kotlin, make list), bind(swift-read, false), bind(kotlin-read, false))
+
+# the repository root, four folders above the Term root a suite runs in (deck/term/deck/term)
+task repository-root
+  like text
+
+  back running-path/resolve(<../../../..>)
+
+# what task/term/native/<env>.sh flags printed: swift writes one argument per line, kotlin one classpath. A script that
+# fails gives none, with a warning: whatever reaches the standard stack then fails to build
+task read-native-flags
+  take env, like text
+  like list, like text
+
+  save script, running-path/join(repository-root(), <task/term/native/{env}.sh>)
+  save flags, make list
+  save result, run(<bash>, make list(script, <flags>))
+  fork test, is-unequal(result/code, 0)
+    hold
+      log-warn(<{env}: no dependency flags. Run `pnpm term:{env} deps`. Anything whose closure reaches the standard stack will fail to build.>)
+      back flags
+  fork test, is-equal(env, <kotlin>)
+    hold
+      flags/push(<-classpath>)
+      flags/push(trim(result/output))
+      back flags
+  walk text-split(result/output, <\n>)
+    take line, like text
+    fork test, is-unequal(line, <>)
+      hold
+        flags/push(line)
+  back flags
+
+# the dependency flags swiftc or kotlinc needs to see the stdlib's standard stacks, for <swift> or <kotlin>, read once
+# per process. Rust needs none: cargo reads the Cargo.toml the harness writes
+task native-flags
+  take env, like text
+  like list, like text
+
+  fork test, is-equal(env, <kotlin>)
+    hold
+      fork test, not(running-held/kotlin-read)
+        hold
+          save running-held/kotlin, read-native-flags(env)
+          save running-held/kotlin-read, true
+      back running-held/kotlin
+  fork test, not(running-held/swift-read)
+    hold
+      save running-held/swift, read-native-flags(env)
+      save running-held/swift-read, true
+  back running-held/swift

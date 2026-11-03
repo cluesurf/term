@@ -24,11 +24,40 @@ bind new-cache
   case node
     text <new (($module).CompileCache)()>
 
-bind slugs
-  take seed, like number
-  like dynamic
-  case node
-    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+load @term/base/text
+  find ends-with
+  find substring
+  find char-at
+  find char-code-at
+
+# true for a letter, a digit or an underscore
+task is-word-code
+  take code, like number
+  like boolean
+
+  back or(or(and(is-minimum(code, 48), is-maximum(code, 57)), and(is-minimum(code, 65), is-maximum(code, 90))), or(and(is-minimum(code, 97), is-maximum(code, 122)), is-equal(code, 95)))
+
+# the module a unit is written to: the file without .tree, each other character an underscore
+task slug-of
+  take file, like text
+  like text
+
+  save name, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save name, substring(file, 0, subtract(file/length, 5))
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      fork test, is-word-code(char-code-at(name, at))
+        hold
+          save out, <{out}{char-at(name, at)}>
+        miss
+          save out, <{out}_>
+      save at, add(at, 1)
+  back <./{out}.mjs>
 
 bind entry-of
   take text, like text
@@ -108,7 +137,7 @@ task separate
   take entry, like text
   like boolean
 
-  back separate-module/compile-separate(entry-of(entry), options-of(resolver(files), new-cache(cache-module), slugs(0)))/ok
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver(files), new-cache(cache-module), slug-of))/ok
 
 # pub's bump adds 1, priv's private bump adds 2, early's adds 3, and mid's lift is pub's
 # the same with pub's bump overloaded by arity, so the carried call is split AND mangled (`bump__in0_1__1`): the

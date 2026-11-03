@@ -2065,7 +2065,7 @@ task emit-call
               fork test, structural-type(element-of(target-type), facts-is-shared(facts))
                 hold
                   save st/equal-used, true
-                  save target, emit-expression(member-target, 0, st, facts)
+                  save target, emit-member-target(member-target, st, facts)
                   save item, emit-expression(get(args, 0), 0, st, facts)
                   save test, <(__e) =\> __termEqual(__e, {item})>
                   fork test, is-equal(member-name, <includes>)
@@ -2149,7 +2149,7 @@ task emit-call
           # `flat()` rides through `any`
           fork test, and(is-equal(member-name, <flat>), is-equal(kind-of(expression-type(member-target)), <array>))
             hold
-              back <({emit-expression(member-target, 0, st, facts)}.flat() as any)>
+              back <({emit-member-target(member-target, st, facts)}.flat() as any)>
         miss
           save nothing, 0
       # `inspect(value)`: the value walked by its static type (term/base-v1 decision 001)
@@ -2543,7 +2543,7 @@ task emit-member
             hold
               save st/list-used, true
               back read-at-node(member-target, index-node, st, facts)
-          save target, emit-expression(member-target, 0, st, facts)
+          save target, emit-member-target(member-target, st, facts)
           back <{target}[{emit-expression(index-node, 0, st, facts)}]>
         case none
           save nothing, 0
@@ -2562,7 +2562,7 @@ task emit-member
               save st/list-used, true
               save xs, emit-expression(member-target, 0, st, facts)
               back read-at-with(member-target, xs, <{digits-value(member-name)}>, true, true, st, facts)
-          back <{emit-expression(member-target, 0, st, facts)}[{member-name}]>
+          back <{emit-member-target(member-target, st, facts)}[{member-name}]>
       # the kept field of a carrier that holds it alone
       sift member-target
         case variable
@@ -2593,7 +2593,7 @@ task emit-member
       fork test, maybe-field(field)
         hold
           save st/maybe-field-used, true
-          back <__termMaybe({emit-expression(member-target, 0, st, facts)}.{spelled})>
+          back <__termMaybe({emit-member-target(member-target, st, facts)}.{spelled})>
       # a plain `need false` field reads as its type's empty value where a TypeScript caller left it out
       sift field
         case some
@@ -2601,7 +2601,7 @@ task emit-member
           fork test, known/optional
             hold
               save empty, ts-empty-of(make(some, known/type))
-              save member, <{emit-expression(member-target, 0, st, facts)}.{spelled}>
+              save member, <{emit-member-target(member-target, st, facts)}.{spelled}>
               fork test, not(starts-with(empty, <undefined>))
                 hold
                   fork test, and(empty-stored(known/type), not(walked))
@@ -2611,9 +2611,29 @@ task emit-member
               back member
         case none
           save nothing, 0
-      back <{emit-expression(member-target, 0, st, facts)}.{spelled}>
+      back <{emit-member-target(member-target, st, facts)}.{spelled}>
     miss
       back <>
+
+# the target a member read or a method call is written after. An `await` binds looser than `.`, so `await f(x).def`
+# awaits the promise's own field, which is void: the awaited call is put in parentheses, `(await f(x)).def`, and the
+# read is of the answer, as a call to an async task is waited by default (item 0893)
+task emit-member-target
+  take target, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save written, emit-expression(target, 0, st, facts)
+  sift target
+    case await
+      fork test, starts-with(written, <await >)
+        hold
+          back <({written})>
+    miss
+      save nothing, 0
+  back written
 
 # ---- binary operators ----
 

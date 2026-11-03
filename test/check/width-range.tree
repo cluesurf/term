@@ -30,12 +30,8 @@ bind width-proven
   case node
     text <($kinds?.width?.proven ?? 0)>
 
-bind any-says
-  take texts, like list, like text
-  take word, like text
-  like boolean
-  case node
-    text <$texts.some(t =\> t.includes($word))>
+load ../support/reading
+  find any-holding, name any-says
 
 # the `width` obligations of the entry file: how many, and how many proven
 task owes

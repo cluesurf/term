@@ -1,0 +1,4 @@
+test <each number is below three>
+  take n, like number
+    walk make list(1, 2, 3)
+  want hold, is-below(n, 3)

@@ -1,0 +1,114 @@
+# A test over a list of inputs runs and counts once per input, so a bad input hides no later one (decision 022 T6, item
+# 0185). `take x, like t` with a `walk <list>` under it is one case per element, labeled `<phrase> [<element>]` by its text
+# when it is text and by its place when it is not: a failing `want` ends its case only, a walk of nothing fails the test
+# naming its line, `--case` reads a case's label, and a `want snapshot` in a case is held to the one stored under the
+# case's label. Each case runs the fixture beside this file through the `term` under test (@term/test/self).
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/text
+  find contains
+
+task run-fixture
+  take arguments, like list, like text
+  like run-result
+  mark async
+
+  save argument-list, make list
+  argument-list/push(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  back run-self(argument-list, <test/call/test-cases-fixture>, 280000)
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <three corpus files are three cases, and the bad one fails alone, naming its file>
+  save ran, run-fixture(make list(<corpus.tree>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 2 passed · 1 failed>)
+  want hold, contains(said(ran), <Every corpus file says hello [corpus/beta.tree]>)
+  want miss, contains(said(ran), <[corpus/alpha.tree]>)
+
+test <a corpus with no tree file fails its test, naming the walk's line>
+  save ran, run-fixture(make list(<empty>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+  want hold, contains(said(ran), <line 6: the walk gave no case>)
+
+test <a corpus that is not there fails its test>
+  save ran, run-fixture(make list(<missing>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+  want hold, contains(said(ran), <Not found>)
+
+test <a case of a value is labeled by its place>
+  save ran, run-fixture(make list(<numbers>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 2 passed · 1 failed>)
+  want hold, contains(said(ran), <Each number is below three [#2]>)
+
+test <a case can skip, and counts as a skip>
+  save ran, run-fixture(make list(<skipping>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 skipped>)
+  want hold, contains(said(ran), <later is not ready>)
+
+test <a walked take beside another take fails, naming the other>
+  save ran, run-fixture(make list(<mixed>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <line 4: a test whose take walks a list takes nothing else>)
+
+test <a snapshot in a case is held to the one stored under the case's label>
+  save ran, run-fixture(make list(<snapshots>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 failed>)
+  want hold, contains(said(ran), <Each word is shown [two]>)
+  want miss, contains(said(ran), <Each word is shown [one]>)
+
+test <--case runs the cases whose label holds the phrase>
+  save ran, run-fixture(make list(<corpus.tree>, <--case>, <beta>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+
+test <--case on the test's phrase runs every case>
+  save ran, run-fixture(make list(<corpus.tree>, <--case>, <says hello>))
+  want hold, contains(said(ran), <3 tests · 2 passed · 1 failed>)
+
+test <--case that no case holds matches nothing>
+  save ran, run-fixture(make list(<corpus.tree>, <--case>, <no-such-case>))
+  want hold, is-equal(ran/code, 2)
+  want miss, contains(said(ran), <3 tests>)
+  want hold, contains(said(ran), <No test matched>)
+
+test <rust counts each case the same>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save ran, run-fixture(make list(<corpus.tree>, <--env>, <rust>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 2 passed · 1 failed>)
+  want hold, contains(said(ran), <Every corpus file says hello [corpus/beta.tree]>)
+
+test <on rust an empty corpus fails its test>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save ran, run-fixture(make list(<empty>, <--env>, <rust>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+  want hold, contains(said(ran), <line 6: the walk gave no case>)

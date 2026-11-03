@@ -1,0 +1,87 @@
+note <the toolchain harness itself: build-text and run-text on each backend, its error filter and native-flags>
+
+# Tests of test/support/running.tree, beside it rather than in it: a loaded file's test blocks are not rewritten (T-0878).
+
+load ./running
+  find backends
+  find backend-env
+  find missing-tools
+  find toolchain-errors
+  find cargo-name
+  find build-text
+  find run-text
+  find native-flags
+
+load ./temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+# a program whose run task answers a text with no line break after it
+host seven, <task run\n  like text\n  send back, text \<seven\>\n>
+
+# a program whose run task answers a variable of its environment
+host from-env, <load @term/base/environment\n  find variable\n\ntask run\n  like text\n  send back\n    call variable\n      text \<RUNNING_CHECK\>\n>
+
+# a program the checker refuses: it reads a name nothing defines
+host refused, <task run\n  like text\n  send back, read missing-name\n>
+
+test <backends are the four, TypeScript first>
+  want hold, is-equal(backends(), make list(<typescript>, <rust>, <swift>, <kotlin>))
+
+test <TypeScript compiles under node, and every other backend under its own name>
+  want hold, is-equal(backend-env(<typescript>), <node>)
+  want hold, is-equal(backend-env(<rust>), <rust>)
+  want hold, is-equal(backend-env(<kotlin>), <kotlin>)
+
+test <missing-tools names a tool nobody has, and nothing for an empty list>
+  want hold, is-equal(missing-tools(make list(<term-no-such-tool>, <node>)), <term-no-such-tool>)
+  want hold, is-equal(missing-tools(make list), <>)
+
+test <toolchain-errors keeps the error lines and drops the warnings in front of them>
+  host said, <warning: unused\nsrc/a.rs:1:1: error: no such thing\ne: kotlin refused\n   --\> src/a.rs:1:1\nnote: fine>
+  want hold, is-equal(toolchain-errors(said), <src/a.rs:1:1: error: no such thing\ne: kotlin refused\n   --\> src/a.rs:1:1>)
+
+test <toolchain-errors answers the whole text when no line is an error>
+  want hold, is-equal(toolchain-errors(<it went wrong\nsomehow>), <it went wrong\nsomehow>)
+
+test <a cargo package name keeps letters and digits, in lower case>
+  want hold, is-equal(cargo-name(<Big num_2>), <term-big-num-2>)
+
+test <run-text answers exactly what the run task returned>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<running-check->)
+  host ran, run-text(seven, backend, folder, <seven>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <seven>)
+
+test <run-text hands its environment to the program it runs>
+  host folder, temp-folder(<running-check->)
+  host environment
+    make hash
+      save <RUNNING_CHECK>, <handed>
+  host ran, run-text(from-env, <typescript>, folder, <from-env>, bind(environment, environment))
+  want hold, is-equal(ran/output, <handed>)
+
+test <a refused program fails at the compile, naming why>
+  host folder, temp-folder(<running-check->)
+  host built, build-text(refused, <typescript>, folder, <refused>)
+  want hold, is-equal(built/state, <failed>)
+  want hold, is-equal(built/stage, <compile>)
+  want hold, text-contains(built/reason, <missing-name>)
+
+test <build-text answers the command that runs a built program>
+  host folder, temp-folder(<running-check->)
+  host built, build-text(seven, <typescript>, folder, <seven>)
+  want hold, is-equal(built/state, <built>)
+  want hold, is-equal(built/command/1, <--import>)
+
+test <native-flags for Kotlin is a classpath, or nothing when the script cannot say>
+  host flags, native-flags(<kotlin>)
+  want hold, or(is-equal(flags/length, 0), and(is-equal(flags/length, 2), is-equal(flags/0, <-classpath>)))
+  want hold, is-equal(native-flags(<kotlin>), flags)

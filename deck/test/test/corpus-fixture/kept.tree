@@ -1,0 +1,4 @@
+task kept
+  mark draft
+  like text
+  back <an indented mark draft belongs to its task, and the file stays>

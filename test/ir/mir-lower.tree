@@ -7,22 +7,15 @@ load ../support/compiling
   find compile-text
   find compile-choice
 
+load ../support/reading
+  find any-holding
+  find any-starting
+  find values-at
+  find first-with-both
+
 dock load
   load <@term/make/code/ir/mir-lower>, name mir-module
   load <@term/make/code/ir/perceus>, name perceus
-
-bind function-of
-  take program, like dynamic
-  take name, like text
-  like dynamic
-  case node
-    text <$program.find(s =\> s.form === "function" && s.name === $name)>
-
-bind param-names
-  take params, like dynamic
-  like list, like text
-  case node
-    text <$params.map(p =\> p.name)>
 
 bind copied
   take items, like dynamic
@@ -42,20 +35,6 @@ bind has-item
   like boolean
   case node
     text <$items.includes($item)>
-
-bind any-holds
-  take items, like dynamic
-  take word, like text
-  like boolean
-  case node
-    text <$items.some(l =\> l.includes($word))>
-
-bind any-starts
-  take items, like dynamic
-  take word, like text
-  like boolean
-  case node
-    text <$items.some(l =\> l.startsWith($word))>
 
 task shown
   take insts, like dynamic
@@ -77,7 +56,7 @@ task function-in
   fork test, not(out/ok)
     hold
       halt <compile failed>
-  back function-of(out/program, name)
+  back first-with-both(out/program, <form>, <function>, <name>, name)
 
 task lowered
   take fn, like dynamic
@@ -90,20 +69,20 @@ task counted
   like list, like text
 
   host mir, lowered(fn)
-  back shown(perceus/perceus-control-heap(param-names(fn/params), mir/insts, copied(mir/heap)))
+  back shown(perceus/perceus-control-heap(values-at(fn/params, <name>), mir/insts, copied(mir/heap)))
 
 # a function that builds a record (heap) and returns it: the record binding is classified heap, the numeric field literal stays
 # copyable, and the returned value is not dropped (its ownership passes out)
 host box-text, <form box\n  link n, like number\n\ntask build\n  like box\n  send back\n    make box\n      bind n, code 5\n>
 
 test <record build: the make is lowered>
-  want hold, any-holds(shown(lowered(function-in(box-text, <build>))/insts), <make box>)
+  want hold, any-holding(shown(lowered(function-in(box-text, <build>))/insts), <make box>)
 
 test <record build: exactly the record binding is heap (the literal is copyable)>
   want hold, is-equal(size-of(lowered(function-in(box-text, <build>))/heap), 1)
 
 test <record build: returned value is not dropped>
-  want hold, not(any-starts(counted(function-in(box-text, <build>)), <drop>))
+  want hold, not(any-starting(counted(function-in(box-text, <build>)), <drop>))
 
 # a heap parameter used twice gets a dup at the earlier use, the analysis fires through the lowered call
 host twice-text, <form box\n  link n, like number\n\ntask pick\n  take a, like box\n  take b, like box\n  like box\n  send back, read a\n\ntask twice\n  take b, like box\n  like box\n  send back\n    call pick\n      read b\n      read b\n>

@@ -10,6 +10,13 @@ load ../support/compiling
 load ../support/temp
   find temp-folder
 
+load ../support/reading
+  find any-with
+  find first-with-both
+
+load @term/base/text
+  find starts-with
+
 dock load
   load <@term/make/code/deck/install>, name deck-install
   load <@term/make/code/deck/resolve>, name deck-resolve
@@ -41,17 +48,25 @@ bind is-link
   case node
     text <process.getBuiltinModule("node:fs").lstatSync($path).isSymbolicLink()>
 
-bind requests-a
+task requests-a
   take lockfile, like dynamic
   like boolean
-  case node
-    text <$lockfile.requests.some(r =\> r.name === "@termsurf/a" && r.locked === "0.0.1")>
 
-bind a-needs-b
+  host found, first-with-both(lockfile/requests, <name>, <@termsurf/a>, <locked>, <0.0.1>)
+  back not(is-equal(found, void))
+
+# the first link whose ref names a, and b among its dependencies
+task a-needs-b
   take lockfile, like dynamic
   like boolean
-  case node
-    text <$lockfile.links.find(l =\> l.ref.startsWith("@termsurf/a"))?.deps.some(d =\> d.name === "@termsurf/b") === true>
+
+  walk lockfile/links
+    take one, like dynamic
+    host ref, one/ref
+    fork test, starts-with(ref, <@termsurf/a>)
+      hold
+        back any-with(one/deps, <name>, <@termsurf/b>)
+  back false
 
 bind holds-word
   take whole, like text

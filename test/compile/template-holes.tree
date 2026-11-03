@@ -19,11 +19,23 @@ load @term/base/text
 
 host badge, <tree badge\n  take name, like name\n  take size, like number\n  take label, like text\n  take loud, like boolean, fall false\n  hook fuse\n    task badge-\{name\}\n      like text\n      fork test, \{loud\}\n        hold\n          back \<\{label\} \{size\}!\>\n      back \<\{label\} \{size\}\>\n>
 
-bind placed
+# each note as `line: message`, joined by a bar
+task placed
   take notes, like dynamic
   like text
-  case node
-    text <$notes.map(d =\> `$\{d.line\}: $\{d.message\}`).join(" | ")>
+
+  save joined, <>
+  save first, true
+  walk notes
+    take note, like dynamic
+    host line, <{note/line}: {note/message}>
+    fork test, first
+      hold
+        save joined, line
+        save first, false
+      miss
+        save joined, <{joined} | {line}>
+  back joined
 
 task built
   take source, like text

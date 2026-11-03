@@ -13,9 +13,7 @@ load ../support/reading
   find any-with
 
 load ../support/walking
-  find kind-of
-  find fields-of
-  find field-of
+  find json-without
 
 load @term/base/list
   find push
@@ -42,60 +40,12 @@ bind run-in-db
   case node
     text <$q.db.transaction($go)>
 
-# host value: a scalar as JSON writes it, the one leaf of the walk
-bind json-of
-  take value, like dynamic
-  like text
-  case node
-    text <JSON.stringify($value)>
-
-# JSON writes no key for a value that is undefined or a function
-task is-written
-  take value, like dynamic
-  like boolean
-
-  host kind, kind-of(value)
-  back and(is-unequal(kind, <undefined>), is-unequal(kind, <function>))
-
 # span-free structural key, mirroring the compiler's backdating equality: JSON.stringify(value, (k, v) => (k === 'span' ? undefined : v))
 task structure-key
   take value, like dynamic
   like text
 
-  host kind, kind-of(value)
-  save out, <>
-  save first, true
-  fork test, is-equal(kind, <list>)
-    hold
-      walk value
-        take one, like dynamic
-        save part, <null>
-        fork test, is-written(one)
-          hold
-            save part, structure-key(one)
-        fork test, first
-          hold
-            save out, part
-          miss
-            save out, <{out},{part}>
-        save first, false
-      back <[{out}]>
-  fork test, is-equal(kind, <object>)
-    hold
-      walk fields-of(value)
-        take field, like text
-        host held, field-of(value, field)
-        fork test, and(is-unequal(field, <span>), is-written(held))
-          hold
-            host entry, <{json-of(field)}:{structure-key(held)}>
-            fork test, first
-              hold
-                save out, entry
-              miss
-                save out, <{out},{entry}>
-            save first, false
-      back <\{{out}\}>
-  back json-of(value)
+  back json-without(value, make list(<span>))
 
 task joined
   take items, like list, like text

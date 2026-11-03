@@ -23,11 +23,10 @@ form gap-options
   link resolve, like dynamic
 
 # the resolver of a program that loads nothing: every load resolves to nothing
-bind gap-no-resolve
-  take seed, like number
+task gap-no-resolve
   like dynamic
-  case node
-    text <(() =\> undefined)>
+
+  back void
 
 bind gap-compiled
   take result, like dynamic
@@ -58,7 +57,7 @@ task gaps-for
   take source, like text
   like gap-run
 
-  host compiled, gap-compiling/compile(make(gap-source, bind(file, file), bind(text, source)), make(gap-options, bind(resolve, gap-no-resolve(0))))
+  host compiled, gap-compiling/compile(make(gap-source, bind(file, file), bind(text, source)), make(gap-options, bind(resolve, gap-no-resolve)))
   back make(gap-run, bind(compiled, gap-compiled(compiled)), bind(gaps, gaps-from-diagnostics(source, gap-diagnostics(compiled))))
 
 host clean, <task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>

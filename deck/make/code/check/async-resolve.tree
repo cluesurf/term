@@ -196,6 +196,12 @@ task children-of
       push(out, operand)
     case member
       push(out, target)
+      sift index
+        case some
+          link segment
+          push(out, segment)
+        case none
+          save nothing, 0
     case array
       walk items
         take item
@@ -822,6 +828,15 @@ task rewrite-expression
       save given/operand, rewrite-expression(operand, scope)
     case member
       save given/target, rewrite-expression(target, scope)
+      # a computed segment is waited like any other expression: `roles/{fetch-at(1)}` read the list at the promise
+      # (item 0893)
+      sift index
+        case some
+          link segment
+          save written, rewrite-expression(segment, scope)
+          save given/index, make(some, written)
+        case none
+          save nothing, 0
     case array
       save items-out, make list
       walk items

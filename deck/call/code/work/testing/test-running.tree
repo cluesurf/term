@@ -294,11 +294,19 @@ task cases-of
   take name, like text
   like text
 
-  save kind, map-get(cases, name)
-  fork test, is-nothing(kind)
+  back text-at(cases, name)
+
+# a hash's text at a key, the empty text when it holds none
+task text-at
+  take held, like dynamic
+  take name, like text
+  like text
+
+  save found, map-get(held, name)
+  fork test, is-nothing(found)
     hold
       back <>
-  back host-text(kind)
+  back host-text(found)
 
 # A test file's tests in source order, each with its label and the line its `test` stands on as written, and the file
 # as `term test` rewrites it (`term test --case`, `term test --env`). `options` as the preprocessor takes it: a native
@@ -895,10 +903,7 @@ task run-test-file
     fork test, not(is-nothing(head))
       hold
         save at-line, add(head, 1)
-    save chosen, <>
-    fork test, not(is-nothing(map-get(chosen-of, name)))
-      hold
-        save chosen, host-text(map-get(chosen-of, name))
+    save chosen, text-at(chosen-of, name)
     asked/push(make(child-test, bind(name, name), bind(exported, host-text(typescript-module/to-camel(name))), bind(line, at-line), bind(cases, cases-of(made/cases, name)), bind(cases-exported, host-text(typescript-module/to-camel(<{name}-cases>))), bind(case-exported, host-text(typescript-module/to-camel(<{name}-case>))), bind(label, label-of(made/labels, name)), bind(chosen, chosen)))
   save command, make list
   command/push(node-program())

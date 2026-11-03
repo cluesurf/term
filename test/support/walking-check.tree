@@ -6,6 +6,7 @@ load ./walking
   find field-of
   find visit
   find nodes-of
+  find json-without
 
 load @term/base/list
   find push
@@ -61,6 +62,14 @@ test <nodes-of finds every record of a form, outer before inner, and none under 
   want hold, is-equal nodes-of(program, <variable>)/length, 2
   want hold, is-equal nodes-of(program, <function>)/length, 1
   want hold, is-equal nodes-of(program, <missing>)/length, 0
+
+test <json-without writes JSON leaving out the named fields at any depth>
+  host drop-span, make list(<span>)
+  host program, parsed(program-text)
+  want hold, is-equal json-without(parsed(<\{"a":1,"span":2,"b":[\{"span":3,"c":null\}]\}>), drop-span), <\{"a":1,"b":[\{"c":null\}]\}>
+  want hold, is-equal json-without(parsed(<[1,"x"]>), drop-span), <[1,"x"]>
+  want hold, is-equal json-without(program, make list(<type>, <span>)), json-without(program, make list(<span>, <type>, <missing>))
+  want hold, is-unequal json-without(program, drop-span), json-without(program, make list(<span>, <type>))
 
 test <visit hands every record to the task, and none of a scalar>
   host program, parsed(program-text)
