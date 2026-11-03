@@ -12,14 +12,12 @@ note <Integer arithmetic on the decided kernel (judge.ts), the rung above natura
 load @term/base/list
   find size
 
+load ../support/judging
+  find make-record
+  find throws
+
 dock load
   load <@term/make/code/check/judge>, name judge-kernel
-
-bind make-record
-  take parts, like list, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
 
 bind read-field
   take value, like dynamic
@@ -45,13 +43,6 @@ bind truth
   like boolean
   case node
     text <Boolean($value)>
-
-bind throws-type-error
-  take module, like dynamic
-  take run, like dynamic
-  like boolean
-  case node
-    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
 
 bind lit-level-1
   take module, like dynamic

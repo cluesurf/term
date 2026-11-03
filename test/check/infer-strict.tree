@@ -9,6 +9,13 @@ load ../support/compiling
   find compile-text
   find compile-choice
 
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find starts-with
+  find contains, name text-contains
+
 dock load
   load <@term/make/code/check/strict>, name strict-switches
 
@@ -21,30 +28,54 @@ host called, <{lonely}\ntask use\n  like text\n\n  back lonely(1)\n>
 # two definitions of one name and arity, typed apart, and a call whose argument's type nothing has decided yet
 host ambiguous, <task show\n  take n, like number\n\n  like text\n\n  back \<number\>\n\ntask show\n  take n, like text\n\n  like text\n\n  back \<text\>\n\ntask pass-on\n  take x\n\n  like text\n\n  back show(x)\n\ntask use\n  like text\n\n  back show(1)\n>
 
-bind some-ambiguous
+host ambiguous-show, <ambiguous call: 2 definitions of "show">
+
+task some-ambiguous
   take messages, like list, like text
   like boolean
-  case node
-    text <$messages.some(m =\> m.startsWith("ambiguous call: 2 definitions of \"show\""))>
 
-bind some-naming-both
+  walk messages
+    take one, like text
+    fork test, starts-with(one, ambiguous-show)
+      hold
+        back true
+  back false
+
+task some-naming-both
   take messages, like list, like text
   like boolean
-  case node
-    text <$messages.some(m =\> m.startsWith("ambiguous call: 2 definitions of \"show\"") && m.includes("(number)") && m.includes("(text)"))>
 
-bind some-holding
+  walk messages
+    take one, like text
+    fork test, and(starts-with(one, ambiguous-show), and(text-contains(one, <(number)>), text-contains(one, <(text)>)))
+      hold
+        back true
+  back false
+
+task some-holding
   take messages, like list, like text
   take word, like text
   like boolean
-  case node
-    text <$messages.some(m =\> m.includes($word))>
 
-bind ambiguous-count
+  back any-holding(messages, word)
+
+task ambiguous-count
   take messages, like list, like text
   like number
-  case node
-    text <$messages.filter(m =\> m.startsWith("ambiguous call")).length>
+
+  save count, 0
+  walk messages
+    take one, like text
+    fork test, starts-with(one, <ambiguous call>)
+      hold
+        save count, add(count, 1)
+  back count
+
+
+
+
+
+
 
 task said
   take source, like text

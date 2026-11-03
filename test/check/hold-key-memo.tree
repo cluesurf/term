@@ -11,15 +11,149 @@ load ../support/compiling
   find compile-choice
   find compile-outcome
 
+load ../support/judging
+  find make-record
+  find set-field
+  find big-number
+
 dock load
   load <@term/make/code/check/holds>, name holds-module
   load <@term/make/code/check/hold-key-memo>, name key-memo
 
-bind fixture
-  take name, like text
+# host value: the values no Term literal holds, each one expression
+bind value-nan
   like dynamic
   case node
-    text <(() =\> \{ const at = line =\> (\{ start: \{ line, column: 1, offset: 0 \}, end: \{ line, column: 9, offset: 8 \} \}); const literal = (value, line = 1) =\> (\{ form: "return", value: \{ form: "some", value: \{ form: "number", value, span: at(line) \} \}, span: at(line) \}); const cycle = \{ form: "return" \}; cycle.self = cycle; return (\{ "three-1": literal(3, 1), "three-40": literal(3, 40), three: literal(3), four: literal(4), nan: literal(Number.NaN), null: literal(null), infinity: literal(Number.POSITIVE_INFINITY), "minus-zero": literal(-0), zero: literal(0), bigint: literal(5n), "five-text": literal("5"), "list-absent": \{ list: [undefined] \}, "list-null": \{ list: [null] \}, "map-1": \{ m: new Map([["a", 1]]) \}, "map-2": \{ m: new Map([["a", 2]]) \}, "set-a": \{ s: new Set(["a"]) \}, "set-b": \{ s: new Set(["b"]) \}, "span-1": \{ a: \{ b: 1, span: at(1) \} \}, "span-9": \{ a: \{ b: 1, span: at(9) \} \}, cycle, function: \{ form: "call", run: () =\> 1 \}, date: \{ when: new Date(0) \} \})[$name] \})()>
+    text <Number.NaN>
+
+bind value-infinity
+  like dynamic
+  case node
+    text <Number.POSITIVE_INFINITY>
+
+bind value-minus-zero
+  like dynamic
+  case node
+    text <(-0)>
+
+bind value-null
+  like dynamic
+  case node
+    text <null>
+
+bind value-date
+  like dynamic
+  case node
+    text <new Date(0)>
+
+bind map-of
+  take key, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <new Map([[$key, $value]])>
+
+bind set-of
+  take value, like dynamic
+  like dynamic
+  case node
+    text <new Set([$value])>
+
+task span-at
+  take line, like number
+  like dynamic
+
+  host start, make-record(make(list, <line>, line, <column>, 1, <offset>, 0))
+  host end, make-record(make(list, <line>, line, <column>, 9, <offset>, 8))
+  back make-record(make(list, <start>, start, <end>, end))
+
+task literal
+  take value, like dynamic
+  take line, like number, fall 1
+  like dynamic
+
+  host number, make-record(make(list, <form>, <number>, <value>, value, <span>, span-at(line)))
+  host some, make-record(make(list, <form>, <some>, <value>, number))
+  back make-record(make(list, <form>, <return>, <value>, some, <span>, span-at(line)))
+
+task run-one
+  like number
+
+  back 1
+
+task fixture
+  take name, like text
+  like dynamic
+
+  fork test, is-equal(name, <three-1>)
+    hold
+      back literal(3, 1)
+  fork test, is-equal(name, <three-40>)
+    hold
+      back literal(3, 40)
+  fork test, is-equal(name, <three>)
+    hold
+      back literal(3)
+  fork test, is-equal(name, <four>)
+    hold
+      back literal(4)
+  fork test, is-equal(name, <nan>)
+    hold
+      back literal(value-nan())
+  fork test, is-equal(name, <null>)
+    hold
+      back literal(value-null())
+  fork test, is-equal(name, <infinity>)
+    hold
+      back literal(value-infinity())
+  fork test, is-equal(name, <minus-zero>)
+    hold
+      back literal(value-minus-zero())
+  fork test, is-equal(name, <zero>)
+    hold
+      back literal(0)
+  fork test, is-equal(name, <bigint>)
+    hold
+      back literal(big-number(<5>))
+  fork test, is-equal(name, <five-text>)
+    hold
+      back literal(<5>)
+  fork test, is-equal(name, <list-absent>)
+    hold
+      back make-record(make(list, <list>, make(list, void)))
+  fork test, is-equal(name, <list-null>)
+    hold
+      back make-record(make(list, <list>, make(list, value-null())))
+  fork test, is-equal(name, <map-1>)
+    hold
+      back make-record(make(list, <m>, map-of(<a>, 1)))
+  fork test, is-equal(name, <map-2>)
+    hold
+      back make-record(make(list, <m>, map-of(<a>, 2)))
+  fork test, is-equal(name, <set-a>)
+    hold
+      back make-record(make(list, <s>, set-of(<a>)))
+  fork test, is-equal(name, <set-b>)
+    hold
+      back make-record(make(list, <s>, set-of(<b>)))
+  fork test, is-equal(name, <span-1>)
+    hold
+      back make-record(make(list, <a>, make-record(make(list, <b>, 1, <span>, span-at(1)))))
+  fork test, is-equal(name, <span-9>)
+    hold
+      back make-record(make(list, <a>, make-record(make(list, <b>, 1, <span>, span-at(9)))))
+  fork test, is-equal(name, <cycle>)
+    hold
+      host cycle, make-record(make(list, <form>, <return>))
+      set-field(cycle, <self>, cycle)
+      back cycle
+  fork test, is-equal(name, <function>)
+    hold
+      back make-record(make(list, <form>, <call>, <run>, run-one))
+  fork test, is-equal(name, <date>)
+    hold
+      back make-record(make(list, <when>, value-date()))
+  back void
 
 bind key-with
   take module, like dynamic

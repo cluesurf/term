@@ -16,6 +16,25 @@ load ../support/compiling
 
 load @term/base/list
   find size
+  find push
+  find sort
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+  find substring
+
+load @term/base/ordering
+  find from-texts
+
+load ../support/judging
+  find read-field
+
+load ../support/reading
+  find any-holding
+
+load ../support/walking
+  find kind-of
 
 dock load
   load <@term/make/code/compile/separate>, name separate-module
@@ -31,11 +50,29 @@ bind new-cache
   case node
     text <new (($module).CompileCache)()>
 
-bind slugs
-  take seed, like number
-  like dynamic
-  case node
-    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+# a module's own name: the file less its .tree, every character but a letter, a digit or `_` made `_`, as /\W/g did
+task slug-of
+  take file, like text
+  like text
+
+  save stem, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stem, substring(file, 0, subtract(file/length, 5))
+  host word-characters, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, stem/length)
+    hook hold
+      host one, substring(stem, at, add(at, 1))
+      fork test, text-contains(word-characters, one)
+        hold
+          save out, <{out}{one}>
+        miss
+          save out, <{out}_>
+      save at, add(at, 1)
+  back <./{out}.mjs>
 
 bind entry-of
   take text, like text
@@ -58,13 +95,46 @@ bind resolver-of
     text <$options.resolve>
 
 # the entry's own cycle warnings, or what refused it
-bind own
+task own
   take ok, like boolean
   take warnings, like dynamic
   take diagnostics, like dynamic
   like list, like text
-  case node
-    text <$ok ? ($warnings ?? []).filter(w =\> w.file === "entry.tree" && /cycle|calls itself/.test(w.message)).map(w =\> w.message).sort() : [`REFUSED $\{($diagnostics ?? []).map(d =\> d.message.slice(0, 160)).join(" | ")\}`]>
+
+  host out, make list
+  fork test, ok
+    hold
+      fork test, is-equal(kind-of(warnings), <list>)
+        hold
+          walk warnings
+            take one, like dynamic
+            host message, <{read-field(one, <message>)}>
+            fork test, and(is-equal(read-field(one, <file>), <entry.tree>), or(text-contains(message, <cycle>), text-contains(message, <calls itself>)))
+              hold
+                out/push(message)
+      back sort(out, from-texts)
+  save said, <>
+  save first, true
+  fork test, is-equal(kind-of(diagnostics), <list>)
+    hold
+      walk diagnostics
+        take one, like dynamic
+        host message, <{read-field(one, <message>)}>
+        host cut, substring(message, 0, 160)
+        fork test, first
+          hold
+            save said, cut
+            save first, false
+          miss
+            save said, <{said} | {cut}>
+  out/push(<REFUSED {said}>)
+  back out
+
+task says-mutual
+  take found, like list, like text
+  like boolean
+
+  back any-holding(found, <mutual-recursion cycle>)
 
 bind result-ok
   take result, like dynamic
@@ -84,11 +154,7 @@ bind result-diagnostics
   case node
     text <$result.diagnostics>
 
-bind says-mutual
-  take found, like list, like text
-  like boolean
-  case node
-    text <$found.some(m =\> /mutual-recursion cycle/.test(m))>
+
 
 task one-file
   take name, like text
@@ -104,7 +170,7 @@ task cycles
 
   host merged, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files), bind(cache, new-cache(cache-module))))
   host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(files, files))))
-  host separate, separate-module/compile-separate(entry-of(entry), separate-options(resolve, new-cache(cache-module), slugs(0)))
+  host separate, separate-module/compile-separate(entry-of(entry), separate-options(resolve, new-cache(cache-module), slug-of))
   back make(verdict, bind(merged, own(merged/ok, merged/warning-notes, merged/notes)), bind(separate, own(result-ok(separate), result-warnings(separate), result-diagnostics(separate))))
 
 # A LOCAL NAMED LIKE A TASK OF ANOTHER FILE. The model's `walk-it` binds `body` in an arm and reads it, the entry defines a task `body`

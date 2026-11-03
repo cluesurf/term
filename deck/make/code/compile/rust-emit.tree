@@ -5968,7 +5968,9 @@ task emit-return
                 hold
                   save value, vname(known-name)
                 miss
-                  save value, <std::rc::Rc::new(std::cell::RefCell::new({vname(known-name)}))>
+                  # the shared cell is the list's own value, so a task answering `unknown` or `dynamic` boxes the cell,
+                  # the `Rc<RefCell<Vec>>` a `case list` arm downcasts to (term-self-host-001-0885)
+                  save value, bare(box-unknown(st/current-result, known, <std::rc::Rc::new(std::cell::RefCell::new({vname(known-name)}))>, facts))
             miss
               fork test, and(st/fn-returns-array, is-native-call(known, facts))
                 hold

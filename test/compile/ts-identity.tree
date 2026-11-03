@@ -18,6 +18,13 @@ load @term/base/pattern
 load @term/base/text
   find contains, name text-contains
 
+load ../support/judging
+  find read-field
+  find set-field
+
+load ../support/walking
+  find nodes-of
+
 dock load
   load <@term/make/code/compile/typescript>, name identity-typescript
 
@@ -34,19 +41,50 @@ bind set-holds
   case node
     text <$cases.has($name)>
 
-# the shape a real `call fill / ... / like <form>` has once it reaches the backends: a call to `fill-form`, in a copy
-bind with-fill-form
-  take program, like dynamic
+# host reflect: a deep copy, so a test edits its own program and never the one another test reads
+bind cloned
+  take value, like dynamic
   like dynamic
   case node
-    text <(() =\> \{ const copy = structuredClone($program); const rename = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(rename); if (value.form === "call" && value.callee?.form === "variable" && value.callee.name === "depth") value.callee.name = "fill-form"; Object.values(value).forEach(rename) \}; rename(copy.find(n =\> n.form === "function" && n.name === "use")); return copy \})()>
+    text <structuredClone($value)>
+
+# the function of the program by that name, void when none
+task function-named
+  take program, like dynamic
+  take name, like text
+  like dynamic
+
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        back statement
+  back void
+
+# the shape a real `call fill / ... / like <form>` has once it reaches the backends: a call to `fill-form`, in a copy
+task with-fill-form
+  take program, like dynamic
+  like dynamic
+
+  host copy, cloned(program)
+  walk nodes-of(function-named(copy, <use>), <call>)
+    take call, like dynamic
+    host callee, read-field(call, <callee>)
+    fork test, and(is-equal(read-field(callee, <form>), <variable>), is-equal(read-field(callee, <name>), <depth>))
+      hold
+        set-field(callee, <name>, <fill-form>)
+  back copy
 
 # the same program with its `depth` a stub of another unit's task, in a copy
-bind with-stub
+task with-stub
   take program, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const copy = structuredClone($program); copy.find(n =\> n.form === "function" && n.name === "depth").stub = true; return copy \})()>
+
+  host copy, cloned(program)
+  set-field(function-named(copy, <depth>), <stub>, true)
+  back copy
+
+
 
 task built
   take source, like text

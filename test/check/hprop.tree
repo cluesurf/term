@@ -4,22 +4,40 @@ note <Propositional truncation in the kernel: proof irrelevance>
 # registered truncation constructor on all spine elements EXCEPT the proof (the last). Soundness: a NON-truncation constructor stays
 # proof-relevant, and a different TYPE argument is not equated.
 
+load ../support/judging
+  find make-record
+
 dock load
   load <@term/make/code/check/judge>, name judge-kernel
 
-bind spine
+task spine
   take names, like list, like text
   like dynamic
-  case node
-    text <$names.map(name =\> (\{ tag: "const", name \})).reduce((f, a) =\> (\{ tag: "app", fun: f, arg: a \}))>
 
-bind convertible-in
+  save out, void
+  save first, true
+  walk names
+    take name, like text
+    host one, make-record(make(list, <tag>, <const>, <name>, name))
+    fork test, first
+      hold
+        save out, one
+        save first, false
+      miss
+        save out, make-record(make(list, <tag>, <app>, <fun>, out, <arg>, one))
+  back out
+
+task convertible-in
   take module, like dynamic
   take left, like dynamic
   take right, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ $module.resetDefinitions(); $module.registerTruncation("squash", 2); return $module.areConvertible(0, $module.evaluate([], $left), $module.evaluate([], $right)) \})()>
+
+  module/reset-definitions()
+  module/register-truncation(<squash>, 2)
+  back module/are-convertible(0, module/evaluate(make(list), left), module/evaluate(make(list), right))
+
+
 
 task convertible
   take left, like list, like text

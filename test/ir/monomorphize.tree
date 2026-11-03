@@ -3,6 +3,16 @@ note <Monomorphization tests>
 # Ported from monomorphize.ts (item 0590). A generic function called at two concrete types becomes two specialized functions, the
 # generic original is dropped, and the calls are rewritten. ir/monomorphize and its front end are the subject (decision 106).
 
+load ../support/judging
+  find read-field
+  find read-at
+
+load ../support/reading
+  find first-with
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/parser/tree>, name parser-tree
   load <@term/make/code/compile/mill>, name mill-module
@@ -16,34 +26,68 @@ bind source-of
   case node
     text <(\{ file: "m.tree", text: $text \})>
 
-bind has-function
+# the function of the program by that name, void when none
+task function-named
+  take program, like dynamic
+  take name, like text
+  like dynamic
+
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        back statement
+  back void
+
+task has-function
   take program, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$program.filter(s =\> s.form === "function").map(s =\> s.name).includes($name)>
 
-bind param-is-number
+  back is-equal(kind-of(function-named(program, name)), <object>)
+
+task param-is-number
   take program, like dynamic
   take name, like text
   like boolean
-  case node
-    text <($program.find(s =\> s.form === "function" && s.name === $name)?.params[0]?.type?.kind === "number")>
 
-bind generics-empty
+  host found, function-named(program, name)
+  fork test, is-unequal(kind-of(found), <object>)
+    hold
+      back false
+  host first, read-at(read-field(found, <params>), 0)
+  back is-equal(read-field(read-field(first, <type>), <kind>), <number>)
+
+task generics-empty
   take program, like dynamic
   take name, like text
   like boolean
-  case node
-    text <($program.find(s =\> s.form === "function" && s.name === $name)?.generics.length === 0)>
 
-bind call-rewritten
+  back is-equal(read-field(read-field(function-named(program, name), <generics>), <length>), 0)
+
+task call-rewritten
   take program, like dynamic
   take name, like text
   take callee, like text
   like boolean
-  case node
-    text <(() =\> \{ const ret = $program.find(s =\> s.form === "function" && s.name === $name)?.body.find(b =\> b.form === "return"); return ret?.value?.form === "call" && ret.value.callee.form === "variable" && ret.value.callee.name === $callee \})()>
+
+  host task-found, function-named(program, name)
+  fork test, is-unequal(kind-of(task-found), <object>)
+    hold
+      back false
+  host found, first-with(read-field(task-found, <body>), <form>, <return>)
+  host value, read-field(found, <value>)
+  fork test, is-unequal(read-field(value, <form>), <call>)
+    hold
+      back false
+  host called, read-field(value, <callee>)
+  back and(is-equal(read-field(called, <form>), <variable>), is-equal(read-field(called, <name>), callee))
+
+
+
+
+
+
 
 host source-text, <task identity\n  head t\n  take x, like t\n  like t\n  send back x\n\ntask run-number\n  like number\n  send back\n    call identity\n      code 1\n\ntask run-string\n  like text\n  send back\n    call identity\n      text \<hi\>\n>
 

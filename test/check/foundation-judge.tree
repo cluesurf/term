@@ -109,23 +109,37 @@ bind j-checks
   case node
     text <$module.checks($term, $type)>
 
-bind j-checks-throws
+task j-checks-throws
   take module, like dynamic
   take term, like dynamic
   take type, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ try \{ $module.checks($term, $type); return false \} catch \{ return true \} \})()>
+
+  fork
+    mark unsafe
+    module/checks(term, type)
+    back false
+  halt take
+    take cause
+    back true
 
 # whether `check` takes the term at the type, evaluated from nothing: it answers by throwing
-bind j-check
+task j-check
   take module, like dynamic
   take hyps, like list, like judge-hyp
   take term, like dynamic
   take type, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ try \{ $module.check($module.contextWithSignature($hyps), $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+  fork
+    mark unsafe
+    module/check(module/context-with-signature(hyps), term, module/evaluate(make(list), type))
+    back true
+  halt take
+    take cause
+    back false
+
+
 
 bind j-instantiate
   take module, like dynamic

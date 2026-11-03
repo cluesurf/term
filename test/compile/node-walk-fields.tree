@@ -1,0 +1,577 @@
+note <node-reach and node-children enter every field node.tree declares, whatever a corpus happens to hold>
+
+# Item term-self-host-001-0885, from item 0830's audit (tmp/self-host/0830/field-audit.ts). The pairs over node-reach and
+# node-children read a corpus, so a field no program fills is never walked: a sift arm's `type` was missed that way (0830). This
+# builds, from node.tree's own declarations, one value of every case of statement, expression, type and view-node with EVERY field
+# filled (a need-false one too, a nested node at each place that can hold one), and compares each walk with a reflective walk over
+# the same object. A record is a node when it carries `form` and `span`, or when its `kind` is one of `type`'s own cases, so a
+# `binding` (tagged on `kind` too, its cases `parameter`, `local`, `function` with an `arity`) is not one.
+
+load @term/base/list
+  find push
+  find contains
+  find join
+  find get
+
+load @term/base/text
+  find split
+  find substring
+  find to-upper-case
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+
+load ../support/judging
+  find empty-record
+  find set-field
+
+dock load
+  load <@term/make/code/parser/tree>, name audit-parser
+  load <@term/make/code/compile/mill>, name audit-mill
+  load <@term/make/code/compile/node-reach>, name node-reach
+  load <@term/make/code/compile/node-children>, name node-children
+
+# ---- the host's values, read and made ----
+
+bind file-text
+  take path, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:fs").readFileSync($path, "utf8")>
+
+bind parse-file
+  take module, like dynamic
+  take path, like text
+  take text, like text
+  like dynamic
+  case node
+    text <$module.parse(\{ file: $path, text: $text \})>
+
+bind mill-tree
+  take module, like dynamic
+  take parsed, like dynamic
+  take path, like text
+  like dynamic
+  case node
+    text <$module.mill($parsed.tree, $path)>
+
+bind has-key
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(typeof $record === "object" && $record !== null && $key in $record)>
+
+bind items-of
+  take given, like dynamic
+  like list, like dynamic
+  case node
+    text <(Array.isArray($given) ? $given : [])>
+
+task is-array
+  take given, like dynamic
+  like boolean
+
+  back is-equal(kind-of(given), <list>)
+
+task is-record
+  take given, like dynamic
+  like boolean
+
+  back is-equal(kind-of(given), <object>)
+
+bind text-or-empty
+  take given, like dynamic
+  like text
+  case node
+    text <(typeof $given === "string" ? $given : "")>
+
+bind is-true
+  take given, like dynamic
+  like boolean
+  case node
+    text <($given === true)>
+
+bind as-array
+  take items, like list, like dynamic
+  like dynamic
+  case node
+    text <$items>
+
+bind absent
+  like dynamic
+  case node
+    text <undefined>
+
+bind new-table
+  like dynamic
+  case node
+    text <new Map()>
+
+bind table-set
+  take table, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $table.set($key, $value)>
+
+bind table-has
+  take table, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$table.has($key)>
+
+bind table-get
+  take table, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$table.get($key)>
+
+bind table-keys
+  take table, like dynamic
+  like list, like dynamic
+  case node
+    text <Array.from($table.keys())>
+
+bind next-serial
+  take counter, like dynamic
+  like number
+  case node
+    text <($counter.n = ($counter.n ?? 0) + 1)>
+
+# a field name as TypeScript spells it, `value-args` as `valueArgs`
+task camel
+  take name, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk split(name, <->)
+    take part, like text
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{to-upper-case(substring(part, 0, 1))}{substring(part, 1)}>
+  back out
+
+# a path with each filled text's `.<field>#<n>` taken out, so a miss is read as the place it is
+bind place-of
+  take path, like text
+  like text
+  case node
+    text <$path.replace(/\.[^.]*#\d+/g, "")>
+
+bind span-value
+  like dynamic
+  case node
+    text <(\{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 1 \} \})>
+
+bind text-list
+  take one, like text
+  like dynamic
+  case node
+    text <[$one]>
+
+bind one-list
+  take one, like dynamic
+  like dynamic
+  case node
+    text <[$one]>
+
+bind handle-of
+  take of, like text
+  take node, like dynamic
+  like dynamic
+  case node
+    text <(\{ of: $of, node: $node \})>
+
+# ---- node.tree's records ----
+
+# every record-type compile/node.tree and parser/diagnostic.tree declare, by name, as the mill writes it
+task read-records
+  like dynamic
+
+  host out, new-table()
+  walk make(list, <compile/node.tree>, <parser/diagnostic.tree>)
+    take file, like text
+    host path, <deck/make/code/{file}>
+    host parsed, parse-file(audit-parser, path, file-text(path))
+    host built, mill-tree(audit-mill, parsed, path)
+    walk items-of(field-of(built, <program>))
+      take statement, like dynamic
+      fork test, is-equal(text-or-empty(field-of(statement, <form>)), <record-type>)
+        hold
+          table-set(out, field-of(statement, <name>), statement)
+  back out
+
+host known, read-records()
+host counter, empty-record()
+
+# the case names of `type`, which is what a type node's `kind` holds
+task type-kinds
+  like list, like text
+
+  save out, make list
+  walk items-of(field-of(table-get(known, <type>), <variants>))
+    take variant, like dynamic
+    push(out, text-or-empty(field-of(variant, <name>)))
+  back out
+
+host kinds, type-kinds()
+
+# ---- one value of each case, every field filled ----
+
+task filled-text
+  take owner, like text
+  take field, like text
+  like dynamic
+
+  back <{owner}.{field}#{next-serial(counter)}>
+
+# `depth` stops the recursion: below it a nested node is the plainest case, a literal or a text type
+task value-of
+  take ty, like dynamic
+  take depth, like number
+  take owner, like text
+  take field, like text
+  like dynamic
+
+  host kind, text-or-empty(field-of(ty, <kind>))
+  fork test, is-equal(kind, <string>)
+    hold
+      back filled-text(owner, field)
+  fork test, is-equal(kind, <number>)
+    hold
+      back 1
+  fork test, is-equal(kind, <float>)
+    hold
+      back 1.5
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back true
+  fork test, is-equal(kind, <array>)
+    hold
+      fork test, is-below(depth, -3)
+        hold
+          back as-array(make list)
+      back one-list(value-of(field-of(ty, <element>), depth, owner, field))
+  fork test, is-equal(kind, <named>)
+    hold
+      host name, text-or-empty(field-of(ty, <name>))
+      fork test, is-equal(name, <maybe>)
+        hold
+          fork test, is-below(depth, -3)
+            hold
+              back absent()
+          back value-of(get(items-of(field-of(ty, <args>)), 0), depth, owner, field)
+      back form-value(name, depth, owner, field)
+  back filled-text(owner, field)
+
+task fill-fields
+  take into, like dynamic
+  take fields, like dynamic
+  take depth, like number
+  take owner, like text
+  like void
+
+  walk items-of(fields)
+    take one, like dynamic
+    host name, text-or-empty(field-of(one, <name>))
+    set-field(into, camel(name), value-of(field-of(one, <type>), depth, owner, name))
+
+task tag-of
+  take record, like dynamic
+  like text
+
+  host tag, text-or-empty(field-of(record, <tag>))
+  fork test, is-equal(tag, <>)
+    hold
+      back <form>
+  back tag
+
+task case-value
+  take record, like dynamic
+  take variant, like dynamic
+  take depth, like number
+  like dynamic
+
+  host out, empty-record()
+  host name, text-or-empty(field-of(variant, <name>))
+  set-field(out, tag-of(record), name)
+  fill-fields(out, field-of(variant, <fields>), depth, <{text-or-empty(field-of(record, <name>))}/{name}>)
+  back out
+
+task plainest
+  take name, like text
+  like dynamic
+
+  host out, empty-record()
+  fork test, is-equal(name, <type>)
+    hold
+      set-field(out, <kind>, <string>)
+      back out
+  fork test, is-equal(name, <expression>)
+    hold
+      set-field(out, <form>, <string>)
+      set-field(out, <value>, <x>)
+    miss
+      fork test, is-equal(name, <statement>)
+        hold
+          set-field(out, <form>, <break>)
+        miss
+          set-field(out, <form>, <text>)
+          set-field(out, <value>, <x>)
+  set-field(out, <span>, span-value())
+  back out
+
+task form-value
+  take name, like text
+  take depth, like number
+  take owner, like text
+  take field, like text
+  like dynamic
+
+  fork test, is-equal(name, <span>)
+    hold
+      back span-value()
+  fork test, and(contains(make(list, <expression>, <statement>, <type>, <view-node>), name), is-maximum(depth, 0))
+    hold
+      back plainest(name)
+  fork test, not(table-has(known, name))
+    hold
+      back filled-text(owner, field)
+  host record, table-get(known, name)
+  host variants, items-of(field-of(record, <variants>))
+  fork test, is-true(field-of(record, <text>))
+    hold
+      fork test, is-above(variants/length, 0)
+        hold
+          back field-of(get(variants, 0), <name>)
+      back <x>
+  fork test, is-above(variants/length, 0)
+    hold
+      # a union as a field's type below the nodes: its first case
+      back case-value(record, get(variants, 0), subtract(depth, 1))
+  host out, empty-record()
+  fill-fields(out, field-of(record, <fields>), subtract(depth, 1), name)
+  back out
+
+# ---- what is a node, and the reflective walk ----
+
+task is-type-node
+  take record, like dynamic
+  like boolean
+
+  host kind, text-or-empty(field-of(record, <kind>))
+  fork test, or(is-equal(kind, <>), has-key(record, <span>))
+    hold
+      back false
+  fork test, and(is-equal(kind, <function>), not(has-key(record, <params>)))
+    hold
+      back false
+  back contains(kinds, kind)
+
+task is-node
+  take record, like dynamic
+  like boolean
+
+  fork test, and(is-unequal(text-or-empty(field-of(record, <form>)), <>), has-key(record, <span>))
+    hold
+      back true
+  back is-type-node(record)
+
+# every node under `value` by its path, and every `name` or `label` text, skipping `span`
+task reflect
+  take value, like dynamic
+  take path, like text
+  take nodes, like dynamic
+  take names, like dynamic
+  like void
+
+  fork test, is-array(value)
+    hold
+      walk items-of(value)
+        take one, like dynamic
+        reflect(one, path, nodes, names)
+      back
+  fork test, not(is-record(value))
+    hold
+      back
+  fork test, is-node(value)
+    hold
+      table-set(nodes, value, path)
+  walk make(list, <name>, <label>)
+    take key, like text
+    host said, text-or-empty(field-of(value, key))
+    fork test, is-unequal(said, <>)
+      hold
+        table-set(names, said, <{path}.{key}>)
+  walk fields-of(value)
+    take key, like text
+    fork test, is-unequal(key, <span>)
+      hold
+        reflect(field-of(value, key), <{path}.{key}>, nodes, names)
+
+# the children handed out by node-children, walked as a walk does
+task children-walk
+  take handle, like dynamic
+  take skip, like dynamic
+  take out, like dynamic
+  like void
+
+  walk items-of(node-children/nodeChildren(handle, skip))
+    take child, like dynamic
+    host node, field-of(child, <node>)
+    fork test, not(table-has(out, node))
+      hold
+        table-set(out, node, true)
+        children-walk(child, skip, out)
+
+# ---- the audit ----
+
+task reached-by
+  take node, like dynamic
+  take root, like text
+  take skip, like dynamic
+  like dynamic
+
+  fork test, is-equal(root, <statement>)
+    hold
+      back node-reach/reachStatements(one-list(node), skip)
+  fork test, is-equal(root, <expression>)
+    hold
+      back node-reach/reachExpression(node, skip)
+  fork test, is-equal(root, <type>)
+    hold
+      back node-reach/reachType(node, skip)
+  back absent()
+
+task handle-name
+  take root, like text
+  like text
+
+  fork test, is-equal(root, <view-node>)
+    hold
+      back <view-handle>
+  back <{root}-handle>
+
+# each case's misses, `<walk> <case><path>`: what node-reach does not reach, what node-children does not hand out, and what
+# node-reach reaches that the reflective walk does not hold
+task audit-case
+  take root, like text
+  take variant, like dynamic
+  take skip, like dynamic
+  like list, like text
+
+  save misses, make list
+  host label, <{root}/{text-or-empty(field-of(variant, <name>))}>
+  host node, case-value(table-get(known, root), variant, 2)
+  host nodes, new-table()
+  host names, new-table()
+  reflect(node, <>, nodes, names)
+
+  host reached, reached-by(node, root, skip)
+  fork test, is-record(reached)
+    hold
+      host got, new-table()
+      walk make(list, <expressions>, <statements>, <views>, <types>)
+        take key, like text
+        walk items-of(field-of(reached, key))
+          take one, like dynamic
+          table-set(got, one, true)
+      walk table-keys(nodes)
+        take one, like dynamic
+        fork test, not(table-has(got, one))
+          hold
+            push(misses, <reach {place-of(<{label}{text-or-empty(table-get(nodes, one))}>)}>)
+      host reached-names, new-table()
+      walk items-of(field-of(reached, <names>))
+        take one, like dynamic
+        table-set(reached-names, one, true)
+      walk table-keys(names)
+        take one, like dynamic
+        fork test, not(table-has(reached-names, one))
+          hold
+            push(misses, <reach {label}{text-or-empty(table-get(names, one))} (a name)>)
+      walk table-keys(got)
+        take one, like dynamic
+        fork test, not(table-has(nodes, one))
+          hold
+            push(misses, <beyond {label}>)
+
+  host out, new-table()
+  table-set(out, node, true)
+  children-walk(handle-of(handle-name(root), node), skip, out)
+  walk table-keys(nodes)
+    take one, like dynamic
+    fork test, not(table-has(out, one))
+      hold
+        push(misses, <children {label}{text-or-empty(table-get(nodes, one))}>)
+  back misses
+
+task audit-all
+  like list, like text
+
+  save misses, make list
+  walk make(list, <statement>, <expression>, <type>, <view-node>)
+    take root, like text
+    walk items-of(field-of(table-get(known, root), <variants>))
+      take variant, like dynamic
+      walk audit-case(root, variant, text-list(<span>))
+        take one, like text
+        push(misses, one)
+  back misses
+
+# one case of a root union by its name
+task variant-named
+  take root, like text
+  take name, like text
+  like dynamic
+
+  walk items-of(field-of(table-get(known, root), <variants>))
+    take variant, like dynamic
+    fork test, is-equal(text-or-empty(field-of(variant, <name>)), name)
+      hold
+        back variant
+  back absent()
+
+task case-count
+  like number
+
+  save count, 0
+  walk make(list, <statement>, <expression>, <type>, <view-node>)
+    take root, like text
+    save count, add(count, items-of(field-of(table-get(known, root), <variants>))/length)
+  back count
+
+host misses, audit-all()
+
+test <node.tree is read, and its four node unions hold their cases>
+  want hold, is-above(case-count(), 60)
+  want hold, contains(kinds, <array>)
+  want hold, not(contains(kinds, <parameter>))
+
+test <node-reach and node-children enter every field of every case node.tree declares>
+  want hold, is-equal(join(misses, <, >), <>)
+
+test <a binding is not a node, though it is tagged on kind>
+  host binding, empty-record()
+  set-field(binding, <kind>, <parameter>)
+  want hold, not(is-node(binding))
+  host fn-binding, empty-record()
+  set-field(fn-binding, <kind>, <function>)
+  set-field(fn-binding, <arity>, 1)
+  want hold, not(is-node(fn-binding))
+
+# the walks given a skip list that names `type` stop at a match arm's type, the field 0830 found missed, and the audit says so
+test <the audit sees a field a walk skips>
+  host seen, audit-case(<statement>, variant-named(<statement>, <match>), as-array(make(list, <span>, <type>)))
+  want hold, contains(seen, <reach statement/match.cases.type>)
+  want hold, contains(seen, <children statement/match.cases.type>)

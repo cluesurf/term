@@ -1,0 +1,135 @@
+# A test over a folder of inputs (decision 022 T6). `tree-files(<test/parser/file>)` is every `.tree` file under the
+# folder, sorted by code point, so the cases of `take file, like text` over `walk tree-files(...)` come in one order on
+# every target, whatever order the platform's walk gives (Rust's is unsorted). A path is relative to the working
+# directory, which under `term test` is the project root, and is answered as the walk writes it, `<folder>/<path>`.
+#
+# A shelved file is left out by the build's own rule (call/code/draft-mark.tree `declares-draft`): a line that starts
+# with `mark draft` or `note draft` and holds nothing else but white space. That rule is restated here, since this
+# package cannot load the CLI's.
+#
+# A folder that is not there raises `absence`, never an empty list, so a corpus that moved fails its test instead of
+# passing it with no case (the walk answers nothing for a missing folder, and Rust's `file_read` answers "" for a
+# missing file).
+
+load @term/base/exception
+  find absence
+
+load @term/base/file
+  find read
+
+load @term/base/file/directory
+  find walk, name walk-directory
+  find exists, name directory-exists
+
+load @term/base/file/metadata
+  find is-file
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/base/text
+  find ends-with
+  find starts-with
+  find split
+  find substring
+  find char-count
+  find char-code-at
+  find contains, name text-contains
+
+# every `.tree` file under `directory`, sorted by code point, shelved files left out
+task tree-files
+  mark async
+  take directory, like text
+  like list, like text
+
+  fork test, not(directory-exists(directory))
+    hold
+      halt absence
+        bind thing, directory
+  # one separator between the folder and each path, whether or not the folder was written with one
+  save folder, directory
+  walk test
+    hook test, and(ends-with(folder, </>), is-above(char-count(folder), 1))
+    hook hold
+      save folder, substring(folder, 0, subtract(char-count(folder), 1))
+  save found, make list
+  walk walk-directory(folder)
+    take path, like text
+    fork test, and(ends-with(path, <.tree>), is-file(path))
+      hold
+        fork test, not(declares-draft(read(path)))
+          hold
+            found/push(path)
+  back sort(found, from-texts)
+
+# the code points `\s` matches in a JavaScript pattern, as call/code/draft-mark.tree reads them
+task is-space
+  take point, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(point, 9), is-maximum(point, 13))
+    hold
+      back true
+  fork test, and(is-minimum(point, 8192), is-maximum(point, 8202))
+    hold
+      back true
+  fork test, or(is-equal(point, 32), or(is-equal(point, 160), or(is-equal(point, 5760), is-equal(point, 8232))))
+    hold
+      back true
+  fork test, or(is-equal(point, 8233), or(is-equal(point, 8239), or(is-equal(point, 8287), or(is-equal(point, 12288), is-equal(point, 65279)))))
+    hold
+      back true
+  back false
+
+# is this one line the marker: a head word, ` draft`, then white space only
+task is-marker
+  take line, like text
+  like boolean
+  mark private
+
+  fork test, not(or(starts-with(line, <mark draft>), starts-with(line, <note draft>)))
+    hold
+      back false
+  walk split(substring(line, 10), <>)
+    take point, like text
+    fork test, not(is-space(char-code-at(point, 0)))
+      hold
+        back false
+  back true
+
+# does a file's text shelve it: a top-level `mark draft` line anywhere in it, a line ending at a line feed, a carriage
+# return, U+2028 or U+2029
+task declares-draft
+  take text, like text
+  like boolean
+  mark private
+
+  walk split(text, <\n>)
+    take line, like text
+    fork test, text-contains(line, <draft>)
+      hold
+        save pieces, make list
+        pieces/push(line)
+        walk make list(13, 8232, 8233)
+          take code, like number
+          save next, make list
+          walk pieces
+            take piece, like text
+            walk split(piece, rune-to-text(code))
+              take part, like text
+              next/push(part)
+          save pieces, next
+        walk pieces
+          take piece, like text
+          fork test, is-marker(piece)
+            hold
+              back true
+  back false

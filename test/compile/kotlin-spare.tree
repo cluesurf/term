@@ -1,6 +1,6 @@
 note <Kotlin's spare node: a move keeps its own, a pop that does not build goes through the program's>
 
-# Ported from kotlin-spare.ts by hand (item 0572).
+# Ported from kotlin-spare.ts by hand (item 0572), its three helpers Term since decision 113.
 
 load ../support/compiling
   find compile-text
@@ -14,26 +14,43 @@ load @term/base/pattern
 
 load @term/base/text
   find contains, name text-contains
+  find index-of
+  find substring
+  find replace, name text-replace
+  find replace-all, name text-replace-all
+  find char-count
 
-bind task-of
+# the text of one emitted Kotlin function, from `fun <name>(` to the line that closes it, <> when there is none
+task task-of
   take text, like text
   take name, like text
   like text
-  case node
-    text <(() =\> \{ const start = $text.indexOf(`fun $\{$name\}(`); return start \< 0 ? "" : $text.slice(start, $text.indexOf("\n\}\n", start)) \})()>
 
-# Towers' older shape, the pop and the push called straight from the recursive move, which nothing is inlined into
-bind older-of
+  host start, index-of(text, <fun {name}(>)
+  fork test, is-below(start, 0)
+    hold
+      back <>
+  save end, index-of(text, <\n\}\n>, start)
+  # JavaScript's slice reads an end of -1 as one before the end
+  fork test, is-below(end, 0)
+    hold
+      save end, subtract(char-count(text), 1)
+  back substring(text, start, end)
+
+# Towers' older shape, the pop and the push called straight from the recursive move, which nothing is inlined into. The
+# original's first pattern is global and its second is not, and neither holds a character a pattern reads specially
+task older-of
   take stack, like text
   like text
-  case node
-    text <$stack.replace(/  call move-top\n    read piles\n    read from\n    read to\n/g, "  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n").replace(/      call move-top\n        read piles\n        read from\n        read to\n/, "      call push-disk\n        read piles\n        call pop-disk\n          read piles\n          read from\n        read to\n")>
 
-bind moved-off
+  host popped, text-replace-all(stack, <  call move-top\n    read piles\n    read from\n    read to\n>, <  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n>)
+  back text-replace(popped, <      call move-top\n        read piles\n        read from\n        read to\n>, <      call push-disk\n        read piles\n        call pop-disk\n          read piles\n          read from\n        read to\n>)
+
+task moved-off
   take older, like text
   like boolean
-  case node
-    text <!/call move-top\n    read piles/.test($older.slice($older.indexOf("task move-disks")))>
+
+  back not(text-contains(substring(older, index-of(older, <task move-disks>)), <call move-top\n    read piles>))
 
 task kotlin
   take file, like text

@@ -11,6 +11,23 @@ load ../support/compiling
   find compile-outcome
   find compiling-source
 
+load @term/base/list
+  find push
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load ../support/judging
+  find make-record
+  find read-field
+  find set-field
+  find truth
+
+load ../support/walking
+  find kind-of
+  find visit
+
 dock load
   load <@term/make/code/check/holds>, name holds-module
   load <@term/make/code/compile/cache>, name cache-module
@@ -27,26 +44,86 @@ bind replayed-now
   case node
     text <$module.holdsReplayed.tasks>
 
-bind answer
-  take out, like dynamic
+# host reflect: a value as JSON text, a deep copy, and whether a record holds a field at all
+bind json-text
+  take value, like dynamic
   like text
   case node
-    text <JSON.stringify(\{ ok: $out.ok, said: ($out.ok ? $out.warningNotes : $out.notes).map(d =\> `$\{d.name\} $\{d.line\}:$\{d.column\} $\{d.message\}`).sort(), owed: $out.ok ? $out.obligations : undefined \})>
+    text <JSON.stringify($value)>
 
-bind holds-of
+bind cloned
+  take value, like dynamic
+  like dynamic
+  case node
+    text <structuredClone($value)>
+
+bind has-field
+  take value, like dynamic
+  take field, like text
+  like boolean
+  case node
+    text <($field in $value)>
+
+# what was said, each `name line:column message`, sorted
+task said-sorted
+  take found, like dynamic
+  like list, like text
+
+  host out, make list
+  walk found
+    take one, like dynamic
+    out/push(<{read-field(one, <name>)} {read-field(one, <line>)}:{read-field(one, <column>)} {read-field(one, <message>)}>)
+  back sort(out, from-texts)
+
+task answer
+  take out, like dynamic
+  like text
+
+  fork test, truth(read-field(out, <ok>))
+    hold
+      back json-text(make-record(make(list, <ok>, read-field(out, <ok>), <said>, said-sorted(read-field(out, <warningNotes>)), <owed>, read-field(out, <obligations>))))
+  # owed is left out, as JSON drops the undefined the original wrote
+  back json-text(make-record(make(list, <ok>, read-field(out, <ok>), <said>, said-sorted(read-field(out, <notes>)))))
+
+task holds-of
   take module, like dynamic
   take program, like dynamic
   like text
-  case node
-    text <(() =\> \{ const tally = \{ total: 0, proven: 0, failed: [] \}; const said = $module.checkHolds($program, "m.tree", \{ tally \}).map(d =\> `$\{d.name\} $\{d.span.start.line\}:$\{d.span.start.column\} $\{d.message\}`); return JSON.stringify(\{ said: said.sort(), total: tally.total, proven: tally.proven, kinds: tally.kinds \}) \})()>
+
+  host tally, make-record(make(list, <total>, 0, <proven>, 0, <failed>, make(list)))
+  host found, module/check-holds(program, <m.tree>, make-record(make(list, <tally>, tally)))
+  host said, make list
+  walk found
+    take one, like dynamic
+    host start, read-field(read-field(one, <span>), <start>)
+    said/push(<{read-field(one, <name>)} {read-field(start, <line>)}:{read-field(start, <column>)} {read-field(one, <message>)}>)
+  back json-text(make-record(make(list, <said>, sort(said, from-texts), <total>, read-field(tally, <total>), <proven>, read-field(tally, <proven>), <kinds>, read-field(tally, <kinds>))))
+
+
 
 # THE KEY IS NODE-JSON'S TEXT (decision 034 section 1, item 0319): a `need false` field absent and the same field at its default are one
 # node. Every task that carries no `async` is handed `async: false`, and every member read no `nick` the empty text
-bind with-defaults
+task with-defaults
   take program, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const copy = structuredClone($program); let written = 0; const walk = value =\> \{ if (Array.isArray(value)) \{ value.forEach(walk); return \} if (value && typeof value === "object") \{ if (value.form === "function" && Array.isArray(value.body) && !("async" in value)) \{ value.async = false; written++ \} if (value.form === "member" && !("nick" in value)) \{ value.nick = ""; written++ \} Object.values(value).forEach(walk) \} \}; walk(copy); return \{ copy, written \} \})()>
+
+  host copy, cloned(program)
+  host written, make list
+  visit
+    read copy
+    task
+      take node, like dynamic
+      like void
+      host form, read-field(node, <form>)
+      fork test, and(is-equal(form, <function>), and(is-equal(kind-of(read-field(node, <body>)), <list>), not(has-field(node, <async>))))
+        hold
+          set-field(node, <async>, false)
+          written/push(<async>)
+      fork test, and(is-equal(form, <member>), not(has-field(node, <nick>)))
+        hold
+          set-field(node, <nick>, <>)
+          written/push(<nick>)
+  back make-record(make(list, <copy>, copy, <written>, written/length))
 
 bind defaults-copy
   take made, like dynamic

@@ -86,14 +86,20 @@ bind j-context
   case node
     text <$module.contextWithSignature($hyps)>
 
-bind j-check
+task j-check
   take module, like dynamic
   take context, like dynamic
   take term, like dynamic
   take type, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ try \{ $module.check($context, $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+  fork
+    mark unsafe
+    module/check(context, term, module/evaluate(make(list), type))
+    back true
+  halt take
+    take cause
+    back false
 
 task kc
   take name, like text

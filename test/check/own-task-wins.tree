@@ -17,26 +17,75 @@ load @term/base/pattern
   find pattern
   find matches
 
+load @term/base/text
+  find starts-with
+  find index-of
+  find substring
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/walking
+  find kind-of
+  find nodes-of
+
 # every call a task makes, by name, read off the checked program
-bind callees-in
+task callees-in
   take program, like dynamic
   take name, like text
   like list, like text
-  case node
-    text <(() =\> \{ const task = ($program ?? []).find(statement =\> statement.form === "function" && statement.name === $name); const out = []; const stack = [task]; while (stack.length \> 0) \{ const node = stack.pop(); if (!node || typeof node !== "object") continue; if (Array.isArray(node)) \{ stack.push(...node); continue \} if (node.form === "call" && node.callee?.form === "variable" && node.callee.name) out.push(node.callee.name); for (const [key, value] of Object.entries(node)) \{ if (key !== "span" && key !== "type") stack.push(value) \} \} return out \})()>
 
-bind some-matching
+  host out, make list
+  fork test, is-unequal(kind-of(program), <list>)
+    hold
+      back out
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        walk nodes-of(statement, <call>)
+          take call, like dynamic
+          host callee, read-field(call, <callee>)
+          fork test, and(is-equal(read-field(callee, <form>), <variable>), truth(read-field(callee, <name>)))
+            hold
+              out/push(read-field(callee, <name>))
+        back out
+  back out
+
+task some-matching
   take names, like list, like text
   like boolean
-  case node
-    text <$names.some(c =\> /^list_last/.test(c))>
 
-# the body of the emitted `five`, or <>
-bind five-of
+  walk names
+    take one, like text
+    fork test, starts-with(one, <list_last>)
+      hold
+        back true
+  back false
+
+# the body of the emitted `five`, or <>: what lies between the first `{` after `function five()` and the next `}`
+task five-of
   take text, like text
   like text
-  case node
-    text </function five\(\)[^\{]*\\\{([^\}]*)\\\}/.exec($text)?.[1] ?? "">
+
+  host at, index-of(text, <function five()>)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  host open, index-of(text, <\{>, at)
+  fork test, is-below(open, 0)
+    hold
+      back <>
+  host close, index-of(text, <\}>, add(open, 1))
+  fork test, is-below(close, 0)
+    hold
+      back <>
+  back substring(text, add(open, 1), close)
+
+
+
+
 
 task build
   take main, like text

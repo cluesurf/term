@@ -14,23 +14,84 @@ load ../support/compiling
   find file-text
   find project-path
 
-bind verdict-field
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find trim-start
+  find index-of
+
+load ../support/reading
+  find lines-of
+
+load ../support/judging
+  find read-at
+
+# the first index of a line equal to this one, as lines.indexOf(l) read it
+task first-index-of
+  take lines, like dynamic
+  take line, like text
+  like number
+
+  save at, 0
+  walk lines
+    take one, like text
+    fork test, is-equal(one, line)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# a line set in by whitespace and then `var values: `, as /^\s+var values: / read it
+task values-line
+  take line, like text
+  like boolean
+
+  host bare, trim-start(line)
+  back and(is-above(line/length, bare/length), starts-with(bare, <var values: >))
+
+# the `values` field of the emitted `struct Verdict`, two lines under it
+task verdict-field
   take swift, like text
   like text
-  case node
-    text <(() =\> \{ const lines = $swift.split("\n"); return lines.find(l =\> /^\s+var values: /.test(l) && lines[lines.indexOf(l) - 2]?.includes("struct Verdict")) ?? "" \})()>
 
-bind goes-in-as-data
+  host lines, lines-of(swift)
+  walk lines
+    take line, like text
+    fork test, values-line(line)
+      hold
+        host above, subtract(first-index-of(lines, line), 2)
+        fork test, and(is-minimum(above, 0), text-contains(<{read-at(lines, above)}>, <struct Verdict>))
+          hold
+            back line
+  back <>
+
+# every construction of a Verdict with values none passes it as data
+task goes-in-as-data
   take swift, like text
   like boolean
-  case node
-    text <(() =\> \{ const found = $swift.split("\n").filter(l =\> /Verdict\(status: .*values: none/.test(l)); return found.length \> 0 && found.every(l =\> /values: none\.data\)/.test(l)) \})()>
 
-bind owned
+  save found, 0
+  save all-data, true
+  walk lines-of(swift)
+    take line, like text
+    host at, index-of(line, <Verdict(status: >)
+    fork test, and(is-minimum(at, 0), is-minimum(index-of(line, <values: none>, add(at, 16)), 0))
+      hold
+        save found, add(found, 1)
+        fork test, not(text-contains(line, <values: none.data)>))
+          hold
+            save all-data, false
+  back and(is-above(found, 0), all-data)
+
+task owned
   take field, like text
   like boolean
-  case node
-    text </var values: \[Int\]/.test($field)>
+
+  back text-contains(field, <var values: [Int]>)
+
+
+
+
 
 host program-path, project-path(<deck/test>, <code/weakest-precondition.tree>)
 host built, compile-text(file-text(program-path), make(compile-choice, bind(file, program-path), bind(project, <deck/test>), bind(stdlib, <swift>), bind(env, <swift>), bind(entry, <verify-procedure>), bind(project-lean, true)))

@@ -9,15 +9,27 @@ note <The product prover (check/product.ts)>
 
 load @term/base/list
   find size
+  find push
+  find sort
+
+load ../support/judging
+  find make-record
+  find assert-true
+  find throws
+  find empty-record
+  find set-field
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/ordering
+  find from-texts
+
+load ../support/walking
+  find fields-of
 
 dock load
   load <@term/make/code/check/product>, name product-module
-
-bind make-record
-  take parts, like list, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
 
 bind read-field
   take value, like dynamic
@@ -57,19 +69,6 @@ bind truth
   case node
     text <Boolean($value)>
 
-bind assert-true
-  take value, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
-
-bind throws-type-error
-  take module, like dynamic
-  take run, like dynamic
-  like boolean
-  case node
-    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
-
 bind product-proves-3
   take module, like dynamic
   take a0, like dynamic
@@ -101,14 +100,136 @@ bind refute-1
   case node
     text <$module.refute($a0)>
 
+# the host's map, which product keys a polynomial with
+bind new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind map-set
+  take map, like dynamic
+  take key, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$map.set($key, $value)>
+
+# the NUL character, which a Term literal does not spell
+bind nul
+  like text
+  case node
+    text <String.fromCharCode(0)>
+
+# a big integer's own reading: is it zero, and its negation
+bind big-is-zero
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === 0n)>
+
+bind big-negated
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(-$value)>
+
+# a monomial's key: its variables written with a space, sorted, joined by NUL the way holds.ts keys them
+task monomial-key
+  take written, like text
+  like text
+
+  host names, make list
+  walk text-split(written, < >)
+    take name, like text
+    fork test, is-unequal(name, <>)
+      hold
+        names/push(name)
+  save out, <>
+  save first, true
+  walk sort(names, from-texts)
+    take name, like text
+    fork test, first
+      hold
+        save out, name
+        save first, false
+      miss
+        save out, <{out}{nul()}{name}>
+  back out
+
 # a polynomial from monomials written with a space, stored NUL-joined the way holds.ts keys them
-# a polynomial from monomials written with a space, stored NUL-joined the way holds.ts keys them
-bind p-with
+task p-with
   take module, like dynamic
   take terms, like dynamic
   like dynamic
-  case node
-    text <new Map(Object.entries($terms).map(([k, c]) =\> [k.split(" ").filter(Boolean).sort().join("\\u0000"), $module.rational(BigInt(c))]))>
+
+  host made, new-map()
+  walk fields-of(terms)
+    take written, like text
+    map-set(made, monomial-key(written), module/rational(big-number(read-field(terms, written))))
+  back made
+
+# the record with one field set anew, the others as they were
+task copied-with
+  take found, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+
+  host made, empty-record()
+  walk fields-of(found)
+    take name, like text
+    set-field(made, name, read-field(found, name))
+  set-field(made, field, value)
+  back made
+
+# a found certificate with one thing changed, each read by replay
+task tampered
+  take module, like dynamic
+  take found, like dynamic
+  take how, like text
+  like dynamic
+
+  host multipliers, read-field(found, <multipliers>)
+  host rows, read-field(found, <rows>)
+  save used, -1
+  save index, 0
+  walk multipliers
+    take k, like dynamic
+    fork test, and(is-below(used, 0), is-equal(big-is-zero(read-field(k, <n>)), false))
+      hold
+        save used, index
+    save index, add(index, 1)
+  host changed, make list
+  host kept-rows, make list
+  host kept-multipliers, make list
+  save index, 0
+  walk multipliers
+    take k, like dynamic
+    fork test, is-equal(how, <negated>)
+      hold
+        changed/push(module/rational(big-negated(read-field(k, <n>)), read-field(k, <d>)))
+      miss
+        changed/push(module/rational(big-number(<0>)))
+    fork test, is-unequal(index, used)
+      hold
+        kept-multipliers/push(k)
+    save index, add(index, 1)
+  save index, 0
+  host forged-rows, make list
+  walk rows
+    take row, like dynamic
+    forged-rows/push(make-record(make(list, <fact>, 99)))
+    fork test, is-unequal(index, used)
+      hold
+        kept-rows/push(row)
+    save index, add(index, 1)
+  fork test, or(is-equal(how, <negated>), is-equal(how, <zeroed>))
+    hold
+      back copied-with(found, <multipliers>, changed)
+  fork test, is-equal(how, <shortened>)
+    hold
+      back make-record(make(list, <rows>, kept-rows, <multipliers>, kept-multipliers))
+  back copied-with(found, <rows>, forged-rows)
 
 task p
   take terms, like dynamic
@@ -116,14 +237,7 @@ task p
 
   back p-with(product-module, terms)
 
-# a found certificate with one thing changed, each read by replay
-bind tampered
-  take module, like dynamic
-  take found, like dynamic
-  take how, like text
-  like dynamic
-  case node
-    text <(() =\> \{ const used = $found.multipliers.findIndex(k =\> k.n !== 0n); return (\{ negated: () =\> (\{ ...$found, multipliers: $found.multipliers.map(k =\> $module.rational(-k.n, k.d)) \}), zeroed: () =\> (\{ ...$found, multipliers: $found.multipliers.map(() =\> $module.rational(0n)) \}), shortened: () =\> (\{ rows: $found.rows.filter((_, i) =\> i !== used), multipliers: $found.multipliers.filter((_, i) =\> i !== used) \}), forged: () =\> (\{ ...$found, rows: $found.rows.map(() =\> (\{ fact: 99 \})) \}) \})[$how]() \})()>
+
 
 task at
   take poly, like dynamic

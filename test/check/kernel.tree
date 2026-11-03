@@ -5,30 +5,100 @@ note <Kernel test: the Boolean double-negation theorem>
 # that a definition whose check does not end is refused alone, out of its step budget (decision 047). A binder is a term (spec 4.6). Here a
 # binder names its placeholder, and `pi-of` is a binder whose name is never read.
 
+load @term/base/text
+  find char-code-at
+  find starts-with
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/check/kernel-terms>, name coc-terms
 
-bind coc-named
+# a regular expression's test of a text, which Term has no literal for
+bind matches
+  take text, like text
+  take pattern, like text
+  like boolean
+  case node
+    text <new RegExp($pattern).test($text)>
+
+# the placeholder level a binder's name stands for: -1000 less the name's hash, a * 31 + code from 7
+task level-of
+  take name, like text
+  like number
+
+  save hash, 7
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      save hash, add(multiply(hash, 31), char-code-at(name, at))
+      save at, add(at, 1)
+  back subtract(-1000, hash)
+
+task coc-named
   take module, like dynamic
   take name, like text
   like dynamic
-  case node
-    text <$module.makeVariable(-1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7))>
 
-bind coc-abstract
+  back module/make-variable(level-of(name))
+
+# the term with the named placeholder made a bound variable, at depth d under its binders
+task abstract-at
+  take module, like dynamic
+  take level, like number
+  take t, like dynamic
+  take d, like number
+  like dynamic
+
+  host tag, read-field(t, <tag>)
+  fork test, is-equal(tag, <variable>)
+    hold
+      fork test, is-equal(read-field(t, <level>), level)
+        hold
+          back module/make-bound(d)
+      back t
+  fork test, is-equal(tag, <pi>)
+    hold
+      back module/make-pi(abstract-at(module, level, read-field(t, <input>), d), abstract-at(module, level, read-field(t, <body>), add(d, 1)))
+  fork test, is-equal(tag, <lambda>)
+    hold
+      back module/make-lambda(abstract-at(module, level, read-field(t, <body>), add(d, 1)))
+  fork test, is-equal(tag, <self>)
+    hold
+      back module/make-self(abstract-at(module, level, read-field(t, <body>), add(d, 1)))
+  fork test, is-equal(tag, <apply>)
+    hold
+      back module/make-apply(abstract-at(module, level, read-field(t, <fun>), d), abstract-at(module, level, read-field(t, <arg>), d))
+  fork test, is-equal(tag, <annotate>)
+    hold
+      back module/make-annotate(abstract-at(module, level, read-field(t, <value>), d), abstract-at(module, level, read-field(t, <type>), d))
+  back t
+
+task coc-abstract
   take module, like dynamic
   take name, like text
   take term, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const m = $module; const level = -1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7); const walk = (t, d) =\> \{ switch (t.tag) \{ case "variable": return t.level === level ? m.makeBound(d) : t; case "pi": return m.makePi(walk(t.input, d), walk(t.body, d + 1)); case "lambda": return m.makeLambda(walk(t.body, d + 1)); case "self": return m.makeSelf(walk(t.body, d + 1)); case "apply": return m.makeApply(walk(t.fun, d), walk(t.arg, d)); case "annotate": return m.makeAnnotate(walk(t.value, d), walk(t.type, d)); default: return t \} \}; return walk($term, 0) \})()>
 
-bind result-ok
+  back abstract-at(module, level-of(name), term, 0)
+
+task result-ok
   take results, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$results.some(r =\> r.name === $name && r.ok)>
+
+  walk results
+    take one, like dynamic
+    fork test, and(is-equal(read-field(one, <name>), name), truth(read-field(one, <ok>)))
+      hold
+        back true
+  back false
 
 bind results-size
   take results, like dynamic
@@ -37,13 +107,23 @@ bind results-size
     text <$results.length>
 
 # a mismatch raises a `failure` whose note carries the kind `kernel-mismatch:` (the original's TypeMismatch)
-bind rejects-annotation
+task rejects-annotation
   take module, like dynamic
   take book, like dynamic
   take term, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ try \{ $module.normalize($book, $term, 0); return false \} catch (error) \{ const note = error?.note; return typeof note === "string" && note.startsWith("kernel-mismatch:") && $module.messageOf(note).startsWith("type mismatch") \} \})()>
+
+  fork
+    mark unsafe
+    module/normalize(book, term, 0)
+    back false
+  halt take
+    take cause
+    host note, read-field(cause, <note>)
+    fork test, is-unequal(kind-of(note), <string>)
+      hold
+        back false
+    back and(starts-with(note, <kernel-mismatch:>), starts-with(module/message-of(note), <type mismatch>))
 
 bind with-entry
   take book, like dynamic
@@ -52,12 +132,29 @@ bind with-entry
   case node
     text <[...$book, $added]>
 
-bind refused-alone
+task refused-alone
   take results, like dynamic
   take size, like number
   like boolean
-  case node
-    text <(() =\> \{ const loop = $results.find(result =\> result.name === "loop"); const others = $results.filter(result =\> result.name !== "loop"); return Boolean(loop && !loop.ok && /^the check did not finish within \d+ reduction steps$/.test(loop.error) && others.length === $size && others.every(result =\> result.ok)) \})()>
+
+  save loop-seen, false
+  save loop-refused, false
+  save others, 0
+  save others-ok, true
+  walk results
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <name>), <loop>)
+      hold
+        fork test, is-equal(loop-seen, false)
+          hold
+            save loop-seen, true
+            save loop-refused, and(is-equal(truth(read-field(one, <ok>)), false), matches(<{read-field(one, <error>)}>, <<^the check did not finish within \d+ reduction steps$>>))
+      miss
+        save others, add(others, 1)
+        fork test, is-equal(truth(read-field(one, <ok>)), false)
+          hold
+            save others-ok, false
+  back and(loop-seen, and(loop-refused, and(is-equal(others, size), others-ok)))
 
 host universe, coc-terms/make-universe()
 

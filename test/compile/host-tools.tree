@@ -1,174 +1,357 @@
 note <The data tools: form, analyze, the compile driver and roles, streams and keys>
 
-# Ported from host-tools.ts by tmp/self-host/0572/fact-suites.mjs (item 0572). parser, analyze, compile and host are the subject (decision 106), and the driver is called directly, since roleOf is the thing under test. Its temp role folders are host folders the system removes. Every test reads the fact the original's ok of that name
-# held, and the statements that make the facts are the original's, compiled from its own text, as host code in one bind.
+# Ported from host-tools.ts by statement (items 0572 and 0877, decision 113). parser, analyze, host and role-of are the subject (decision 106),
+# and the four compiles go through the harness, whose `role` is the original's `roleOf: () => 'x'`. The role folders are temp folders,
+# removed when the run ends. The original guards its per-fixture and key checks with `if (tree.ok)`: here the check runs and fails when the
+# read did not, so the counts agree whenever the reads do.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+  find read-at
+  find truth
+
+load ../support/reading
+  find any-holding
+  find any-with
+  find all-with
+  find count-with
+
+load ../support/walking
+  find kind-of
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
 
 dock load
   load <@term/make/code/parser/tree>, name tools-parser
   load <@term/make/code/analyze>, name tools-analyze
-  load <@term/make/code/compile/compile>, name tools-driver
   load <@term/make/code/compile/host>, name tools-host
   load <@term/call/code/role-of>, name tools-role
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
 
-bind fact-table
-  take toolsparser, like dynamic
-  take toolsanalyze, like dynamic
-  take toolsdriver, like dynamic
-  take toolshost, like dynamic
-  take toolsrole, like dynamic
+form file-and-text
+  link file, like text
+  link text, like text
+
+host fixture-root, <deck/host/test/fixture>
+
+task fixture
+  take name, like text
+  like text
+
+  back file-text(node-path/join(fixture-root, name))
+
+task parse-of
+  take file, like text
+  take given, like text
   like dynamic
-  case node
-    text <(() =\> \{ const __facts = []; const \{ mkdirSync, mkdtempSync, readFileSync, writeFileSync \} = process.getBuiltinModule("node:fs"); const \{ tmpdir \} = process.getBuiltinModule("node:os"); const \{ join \} = process.getBuiltinModule("node:path"); const \{ parse \} = $toolsparser; const \{ analyze \} = $toolsanalyze; const \{ compile \} = $toolsdriver; const \{ dataKeys, expandData, formatData, isCompactTree, readDataText, readStream, writeLong \} = $toolshost; const \{ projectRoleOf \} = $toolsrole; let pass = 0; let fail = 0; const HERE = process.cwd() + "/test/compile"; const FIXTURE = join(HERE, '../../deck/host/test/fixture'); const fixture = (name) =\> readFileSync(join(FIXTURE, name), 'utf8'); for (const name of [ 'basic.tree', 'anchors.tree', 'basic.line', 'anchors.line', 'stream.line', ]) \{ const text = fixture(name); const tree = parse(\{ file: name, text \}); __facts.push([`$\{name\} parses`, Boolean(tree.ok)]); if (tree.ok) \{ __facts.push([`$\{name\} is $\{name.endsWith('.line') ? '' : 'not '\}compact`, Boolean(isCompactTree(tree.tree) === name.endsWith('.line'))]); __facts.push([`$\{name\} formats to itself`, Boolean(formatData(tree.tree, name) === text)]); \} \} const commented = [ '# the anchor', 'tree base', '  host env, \<prod\>', '', '# the service', 'host x', '  # nested', '  host y, 1', '  list a', '    # numbers', '    5, 6', '  list m', '    # first', '    mesh', '      fuse base', '      host n, \<a\>', '', ].join('\\n'); const commentedTree = parse(\{ file: 'c.tree', text: commented \}); __facts.push(['comments are kept where they were written', Boolean(commentedTree.ok && formatData(commentedTree.tree, 'c.tree') === commented)]); const compactCommented = '# one\\nh(x,1)\\n# two\\nm(h(y,2))\\n'; const compactTree = parse(\{ file: 'c.line', text: compactCommented \}); __facts.push(['a compact file keeps its comments', Boolean(compactTree.ok && formatData(compactTree.tree, 'c.line') === '# one\\nh(x,1)\\n# two\\nm(h(y,2))\\n')]); const loose = 'host x\\n  host y, 1\\nlist a\\n  5\\n  6\\nlist m\\n  mesh\\n    host n, \<a\>\\n'; const looseTree = parse(\{ file: 'l.tree', text: loose \}); const looseRead = readDataText(\{ file: 'l.tree', text: loose \}); __facts.push(['a loose layout formats to what the writer gives', Boolean(looseTree.ok && looseRead.ok && formatData(looseTree.tree, 'l.tree') === writeLong(looseRead.data.root))]); const analysis = analyze(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); __facts.push(['a data file has no program', Boolean(analysis.program === null)]); __facts.push(['a data file has no diagnostics', Boolean(analysis.diagnostics.length === 0)]); __facts.push(['a data file formats canonically', Boolean(analysis.format() === fixture('basic.tree'))]); __facts.push(['a clean data file has no findings', Boolean(analysis.lint().length === 0)]); __facts.push(['a clean data file checks clean', Boolean(analysis.check().length === 0)]); const twice = analyze(\{ file: 'twice.tree', text: fixture('bad/twice.tree'), \}); const findings = twice.lint(); __facts.push(['a broken data file lints under L040', Boolean(findings.length \> 0 && findings.every(f =\> f.code === 'L040'))]); __facts.push(['the finding carries the grammar rule', Boolean(findings.some(f =\> f.message.includes('given twice')))]); __facts.push(['a broken data file is left as written by form', Boolean(twice.format() === fixture('bad/twice.tree'))]); __facts.push(['a broken data file checks with the same message', Boolean(twice.check().some(d =\> d.message.includes('given twice')))]); const code = analyze(\{ file: 'go.tree', text: 'task go\\n  send back, code 1\\n', \}); __facts.push(['a program still mills', Boolean(code.program !== null)]); const compiled = compile(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); __facts.push(['a data file compiles to a data module', Boolean(compiled.ok && compiled.typescript.includes('export default data'))]); const asHost = compile(\{ file: 'basic.tree', text: fixture('basic.tree') \}, \{ roleOf: () =\> 'host' \}); __facts.push(['a host role compiles data', Boolean(asHost.ok && asHost.typescript.includes('export default data'))]); const asCode = compile(\{ file: 'basic.tree', text: fixture('basic.tree') \}, \{ roleOf: () =\> 'code' \}); __facts.push(['a code role skips the data reader', Boolean(!(asCode.ok && asCode.typescript.includes('export default data')))]); const constants = 'host x, code 10\\n'; const forcedData = compile(\{ file: 'k.tree', text: constants \}, \{ roleOf: () =\> 'host' \}); __facts.push(['a host role on code reports the grammar', Boolean(!forcedData.ok && forcedData.diagnostics.some(d =\> d.message.includes('is not data')))]); const root = mkdtempSync(join(tmpdir(), 'term-role-')); mkdirSync(join(root, 'data'), \{ recursive: true \}); mkdirSync(join(root, 'code'), \{ recursive: true \}); writeFileSync(join(root, 'deck.tree'), 'deck @probe/role\\n  code \<0.0.0\>\\n'); writeFileSync(join(root, 'role.tree'), 'role host\\n  take @/data/**/*.tree\\n\\nrole code\\n  take @/code/**/*.tree\\n'); const roleOf = projectRoleOf(root); __facts.push(['role.tree names a data file', Boolean(roleOf(join(root, 'data/config.tree')) === 'host')]); __facts.push(['role.tree names a code file', Boolean(roleOf(join(root, 'code/main.tree')) === 'code')]); __facts.push(['an unlisted file has no role', Boolean(roleOf(join(root, 'other/x.tree')) === null)]); const bare = mkdtempSync(join(tmpdir(), 'term-norole-')); __facts.push(['no role.tree means no role', Boolean(projectRoleOf(bare)(join(bare, 'x.tree')) === null)]); const pointed = mkdtempSync(join(tmpdir(), 'term-role-dir-')); mkdirSync(join(pointed, 'roles'), \{ recursive: true \}); writeFileSync(join(pointed, 'deck.tree'), 'deck @probe/pointed\\n  code \<0.0.0\>\\n  role ./roles\\n'); writeFileSync(join(pointed, 'roles/role.tree'), 'role host\\n  take @/**/*.tree\\n'); __facts.push(['the manifest can point at a role directory', Boolean(projectRoleOf(pointed)(join(pointed, 'any.tree')) === 'host')]); const stream = readStream(\{ file: 'stream.line', text: fixture('stream.line'), \}); __facts.push(['the stream fixture reads', Boolean(stream.ok && stream.lines === 2)]); if (stream.ok) \{ const keys = dataKeys(stream.data); __facts.push(['the stream expanded its anchor', Boolean(keys.some(k =\> k.path === 'vars/prod-service/config/env' && k.value === '\<prod\>'))]); \} const redeclared = readStream(\{ file: 's.line', text: 't(a,h(x,1))\\nh(p,f(a))\\n\\n# later\\nt(a,h(x,2))\\nh(q,f(a))\\n', \}); __facts.push(['a later anchor replaces the earlier one from that line on', Boolean(redeclared.ok && writeLong(redeclared.data) === 'host p\\n  host x, 1\\nhost q\\n  host x, 2\\n')]); const mixed = readStream(\{ file: 's.line', text: 'h(p,1)\\nm(h(x,2))\\n', \}); __facts.push(['a stream that mixes entries and items is refused at the line', Boolean(!mixed.ok && mixed.diagnostics[0]?.span.start.line === 1 && mixed.diagnostics[0].message.includes('never both'))]); const items = readStream(\{ file: 's.line', text: 'm(h(name,\<foo\>))\\nm(h(name,\<bar\>))\\n', \}); __facts.push(['a stream of items is a list', Boolean(items.ok && writeLong(items.data) === 'mesh\\n  host name, \<foo\>\\nmesh\\n  host name, \<bar\>\\n')]); const repeated = readStream(\{ file: 's.line', text: 'h(event,\<start\>)\\nh(event,\<stop\>)\\n', \}); __facts.push(['a key a later line gives again is refused at that line, naming the first', Boolean(!repeated.ok && repeated.diagnostics[0]?.span.start.line === 1 && repeated.diagnostics[0].message.includes('line 1 gave it first'))]); const broken = readStream(\{ file: 's.line', text: 'h(p,1)\\nh(q,f(nothing))\\n', \}); __facts.push(['a fuse of an unknown anchor names its line', Boolean(!broken.ok && broken.diagnostics.some(d =\> d.message.includes('nothing')))]); const basic = readDataText(\{ file: 'basic.tree', text: fixture('basic.tree'), \}); const expanded = basic.ok ? expandData(basic.data, 'basic.tree') : basic; if (expanded.ok) \{ const keys = dataKeys(expanded.data); __facts.push(['every key has a row', Boolean(keys.length === 13)]); __facts.push(['a map row says what it holds', Boolean(keys.some(k =\> k.path === 'x' && k.kind === 'map' && k.value === '4 entries'))]); __facts.push(['a list item has an index', Boolean(keys.some(k =\> k.path === 'x/a/1' && k.value === '6'))]); __facts.push(['a text value is written as text', Boolean(keys.some(k =\> k.path === 'x/w' && k.value === '\<foo\>'))]); \} console.log(`\\nhost-tools: $\{pass\} pass, $\{fail\} fail`); if (fail \> 0) \{ 0; \} ; return new Map(__facts) \})()>
 
-bind fact
-  take facts, like dynamic
+  back tools-parser/parse(make(file-and-text, bind(file, file), bind(text, given)))
+
+# the messages of a list of diagnostics or findings
+task messages-of
+  take items, like dynamic
+  like list, like text
+
+  host out, make list
+  walk items
+    take one, like dynamic
+    out/push(one/message)
+  back out
+
+# form: the canonical layout from the tree
+task parses
   take name, like text
   like boolean
-  case node
-    text <$facts.get($name) === true>
 
-host facts, fact-table(tools-parser, tools-analyze, tools-driver, tools-host, tools-role)
+  back truth(parse-of(name, fixture(name))/ok)
+
+task compact-as
+  take name, like text
+  take compact, like boolean
+  like boolean
+
+  host parsed, parse-of(name, fixture(name))
+  back and(truth(parsed/ok), is-equal(tools-host/is-compact-tree(parsed/tree), compact))
+
+task formats-itself
+  take name, like text
+  like boolean
+
+  host given, fixture(name)
+  host parsed, parse-of(name, given)
+  back and(truth(parsed/ok), is-equal(tools-host/format-data(parsed/tree, name), given))
 
 test <basic.tree parses>
-  want hold, fact(facts, <basic.tree parses>)
+  want hold, parses(<basic.tree>)
 
 test <basic.tree is not compact>
-  want hold, fact(facts, <basic.tree is not compact>)
+  want hold, compact-as(<basic.tree>, false)
 
 test <basic.tree formats to itself>
-  want hold, fact(facts, <basic.tree formats to itself>)
+  want hold, formats-itself(<basic.tree>)
 
 test <anchors.tree parses>
-  want hold, fact(facts, <anchors.tree parses>)
+  want hold, parses(<anchors.tree>)
 
 test <anchors.tree is not compact>
-  want hold, fact(facts, <anchors.tree is not compact>)
+  want hold, compact-as(<anchors.tree>, false)
 
 test <anchors.tree formats to itself>
-  want hold, fact(facts, <anchors.tree formats to itself>)
+  want hold, formats-itself(<anchors.tree>)
 
 test <basic.line parses>
-  want hold, fact(facts, <basic.line parses>)
+  want hold, parses(<basic.line>)
 
 test <basic.line is compact>
-  want hold, fact(facts, <basic.line is compact>)
+  want hold, compact-as(<basic.line>, true)
 
 test <basic.line formats to itself>
-  want hold, fact(facts, <basic.line formats to itself>)
+  want hold, formats-itself(<basic.line>)
 
 test <anchors.line parses>
-  want hold, fact(facts, <anchors.line parses>)
+  want hold, parses(<anchors.line>)
 
 test <anchors.line is compact>
-  want hold, fact(facts, <anchors.line is compact>)
+  want hold, compact-as(<anchors.line>, true)
 
 test <anchors.line formats to itself>
-  want hold, fact(facts, <anchors.line formats to itself>)
+  want hold, formats-itself(<anchors.line>)
 
 test <stream.line parses>
-  want hold, fact(facts, <stream.line parses>)
+  want hold, parses(<stream.line>)
 
 test <stream.line is compact>
-  want hold, fact(facts, <stream.line is compact>)
+  want hold, compact-as(<stream.line>, true)
 
 test <stream.line formats to itself>
-  want hold, fact(facts, <stream.line formats to itself>)
+  want hold, formats-itself(<stream.line>)
+
+# a comment survives, wherever it sits: above an entry, a nested entry, a run of scalars, a mesh, an anchor
+host commented, <# the anchor\ntree base\n  host env, \<prod\>\n\n# the service\nhost x\n  # nested\n  host y, 1\n  list a\n    # numbers\n    5, 6\n  list m\n    # first\n    mesh\n      fuse base\n      host n, \<a\>\n>
 
 test <comments are kept where they were written>
-  want hold, fact(facts, <comments are kept where they were written>)
+  host parsed, parse-of(<c.tree>, commented)
+  want hold, truth(parsed/ok)
+  want hold, is-equal tools-host/format-data(parsed/tree, <c.tree>), commented
 
+# a comment above a compact line stays above it
 test <a compact file keeps its comments>
-  want hold, fact(facts, <a compact file keeps its comments>)
+  host parsed, parse-of(<c.line>, <# one\nh(x,1)\n# two\nm(h(y,2))\n>)
+  want hold, truth(parsed/ok)
+  want hold, is-equal tools-host/format-data(parsed/tree, <c.line>), <# one\nh(x,1)\n# two\nm(h(y,2))\n>
 
+# a loosely laid out file comes out canonical: the formatter agrees with the writer
 test <a loose layout formats to what the writer gives>
-  want hold, fact(facts, <a loose layout formats to what the writer gives>)
+  host loose, <host x\n  host y, 1\nlist a\n  5\n  6\nlist m\n  mesh\n    host n, \<a\>\n>
+  host parsed, parse-of(<l.tree>, loose)
+  host written-read, tools-host/read-data-text(make(file-and-text, bind(file, <l.tree>), bind(text, loose)))
+  want hold, truth(parsed/ok)
+  want hold, truth(written-read/ok)
+  want hold, is-equal tools-host/format-data(parsed/tree, <l.tree>), tools-host/write-long(written-read/data/root)
+
+# analyze: the editor and CLI path
+task analysis-of
+  take file, like text
+  take given, like text
+  like dynamic
+
+  back tools-analyze/analyze(make(file-and-text, bind(file, file), bind(text, given)))
+
+host analysis, analysis-of(<basic.tree>, fixture(<basic.tree>))
 
 test <a data file has no program>
-  want hold, fact(facts, <a data file has no program>)
+  want hold, is-equal kind-of(analysis/program), <null>
 
 test <a data file has no diagnostics>
-  want hold, fact(facts, <a data file has no diagnostics>)
+  want hold, is-equal analysis/diagnostics/length, 0
 
 test <a data file formats canonically>
-  want hold, fact(facts, <a data file formats canonically>)
+  want hold, is-equal analysis/format(), fixture(<basic.tree>)
 
 test <a clean data file has no findings>
-  want hold, fact(facts, <a clean data file has no findings>)
+  want hold, is-equal analysis/lint()/length, 0
 
 test <a clean data file checks clean>
-  want hold, fact(facts, <a clean data file checks clean>)
+  want hold, is-equal analysis/check()/length, 0
+
+host twice, analysis-of(<twice.tree>, fixture(<bad/twice.tree>))
+host findings, twice/lint()
 
 test <a broken data file lints under L040>
-  want hold, fact(facts, <a broken data file lints under L040>)
+  want hold, is-above findings/length, 0
+  want hold, is-equal count-with(findings, <code>, <L040>), findings/length
 
 test <the finding carries the grammar rule>
-  want hold, fact(facts, <the finding carries the grammar rule>)
+  want hold, any-holding(messages-of(findings), <given twice>)
 
 test <a broken data file is left as written by form>
-  want hold, fact(facts, <a broken data file is left as written by form>)
+  want hold, is-equal twice/format(), fixture(<bad/twice.tree>)
 
 test <a broken data file checks with the same message>
-  want hold, fact(facts, <a broken data file checks with the same message>)
+  want hold, any-holding(messages-of(twice/check()), <given twice>)
 
 test <a program still mills>
-  want hold, fact(facts, <a program still mills>)
+  host milled, analysis-of(<go.tree>, <task go\n  send back, code 1\n>)
+  want hold, is-unequal kind-of(milled/program), <null>
 
+# the compile driver and roles
 test <a data file compiles to a data module>
-  want hold, fact(facts, <a data file compiles to a data module>)
+  host out, compile-text(fixture(<basic.tree>), make(compile-choice, bind(file, <basic.tree>)))
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <export default data>)
 
 test <a host role compiles data>
-  want hold, fact(facts, <a host role compiles data>)
+  host out, compile-text(fixture(<basic.tree>), make(compile-choice, bind(file, <basic.tree>), bind(role, <host>)))
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <export default data>)
 
 test <a code role skips the data reader>
-  want hold, fact(facts, <a code role skips the data reader>)
+  host out, compile-text(fixture(<basic.tree>), make(compile-choice, bind(file, <basic.tree>), bind(role, <code>)))
+  want hold, not(and(out/ok, text-contains(out/emitted, <export default data>)))
 
 test <a host role on code reports the grammar>
-  want hold, fact(facts, <a host role on code reports the grammar>)
+  host out, compile-text(<host x, code 10\n>, make(compile-choice, bind(file, <k.tree>), bind(role, <host>)))
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <is not data>)
+
+task made-folder
+  take root, like text
+  take path, like text
+  like text
+
+  host at, node-path/join(root, path)
+  node-fs/mkdir-sync(at, make-record(make(list, <recursive>, true)))
+  back at
+
+task written
+  take root, like text
+  take path, like text
+  take given, like text
+  like void
+
+  node-fs/write-file-sync(node-path/join(root, path), given)
+
+task role-root
+  like text
+
+  host root, temp-folder(<term-role->)
+  made-folder(root, <data>)
+  made-folder(root, <code>)
+  written(root, <deck.tree>, <deck @probe/role\n  code \<0.0.0\>\n>)
+  written(root, <role.tree>, <role host\n  take @/data/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n>)
+  back root
+
+host root, role-root()
+host role-of, tools-role/project-role-of(root)
 
 test <role.tree names a data file>
-  want hold, fact(facts, <role.tree names a data file>)
+  want hold, is-equal role-of(node-path/join(root, <data/config.tree>)), <host>
 
 test <role.tree names a code file>
-  want hold, fact(facts, <role.tree names a code file>)
+  want hold, is-equal role-of(node-path/join(root, <code/main.tree>)), <code>
 
 test <an unlisted file has no role>
-  want hold, fact(facts, <an unlisted file has no role>)
+  want hold, is-equal kind-of(role-of(node-path/join(root, <other/x.tree>))), <null>
 
 test <no role.tree means no role>
-  want hold, fact(facts, <no role.tree means no role>)
+  host bare, temp-folder(<term-norole->)
+  host bare-role, tools-role/project-role-of(bare)
+  want hold, is-equal kind-of(bare-role(node-path/join(bare, <x.tree>))), <null>
 
 test <the manifest can point at a role directory>
-  want hold, fact(facts, <the manifest can point at a role directory>)
+  host pointed, temp-folder(<term-role-dir->)
+  made-folder(pointed, <roles>)
+  written(pointed, <deck.tree>, <deck @probe/pointed\n  code \<0.0.0\>\n  role ./roles\n>)
+  written(pointed, <roles/role.tree>, <role host\n  take @/**/*.tree\n>)
+  host pointed-role, tools-role/project-role-of(pointed)
+  want hold, is-equal pointed-role(node-path/join(pointed, <any.tree>)), <host>
+
+# streams
+task stream-of
+  take file, like text
+  take given, like text
+  like dynamic
+
+  back tools-host/read-stream(make(file-and-text, bind(file, file), bind(text, given)))
+
+# the first diagnostic of a refused read is at the line and says the words
+task refused-at
+  take outcome, like dynamic
+  take line, like number
+  take words, like text
+  like boolean
+
+  fork test, truth(outcome/ok)
+    hold
+      back false
+  host first, read-at(outcome/diagnostics, 0)
+  fork test, not(truth(first))
+    hold
+      back false
+  back and(is-equal(first/span/start/line, line), text-contains(first/message, words))
+
+host stream, stream-of(<stream.line>, fixture(<stream.line>))
 
 test <the stream fixture reads>
-  want hold, fact(facts, <the stream fixture reads>)
+  want hold, truth(stream/ok)
+  want hold, is-equal stream/lines, 2
 
 test <the stream expanded its anchor>
-  want hold, fact(facts, <the stream expanded its anchor>)
+  want hold, truth(stream/ok)
+  host env-keys, all-with(tools-host/data-keys(stream/data), <path>, <vars/prod-service/config/env>)
+  want hold, any-with(env-keys, <value>, <\<prod\>>)
 
 test <a later anchor replaces the earlier one from that line on>
-  want hold, fact(facts, <a later anchor replaces the earlier one from that line on>)
+  host redeclared, stream-of(<s.line>, <t(a,h(x,1))\nh(p,f(a))\n\n# later\nt(a,h(x,2))\nh(q,f(a))\n>)
+  want hold, truth(redeclared/ok)
+  want hold, is-equal tools-host/write-long(redeclared/data), <host p\n  host x, 1\nhost q\n  host x, 2\n>
 
 test <a stream that mixes entries and items is refused at the line>
-  want hold, fact(facts, <a stream that mixes entries and items is refused at the line>)
+  want hold, refused-at(stream-of(<s.line>, <h(p,1)\nm(h(x,2))\n>), 1, <never both>)
 
 test <a stream of items is a list>
-  want hold, fact(facts, <a stream of items is a list>)
+  host items, stream-of(<s.line>, <m(h(name,\<foo\>))\nm(h(name,\<bar\>))\n>)
+  want hold, truth(items/ok)
+  want hold, is-equal tools-host/write-long(items/data), <mesh\n  host name, \<foo\>\nmesh\n  host name, \<bar\>\n>
 
+# a stream of entries is one map: a key given again on a later line is refused there, where `--json` kept only the last (guides:
+# commands/mold, 2026-10-04)
 test <a key a later line gives again is refused at that line, naming the first>
-  want hold, fact(facts, <a key a later line gives again is refused at that line, naming the first>)
+  want hold, refused-at(stream-of(<s.line>, <h(event,\<start\>)\nh(event,\<stop\>)\n>), 1, <line 1 gave it first>)
 
 test <a fuse of an unknown anchor names its line>
-  want hold, fact(facts, <a fuse of an unknown anchor names its line>)
+  host broken, stream-of(<s.line>, <h(p,1)\nh(q,f(nothing))\n>)
+  want hold, not(truth(broken/ok))
+  want hold, any-holding(messages-of(broken/diagnostics), <nothing>)
+
+# keys
+host basic, tools-host/read-data-text(make(file-and-text, bind(file, <basic.tree>), bind(text, fixture(<basic.tree>))))
+host expanded, tools-host/expand-data(basic/data, <basic.tree>)
+host keys, tools-host/data-keys(expanded/data)
 
 test <every key has a row>
-  want hold, fact(facts, <every key has a row>)
+  want hold, truth(expanded/ok)
+  want hold, is-equal keys/length, 13
 
 test <a map row says what it holds>
-  want hold, fact(facts, <a map row says what it holds>)
+  host maps, all-with(all-with(keys, <path>, <x>), <kind>, <map>)
+  want hold, any-with(maps, <value>, <4 entries>)
 
 test <a list item has an index>
-  want hold, fact(facts, <a list item has an index>)
+  want hold, any-with(all-with(keys, <path>, <x/a/1>), <value>, <6>)
 
 test <a text value is written as text>
-  want hold, fact(facts, <a text value is written as text>)
+  want hold, any-with(all-with(keys, <path>, <x/w>), <value>, <\<foo\>>)

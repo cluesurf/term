@@ -9,38 +9,90 @@ load ../support/compiling
   find compile-text
   find compile-choice
 
+load @term/base/list
+  find push
+
+load @term/base/text
+  find replace-all
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load ../support/judging
+  find read-field
+  find read-at
+
+load ../support/walking
+  find kind-of
+  find nodes-of
+
 dock load
   load <@term/make/code/ir/inline-statements>, name inline-module
   load <@term/make/code/ir/simplify>, name simplify-module
 
-# the names a task's body still calls directly
-bind callees
+# the body of the program's function by that name, void when none
+task body-of
   take program, like dynamic
   take owner, like text
   like dynamic
-  case node
-    text <(() =\> \{ const found = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === "call" && value.callee?.form === "variable") found.push(value.callee.name); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit($program.find(n =\> n.form === "function" && n.name === $owner)?.body); return found \})()>
+
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), owner))
+      hold
+        back read-field(statement, <body>)
+  back void
+
+# the names a task's body still calls directly
+task callees
+  take program, like dynamic
+  take owner, like text
+  like dynamic
+
+  host found, make list
+  walk nodes-of(body-of(program, owner), <call>)
+    take call, like dynamic
+    host callee, read-field(call, <callee>)
+    fork test, is-equal(read-field(callee, <form>), <variable>)
+      hold
+        found/push(read-field(callee, <name>))
+  back found
 
 # every node of a form in a task's body
-bind nodes
+task nodes
   take program, like dynamic
   take owner, like text
   take form, like text
   like dynamic
-  case node
-    text <(() =\> \{ const found = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === $form) found.push(value); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit($program.find(n =\> n.form === "function" && n.name === $owner)?.body); return found \})()>
 
-bind let-names
+  back nodes-of(body-of(program, owner), form)
+
+task let-names
   take found, like dynamic
   like dynamic
-  case node
-    text <$found.map(n =\> n.name)>
 
-bind expression-forms
+  host out, make list
+  walk found
+    take one, like dynamic
+    out/push(read-field(one, <name>))
+  back out
+
+task expression-forms
   take found, like dynamic
   like dynamic
-  case node
-    text <$found.map(n =\> n.expr?.form)>
+
+  host out, make list
+  walk found
+    take one, like dynamic
+    out/push(read-field(read-field(one, <expr>), <form>))
+  back out
+
+
+
+
+
+
 
 bind has-item
   take items, like dynamic
@@ -55,19 +107,27 @@ bind size-of
   case node
     text <$items.length>
 
-bind count-of
+task count-of
   take items, like dynamic
   take item, like text
   like number
-  case node
-    text <$items.filter(c =\> c === $item).length>
 
-bind every-other
+  save count, 0
+  walk items
+    take one, like dynamic
+    fork test, is-equal(one, item)
+      hold
+        save count, add(count, 1)
+  back count
+
+task every-other
   take items, like dynamic
   take item, like text
   like boolean
-  case node
-    text <$items.every(c =\> c !== $item)>
+
+  back is-equal(count-of(items, item), 0)
+
+
 
 bind all-apart
   take items, like dynamic
@@ -75,25 +135,45 @@ bind all-apart
   case node
     text <(new Set($items).size === $items.length)>
 
-bind one-number
+task one-number
   take items, like dynamic
   like boolean
-  case node
-    text <$items.every(n =\> /^[a-z]+(-[a-z]+)*-\d+$/.test(n))>
 
-bind spelled-alike
+  host shape, make(pattern, <<^[a-z]+(-[a-z]+)*-\d+$>>)
+  walk items
+    take one, like text
+    fork test, not(matches(shape, one))
+      hold
+        back false
+  back true
+
+task spelled-alike
   take items, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$items.some(n =\> n.replace(/[-_]/g, "") === $name)>
 
-bind has-function
+  walk items
+    take one, like text
+    fork test, is-equal(replace-all(replace-all(one, <->, <>), <_>, <>), name)
+      hold
+        back true
+  back false
+
+task has-function
   take program, like dynamic
   take name, like text
   like boolean
-  case node
-    text <($program.find(n =\> n.form === "function" && n.name === $name) !== undefined)>
+
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        back true
+  back false
+
+
+
+
 
 bind roots
   take names, like dynamic
@@ -102,12 +182,34 @@ bind roots
     text <new Set($names)>
 
 # the arm of `disk` in the match inlined into `outer` binds two fields, and its first is the name the body reads
-bind arm-reads-first
+task arm-reads-first
   take program, like dynamic
   take found, like dynamic
   like boolean
-  case node
-    text <(() =\> \{ const arm = $found.flatMap(n =\> n.cases).find(a =\> a.label === "disk"); const read = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === "variable") read.push(value.name); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit(arm?.body); return arm?.binds?.length === 2 && read.includes(arm.binds[0]) \})()>
+
+  host arms, make list
+  walk found
+    take one, like dynamic
+    walk read-field(one, <cases>)
+      take candidate, like dynamic
+      fork test, is-equal(read-field(candidate, <label>), <disk>)
+        hold
+          arms/push(candidate)
+  fork test, is-equal(arms/length, 0)
+    hold
+      back false
+  host arm, read-at(arms, 0)
+  host binds, read-field(arm, <binds>)
+  fork test, is-unequal(read-field(binds, <length>), 2)
+    hold
+      back false
+  host first, read-at(binds, 0)
+  walk nodes-of(read-field(arm, <body>), <variable>)
+    take read, like dynamic
+    fork test, is-equal(read-field(read, <name>), first)
+      hold
+        back true
+  back false
 
 # the checked program, before the simplifier
 task checked

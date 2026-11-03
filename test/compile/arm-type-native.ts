@@ -89,6 +89,47 @@ task make-bs
   back out
 `
 
+// A LIST A TASK BUILT AND HANDS BACK AS `unknown` (item term-self-host-001-0885). Rust keeps a list local that only fills as the
+// plain `Vec` and puts it into the shared cell at its return, and that cell went out unboxed: the box held `RefCell<Vec<T>>`
+// where every arm downcasts to the list's own `Rc<RefCell<Vec<T>>>`, so the arm answered miss in one file too
+const OWNED = (result: string, fill: string, arm: string): string => `${LIST}
+form point
+  link x, like number
+
+task make-as
+  take go, like boolean
+  like ${result}
+
+  save out, make list
+${fill}
+  fork test, go
+    hold
+      back out
+  back 3
+
+task pick
+  take value, like unknown
+  like text
+
+  sift value
+    case list
+      like ${arm}
+      link items
+      back <list {items/length}>
+    miss
+      back <miss>
+
+task run
+  like text
+
+  back <{pick(make-as(true))},{pick(make-as(false))}>
+`
+
+const POINT_FILL = `  save one
+    make point
+      bind x, 1
+  push(out, one)`
+
 type Case = {
   name: string
   want: string
@@ -120,6 +161,30 @@ const cases: Case[] = [
     want: 'a 1,miss',
     files: { './a': A, './b': B },
     main: `load ./a\n  find point\n  find make-a\n\nload ./b\n  find make-b\n\ntask pick\n  take value, like unknown\n  like text\n\n  sift value\n    case point\n      back <a {value/x}>\n    miss\n      back <miss>\n\ntask run\n  like text\n\n  back <{pick(make-a())},{pick(make-b())}>\n`,
+  },
+  {
+    name: 'a filled list of a form handed back as unknown, in one file',
+    want: 'list 1,miss',
+    files: {},
+    main: OWNED('unknown', POINT_FILL, 'point'),
+  },
+  {
+    name: 'a filled list of text handed back as unknown',
+    want: 'list 2,miss',
+    files: {},
+    main: OWNED('unknown', '  push(out, <a>)\n  push(out, <b>)', 'text'),
+  },
+  {
+    name: 'a filled list of a form handed back as dynamic',
+    want: 'list 1,miss',
+    files: {},
+    main: OWNED('dynamic', POINT_FILL, 'point'),
+  },
+  {
+    name: 'a filled list of lists of a form handed back as unknown',
+    want: 'list 1,miss',
+    files: {},
+    main: OWNED('unknown', `  save inner, make list\n${POINT_FILL.replace('push(out, one)', 'push(inner, one)')}\n  push(out, inner)`, 'list, like point'),
   },
 ]
 

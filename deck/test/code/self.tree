@@ -1,0 +1,91 @@
+# The `term` under test, run from a test (decision 022 T6, decision 111 of
+# note/project/term/self-host/change/001-finish-self-host). `term test` hands every test file's child TERM_TEST_SELF, the
+# program that runs this same `term`, and TERM_TEST_SELF_ENTRY, the script that program runs (the empty text for a
+# single executable, which has none), so a suite tests the `term` it was started by and never whichever is on PATH.
+#
+# `run-self` and `run-self-with-input` are `run` and `run-with-input` with that command in front: `directory` the child's
+# working directory (the empty text for this process's own), `limit` its milliseconds (0 for none), `environment` the
+# variables added over the inherited ones. Each passes to the stdlib by name, so a `command-timeout` at the limit and a
+# `command-absence` rise to the test as they are. A variable cannot be taken out of a child this way: run
+# `run(<env>, [-u, <NAME>, ...self-command(), ...arguments])` (decision 111, point 3).
+
+load @term/base/environment
+  find variable
+
+load @term/base/exception
+  find absence
+
+load @term/base/list
+  find list
+
+load @term/base/process/run
+  find run
+  find run-with-input
+  find run-result
+
+# what runs the `term` under test: TERM_TEST_SELF, then TERM_TEST_SELF_ENTRY when it is not empty. Outside `term test`
+# neither is set, and that is an `absence` naming the variable, never a run of the empty command
+task self-command
+  like list, like text
+
+  save program, variable(<TERM_TEST_SELF>)
+  fork test, is-equal(program, <>)
+    hold
+      halt absence
+        bind thing, <TERM_TEST_SELF>
+  save command, make list
+  command/push(program)
+  save entry, variable(<TERM_TEST_SELF_ENTRY>)
+  fork test, is-unequal(entry, <>)
+    hold
+      command/push(entry)
+  back command
+
+# the arguments `run` is handed: the entry, when there is one, then the test's own
+task self-arguments
+  take argument-list, like list, like text
+  like list, like text
+  mark private
+
+  save command, self-command()
+  save out, make list
+  save at, 0
+  walk command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        out/push(part)
+    save at, add(at, 1)
+  walk argument-list
+    take one, like text
+    out/push(one)
+  back out
+
+# run the `term` under test with `argument-list` to its end
+task run-self
+  mark async
+  take argument-list, like list, like text
+  take directory, like text, fall <>
+  take limit, like number, fall 0
+  take environment
+    like hash, like text, like text
+    need false
+  like run-result
+
+  save command, self-command()
+  back run(command/0, self-arguments(argument-list), bind(directory, directory), bind(limit, limit), bind(environment, environment))
+
+# run the `term` under test with `input` written to its standard input, then closed
+task run-self-with-input
+  mark async
+  take argument-list, like list, like text
+  take input, like text
+  take directory, like text, fall <>
+  take limit, like number, fall 0
+  take environment
+    like hash, like text, like text
+    need false
+  like run-result
+
+  save command, self-command()
+  back run-with-input(command/0, self-arguments(argument-list), input, bind(directory, directory), bind(limit, limit), bind(environment, environment))

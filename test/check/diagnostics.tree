@@ -21,6 +21,17 @@ load @term/base/text
 load @term/base/text/util
   find join
 
+load ../support/judging
+  find make-record
+  find read-field
+  find set-field
+
+load ../support/reading
+  find first-with
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/compile/type-text>, name type-text-check
   load <@term/make/code/parser/diagnostic>, name diagnostic-check
@@ -122,12 +133,15 @@ test <a task, its compound parameter wrapped so its commas stay its own>
 # ---- commands/roll: a site counts from one, and a signature is in Term's names ----
 host store-text, <form missing\n  link thing, like text\n  link limit, like number, need false\n\ntask find-user\n  take key, like text\n  like text\n  send back, read key\n>
 
-bind rolled-task
+task rolled-task
   take roll, like dynamic
   take name, like text
   like dynamic
-  case node
-    text <<$roll?.task.find(t => t.name === $name)>>
+
+  fork test, is-unequal(kind-of(roll), <object>)
+    hold
+      back void
+  back first-with(read-field(roll, <task>), <name>, name)
 
 bind task-site
   take found, like dynamic
@@ -155,14 +169,25 @@ test <and its signature reads `text`>
   want hold, text-contains(json, <"like":"text">)
   want hold, not(text-contains(json, <string>))
 
-# ---- commands/lint: a lint rule's code is printed as the rule is numbered ----
-bind kink
+task place-at
+  take column, like number
+  like dynamic
+
+  back make-record(make(list, <line>, 0, <column>, column, <offset>, column))
+
+task kink
   take name, like text
   take code, like number
   take rule, like text
   like dynamic
-  case node
-    text <<(() => { const span = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 4, offset: 4 } }; return { name: $name, message: "x", file: "a.tree", span, markers: [{ span }], severity: "warning", code: $code, ...($rule === "" ? {} : { rule: $rule }) } })()>>
+
+  host span, make-record(make(list, <start>, place-at(0), <end>, place-at(4)))
+  host marker, make-record(make(list, <span>, span))
+  host made, make-record(make(list, <name>, name, <message>, <x>, <file>, <a.tree>, <span>, span, <markers>, make(list, marker), <severity>, <warning>, <code>, code))
+  fork test, is-unequal(rule, <>)
+    hold
+      set-field(made, <rule>, rule)
+  back made
 
 task rendered
   take name, like text

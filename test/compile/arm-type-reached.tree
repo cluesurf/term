@@ -15,6 +15,10 @@ load ../support/compiling
 load @term/base/list
   find contains
 
+load ../support/judging
+  find make-record
+  find empty-list
+
 dock load
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/cache>, name cache-module
@@ -55,10 +59,20 @@ bind resolver-of
     text <$options.resolve>
 
 # a match whose one arm tests for a list of `point`, as the mill writes it
-bind match-node
+task place-at-start
   like dynamic
-  case node
-    text <(\{ form: "match", subject: \{ form: "variable", name: "value", span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 1 \} \} \}, cases: [\{ label: "list", body: [], binds: [], type: \{ kind: "array", element: \{ kind: "named", name: "point", args: [] \} \} \}], span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 1 \} \} \})>
+
+  host at, make-record(make(list, <line>, 1, <column>, 1))
+  back make-record(make(list, <start>, at, <end>, make-record(make(list, <line>, 1, <column>, 1))))
+
+task match-node
+  like dynamic
+
+  host subject, make-record(make(list, <form>, <variable>, <name>, <value>, <span>, place-at-start()))
+  host point, make-record(make(list, <kind>, <named>, <name>, <point>, <args>, empty-list()))
+  host type, make-record(make(list, <kind>, <array>, <element>, point))
+  host arm, make-record(make(list, <label>, <list>, <body>, empty-list(), <binds>, empty-list(), <type>, type))
+  back make-record(make(list, <form>, <match>, <subject>, subject, <cases>, list-of(arm), <span>, place-at-start()))
 
 bind handle-of
   take node, like dynamic

@@ -10,24 +10,76 @@ load ../support/compiling
   find compile-choice
   find emit-text
 
+load @term/base/text
+  find contains, name text-contains
+
+load ../support/judging
+  find make-record
+  find read-field
+  find read-at
+  find truth
+
+load ../support/reading
+  find first-with
+  find lines-of
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/parser/tree>, name hash-parser
   load <@term/make/code/compile/mill>, name hash-mill
 
-bind result-with
+# host reflect: a value as JSON text
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the first of the values that is neither void nor null, as a ?? b ?? c read them
+task first-present
+  take values, like dynamic
+  like dynamic
+
+  walk values
+    take one, like dynamic
+    host kind, kind-of(one)
+    fork test, and(is-unequal(kind, <undefined>), is-unequal(kind, <null>))
+      hold
+        back one
+  back void
+
+task result-with
   take parser, like dynamic
   take miller, like dynamic
-  take like, like text
+  take written, like text
   take lean, like boolean
   like text
-  case node
-    text <(() =\> \{ const parsed = $parser.parse(\{ file: "p.tree", text: `task t\n  $\{$like\}\n  host out, make hash\n  back out\n` \}); if (!parsed.ok) return `parse: $\{parsed.diagnostics[0]?.message\}`; const built = $miller.mill(parsed.tree, "p.tree", undefined, $lean); if (!built.ok) return `mill: $\{built.diagnostics[0]?.message\}`; const task = built.program.find(d =\> d.name === "t"); return JSON.stringify(task.returnType ?? task.result ?? task.type) \})()>
 
-bind build-line
+  host parsed, parser/parse(make-record(make(list, <file>, <p.tree>, <text>, <task t\n  {written}\n  host out, make hash\n  back out\n>)))
+  fork test, is-equal(truth(read-field(parsed, <ok>)), false)
+    hold
+      back <parse: {read-field(read-at(read-field(parsed, <diagnostics>), 0), <message>)}>
+  host built, miller/mill(read-field(parsed, <tree>), <p.tree>, void, lean)
+  fork test, is-equal(truth(read-field(built, <ok>)), false)
+    hold
+      back <mill: {read-field(read-at(read-field(built, <diagnostics>), 0), <message>)}>
+  host task-found, first-with(read-field(built, <program>), <name>, <t>)
+  back json-text(first-present(make(list, read-field(task-found, <returnType>), read-field(task-found, <result>), read-field(task-found, <type>))))
+
+task build-line
   take swift, like text
   like text
-  case node
-    text <$swift.split("\n").find(text =\> /func build/.test(text)) ?? "">
+
+  walk lines-of(swift)
+    take line, like text
+    fork test, text-contains(line, <func build>)
+      hold
+        back line
+  back <>
+
+
 
 bind holds-hash
   take line, like text

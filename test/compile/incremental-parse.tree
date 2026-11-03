@@ -1,49 +1,144 @@
 note <Incremental parse: the splitter, a cold pass, and an edit that re-parses one definition>
 
-# Ported from incremental-parse.ts by hand (item 0572). parser/tree and compile/incremental-parse are the subject (decision 106).
+# Ported from incremental-parse.ts by statement (items 0572 and 0877, decision 113). parser/tree and compile/incremental-parse are the subject
+# (decision 106). The original's cycle-safe serialization is `tree-json` below, a Term walk that writes a parse tree as JSON.stringify would,
+# leaving out the three back-pointers (`parent`, `next`, `previous`), so two trees are equal when their texts are, spans included.
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+
+load ../support/judging
+  find read-at
+  find truth
+
+load ../support/reading
+  find joined-names
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
 
 dock load
   load <@term/make/code/parser/tree>, name parser-module
   load <@term/make/code/compile/incremental-parse>, name split-module
 
-bind report
-  take parser, like dynamic
-  take splitter, like dynamic
-  take source, like text
+# host value: a scalar as JSON writes it, the one leaf of the walk
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind new-map
   like dynamic
   case node
-    text <(() =\> \{ const drop = new Set(["parent", "next", "previous"]); const ser = tree =\> JSON.stringify(tree, (k, v) =\> (drop.has(k) ? undefined : v)); const whole = text =\> ser($parser.parse(\{ file: "f.tree", text \}).tree); const blocks = $splitter.splitTopLevel($source); const cold = $splitter.incrementalParse("f.tree", $source, new Map()); const cache = new Map(); $splitter.incrementalParse("f.tree", $source, cache); const edited = $source.replace("code 2", "code 99"); const re = $splitter.incrementalParse("f.tree", edited, cache); return \{ three: blocks.length === 3, partition: blocks.map(b =\> b.text).join("\n") === $source, comment: !!blocks[1] && blocks[1].text.includes("# a note for two") && blocks[1].text.includes("task two"), equal: ser(cold.tree) === whole($source), cold: cold.parsed === 3 && cold.reused === 0, edit: re.parsed === 1 && re.reused === 2, editEqual: ser(re.tree) === whole(edited) \} \})()>
+    text <new Map()>
 
-bind fact
-  take facts, like dynamic
-  take name, like text
+form parse-input
+  link file, like text
+  link text, like text
+
+# a back-pointer the serialization leaves out, as the original's `drop` set did
+task is-dropped
+  take field, like text
   like boolean
-  case node
-    text <$facts[$name]>
+
+  back or(is-equal(field, <parent>), or(is-equal(field, <next>), is-equal(field, <previous>)))
+
+# JSON writes no key for a value that is undefined or a function
+task is-written
+  take value, like dynamic
+  like boolean
+
+  host kind, kind-of(value)
+  back and(is-unequal(kind, <undefined>), is-unequal(kind, <function>))
+
+# JSON.stringify(tree, (k, v) => (drop.has(k) ? undefined : v)), in Term
+task tree-json
+  take value, like dynamic
+  like text
+
+  host kind, kind-of(value)
+  save out, <>
+  save first, true
+  fork test, is-equal(kind, <list>)
+    hold
+      walk value
+        take one, like dynamic
+        save part, <null>
+        fork test, is-written(one)
+          hold
+            save part, tree-json(one)
+        fork test, first
+          hold
+            save out, part
+          miss
+            save out, <{out},{part}>
+        save first, false
+      back <[{out}]>
+  fork test, is-equal(kind, <object>)
+    hold
+      walk fields-of(value)
+        take field, like text
+        host held, field-of(value, field)
+        fork test, and(not(is-dropped(field)), is-written(held))
+          hold
+            host entry, <{json-of(field)}:{tree-json(held)}>
+            fork test, first
+              hold
+                save out, entry
+              miss
+                save out, <{out},{entry}>
+            save first, false
+      back <\{{out}\}>
+  back json-of(value)
+
+# the whole-file parse of a text, serialized
+task whole-json
+  take text, like text
+  like text
+
+  back tree-json(parser-module/parse(make(parse-input, bind(file, <f.tree>), bind(text, text)))/tree)
 
 host source, <task one\n  send back, code 1\n\n# a note for two\ntask two\n  send back, code 2\n\nform point\n  link x, like number\n>
-host facts, report(parser-module, split-module, source)
 
 # the splitter partitions the source exactly and attaches a leading comment to its definition
+host blocks, split-module/split-top-level(source)
+
+# a cold incremental parse
+host cold, split-module/incremental-parse(<f.tree>, source, new-map())
+
+# editing one definition re-parses only that one, the others are reused (re-positioned by a span shift)
+host cache, new-map()
+host warm, split-module/incremental-parse(<f.tree>, source, cache)
+host edited, text-replace(source, <code 2>, <code 99>)
+host re, split-module/incremental-parse(<f.tree>, edited, cache)
+
 test <splitTopLevel finds three definitions>
-  want hold, fact(facts, <three>)
+  want hold, is-equal blocks/length, 3
 
 test <splitTopLevel partitions the source exactly>
-  want hold, fact(facts, <partition>)
+  want hold, is-equal joined-names(blocks, <text>, <\n>), source
 
 test <the comment rides with `task two`'s block>
-  want hold, fact(facts, <comment>)
+  host second, read-at(blocks, 1)
+  want hold, truth(second)
+  want hold, text-contains(second/text, <# a note for two>)
+  want hold, text-contains(second/text, <task two>)
 
 # a cold incremental parse equals a whole-file parse, byte for byte (spans included)
 test <incremental parse equals a whole-file parse>
-  want hold, fact(facts, <equal>)
+  want hold, is-equal tree-json(cold/tree), whole-json(source)
 
 test <cold pass parses every block>
-  want hold, fact(facts, <cold>)
+  want hold, is-equal cold/parsed, 3
+  want hold, is-equal cold/reused, 0
 
-# editing one definition re-parses only that one, the others are reused (re-positioned by a span shift)
 test <an edit re-parses only the changed definition>
-  want hold, fact(facts, <edit>)
+  want hold, is-equal re/parsed, 1
+  want hold, is-equal re/reused, 2
 
 test <the incremental result still equals a whole-file parse of the edit>
-  want hold, fact(facts, <editEqual>)
+  want hold, is-equal tree-json(re/tree), whole-json(edited)

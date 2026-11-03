@@ -11,14 +11,13 @@ note <The arrow-of-time keystone, discharged by the refinement prover (refine.ts
 load @term/base/list
   find size
 
+load ../support/judging
+  find make-record
+  find assert-true
+  find throws
+
 dock load
   load <@term/make/code/check/refine>, name refine-prover
-
-bind make-record
-  take parts, like list, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
 
 bind read-field
   take value, like dynamic
@@ -44,19 +43,6 @@ bind truth
   like boolean
   case node
     text <Boolean($value)>
-
-bind assert-true
-  take value, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
-
-bind throws-type-error
-  take module, like dynamic
-  take run, like dynamic
-  like boolean
-  case node
-    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
 
 bind linear-2
   take module, like dynamic

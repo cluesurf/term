@@ -23,6 +23,18 @@ load ../support/compiling
 load @term/base/list
   find contains
 
+load ../support/judging
+  find make-record
+  find read-field
+  find read-at
+  find truth
+  find empty-record
+  find set-field
+
+load ../support/walking
+  find fields-of
+  find kind-of
+
 dock load
   load <@term/make/code/check/judge>, name judge-kernel
 
@@ -73,28 +85,155 @@ bind a2
   case node
     text <(\{ k: "app", fun: $fun, arg: $arg \})>
 
-# capture is not a concern for the closed terms this suite substitutes
-bind at
+# the record with one field set anew, the others as they were
+task copy-with
+  take found, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+
+  host made, empty-record()
+  walk fields-of(found)
+    take name, like text
+    set-field(made, name, read-field(found, name))
+  set-field(made, field, value)
+  back made
+
+# the named term with the value put for the free name, a binder of that name hiding it
+task substitute
+  take term, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+
+  host k, read-field(term, <k>)
+  fork test, is-equal(k, <var>)
+    hold
+      fork test, is-equal(read-field(term, <name>), name)
+        hold
+          back value
+      back term
+  fork test, or(is-equal(k, <const>), is-equal(k, <type>))
+    hold
+      back term
+  fork test, is-equal(k, <pi>)
+    hold
+      host domain, substitute(read-field(term, <domain>), name, value)
+      save codomain, read-field(term, <codomain>)
+      fork test, is-unequal(read-field(term, <name>), name)
+        hold
+          save codomain, substitute(codomain, name, value)
+      back copy-with(copy-with(term, <domain>, domain), <codomain>, codomain)
+  fork test, is-equal(k, <lam>)
+    hold
+      fork test, is-equal(read-field(term, <name>), name)
+        hold
+          back term
+      back copy-with(term, <body>, substitute(read-field(term, <body>), name, value))
+  fork test, is-equal(k, <app>)
+    hold
+      back make-record(make(list, <k>, <app>, <fun>, substitute(read-field(term, <fun>), name, value), <arg>, substitute(read-field(term, <arg>), name, value)))
+  fork test, is-equal(k, <ann>)
+    hold
+      back make-record(make(list, <k>, <ann>, <term>, substitute(read-field(term, <term>), name, value), <type>, substitute(read-field(term, <type>), name, value)))
+  back void
+
+task at
   take p, like dynamic
   take x, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const substitute = (term, name, value) =\> \{ switch (term.k) \{ case "var": return term.name === name ? value : term; case "const": case "type": return term; case "pi": return \{ ...term, domain: substitute(term.domain, name, value), codomain: term.name === name ? term.codomain : substitute(term.codomain, name, value) \}; case "lam": return term.name === name ? term : \{ ...term, body: substitute(term.body, name, value) \}; case "app": return \{ k: "app", fun: substitute(term.fun, name, value), arg: substitute(term.arg, name, value) \}; case "ann": return \{ k: "ann", term: substitute(term.term, name, value), type: substitute(term.type, name, value) \} \} \}; return $p.k === "lam" ? substitute($p.body, $p.name, $x) : \{ k: "app", fun: $p, arg: $x \} \})()>
+
+  fork test, is-equal(read-field(p, <k>), <lam>)
+    hold
+      back substitute(read-field(p, <body>), read-field(p, <name>), x)
+  back make-record(make(list, <k>, <app>, <fun>, p, <arg>, x))
+
+# the scope with one more binder in front
+task scope-with
+  take name, like text
+  take scope, like dynamic
+  like dynamic
+
+  host out, make list
+  out/push(name)
+  walk scope
+    take one, like text
+    out/push(one)
+  back out
+
+task index-in
+  take scope, like dynamic
+  take name, like text
+  like number
+
+  save at, 0
+  walk scope
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+task to-term-in
+  take module, like dynamic
+  take term, like dynamic
+  take scope, like dynamic
+  like dynamic
+
+  host k, read-field(term, <k>)
+  fork test, is-equal(k, <var>)
+    hold
+      host index, index-in(scope, read-field(term, <name>))
+      fork test, is-below(index, 0)
+        hold
+          halt <unbound {read-field(term, <name>)}>
+      back make-record(make(list, <tag>, <var>, <index>, index))
+  fork test, is-equal(k, <const>)
+    hold
+      back make-record(make(list, <tag>, <const>, <name>, read-field(term, <name>)))
+  fork test, is-equal(k, <type>)
+    hold
+      back make-record(make(list, <tag>, <type>, <level>, module/lit-level(read-field(term, <level>))))
+  fork test, is-equal(k, <pi>)
+    hold
+      host domain, to-term-in(module, read-field(term, <domain>), scope)
+      host codomain, to-term-in(module, read-field(term, <codomain>), scope-with(read-field(term, <name>), scope))
+      back make-record(make(list, <tag>, <pi>, <mult>, <many>, <domain>, domain, <codomain>, codomain))
+  fork test, is-equal(k, <lam>)
+    hold
+      back make-record(make(list, <tag>, <lam>, <body>, to-term-in(module, read-field(term, <body>), scope-with(read-field(term, <name>), scope))))
+  fork test, is-equal(k, <app>)
+    hold
+      back make-record(make(list, <tag>, <app>, <fun>, to-term-in(module, read-field(term, <fun>), scope), <arg>, to-term-in(module, read-field(term, <arg>), scope)))
+  fork test, is-equal(k, <ann>)
+    hold
+      back make-record(make(list, <tag>, <ann>, <term>, to-term-in(module, read-field(term, <term>), scope), <type>, to-term-in(module, read-field(term, <type>), scope)))
+  back void
 
 # a named term as the kernel's, each binder its de Bruijn index, an unbound name a throw
-bind to-term
+task to-term
   take module, like dynamic
   take term, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const walk = (term, scope) =\> \{ switch (term.k) \{ case "var": \{ const index = scope.indexOf(term.name); if (index \< 0) throw new Error(`unbound $\{term.name\}`); return \{ tag: "var", index \} \} case "const": return \{ tag: "const", name: term.name \}; case "type": return \{ tag: "type", level: $module.litLevel(term.level) \}; case "pi": return \{ tag: "pi", mult: "many", domain: walk(term.domain, scope), codomain: walk(term.codomain, [term.name, ...scope]) \}; case "lam": return \{ tag: "lam", body: walk(term.body, [term.name, ...scope]) \}; case "app": return \{ tag: "app", fun: walk(term.fun, scope), arg: walk(term.arg, scope) \}; case "ann": return \{ tag: "ann", term: walk(term.term, scope), type: walk(term.type, scope) \} \} \}; return walk($term, []) \})()>
 
-# a signature built one definition at a time: each body is checked against its type in the context of the ones before it, then made transparent
-bind signature-new
-  take module, like dynamic
+  back to-term-in(module, term, make(list))
+
+# the host's map, which a context keys its globals with
+bind new-map
   like dynamic
   case node
-    text <(() =\> \{ $module.resetDefinitions(); $module.resetMetas(); return \{ context: \{ ...$module.emptyContext, globals: new Map() \}, error: null \} \})()>
+    text <new Map()>
+
+# a signature built one definition at a time: each body is checked against its type in the context of the ones before it, then made transparent
+task signature-new
+  take module, like dynamic
+  like dynamic
+
+  module/reset-definitions()
+  module/reset-metas()
+  host context, copy-with(read-field(module, <emptyContext>), <globals>, new-map())
+  back make-record(make(list, <context>, context, <error>, void))
 
 bind signature-add
   take sig, like dynamic
@@ -111,9 +250,32 @@ bind evaluated
   case node
     text <$module.evaluate([], $term)>
 
+# what a raise says: an Error's message, else the value as text
+bind error-text
+  take cause, like dynamic
+  like text
+  case node
+    text <($cause instanceof Error ? $cause.message : String($cause))>
+
+# what the kernel says against the body at the type, void when it checks
+task check-failure
+  take module, like dynamic
+  take context, like dynamic
+  take body, like dynamic
+  take type-value, like dynamic
+  like dynamic
+
+  fork
+    mark unsafe
+    module/check(context, body, type-value)
+    back void
+  halt take
+    take cause
+    back error-text(cause)
+
 # a definition: checked when `typed`, else a COMPUTING RULE registered as the elaborator registers one, which is what makes
 # `matchType Q b (wrap t)` reduce to `b t`
-bind define-in
+task define-in
   take module, like dynamic
   take sig, like dynamic
   take name, like text
@@ -121,8 +283,21 @@ bind define-in
   take body, like dynamic
   take typed, like boolean
   like dynamic
-  case node
-    text <(() =\> \{ if ($sig.error) return; const typeValue = $module.evaluate([], $type); if ($typed) \{ try \{ $module.check($sig.context, $body, typeValue) \} catch (error) \{ $sig.error = `$\{$name\}: $\{error instanceof Error ? error.message : String(error)\}`; return \} \} $sig.context.globals.set($name, typeValue); $module.defineConstant($name, $module.evaluate([], $body)) \})()>
+
+  fork test, truth(read-field(sig, <error>))
+    hold
+      back void
+  host type-value, module/evaluate(make(list), type)
+  fork test, typed
+    hold
+      host failed, check-failure(module, read-field(sig, <context>), body, type-value)
+      fork test, is-unequal(kind-of(failed), <undefined>)
+        hold
+          set-field(sig, <error>, <{name}: {failed}>)
+          back void
+  signature-add(sig, name, type-value)
+  module/define-constant(name, module/evaluate(make(list), body))
+  back void
 
 bind error-of
   take sig, like dynamic
@@ -144,12 +319,22 @@ bind holds-global
   case node
     text <$sig.context.globals.has($name)>
 
-bind joined
+task joined
   take names, like list, like text
   take messages, like list, like text
   like text
-  case node
-    text <$names.map((name, at) =\> `$\{name\}: $\{$messages[at]\}`).join(" | ")>
+
+  save out, <>
+  save at, 0
+  walk names
+    take name, like text
+    fork test, is-equal(at, 0)
+      hold
+        save out, <{name}: {read-at(messages, at)}>
+      miss
+        save out, <{out} | {name}: {read-at(messages, at)}>
+    save at, add(at, 1)
+  back out
 
 bind holds-text
   take whole, like text
@@ -158,12 +343,19 @@ bind holds-text
   case node
     text <$whole.includes($word)>
 
-bind wrapped-at
+task wrapped-at
   take value, like text
   take spaces, like number
   like text
-  case node
-    text <["make wrap", "  bind v", `    make $\{$value\}`].map(line =\> " ".repeat($spaces) + line).join("\n")>
+
+  save pad, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, spaces)
+    hook hold
+      save pad, <{pad} >
+      save at, add(at, 1)
+  back <{pad}make wrap\n{pad}  bind v\n{pad}    make {value}>
 
 form logic
   link prop, like dynamic

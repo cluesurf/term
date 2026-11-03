@@ -15,6 +15,8 @@ load @term/base/pattern
 
 load @term/base/text
   find contains, name text-contains
+  find index-of
+  find substring
 
 form emission
   link ok, like boolean
@@ -22,12 +24,18 @@ form emission
   link rs, like text
   link said, like list, like text
 
-bind function-of
+# the text from the head to the line `}` closing it, as text.slice(at, end) read it: a missing end is one short of the whole
+task function-of
   take text, like text
   take head, like text
   like text
-  case node
-    text <(() =\> \{ const at = $text.indexOf($head); return $text.slice(at, $text.indexOf("\n\}\n", at)) \})()>
+
+  host at, index-of(text, head)
+  host end, index-of(text, <\n\}\n>, at)
+  fork test, is-below(end, 0)
+    hold
+      back substring(text, at, subtract(text/length, 1))
+  back substring(text, at, end)
 
 task said-word
   take messages, like list, like text

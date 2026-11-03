@@ -9,14 +9,13 @@ note <The pinch-point keystone proved STRUCTURALLY as a judge.ts proof term (not
 load @term/base/list
   find size
 
+load ../support/judging
+  find make-record
+  find assert-true
+  find throws
+
 dock load
   load <@term/make/code/check/judge>, name judge-kernel
-
-bind make-record
-  take parts, like list, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ const made = \{\}; for (let at = 0; at \< $parts.length; at += 2) made[$parts[at]] = $parts[at + 1]; return made \})()>
 
 bind read-field
   take value, like dynamic
@@ -42,19 +41,6 @@ bind truth
   like boolean
   case node
     text <Boolean($value)>
-
-bind assert-true
-  take value, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ if (!$value) throw new Error("not so"); return true \})()>
-
-bind throws-type-error
-  take module, like dynamic
-  take run, like dynamic
-  like boolean
-  case node
-    text <(() =\> \{ try \{ $run(); return false \} catch (error) \{ return true \} \})()>
 
 bind lit-level-1
   take module, like dynamic
@@ -161,7 +147,7 @@ task rejected-1
   back void
 
 test <the proof does not establish a false equality (dimension = Le)>
-  want hold, throws-type-error(judge-kernel, rejected-1)
+  want hold, throws(rejected-1)
 
 # soundness: without the floor, antisymmetry cannot conclude (only the ceiling is not enough).
 task rejected-2
@@ -171,4 +157,4 @@ task rejected-2
   back void
 
 test <only the ceiling, without the floor, does not force eight>
-  want hold, throws-type-error(judge-kernel, rejected-2)
+  want hold, throws(rejected-2)

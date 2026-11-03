@@ -5,6 +5,22 @@ note <The pure lowering (proof-by-default-0009)>
 load @term/base/text
   find contains, name text-contains
 
+load @term/base/text
+  find starts-with
+
+load ../support/judging
+  find make-record
+  find read-field
+  find truth
+
+load ../support/reading
+  find any-with
+  find first-with
+  find joined-names
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/parser/tree>, name lowering-parser
   load <@term/make/code/compile/template>, name lowering-template
@@ -14,8 +30,7 @@ dock load
   load <@term/make/code/check/elaborate>, name lowering-elaborate
   load <@term/make/code/check/judge>, name lowering-judge
 
-# the kernel's own verdict, the surface checker's diagnostics set aside. parser, template, mill, resolve, infer and elaborate are the subject (decision 106)
-bind report-with
+task report-with
   take parser, like dynamic
   take expander, like dynamic
   take miller, like dynamic
@@ -24,8 +39,19 @@ bind report-with
   take elaborator, like dynamic
   take text, like text
   like dynamic
-  case node
-    text <(() =\> \{ const parsed = $parser.parse(\{ file: "t.tree", text: $text \}); if (!parsed.ok) throw new Error(parsed.diagnostics.map(d =\> d.message).join("; ")); const built = $miller.mill($expander.expandTemplates(parsed.tree), "t.tree"); if (!built.ok) throw new Error(built.diagnostics.map(d =\> d.message).join("; ")); $resolver.resolve(built.program, "t.tree"); $inferrer.check(built.program, "t.tree"); return $elaborator.elaborateReport(built.program, "t.tree") \})()>
+
+  host parsed, parser/parse(make-record(make(list, <file>, <t.tree>, <text>, text)))
+  fork test, is-equal(truth(read-field(parsed, <ok>)), false)
+    hold
+      halt <{joined-names(read-field(parsed, <diagnostics>), <message>, <; >)}>
+  host built, miller/mill(expander/expand-templates(read-field(parsed, <tree>)), <t.tree>)
+  fork test, is-equal(truth(read-field(built, <ok>)), false)
+    hold
+      halt <{joined-names(read-field(built, <diagnostics>), <message>, <; >)}>
+  host program, read-field(built, <program>)
+  resolver/resolve(program, <t.tree>)
+  inferrer/check(program, <t.tree>)
+  back elaborator/elaborate-report(program, <t.tree>)
 
 bind is-proven
   take r, like dynamic
@@ -47,26 +73,42 @@ bind no-diagnostics
   case node
     text <$r.diagnostics.length === 0>
 
-bind kernel-refused
+task kernel-refused
   take r, like dynamic
   like boolean
-  case node
-    text <$r.diagnostics.some(d =\> d.message.startsWith("kernel:"))>
+
+  walk read-field(r, <diagnostics>)
+    take one, like dynamic
+    fork test, starts-with(<{read-field(one, <message>)}>, <kernel:>)
+      hold
+        back true
+  back false
 
 # the reason a task was checked statement by statement, <> for one that was not
-bind reason-of
+task reason-of
   take r, like dynamic
   take name, like text
   like text
-  case node
-    text <$r.statementwise.find(one =\> one.name === $name)?.reason ?? "">
 
-bind is-declined
+  host found, first-with(read-field(r, <statementwise>), <name>, name)
+  fork test, is-equal(kind-of(found), <object>)
+    hold
+      host reason, read-field(found, <reason>)
+      fork test, is-equal(kind-of(reason), <string>)
+        hold
+          back reason
+  back <>
+
+task is-declined
   take r, like dynamic
   take name, like text
   like boolean
-  case node
-    text <[...$r.statementwise, ...$r.declined].some(one =\> one.name === $name)>
+
+  back or(any-with(read-field(r, <statementwise>), <name>, name), any-with(read-field(r, <declined>), <name>, name))
+
+
+
+
 
 # the kernel's transparent definitions after the last report
 bind is-defined
