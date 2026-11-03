@@ -1,0 +1,154 @@
+note <process/child talks to a running child on node and rust: lines by one, stdin, stop, limit, group; swift and kotlin refuse it>
+
+# Item 0188 of term/self-host/change/001-finish-self-host (D025, finding/platform-apis.md row 12). Each program is built
+# and run on each backend by test/support/running.tree, and spawns small `sh`, `cat`, `sleep` and `ls` children, never
+# anything that opens a window. Node and Rust run children for real: three lines read one by one from a child that pauses
+# between them (the first arrives before the child is done), `cat` answering a line written to it and then the rest
+# after `close`, a gentle and a hard `stop`, a 200 ms limit on a child that would run 5 s, a group `stop` ending a
+# grandchild, `run` with a limit and a group ending a grandchild where without the group it stays, and the environment,
+# the directory and the error stream reaching the reader. A grandchild is proven gone by `kill -0`. Swift and Kotlin
+# build the same program and answer `command-absence` for `start` and for a group.
+
+load ../support/running
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load ../support/compiling
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+# the stdlib the programs load, and the helpers they share: `sh-words` the arguments of `sh -c`, `gone` whether a
+# process is gone within 2 s by `kill -0`
+host head, <load @term/base/process/child\n  find start, name start-child\n  find read-line\n  find read, name read-rest\n  find write, name write-child\n  find close, name close-child\n  find stop, name stop-child\n  find wait, name wait-child\n\nload @term/base/process/run\n  find run, name run-command\n  find command-timeout\n  find command-absence\n\nload @term/base/text\n  find trim\n  find contains, name text-contains\n\nload @term/base/clock\n  find read-nanoseconds\n\ntask sh-words\n  take script, like text\n  like list, like text\n\n  back make list(\<-c\>, script)\n\ntask gone\n  take pid, like text\n  like boolean\n\n  save r, run-command(\<sh\>, sh-words(\<for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do kill -0 \{pid\} || exit 0; sleep 0.1; done; exit 1\>))\n  back is-equal(r/code, 0)\n\ntask since\n  take start, like number\n  like number\n\n  back divide(subtract(read-nanoseconds(), start), 1000000)\n\n>
+
+host lines, <{head}task run\n  like text\n\n  save t, read-nanoseconds()\n  save c, start-child(\<sh\>, sh-words(\<echo one; sleep 0.3; echo two; sleep 0.3; echo three\>))\n  save a, read-line(c)\n  save first, since(t)\n  save b, read-line(c)\n  save d, read-line(c)\n  save e, read-line(c)\n  save r, wait-child(c)\n  back \<\{a/line\} \{a/ended\} \{b/line\} \{d/line\} [\{e/line\}] \{e/ended\} \{r/code\} \{is-below(first, 300)\}\>\n>
+
+host cat, <{head}task run\n  like text\n\n  save c, start-child(\<cat\>, make list)\n  write-child(c, \<ping\\n\>)\n  save p, read-line(c)\n  write-child(c, \<hello\\nworld\>)\n  close-child(c)\n  save rest, read-rest(c)\n  save r, wait-child(c)\n  back \<\{p/line\}|\{rest\}|\{r/code\}\>\n>
+
+host stopped, <{head}task run\n  like text\n\n  save c, start-child(\<sleep\>, make list(\<30\>))\n  stop-child(c)\n  save r, wait-child(c)\n  save h, start-child(\<sleep\>, make list(\<30\>))\n  stop-child(h, \<hard\>)\n  save s, wait-child(h)\n  back \<\{r/code\} \{r/signal\} \{s/code\} \{s/signal\}\>\n>
+
+host limited, <{head}task run\n  like text\n\n  save t, read-nanoseconds()\n  fork\n    mark unsafe\n    save c, start-child(\<sh\>, sh-words(\<echo early; sleep 5\>), bind(limit, 200))\n    save r, wait-child(c)\n    back \<code \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-timeout\n        save spent, since(t)\n        back \<timeout \{waited\} \{thing\} \{trim(output)\} \{is-below(spent, 3000)\}\>\n      case command-absence\n        back \<absent\>\n      case failure\n        back \<failure\>\n>
+
+host grouped, <{head}task run\n  like text\n\n  save c, start-child(\<sh\>, sh-words(\<sleep 30 & echo $!; wait\>), bind(group, true))\n  save first, read-line(c)\n  save pid, first/line\n  stop-child(c)\n  save r, wait-child(c)\n  back \<\{r/code\} \{r/signal\} \{gone(pid)\}\>\n>
+
+host run-grouped, <{head}task timed-out\n  take group, like boolean\n  like text\n\n  fork\n    mark unsafe\n    save r, run-command(\<sh\>, sh-words(\<sleep 30 & echo $!; wait\>), bind(limit, 300), bind(group, group))\n    back \<code \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-timeout\n        save pid, trim(output)\n        save went, gone(pid)\n        fork test, not(went)\n          hold\n            run-command(\<kill\>, make list(pid))\n        back \<timeout \{waited\} \{went\}\>\n      case command-absence\n        back \<absent\>\n      case failure\n        back \<failure\>\n\ntask run\n  like text\n\n  back \<\{timed-out(true)\} / \{timed-out(false)\}\>\n>
+
+host shaped, <{head}task run\n  like text\n\n  save env\n    make hash\n      save \<CHILD_CHECK\>, \<handed\>\n  save c, start-child(\<sh\>, sh-words(\<echo $CHILD_CHECK; pwd\>), bind(directory, \</\>), bind(environment, env))\n  save a, read-line(c)\n  save b, read-line(c)\n  save r, wait-child(c)\n  save e, start-child(\<ls\>, make list(\</term-no-such-folder\>))\n  save oops, read-line(e, \<error\>)\n  save out, read-line(e)\n  save s, wait-child(e)\n  back \<\{a/line\} \{b/line\} \{text-contains(oops/line, \<term-no-such-folder\>)\} \{out/ended\} \{is-unequal(s/code, 0)\} \{r/code\}\>\n>
+
+host absent, <{head}task started\n  take command, like text\n  like text\n\n  fork\n    mark unsafe\n    save c, start-child(command, sh-words(\<echo one\>))\n    save r, wait-child(c)\n    back \<started \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-absence\n        back \<absent \{thing\}: \{reason\}\>\n      case command-timeout\n        back \<timeout\>\n      case failure\n        back \<failure\>\n\ntask grouped\n  like text\n\n  fork\n    mark unsafe\n    save r, run-command(\<sh\>, sh-words(\<echo one\>), bind(group, true))\n    back \<ran \{r/code\}\>\n  halt take\n    take problem\n    sift problem\n      case command-absence\n        back \<absent \{reason\}\>\n      case command-timeout\n        back \<timeout\>\n      case failure\n        back \<failure\>\n\ntask plain\n  like text\n\n  save r, run-command(\<sh\>, sh-words(\<echo one\>))\n  back \<ran \{r/code\}\>\n\ntask run\n  like text\n\n  back \<\{started(\<sh\>)\} / \{started(\<term-no-such-tool\>)\} / \{grouped()\} / \{plain()\}\>\n>
+
+# the backends that run children
+task child-backends
+  like list, like text
+
+  back make list(<typescript>, <rust>)
+
+# the backends that build the program and refuse a child
+task absent-backends
+  like list, like text
+
+  back make list(<swift>, <kotlin>)
+
+# a program run on `backend` with lean reading, through the harness
+task ran-on
+  take program, like text
+  take backend, like text
+  take name, like text
+  like text
+
+  save folder, temp-folder(<child-process->)
+  save ran, run-text(program, backend, folder, name, make(compile-choice, bind(lean, true)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <skipped>
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      back <{ran/state} {ran/stage}: {ran/reason}>
+  back ran/output
+
+test <three lines read one by one from a child that pauses between them, the first before it is done>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(lines, backend, <lines>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <one false two three [] true 0 true>)
+
+test <cat answers a line written to it, then the rest after close>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(cat, backend, <cat>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <ping|hello\nworld|0>)
+
+test <a gentle stop answers code 143 and signal 15, a hard one 137 and 9>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(stopped, backend, <stopped>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <143 15 137 9>)
+
+test <a 200 ms limit on a 5 s child raises command-timeout with what it wrote, within 3 s>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(limited, backend, <limited>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <timeout 200 sh early true>)
+
+test <a group stop ends the grandchild too>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(grouped, backend, <grouped>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <143 15 true>)
+
+test <run with a limit and a group ends the grandchild, and without the group it stays>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(run-grouped, backend, <run-grouped>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <timeout 300 true / timeout 300 false>)
+
+test <the environment and the directory reach the child, and the error stream reads apart>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(shaped, backend, <shaped>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <handed / true true true 0>)
+
+test <a child starts on node and rust, and a command that is nowhere is a command-absence>
+  take backend, like text
+    walk child-backends()
+  host out, ran-on(absent, backend, <absent>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, starts-with(out, <started 0 / absent term-no-such-tool: >)
+  want hold, text-contains(out, < / ran 0 / ran 0>)
+
+test <swift and kotlin build, and answer command-absence for start and for a group>
+  take backend, like text
+    walk absent-backends()
+  host out, ran-on(absent, backend, <absent>)
+  fork test, is-equal(out, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(out, <absent sh: not on this target / absent term-no-such-tool: not on this target / absent process groups are not on this target / ran 0>)

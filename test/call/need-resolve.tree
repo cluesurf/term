@@ -1,0 +1,364 @@
+note <Which term runs here: one case per rule of term-versions.md "Resolution", nearest-wins, a stale pin, a pin not installed, and every refusal>
+
+# Ported from need-resolve.ts by statement (item 0550, decision 116: the converter left 254 of 300 code lines).
+# deck/call/code/need.ts is the subject (decision 106). Real files in a temp folder: a home with installed versions,
+# projects with deck.tree and lock.tree. No network: resolution never reaches one. The original changes the home between
+# its checks (a default need.tree, a front link, a used stamp), so every choice is taken at the top level in the
+# original's order, each step's changes made and undone around the choices it holds, and the tests read them. The
+# original's two-space indent on a sub-case's name is left out.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+  find empty-record
+
+load ../support/walking
+  find kind-of
+
+load @term/base/list
+  find contains, name list-contains
+  find join, name list-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/need>, name need-module
+  load <node:fs>, name need-fs
+  load <node:path>, name need-path
+
+form need-recursive
+  link recursive, like boolean
+
+form need-world
+  link argv, like list, like text
+  link env, like dynamic
+  link cwd, like text
+  link home, like text
+  link running, like text
+
+form need-use
+  link home, like text
+  link version, like text
+
+host root, temp-folder(<term-need->)
+host home, need-path/join(root, <home>)
+
+task make-folder
+  take path, like text
+  like void
+
+  need-fs/mkdir-sync(path, make(need-recursive, bind(recursive, true)))
+
+# installed: 2.6.2, 2.6.4, 2.7.0 (each a directory with an install.tree)
+task install
+  take version, like text
+  like text
+
+  make-folder(need-path/join(home, <code>, version, <term>, <bin>))
+  need-fs/write-file-sync(need-path/join(home, <code>, version, <install.tree>), <install\n  code \<{version}\>\n  form \<darwin-arm64\>\n  hash \<sha256:x\>\n>)
+  back version
+
+host installed, make list(install(<2.6.2>), install(<2.6.4>), install(<2.7.0>))
+
+# a not-a-version directory and a version without an install.tree are not installs
+task not-installs
+  like text
+
+  make-folder(need-path/join(home, <code>, <.2.8.0.123>))
+  make-folder(need-path/join(home, <code>, <2.9.0>))
+  back home
+
+host home-ready, not-installs()
+
+host digest, <sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>
+
+task project
+  take name, like text
+  take need, like text
+  take pin, like text
+  like text
+
+  host dir, need-path/join(root, name)
+  make-folder(dir)
+  save line, <>
+  fork test, is-unequal(need, <>)
+    hold
+      save line, <  need {need}\n>
+  need-fs/write-file-sync(need-path/join(dir, <deck.tree>), <deck @alice/{name}\n  mark \<1.0.0\>\n{line}>)
+  fork test, is-unequal(pin, <>)
+    hold
+      need-fs/write-file-sync(need-path/join(dir, <lock.tree>), <lock \<1\>\n\nneed @term/code\n  code \<{pin}\>\n  hash \<{digest}\>\n>)
+  back dir
+
+host none, project(<none>, <>, <>)
+host sixes, project(<sixes>, <@term/code, mark \<2.6.x\>>, <>)
+host pinned, project(<pinned>, <@term/code, mark \<2.6.x\>>, <2.6.2>)
+host stale, project(<stale>, <@term/code, mark \<2.7.x\>>, <2.6.2>)
+host missing, project(<missing>, <@term/code, mark \<2.5.x\>>, <2.5.0>)
+host future, project(<future>, <@term/code, mark \<3.x.x\>>, <>)
+host other, project(<other>, <@alice/tool, mark \<1.x.x\>>, <>)
+host nested, need-path/join(sixes, <inner>, <deeper>)
+host inner-project, project(need-path/join(<sixes>, <pkg>), <@term/code, mark \<2.7.x\>>, <>)
+
+task make-nested
+  like text
+
+  make-folder(nested)
+  back nested
+
+host nested-ready, make-nested()
+
+task no-arguments
+  like list, like text
+
+  back make list
+
+host make-only, make list(<make>)
+
+task world
+  take cwd, like text
+  take argv, like list, like text
+  take env, like dynamic
+  take running, like text
+  like need-world
+
+  back make(need-world, bind(argv, argv), bind(env, env), bind(cwd, cwd), bind(home, home), bind(running, running))
+
+# the choice for a directory, with the original's defaults: `make`, no environment, 2.6.4 running
+task run
+  take cwd, like text
+  like dynamic
+
+  back need-module/choose-version(world(cwd, make-only, empty-record(), <2.6.4>))/choice
+
+task run-with
+  take cwd, like text
+  take argv, like list, like text
+  take env, like dynamic
+  like dynamic
+
+  back need-module/choose-version(world(cwd, argv, env, <2.6.4>))/choice
+
+task version-env
+  take version, like text
+  like dynamic
+
+  back make-record(make(list, <TERM_VERSION>, version))
+
+# the original's `is`: the choice's form, then its version and how it was chosen, each <> for any
+task is-choice
+  take choice, like dynamic
+  take form, like text
+  take version, like text
+  take by, like text
+  like boolean
+
+  fork test, is-unequal(choice/form, form)
+    hold
+      back false
+  fork test, and(is-unequal(version, <>), or(is-equal(choice/form, <refuse>), is-unequal(choice/version, version)))
+    hold
+      back false
+  fork test, is-equal(by, <>)
+    hold
+      back true
+  back and(is-equal(choice/form, <run>), is-equal(choice/by, by))
+
+# 1, 2 and 3: the request, then the project, with nothing else on the home
+host flag-argv, make list(<+2.7.x>, <make>, <--trees>)
+host flagged, need-module/choose-version(world(sixes, flag-argv, empty-record(), <2.6.4>))
+host env-wins, run-with(sixes, make-only, version-env(<2.6.2>))
+host flag-argv-alone, make list(<+2.7.0>)
+host flag-over-env, run-with(none, flag-argv-alone, version-env(<2.6.2>))
+host in-sixes, run(sixes)
+host in-nested, run(nested-ready)
+host in-inner, run(inner-project)
+host in-pinned, run(pinned)
+host in-stale, run(stale)
+host in-missing, run(missing)
+host in-future, run(future)
+host in-other, run(other)
+
+# 4: a default need.tree, written and then emptied
+form default-seen
+  link outside, like dynamic
+  link project, like dynamic
+
+task with-default
+  like default-seen
+
+  host need-file, need-path/join(home, <need.tree>)
+  need-fs/write-file-sync(need-file, <need @term/code, mark \<2.6.2\>\n>)
+  host outside, run(none)
+  host inside, run(sixes)
+  need-fs/write-file-sync(need-file, <\n>)
+  back make(default-seen, bind(outside, outside), bind(project, inside))
+
+host defaulted, with-default()
+
+# 5: the newest installed, then the front
+host newest, run(none)
+
+form front-seen
+  link outside, like dynamic
+  link front, like text
+  link project, like dynamic
+
+task with-front
+  like front-seen
+
+  make-folder(need-path/join(home, <call>))
+  host link, need-path/join(home, <call>, <term>)
+  need-fs/symlink-sync(need-path/join(<..>, <code>, <2.6.2>, <term>, <bin>, <term>), link)
+  host outside, run(none)
+  host front, need-module/front-of(home)
+  host inside, run(sixes)
+  need-fs/unlink-sync(link)
+  back make(front-seen, bind(outside, outside), bind(front, front), bind(project, inside))
+
+host fronted, with-front()
+
+# a home whose front is still `bin/`, as on Windows while the running term.cmd holds it (home.ts `frontDir`)
+task front-before
+  like text
+
+  host before, need-path/join(root, <home-before>)
+  make-folder(need-path/join(before, <bin>))
+  need-fs/symlink-sync(need-path/join(<..>, <code>, <2.6.2>, <term>, <bin>, <term>), need-path/join(before, <bin>, <term>))
+  back need-module/front-of(before)
+
+host before-front, front-before()
+
+# the running copy counts as installed: a Homebrew 2.6.6 in a 2.6.x project runs itself, no handoff to 2.6.4
+host running-newer, need-module/choose-version(world(sixes, make-only, empty-record(), <2.6.6>))/choice
+
+# markUsed: once a day, only for an install
+form used-seen
+  link stamped, like boolean
+  link unstamped, like boolean
+
+task mark-both
+  like used-seen
+
+  need-module/mark-used(make(need-use, bind(home, home), bind(version, <2.6.4>)))
+  host stamped, need-fs/exists-sync(need-path/join(home, <code>, <2.6.4>, <used>))
+  need-module/mark-used(make(need-use, bind(home, home), bind(version, <2.9.0>)))
+  host unstamped, need-fs/exists-sync(need-path/join(home, <code>, <2.9.0>, <used>))
+  back make(used-seen, bind(stamped, stamped), bind(unstamped, unstamped))
+
+host used, mark-both()
+
+# 6: nothing installed, the running copy
+task bare-home
+  like text
+
+  host bare, need-path/join(root, <bare-home>)
+  make-folder(bare)
+  back bare
+
+host bare, bare-home()
+
+task bare-choice
+  take cwd, like text
+  like dynamic
+
+  back need-module/choose-version(make(need-world, bind(argv, make-only), bind(env, empty-record()), bind(cwd, cwd), bind(home, bare), bind(running, <2.6.4>)))/choice
+
+host only-flag, make list(<+2.x.y>, <make>)
+host bad-flag, run-with(none, only-flag, empty-record())
+host bad-env, run-with(none, make-only, version-env(<latest>))
+
+host refused-other, make pattern, <<only @term/code can be needed>>
+
+test <1. +flag wins over the project, and is stripped from the arguments>
+  want hold, is-choice(flagged/choice, <run>, <2.7.0>, <installed>)
+  want hold, is-equal list-join(flagged/argv, < >), <make --trees>
+
+test <splitFlag leaves an ordinary first argument alone>
+  host flag-and-word, make list(<+x>, <a>)
+  want hold, is-equal need-module/split-flag(flag-and-word)/argv/length, 2
+  want hold, is-equal kind-of(need-module/split-flag(make-only)/text), <undefined>
+
+test <2. TERM_VERSION wins over the project>
+  want hold, is-choice(env-wins, <run>, <2.6.2>, <>)
+
+test <+flag wins over TERM_VERSION>
+  want hold, is-choice(flag-over-env, <run>, <2.7.0>, <>)
+
+test <3. a project range runs the newest installed in range>
+  want hold, is-choice(in-sixes, <run>, <2.6.4>, <installed>)
+
+test <from a subdirectory, walking up>
+  want hold, is-choice(in-nested, <run>, <2.6.4>, <>)
+
+test <nearest wins: a nested package with its own need>
+  want hold, is-choice(in-inner, <run>, <2.7.0>, <>)
+
+test <a pin that satisfies the range runs exactly the pin>
+  want hold, is-choice(in-pinned, <run>, <2.6.2>, <pin>)
+
+test <a stale pin (outside the range) is passed over for the range>
+  want hold, is-choice(in-stale, <run>, <2.7.0>, <installed>)
+
+test <a pin not installed is a load of exactly it, with its digest>
+  want hold, is-equal in-missing/form, <load>
+  want hold, and(is-equal(in-missing/version, <2.5.0>), is-equal(in-missing/expect, digest))
+
+test <a range nothing installed satisfies is a load of the range>
+  want hold, is-equal in-future/form, <load>
+  want hold, is-equal kind-of(in-future/version), <undefined>
+
+test <a need naming another package is refused, with the file>
+  want hold, is-equal in-other/form, <refuse>
+  want hold, matches(refused-other, in-other/reason)
+
+test <4. the default applies outside any project>
+  want hold, is-choice(defaulted/outside, <run>, <2.6.2>, <>)
+
+test <and the project still wins over it>
+  want hold, is-choice(defaulted/project, <run>, <2.6.4>, <>)
+
+test <5. no request anywhere: the newest installed>
+  want hold, is-choice(newest, <run>, <2.7.0>, <installed>)
+
+test <a version directory without an install.tree is not an install>
+  host not-installs, make list(<2.9.0>, <2.8.0>)
+  want hold, not(list-contains(not-installs, newest/version))
+
+test <5. with a front, the front: `self back` and `self load` mean what they say>
+  want hold, is-choice(fronted/outside, <run>, <2.6.2>, <installed>)
+
+test <frontOf reads the link, call/term>
+  want hold, is-equal fronted/front, <2.6.2>
+
+test <a project still wins over the front>
+  want hold, is-choice(fronted/project, <run>, <2.6.4>, <>)
+
+test <frontOf reads bin/term where call/ does not exist yet>
+  want hold, is-equal before-front, <2.6.2>
+
+test <a newer running copy in range runs itself>
+  want hold, is-choice(running-newer, <run>, <2.6.6>, <running>)
+  want hold, is-equal kind-of(running-newer/launcher), <undefined>
+
+test <markUsed stamps an installed version>
+  want hold, used/stamped
+
+test <and never a directory that is not an install>
+  want hold, not(used/unstamped)
+
+test <6. nothing installed: the running copy>
+  want hold, is-choice(bare-choice(none), <run>, <2.6.4>, <running>)
+
+test <and the running copy answers a range it is in, with nothing installed>
+  want hold, is-choice(bare-choice(sixes), <run>, <2.6.4>, <running>)
+
+test <a +flag that is not a version is refused>
+  want hold, is-equal bad-flag/form, <refuse>
+
+test <a TERM_VERSION that is not a version is refused>
+  want hold, is-equal bad-env/form, <refuse>

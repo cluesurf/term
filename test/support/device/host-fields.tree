@@ -1,0 +1,48 @@
+note <reading the records the CLI's TypeScript build helpers answer, and handing them one>
+
+# The device helpers drive the CLI's own builds (deck/call/code/cask.ts, compose.ts, uikit.ts), docked as their subject
+# (decision 106), and each answers a plain object: `{ serial }` or `{ missing }`, `{ form: 'built', jar, ... }`. These
+# read one field of such an answer, so every device file reads them the same way (item 0548).
+
+bind host-field-text
+  take value, like dynamic
+  take field, like text
+  like text
+  case node
+    text <String($value?.[$field] ?? "")>
+
+bind host-field-texts
+  take value, like dynamic
+  take field, like text
+  like list, like text
+  case node
+    text <($value?.[$field] ?? []).map(String)>
+
+# a hash's value at `key`, <> when it holds none
+bind host-hash-text
+  take entries, like hash, like text, like text
+  take key, like text
+  like text
+  case node
+    text <($entries.get($key) ?? "")>
+
+bind host-hash-keys
+  take entries, like hash, like text, like text
+  like list, like text
+  case node
+    text <[...$entries.keys()]>
+
+# what a raise from a docked helper said: its message, then any lines of a tool's output it carries as `quote`
+# (output.ts `runTool`), which its message alone leaves out
+bind host-cause-text
+  take cause, like dynamic
+  like text
+  case node
+    text <[$cause?.message ?? String($cause), ...($cause?.quote ?? [])].join("\n")>
+
+# a hash of texts as the plain object a TypeScript helper takes for a `Record<string, string>`
+bind host-object
+  take entries, like hash, like text, like text
+  like dynamic
+  case node
+    text <Object.fromEntries($entries)>

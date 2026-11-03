@@ -1,0 +1,170 @@
+note <`term roll exception --path`: one call path from every task that can raise an exception to the site that raises it>
+
+# Ported from roll.ts by statement (item 0550, decision 116: the converter left 112 of 187 code lines). The compiles go
+# through the harness with `roll`, and deck/make/code/compile/roll.ts `showRoll` is the subject (decision 106). A task that
+# raises directly has an empty chain, a task that reaches the raise through callees lists them in order. The original
+# stops after its first test when the program does not compile: here each later test fails on its own instead.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/judging
+  find read-field
+  find truth
+  find empty-list
+
+load ../support/reading
+  find first-with
+  find any-with
+  find any-holding
+
+load ../support/walking
+  find json-without
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/roll>, name roll-module
+
+form roll-show
+  link path, like boolean
+
+# the stdlib exception form stands in, the way test/compile/exception.ts writes it, so the test needs no resolver. `outer`
+# reaches `limit` only through `middle`, which reaches it through `inner`, which raises it
+host program, <form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\ntask exception-code\n  like text\n  send back, text \<kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr\>\n\ntask exception-time\n  like number\n  send back, code 7\n\nform limit\n  like exception\n    bind note, \<Too many\>\n    link count, like number\n\ntask inner\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read n\n        code 3\n    hook hold\n      halt limit\n        bind count, read n\n  send back, read n\n\ntask middle\n  take n, like number\n  like number\n  send back\n    call inner\n      read n\n\ntask outer\n  take n, like number\n  like number\n  send back\n    call middle\n      read n\n>
+
+host result, compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(roll, true)))
+
+# a task of the roll by its name, void when it has none
+task roll-task
+  take name, like text
+  like dynamic
+
+  fork test, not(truth(result/roll))
+    hold
+      back void
+  back first-with(result/roll/task, <name>, name)
+
+task raises-limit
+  take name, like text
+  like boolean
+
+  host found, roll-task(name)
+  fork test, not(truth(found))
+    hold
+      back false
+  host raised, read-field(found, <halt>)
+  fork test, not(truth(raised))
+    hold
+      back false
+  back contains(raised, <limit>)
+
+# no field left out of a JSON text
+task no-fields
+  like list, like text
+
+  back make list
+
+# the path of a task to limit, as JSON writes it
+task limit-path
+  take name, like text
+  like text
+
+  back json-without(read-field(read-field(roll-task(name), <path>), <limit>), no-fields())
+
+test <the program compiles with a roll>
+  want hold, and(result/ok, truth(result/roll))
+
+test <every task on the chain raises limit>
+  want hold, and(raises-limit(<inner>), and(raises-limit(<middle>), raises-limit(<outer>)))
+
+test <the direct raiser has an empty path>
+  want hold, is-equal limit-path(<inner>), <[]>
+
+test <one hop lists the callee>
+  want hold, is-equal limit-path(<middle>), <["inner"]>
+
+test <two hops list them in call order>
+  want hold, is-equal limit-path(<outer>), <["middle","inner"]>
+
+test <--path prints the chain under the exception>
+  host shown, roll-module/show-roll(result/roll, <exception>, make(roll-show, bind(path, true)))
+  want hold, text-contains(shown, <path @local/outer \> middle \> inner>)
+
+test <--path prints the direct raiser with no chain>
+  host shown, roll-module/show-roll(result/roll, <exception>, make(roll-show, bind(path, true)))
+  want hold, text-contains(<{shown}\n>, <path @local/inner\n>)
+
+test <without --path the exception entry is unchanged>
+  host plain, roll-module/show-roll(result/roll, <exception>)
+  want hold, not(text-contains(plain, <path >))
+
+test <a task shows its own path under --path>
+  host tasks, roll-module/show-roll(result/roll, <task>, make(roll-show, bind(path, true)))
+  want hold, text-contains(tasks, <path limit, outer \> middle \> inner>)
+
+# a kind a deck declares: `roll metric` / `like metric`, and every top-level constant of that form is an entry
+host kind-program, <form metric\n  link name, like text\n  link unit, like text\n\nroll metric\n  like metric\n\nhost request-count\n  make metric\n    bind name, text \<requests\>\n    bind unit, text \<count\>\n\nhost latency\n  make metric\n    bind name, text \<latency\>\n    bind unit, text \<ms\>\n\nhost not-a-metric, code 3\n>
+
+host kinds, compile-text(kind-program, make(compile-choice, bind(file, <k.tree>), bind(roll, true)))
+
+# a list of the roll's, the empty list where the compile was refused or the roll holds none
+task roll-list
+  take name, like text
+  like dynamic
+
+  fork test, not(kinds/ok)
+    hold
+      back empty-list()
+  host found, read-field(kinds/roll, name)
+  fork test, not(truth(found))
+    hold
+      back empty-list()
+  back found
+
+# every entry refers to the constant of its name, on the kind
+task entries-refer
+  take metrics, like dynamic
+  like boolean
+
+  walk metrics
+    take one, like dynamic
+    fork test, not(and(is-equal(one/ref, one/name), is-equal(one/kind, <metric>)))
+      hold
+        back false
+  back true
+
+test <a declared kind compiles with a roll>
+  want hold, and(kinds/ok, truth(kinds/roll))
+
+test <the roll lists the declared kind with its form>
+  host declared, roll-list(<kind>)
+  want hold, is-equal declared/length, 1
+  want hold, and(is-equal(declared/0/name, <metric>), is-equal(declared/0/like, <metric>))
+
+# the original joins the names sorted: two entries, each named once, is the same claim
+test <every constant of the form is an entry on the kind>
+  host metrics, roll-list(<metric>)
+  want hold, is-equal metrics/length, 2
+  want hold, and(any-with(metrics, <name>, <latency>), any-with(metrics, <name>, <request-count>))
+
+test <a constant of another type is not>
+  want hold, not(any-with(roll-list(<metric>), <name>, <not-a-metric>))
+
+test <an entry carries the constant it refers to>
+  want hold, entries-refer(roll-list(<metric>))
+
+test <`term roll metric` prints the entries>
+  want hold, kinds/ok
+  host shown, roll-module/show-roll(kinds/roll, <metric>)
+  want hold, and(text-contains(shown, <metric @local/request-count>), text-contains(shown, <metric @local/latency>))
+
+test <a roll without its form is refused>
+  host missing, compile-text(<roll metric\n>, make(compile-choice, bind(file, <m.tree>)))
+  want hold, not(missing/ok)
+  want hold, any-holding(missing/messages, <needs the form of its entries>)

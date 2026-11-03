@@ -1,0 +1,27 @@
+note <a leg whose device or toolchain is absent makes the test that runs it read as skipped, with the reason>
+
+# The skip path of test/support/device, apart from device-check.tree so that one passes whole (item 0548). A test runs a
+# leg, reads `skipped`, and says `skip` with the leg's reason, as every suite that loads ./toolkit-run does. The leg here
+# has nothing to run it anywhere, so this test reads skipped on every machine, and the `want` after the skip is never
+# reached: a test that read it would fail.
+
+load ./toolkit-run
+  find toolkit-app
+  find run-leg
+  find prepare-no-device
+
+# a program for every leg, which nothing here builds
+task no-source
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <task run\n  like text\n  send back, text \<{leg}\>\n>
+
+test <a leg with nothing to run it makes its test read skipped, with the reason>
+  host app, make(toolkit-app, bind(root, <.>), bind(folder, <.>), bind(name, <Check>), bind(who, <device-skip-check>), bind(ios-identifier, <surf.term.check>), bind(android-identifier, <surf.term.check>))
+  host ran, run-leg(app, <compose-mars>, no-source, prepare-no-device)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <{ran/reason}>
+  want hold, false

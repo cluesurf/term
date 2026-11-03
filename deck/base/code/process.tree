@@ -19,10 +19,24 @@ task exit
     read code
 
 # a spawned child process: the platform process object lives in the opaque `dock` handle, typed per backend.
-# `id` is the worker number on the browser backend, where a Worker stands in for the process
+# `id` is the worker number on the browser backend, where a Worker stands in for the process. A child that
+# process/child `start` made is held by its runner under `handle`, a number, and keeps the `command` it runs and its
+# `limit` in milliseconds (0 for none), which `wait` names when the limit ends it
 form child
   link dock, mark private
   link
     id
     like size
     need false
+  link
+    handle
+    like number
+    fall 0
+  link
+    command
+    like text
+    fall text <>
+  link
+    limit
+    like number
+    fall 0

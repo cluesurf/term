@@ -1,0 +1,98 @@
+note <a Term program built for Compose on the desktop JVM, and run there with no window>
+
+# Ported from test/compile/shared/compose-build.ts (item 0548, compose-target). The build is the CLI's, `buildCompose` in
+# deck/call/code/compose.ts (what `term make --target compose` runs before packaging), docked here as the subject, so a
+# test and an app build go through the same code. `run-compose` runs the built jar headless and answers what it printed.
+#
+# NOT `java.awt.headless`: a headless JVM has no desktop services at all, so the clipboard and the rest of the device
+# layer answered `unavailable` where a person's run would answer. TERM_WINDOW_AWAY=1 keeps the app from drawing a window
+# (the test host) and, on macOS, out of the Dock and from taking focus.
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/list
+  find push
+
+load ./host-fields
+  find host-field-text
+  find host-field-texts
+
+dock load
+  load <@term/call/code/compose>, name compose-cli
+
+# a Compose build: `state` <built>, <failed> or <skipped>, `stage` and `reason` on a failure or a skip, and for a build
+# the jar, the classpath to run it with, its main class and the program's own runtime jars
+form compose-built
+  link state, like text
+  link stage, like text, fall <>
+  link reason, like text, fall <>
+  link jar, like text, fall <>
+  link classpath, like text, fall <>
+  link main, like text, fall <>
+  link runtime-jars
+    like list, like text
+    fall make list
+
+# a run: `state` <ran> or <skipped>, the exit `status` (-1 when it could not start or its limit ended it), and what it
+# wrote to each stream
+form compose-ran
+  link state, like text
+  link status, like number, fall -1
+  link output, like text, fall <>
+  link error, like text, fall <>
+
+# what buildCompose answered, read
+task compose-built-of
+  take answer, like dynamic
+  like compose-built
+
+  save state, host-field-text(answer, <form>)
+  fork test, is-unequal(state, <built>)
+    hold
+      back make(compose-built, bind(state, state), bind(stage, host-field-text(answer, <stage>)), bind(reason, host-field-text(answer, <reason>)))
+  save jar, host-field-text(answer, <jar>)
+  save classpath, host-field-text(answer, <classpath>)
+  save main, host-field-text(answer, <main>)
+  back make(compose-built, bind(state, state), bind(jar, jar), bind(classpath, classpath), bind(main, main), bind(runtime-jars, host-field-texts(answer, <runtimeJars>)))
+
+# the arguments for buildCompose
+form compose-input
+  link root, like text
+  link dir, like text
+  link name, like text
+  link text, like text
+
+# compile `text` (entry `<folder>/<name>.tree`) for Compose on the desktop JVM and build it into a jar, `root` where its
+# packages resolve. Skipped without kotlinc or java
+task build-compose
+  take root, like text
+  take folder, like text
+  take name, like text
+  take text, like text
+  like compose-built
+
+  back compose-built-of(compose-cli/build-compose(make(compose-input, bind(root, root), bind(dir, folder), bind(name, name), bind(text, text))))
+
+# run a built program with no window, three minutes at most, answering what it printed
+task run-compose
+  take built, like compose-built
+  like compose-ran
+
+  fork test, is-equal(find-tool(<java>), <>)
+    hold
+      back make(compose-ran, bind(state, <skipped>), bind(error, <java not installed>))
+  save arguments, make list(<--enable-native-access=ALL-UNNAMED>, <-classpath>, <{built/jar}:{built/classpath}>, built/main)
+  save environment
+    make hash
+      save <TERM_WINDOW_AWAY>, <1>
+  fork
+    mark unsafe
+    save ran, run(<java>, arguments, bind(environment, environment), bind(limit, 180000))
+    back make(compose-ran, bind(state, <ran>), bind(status, ran/code), bind(output, ran/output), bind(error, ran/error))
+  halt take
+    take cause
+    back make(compose-ran, bind(state, <ran>), bind(error, <java did not run to its end in three minutes>))

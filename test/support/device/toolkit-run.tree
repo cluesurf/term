@@ -1,0 +1,766 @@
+note <one Term program on the toolkit hosts: built, run, and what it printed handed back for the suite to judge>
+
+# Ported from test/compile/shared/toolkit-run.ts (item 0548). One program on each toolkit host, a leg each:
+#
+#   macos            built with swiftc and run
+#   ios              built for the iPhone simulator into a flat .app, launched on a BOOTED simulator, its console read
+#   android          built with kotlinc and d8 into an APK, installed on the ONLINE emulator, its `native-dom` log read
+#   compose          built for Compose on the desktop JVM and run headless (./compose-build)
+#   compose-android  Jetpack Compose on the emulator (./compose-android)
+#   compose-linux    Compose packaged and run on the work droplet, compose-windows on the Windows machine
+#                    (./compose-remote), each only when asked for by name
+#
+# `run-leg` answers a `toolkit-leg`: `skipped` with the reason where the leg's toolchain or device is absent, which the
+# test reads and says `skip` itself, else the checks the leg made on the way (it compiles, it builds, it exits 0, each a
+# `toolkit-check`) and what the program printed. The original handed that output to the caller's judge inside the leg;
+# here the suite judges `output` once the leg answers, so the judge is the suite's own Term. A leg on the simulator or
+# emulator holds the device (./hold) from its first command to its last, never during its build. Nothing here boots a
+# simulator or starts an emulator: a leg whose device is not up is skipped.
+
+load ../compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find prelude-text
+
+load ../running
+  find run-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/environment
+  find variable
+  find set-variable
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find trim
+  find substring
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+
+load ./hold
+  find hold-device
+  find release-device
+  find device-held
+
+load ./simulator
+  find booted-simulator
+
+load ./android-log
+  find android-device
+  find follow-app-log
+
+load ./compose-build
+  find build-compose
+  find run-compose
+
+load ./compose-android
+  find build-compose-android
+  find run-compose-android
+  find pull-file
+
+load ./compose-remote
+  find run-compose-remote
+  find last-of
+
+load ./host-fields
+  find host-field-text
+  find host-hash-text
+  find host-hash-keys
+  find host-object
+  find host-cause-text
+
+dock load
+  load <@term/call/code/cask>, name toolkit-cask
+  load <@term/make/code/compile/native-main>, name toolkit-main
+  load <node:fs>, name toolkit-file
+  load <node:path>, name toolkit-path
+
+# the Swift module every cask builds, cask.ts SWIFT_MODULE
+host swift-module, <TermApp>
+
+# the app a suite runs on the toolkits. `root` is where `@term/*` resolves, `folder` a scratch folder for sources, builds
+# and default PNGs, `name` the app's name on iOS and Android, `who` the suite's name in a device hold. `assets` are files
+# the Android app carries in its APK by asset name, read as `asset:<name>` (an emulator cannot read host paths). `shots`
+# says where a leg's PNG goes, by leg, else `<folder>/<leg>.png`. `compose` and `compose-android` opt a suite into
+# those legs once the Compose runtime draws everything it uses
+form toolkit-app
+  link root, like text
+  link folder, like text
+  link name, like text
+  link who, like text
+  link ios-identifier, like text
+  link android-identifier, like text
+  link assets
+    like hash, like text, like text
+    fall make hash
+  link shots
+    like hash, like text, like text
+    fall make hash
+  link compose, like boolean, fall false
+  link compose-android, like boolean, fall false
+
+# one check a leg made: its name (`ios: builds`), whether it held, and what it read when it did not
+form toolkit-check
+  link name, like text
+  link passed, like boolean
+  link info, like text, fall <>
+
+# a leg's answer: `state` <ran> or <skipped> (with `reason`), the checks it made, what the program printed for the
+# judge, and where its PNG is
+form toolkit-leg
+  mark shared
+  link leg, like text
+  link toolkit, like text
+  link state, like text, fall <ran>
+  link reason, like text, fall <>
+  link checks
+    like list, like toolkit-check
+    fall make list
+  link output, like text, fall <>
+  link shot, like text, fall <>
+
+bind toolkit-platform
+  take seed, like number
+  like text
+  case node
+    text <process.platform>
+
+bind toolkit-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# the arguments of the cask's helpers, as they take them
+form ios-bundle-input
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link native, like text
+
+form android-program-input
+  link root, like text
+  link entry, like text
+  link identifier, like text
+  link driver, like text
+  link work, like text
+  link env, like text
+
+form apk-input
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link dex, like text
+  link assets, like text
+  link work, like text
+  link native, like text
+
+# the toolkit a leg draws with
+task toolkit-of
+  take leg, like text
+  like text
+
+  fork test, is-equal(leg, <macos>)
+    hold
+      back <AppKit>
+  fork test, is-equal(leg, <ios>)
+    hold
+      back <UIKit>
+  fork test, is-equal(leg, <android>)
+    hold
+      back <Android views>
+  fork test, is-equal(leg, <compose>)
+    hold
+      back <Compose>
+  fork test, is-equal(leg, <compose-android>)
+    hold
+      back <Jetpack Compose>
+  fork test, is-equal(leg, <compose-linux>)
+    hold
+      back <Compose on Linux>
+  back <Compose on Windows>
+
+# every leg `only` allows (<> for all), Compose among them only where the app opted in, and another desktop's only when
+# asked for by name, since it needs that machine
+task legs-of
+  take app, like toolkit-app
+  take only, like text
+  like list, like text
+
+  save legs, make list
+  walk make list(<macos>, <ios>, <android>)
+    take leg, like text
+    fork test, or(is-equal(only, <>), is-equal(only, leg))
+      hold
+        legs/push(leg)
+  fork test, or(is-equal(only, <compose>), and(is-equal(only, <>), app/compose))
+    hold
+      legs/push(<compose>)
+  fork test, or(is-equal(only, <compose-android>), and(is-equal(only, <>), app/compose-android))
+    hold
+      legs/push(<compose-android>)
+  fork test, or(is-equal(only, <compose-linux>), is-equal(only, <compose-windows>))
+    hold
+      legs/push(only)
+  back legs
+
+# a leg not yet run
+task leg-of
+  take leg, like text
+  like toolkit-leg
+
+  back make(toolkit-leg, bind(leg, leg), bind(toolkit, toolkit-of(leg)))
+
+task skipped-leg
+  take leg, like text
+  take reason, like text
+  like toolkit-leg
+
+  save made, leg-of(leg)
+  save made/state, <skipped>
+  save made/reason, reason
+  back made
+
+# record one check on a leg
+task leg-check
+  take ran, like toolkit-leg
+  take name, like text
+  take passed, like boolean
+  take info, like text, fall <>
+  like void
+
+  ran/checks/push(make(toolkit-check, bind(name, name), bind(passed, passed), bind(info, info)))
+
+# the checks of a leg that did not hold, each `name: info` on a line, <> when every one held
+task failed-checks
+  take ran, like toolkit-leg
+  like text
+
+  save failed, make list
+  walk ran/checks
+    take one, like toolkit-check
+    fork test, not(one/passed)
+      hold
+        failed/push(<{one/name}: {one/info}>)
+  back failed/join(<\n>)
+
+# where a leg's PNG goes
+task shot-of
+  take app, like toolkit-app
+  take leg, like text
+  like text
+
+  save named, host-hash-text(app/shots, leg)
+  fork test, is-unequal(named, <>)
+    hold
+      back named
+  back toolkit-path/join(app/folder, <{leg}.png>)
+
+# the first four messages of a refused program, joined
+task first-messages
+  take messages, like list, like text
+  like text
+
+  save some, make list
+  walk messages
+    take message, like text
+    fork test, is-below(some/length, 4)
+      hold
+        some/push(message)
+  back some/join(< | >)
+
+# the program for one Apple platform, compiled with the prelude its natives dock into one Swift file. <> when it did not
+# compile
+task swift-for
+  take app, like toolkit-app
+  take ran, like toolkit-leg
+  take shot, like text
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  like text
+
+  save leg, ran/leg
+  save source, source-of(leg, shot)
+  save entry, toolkit-path/join(app/folder, <{leg}.tree>)
+  write-file(entry, source)
+  save out, compile-text(source, make(compile-choice, bind(file, entry), bind(project, app/root), bind(project-env, leg), bind(env, leg)))
+  save refusal, <>
+  fork test, not(out/ok)
+    hold
+      save refusal, first-messages(out/messages)
+  leg-check(ran, <{leg}: compiles with the toolkit host>, out/ok, refusal)
+  fork test, not(out/ok)
+    hold
+      back <>
+  save swift, emit-text(out, <swift>)
+  save prelude, prelude-text(out, leg, swift)
+  leg-check(ran, <{leg}: no WebView, the program holds the toolkit's views and not a page>, and(text-contains(prelude, <enum nativeView>), not(text-contains(swift, <loadBundle>))))
+  save start, <main()>
+  fork test, matches(make(pattern, <<func main\(\)[^{]*throws>>), swift)
+    hold
+      save start, <try main()>
+  save file, toolkit-path/join(app/folder, <{leg}.swift>)
+  write-file(file, <import Foundation\n{prelude}\n{swift}\n{start}\n>)
+  back file
+
+# a toolchain run to its end as a leg's build check: true when it exits 0
+task builds
+  take ran, like toolkit-leg
+  take arguments, like list, like text
+  like boolean
+
+  save errors, run-tool(arguments)
+  leg-check(ran, <{ran/leg}: builds>, is-equal(errors, <>), errors)
+  back is-equal(errors, <>)
+
+# an NSException states its reason near the top of standard error, before the backtrace
+task reason-lines
+  take said, like text
+  like text
+
+  save found, make list
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, or(text-contains(line, <reason>), or(text-contains(line, <Fatal error>), text-contains(line, <***>)))
+      hold
+        found/push(line)
+  save joined, found/join(<\n>)
+  fork test, is-equal(joined, <>)
+    hold
+      back substring(said, 0, 1200)
+  back joined
+
+task run-macos
+  take app, like toolkit-app
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  like toolkit-leg
+
+  save ran, leg-of(<macos>)
+  save shot, shot-of(app, <macos>)
+  save ran/shot, shot
+  save file, swift-for(app, ran, shot, source-of)
+  save exe, toolkit-path/join(app/folder, <macos>)
+  fork test, is-equal(file, <>)
+    hold
+      back ran
+  fork test, not(builds(ran, make list(<swiftc>, <-module-name>, swift-module, <-o>, exe, file)))
+    hold
+      back ran
+  save status, -1
+  save said, <>
+  fork
+    mark unsafe
+    save none, make list
+    save result, run(exe, none, bind(limit, 60000))
+    save status, result/code
+    save said, result/error
+    save ran/output, result/output
+  halt take
+    take cause
+    save said, <the app did not end in 60 seconds>
+  leg-check(ran, <macos: the app exits 0>, is-equal(status, 0), <exit {status}: {reason-lines(said)}>)
+  back ran
+
+# the app's entitlements, as a simulator build Xcode makes carries them with no team: its identifier and its own keychain
+# group under a placeholder team prefix, in the binary's __entitlements section, where the simulator reads them.
+# Without them the simulator's Keychain refused every secret (errSecMissingEntitlement, device-layer-0020), and the
+# simulator refused to launch the app without them in the signature too
+task entitlements-of
+  take identifier, like text
+  like text
+
+  save prefixed, <SIMULATOR0.{identifier}>
+  back <\<?xml version="1.0" encoding="UTF-8"?\>\n\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>\n\<plist version="1.0"\>\<dict\>\<key\>application-identifier\</key\>\<string\>{prefixed}\</string\>\<key\>keychain-access-groups\</key\>\<array\>\<string\>{prefixed}\</string\>\</array\>\</dict\>\</plist\>\n>
+
+# the simulator SDK, a flat .app, installed clean on the booted iPhone simulator, its console read until it exits. The
+# Swift build stays outside the hold, and a run with nothing booted never waits for it
+task run-ios
+  take app, like toolkit-app
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like toolkit-leg
+
+  save found, booted-simulator()
+  fork test, is-unequal(found/missing, <>)
+    hold
+      back skipped-leg(<ios>, found/missing)
+  save ran, leg-of(<ios>)
+  save shot, shot-of(app, <ios>)
+  save ran/shot, shot
+  save file, swift-for(app, ran, shot, source-of)
+  save native, <>
+  fork test, is-unequal(file, <>)
+    hold
+      save native, read-file(file)
+  save bundle, toolkit-cask/assemble-ios-bundle(make(ios-bundle-input, bind(out, toolkit-path/join(app/folder, <ios>)), bind(name, app/name), bind(identifier, app/ios-identifier), bind(version, <0.0.2>), bind(native, native)))
+  save sdk, trim(run(<xcrun>, make list(<-sdk>, <iphonesimulator>, <--show-sdk-path>))/output)
+  save entitlements, toolkit-path/join(app/folder, <ios-entitlements.plist>)
+  write-file(entitlements, entitlements-of(app/ios-identifier))
+  fork test, is-equal(file, <>)
+    hold
+      back ran
+  save swiftc, make list(<xcrun>, <-sdk>, <iphonesimulator>, <swiftc>, <-target>, <arm64-apple-ios17.0-simulator>, <-sdk>, sdk, <-Xlinker>, <-sectcreate>, <-Xlinker>, <__TEXT>, <-Xlinker>, <__entitlements>, <-Xlinker>, entitlements, <-module-name>, swift-module, <-o>, host-field-text(bundle, <exe>), file)
+  fork test, not(builds(ran, swiftc))
+    hold
+      back ran
+  save signed, run-tool(make list(<codesign>, <--force>, <--sign>, <->, host-field-text(bundle, <app>)))
+  fork test, is-unequal(signed, <>)
+    hold
+      leg-check(ran, <ios: signs>, false, signed)
+      back ran
+  save held, hold-device(<simulator>, <{app/who} ios>)
+  save failure, <>
+  fork
+    mark unsafe
+    on-simulator(app, ran, found/udid, host-field-text(bundle, <app>), before-launch)
+  halt take
+    take cause
+    save failure, host-cause-text(cause)
+  release-device(held)
+  fork test, is-unequal(failure, <>)
+    hold
+      leg-check(ran, <ios: the run on the simulator raised nothing>, false, failure)
+  back ran
+
+# the iOS leg's part under the simulator's hold
+task on-simulator
+  take app, like toolkit-app
+  take ran, like toolkit-leg
+  take udid, like text
+  take bundle, like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like void
+
+  save identifier, app/ios-identifier
+  run(<xcrun>, make list(<simctl>, <terminate>, udid, identifier))
+  run(<xcrun>, make list(<simctl>, <uninstall>, udid, identifier))
+  save installed, run-tool(make list(<xcrun>, <simctl>, <install>, udid, bundle))
+  fork test, is-unequal(installed, <>)
+    hold
+      leg-check(ran, <ios: installs>, false, installed)
+      back
+  before-launch(<ios>, udid, <>, identifier)
+  save output, launched(udid, identifier)
+  leg-check(ran, <ios: the app said it exits 0>, text-contains(output, <native-view exit 0>), substring(output, 0, 600))
+  save ran/output, output
+
+# what the app printed on the simulator's console, launched until it exits, two minutes at most
+task launched
+  take udid, like text
+  take identifier, like text
+  like text
+
+  fork
+    mark unsafe
+    save arguments, make list(<simctl>, <launch>, <--console>, <--terminate-running-process>, udid, identifier)
+    save result, run(<xcrun>, arguments, bind(limit, 120000))
+    back <{result/output}{result/error}>
+  halt take
+    take cause
+    back <the app did not end in two minutes>
+
+# kotlinc and d8, an APK carrying the app's assets, installed on the emulator, the `native-dom` log read until the app
+# says it exits, and the PNG copied out of the app's external files directory
+task run-android
+  take app, like toolkit-app
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like toolkit-leg
+
+  save found, android-device()
+  fork test, is-unequal(found/missing, <>)
+    hold
+      back skipped-leg(<android>, found/missing)
+  save ran, leg-of(<android>)
+  save shot, shot-of(app, <android>)
+  save ran/shot, shot
+  save work, toolkit-path/join(app/folder, <android>)
+  save assets, toolkit-path/join(work, <assets>)
+  toolkit-file/mkdir-sync(assets, toolkit-recursive(0))
+  walk host-hash-keys(app/assets)
+    take name, like text
+    toolkit-file/copy-file-sync(host-hash-text(app/assets, name), toolkit-path/join(assets, name))
+  save entry, toolkit-path/join(app/folder, <android.tree>)
+  write-file(entry, source-of(<android>, <native-dom.png>))
+  save apk, <>
+  save failure, <>
+  fork
+    mark unsafe
+    save apk, android-apk(app, entry, work, assets)
+  halt take
+    take cause
+    save failure, host-cause-text(cause)
+  leg-check(ran, <android: builds>, is-equal(failure, <>), substring(failure, 0, 1600))
+  fork test, is-unequal(failure, <>)
+    hold
+      back ran
+  save held, hold-device(<emulator>, <{app/who} android>)
+  fork
+    mark unsafe
+    on-emulator(app, ran, found/adb, found/serial, apk, before-launch)
+  halt take
+    take cause
+    save failure, host-cause-text(cause)
+  release-device(held)
+  fork test, is-unequal(failure, <>)
+    hold
+      leg-check(ran, <android: the run on the emulator raised nothing>, false, failure)
+  back ran
+
+# the cask's own Android build: the program compiled for `android` (whose chain reaches the toolkit hosts), an Activity
+# that runs it inside onCreate once a view can be made, and an APK declaring the permissions its device capabilities need
+task android-apk
+  take app, like toolkit-app
+  take entry, like text
+  take work, like text
+  take assets, like text
+  like text
+
+  save spelled, toolkit-main/entry-spelling(<kotlin>, <main>)
+  save driver, <class TermActivity : TermViewActivity() \{\n  override fun program() \{ {spelled}() \}\n\}>
+  save built, toolkit-cask/build-android-program(make(android-program-input, bind(root, app/root), bind(entry, entry), bind(identifier, app/android-identifier), bind(driver, driver), bind(work, work), bind(env, <android>)))
+  save given, make(apk-input, bind(out, work), bind(name, app/name), bind(identifier, app/android-identifier), bind(version, <0.0.2>), bind(dex, host-field-text(built, <dex>)), bind(assets, assets), bind(work, work), bind(native, host-field-text(built, <native>)))
+  back toolkit-cask/assemble-apk(given)
+
+# the Android leg's part under the emulator's hold
+task on-emulator
+  take app, like toolkit-app
+  take ran, like toolkit-leg
+  take adb, like text
+  take serial, like text
+  take apk, like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like void
+
+  save identifier, app/android-identifier
+  run(adb, make list(<-s>, serial, <uninstall>, identifier))
+  save installed, run(adb, make list(<-s>, serial, <install>, <-r>, apk))
+  leg-check(ran, <android: installs>, is-equal(installed/code, 0), substring(<{installed/output}{installed/error}>, 0, 400))
+  before-launch(<android>, <>, serial, identifier)
+  run(adb, make list(<-s>, serial, <shell>, <am>, <start>, <-n>, <{identifier}/.TermActivity>))
+  save said, follow-app-log(adb, serial, identifier)
+  leg-check(ran, <android: the app said it exits 0>, text-contains(said, <native-view exit 0>), said)
+  pull-file(adb, serial, </sdcard/Android/data/{identifier}/files/native-dom.png>, ran/shot)
+  save ran/output, said
+
+# Compose on the desktop JVM: the Android program with the Compose runtime in place of Android's, built by kotlinc with
+# the Compose plugin and run headless, no emulator
+task run-compose-leg
+  take app, like toolkit-app
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  like toolkit-leg
+
+  save shot, shot-of(app, <compose>)
+  save built, build-compose(app/root, app/folder, <compose>, source-of(<compose>, shot))
+  fork test, is-equal(built/state, <skipped>)
+    hold
+      back skipped-leg(<compose>, built/reason)
+  save ran, leg-of(<compose>)
+  save ran/shot, shot
+  leg-check(ran, <compose: builds>, is-equal(built/state, <built>), <{built/stage}: {built/reason}>)
+  fork test, is-unequal(built/state, <built>)
+    hold
+      back ran
+  save result, run-compose(built)
+  fork test, is-equal(result/state, <skipped>)
+    hold
+      back skipped-leg(<compose>, result/error)
+  leg-check(ran, <compose: the app said it exits 0>, and(text-contains(result/output, <native-view exit 0>), is-equal(result/status, 0)), <status {result/status}: {result/error}>)
+  save ran/output, result/output
+  back ran
+
+# Jetpack Compose on the emulator: an APK from Compose's Android libraries with no Android Gradle plugin, its log read
+# and its PNG pulled, under the emulator's hold
+task run-compose-android-leg
+  take app, like toolkit-app
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like toolkit-leg
+
+  save shot, shot-of(app, <compose-android>)
+  save identifier, <{app/android-identifier}.compose>
+  save built, build-compose-android(app/root, app/folder, <compose>, source-of(<compose-android>, <compose.png>), identifier, app/assets)
+  fork test, is-equal(built/state, <skipped>)
+    hold
+      back skipped-leg(<compose-android>, built/reason)
+  save ran, leg-of(<compose-android>)
+  save ran/shot, shot
+  leg-check(ran, <compose-android: builds>, is-equal(built/state, <built>), <{built/stage}: {built/reason}>)
+  fork test, is-unequal(built/state, <built>)
+    hold
+      back ran
+  save before
+    task
+      take serial, like text
+      like void
+      before-launch(<compose-android>, <>, serial, identifier)
+  save held, hold-device(<emulator>, <{app/who} compose-android>)
+  save result, run-compose-android(built/apk, identifier, <compose.png>, shot, before)
+  release-device(held)
+  fork test, is-equal(result/state, <skipped>)
+    hold
+      back skipped-leg(<compose-android>, result/reason)
+  leg-check(ran, <compose-android: installs>, result/installed)
+  leg-check(ran, <compose-android: the app said it exits 0>, result/exited, last-of(result/output, 1600))
+  save ran/output, result/output
+  back ran
+
+# Compose on another desktop, built here and packaged by that desktop's own jpackage
+task run-compose-remote-leg
+  take app, like toolkit-app
+  take leg, like text
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  like toolkit-leg
+
+  save desktop, <windows>
+  fork test, is-equal(leg, <compose-linux>)
+    hold
+      save desktop, <linux>
+  save shot, shot-of(app, leg)
+  save result, run-compose-remote(app/root, app/folder, app/name, source-of(leg, <{leg}.png>), desktop, <{leg}.png>, shot)
+  fork test, is-equal(result/state, <skipped>)
+    hold
+      back skipped-leg(leg, result/reason)
+  save ran, leg-of(leg)
+  save ran/shot, shot
+  leg-check(ran, <{leg}: builds here and packages there>, is-equal(result/state, <ran>), <{result/stage}: {result/reason}>)
+  fork test, is-unequal(result/state, <ran>)
+    hold
+      back ran
+  leg-check(ran, <{leg}: the packaged app said it exits 0>, text-contains(result/output, <native-view exit 0>), last-of(result/output, 1600))
+  save ran/output, result/output
+  back ran
+
+# what nothing prepares: a leg with no grant or value to hand the device
+task prepare-no-device
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like void
+
+  back
+
+# one leg of the app's program, skipped with its reason where its toolchain or device is absent. `source-of` gives the
+# program for a leg, writing its PNG at `shot` (on Android a bare file name in the app's own external files directory).
+# `before-launch` runs once the app is installed on a simulator or emulator and before it starts: a grant through
+# `simctl privacy` or `pm grant`, or a value the device is told. A macOS app opens its window past the right edge of the
+# screens and never takes focus (TERM_WINDOW_AWAY, set here unless the run set it)
+task run-leg
+  take app, like toolkit-app
+  take leg, like text
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  like toolkit-leg
+
+  fork test, is-equal(variable(<TERM_WINDOW_AWAY>), <>)
+    hold
+      set-variable(<TERM_WINDOW_AWAY>, <1>)
+  save apple, is-equal(toolkit-platform(0), <darwin>)
+  fork test, is-equal(leg, <macos>)
+    hold
+      fork test, not(apple)
+        hold
+          back skipped-leg(leg, <AppKit is macOS only>)
+      back run-macos(app, source-of)
+  fork test, is-equal(leg, <ios>)
+    hold
+      fork test, not(apple)
+        hold
+          back skipped-leg(leg, <the iOS simulator is macOS only>)
+      back run-ios(app, source-of, before-launch)
+  fork test, is-equal(leg, <android>)
+    hold
+      back run-android(app, source-of, before-launch)
+  fork test, is-equal(leg, <compose>)
+    hold
+      back run-compose-leg(app, source-of)
+  fork test, is-equal(leg, <compose-android>)
+    hold
+      back run-compose-android-leg(app, source-of, before-launch)
+  fork test, or(is-equal(leg, <compose-linux>), is-equal(leg, <compose-windows>))
+    hold
+      back run-compose-remote-leg(app, leg, source-of)
+  back skipped-leg(leg, <no such leg>)

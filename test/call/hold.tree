@@ -1,0 +1,146 @@
+note <`term hold`, the gate: every file compiles, no claim is open, and every tier-0 obligation is proven or named in hold.json>
+
+# Ported from hold.ts by statement (item 0550, decision 116: the converter left 111 of 168 code lines).
+# deck/call/code/hold.ts `holdProject` is the subject, over deck/call/code/make.ts `findTreeFiles` (decision 106). Each
+# refusal sits beside the project that holds, so a gate that refused everything would fail here. Each project is a temp
+# folder, removed when the run ends.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/reading
+  find values-at
+
+load ../support/walking
+  find json-without
+
+load @term/base/list
+  find contains
+
+dock load
+  load <@term/call/code/hold>, name hold-module
+  load <@term/call/code/make>, name hold-make
+  load <node:fs>, name hold-fs
+  load <node:path>, name hold-path
+
+form hold-recursive
+  link recursive, like boolean
+
+form hold-file
+  link name, like text
+  link text, like text
+
+# a project of these files under code/
+task project
+  take files, like list, like hold-file
+  like text
+
+  host root, temp-folder(<term-hold->)
+  hold-fs/mkdir-sync(hold-path/join(root, <code>), make(hold-recursive, bind(recursive, true)))
+  walk files
+    take one, like hold-file
+    hold-fs/write-file-sync(hold-path/join(root, <code>, one/name), one/text)
+  back root
+
+task hold-of
+  take root, like text
+  like dynamic
+
+  # saved first: `make list, <node>` puts <node> in the list (T-0555)
+  host skipped, no-fields()
+  back hold-module/hold-project(root, hold-make/find-tree-files(root, skipped, <node>))
+
+task file-of
+  take name, like text
+  take text, like text
+  like hold-file
+
+  back make(hold-file, bind(name, name), bind(text, text))
+
+task no-fields
+  like list, like text
+
+  back make list
+
+host guarded, <task first\n  take items, like list, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read items/length\n        code 0\n    hook hold\n      send back, read items/0\n  send back, code 0\n>
+
+# two statements, so it is not an accessor: an accessor's read is lifted to its callers, and with none it would owe nothing
+# here
+host unguarded, <task first\n  take items, like list, like number\n  like number\n  save head, read items/0\n  send back, read head\n>
+
+host open-claim, <rule someday\n  note open\n  take x, like number\n  like number\n>
+
+# 1. a project whose every obligation is proven holds
+test <a proven project holds>
+  host summary, hold-of(project(make list(file-of(<first.tree>, guarded))))
+  want hold, and(is-equal(summary/failed/length, 0), and(is-equal(summary/open/length, 0), is-equal(summary/fresh/length, 0)))
+  want hold, and(is-equal(summary/total, 1), is-equal(summary/proven, 1))
+
+# 2. an open claim does not hold, though it compiles
+test <an open claim does not hold>
+  host summary, hold-of(project(make list(file-of(<first.tree>, guarded), file-of(<someday.tree>, open-claim))))
+  want hold, and(is-equal(summary/failed/length, 0), contains(summary/open, <someday>))
+
+# 3. an unproven obligation outside the baseline does not hold, and one the baseline names does. The original runs the
+# four steps in order on one project, so `baselined` runs them once and keeps each answer
+form hold-steps
+  link before, like dynamic
+  link after, like dynamic
+  link proven, like dynamic
+
+task baselined
+  like hold-steps
+
+  host root, project(make list(file-of(<first.tree>, unguarded)))
+  host before, hold-of(root)
+  host keys, values-at(before/fresh, <key>)
+  hold-fs/write-file-sync(hold-path/join(root, <hold.json>), json-without(make-record(make(list, <obligations>, keys)), no-fields()))
+  host after, hold-of(root)
+  # proving it makes the baseline entry stale, which is reported so the baseline can shrink
+  hold-fs/write-file-sync(hold-path/join(root, <code>, <first.tree>), guarded)
+  host proven, hold-of(root)
+  back make(hold-steps, bind(before, before), bind(after, after), bind(proven, proven))
+
+host steps, baselined()
+
+# the key names the file, the task and the kind, never a line, so an edit above the task does not churn it
+task keys-carry-no-line
+  take fresh, like dynamic
+  like boolean
+
+  walk fresh
+    take one, like dynamic
+    fork test, is-unequal(one/key, <code/first.tree first index 0>)
+      hold
+        back false
+  back true
+
+test <an unproven obligation not in the baseline does not hold>
+  want hold, and(is-equal(steps/before/fresh/length, 1), is-equal(steps/before/proven, 0))
+
+test <the same obligation named in hold.json holds>
+  want hold, and(is-equal(steps/after/fresh/length, 0), is-equal(steps/after/baselined, 1))
+
+test <a baseline key carries no line number>
+  want hold, keys-carry-no-line(steps/before/fresh)
+
+test <a baselined obligation that is now proven is reported as gone>
+  want hold, and(is-equal(steps/proven/gone/length, 1), is-equal(steps/proven/fresh/length, 0))
+
+# 4. a file that does not compile (here, a contract that is false) does not hold
+host false-contract, <task same\n  take n, like natural-number\n  like number\n  must\n    call is-above\n      read back\n      read n\n  send back, read n\n>
+
+test <a false contract does not hold>
+  host summary, hold-of(project(make list(file-of(<same.tree>, false-contract))))
+  want hold, is-equal summary/failed/length, 1
+
+# a `mark roam` task that reaches no native code is counted once, as roaming. It was counted impure as well (guides:
+# proofs/contracts, 2026-10-05)
+host spin, <task spin\n  mark roam\n  take n, like number\n  like number\n  save total, read n\n  walk test\n    hook test\n      true\n    hook hold\n      save total\n        call add\n          read total\n          code 1\n  send back, read total\n>
+
+test <a `mark roam` task is counted as roaming and not as impure>
+  host summary, hold-of(project(make list(file-of(<spin.tree>, spin))))
+  want hold, and(is-equal(summary/ledger/roaming/length, 1), is-equal(summary/ledger/native/length, 0))

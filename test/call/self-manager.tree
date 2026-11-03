@@ -1,0 +1,49 @@
+note <`term self` names the package manager that owns a copy, by where that manager puts the payload>
+
+# Ported from self-manager.ts by statement (item 0550, decision 116): the converter read 2 lines left of 55 and wrote 8
+# placeholders. deck/call/code/self.ts `managerOf` is the subject (decision 106). Homebrew's Cellar or Caskroom, winget's
+# package folder for ClueSurf.Term, and /usr/lib/term for the .deb and the .rpm task/distro.ts makes, told apart by
+# whether dpkg has a record of the package. The original's literal list of cases is one test per case.
+
+load ../support/walking
+  find kind-of
+
+dock load
+  load <@term/call/code/self>, name self-module
+
+# whether managerOf names `want` for the payload, <> for no manager (the original's undefined)
+task manager-is
+  take payload, like text
+  take dpkg, like boolean
+  take want, like text
+  like boolean
+
+  host got, self-module/manager-of(payload, dpkg)
+  fork test, is-equal(want, <>)
+    hold
+      back is-equal(kind-of(got), <undefined>)
+  back is-equal(got, want)
+
+test <a Homebrew formula: homebrew>
+  want hold, manager-is(</opt/homebrew/Cellar/term/2.7.0/libexec/term>, false, <homebrew>)
+
+test <a Homebrew cask: homebrew>
+  want hold, manager-is(</opt/homebrew/Caskroom/term/2.7.0/term>, false, <homebrew>)
+
+test <the .deb: apt>
+  want hold, manager-is(</usr/lib/term>, true, <apt>)
+
+test <the .rpm: dnf>
+  want hold, manager-is(</usr/lib/term>, false, <dnf>)
+
+test <winget: winget>
+  want hold, manager-is(<C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\ClueSurf.Term_Microsoft.Winget.Source_8wekyb3d8bbwe\\term>, false, <winget>)
+
+test <a source checkout: no manager>
+  want hold, manager-is(</Users/a/term/deck/term>, false, <>)
+
+test <a folder only named like the system one: no manager>
+  want hold, manager-is(</usr/lib/term-old>, true, <>)
+
+test <another winget package: no manager>
+  want hold, manager-is(<C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Other.Term_x\\term>, false, <>)

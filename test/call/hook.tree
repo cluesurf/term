@@ -1,0 +1,647 @@
+note <CLI `hook` dispatch: compile a command tree, then resolve real argv against it (subcommand descent, flags, positionals, the bound task)>
+
+# Ported from hook.ts by statement (item 0550, decision 116: the converter left 679 of 766 code lines). The subjects
+# (decision 106) are the Term dispatcher's ports, deck/call/host/port/code/work/hook/parsing.ts and running.ts, which the
+# original imports (term-cli-in-term-0225), and deck/call/code/hook-dispatch.ts, the TypeScript dispatcher boot.ts still
+# reads, for decision 060's empty choices (item 0363). The compiles go through the harness. The original compares each
+# answer as JSON, so a test compares json-without's text with the original's literal, and `false` where the original's
+# `x.ok && ...` is false. runCommandLine calls the bound task with exactly one value per take of the route, so each
+# task stands in as a Term task of that many takes, and records what it was handed. The original's sequence of runs on
+# one passing route (its `seen` list shared) is read here per run: one call, then none.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find project-path
+
+load ../support/cli
+  find term-root
+
+load ../support/judging
+  find read-field
+  find truth
+  find empty-list
+  find empty-record
+  find set-field
+
+load ../support/reading
+  find any-holding
+  find first-with
+  find values-at
+
+load ../support/walking
+  find json-without
+  find fields-of
+  find field-of
+  find kind-of
+
+load @term/base/list
+  find push
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+
+dock load
+  load <@term/call/host/port/code/work/hook/parsing>, name hook-parsing
+  load <@term/call/host/port/code/work/hook/running>, name hook-running
+  load <@term/call/code/hook-dispatch>, name hook-dispatch
+
+form hook-run
+  link name, like text
+  link routes, like dynamic
+  link argv, like list, like text
+  link resolve, like dynamic
+  link out, like dynamic
+  link err, like dynamic
+
+form hook-ran
+  link code, like number
+  link handed, like list, like dynamic
+  link shown, like list, like text
+
+task no-fields
+  like list, like text
+
+  back make list
+
+task no-lines
+  like list, like text
+
+  back make list
+
+# a value as JSON writes it, `null` for one it leaves out
+task item-json
+  take value, like dynamic
+  like text
+
+  fork test, is-equal(kind-of(value), <undefined>)
+    hold
+      back <null>
+  back json-without(value, no-fields())
+
+# the original's `x.ok && x.<field>`, as JSON: `false` when the dispatch was refused
+task field-json
+  take found, like dynamic
+  take field, like text
+  like text
+
+  fork test, not(truth(found/ok))
+    hold
+      back <false>
+  back json-without(read-field(found, field), no-fields())
+
+# the original's `x.ok && x.args.<name>`, as JSON
+task arg-json
+  take found, like dynamic
+  take name, like text
+  like text
+
+  fork test, not(truth(found/ok))
+    hold
+      back <false>
+  back json-without(read-field(found/args, name), no-fields())
+
+# the original's `x.ok && [x.args.<a>, x.args.<b>, ...]`, as JSON
+task args-json
+  take found, like dynamic
+  take names, like list, like text
+  like text
+
+  fork test, not(truth(found/ok))
+    hold
+      back <false>
+  save out, <>
+  save first, true
+  walk names
+    take name, like text
+    host part, item-json(read-field(found/args, name))
+    fork test, first
+      hold
+        save out, part
+      miss
+        save out, <{out},{part}>
+    save first, false
+  back <[{out}]>
+
+task routes-of
+  take source, like text
+  take file, like text
+  like dynamic
+
+  host built, compile-text(source, make(compile-choice, bind(file, file)))
+  fork test, not(built/ok)
+    hold
+      back empty-list()
+  back hook-parsing/command-routes(built/program)
+
+task dispatch
+  take routes, like dynamic
+  take argv, like list, like text
+  like dynamic
+
+  back hook-parsing/dispatch(routes, argv)
+
+# runCommandLine over the routes, the bound task standing in with `arity` takes: one is recorded as it is handed, more
+# as the list of them, and none is the original's `() => 0`. Every line printed is kept
+task run-line
+  take name, like text
+  take routes, like dynamic
+  take argv, like list, like text
+  take arity, like number
+  like hook-ran
+
+  host handed, empty-list()
+  host shown, no-lines()
+  save none-taken
+    task
+      like number
+      back 0
+  save one-taken
+    task
+      take first, like dynamic
+      like number
+      handed/push(first)
+      back 0
+  save two-taken
+    task
+      take first, like dynamic
+      take second, like dynamic
+      like number
+      handed/push(make list(first, second))
+      back 0
+  save three-taken
+    task
+      take first, like dynamic
+      take second, like dynamic
+      take third, like dynamic
+      like number
+      handed/push(make list(first, second, third))
+      back 0
+  save resolver
+    task
+      take called, like text
+      like dynamic
+      fork test, is-equal(arity, 1)
+        hold
+          back one-taken
+      fork test, is-equal(arity, 2)
+        hold
+          back two-taken
+      fork test, is-equal(arity, 3)
+        hold
+          back three-taken
+      back none-taken
+  save said
+    task
+      take line, like text
+      like void
+      shown/push(line)
+  host code, wait hook-running/run-command-line(make(hook-run, bind(name, name), bind(routes, routes), bind(argv, argv), bind(resolve, resolver), bind(out, said), bind(err, said)))
+  back make(hook-ran, bind(code, code), bind(handed, handed), bind(shown, shown))
+
+# the paths of the routes, in code point order
+task paths-sorted
+  take routes, like dynamic
+  like text
+
+  host paths, values-at(routes, <path>)
+  host texts, no-lines()
+  walk paths
+    take one, like text
+    texts/push(one)
+  back json-without(sort(texts, from-texts), no-fields())
+
+host source, <task make-deck\n  take name, like text\n  send back\n    code 0\n\ntask make-face\n  take name, like text\n  send back\n    code 0\n\ntask load-deck\n  take name, like text\n  send back\n    code 0\n\nhook make\n  take name\n  take title\n    code t\n  task make-deck\n  hook face\n    take name\n    take verbose\n      like boolean\n    task make-face\n\nhook load\n  slot name\n  task load-deck\n\nhook lock\n  take cite\n  take code\n    wait rise\n  task make-deck\n\ntask pair\n  take first, like text\n  take second, like text\n  send back\n    code 0\n\nhook pair\n  take second\n  take first\n  task pair\n\ntask repeat\n  take times, like number\n  send back\n    code 0\n\nhook repeat\n  take times\n    like number\n  task repeat\n\ntask join\n  take words, like list, like text\n  send back\n    code 0\n\nhook join\n  slot words, like list, like text\n  task join\n\ntask gather\n  take items, like list\n  send back\n    code 0\n\nhook gather\n  slot items\n    like list\n  task gather\n>
+
+host routes, routes-of(source, <cli.tree>)
+
+test <top-level commands>
+  want hold, is-equal paths-sorted(routes), <["gather","join","load","lock","make","pair","repeat"]>
+
+# A LIST SLOT IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the element is
+# written (`like list, like text`) or not (`like list`). A list `take` under a command is a repeatable option instead
+# (decision cli-in-term/010, below)
+test <a list take collects every word left>
+  host words, make list(<join>, <The>, <Name>, <of>, <the>, <Rose>)
+  want hold, is-equal arg-json(dispatch(routes, words), <words>), <["The","Name","of","the","Rose"]>
+
+test <a bare `like list` collects them too>
+  host words, make list(<gather>, <a.txt>, <b.txt>)
+  want hold, is-equal arg-json(dispatch(routes, words), <items>), <["a.txt","b.txt"]>
+
+test <a text take still holds one word>
+  host words, make list(<load>, <one>)
+  want hold, is-equal arg-json(dispatch(routes, words), <name>), <"one">
+
+# and the retired marker is REFUSED by name. Unread, it was dropped in silence and the take held one word of text
+test <a `many` is refused, naming the list type>
+  host retired, compile-text(<task join\n  take words, like text\n  send back\n    code 0\n\nhook join\n  take words\n    like text\n    many\n  task join\n>, make(compile-choice, bind(file, <many.tree>)))
+  want hold, not(retired/ok)
+  want hold, has-message-with(retired/messages, <`many` is retired>, <like list>)
+
+# top-level command + flag
+host flagged, dispatch(routes, make list(<make>, <--name>, <x>))
+
+test <make: ok>
+  want hold, is-equal flagged/ok, true
+
+test <make: task>
+  want hold, is-equal field-json(flagged, <task>), <"make-deck">
+
+test <make: command path>
+  want hold, is-equal field-json(flagged, <command>), <["make"]>
+
+test <make: flag arg>
+  want hold, is-equal arg-json(flagged, <name>), <"x">
+
+# subcommand descent + flag
+host descended, dispatch(routes, make list(<make>, <face>, <--name>, <y>))
+
+test <make face: task>
+  want hold, is-equal field-json(descended, <task>), <"make-face">
+
+test <make face: path>
+  want hold, is-equal field-json(descended, <command>), <["make","face"]>
+
+test <make face: arg>
+  want hold, is-equal arg-json(descended, <name>), <"y">
+
+# positional bound to the first slot
+host positional, dispatch(routes, make list(<load>, <mydeck>))
+
+test <load positional -\> task>
+  want hold, is-equal field-json(positional, <task>), <"load-deck">
+
+test <load positional -\> name>
+  want hold, is-equal arg-json(positional, <name>), <"mydeck">
+
+test <flag=value>
+  want hold, is-equal arg-json(dispatch(routes, make list(<make>, <--name=z>)), <name>), <"z">
+
+# boolean flag (no value follows)
+test <boolean flag>
+  want hold, is-equal arg-json(dispatch(routes, make list(<make>, <face>, <--verbose>)), <verbose>), <true>
+
+# short flag `-t` resolves to the take's full name `title`
+test <short flag parsed>
+  host make-route, first-with(routes, <path>, <make>)
+  want hold, is-equal read-field(first-with(make-route/takes, <name>, <title>), <short>), <t>
+
+test <short flag dispatches to full name>
+  want hold, is-equal arg-json(dispatch(routes, make list(<make>, <-t>, <Hello>)), <title>), <"Hello">
+
+test <short flag = value>
+  want hold, is-equal arg-json(dispatch(routes, make list(<make>, <-t=Hi>)), <title>), <"Hi">
+
+# masked input flag captured (`wait rise`)
+test <masked take captured>
+  host lock-route, first-with(routes, <path>, <lock>)
+  want hold, is-equal read-field(first-with(lock-route/takes, <name>, <code>), <masked>), true
+
+test <unknown command rejected>
+  want hold, is-equal dispatch(routes, make list(<nope>))/ok, false
+
+# a flag no take names is refused, not ignored (guides: applications/command-line)
+host typo, dispatch(routes, make list(<make>, <--typo>, <x>))
+
+test <unknown flag rejected>
+  want hold, is-equal typo/ok, false
+
+test <and named>
+  want hold, not(truth(typo/ok))
+  want hold, text-contains(typo/error, <--typo>)
+
+# a word no take is left to hold is refused
+test <leftover argument rejected>
+  want hold, is-equal dispatch(routes, make list(<load>, <one>, <two>))/ok, false
+
+# a `like number` take refuses a value that is not a whole number
+test <non-number rejected>
+  want hold, is-equal dispatch(routes, make list(<repeat>, <--times>, <x>))/ok, false
+
+test <fraction rejected for a whole number>
+  want hold, is-equal dispatch(routes, make list(<repeat>, <--times>, <1.5>))/ok, false
+
+test <whole number accepted>
+  want hold, is-equal arg-json(dispatch(routes, make list(<repeat>, <--times>, <3>)), <times>), <3>
+
+# the task's parameters are filled by name, whatever order the hook lists its takes in
+test <a bound call carries its task parameters>
+  host pair-route, first-with(routes, <path>, <pair>)
+  want hold, is-equal item-json(read-field(pair-route/calls/0, <params>)), <["first","second"]>
+
+# true when a message of the list holds both words
+task has-message-with
+  take messages, like dynamic
+  take word, like text
+  take other, like text
+  like boolean
+
+  walk messages
+    take one, like text
+    fork test, and(text-contains(one, word), text-contains(one, other))
+      hold
+        back true
+  back false
+
+# ONE PROGRAM HOOK (decision term/003 part 3): its nested hooks are the commands and its takes the global options, accepted
+# on every command and handed to the console (`globals`), never to the task. A positional binds to a slot only, and a
+# long alias reaches its take
+host program-source, <task build\n  take file, like text\n  take ride, like boolean\n  send back\n    code 0\n\nhook tool\n  take quiet\n    like boolean\n    code q\n  take color\n    like text\n    pick auto\n    pick never\n    bind \<auto\>\n  hook build\n    slot file\n      like text\n    take ride, name watch\n      like boolean\n    task build\n>
+
+host program, routes-of(program-source, <program.tree>)
+
+test <the program is read as its commands>
+  want hold, is-equal item-json(values-at(hook-parsing/program-of(program)/commands, <path>)), <["build"]>
+
+host built-line, dispatch(program, make list(<build>, <a.tree>, <--watch>, <-q>, <--color>, <never>))
+
+test <a slot takes the positional>
+  want hold, is-equal arg-json(built-line, <file>), <"a.tree">
+
+test <a long alias reaches its take>
+  want hold, is-equal arg-json(built-line, <ride>), <true>
+
+test <a global is the console's>
+  want hold, is-equal field-json(built-line, <globals>), <\{"quiet":true,"color":"never"\}>
+
+# the names of a record's fields, in code point order, as JSON
+task keys-sorted
+  take record, like dynamic
+  like text
+
+  host names, no-lines()
+  walk fields-of(record)
+    take one, like text
+    names/push(one)
+  back json-without(sort(names, from-texts), no-fields())
+
+test <and never the task's>
+  want hold, truth(built-line/ok)
+  want hold, is-equal keys-sorted(built-line/args), <["file","ride"]>
+
+test <a word no slot holds is refused>
+  want hold, is-equal dispatch(program, make list(<build>, <--ride>, <a.tree>, <b.tree>))/ok, false
+
+test <a global's choices are checked>
+  want hold, is-equal dispatch(program, make list(<build>, <--color>, <red>))/ok, false
+
+test <words after -- no slot holds are left to the task, not refused>
+  host dashed, dispatch(program, make list(<build>, <a.tree>, <-->, <run>, <--help>))
+  want hold, is-equal dashed/ok, true
+  want hold, is-equal arg-json(dashed, <file>), <"a.tree">
+
+# A LIST TAKE IS A REPEATABLE OPTION (decision cli-in-term/010): every occurrence in line order, `--x=v` too; left out, the
+# task gets the empty list; a positional never fills it
+host repeat-source, <task gather\n  take spec, like list, like text\n  take law, like list, like text\n  send back\n    code 0\n\nhook tool\n  hook knit\n    slot spec\n      like list, like text\n    take law\n      like list, like text\n    task gather\n>
+
+host repeat, routes-of(repeat-source, <repeat.tree>)
+host laws, dispatch(repeat, make list(<knit>, <--law>, <one>, <--law=two>, <a>, <spec>))
+
+test <a list option collects every occurrence in order>
+  want hold, is-equal arg-json(laws, <law>), <["one","two"]>
+
+test <and the positionals still go to the list slot>
+  want hold, is-equal arg-json(laws, <spec>), <["a","spec"]>
+
+test <one occurrence is a list of one>
+  want hold, is-equal arg-json(dispatch(repeat, make list(<knit>, <--law>, <one>)), <law>), <["one"]>
+
+test <a list option left out reaches the task as the empty list>
+  host ran, run-line(<tool>, repeat, make(list, <knit>, <x>), 2)
+  want hold, is-equal item-json(ran/handed/0), <[["x"],[]]>
+
+# FLAGS INTERLEAVE WITH POSITIONALS up to `--` (decision cli-in-term/012 part 1): a list slot alone no longer stops flag
+# parsing, as yargs read `knit [spec..]` and `lint [paths..]`
+host spec-and-law, make list(<spec>, <law>)
+
+test <knit a --law x b: spec [a, b], law [x]>
+  want hold, is-equal args-json(dispatch(repeat, make list(<knit>, <a>, <--law>, <x>, <b>)), spec-and-law), <[["a","b"],["x"]]>
+
+test <knit a b --law x: spec [a, b], law [x]>
+  want hold, is-equal args-json(dispatch(repeat, make list(<knit>, <a>, <b>, <--law>, <x>)), spec-and-law), <[["a","b"],["x"]]>
+
+host lint-source, <task lint\n  take paths, like list, like text\n  take fix, like boolean\n  send back\n    code 0\n\nhook tool\n  hook lint\n    slot paths\n      like list, like text\n    take fix\n      like boolean\n    task lint\n>
+
+host lint, routes-of(lint-source, <lint.tree>)
+
+test <lint a --fix b: paths [a, b], fix true>
+  host paths-and-fix, make list(<paths>, <fix>)
+  want hold, is-equal args-json(dispatch(lint, make list(<lint>, <a>, <--fix>, <b>)), paths-and-fix), <[["a","b"],true]>
+
+test <lint -- -odd: a positional starting with - is written after -->
+  want hold, is-equal arg-json(dispatch(lint, make list(<lint>, <-->, <-odd>)), <paths>), <["-odd"]>
+
+# A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2) halts the command's flags at its first positional:
+# from there every word is the child's, verbatim, `--` and `--help` included
+host child-source, <task call\n  take sort, like text\n  take name, like text\n  take list, like list, like text\n  send back\n    code 0\n\ntask load\n  take spot, like text\n  take main, like text\n  take list, like list, like text\n  take over, like boolean\n  send back\n    code 0\n\nhook zone\n  hook call\n    take sort\n      code t\n      like text\n      bind \<\>\n    slot name\n      like text\n      need true\n    slot list\n      mark pass\n      like list, like text\n    task call\n  hook load\n    slot spot\n      like text\n      bind \<\>\n    slot main\n      like text\n      need true\n    slot list\n      mark pass\n      like list, like text\n    take over\n      like boolean\n      bind code false\n    task load\n>
+
+host child, routes-of(child-source, <child.tree>)
+
+# node's eval flag as a word the child is handed, spelled in two parts: the host-text census reads the flag written whole
+# as a suite running text
+host letter-e, <e>
+host eval-flag, <-{letter-e}>
+host name-and-list, make list(<name>, <list>)
+
+test <call -t dev node -e x -- --port 3: sort dev, name node, list [-e, x, --, --port, 3]>
+  host sort-name-list, make list(<sort>, <name>, <list>)
+  host called, dispatch(child, make list(<call>, <-t>, <dev>, <node>, eval-flag,<x>, <-->, <--port>, <3>))
+  want hold, is-equal args-json(called, sort-name-list), <["dev","node",["-e","x","--","--port","3"]]>
+
+test <call node -e x: name node, list [-e, x]>
+  want hold, is-equal args-json(dispatch(child, make list(<call>, <node>, eval-flag,<x>)), name-and-list), <["node",["-e","x"]]>
+
+test <a -- before the first positional is consumed>
+  want hold, is-equal args-json(dispatch(child, make list(<call>, <-->, <node>, eval-flag,<x>)), name-and-list), <["node",["-e","x"]]>
+
+test <a -- after the halt reaches the child>
+  want hold, is-equal arg-json(dispatch(child, make list(<call>, <npm>, <run>, <dev>, <-->, <--port>, <3>)), <list>), <["run","dev","--","--port","3"]>
+
+test <load --over dev node -e x: over true, spot dev, main node, list [-e, x]>
+  host four, make list(<over>, <spot>, <main>, <list>)
+  want hold, is-equal args-json(dispatch(child, make list(<load>, <--over>, <dev>, <node>, eval-flag,<x>)), four), <[true,"dev","node",["-e","x"]]>
+
+test <a flag after the first positional is the child's: main --over>
+  host three, make list(<main>, <list>, <over>)
+  want hold, is-equal args-json(dispatch(child, make list(<load>, <dev>, <--over>, <node>)), three), <["--over",["node"],false]>
+
+test <call node --help hands list [--help] to the task and prints no help>
+  host ran, run-line(<zone>, child, make(list, <call>, <node>, <--help>), 3)
+  want hold, is-equal ran/code, 0
+  want hold, is-equal item-json(ran/handed/0), <["","node",["--help"]]>
+  want hold, is-equal ran/shown/length, 0
+
+test <--help before the first positional is the command's help>
+  host ran, run-line(<zone>, child, make(list, <call>, <-t>, <dev>, <--help>), 0)
+  want hold, is-equal ran/code, 0
+  want hold, is-above ran/shown/length, 0
+  want hold, text-starts-with(ran/shown/0, <zone call>)
+
+# A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
+# verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's
+host passing-source, <task hand\n  take rest, like list, like text\n  send back\n    code 0\n\nhook tool\n  take quiet\n    like boolean\n    code q\n  hook zone\n    mark pass\n    slot rest, like list, like text\n    task hand\n>
+
+host passing, routes-of(passing-source, <passing.tree>)
+
+test <a passing route gets --help>
+  want hold, is-equal arg-json(dispatch(passing, make list(<zone>, <--help>)), <rest>), <["--help"]>
+
+host listed, dispatch(passing, make list(<zone>, <list>, <--quiet>))
+
+test <a passing route gets its words and flags in order>
+  want hold, is-equal arg-json(listed, <rest>), <["list","--quiet"]>
+
+test <a global after a passing command is not the console's>
+  want hold, is-equal field-json(listed, <globals>), <\{\}>
+
+test <-h, -- and an unknown flag pass verbatim>
+  want hold, is-equal arg-json(dispatch(passing, make list(<zone>, <-h>, <-->, <--typo>, <x>)), <rest>), <["-h","--","--typo","x"]>
+
+test <runCommandLine hands --help after a passing command to it>
+  host ran, run-line(<tool>, passing, make(list, <zone>, <--help>), 1)
+  want hold, is-equal ran/code, 0
+  want hold, is-equal item-json(ran/handed/0), <["--help"]>
+
+# the original's `seen` holds the one call of the run before: this run adds none
+test <--help before a passing command is the console's help of it>
+  host ran, run-line(<tool>, passing, make(list, <--help>, <zone>), 1)
+  want hold, is-equal ran/code, 0
+  want hold, is-equal ran/handed/length, 0
+  want hold, is-above ran/shown/length, 0
+  want hold, text-starts-with(ran/shown/0, <tool zone>)
+
+# true when a line of the list starts with the word
+task any-line-starting
+  take lines, like list, like text
+  take word, like text
+  like boolean
+
+  walk lines
+    take one, like text
+    fork test, text-starts-with(one, word)
+      hold
+        back true
+  back false
+
+test <--help after a literal -- is not the console's help>
+  host ran, run-line(<tool>, program, make(list, <build>, <-->, <--help>), 0)
+  want hold, is-equal ran/code, 0
+  want hold, not(any-line-starting(ran/shown, <tool build>))
+
+# A MAYBE TAKE OR SLOT (decision cli-in-term/008 part 1) reaches its task as `none` when the line does not name it and as
+# `some` of the value when it does, the value read by the item's kind: the empty text and 0 are given values
+host maybe-source, <load @term/base/maybe\n  find maybe\n\nhook probe\n  slot target\n    like maybe, like text\n  take runs\n    like maybe, like number\n  take json\n    like boolean\n  task probe\n\ntask probe\n  take target, like maybe, like text\n  take runs, like maybe, like number\n  take json, like boolean\n  like void\n>
+
+task maybe-routes
+  like dynamic
+
+  host built, compile-text(maybe-source, make(compile-choice, bind(file, project-path(term-root(), <test/call/maybe-line.tree>)), bind(project, term-root()), bind(role, <call>)))
+  fork test, not(built/ok)
+    hold
+      back empty-list()
+  back hook-parsing/command-routes(built/program)
+
+host maybes, maybe-routes()
+
+# what the bound task was handed for the line, as JSON
+task probe-json
+  take argv, like list, like text
+  like text
+
+  host ran, run-line(<tool>, maybes, argv, 3)
+  back item-json(ran/handed/0)
+
+# one value the bound task was handed for the line, as JSON
+task probe-item-json
+  take argv, like list, like text
+  take at, like number
+  like text
+
+  host ran, run-line(<tool>, maybes, argv, 3)
+  back item-json(read-field(ran/handed/0, <{at}>))
+
+test <a maybe text slot absent is none, a maybe number absent none>
+  want hold, is-equal probe-json(make list(<probe>)), <[\{"form":"none"\},\{"form":"none"\},false]>
+
+test <a maybe text slot given "" is some("")>
+  want hold, is-equal probe-item-json(make(list, <probe>, <>), 0), <\{"form":"some","value":""\}>
+
+test <a maybe number take --runs 0 is some(0), a number>
+  want hold, is-equal probe-item-json(make(list, <probe>, <--runs>, <0>), 1), <\{"form":"some","value":0\}>
+
+test <a maybe take given reads its item: --runs=3>
+  want hold, is-equal probe-json(make list(<probe>, <x>, <--runs=3>)), <[\{"form":"some","value":"x"\},\{"form":"some","value":3\},false]>
+
+test <a maybe number take refuses a word that is no number>
+  want hold, is-equal dispatch(maybes, make list(<probe>, <--runs>, <many>))/ok, false
+
+# AN EMPTY `choices` IS NO CHOICES (decision 060 of term/self-host/change/001, item 0363): the mill writes `choices` only
+# from a `pick`, so no source spells an empty list, but the Term mill port writes [] where the original left the key out.
+# call/code/hook-dispatch.ts reads the two alike, as call/code/work/hook/parsing.tree does: a take whose choices is []
+# accepts any text, and its help line names no choices
+host picked-source, <task paint\n  take tone, like text\n  send back\n    code 0\n\nhook paint\n  take tone\n    like text\n    pick soft\n    pick loud\n  task paint\n>
+
+task picked-routes
+  like dynamic
+
+  host built, compile-text(picked-source, make(compile-choice, bind(file, <picked.tree>)))
+  fork test, not(built/ok)
+    hold
+      back empty-list()
+  back hook-dispatch/command-routes(built/program)
+
+host picked, picked-routes()
+
+# a copy of a record with one field set anew, the original's `\{ ...record, [name]: value \}`
+task with-field
+  take record, like dynamic
+  take name, like text
+  take value, like dynamic
+  like dynamic
+
+  host copy, empty-record()
+  walk fields-of(record)
+    take field, like text
+    set-field(copy, field, field-of(record, field))
+  back set-field(copy, name, value)
+
+# the routes, each take named `tone` given the empty choices
+task emptied-of
+  take routes, like dynamic
+  like list, like dynamic
+
+  host out, empty-list()
+  walk routes
+    take route, like dynamic
+    host takes, empty-list()
+    walk route/takes
+      take one, like dynamic
+      fork test, is-equal(one/name, <tone>)
+        hold
+          takes/push(with-field(one, <choices>, empty-list()))
+        miss
+          takes/push(one)
+    out/push(with-field(route, <takes>, takes))
+  back out
+
+host emptied, emptied-of(picked)
+
+test <hook-dispatch: a take with choices refuses a value outside them>
+  want hold, is-equal hook-dispatch/dispatch(picked, make list(<paint>, <--tone>, <bright>))/ok, false
+
+test <hook-dispatch: its help line names them>
+  want hold, text-contains(hook-dispatch/render-help(picked/0, <tool>), <one of soft|loud>)
+
+test <hook-dispatch: a take whose choices is [] accepts any text>
+  host any, hook-dispatch/dispatch(emptied, make list(<paint>, <--tone>, <bright>))
+  want hold, is-equal any/ok, true
+  want hold, is-equal arg-json(any, <tone>), <"bright">
+
+test <hook-dispatch: and its help line names no choices>
+  want hold, not(text-contains(hook-dispatch/render-help(emptied/0, <tool>), <one of>))

@@ -1,0 +1,72 @@
+note <`compileProject` compiles a project's .tree files to TypeScript under host/, and reports a failure without writing it>
+
+# Ported from run.ts by statement (item 0550, decision 116: the converter left 29 of 57 code lines). deck/call/code/make.ts
+# `compileProject` is the subject (decision 106). The original builds twice in sequence and reads the disk between the
+# builds, so `builds` runs both once, in that order, and keeps what each step saw for the tests to read.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/call/code/make>, name run-make
+  load <node:fs>, name run-fs
+  load <node:path>, name run-path
+
+form run-recursive
+  link recursive, like boolean
+
+form run-seen
+  link good, like dynamic
+  link out-exists, like boolean
+  link out-defines, like boolean
+  link mixed, like dynamic
+
+host double-text, <task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n>
+host broken-text, <task broken\n  send back\n    read missing-name\n>
+
+task builds
+  like run-seen
+
+  host root, temp-folder(<seed-project->)
+  run-fs/mkdir-sync(run-path/join(root, <code>), make(run-recursive, bind(recursive, true)))
+  run-fs/write-file-sync(run-path/join(root, <code>, <double.tree>), double-text)
+  host good, run-make/compile-project(root)
+  host out, run-path/join(root, <host>, <code>, <double.ts>)
+  host exists, run-fs/exists-sync(out)
+  save defines, false
+  fork test, exists
+    hold
+      save defines, text-contains(run-fs/read-file-sync(out, <utf8>), <function double>)
+  # a broken file is reported, not written
+  run-fs/write-file-sync(run-path/join(root, <code>, <broken.tree>), broken-text)
+  host mixed, run-make/compile-project(root)
+  back make(run-seen, bind(good, good), bind(out-exists, exists), bind(out-defines, defines), bind(mixed, mixed))
+
+host seen, builds()
+
+test <compiles the project file>
+  want hold, is-equal seen/good/compiled, 1
+
+test <reports no failures>
+  want hold, is-equal seen/good/failed, 0
+
+test <writes emitted TypeScript under host/>
+  want hold, seen/out-exists
+
+test <emitted code defines the function>
+  want hold, seen/out-defines
+
+test <reports the broken file as a failure>
+  want hold, is-equal seen/mixed/failed, 1
+
+test <still compiles the good file>
+  want hold, is-equal seen/mixed/compiled, 1
+
+test <surfaces the diagnostic>
+  want hold, any-holding(seen/mixed/errors, <broken.tree>)

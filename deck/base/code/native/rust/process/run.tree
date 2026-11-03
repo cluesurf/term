@@ -18,6 +18,7 @@ task spawn-process
       like text
       like text
   take limit, like number
+  take group, like boolean
   like run-result
   send back
     call runner/run
@@ -26,6 +27,7 @@ task spawn-process
       read directory
       read environment
       read limit
+      read group
       wait true
 
 task spawn-on-terminal
@@ -72,6 +74,7 @@ task spawn-with-input
       like text
       like text
   take limit, like number
+  take group, like boolean
   like run-result
   send back
     call runner/with-input
@@ -81,4 +84,5 @@ task spawn-with-input
       read directory
       read environment
       read limit
+      read group
       wait true

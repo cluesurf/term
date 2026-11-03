@@ -1,0 +1,164 @@
+note <`term make` project build: incremental artifact writes, rich colored diagnostics, and a relative import through a symlinked project path>
+
+# Ported from make.ts by statement (item 0550, decision 116: the converter left 83 of 118 code lines). deck/call/code/make.ts
+# `compileProject` and deck/call/code/report.ts `renderDiagnostic` are the subjects (decision 106). The original builds
+# four times in sequence on one project, so `builds` runs the four once, in order, and keeps each answer. The compile of
+# step 5 goes through the harness, which answers a diagnostic's place, not the driver's record: `diagnostic-of` builds
+# the record renderDiagnostic reads from the first note, its span starting and ending at the note's place.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+dock load
+  load <@term/call/code/make>, name make-project
+  load <@term/call/code/report>, name make-report
+  load <node:fs>, name make-fs
+  load <node:path>, name make-path
+
+form make-recursive
+  link recursive, like boolean
+
+form make-builds
+  link first, like dynamic
+  link artifact, like boolean
+  link second, like dynamic
+  link third, like dynamic
+  link fourth, like dynamic
+
+host good, <task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+host bad, <task bad\n  take n, like number\n  like text\n  send back\n    read n\n>
+
+task builds
+  like make-builds
+
+  host root, temp-folder(<seed-make->)
+  make-fs/mkdir-sync(make-path/join(root, <src>), make(make-recursive, bind(recursive, true)))
+  host math, make-path/join(root, <src>, <math.tree>)
+  make-fs/write-file-sync(math, good)
+  # 1. the first build compiles the file and WRITES its artifact under host/
+  host first, make-project/compile-project(root)
+  host artifact, make-fs/exists-sync(make-path/join(root, <host>, <src>, <math.ts>))
+  # 2. a rebuild with NO change writes nothing
+  host second, make-project/compile-project(root)
+  # 3. editing the source so its output differs rewrites just that file
+  make-fs/write-file-sync(math, text-replace(good, <read n\n      read n>, <read n\n      call multiply\n        read n\n        read n>))
+  host third, make-project/compile-project(root)
+  # 4. a compile error is reported as a RICH, colored frame
+  make-fs/write-file-sync(make-path/join(root, <src>, <bad.tree>), bad)
+  host fourth, make-project/compile-project(root)
+  back make(make-builds, bind(first, first), bind(artifact, artifact), bind(second, second), bind(third, third), bind(fourth, fourth))
+
+host built, builds()
+
+# whether a text holds the kink frame's three marks
+task is-frame
+  take text, like text
+  like boolean
+
+  back and(text-contains(text, <kink>), and(text-contains(text, <site>), text-contains(text, <^>)))
+
+task any-frame
+  take errors, like dynamic
+  like boolean
+
+  walk errors
+    take one, like text
+    fork test, is-frame(one)
+      hold
+        back true
+  back false
+
+# the driver's record of the first diagnostic, as renderDiagnostic reads it, built from the harness's note
+task diagnostic-of
+  take outcome, like dynamic
+  like dynamic
+
+  host note, outcome/notes/0
+  host span, span-at(note/line, note/column)
+  host markers, make list
+  walk note/markers
+    take marker, like dynamic
+    save column, 0
+    fork test, is-equal(marker/line, note/line)
+      hold
+        save column, note/column
+    markers/push(make-record(make(list, <span>, span-at(marker/line, column), <label>, marker/label)))
+  back make-record(make(list, <code>, note/code, <name>, note/name, <message>, note/message, <file>, note/file, <span>, span, <markers>, markers, <hint>, note/hint, <severity>, note/severity))
+
+# a span that starts and ends at one place
+task span-at
+  take line, like number
+  take column, like number
+  like dynamic
+
+  host at, make-record(make(list, <line>, line, <column>, column))
+  back make-record(make(list, <start>, at, <end>, at))
+
+# 5. renderDiagnostic shows the offending source line and a locator
+task renders-frame
+  take source, like text
+  like boolean
+
+  host broken, compile-text(source, make(compile-choice, bind(file, <b.tree>)))
+  fork test, broken/ok
+    hold
+      back false
+  host frame, make-report/render-diagnostic(diagnostic-of(broken), source)
+  back and(text-contains(frame, <b.tree:>), text-contains(frame, <send back>))
+
+# 6. A RELATIVE IMPORT SURVIVES A SYMLINKED PROJECT PATH. A relative import is confined to its own package, and the
+# confinement compared a real path against an unresolved one, so on any project path crossing a symlink every relative
+# import resolved to nothing. The symlink is made here, so this holds on Linux too
+task linked-build
+  like dynamic
+
+  host real-root, temp-folder(<seed-make-real->)
+  host link-root, make-path/join(temp-folder(<seed-make-link->), <project>)
+  make-fs/mkdir-sync(make-path/join(real-root, <code>), make(make-recursive, bind(recursive, true)))
+  make-fs/write-file-sync(make-path/join(real-root, <deck.tree>), <deck @term/probe\n>)
+  make-fs/write-file-sync(make-path/join(real-root, <code/helper.tree>), <task triple\n  take n, like number\n  like number\n  send back\n    call multiply(read(n), code 3)\n>)
+  make-fs/write-file-sync(make-path/join(real-root, <code/use.tree>), <load ./helper\n  find triple\n\ntask nine\n  like number\n  send back\n    call triple(code 3)\n>)
+  make-fs/symlink-sync(real-root, link-root)
+  back make-project/compile-project(link-root)
+
+test <first build compiles the file>
+  want hold, and(is-equal(built/first/compiled, 1), is-equal(built/first/failed, 0))
+
+test <first build writes the artifact>
+  want hold, is-equal built/first/written, 1
+
+test <artifact lands under host/ mirroring the source tree>
+  want hold, built/artifact
+
+test <rebuild still reports the file compiled>
+  want hold, is-equal built/second/compiled, 1
+
+test <rebuild writes NOTHING when the output is unchanged>
+  want hold, is-equal built/second/written, 0
+
+test <an edited file is rewritten>
+  want hold, and(is-equal(built/third/written, 1), is-equal(built/third/failed, 0))
+
+test <a broken file is counted as failed>
+  want hold, is-minimum built/fourth/failed, 1
+
+test <the diagnostic is a kink-style frame (header + caret), not a one-liner>
+  want hold, any-frame(built/fourth/errors)
+
+test <renderDiagnostic includes the file:line:col locator and the source frame>
+  want hold, renders-frame(bad)
+
+test <a relative import resolves when the project is reached through a symlink>
+  host linked, linked-build()
+  want hold, and(is-equal(linked/failed, 0), is-equal(linked/compiled, 2))

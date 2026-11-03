@@ -1,10 +1,22 @@
-# swift subprocess runner. Internal: reached only through the public run API.
+# swift subprocess runner. Internal: reached only through the public run API. A process group is not on this target:
+# a run asking for one answers -1 with the reason, which run.tree raises as `command-absence` (D025 §1).
 
 load @term/base/process/run
   find run-result
 
 dock load
   load <global:runner>, name runner
+
+# the answer to a run that asks for a process group
+task no-group
+  mark private
+  like run-result
+  send back
+    make run-result
+      bind code, code -1
+      bind output, text <>
+      bind error, text <process groups are not on this target>
+      bind signal, code 0
 
 task spawn-process
   mark async
@@ -18,7 +30,14 @@ task spawn-process
       like text
       like text
   take limit, like number
+  take group, like boolean
   like run-result
+  fork test
+    hook test
+      read group
+    hook hold
+      send back
+        call no-group
   send back
     call runner/run
       read command
@@ -63,7 +82,14 @@ task spawn-with-input
       like text
       like text
   take limit, like number
+  take group, like boolean
   like run-result
+  fork test
+    hook test
+      read group
+    hook hold
+      send back
+        call no-group
   send back
     call runner/with-input
       read command

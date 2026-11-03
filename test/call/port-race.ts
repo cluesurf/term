@@ -67,7 +67,12 @@ const LEAVE = new Set([
   'tmp',
   '.git',
 ])
-const copy = realpathSync(tempDir('term-port-race-'))
+// the clone sits five levels below its root, as the Term tree sits in the repository, with a copy of the line lock at
+// <root>/task/term/line-lock.ts: port-build loads the lock by that path and refuses to run without it (item
+// term-self-host-001-0475), so the clone's builds lock the clone, as port-build-skip.ts's do
+const cloneRoot = realpathSync(tempDir('term-port-race-'))
+const copy = join(cloneRoot, 'deck', 'term', 'deck', 'term')
+const LINE_LOCK = join(TERM, '..', '..', '..', '..', 'task', 'term', 'line-lock.ts')
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {
@@ -93,9 +98,14 @@ function clone(): void {
   mkdirSync(join(copy, 'task'))
   cpSync(SCRIPT, join(copy, 'task', 'port-build.ts'))
 
-  for (const file of ['task/port-trace.ts', 'package.json']) {
+  // every module port-build.ts imports from task/, and the stage0 pin it compiles with (decision 036): without them
+  // build A died at its import and the race waited 600 s for a hold that never came
+  for (const file of ['task/port-trace.ts', 'task/port-shelved.ts', 'task/stage0.ts', 'task/stage0.json', 'package.json']) {
     cpSync(join(TERM, file), join(copy, file))
   }
+
+  mkdirSync(join(cloneRoot, 'task', 'term'), { recursive: true })
+  cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
 
   const tsconfig = readFileSync(
     join(TERM, 'tsconfig.json'),
@@ -194,11 +204,15 @@ try {
     aOut += chunk.toString('utf8')
   })
 
-  const held = await until(() => existsSync(join(hold, 'held')), 600)
+  let aDone = false
+  void aExit.then(() => (aDone = true))
+  const held = await until(() => aDone || existsSync(join(hold, 'held')), 600)
   ok(
     'A compiled the probe and holds before its write',
-    held && readFileSync(join(hold, 'held'), 'utf8') === PROBE,
+    held && existsSync(join(hold, 'held')) && readFileSync(join(hold, 'held'), 'utf8') === PROBE,
+    aDone ? `A exited before it held: ${aOut.slice(-400)}` : '',
   )
+  if (aDone && !existsSync(join(hold, 'held'))) throw new Error('A exited before it held')
 
   // ---- the edit, and B: a whole build of the new text while A holds ----
 
@@ -362,10 +376,14 @@ try {
     cOut += chunk.toString('utf8')
   })
 
+  let cDone = false
+  void cExit.then(() => (cDone = true))
   ok(
     'a build of the probe holds mid-run',
-    await until(() => existsSync(join(hold2, 'held')), 600),
+    (await until(() => cDone || existsSync(join(hold2, 'held')), 600)) && existsSync(join(hold2, 'held')),
+    cDone ? `the build exited before it held: ${cOut.slice(-400)}` : '',
   )
+  if (cDone && !existsSync(join(hold2, 'held'))) throw new Error('the held build exited before it held')
 
   const during = build('--verify', ONLY)
   ok(

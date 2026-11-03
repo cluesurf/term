@@ -535,9 +535,10 @@ form walked
   link calls, like list, like call-at
   link values, like list, like text
   link variant-fields, like hash, like text, like list, like text
-  # whether a field is a STRUCTURAL DESCENT (decision 114 of change 001): a field of a form not `mark shared`, and not
-  # `need false`. A shared form is a reference that may hold itself, and a need-false field typed by a form has no
-  # empty value, so neither field is smaller than what holds it. Keys (`field-keys`): `f <form> <field>` a field of a
+  # whether a field is a STRUCTURAL DESCENT (decisions 114 and 117 of change 001): a field of a form not `mark shared`,
+  # and either required or a `need false` field typed `like maybe, like T`, whose absence is `none` on every backend. A
+  # shared form is a reference that may hold itself, and a need-false field typed by a form, a type parameter or a task
+  # has no empty value, so neither field is smaller than what holds it. Keys (`field-keys`): `f <form> <field>` a field of a
   # form (its own or a case's), `n <field>` every form's field of that name, `v <form> <case> <field>` a case's field,
   # `c <case> <field>` every case of that name. A name with two definitions descends only if both do
   link descends, like hash, like text, like boolean
@@ -729,7 +730,7 @@ task locally-bound
     case none
       back false
 
-# is `subject/field` a structural descent (decision 114)? Read in the subject's own form when it is a parameter whose
+# is `subject/field` a structural descent (decisions 114 and 117)? Read in the subject's own form when it is a parameter whose
 # declared type names a form declaring the field, else in every form declaring a field of that name. A field no form
 # of the program declares (a list's, a text's) is read as before
 task field-descends
@@ -984,8 +985,8 @@ task visit-statement
         # the fields are bound afresh in the branch: members of the subject when it is a plain variable, and of
         # nothing a parameter is when it is not (a field of `g(x)` named `prior` is not the `prior` of an outer match)
         save branch-members, members-without(frame/members, fields)
-        # only a field that is a structural descent (decision 114): a field of a shared form, or a need-false one,
-        # is bound afresh and is a member of nothing
+        # only a field that is a structural descent (decisions 114 and 117): a field of a shared form, or a need-false
+        # one not typed `like maybe`, is bound afresh and is a member of nothing
         fork test, is-unequal(subject-name, <>)
           hold
             save declared, out/variant-fields/get-or-default(arm/label, make list)
@@ -1391,6 +1392,21 @@ task param-forms-of
       save nothing, 0
   back out
 
+# is a field's declared type `like maybe, like T`? A `need false` field so typed holds `none` when absent on every
+# backend (term/stdlib-parity decision 001), so it descends as a required field does (decision 117). The same test
+# compile/backend-shapes.tree `form-spec-of` uses for its `optional` kind
+task is-maybe-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link type-name
+      back is-equal(type-name, <maybe>)
+    miss
+      back false
+
 task termination-verdict
   take program, like list, like statement
   take proves
@@ -1426,7 +1442,7 @@ task termination-verdict
             save by-value, false
         walk fields
           take field
-          save ok, and(by-value, not(is-equal(field/optional, true)))
+          save ok, and(by-value, or(not(is-equal(field/optional, true)), is-maybe-type(field/type)))
           walk field-keys(name, <>, field/name)
             take key
             fork test, descends/has(key)
@@ -1442,7 +1458,7 @@ task termination-verdict
           walk variant/fields
             take field
             push(field-names, field/name)
-            save ok, and(by-value, not(is-equal(field/optional, true)))
+            save ok, and(by-value, or(not(is-equal(field/optional, true)), is-maybe-type(field/type)))
             walk field-keys(name, variant/name, field/name)
               take key
               fork test, descends/has(key)

@@ -1,0 +1,158 @@
+note <a photo of a size no camera makes, for a device's library, and the reader that checks a copy of it>
+
+# Ported from test/compile/shared/photo-sample.ts (item 0548, device-layer-0025): a 24-bit BMP of a gradient written
+# here, made a JPEG by the Mac's own `sips`, and a JPEG's size read from its first frame header. Used by
+# test/compile/device-features.ts and test/compile/photos-prompt.ts.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find substring
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find push
+
+load @term/base/bytes
+  find from-hex
+  find to-hex
+
+load @term/base/file
+  find write-bytes
+
+load ../temp
+  find temp-folder
+
+dock load
+  load <node:path>, name photo-path
+
+# the photo's size
+host photo-width, 321
+host photo-height, 123
+
+# a picture's size, `found` false when the bytes are not a JPEG
+form photo-size
+  link found, like boolean
+  link width, like number, fall 0
+  link height, like number, fall 0
+
+host hex-digits, <0123456789abcdef>
+
+# one byte, 0 to 255, as two hex digits
+task hex-byte
+  take value, like number
+  like text
+
+  save high, divide(value, 16)
+  save low, subtract(value, multiply(high, 16))
+  back <{substring(hex-digits, high, add(high, 1))}{substring(hex-digits, low, add(low, 1))}>
+
+# a whole number as `size` bytes, least significant first
+task little-endian
+  take value, like number
+  take size, like number
+  like text
+
+  save out, <>
+  save rest, value
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save next, divide(rest, 256)
+      save out, <{out}{hex-byte(subtract(rest, multiply(next, 256)))}>
+      save rest, next
+      save at, add(at, 1)
+  back out
+
+# the BMP as hex: its 54-byte header, then each row bottom up, three bytes a pixel (blue 128, green by y, red by x) and
+# padded to four bytes
+task photo-bmp-hex
+  like text
+
+  save row, multiply(divide(add(multiply(photo-width, 3), 3), 4), 4)
+  save pad, <>
+  save padded, multiply(photo-width, 3)
+  walk test
+    hook test, is-below(padded, row)
+    hook hold
+      save pad, <{pad}00>
+      save padded, add(padded, 1)
+  save parts, make list
+  parts/push(<424d>)
+  parts/push(little-endian(add(54, multiply(row, photo-height)), 4))
+  parts/push(little-endian(0, 4))
+  parts/push(little-endian(54, 4))
+  parts/push(little-endian(40, 4))
+  parts/push(little-endian(photo-width, 4))
+  parts/push(little-endian(photo-height, 4))
+  parts/push(little-endian(1, 2))
+  parts/push(little-endian(24, 2))
+  parts/push(little-endian(0, 24))
+  save y, 0
+  walk test
+    hook test, is-below(y, photo-height)
+    hook hold
+      save green, hex-byte(divide(multiply(y, 255), photo-height))
+      save x, 0
+      walk test
+        hook test, is-below(x, photo-width)
+        hook hold
+          parts/push(<80{green}{hex-byte(divide(multiply(x, 255), photo-width))}>)
+          save x, add(x, 1)
+      parts/push(pad)
+      save y, add(y, 1)
+  back parts/join(<>)
+
+# the JPEG at `<a new folder>/<name>`, its path. The folder goes when the process ends
+task make-photo
+  take name, like text
+  like text
+
+  save folder, temp-folder(<term-photo->)
+  save bmp, photo-path/join(folder, <photo.bmp>)
+  write-bytes(bmp, from-hex(photo-bmp-hex()))
+  save photo, photo-path/join(folder, name)
+  run(<sips>, make list(<-s>, <format>, <jpeg>, bmp, <--out>, photo))
+  back photo
+
+# the byte at `at` of a hex text
+task byte-at
+  take hex, like text
+  take at, like number
+  like number
+
+  back parse-integer(substring(hex, multiply(at, 2), add(multiply(at, 2), 2)), 16)
+
+# two bytes from `at`, most significant first
+task big-endian-16
+  take hex, like text
+  take at, like number
+  like number
+
+  back add(multiply(byte-at(hex, at), 256), byte-at(hex, add(at, 1)))
+
+# a JPEG's size from its first frame header (SOF0 to SOF2), not found when the bytes are not a JPEG
+task jpeg-size
+  take bytes, like bytes
+  like photo-size
+
+  save none, make(photo-size, bind(found, false))
+  save hex, to-hex(bytes)
+  save length, divide(hex/length, 2)
+  fork test, or(is-below(length, 4), or(is-unequal(byte-at(hex, 0), 255), is-unequal(byte-at(hex, 1), 216)))
+    hold
+      back none
+  save at, 2
+  walk test
+    hook test, and(is-below(add(at, 9), length), is-equal(byte-at(hex, at), 255))
+    hook hold
+      save marker, byte-at(hex, add(at, 1))
+      fork test, and(is-minimum(marker, 192), is-maximum(marker, 194))
+        hold
+          back make(photo-size, bind(found, true), bind(height, big-endian-16(hex, add(at, 5))), bind(width, big-endian-16(hex, add(at, 7))))
+      save at, add(at, add(2, big-endian-16(hex, add(at, 2))))
+  back none

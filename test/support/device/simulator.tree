@@ -1,0 +1,120 @@
+note <the iPhone simulator a test may use, which is never one it started>
+
+# Ported from test/compile/shared/simulator.ts (item 0548, beat-term spec.md 4 D017, 6). `simulator()` in
+# @term/call/code/cask boots the first available iPhone when none is booted, which is right for a person's own
+# `term make --target ios` and wrong for a test: the simulator is one device every session shares. A test takes this and
+# skips its iOS leg, with the reason, when it answers `missing`. This never boots, erases or shuts a simulator down: it
+# only reads `xcrun simctl list devices available --json`.
+
+load @term/base/environment
+  find variable
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find starts-with
+  find split, name text-split
+
+load @term/base/json
+  find parse, name json-parse
+  find get-field, name json-field
+  find json-kind
+  find as-text, name json-text
+  find array-size, name json-size
+  find array-item, name json-item
+  find object-keys, name json-keys
+
+# the shared simulator: iPhone 17 Pro
+host shared-simulator, <0F8D6036-E209-4729-B96B-C4761B69ACA8>
+
+# a simulator found, by `udid`, or `missing` saying why none can be used
+form simulator-found
+  link udid, like text, fall <>
+  link missing, like text, fall <>
+
+# a text field of a JSON object, <> when it is not a text
+task text-field
+  take value, like dynamic
+  take key, like text
+  like text
+
+  save field, json-field(value, key)
+  fork test, is-equal(json-kind(field), <text>)
+    hold
+      back json-text(field)
+  back <>
+
+# the booted iPhones of simctl's listing, every runtime's, in its order, each by its udid
+task booted-iphones
+  take listing, like dynamic
+  like list, like text
+
+  save found, make list
+  save devices, json-field(listing, <devices>)
+  fork test, is-unequal(json-kind(devices), <object>)
+    hold
+      back found
+  walk json-keys(devices)
+    take runtime, like text
+    save group, json-field(devices, runtime)
+    save at, 0
+    walk test
+      hook test, is-below(at, json-size(group))
+      hook hold
+        save device, json-item(group, at)
+        fork test, and(is-equal(text-field(device, <state>), <Booted>), starts-with(text-field(device, <name>), <iPhone>))
+          hold
+            found/push(text-field(device, <udid>))
+        save at, add(at, 1)
+  back found
+
+# the simulator to use from simctl's listing text: `wanted` when it is booted, else any booted iPhone, else missing.
+# `wanted` <> is the shared simulator
+task simulator-in
+  take said, like text
+  take wanted, like text
+  like simulator-found
+
+  save want, wanted
+  fork test, is-equal(want, <>)
+    hold
+      save want, shared-simulator
+  save booted, booted-iphones(json-parse(said))
+  walk booted
+    take udid, like text
+    fork test, is-equal(udid, want)
+      hold
+        back make(simulator-found, bind(udid, udid))
+  fork test, is-above(booted/length, 0)
+    hold
+      back make(simulator-found, bind(udid, booted/0))
+  back make(simulator-found, bind(missing, <no iPhone simulator is booted, and a test never boots one: boot the shared simulator yourself, or run the test where it is booted>))
+
+# the iPhone simulator a test may use: TERM_SIMULATOR (else the shared one) when it is booted, else any booted iPhone,
+# else missing with the reason
+task booted-simulator
+  like simulator-found
+
+  save said, <>
+  save failed, <>
+  fork
+    mark unsafe
+    save listed, run(<xcrun>, make list(<simctl>, <list>, <devices>, <available>, <--json>))
+    fork test, is-equal(listed/code, 0)
+      hold
+        save said, listed/output
+      miss
+        save failed, text-split(listed/error, <\n>)/0
+  halt take
+    take cause
+    save failed, <xcrun is not installed>
+  fork test, is-equal(said, <>)
+    hold
+      back make(simulator-found, bind(missing, <simctl could not list the simulators: {failed}>))
+  fork
+    mark unsafe
+    back simulator-in(said, variable(<TERM_SIMULATOR>))
+  halt take
+    take cause
+    back make(simulator-found, bind(missing, <simctl could not list the simulators: its listing is not JSON>))

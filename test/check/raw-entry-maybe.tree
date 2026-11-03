@@ -1,0 +1,92 @@
+note <a raw entry read handed where a maybe is wanted is refused, naming the read that answers one, on every backend>
+
+# `h/get(k)` on a hash is the host's own read and answers the entry itself, never a maybe. On a hash whose value is
+# loose that entry fit `unwrap-or`'s maybe by the gradual rule, so `unwrap-or(h/get(<a>), 0)` answered 0 for a key that
+# holds 1 on TypeScript with a clean build, and failed in the native toolchain on Rust, Swift and Kotlin (item 0903, trap
+# T-0550). It is refused at the checker, naming `get(the hash, key)`, which answers a maybe.
+
+load ../support/running
+  find backends
+  find build-text
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+host head, <load @term/base/hash\n  find hash\n\nload @term/base/maybe\n  find unwrap-or\n\n>
+
+host loose, <{head}task loose\n  like hash, like text, like dynamic\n\n  back\n    make hash\n      save a, 1\n\n>
+
+host settled, <{head}task settled\n  like hash, like text, like number\n\n  save made, make hash\n  made/set(\<a\>, 1)\n  back made\n\n>
+
+host loose-list, <{head}task loose-list\n  like list, like dynamic\n\n  back make list(1, 2)\n\n>
+
+host refusal, <wants a maybe, and get(...) on a>
+
+# ---- refused on every backend ----
+
+test <unwrap-or over a raw get on a loose hash>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host built, build-text(<{loose}task run\n  like text\n\n  save h, loose()\n  save n, unwrap-or(h/get(\<a\>), 0)\n  back \<\{n\}\>\n>, backend, folder, <loose>)
+  want hold, is-equal(built/state, <failed>)
+  want hold, is-equal(built/stage, <compile>)
+  want hold, text-contains(built/reason, refusal)
+  want hold, text-contains(built/reason, <get(the hash, key)>)
+
+test <unwrap-or over a raw get on a settled hash names the read that answers a maybe>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host built, build-text(<{settled}task run\n  like text\n\n  save h, settled()\n  save n, unwrap-or(h/get(\<a\>), 0)\n  back \<\{n\}\>\n>, backend, folder, <settled>)
+  want hold, is-equal(built/state, <failed>)
+  want hold, is-equal(built/stage, <compile>)
+  want hold, text-contains(built/reason, refusal)
+
+test <unwrap-or over a raw get on a loose list>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host built, build-text(<{loose-list}task run\n  like text\n\n  save xs, loose-list()\n  save n, unwrap-or(xs/get(0), 0)\n  back \<\{n\}\>\n>, backend, folder, <loose-list>)
+  want hold, is-equal(built/state, <failed>)
+  want hold, is-equal(built/stage, <compile>)
+  want hold, text-contains(built/reason, <on a list is the host's own read>)
+
+# ---- kept: the read that answers a maybe, and the raw read as the entry ----
+
+test <unwrap-or over get(h, k) answers the entry>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host ran, run-text(<{settled}task run\n  like text\n\n  save h, settled()\n  back \<\{unwrap-or(get(h, \<a\>), 0)\} \{unwrap-or(get(h, \<b\>), 0)\}\>\n>, backend, folder, <kept-get>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 0>)
+
+test <a raw get read as the entry>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host ran, run-text(<{settled}task run\n  like text\n\n  save h, settled()\n  back \<\{add(h/get(\<a\>), 1)\}\>\n>, backend, folder, <kept-raw>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <2>)
+
+test <a hash of maybes hands its raw entry to unwrap-or>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<raw-entry-maybe->)
+  host ran, run-text(<{head}load @term/base/maybe\n  find maybe\n\ntask run\n  like text\n\n  save h, make hash\n  h/set(\<a\>, make(some, 4))\n  back \<\{unwrap-or(h/get(\<a\>), 0)\}\>\n>, backend, folder, <kept-maybes>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <4>)

@@ -1,0 +1,243 @@
+note <An app's scope at build time: scope.tree read as data, its mistakes refused by name, and a program reaching past it refused before anything is built>
+
+# Ported from app-scope.ts by statement (item 0550, decision 116: the converter left 121 of 196 code lines).
+# deck/call/code/scope.ts and deck/call/code/compose.ts `buildCompose` are the subjects (decision 106), and a program's
+# files come from deck/make/code/compile/load.ts `collectModules` over the project resolver, as the original reads them.
+# The check is the one `term make` and `term work` run on a Compose app. The run time half, the cask's gate, is held by
+# test/compile/cask-scope.ts and cask/smoke. The app folders are under this package's tmp/ (gitignored), so their
+# `@term/*` loads resolve as any app's would. The original's literal list of refusals is one test per refusal.
+
+load ../support/cli
+  find term-root
+
+load ../support/walking
+  find json-without
+
+load @term/base/hash
+  find hash
+
+load @term/base/list
+  find join, name list-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/call/code/scope>, name scope-module
+  load <@term/call/code/compose>, name scope-compose
+  load <@term/call/code/make>, name scope-make
+  load <@term/make/code/compile/load>, name scope-load
+  load <node:fs>, name scope-fs
+  load <node:path>, name scope-path
+
+form scope-recursive
+  link recursive, like boolean
+
+form scope-removal
+  link recursive, like boolean
+  link force, like boolean
+
+form scope-file
+  link name, like text
+  link text, like text
+
+form scope-entry
+  link file, like text
+  link text, like text
+
+form scope-input
+  link root, like text
+  link files, like list, like text
+
+form scope-root
+  link root, like text
+
+form scope-build
+  link root, like text
+  link dir, like text
+  link name, like text
+  link text, like text
+  link file, like text
+  link scope, like scope-root
+
+# host value: what a raised host error says
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+task no-fields
+  like list, like text
+
+  back make list
+
+task fresh-base
+  like text
+
+  host base, scope-path/join(term-root(), <tmp>, <app-scope>)
+  scope-fs/rm-sync(base, make(scope-removal, bind(recursive, true), bind(force, true)))
+  back base
+
+host base, fresh-base()
+
+# an app folder holding these files
+task app
+  take name, like text
+  take files, like list, like scope-file
+  like text
+
+  host dir, scope-path/join(base, name)
+  scope-fs/mkdir-sync(dir, make(scope-recursive, bind(recursive, true)))
+  walk files
+    take one, like scope-file
+    scope-fs/write-file-sync(scope-path/join(dir, one/name), one/text)
+  back dir
+
+task scope-only
+  take text, like text
+  like list, like scope-file
+
+  back make list(make(scope-file, bind(name, <scope.tree>), bind(text, text)))
+
+task no-files
+  like list, like scope-file
+
+  back make list
+
+task scope-of
+  take dir, like text
+  like hash, like text, like dynamic
+
+  back scope-module/read-scope(dir)/scope
+
+# the access lists of one capability, as the host's map holds them
+task capability
+  take scope, like dynamic
+  take name, like text
+  like dynamic
+
+  back scope/get(name)
+
+# what reading the app's scope raised, or the empty text
+task read-refusal
+  take dir, like text
+  like text
+
+  fork
+    mark unsafe
+    scope-module/read-scope(dir)
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+# ---- reading a scope ----
+
+host good, scope-of(app(<good>, scope-only(<host file\n  list read, \<$data/**\>, \<$home/notes/**\>\n  list write, \<$data/**\>\nhost environment\n  list read, \<HOME\>\nhost db\n>)))
+
+test <a scope reads its capabilities in order>
+  want hold, is-equal list-join(good/keys(), < >), <file environment db>
+
+test <each access its patterns, in order>
+  want hold, is-equal json-without(capability(good, <file>), no-fields()), <\{"read":["$data/**","$home/notes/**"],"write":["$data/**"]\}>
+
+test <a capability with no lists is named with none>
+  want hold, is-equal json-without(capability(good, <db>), no-fields()), <\{\}>
+
+test <an app with no scope.tree has an empty scope, which denies everything>
+  host empty, scope-of(app(<none>, no-files()))
+  want hold, is-equal empty/length(), 0
+
+test <refused: a capability that does not exist>
+  want hold, text-contains(read-refusal(app(<bad-a-capability-that-does-not-exist>, scope-only(<host files\n  list read, \<$data/**\>\n>))), <not a capability>)
+
+test <refused: an access the capability does not have>
+  want hold, text-contains(read-refusal(app(<bad-an-access-the-capability-does-not-have>, scope-only(<host environment\n  list run, \<x\>\n>))), <has no `run` list>)
+
+test <refused: an access list on an all-or-nothing capability>
+  want hold, text-contains(read-refusal(app(<bad-an-access-list-on-an-all-or-nothing-capability>, scope-only(<host db\n  list read, \<x\>\n>))), <all or nothing>)
+
+test <refused: a pattern with an angle in it>
+  want hold, text-contains(read-refusal(app(<bad-a-pattern-with-an-angle-in-it>, scope-only(<host file\n  list read, \<a\\\>b\>\n>))), <holds no>)
+
+test <refused: a pattern with a brace in it>
+  want hold, text-contains(read-refusal(app(<bad-a-pattern-with-a-brace-in-it>, scope-only(<host file\n  list read, \<a\\\{b\\\}\>\n>))), <holds no>)
+
+test <refused: an empty pattern>
+  want hold, text-contains(read-refusal(app(<bad-an-empty-pattern>, scope-only(<host file\n  list read, \<\>\n>))), <an empty pattern>)
+
+test <refused: a list where a capability belongs>
+  want hold, text-contains(read-refusal(app(<bad-a-list-where-a-capability-belongs>, scope-only(<list file, \<x\>\n>))), <with its access lists beneath>)
+
+test <refused: a file that is code, not data>
+  want hold, text-contains(read-refusal(app(<bad-a-file-that-is-code-not-data>, scope-only(<task file\n  take x, like text\n>))), <not a data file>)
+
+# ---- a program against its scope ----
+
+# a program that reads a file, and so reaches the `file` capability
+host reads, <load @term/base/file\n  find read\n\ntask main\n  save text\n    call read\n      text \</tmp/x\>\n>
+
+# a program that reaches nothing outside its process
+host pure-text, <task main\n  save x, code 1\n>
+
+# the files a program's build loads, which is what the check is handed
+task files-of
+  take dir, like text
+  take text, like text
+  like list, like text
+
+  host file, scope-path/join(dir, <app.tree>)
+  scope-fs/write-file-sync(file, text)
+  host found, make list
+  walk scope-load/collect-modules(make(scope-entry, bind(file, file), bind(text, text)), scope-make/project-resolver(dir, <compose>))/sources
+    take one, like dynamic
+    found/push(one/file)
+  back found
+
+# what the check raised for the app and the program, or the empty text
+task check-refusal
+  take dir, like text
+  take text, like text
+  like text
+
+  host files, files-of(dir, text)
+  fork
+    mark unsafe
+    scope-module/check-scope(make(scope-input, bind(root, dir), bind(files, files)))
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+host refused-bare, check-refusal(app(<reads-bare>, no-files()), reads)
+host through-base, make pattern, <<deck/base/code/file>>
+
+test <a program that reaches `file` with no scope.tree is refused>
+  want hold, and(text-contains(refused-bare, <`file`>), text-contains(refused-bare, <it has no scope.tree>))
+
+test <the refusal names the module it reached it through, and the line that would grant it>
+  want hold, and(matches(through-base, refused-bare), text-contains(refused-bare, <add host file>))
+
+test <naming other capabilities does not grant this one>
+  host refused-other, check-refusal(app(<reads-other>, scope-only(<host db\n>)), reads)
+  want hold, text-contains(refused-other, <its scope.tree does not name it>)
+
+test <a scope that names `file` lets it build>
+  want hold, is-equal check-refusal(app(<reads-granted>, scope-only(<host file\n  list read, \<$data/**\>\n>)), reads), <>
+
+test <a program that reaches nothing needs no scope at all>
+  want hold, is-equal check-refusal(app(<pure>, no-files()), pure-text), <>
+
+# ---- through the Compose build, as `term make` and `term work` run it ----
+
+# the stage is the proof that nothing was compiled: `scope` comes after the Term compile and before the Kotlin one
+test <the Compose build refuses it at its `scope` stage, before any Kotlin is compiled>
+  host composed, app(<compose>, make list(make(scope-file, bind(name, <app.tree>), bind(text, reads))))
+  host built, scope-compose/build-compose(make(scope-build, bind(root, composed), bind(dir, composed), bind(name, <app>), bind(text, reads), bind(file, scope-path/join(composed, <app.tree>)), bind(scope, make(scope-root, bind(root, composed)))))
+  want hold, and(is-equal(built/form, <failed>), is-equal(built/stage, <scope>))
+  want hold, text-contains(built/reason, <`file`>)

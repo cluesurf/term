@@ -12,6 +12,9 @@
 # after the exit (a grandchild may hold a pipe). The task then raises `command-timeout` with what the child wrote
 # (D025 §3). So a runner answers -1 for a command that could not start and -2 for a run its limit ended, and both are
 # raised here.
+# `group` (on `run` and `run-with-input`, never `run-attached`, which stays in the terminal's foreground group) makes the
+# child lead a new process group, so the limit's TERM and KILL reach everything it started, a grandchild included. Node
+# and Rust only: on Swift and Kotlin it is a `command-absence`, "process groups are not on this target" (D025 §1).
 # While `run-attached` waits, node and rust ignore INT and QUIT (the terminal sends them to the child's own group, so it
 # gets each) and pass TERM and HUP sent to this process on to the child, as system(3) does, so a TERM to a program that
 # runs a tool never orphans it, and put every disposition back when the child ends. Swift and Kotlin do not (D024).
@@ -66,6 +69,9 @@ task run
   take limit
     like number
     fall 0
+  take group
+    like boolean
+    fall false
   like run-result
   save result
     call spawn-process
@@ -74,6 +80,7 @@ task run
       read directory
       read environment
       read limit
+      read group
       wait true
   call started
     read command
@@ -157,6 +164,9 @@ task run-with-input
   take limit
     like number
     fall 0
+  take group
+    like boolean
+    fall false
   like run-result
   save result
     call spawn-with-input
@@ -166,6 +176,7 @@ task run-with-input
       read directory
       read environment
       read limit
+      read group
       wait true
   call started
     read command

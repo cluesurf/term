@@ -1,74 +1,64 @@
+# kotlin child processes: not on this target yet (item 0188 built node and rust). `start` answers a child whose refusal
+# is "not on this target", which process/child raises as `command-absence`, so nothing else here is ever reached.
+# Internal: reached only through the public process/child API.
 
-dock load
-  load <global:child>, name child-runtime
+task child-start
+  mark async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
+  take limit, like number
+  take group, like boolean
+  like number
+  send back, code 0
 
-load @term/base/process
-  find child
-
-task wait
-  take child, like child
-  like size
-
-  send back
-    call child-runtime/wait
-      read child/dock
-
-task stop
-  take child, like child
-  take
-    form
-    like text
-    fall text <gentle>
-
-  fork test
-    hook test
-      call is-equal
-        bind a, read form
-        bind b, text <force>
-    hook hold
-      call child-runtime/kill
-        read child/dock
-    hook miss
-      call child-runtime/stop
-        read child/dock
-
-task write
-  take child, like child
-  take data, like text
-
-  call child-runtime/write
-    read child/dock
-    read data
-
-task close
-  take child, like child
-
-  call child-runtime/close
-    read child/dock
-
-task read
-  take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <text>
+task child-refusal
+  take handle, like number
   like text
+  send back, text <not on this target>
 
-  fork
-    test
-    call is-equal
-      read kind
-      text <stderr>
-    hook hold
-      send back
-        call child-runtime/read-error
-          read child/dock
-    hook miss
-      send back
-        call child-runtime/read-out
-          read child/dock
+task child-next-line
+  mark async
+  take handle, like number
+  take error, like boolean
+  like text
+  send back, text <>
 
+task child-rest
+  mark async
+  take handle, like number
+  take error, like boolean
+  like text
+  send back, text <>
+
+task child-write
+  mark async
+  take handle, like number
+  take data, like text
+  save given, read data
+
+task child-close
+  take handle, like number
+  save given, read handle
+
+task child-stop
+  take handle, like number
+  take hard, like boolean
+  save given, read hard
+
+task child-wait
+  mark async
+  take handle, like number
+  like number
+  send back, code -1
+
+task child-signal
+  take handle, like number
+  like number
+  send back, code 0

@@ -1,0 +1,348 @@
+note <the layout rows every host draws, and the one judge of the frames they read back>
+
+# Ported from test/compile/shared/layout-rows.ts (item 0548, native-dom-0027). test/compile/toolkit-view.ts reads their
+# frames back from AppKit, UIKit and Android views and test/compile/layout-golden.ts from Chromium, and both judge them
+# here, so the web and every platform are held to the same relationships: order, edges, which child grew, stretch,
+# height. Never absolute pixels, which differ by platform for a button with the same label.
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find contains, name text-contains
+  find index-of
+  find substring
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/list
+  find push
+
+# a row as a host draws it, and the view that draws it
+form layout-label
+  link label, like text
+  link view, like text
+
+# one relationship judged: its name, whether it held, and the frames it read (`undefined` for a row not found)
+form layout-check
+  link name, like text
+  link passed, like boolean
+  link frames, like text
+
+# a flex container of two buttons, `a` and `bb`, whose div carries `style`
+task row-view
+  take name, like text
+  take style, like text
+  like text
+
+  back <view {name}\n  take host, like view\n  view div\n    bind style, text \<{style}\>\n    view button\n      text \<a\>\n    view button\n      text \<bb\>\n>
+
+# four rows of two buttons each and more, as Term `view`s taking a host. The importing program loads `view` and the
+# render runtime. A document `div` carrying `display: flex` is a stack on every host
+task layout-rows
+  like text
+
+  save grow, <view grow-row\n  take host, like view\n  view div\n    bind style, text \<display: flex; flex-direction: row; width: 300px\>\n    view button\n      bind style, text \<flex-grow: 1\>\n      text \<a\>\n    view button\n      text \<bb\>\n>
+  save block, <view block-fill\n  take host, like view\n  view div\n    bind style, text \<width: 300px\>\n    view div\n      view button\n        text \<a\>\n    view div\n      view button\n        text \<bb\>\n>
+  save views, make list
+  views/push(row-view(<spread-row>, <display: flex; flex-direction: row; width: 300px; justify-content: space-between>))
+  views/push(grow)
+  views/push(row-view(<stretch-column>, <display: flex; flex-direction: column; width: 200px; align-items: stretch>))
+  views/push(row-view(<tall-row>, <display: flex; flex-direction: row; height: 60px; align-items: center>))
+  views/push(row-view(<stretch-row>, <display: flex; flex-direction: row; height: 60px>))
+  views/push(block)
+  views/push(row-view(<flex-default>, <display: flex>))
+  views/push(row-view(<column-default>, <display: flex; flex-direction: column; width: 200px>))
+  views/push(row-view(<center-row>, <display: flex; flex-direction: row; width: 300px; justify-content: center>))
+  views/push(row-view(<end-row>, <display: flex; flex-direction: row; width: 300px; justify-content: end>))
+  views/push(row-view(<start-column>, <display: flex; flex-direction: column; width: 200px; align-items: start>))
+  views/push(row-view(<end-column>, <display: flex; flex-direction: column; width: 200px; align-items: end>))
+  back views/join(<\n>)
+
+task label-of
+  take label, like text
+  take view, like text
+  like layout-label
+
+  back make(layout-label, bind(label, label), bind(view, view))
+
+# the rows in the order a program mounts them, each with the view that draws it. center, end, start-column and
+# end-column are the vocabulary's justify and align words face's stack writes (swiftui-target-0002). A flex row's children
+# stretch to its height when nothing says otherwise, CSS's `align-items: normal` (compose-target-0002)
+task layout-labels
+  like list, like layout-label
+
+  save labels, make list
+  labels/push(label-of(<spread>, <spread-row>))
+  labels/push(label-of(<grow>, <grow-row>))
+  labels/push(label-of(<stretch>, <stretch-column>))
+  labels/push(label-of(<tall>, <tall-row>))
+  labels/push(label-of(<block>, <block-fill>))
+  labels/push(label-of(<flex>, <flex-default>))
+  labels/push(label-of(<column>, <column-default>))
+  labels/push(label-of(<center>, <center-row>))
+  labels/push(label-of(<end>, <end-row>))
+  labels/push(label-of(<start-column>, <start-column>))
+  labels/push(label-of(<end-column>, <end-column>))
+  labels/push(label-of(<stretch-row>, <stretch-row>))
+  back labels
+
+task near
+  take a, like float
+  take b, like float
+  like boolean
+
+  back is-maximum(absolute-of(subtract(a, b)), 1.0)
+
+task absolute-of
+  take value, like float
+  like float
+
+  fork test, is-below(value, 0.0)
+    hold
+      back subtract(0.0, value)
+  back value
+
+# a frame `x,y,w,h` as four numbers, or none when a part is not a number
+task frame-of
+  take part, like text
+  like list, like float
+
+  save frame, make list
+  fork
+    mark unsafe
+    walk text-split(part, <,>)
+      take one, like text
+      frame/push(parse-float(one))
+  halt take
+    take cause
+    back make list
+  fork test, is-equal(frame/length, 4)
+    hold
+      back frame
+  back make list
+
+# the frames of one row out of a host's output: a line `rows <label> x,y,w,h x,y,w,h x,y,w,h`, the row then its
+# children. Empty when no line names the row, or it holds other than three frames
+task rows-of
+  take output, like text
+  take label, like text
+  like list, like list, like float
+
+  save head-text, <rows {label} >
+  save none, make list
+  walk text-split(output, <\n>)
+    take raw, like text
+    save line, trim(raw)
+    save at, index-of(line, head-text)
+    fork test, is-minimum(at, 0)
+      hold
+        save parts, text-split(substring(line, add(at, head-text/length)), < >)
+        fork test, is-unequal(parts/length, 3)
+          hold
+            back none
+        save frames, make list
+        walk parts
+          take part, like text
+          save frame, frame-of(part)
+          fork test, is-unequal(frame/length, 4)
+            hold
+              back none
+          frames/push(frame)
+        back frames
+  back none
+
+# the frames as the original printed them, JSON.stringify of the rows, `undefined` for a row not found
+task frames-text
+  take rows, like list, like list, like float
+  like text
+
+  fork test, is-equal(rows/length, 0)
+    hold
+      back <undefined>
+  save frames, make list
+  walk rows
+    take frame, like list, like float
+    save parts, make list
+    walk frame
+      take one, like float
+      parts/push(<{one}>)
+    frames/push(<[{parts/join(<,>)}]>)
+  back <[{frames/join(<,>)}]>
+
+task check-of
+  take name, like text
+  take passed, like boolean
+  take rows, like list, like list, like float
+  like layout-check
+
+  back make(layout-check, bind(name, name), bind(passed, passed), bind(frames, frames-text(rows)))
+
+# one frame's value: `child` 0 for the row, 1 and 2 its children, `part` 0 to 3 for x, y, width and height
+task frame-at
+  take rows, like list, like list, like float
+  take child, like number
+  take part, like number
+  like float
+
+  save frame, rows/{child}
+  back frame/{part}
+
+task right-of
+  take rows, like list, like list, like float
+  take child, like number
+  like float
+
+  back add(frame-at(rows, child, 0), frame-at(rows, child, 2))
+
+task row-found
+  take rows, like list, like list, like float
+  like boolean
+
+  back is-equal(rows/length, 3)
+
+task stretch-row-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(and(near(frame-at(r, 0, 3), 60.0), near(frame-at(r, 1, 3), 60.0)), and(near(frame-at(r, 2, 3), 60.0), near(frame-at(r, 1, 1), frame-at(r, 0, 1))))
+
+task center-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  save before, subtract(frame-at(r, 1, 0), frame-at(r, 0, 0))
+  save after, subtract(add(frame-at(r, 0, 0), 300.0), right-of(r, 2))
+  back and(and(near(frame-at(r, 0, 2), 300.0), is-above(before, 1.0)), is-maximum(absolute-of(subtract(before, after)), 2.0))
+
+task end-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(and(near(frame-at(r, 0, 2), 300.0), near(right-of(r, 2), add(frame-at(r, 0, 0), 300.0))), is-above(subtract(frame-at(r, 1, 0), frame-at(r, 0, 0)), 1.0))
+
+task start-column-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(near(frame-at(r, 1, 0), frame-at(r, 0, 0)), and(is-below(frame-at(r, 1, 2), 190.0), is-below(frame-at(r, 2, 2), 190.0)))
+
+task end-column-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  save edge, add(frame-at(r, 0, 0), 200.0)
+  back and(and(near(right-of(r, 1), edge), near(right-of(r, 2), edge)), is-below(frame-at(r, 1, 2), 190.0))
+
+task block-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  save below, subtract(add(frame-at(r, 1, 1), frame-at(r, 1, 3)), 1.0)
+  back and(and(near(frame-at(r, 1, 2), 300.0), near(frame-at(r, 2, 2), 300.0)), is-minimum(frame-at(r, 2, 1), below))
+
+task flex-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(near(frame-at(r, 1, 1), frame-at(r, 2, 1)), is-minimum(frame-at(r, 2, 0), subtract(right-of(r, 1), 1.0)))
+
+task column-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(near(frame-at(r, 1, 2), 200.0), near(frame-at(r, 2, 2), 200.0))
+
+task spread-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(and(near(frame-at(r, 0, 2), 300.0), near(frame-at(r, 1, 0), frame-at(r, 0, 0))), near(right-of(r, 2), add(frame-at(r, 0, 0), 300.0)))
+
+task grow-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  save sides, and(near(frame-at(r, 0, 2), 300.0), is-above(frame-at(r, 1, 2), frame-at(r, 2, 2)))
+  back and(sides, and(near(add(frame-at(r, 1, 2), frame-at(r, 2, 2)), 300.0), near(frame-at(r, 2, 0), right-of(r, 1))))
+
+task stretch-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back and(near(frame-at(r, 0, 2), 200.0), and(near(frame-at(r, 1, 2), 200.0), near(frame-at(r, 2, 2), 200.0)))
+
+task tall-holds
+  take r, like list, like list, like float
+  like boolean
+
+  fork test, not(row-found(r))
+    hold
+      back false
+  back near(frame-at(r, 0, 3), 60.0)
+
+# every check, in the original's order, each with the frames it read. native-dom-0037: CSS's defaults (a block's
+# children fill it, display flex is a row, a column stretches), which every native host had the other way round
+task judge-layout
+  take output, like text
+  like list, like layout-check
+
+  save stretch-row-rows, rows-of(output, <stretch-row>)
+  save center-rows, rows-of(output, <center>)
+  save end-rows, rows-of(output, <end>)
+  save start-column-rows, rows-of(output, <start-column>)
+  save end-column-rows, rows-of(output, <end-column>)
+  save block-rows, rows-of(output, <block>)
+  save flex-rows, rows-of(output, <flex>)
+  save column-rows, rows-of(output, <column>)
+  save spread-rows, rows-of(output, <spread>)
+  save grow-rows, rows-of(output, <grow>)
+  save stretch-rows, rows-of(output, <stretch>)
+  save tall-rows, rows-of(output, <tall>)
+  save checks, make list
+  checks/push(check-of(<a flex row of height 60 with no align-items stretches both children to 60 tall, at its top>, stretch-row-holds(stretch-row-rows), stretch-row-rows))
+  checks/push(check-of(<justify-content center leaves equal room before the first child and after the last in a 300 row>, center-holds(center-rows), center-rows))
+  checks/push(check-of(<justify-content end puts the last child at the right edge of a 300 row and the first away from the left>, end-holds(end-rows), end-rows))
+  checks/push(check-of(<align-items start keeps both children of a 200 column at their own width, at the left edge>, start-column-holds(start-column-rows), start-column-rows))
+  checks/push(check-of(<align-items end keeps both children of a 200 column at their own width, against the right edge>, end-column-holds(end-column-rows), end-column-rows))
+  checks/push(check-of(<a block container's block children fill its 300 width, one under the other>, block-holds(block-rows), block-rows))
+  checks/push(check-of(<display flex with no direction is a row>, flex-holds(flex-rows), flex-rows))
+  checks/push(check-of(<a flex column with no align-items stretches its children to its 200 width>, column-holds(column-rows), column-rows))
+  checks/push(check-of(<width 300 and justify-content space-between put the children at both edges>, spread-holds(spread-rows), spread-rows))
+  checks/push(check-of(<flex-grow 1 takes the rest of a 300 row, the two adjacent as with CSS's zero gap>, grow-holds(grow-rows), grow-rows))
+  checks/push(check-of(<align-items stretch makes both children of a 200 column 200 wide>, stretch-holds(stretch-rows), stretch-rows))
+  checks/push(check-of(<height 60 is the row's height>, tall-holds(tall-rows), tall-rows))
+  back checks

@@ -1,0 +1,274 @@
+note <a UI test that taps what SpringBoard puts up on the iPhone simulator: a grant's prompt, a banner to wait for>
+
+# Ported from test/compile/shared/springboard-taps.ts (item 0548). `simctl privacy` cannot answer some grants
+# (notifications, and on iOS 26 the photo library), so one UI-testing bundle, written and built here with xcodebuild,
+# drives SpringBoard (`XCUIApplication(bundleIdentifier: "com.apple.springboard")`) and needs no app of its own. The
+# caller gives the test's body. It is started once the app is installed and before it launches, and waits for the prompt
+# the launch brings up. A caller holds the simulator (./hold) around it. xcodebuild only: no AppleScript, and nothing
+# here boots a simulator.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+  find substring
+  find to-upper-case
+
+load @term/base/list
+  find push
+
+load @term/base/cryptography/digest
+  find digest-sha256-text
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+
+load @term/base/clock
+  find sleep
+
+load @term/base/time
+  find now, name epoch-now
+
+dock load
+  load <node:fs>, name taps-file
+  load <node:path>, name taps-path
+  load <node:child_process>, name taps-child
+
+host runner, <TermPromptTaps>
+
+# a built UI test: whether it built, xcodebuild's error lines when it did not, and where its project, derived data and
+# log are. `child` is the xcodebuild running it once started
+form taps
+  mark shared
+  link built, like boolean
+  link errors, like text
+  link project, like text
+  link derived, like text
+  link log, like text
+  link started, like boolean, fall false
+  link timed-out, like boolean, fall false
+  link child, like dynamic, fall void
+
+# how a started test ended: its exit status (1 past the limit) and its log
+form taps-finished
+  link started, like boolean
+  link status, like number, fall 0
+  link log, like text, fall <>
+
+bind taps-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+bind taps-stdio
+  take into, like dynamic
+  like dynamic
+  case node
+    text <(\{ stdio: ["ignore", $into, $into] \})>
+
+# the child's exit code, -1 while it runs, 0 when a signal ended it
+bind taps-exit-code
+  take child, like dynamic
+  like number
+  case node
+    text <($child.exitCode ?? ($child.signalCode === null ? -1 : 0))>
+
+bind taps-kill
+  take child, like dynamic
+  take signal, like text
+  like boolean
+  case node
+    text <$child.kill($signal)>
+
+# an Xcode object id: 24 hex digits, the same for the same name
+task xcode-id
+  take name, like text
+  like text
+
+  back to-upper-case(substring(digest-sha256-text(name), 0, 24))
+
+# a build settings block, one `KEY = "VALUE";` a line
+task settings-of
+  take entries, like list, like text
+  like text
+
+  save lines, make list
+  save key, <>
+  save keyed, false
+  walk entries
+    take one, like text
+    fork test, keyed
+      hold
+        lines/push(<\t\t\t\t{key} = "{one}";>)
+        save keyed, false
+      miss
+        save key, one
+        save keyed, true
+  back lines/join(<\n>)
+
+# the project file: one UI-testing target over Sources/Taps.swift
+task taps-project
+  like text
+
+  save file, xcode-id(<file>)
+  save build, xcode-id(<build>)
+  save product, xcode-id(<product>)
+  save main, xcode-id(<main>)
+  save sources, xcode-id(<sources>)
+  save products, xcode-id(<products>)
+  save phase, xcode-id(<phase>)
+  save target, xcode-id(<target>)
+  save target-list, xcode-id(<target-list>)
+  save target-debug, xcode-id(<target-debug>)
+  save project, xcode-id(<project>)
+  save project-list, xcode-id(<project-list>)
+  save project-debug, xcode-id(<project-debug>)
+  save target-settings, settings-of(make list(<CODE_SIGN_IDENTITY>, <->, <CODE_SIGN_STYLE>, <Manual>, <GENERATE_INFOPLIST_FILE>, <YES>, <IPHONEOS_DEPLOYMENT_TARGET>, <17.0>, <PRODUCT_BUNDLE_IDENTIFIER>, <surf.term.prompt-taps>, <PRODUCT_NAME>, <$(TARGET_NAME)>, <SDKROOT>, <iphoneos>, <SWIFT_VERSION>, <5.0>, <TARGETED_DEVICE_FAMILY>, <1,2>))
+  save project-settings, settings-of(make list(<SDKROOT>, <iphoneos>, <IPHONEOS_DEPLOYMENT_TARGET>, <17.0>))
+  save lines, make list
+  lines/push(<// !$*UTF8*$!>)
+  lines/push(<\{>)
+  lines/push(<\tarchiveVersion = 1;>)
+  lines/push(<\tclasses = \{>)
+  lines/push(<\t\};>)
+  lines/push(<\tobjectVersion = 56;>)
+  lines/push(<\tobjects = \{>)
+  lines/push(<\t\t{build} = \{isa = PBXBuildFile; fileRef = {file}; \};>)
+  lines/push(<\t\t{file} = \{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Taps.swift; sourceTree = "\<group\>"; \};>)
+  lines/push(<\t\t{product} = \{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "{runner}.xctest"; sourceTree = BUILT_PRODUCTS_DIR; \};>)
+  lines/push(<\t\t{main} = \{isa = PBXGroup; children = ({sources}, {products}, ); sourceTree = "\<group\>"; \};>)
+  lines/push(<\t\t{sources} = \{isa = PBXGroup; children = ({file}, ); path = Sources; sourceTree = "\<group\>"; \};>)
+  lines/push(<\t\t{products} = \{isa = PBXGroup; children = ({product}, ); name = Products; sourceTree = "\<group\>"; \};>)
+  lines/push(<\t\t{phase} = \{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({build}, ); runOnlyForDeploymentPostprocessing = 0; \};>)
+  lines/push(<\t\t{target} = \{isa = PBXNativeTarget; buildConfigurationList = {target-list}; buildPhases = ({phase}, ); buildRules = (); dependencies = (); name = "{runner}"; productName = "{runner}"; productReference = {product}; productType = "com.apple.product-type.bundle.ui-testing"; \};>)
+  lines/push(<\t\t{target-list} = \{isa = XCConfigurationList; buildConfigurations = ({target-debug}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; \};>)
+  lines/push(<\t\t{target-debug} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  lines/push(target-settings)
+  lines/push(<\t\t\t\}; name = Debug; \};>)
+  lines/push(<\t\t{project} = \{isa = PBXProject; attributes = \{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500; \}; buildConfigurationList = {project-list}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({target}, ); \};>)
+  lines/push(<\t\t{project-list} = \{isa = XCConfigurationList; buildConfigurations = ({project-debug}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; \};>)
+  lines/push(<\t\t{project-debug} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  lines/push(project-settings)
+  lines/push(<\t\t\t\}; name = Debug; \};>)
+  lines/push(<\t\};>)
+  lines/push(<\trootObject = {project};>)
+  lines/push(<\}>)
+  lines/push(<>)
+  back lines/join(<\n>)
+
+# the scheme that builds and runs the UI test
+task taps-scheme
+  like text
+
+  save reference, <\<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{xcode-id(<target>)}" BuildableName="{runner}.xctest" BlueprintName="{runner}" ReferencedContainer="container:{runner}.xcodeproj"/\>>
+  save lines, make list
+  lines/push(<\<?xml version="1.0" encoding="UTF-8"?\>>)
+  lines/push(<\<Scheme LastUpgradeVersion="1500" version="1.7"\>>)
+  lines/push(<  \<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"\>>)
+  lines/push(<    \<BuildActionEntries\>>)
+  lines/push(<      \<BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO"\>>)
+  lines/push(<        {reference}>)
+  lines/push(<      \</BuildActionEntry\>>)
+  lines/push(<    \</BuildActionEntries\>>)
+  lines/push(<  \</BuildAction\>>)
+  lines/push(<  \<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.PosixSpawn" shouldUseLaunchSchemeArgsEnv="YES"\>>)
+  lines/push(<    \<Testables\>>)
+  lines/push(<      \<TestableReference skipped="NO"\>>)
+  lines/push(<        {reference}>)
+  lines/push(<      \</TestableReference\>>)
+  lines/push(<    \</Testables\>>)
+  lines/push(<  \</TestAction\>>)
+  lines/push(<\</Scheme\>>)
+  lines/push(<>)
+  back lines/join(<\n>)
+
+# the test's Swift: one method holding `body`, with `springboard` in scope
+task taps-swift
+  take body, like text
+  like text
+
+  back <import XCTest\n\nfinal class Taps: XCTestCase \{\n    func testTaps() \{\n        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")\n{body}\n    \}\n\}\n>
+
+# the lines of xcodebuild's output that name an error, at most 1600 characters
+task error-lines-of
+  take said, like text
+  like text
+
+  save found, make list
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, text-contains(line, <error>)
+      hold
+        found/push(line)
+  back substring(found/join(<\n>), 0, 1600)
+
+# write the UI test in `folder` and build it for testing on any iOS simulator, its one method's body `body`. It builds
+# and never runs: `start-taps` runs it
+task build-taps
+  take folder, like text
+  take body, like text
+  like taps
+
+  save project, taps-path/join(folder, <{runner}.xcodeproj>)
+  taps-file/mkdir-sync(taps-path/join(project, <xcshareddata>, <xcschemes>), taps-recursive(0))
+  taps-file/mkdir-sync(taps-path/join(folder, <Sources>), taps-recursive(0))
+  write-file(taps-path/join(project, <project.pbxproj>), taps-project())
+  write-file(taps-path/join(project, <xcshareddata>, <xcschemes>, <{runner}.xcscheme>), taps-scheme())
+  write-file(taps-path/join(folder, <Sources>, <Taps.swift>), taps-swift(body))
+  save derived, taps-path/join(folder, <derived>)
+  save arguments, make list(<build-for-testing>, <-project>, project, <-scheme>, runner, <-destination>, <generic/platform=iOS Simulator>, <-derivedDataPath>, derived, <-quiet>)
+  save made, run(<xcodebuild>, arguments, bind(limit, 600000))
+  save errors, error-lines-of(<{made/output}{made/error}>)
+  back make(taps, bind(built, is-equal(made/code, 0)), bind(errors, errors), bind(project, project), bind(derived, derived), bind(log, taps-path/join(folder, <taps.log>)))
+
+# start the built test on the simulator `udid`, writing its log. It runs while the app does
+task start-taps
+  take built, like taps
+  take udid, like text
+  like void
+
+  save out, taps-file/open-sync(built/log, <w>)
+  save arguments, make list(<test-without-building>, <-project>, built/project, <-scheme>, runner, <-destination>, <id={udid}>, <-derivedDataPath>, built/derived)
+  save built/child, taps-child/spawn(<xcodebuild>, arguments, taps-stdio(out))
+  save built/started, true
+  taps-file/close-sync(out)
+
+# once the app has gone: the test's exit status and its log. `limit` ms (180 s by default) bounds the wait: past it the
+# test is ended (TERM, KILL 5 s later), its status 1 and its log saying `timed out`, so a test that never finishes cannot
+# hold the shared simulator for ever
+task finish-taps
+  take built, like taps
+  take limit, like number, fall 180000
+  like taps-finished
+
+  fork test, not(built/started)
+    hold
+      back make(taps-finished, bind(started, false))
+  save deadline, add(epoch-now(), limit)
+  save code, taps-exit-code(built/child)
+  walk test
+    hook test, and(is-equal(code, -1), is-below(epoch-now(), deadline))
+    hook hold
+      sleep(250)
+      save code, taps-exit-code(built/child)
+  fork test, is-equal(code, -1)
+    hold
+      save built/timed-out, true
+      taps-kill(built/child, <SIGTERM>)
+      save hard, add(epoch-now(), 5000)
+      walk test
+        hook test, and(is-equal(taps-exit-code(built/child), -1), is-below(epoch-now(), hard))
+        hook hold
+          sleep(250)
+      fork test, is-equal(taps-exit-code(built/child), -1)
+        hold
+          taps-kill(built/child, <SIGKILL>)
+  save said, read-file(built/log)
+  fork test, built/timed-out
+    hold
+      back make(taps-finished, bind(started, true), bind(status, 1), bind(log, <{said}\ntimed out after {limit} ms\n>))
+  back make(taps-finished, bind(started, true), bind(status, code), bind(log, said))

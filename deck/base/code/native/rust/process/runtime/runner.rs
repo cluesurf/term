@@ -9,12 +9,14 @@ mod runner {
 
     type Environment = std::rc::Rc<std::cell::RefCell<crate::TermMap<String, String>>>;
 
-    // the command with its arguments, working directory and added variables
+    // the command with its arguments, working directory and added variables. With `group` the child leads a new process
+    // group, so a signal to the group reaches everything it starts
     fn shaped(
         command: &str,
         argument_list: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
         directory: &str,
         environment: &Environment,
+        group: bool,
     ) -> std::process::Command {
         let mut shaped = std::process::Command::new(command);
         shaped.args(argument_list.borrow().iter());
@@ -24,6 +26,13 @@ mod runner {
         for (name, value) in environment.borrow().iter() {
             shaped.env(name.as_str(), value.as_str());
         }
+        #[cfg(unix)]
+        if group {
+            use std::os::unix::process::CommandExt;
+            shaped.process_group(0);
+        }
+        #[cfg(not(unix))]
+        let _ = group;
         shaped
     }
 
@@ -54,28 +63,30 @@ mod runner {
         RunResult { code: -1, output: String::new(), error: cause.to_string(), signal: 0 }
     }
 
-    // a signal sent to the child, with no crate (the numbers are the same on macOS and Linux: SIGKILL 9, SIGTERM 15).
-    // Off unix only the kill there is
+    // a signal sent to the child, or to its whole group when it leads one, with no crate (the numbers are the same on
+    // macOS and Linux: SIGKILL 9, SIGTERM 15). Off unix only the kill there is
     #[cfg(unix)]
-    fn signal_child(child: &mut std::process::Child, signum: i32) {
+    fn signal_child(child: &mut std::process::Child, signum: i32, group: bool) {
         extern "C" {
             fn kill(pid: i32, signum: i32) -> i32;
         }
-        unsafe { kill(child.id() as i32, signum) };
+        let pid = child.id() as i32;
+        unsafe { kill(if group { -pid } else { pid }, signum) };
     }
 
     #[cfg(not(unix))]
-    fn signal_child(child: &mut std::process::Child, _signum: i32) {
+    fn signal_child(child: &mut std::process::Child, _signum: i32, _group: bool) {
         let _ = child.kill();
     }
 
     // wait for `child` by a poll of `try_wait`, `pause` milliseconds apart, calling `each` with its pid on every turn.
-    // With a `limit` above 0 the child is sent TERM once `limit` milliseconds have passed and KILL 2000 ms after that.
-    // The status (none when the wait failed) and whether the limit ended it
+    // With a `limit` above 0 the child (its group, with `group`) is sent TERM once `limit` milliseconds have passed and
+    // KILL 2000 ms after that. The status (none when the wait failed) and whether the limit ended it
     fn wait_limited(
         child: &mut std::process::Child,
         limit: i64,
         pause: u64,
+        group: bool,
         each: &mut dyn FnMut(u32),
     ) -> (Option<std::process::ExitStatus>, bool) {
         let start = std::time::Instant::now();
@@ -91,13 +102,13 @@ mod runner {
                         match termed {
                             None => {
                                 if start.elapsed() >= deadline {
-                                    signal_child(child, 15);
+                                    signal_child(child, 15, group);
                                     termed = Some(std::time::Instant::now());
                                 }
                             }
                             Some(at) => {
                                 if !killed && at.elapsed() >= std::time::Duration::from_millis(2000) {
-                                    signal_child(child, 9);
+                                    signal_child(child, 9, group);
                                     killed = true;
                                 }
                             }
@@ -142,7 +153,7 @@ mod runner {
     // a captured run under a limit above 0: stdout and stderr each read on a thread, the child waited by a poll and
     // ended at the limit, and the answer taken once both readers are done or 500 ms after the exit (a grandchild may
     // hold a pipe). Code -2 when the limit ended it
-    fn captured_limited(mut shaped: std::process::Command, input: Option<String>, limit: i64) -> RunResult {
+    fn captured_limited(mut shaped: std::process::Command, input: Option<String>, limit: i64, group: bool) -> RunResult {
         use std::io::Write;
         let spawned = shaped
             .stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() })
@@ -164,7 +175,7 @@ mod runner {
         if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
             let _ = stdin.write_all(text.as_bytes());
         }
-        let (status, ended) = wait_limited(&mut child, limit, 10, &mut |_| {});
+        let (status, ended) = wait_limited(&mut child, limit, 10, group, &mut |_| {});
         let drained = std::time::Instant::now();
         while !(output_reader.is_finished() && error_reader.is_finished())
             && drained.elapsed() < std::time::Duration::from_millis(500)
@@ -187,11 +198,12 @@ mod runner {
         directory: String,
         environment: Environment,
         limit: i64,
+        group: bool,
     ) -> RunResult {
         if limit > 0 {
-            return captured_limited(shaped(&command, &argument_list, &directory, &environment), None, limit);
+            return captured_limited(shaped(&command, &argument_list, &directory, &environment, group), None, limit, group);
         }
-        match shaped(&command, &argument_list, &directory, &environment).output() {
+        match shaped(&command, &argument_list, &directory, &environment, group).output() {
             Ok(out) => answered(out),
             Err(cause) => refused(cause),
         }
@@ -291,12 +303,12 @@ mod runner {
         environment: Environment,
         limit: i64,
     ) -> i64 {
-        let mut child = match shaped(&command, &argument_list, &directory, &environment).spawn() {
+        let mut child = match shaped(&command, &argument_list, &directory, &environment, false).spawn() {
             Ok(child) => child,
             Err(_) => return -1,
         };
         let held = passing::hold();
-        let (status, ended) = wait_limited(&mut child, limit, 5, &mut |pid| passing::pass(pid));
+        let (status, ended) = wait_limited(&mut child, limit, 5, false, &mut |pid| passing::pass(pid));
         passing::release(held);
         match status {
             _ if ended => -2,
@@ -313,12 +325,13 @@ mod runner {
         directory: String,
         environment: Environment,
         limit: i64,
+        group: bool,
     ) -> RunResult {
         use std::io::Write;
         if limit > 0 {
-            return captured_limited(shaped(&command, &argument_list, &directory, &environment), Some(input), limit);
+            return captured_limited(shaped(&command, &argument_list, &directory, &environment, group), Some(input), limit, group);
         }
-        let spawned = shaped(&command, &argument_list, &directory, &environment)
+        let spawned = shaped(&command, &argument_list, &directory, &environment, group)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

@@ -1,6 +1,6 @@
 // The browser sandbox has no subprocess capability, so `run` surfaces an explicit error result (code -1) rather than a
-// silent no-op. A program that needs to run a process must do so on a server target. `directory`, `environment` and
-// `limit` are accepted and ignored. Reached only through the public run API.
+// silent no-op. A program that needs to run a process must do so on a server target. `directory`, `environment`,
+// `limit` and `group` are accepted and ignored. Reached only through the public run API.
 const runner = {
   run: async (
     _command: string,
@@ -8,6 +8,7 @@ const runner = {
     _directory: string,
     _environment: Map<string, string> | undefined,
     _limit: number,
+    _group: boolean,
   ): Promise<{
     code: number
     output: string
@@ -33,6 +34,7 @@ const runner = {
     _directory: string,
     _environment: Map<string, string> | undefined,
     _limit: number,
+    _group: boolean,
   ): Promise<{
     code: number
     output: string

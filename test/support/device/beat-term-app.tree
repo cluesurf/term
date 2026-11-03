@@ -1,0 +1,91 @@
+note <beat-term as it ships: term make --target uikit, then xcodebuild for the simulator. It builds and never installs>
+
+# Ported from test/compile/shared/beat-term-app.ts (item 0548, beat-term spec.md 3.4, D013): `term make --target uikit`
+# from deck/tool/tool/beat-term, then xcodebuild for the simulator, so the drive and the build test hold the same app.
+# Unsigned (`team` empty), Release, derived data in <app>/host/uikit/derived-simulator. The UIKit build is the CLI's own,
+# deck/call/code/uikit.ts, docked as the subject.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/list
+  find push
+
+load ./host-fields
+  find host-field-text
+
+dock load
+  load <@term/call/code/uikit>, name beat-uikit
+  load <node:path>, name beat-path
+  load <node:fs>, name beat-file
+
+# the app built, or why not: `app` the .app it wrote, else `failed` saying why
+form beat-term-built
+  link app, like text, fall <>
+  link identifier, like text, fall <>
+  link root, like text, fall <>
+  link failed, like text, fall <>
+
+# the arguments for makeUikit
+form uikit-input
+  link root, like text
+  link team, like text
+
+# the app folder, deck/tool/tool/beat-term of the repository, four folders above the Term root a suite runs in
+task beat-term-root
+  like text
+
+  back beat-path/resolve(<../../../../deck/tool/tool/beat-term>)
+
+# xcodebuild's `error:` lines only, at most 30
+task xcode-errors
+  take said, like text
+  like text
+
+  save found, make list
+  walk text-split(said, <\n>)
+    take line, like text
+    fork test, and(text-contains(line, <error:>), is-below(found/length, 30))
+      hold
+        found/push(line)
+  back found/join(<\n>)
+
+# the app's project built for `destination` into `derived`, answering the `.app` it wrote, or why not
+task xcodebuild-beat-term
+  take root, like text
+  take destination, like text
+  take derived, like text
+  take products, like text
+  like beat-term-built
+
+  save name, host-field-text(beat-uikit/uikit-identity(root), <name>)
+  save project, beat-path/join(root, <host>, <uikit>, <{name}.xcodeproj>)
+  save built, run(<xcodebuild>, make list(<build>, <-project>, project, <-scheme>, name, <-configuration>, <Release>, <-destination>, destination, <-derivedDataPath>, derived, <CODE_SIGNING_ALLOWED=NO>, <-quiet>))
+  save app, beat-path/join(derived, <Build>, <Products>, products, <{name}.app>)
+  fork test, or(is-unequal(built/code, 0), not(beat-file/exists-sync(app)))
+    hold
+      back make(beat-term-built, bind(failed, <xcodebuild {destination} failed (status {built/code}):\n{xcode-errors(<{built/output}{built/error}>)}>))
+  back make(beat-term-built, bind(app, app))
+
+# term make --target uikit from the app folder, then xcodebuild for the simulator (Release, CODE_SIGNING_ALLOWED=NO,
+# derived data in <app>/host/uikit/derived-simulator)
+task build-beat-term-for-simulator
+  like beat-term-built
+
+  save root, beat-term-root()
+  save identity, beat-uikit/uikit-identity(root)
+  save name, host-field-text(identity, <name>)
+  save identifier, host-field-text(identity, <identifier>)
+  fork test, or(is-unequal(name, <beatterm>), is-unequal(identifier, <surf.term.beatterm>))
+    hold
+      back make(beat-term-built, bind(failed, <the app is named {name} / {identifier}, not beatterm / surf.term.beatterm>))
+  wait beat-uikit/make-uikit(make(uikit-input, bind(root, root), bind(team, <>)))
+  save built, xcodebuild-beat-term(root, <generic/platform=iOS Simulator>, beat-path/join(root, <host>, <uikit>, <derived-simulator>), <Release-iphonesimulator>)
+  fork test, is-unequal(built/failed, <>)
+    hold
+      back built
+  back make(beat-term-built, bind(app, built/app), bind(identifier, identifier), bind(root, root))

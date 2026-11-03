@@ -1,53 +1,221 @@
-mark draft
+# A child process a program talks to while it runs: `start` it, read its output by line or to the end, write to its
+# standard input and close it, `stop` it, and `wait` for its end. `run` (process/run) is the one-call form of the same
+# thing. The runner, the limit and the group behave as `run`'s do (D025): `directory` empty is this process's own and
+# one that is not there is a `command-absence`, `environment` is added over the inherited variables, `limit` is the
+# milliseconds the child may run (0 or below for none), and `group` makes the child lead a new process group, so the
+# limit and `stop` reach everything it started.
+#
+#   save one, start(<sh>, make list(<-c>, <echo a; sleep 1; echo b>))
+#   save first, read-line(one)
+#   save done, wait(one)
+#
+# Node and Rust run children. Swift and Kotlin raise `command-absence` at `start` ("not on this target"), and the
+# browser runs no processes at all (item 0188, finding/platform-apis.md row 12).
 
-# SHELVED 2026-10-02 (base-v1-0019): bodiless `wait`, `stop`, `write`, `close`, `read`, `stream`; process/run runs a command. Nothing loads it.
+mark unstable
+
+load @term/base/native/{platform}/process/child
+  find child-start
+  find child-refusal
+  find child-next-line
+  find child-rest
+  find child-write
+  find child-close
+  find child-stop
+  find child-wait
+  find child-signal
 
 load @term/base/process
   find child
 
-task wait
+load @term/base/process/run
+  find run-result
+  find command-absence
+  find command-timeout
+
+load @term/base/text
+  find ends-with
+  find substring
+
+# one line read from a child's stream: the line without its newline, and `ended` once the stream has nothing more,
+# with the empty `line`
+form child-line
+  link line, like text
+  link ended, like boolean
+
+# start `command` with `argument-list`, its three streams piped to this process
+task start
+  mark async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take directory
+    like text
+    fall text <>
+  take environment
+    like hash
+      like text
+      like text
+    need false
+  take limit
+    like number
+    fall 0
+  take group
+    like boolean
+    fall false
+  like child
+  save handle
+    call child-start
+      read command
+      read argument-list
+      read directory
+      read environment
+      read limit
+      read group
+  save refusal
+    call child-refusal
+      read handle
+  fork test
+    hook test
+      call is-unequal
+        read refusal
+        text <>
+    hook hold
+      halt command-absence
+        bind thing, read command
+        bind reason, read refusal
+  send back
+    make child
+      bind dock, read handle
+      bind handle, read handle
+      bind command, read command
+      bind limit, read limit
+
+# whether `kind` names the error stream: <error> does, anything else is the output
+task is-error-kind
+  mark private
+  take kind, like text
+  like boolean
+  send back
+    call is-equal
+      read kind
+      text <error>
+
+# the next line the child wrote to `kind`'s stream (<output> or <error>), waiting until it comes. A last line with no
+# newline is a line too. At the end of the stream the answer is the empty line with `ended`
+task read-line
   mark async
   take child, like child
-  like size
-
-task stop
-  take child, like child
-  take
-    form
+  take kind
     like text
-    fall text <gentle>
+    fall text <output>
+  like child-line
+  save got
+    call child-next-line
+      read child/handle
+      call is-error-kind
+        read kind
+  fork test
+    hook test
+      call ends-with
+        read got
+        text <\n>
+    hook hold
+      send back
+        make child-line
+          bind line
+            call substring
+              read got
+              code 0
+              call subtract
+                read got/length
+                code 1
+          bind ended, false
+  send back
+    make child-line
+      bind line, read got
+      bind ended
+        call is-equal
+          read got
+          text <>
 
+# everything left on `kind`'s stream, once the child has closed it
+task read
+  mark async
+  take child, like child
+  take kind
+    like text
+    fall text <output>
+  like text
+  send back
+    call child-rest
+      read child/handle
+      call is-error-kind
+        read kind
+
+# write `data` to the child's standard input
 task write
   mark async
   take child, like child
   take data, like text
+  call child-write
+    read child/handle
+    read data
 
+# close the child's standard input, so a child reading it to the end goes on
 task close
   mark async
   take child, like child
+  call child-close
+    read child/handle
 
-task read
+# end the child: <gentle> sends TERM, <hard> sends KILL, to its group when it leads one. Its `wait` then answers code
+# 143 and signal 15, or 137 and 9. A child already ended is left as it is
+task stop
+  take child, like child
+  take way
+    like text
+    fall text <gentle>
+  call child-stop
+    read child/handle
+    call is-equal
+      read way
+      text <hard>
+
+# wait for the child to end, and answer its code and signal with what it wrote that nobody read. A child its limit
+# ended raises `command-timeout` with that output instead, as `run` does
+task wait
   mark async
   take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <text>
-  like text
-
-task stream
-  mark async
-  take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <bytes>
-  like list
+  like run-result
+  save code
+    call child-wait
+      read child/handle
+  save output
+    call child-rest
+      read child/handle
+      false
+  save error
+    call child-rest
+      read child/handle
+      true
+  fork test
+    hook test
+      call is-equal
+        read code
+        code -2
+    hook hold
+      halt command-timeout
+        bind thing, read child/command
+        bind waited, read child/limit
+        bind output, read output
+        bind error, read error
+  send back
+    make run-result
+      bind code, read code
+      bind output, read output
+      bind error, read error
+      bind signal
+        call child-signal
+          read child/handle

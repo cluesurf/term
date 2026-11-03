@@ -1,0 +1,210 @@
+note <`term look` names the deck of every symbol it lists, from the module's nearest `deck.tree`>
+
+# Ported from look.ts by statement (item 0550, decision 116: the converter left 162 of 193 code lines).
+# deck/make/code/inspect.ts and deck/make/code/compile/type-text.ts `showType` are the subjects (decision 106), handed the
+# project resolver and the deck reader a project build uses. A stdlib module is `@term/base`, a data-package module is
+# `@term/host`, and the table, csv and json outputs all carry it. The inferred-result case compiles through the harness,
+# whose `program` is the checked program the original walks.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/reading
+  find all-with
+  find any-with
+  find count-with
+  find first-with-both
+  find lines-of
+
+load ../support/walking
+  find kind-of
+
+load @term/base/hash
+  find hash
+
+load @term/base/json
+  find parse, name json-parse
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+
+dock load
+  load <@term/make/code/inspect>, name look-inspect
+  load <@term/make/code/compile/type-text>, name look-type
+  load <@term/call/code/make>, name look-make
+  load <@term/call/code/deck-of>, name look-deck
+  load <node:path>, name look-path
+
+form look-entry
+  link file, like text
+  link text, like text
+
+host deck-of, look-deck/project-deck-of()
+
+task look
+  take root, like text
+  take file, like text
+  like dynamic
+
+  back look-inspect/inspect-module(make(look-entry, bind(file, file), bind(text, file-text(file))), look-make/project-resolver(root), deck-of)
+
+# true when every symbol's deck starts with @
+task every-deck-named
+  take symbols, like dynamic
+  like boolean
+
+  walk symbols
+    take one, like dynamic
+    fork test, not(text-starts-with(one/deck, <@>))
+      hold
+        back false
+  back true
+
+# true when the list holds something and every item has the field at the value
+task all-at
+  take items, like dynamic
+  take field, like text
+  take value, like text
+  like boolean
+
+  back and(is-above(items/length, 0), is-equal(count-with(items, field, value), items/length))
+
+# a symbol's comment, the empty text when it has none
+task note-of
+  take symbol, like dynamic
+  like text
+
+  fork test, not(truth(symbol))
+    hold
+      back <>
+  host note, read-field(symbol, <note>)
+  fork test, is-unequal(kind-of(note), <string>)
+    hold
+      back <>
+  back note
+
+host seed-root, look-path/join(term-root(), <deck/base>)
+host maybe, look(seed-root, look-path/join(seed-root, <code/maybe.tree>))
+host maybe-form, first-with-both(maybe/symbols, <kind>, <form>, <name>, <maybe>)
+
+test <a stdlib module lists its form>
+  want hold, truth(maybe-form)
+
+test <the stdlib form belongs to @term/base>
+  want hold, is-equal read-field(maybe-form, <deck>), <@term/base>
+
+test <every symbol of the stdlib closure names a deck>
+  want hold, every-deck-named(maybe/symbols)
+
+host host-root, look-path/join(term-root(), <deck/host>)
+host node, look(host-root, look-path/join(host-root, <code/node.tree>))
+host own, all-with(node/symbols, <module>, <code/node>)
+host pulled, all-with(node/symbols, <module>, <text/string>)
+
+test <a data-package module belongs to @term/host>
+  want hold, all-at(own, <deck>, <@term/host>)
+
+test <the stdlib it pulls in stays @term/base>
+  want hold, all-at(pulled, <deck>, <@term/base>)
+
+host deck-beside, make pattern, <<@term/host\s+code/node>>
+
+test <the table prints the deck beside the module>
+  want hold, matches(deck-beside, look-inspect/to-table(own))
+
+test <the csv has a deck column>
+  want hold, text-starts-with(look-inspect/to-csv(own), <kind,name,deck,module,signature>)
+
+test <the json carries the deck>
+  host written, json-parse(look-inspect/toJson(own))
+  want hold, is-equal count-with(written, <deck>, <@term/host>), written/length
+
+# what a module offers is its own and what it passes on with `bear`, never what it only loads (guides: commands/look,
+# 2026-10-04)
+test <the offer holds the module's own definitions>
+  want hold, any-with(node/offered, <module>, <code/node>)
+
+test <and not the stdlib it only loads>
+  want hold, not(any-with(node/offered, <module>, <text/string>))
+
+test <a module that offers nothing private lists every one of its own>
+  host exception, look(seed-root, look-path/join(seed-root, <code/exception.tree>))
+  want hold, all-at(exception/offered, <module>, <code/exception>)
+
+# `form.tree` holds nothing of its own and passes nine modules on with `bear`, of which two exist today, `maybe` and
+# `result` (the other seven are named and missing, which `loadDiagnostics` counts)
+test <a module that passes others on with `bear` offers what they define, and nothing else>
+  host bears, look(seed-root, look-path/join(seed-root, <code/form.tree>))
+  want hold, truth(first-with-both(bears/offered, <module>, <code/maybe>, <name>, <maybe>))
+  want hold, is-equal add(count-with(bears/offered, <module>, <code/maybe>), count-with(bears/offered, <module>, <code/result>)), bears/offered/length
+  want hold, is-equal bears/offered-modules, 3
+
+# a definition's doc comment, the `#` lines above it, is listed with it (guides: commands/look, 2026-10-04)
+host list-module, look(seed-root, look-path/join(seed-root, <code/list.tree>))
+host sort, first-with-both(list-module/offered, <kind>, <task>, <name>, <sort>)
+
+test <a task carries the comment written above it>
+  want hold, text-starts-with(note-of(sort), <a new list holding the items in the order `compare` gives>)
+
+test <the table prints it under the task>
+  host lines, lines-of(look-inspect/to-table(make list(sort)))
+  want hold, is-above lines/length, 1
+  want hold, text-starts-with(lines/1, <      a new list holding>)
+
+test <the csv and json carry it>
+  host one, make list(sort)
+  want hold, text-contains(look-inspect/to-csv(one), <"a new list holding>)
+  want hold, is-equal json-parse(look-inspect/toJson(one))/0/note, note-of(sort)
+
+test <each task carries its own comment, not its neighbor's>
+  host sort-by, first-with-both(list-module/offered, <kind>, <task>, <name>, <sort-by>)
+  want hold, text-starts-with(note-of(sort-by), <a new list in the order of the number `key` gives>)
+
+test <and one comment line is the whole note>
+  host zip, first-with-both(list-module/offered, <kind>, <task>, <name>, <zip>)
+  want hold, is-equal note-of(zip), <pairs of the items at the same position, as long as the shorter list>
+
+# a result the source does not write is filled from the checked program, and only that one (guides: commands/look). The
+# results go in as looking.tree hands them (decision 064 section 2)
+host infer-file, look-path/join(term-root(), <tmp-look-infer.tree>)
+host infer-text, <task twice\n  take n, like number\n\n  back multiply(n, 2)\n\ntask nothing\n  take n, like number\n  like void\n  save m, n\n>
+
+task inferred-results
+  like hash, like text, like text
+
+  host results, make hash
+  host checked, compile-text(infer-text, make(compile-choice, bind(file, infer-file)))
+  fork test, checked/ok
+    hold
+      walk checked/program
+        take one, like dynamic
+        fork test, and(is-equal(one/form, <function>), truth(read-field(one, <result>)))
+          hold
+            results/set(one/name, look-type/show-type(one/result))
+  back results
+
+host seen, look-inspect/inspect-module(make(look-entry, bind(file, infer-file), bind(text, infer-text)), look-make/project-resolver(term-root()), deck-of, inferred-results())
+
+test <an unwritten result is the inferred one, and says so>
+  host twice, first-with-both(seen/symbols, <name>, <twice>, <kind>, <task>)
+  want hold, truth(twice)
+  want hold, and(is-equal(read-field(twice, <result>), <number>), truth(read-field(twice, <inferred>)))
+
+test <a written one is left as written>
+  host nothing, first-with-both(seen/symbols, <name>, <nothing>, <kind>, <task>)
+  want hold, truth(nothing)
+  want hold, not(truth(read-field(nothing, <inferred>)))

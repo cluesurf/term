@@ -189,7 +189,8 @@ role code
       root,
     })
 
-    expect(config.rules.map(rule => rule.name)).toEqual(['book', 'code'])
+    // the second `code` rule is the lean test/ suites (decision 104, item 0544)
+    expect(config.rules.map(rule => rule.name)).toEqual(['book', 'code', 'code'])
     expect(config.rules.every(rule => rule.take.length > 0)).toBe(true)
 
     const roleOf = (path: string) =>

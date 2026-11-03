@@ -1,85 +1,64 @@
+# browser child processes: a page runs no processes (item 0188 built node and rust). `start` answers a child whose refusal
+# is "not on this target", which process/child raises as `command-absence`, so nothing else here is ever reached.
+# Internal: reached only through the public process/child API.
 
-dock load
-  load <global:process>, name process
-
-load @term/base/process
-  find child
-
-task wait
+task child-start
   mark async
-  take child, like child
-  like size
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
+  take limit, like number
+  take group, like boolean
+  like number
+  send back, code 0
 
-  save code
-    call process/wait-worker
-      wait true
-      read child/dock
-
-  send back, read code
-
-task stop
-  take child, like child
-  take
-    form
-    like text
-    fall text <gentle>
-
-  call child/dock/terminate
-
-task write
-  mark async
-  take child, like child
-  take data, like text
-
-  call child/dock/post-message
-    read data
-
-task close
-  mark async
-  take child, like child
-
-  call child/dock/post-message
-    make object
-      bind type, text <close>
-
-task read
-  mark async
-  take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <text>
+task child-refusal
+  take handle, like number
   like text
+  send back, text <not on this target>
 
-  save output
-    call process/read-worker
-      wait true
-      read child/dock
-
-  send back, read output
-
-task stream
+task child-next-line
   mark async
-  take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <bytes>
-  like list
+  take handle, like number
+  take error, like boolean
+  like text
+  send back, text <>
 
-  save messages, make list
+task child-rest
+  mark async
+  take handle, like number
+  take error, like boolean
+  like text
+  send back, text <>
 
-  call process/stream-worker
-    read child/dock
-    read messages
+task child-write
+  mark async
+  take handle, like number
+  take data, like text
+  save given, read data
 
-  send back, read messages
+task child-close
+  take handle, like number
+  save given, read handle
 
+task child-stop
+  take handle, like number
+  take hard, like boolean
+  save given, read hard
+
+task child-wait
+  mark async
+  take handle, like number
+  like number
+  send back, code -1
+
+task child-signal
+  take handle, like number
+  like number
+  send back, code 0

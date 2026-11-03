@@ -4,7 +4,8 @@
 // number; one that exited by itself answers its code and signal 0. `directory` (empty is this process's own) and
 // `environment` (entries added over the inherited one) shape the child. `limit` (milliseconds, 0 or below none) ends
 // the child at the limit with TERM, then KILL 2000 ms later, and resolves with code -2 and what it wrote once it has
-// exited and both pipes closed, or 500 ms after the exit (a grandchild may hold a pipe). Reached only through the
+// exited and both pipes closed, or 500 ms after the exit (a grandchild may hold a pipe). `group` (run and withInput
+// only) makes the child lead a new process group, and the limit then signals the whole group. Reached only through the
 // public run API.
 import { spawn } from 'node:child_process'
 import { constants as runnerConstants } from 'node:os'
@@ -33,22 +34,43 @@ const closeCode = (
   return signal > 0 ? 128 + signal : (code ?? 0)
 }
 
+// `group` makes the child lead a new process group (detached), so the limit can signal everything it started
 const runnerOptions = (
   directory: string,
   environment: Map<string, string> | undefined,
+  group: boolean = false,
 ) => ({
   cwd: directory === '' ? undefined : directory,
   env: {
     ...process.env,
     ...Object.fromEntries(environment ?? new Map()),
   },
+  detached: group,
 })
 
-// the limit's timers on a running child: TERM at the limit, KILL 2000 ms after. `ended` says whether the limit fired,
-// and `clear` stops whichever timers are still waiting
+// a signal to the child, or to its whole group when it leads one. A group already gone is left alone
+const runnerSignal = (
+  child: RunnerChild,
+  group: boolean,
+  name: NodeJS.Signals,
+): void => {
+  if (!group || child.pid === undefined) {
+    child.kill(name)
+    return
+  }
+  try {
+    process.kill(-child.pid, name)
+  } catch {
+    // the group is gone already
+  }
+}
+
+// the limit's timers on a running child: TERM at the limit, KILL 2000 ms after, to its group when it leads one.
+// `ended` says whether the limit fired, and `clear` stops whichever timers are still waiting
 const runnerLimit = (
   child: RunnerChild,
   limit: number,
+  group: boolean = false,
 ): { ended: () => boolean; clear: () => void } => {
   let fired = false
   let term: ReturnType<typeof setTimeout> | undefined
@@ -57,9 +79,9 @@ const runnerLimit = (
   if (limit > 0) {
     term = setTimeout(() => {
       fired = true
-      child.kill('SIGTERM')
+      runnerSignal(child, group, 'SIGTERM')
       kill = setTimeout(() => {
-        child.kill('SIGKILL')
+        runnerSignal(child, group, 'SIGKILL')
       }, 2000)
     }, limit)
   }
@@ -83,12 +105,13 @@ const runnerCapture = (
   child: RunnerChild,
   limit: number,
   resolve: (result: RunnerResult) => void,
+  group: boolean = false,
 ): void => {
   let output = ''
   let error = ''
   let done = false
   let drain: ReturnType<typeof setTimeout> | undefined
-  const timer = runnerLimit(child, limit)
+  const timer = runnerLimit(child, limit, group)
   const finish = (result: RunnerResult) => {
     if (done) {
       return
@@ -160,6 +183,7 @@ const runner = {
     directory: string,
     environment: Map<string, string> | undefined,
     limit: number,
+    group: boolean = false,
   ): Promise<RunnerResult> =>
     new Promise(resolve => {
       try {
@@ -167,10 +191,11 @@ const runner = {
           spawn(
             command,
             argumentList,
-            runnerOptions(directory, environment),
+            runnerOptions(directory, environment, group),
           ),
           limit,
           resolve,
+          group,
         )
       } catch (cause) {
         resolve({
@@ -243,15 +268,16 @@ const runner = {
     directory: string,
     environment: Map<string, string> | undefined,
     limit: number,
+    group: boolean = false,
   ): Promise<RunnerResult> =>
     new Promise(resolve => {
       try {
         const child = spawn(
           command,
           argumentList,
-          runnerOptions(directory, environment),
+          runnerOptions(directory, environment, group),
         )
-        runnerCapture(child, limit, resolve)
+        runnerCapture(child, limit, resolve, group)
         child.stdin.on('error', () => {})
         child.stdin.end(input)
       } catch (cause) {

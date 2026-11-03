@@ -1,76 +1,96 @@
+# rust child processes (std::process::Command, three piped streams, a reader thread per output stream), held by number
+# in the child-process shim. Every wait is a poll beside a timer of the program's executor, so other jobs run while one
+# waits on a child. Internal: reached only through the public process/child API.
+
 dock load
-  load <global:child>, name child-runtime
+  load <global:child-process>, name child-process
 
-load @term/base/process
-  find child
-
-task wait
+task child-start
   mark async
-  take child, like child
-  like size
-
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
+  take limit, like number
+  take group, like boolean
+  like number
   send back
-    call child-runtime/wait
-      read child/dock
+    call child-process/start
+      read command
+      read argument-list
+      read directory
+      read environment
+      read limit
+      read group
+      wait true
 
-task stop
-  take child, like child
-  take
-    form
-    like text
-    fall text <gentle>
-
-  fork test
-    hook test
-      call is-equal
-        bind a, read form
-        bind b, text <force>
-    hook hold
-      call child-runtime/kill
-        read child/dock
-    hook miss
-      call child-runtime/stop
-        read child/dock
-
-task write
-  mark async
-  take child, like child
-  take data, like text
-
-  call child-runtime/write
-    read child/dock
-    read data
-
-task close
-  mark async
-  take child, like child
-
-  call child-runtime/close
-    read child/dock
-
-task read
-  mark async
-  take child, like child
-  take
-    kind
-    like text
-    fall text <stdout>
-  take
-    format
-    like text
-    fall text <text>
+task child-refusal
+  take handle, like number
   like text
+  send back
+    call child-process/refusal
+      read handle
 
-  fork
-    test
-    call is-equal
-      read kind
-      text <stderr>
-    hook hold
-      send back
-        call child-runtime/read-error
-          read child/dock
-    hook miss
-      send back
-        call child-runtime/read-out
-          read child/dock
+task child-next-line
+  mark async
+  take handle, like number
+  take error, like boolean
+  like text
+  send back
+    call child-process/line
+      read handle
+      read error
+      wait true
+
+task child-rest
+  mark async
+  take handle, like number
+  take error, like boolean
+  like text
+  send back
+    call child-process/rest
+      read handle
+      read error
+      wait true
+
+task child-write
+  mark async
+  take handle, like number
+  take data, like text
+  call child-process/write
+    read handle
+    read data
+    wait true
+
+task child-close
+  take handle, like number
+  call child-process/close
+    read handle
+
+task child-stop
+  take handle, like number
+  take hard, like boolean
+  call child-process/stop
+    read handle
+    read hard
+
+task child-wait
+  mark async
+  take handle, like number
+  like number
+  send back
+    call child-process/wait
+      read handle
+      wait true
+
+task child-signal
+  take handle, like number
+  like number
+  send back
+    call child-process/signal
+      read handle

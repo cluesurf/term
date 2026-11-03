@@ -1,0 +1,51 @@
+note <a construction with nothing under its name takes the parts beside it as its values, on every backend>
+
+# `make list, <x>` with nothing under `list`: a comma pops one level (deck/term/CLAUDE.md, comma chains), so `<x>` sits
+# beside `list` under `make`, and the parts beside the name are the values, exactly as `make list, <a>, <b>` is two
+# items (test/check/make-split.tree, kept). Nothing is lost, so unlike make-split it is not refused: `f(make list, <x>)`
+# hands f the one-item list. An empty list as an argument is written `make(list)`, which closes it, so `<x>` is f's next
+# argument (item 0903, trap T-0550 part 2).
+
+load ../support/running
+  find backends
+  find run-text
+
+load ../support/temp
+  find temp-folder
+
+host one, <task count\n  take xs, like list, like text\n  like text\n\n  back \<\{xs/length\} \{xs/0\}\>\n\n>
+
+host two, <task count\n  take xs, like list, like text\n  take y, like text\n  like text\n\n  back \<\{xs/length\} \{y\}\>\n\n>
+
+test <make list, x is the one-item list>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<make-beside-name->)
+  host ran, run-text(<{one}task run\n  like text\n\n  back count(make list, \<x\>)\n>, backend, folder, <one-item>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 x>)
+
+test <make(list) then x is an empty list and the next argument>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<make-beside-name->)
+  host ran, run-text(<{two}task run\n  like text\n\n  back count(make(list), \<x\>)\n>, backend, folder, <empty-then-next>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <0 x>)
+
+test <make list, a, b is two items>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<make-beside-name->)
+  host ran, run-text(<{one}task run\n  like text\n\n  back count(make list, \<a\>, \<b\>)\n>, backend, folder, <two-items>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <2 a>)

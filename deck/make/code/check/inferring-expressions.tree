@@ -5510,6 +5510,84 @@ task map-get-call
       bind args, given
       bind span, at
 
+# A RAW ENTRY READ handed where a maybe is wanted (item 0903, trap T-0550). `h/get(k)` on a hash, and `xs/get(i)` or
+# `xs/at(i)` on a list, is the host's own read: it answers the entry itself, never a maybe. Where the entry's type is
+# loose it fits a maybe by the gradual rule, and the maybe's reader then answers its fallback for every key at run time
+# with a clean build. Refused, naming the read that answers a maybe. <> for any other argument, and where the entry is
+# a maybe itself or not settled yet
+task raw-entry-refusal
+  take st, like infer-state
+  take arg, like expression
+  take wanted, like type
+  take callee, like text
+  like text
+  mark private
+
+  save wants-maybe, false
+  save wanted-held, resolve-held(st, wanted)
+  sift wanted-held
+    case named
+      link wanted-name
+      save wants-maybe, is-equal(wanted-name, <maybe>)
+    miss
+      save nothing, 0
+  fork test, not(wants-maybe)
+    hold
+      back <>
+  save called, callee-of(arg)
+  sift called
+    case member
+      link read-target
+      link read-name
+      link read-index
+      sift read-index
+        case some
+          back <>
+        case none
+          save nothing, 0
+      save op, host-method(read-name)
+      fork test, not(or(is-equal(op, <get>), is-equal(op, <at>)))
+        hold
+          back <>
+      save target-had, expression-type(read-target)
+      sift target-had
+        case some
+          link target-type
+          save receiver, resolve-held(st, target-type)
+          save entry, unknown-type()
+          save kind, <>
+          save way, <>
+          sift receiver
+            case map
+              link map-key
+              link map-value
+              save entry, map-value
+              save kind, <hash>
+              save way, <write get(the hash, key) as a call for a maybe, or read the entry after has(key)>
+            case array
+              link list-element
+              save entry, list-element
+              save kind, <list>
+              save way, <read the entry after holding the index below the list's length>
+            miss
+              back <>
+          save entry-held, resolve-held(st, entry)
+          sift entry-held
+            case named
+              link entry-name
+              fork test, is-equal(entry-name, <maybe>)
+                hold
+                  back <>
+            case variable
+              back <>
+            miss
+              save nothing, 0
+          back <"{callee}" wants a maybe, and {read-name}(...) on a {kind} is the host's own read: it answers the entry itself ({show-type(entry-held)}), never a maybe, so a loose entry would read as an absent one: {way}>
+        case none
+          back <>
+    miss
+      back <>
+
 # a call's callee, the node itself for anything else
 task callee-of
   take node, like expression
@@ -6125,7 +6203,12 @@ task infer-call
             take arg-type
             fork test, not(contains(left-out, at))
               hold
-                expect(st, arg-type, get(signature/params, at), expression-span(get(args, at)), <argument>)
+                save raw-why, raw-entry-refusal(st, get(args, at), get(signature/params, at), name)
+                fork test, is-equal(raw-why, <>)
+                  hold
+                    expect(st, arg-type, get(signature/params, at), expression-span(get(args, at)), <argument>)
+                  miss
+                    say(st, make(type-mismatch), expression-span(get(args, at)), raw-why)
             save at, add(at, 1)
       # INSTANCE RESOLUTION: a concrete type needs an instance, and a type still one of the enclosing task's generics
       # needs that generic to carry the same bound

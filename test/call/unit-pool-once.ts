@@ -157,6 +157,10 @@ function traced(root: string, home: string, env: Record<string, string>, args: s
 
     // a name pointer (`surface:`) holds a key alone, an answer its stored entry
     if (text.length < 200) continue
+    // a trace pointer (`trace:` and the locators the unit's last build consulted, decision 103 item 4) is advisory, not
+    // an answer, and rewritten by every build: a unit reaching many locators writes one past 200 characters (30 on
+    // @term/base, item term-self-host-001-0909)
+    if (text.startsWith('{"portable":"trace:')) continue
     if (text.includes('{\\"diagnostics\\"')) refused++
     else answers++
   }
@@ -307,7 +311,13 @@ function holds(name: string, run: Traced): void {
     mkdirSync(at, { recursive: true })
 
     for (const part of ['deck.tree', 'role.tree', 'role', 'code', 'test', 'test.tree']) {
-      if (existsSync(join(source, part))) cpSync(join(source, part), join(at, part), { recursive: true })
+      // a native toolchain's own build cache (code/native/swift/.build is 1.1 GB) holds no .tree and is left behind
+      if (existsSync(join(source, part))) {
+        cpSync(join(source, part), join(at, part), {
+          recursive: true,
+          filter: from => !/\/(\.build|target|node_modules)$/.test(from),
+        })
+      }
     }
 
     const root = realpathSync(at)

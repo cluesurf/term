@@ -1,0 +1,416 @@
+note <the device harness itself, on fixtures and the skip path: no simulator, emulator or remote machine is touched>
+
+# Tests of test/support/device, beside it rather than in it: a loaded file's test blocks are not rewritten (T-0878). Every
+# helper here that would reach a device is held by what it reads (a simulator list, a log, a layout line, a JPEG's bytes)
+# or by the answer it gives when the device is not there. Nothing boots, installs on or drives a simulator or emulator.
+
+load ./hold
+  find hold-device
+  find release-device
+  find holder-of
+  find owner-of-text
+  find stale-hold
+  find hold-folder
+
+load ./simulator
+  find simulator-in
+  find booted-simulator
+  find shared-simulator
+
+load ./android-log
+  find app-lines
+  find log-ended
+  find android-found-of
+
+load ./layout-rows
+  find layout-rows
+  find layout-labels
+  find layout-label
+  find layout-check
+  find rows-of
+  find judge-layout
+
+load ./compose-build
+  find compose-built-of
+  find compose-built
+  find run-compose
+
+load ./compose-remote
+  find windows-reach-of
+  find last-of
+
+load ./springboard-taps
+  find xcode-id
+  find taps-project
+  find taps-scheme
+  find taps-swift
+  find error-lines-of
+  find finish-taps
+  find taps
+
+load ./photo-sample
+  find jpeg-size
+  find make-photo
+  find photo-bmp-hex
+
+load ./beat-term-app
+  find xcode-errors
+  find beat-term-root
+
+load ./toolkit-run
+  find toolkit-app
+  find toolkit-leg
+  find legs-of
+  find toolkit-of
+  find leg-of
+  find leg-check
+  find failed-checks
+  find entitlements-of
+  find run-leg
+  find prepare-no-device
+
+load ../temp
+  find temp-folder
+
+load @term/base/json
+  find parse, name json-parse
+
+load @term/base/bytes
+  find from-hex
+
+load @term/base/file
+  find read-bytes
+
+load @term/base/text
+  find ends-with
+
+load @term/base/cryptography/digest
+  find digest-sha256-text
+
+load ./host-fields
+  find host-cause-text
+  find host-field-text
+
+dock load
+  load <node:fs>, name check-file
+
+# what a host raise said, read the way the legs read a docked build's raise
+task said-by-raise
+  take path, like text
+  like text
+
+  fork
+    mark unsafe
+    check-file/read-file-sync(path)
+    back <>
+  halt take
+    take cause
+    back host-cause-text(cause)
+
+test <a host raise is read by its message>
+  want hold, text-contains(said-by-raise(<device-check-no-such-file>), <ENOENT>)
+  want hold, is-equal(host-field-text(json-parse(<\{"a":1\}>), <b>), <>)
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+load @term/base/environment
+  find set-variable
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+  find exists, name folder-exists
+
+# a fresh hold home for one test, so no test sees another's, and none the machine's own
+task fresh-home
+  like text
+
+  save home, temp-folder(<device-check->)
+  set-variable(<TERM_HOLD_HOME>, home)
+  set-variable(<TERM_HELD>, <>)
+  back home
+
+test <a hold makes the device's folder, naming this process, and its release removes it>
+  host home, fresh-home()
+  host held, hold-device(<simulator>, <device-check one>)
+  want hold, file-exists(<{home}/simulator/owner.json>)
+  host owner, holder-of(<simulator>)
+  want hold, owner/found
+  want hold, is-equal(owner/who, <device-check one>)
+  release-device(held)
+  want hold, not(folder-exists(<{home}/simulator>))
+  want hold, not(holder-of(<simulator>)/found)
+
+test <a hold whose owner's process is gone is stale, and the next taker takes it>
+  host home, fresh-home()
+  make-folder(<{home}/emulator>)
+  write-file(<{home}/emulator/owner.json>, <\{"pid":999999,"who":"gone","since":"then"\}\n>)
+  want hold, stale-hold(<{home}/emulator>)
+  want hold, not(holder-of(<emulator>)/found)
+  host held, hold-device(<emulator>, <device-check two>)
+  want hold, is-equal(holder-of(<emulator>)/who, <device-check two>)
+  release-device(held)
+
+test <a fresh folder with no owner.json yet is not stale>
+  host home, fresh-home()
+  make-folder(<{home}/pasteboard>)
+  want hold, not(stale-hold(<{home}/pasteboard>))
+
+test <a device TERM_HELD names is held above: nothing is made, and the release does nothing>
+  host home, fresh-home()
+  set-variable(<TERM_HELD>, <emulator, simulator>)
+  host held, hold-device(<simulator>, <device-check three>)
+  want hold, held/inherited
+  want hold, not(folder-exists(<{home}/simulator>))
+  release-device(held)
+  set-variable(<TERM_HELD>, <>)
+
+test <a release leaves a folder whose owner.json names another process>
+  host home, fresh-home()
+  host held, hold-device(<pasteboard>, <device-check four>)
+  write-file(<{home}/pasteboard/owner.json>, <\{"pid":1,"who":"launchd","since":"boot"\}\n>)
+  release-device(held)
+  want hold, folder-exists(<{home}/pasteboard>)
+
+test <an owner.json missing a field, or not JSON, names nobody>
+  want hold, not(owner-of-text(<\{"pid":12,"who":"x"\}>)/found)
+  want hold, not(owner-of-text(<\{"pid":"12","who":"x","since":"y"\}>)/found)
+  want hold, not(owner-of-text(<>)/found)
+  want hold, owner-of-text(<\{"pid":12,"who":"x","since":"y"\}>)/found
+
+test <the hold folder is under TERM_HOLD_HOME>
+  host home, fresh-home()
+  want hold, is-equal(hold-folder(<emulator>), <{home}/emulator>)
+
+# simctl's listing: two booted iPhones (the shared one second), a booted iPad and a shut iPhone
+host listing, <\{"devices":\{"com.apple.CoreSimulator.SimRuntime.iOS-26-0":[\{"udid":"A1","name":"iPhone 17","state":"Booted"\},\{"udid":"0F8D6036-E209-4729-B96B-C4761B69ACA8","name":"iPhone 17 Pro","state":"Booted"\},\{"udid":"P1","name":"iPad Air","state":"Booted"\}],"com.apple.CoreSimulator.SimRuntime.iOS-18-0":[\{"udid":"S1","name":"iPhone 16","state":"Shutdown"\}]\}\}>
+
+# a listing with only an iPad booted
+host ipad-only, <\{"devices":\{"r":[\{"udid":"P1","name":"iPad Air","state":"Booted"\},\{"udid":"S1","name":"iPhone 16","state":"Shutdown"\}]\}\}>
+
+test <the shared simulator is taken when it is booted and nothing else is asked>
+  want hold, is-equal(simulator-in(listing, <>)/udid, shared-simulator)
+
+test <a simulator asked for by udid is taken when it is booted>
+  want hold, is-equal(simulator-in(listing, <A1>)/udid, <A1>)
+
+test <a simulator asked for that is not booted gives the first booted iPhone>
+  want hold, is-equal(simulator-in(listing, <S1>)/udid, <A1>)
+
+test <with no iPhone booted the simulator is missing, saying a test never boots one>
+  host found, simulator-in(ipad-only, <>)
+  want hold, is-equal(found/udid, <>)
+  want hold, text-contains(found/missing, <a test never boots one>)
+
+test <booted-simulator only reads the listing: it answers a udid or why there is none>
+  host found, booted-simulator()
+  want hold, or(is-unequal(found/udid, <>), is-unequal(found/missing, <>))
+
+# a logcat stream of one app, its prefix on each line, and a crash line of the runtime
+host logcat, <11-02 10:00:00.000  4242  4242 I native-dom: native-view start\n11-02 10:00:00.100  4242  4242 I native-dom:   rows spread 0,0,300,30  \nAndroidRuntime: FATAL EXCEPTION: main>
+
+test <the app's lines lose logcat's prefix and keep every other line>
+  want hold, is-equal(app-lines(logcat), <native-view start\nrows spread 0,0,300,30\nAndroidRuntime: FATAL EXCEPTION: main>)
+
+test <the log has ended once the app says it exits or crashes, and not before>
+  want hold, log-ended(<native-dom: native-view exit 0>)
+  want hold, log-ended(logcat)
+  want hold, not(log-ended(<native-dom: native-view start>))
+
+# every row a host drew right: each relationship holds
+host layout-good, <rows spread 0,0,300,30 0,0,20,30 270,0,30,30\nrows grow 0,40,300,30 0,40,270,30 270,40,30,30\nrows stretch 0,80,200,60 0,80,200,30 0,110,200,30\nrows tall 0,150,300,60 0,165,20,30 20,165,30,30\nrows block 0,220,300,60 0,220,300,30 0,250,300,30\nrows flex 0,290,800,30 0,290,20,30 20,290,30,30\nrows column 0,330,200,60 0,330,200,30 0,360,200,30\nrows center 0,400,300,30 125,400,20,30 145,400,30,30\nrows end 0,440,300,30 250,440,20,30 270,440,30,30\nrows start-column 0,480,200,60 0,480,20,30 0,510,30,30\nrows end-column 0,550,200,60 180,550,20,30 170,580,30,30\nrows stretch-row 0,620,300,60 0,620,20,60 20,620,30,60>
+
+# the count of checks that did not hold
+task failing
+  take checks, like list, like layout-check
+  like number
+
+  save count, 0
+  walk checks
+    take one, like layout-check
+    fork test, not(one/passed)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <every relationship holds for rows drawn right>
+  take check, like layout-check
+    walk judge-layout(layout-good)
+  want hold, check/passed
+
+test <the judge holds twelve relationships, one per row>
+  want hold, is-equal(judge-layout(layout-good)/length, 12)
+
+test <a grown child that did not grow fails the grow relationship alone>
+  host bad, text-replace(layout-good, <0,40,270,30 270,40,30,30>, <0,40,150,30 150,40,150,30>)
+  host checks, judge-layout(bad)
+  want hold, is-equal(failing(checks), 1)
+  want hold, not(checks/9/passed)
+
+test <a row the host never drew fails its relationship, its frames undefined>
+  host checks, judge-layout(text-replace(layout-good, <rows tall >, <rows other >))
+  want hold, is-equal(failing(checks), 1)
+  want hold, is-equal(checks/11/frames, <undefined>)
+
+test <a row reads its three frames, never a longer label's>
+  want hold, is-equal(rows-of(<rows end-column 1,2,3,4 5,6,7,8 9,10,11,12>, <end>)/length, 0)
+  want hold, is-equal(rows-of(<  rows end 1,2,3,4 5,6,7,8 9,10,11,12>, <end>)/2/1, 10.0)
+  want hold, is-equal(rows-of(<rows end 1,2,3,4 5,6,7,8>, <end>)/length, 0)
+
+test <the frames read back as the original printed them>
+  want hold, is-equal(judge-layout(layout-good)/11/frames, <[[0,150,300,60],[0,165,20,30],[20,165,30,30]]>)
+
+test <every label's view is one the rows define>
+  take label, like layout-label
+    walk layout-labels()
+  want hold, text-contains(layout-rows(), <view {label/view}\n  take host, like view\n>)
+
+test <twelve labels, in the order a program mounts them>
+  host labels, layout-labels()
+  want hold, is-equal(labels/length, 12)
+  want hold, is-equal(labels/0/label, <spread>)
+  want hold, is-equal(labels/11/view, <stretch-row>)
+
+test <the cask's answer with no device online is missing, saying why>
+  host found, android-found-of(json-parse(<\{"missing":"no Android device is online"\}>), </sdk/adb>)
+  want hold, is-equal(found/missing, <no Android device is online>)
+  want hold, is-equal(found/serial, <>)
+
+test <the cask's answer with the emulator online is its serial, reached by the cask's adb>
+  host found, android-found-of(json-parse(<\{"serial":"emulator-5554"\}>), </sdk/adb>)
+  want hold, is-equal(found/serial, <emulator-5554>)
+  want hold, is-equal(found/adb, </sdk/adb>)
+  want hold, is-equal(found/missing, <>)
+
+test <a Compose build the CLI skipped reads skipped, with its reason>
+  host built, compose-built-of(json-parse(<\{"form":"skipped","reason":"kotlinc or java not installed"\}>))
+  want hold, is-equal(built/state, <skipped>)
+  want hold, is-equal(built/reason, <kotlinc or java not installed>)
+
+test <a Compose build reads its jar, classpath, main class and runtime jars>
+  host built, compose-built-of(json-parse(<\{"form":"built","jar":"a.jar","classpath":"b.jar:c.jar","main":"MainKt","runtimeJars":["r1.jar","r2.jar"]\}>))
+  want hold, is-equal(built/state, <built>)
+  want hold, is-equal(built/classpath, <b.jar:c.jar>)
+  want hold, is-equal(built/main, <MainKt>)
+  want hold, is-equal(built/runtime-jars, make list(<r1.jar>, <r2.jar>))
+
+test <a Compose run of a jar that is not there ends non-zero, or is skipped without java>
+  host ran, run-compose(make(compose-built, bind(state, <built>), bind(jar, <device-check-none.jar>), bind(classpath, <none.jar>), bind(main, <NoSuchMain>)))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <java is not installed>
+  want hold, is-unequal(ran/status, 0)
+  want hold, text-contains(ran/error, <NoSuchMain>)
+
+test <a Windows machine on x64 with a JDK on its PATH is reached>
+  host reached, windows-reach-of(0, <AMD64\r\nC:\\jdk\\bin\\jpackage.exe\r\n>, <>)
+  want hold, is-equal(reached/target, <windows-x64>)
+  want hold, is-equal(reached/jpackage, <C:\\jdk\\bin\\jpackage.exe>)
+  want hold, is-equal(reached/unreachable, <>)
+
+test <a Windows machine with no jpackage is unreachable, saying there is no JDK>
+  host reached, windows-reach-of(0, <ARM64\r\n>, <>)
+  want hold, text-contains(reached/unreachable, <windows: no JDK>)
+
+test <an architecture with no Compose artifact, or a failed answer, is unreachable with the machine's words>
+  want hold, is-equal(windows-reach-of(0, <x86\r\n>, <>)/unreachable, <windows: x86>)
+  want hold, is-equal(windows-reach-of(1, <AMD64>, <refused>)/unreachable, <windows: refused>)
+  want hold, is-equal(windows-reach-of(1, <>, <>)/unreachable, <windows: no answer>)
+
+test <last-of keeps the end of a text>
+  want hold, is-equal(last-of(<abcdef>, 2), <ef>)
+  want hold, is-equal(last-of(<ab>, 5), <ab>)
+
+test <an Xcode object id is 24 upper hex digits, the original's for the same name>
+  want hold, is-equal(xcode-id(<file>), <3B9C358F36F0A31B6AD3E14F>)
+
+test <the UI test's project and scheme are the original's byte for byte>
+  want hold, is-equal(digest-sha256-text(taps-project()), <4f64af78955cf828a015acbde5658359786d8eaf383c79efb36fc5cc2c7f36e6>)
+  want hold, is-equal(digest-sha256-text(taps-scheme()), <74fecf4484fea32087bc51244632a9c30c83730b95edeca5f166dc348392573f>)
+
+test <the UI test's Swift holds the body with springboard in scope>
+  host swift, taps-swift(<        springboard.buttons["Allow"].tap()>)
+  want hold, text-contains(swift, <let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")\n        springboard.buttons["Allow"].tap()\n    \}>)
+
+test <a UI test never started finishes as not started>
+  host built, make(taps, bind(built, true), bind(errors, <>), bind(project, <p>), bind(derived, <d>), bind(log, <l>))
+  want hold, not(finish-taps(built)/started)
+
+test <xcodebuild's error lines are kept, nothing else>
+  want hold, is-equal(error-lines-of(<Build ok\nx.swift:1: error: no\nwarning: w\n** BUILD FAILED ** error>), <x.swift:1: error: no\n** BUILD FAILED ** error>)
+  want hold, is-equal(xcode-errors(<a\nb error: c\nerror: d\nfine>), <b error: c\nerror: d>)
+
+# a JPEG of 321 by 123: start of image, an APP0 segment of four bytes, then a SOF0 frame header
+host jpeg-hex, <ffd8ffe00004aabbffc0001108007b014103012200000000>
+
+test <a JPEG's size is read from its first frame header, past the segments before it>
+  host size, jpeg-size(from-hex(jpeg-hex))
+  want hold, size/found
+  want hold, is-equal(size/width, 321)
+  want hold, is-equal(size/height, 123)
+
+test <bytes that are not a JPEG have no size>
+  want hold, not(jpeg-size(from-hex(<89504e470d0a1a0a0000000000000000>))/found)
+  want hold, not(jpeg-size(from-hex(<ffd8>))/found)
+
+test <the sample BMP is its header and 123 rows of 964 bytes>
+  want hold, is-equal(photo-bmp-hex()/length, multiply(2, add(54, multiply(964, 123))))
+
+test <the sample photo made a JPEG by sips reads back as 321 by 123>
+  fork test, not(file-exists(</usr/bin/sips>))
+    hold
+      skip <sips is the Mac's own>
+  host size, jpeg-size(read-bytes(make-photo(<sample.jpg>)))
+  want hold, size/found
+  want hold, is-equal(size/width, 321)
+  want hold, is-equal(size/height, 123)
+
+test <beat-term is the app folder four folders above the Term root>
+  want hold, ends-with(beat-term-root(), </deck/tool/tool/beat-term>)
+
+host plain-app, make(toolkit-app, bind(root, <.>), bind(folder, <.>), bind(name, <Check>), bind(who, <device-check>), bind(ios-identifier, <surf.term.check>), bind(android-identifier, <surf.term.check>))
+
+test <every leg runs when none is named, Compose only where the app opted in>
+  want hold, is-equal(legs-of(plain-app, <>), make list(<macos>, <ios>, <android>))
+  host composing, make(toolkit-app, bind(root, <.>), bind(folder, <.>), bind(name, <Check>), bind(who, <device-check>), bind(ios-identifier, <a>), bind(android-identifier, <b>), bind(compose, true), bind(compose-android, true))
+  want hold, is-equal(legs-of(composing, <>), make list(<macos>, <ios>, <android>, <compose>, <compose-android>))
+
+test <a leg named runs alone, another desktop's only when named>
+  want hold, is-equal(legs-of(plain-app, <ios>), make list(<ios>))
+  want hold, is-equal(legs-of(plain-app, <compose>), make list(<compose>))
+  want hold, is-equal(legs-of(plain-app, <compose-linux>), make list(<compose-linux>))
+
+test <each leg names its toolkit>
+  want hold, is-equal(toolkit-of(<ios>), <UIKit>)
+  want hold, is-equal(toolkit-of(<compose-android>), <Jetpack Compose>)
+  want hold, is-equal(toolkit-of(<compose-windows>), <Compose on Windows>)
+
+test <a leg's failed checks name what did not hold, and nothing when every one did>
+  host ran, leg-of(<android>)
+  leg-check(ran, <android: builds>, true)
+  want hold, is-equal(failed-checks(ran), <>)
+  leg-check(ran, <android: installs>, false, <no space>)
+  want hold, is-equal(failed-checks(ran), <android: installs: no space>)
+  want hold, is-equal(ran/checks/length, 2)
+
+test <the simulator entitlements name the app under the placeholder team>
+  want hold, text-contains(entitlements-of(<surf.term.x>), <\<string\>SIMULATOR0.surf.term.x\</string\>>)
+
+# a program for every leg, which no test here builds
+task no-source
+  take leg, like text
+  take shot, like text
+  like text
+
+  back <task run\n  like text\n  send back, text \<{leg}\>\n>
+
+test <a leg with nothing to run it answers skipped, with its reason>
+  host ran, run-leg(plain-app, <compose-mars>, no-source, prepare-no-device)
+  want hold, is-equal(ran/state, <skipped>)
+  want hold, is-equal(ran/reason, <no such leg>)
+  want hold, is-equal(ran/checks/length, 0)

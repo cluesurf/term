@@ -1,0 +1,345 @@
+note <a Compose app image packaged by another desktop's own jpackage and run there>
+
+# Ported from test/compile/shared/compose-remote.ts (item 0548, compose-target-0004, 0005). jpackage builds only for the
+# OS it runs on, but only Skia's native library differs between desktops: the program's jar and its runtime are the same
+# bytecode everywhere. So the program is built here, the target's Compose libraries are resolved here
+# (`compose-desktop-files <os>-<arch>`, task/term/native/kotlin.sh), and the input folder goes to the target, which
+# packages it with its own jpackage, runs the image headless (TERM_WINDOW_AWAY=1, Skia drawing offscreen), and hands back
+# what the app said and the PNG it wrote.
+#
+#   linux    the work droplet (x86_64), inside the image make/Dockerfile.compose-linux, through task/term/cask/droplet.ts,
+#            as the Linux cask is built
+#   windows  the Windows machine WINDOWS_VM names, through task/term/cask/windows.ts, as the Windows cask is built. The
+#            machine is ASKED what it is: its architecture picks the Compose artifact, and its JDK is the jpackage on its
+#            PATH, else the one in the user's profile under `term-jdk`
+#
+# The same input folder and jpackage arguments as an image made on this machine (compose.ts `composeInput`,
+# `jpackageArguments`). The two task/ scripts are CommonJS, so their exports are on `default`.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find ends-with
+  find to-lower-case
+  find substring
+  find replace-all
+
+load @term/base/list
+  find push
+
+load ./compose-build
+  find build-compose
+  find compose-built
+
+load ./host-fields
+  find host-field-text
+
+dock load
+  load <@term/call/code/compose>, name remote-cli
+  load <node:path>, name remote-path
+
+# a remote run: `state` <ran>, <failed> or <skipped>, `stage` and `reason` on a failure or a skip, what the app said, and
+# whether its PNG came back
+form remote-ran
+  link state, like text
+  link stage, like text, fall <>
+  link reason, like text, fall <>
+  link output, like text, fall <>
+  link picture, like boolean, fall false
+
+# the target reached: its Compose artifact and the jpackage it packages with, or `unreachable` saying why
+form remote-reach
+  link target, like text, fall <>
+  link jpackage, like text, fall <>
+  link unreachable, like text, fall <>
+
+# one of the task/term/cask scripts, by name, its default export
+bind remote-module
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <(await import($path)).default>
+
+bind remote-command
+  take machine, like dynamic
+  take command, like text
+  take limit, like number
+  like dynamic
+  case node
+    text <$machine.remote($command, \{ timeout: $limit \})>
+
+bind remote-ship
+  take machine, like dynamic
+  take from, like text
+  take into, like text
+  like void
+  case node
+    text <$machine.ship($from, $into)>
+
+bind remote-fetch
+  take machine, like dynamic
+  take from, like text
+  take into, like text
+  like boolean
+  case node
+    text <Boolean($machine.fetch($from, $into))>
+
+bind remote-status
+  take ran, like dynamic
+  like number
+  case node
+    text <Number($ran.status ?? -1)>
+
+# where the local Windows guest keeps its JDK, in the user's profile: the folder a JDK's zip unpacks to
+host windows-jdk, <term-jdk>
+
+# the repository root, four folders above the Term root a suite runs in
+task remote-repository
+  like text
+
+  back remote-path/resolve(<../../../..>)
+
+task machine-of
+  take desktop, like text
+  like dynamic
+
+  back remote-module(remote-path/join(remote-repository(), <task/term/cask/{desktop}.ts>))
+
+# the machine's words for why it cannot be used, at most 300 characters
+task unreachable-saying
+  take desktop, like text
+  take said, like text
+  like remote-reach
+
+  save words, substring(trim(said), 0, 300)
+  fork test, is-equal(words, <>)
+    hold
+      save words, <no answer>
+  back make(remote-reach, bind(unreachable, <{desktop}: {words}>))
+
+# a Windows machine's PROCESSOR_ARCHITECTURE, as the Compose artifact built for it, <> for another
+task windows-target
+  take architecture, like text
+  like text
+
+  fork test, is-equal(architecture, <AMD64>)
+    hold
+      back <windows-x64>
+  fork test, is-equal(architecture, <ARM64>)
+    hold
+      back <windows-arm64>
+  back <>
+
+# what the Windows machine answered in one round trip: its architecture, then any jpackage.exe on its PATH or in its
+# profile, one a line
+task windows-reach-of
+  take status, like number
+  take output, like text
+  take error, like text
+  like remote-reach
+
+  save lines, make list
+  walk text-split(output, <\n>)
+    take raw, like text
+    save line, trim(raw)
+    fork test, is-unequal(line, <>)
+      hold
+        lines/push(line)
+  save target, <>
+  fork test, is-above(lines/length, 0)
+    hold
+      save target, windows-target(lines/0)
+  fork test, or(is-unequal(status, 0), is-equal(target, <>))
+    hold
+      fork test, is-unequal(error, <>)
+        hold
+          back unreachable-saying(<windows>, error)
+      back unreachable-saying(<windows>, output)
+  save at, 0
+  walk lines
+    take line, like text
+    fork test, and(is-above(at, 0), ends-with(to-lower-case(line), <jpackage.exe>))
+      hold
+        back make(remote-reach, bind(target, target), bind(jpackage, line))
+    save at, add(at, 1)
+  back unreachable-saying(<windows>, <no JDK: no jpackage.exe on the PATH or under %USERPROFILE%\\{windows-jdk}>)
+
+# the target reached, or why it cannot be used. The droplet is x86_64, and its jpackage is the Docker image's
+task reach
+  take desktop, like text
+  like remote-reach
+
+  fork
+    mark unsafe
+    save machine, machine-of(desktop)
+    fork test, is-equal(desktop, <linux>)
+      hold
+        save ran, remote-command(machine, <docker --version>, 60000)
+        fork test, and(is-equal(remote-status(ran), 0), is-unequal(trim(host-field-text(ran, <stdout>)), <>))
+          hold
+            back make(remote-reach, bind(target, <linux-x64>), bind(jpackage, <jpackage>))
+        save said, host-field-text(ran, <stderr>)
+        fork test, is-equal(said, <>)
+          hold
+            save said, host-field-text(ran, <stdout>)
+        back unreachable-saying(desktop, said)
+    save asked, <echo %PROCESSOR_ARCHITECTURE%& where jpackage.exe 2\>nul& for /d %j in (%USERPROFILE%\\{windows-jdk}\\*) do @echo %j\\bin\\jpackage.exe>
+    save ran, remote-command(machine, asked, 60000)
+    back windows-reach-of(remote-status(ran), host-field-text(ran, <stdout>), host-field-text(ran, <stderr>))
+  halt take
+    take cause
+    back unreachable-saying(desktop, <the machine could not be asked>)
+
+# the arguments for composeInput and jpackageArguments
+form remote-input
+  link jar, like text
+  link libraries, like list, like text
+  link input, like text
+
+form jpackage-input
+  link input, like text
+  link jar, like text
+  link main, like text
+  link name, like text
+  link dest, like text
+  link console, like boolean
+
+# jpackage's arguments for the image, as the machine that runs jpackage sees its paths
+task jpackage-line
+  take input, like text
+  take built, like compose-built
+  take name, like text
+  take dest, like text
+  take console, like boolean
+  like text
+
+  save given, make(jpackage-input, bind(input, input), bind(jar, built/jar), bind(main, built/main), bind(name, name), bind(dest, dest), bind(console, console))
+  save arguments, remote-cli/jpackage-arguments(given)
+  back arguments/join(< >)
+
+# the target's Compose libraries, resolved here
+task desktop-libraries
+  take root, like text
+  take target, like text
+  like list, like text
+
+  save script, remote-path/join(root, <../../../../task/term/native/kotlin.sh>)
+  save listed, run(<bash>, make list(script, <compose-desktop-files>, target))
+  save found, make list
+  walk text-split(listed/output, <\n>)
+    take line, like text
+    fork test, is-unequal(line, <>)
+      hold
+        found/push(line)
+  back found
+
+# build `text` here, package it on `desktop` (<linux> or <windows>) and run it there. `name` is the image's name, `shot`
+# the file name the program writes its PNG to in the folder it runs in, `pulled` where that PNG comes back to
+task run-compose-remote
+  take root, like text
+  take folder, like text
+  take name, like text
+  take text, like text
+  take desktop, like text
+  take shot, like text
+  take pulled, like text
+  like remote-ran
+
+  save reached, reach(desktop)
+  fork test, is-unequal(reached/unreachable, <>)
+    hold
+      back make(remote-ran, bind(state, <skipped>), bind(reason, reached/unreachable))
+  save built, build-compose(root, folder, <compose-{desktop}>, text)
+  fork test, is-unequal(built/state, <built>)
+    hold
+      fork test, is-equal(built/state, <skipped>)
+        hold
+          back make(remote-ran, bind(state, <skipped>), bind(reason, built/reason))
+      back make(remote-ran, bind(state, <failed>), bind(stage, built/stage), bind(reason, built/reason))
+  save libraries, make list
+  walk built/runtime-jars
+    take one, like text
+    libraries/push(one)
+  walk desktop-libraries(root, reached/target)
+    take one, like text
+    libraries/push(one)
+  save input, remote-path/join(folder, <input-{desktop}>)
+  remote-cli/compose-input(make(remote-input, bind(jar, built/jar), bind(libraries, libraries), bind(input, input)))
+  save machine, machine-of(desktop)
+  save remote-root, <term-compose/{name}>
+  fork test, is-equal(desktop, <linux>)
+    hold
+      back run-on-linux(machine, root, input, built, name, remote-root, shot, pulled)
+  back run-on-windows(machine, reached, input, built, name, remote-root, shot, pulled)
+
+task run-on-linux
+  take machine, like dynamic
+  take root, like text
+  take input, like text
+  take built, like compose-built
+  take name, like text
+  take remote-root, like text
+  take shot, like text
+  take pulled, like text
+  like remote-ran
+
+  remote-ship(machine, input, <{remote-root}/input>)
+  remote-ship(machine, remote-path/join(root, <make>), <{remote-root}/make>)
+  save imaged, remote-command(machine, <cd {remote-root}/make && docker build -q -f Dockerfile.compose-linux -t term-compose-linux . 2\>&1>, 1800000)
+  fork test, is-unequal(remote-status(imaged), 0)
+    hold
+      save said, <{host-field-text(imaged, <stdout>)}{host-field-text(imaged, <stderr>)}>
+      back make(remote-ran, bind(state, <failed>), bind(stage, <image>), bind(reason, last-of(said, 1600)))
+  save arguments, jpackage-line(</work/input>, built, name, </work/out>, false)
+  save command, <docker run --rm -v $HOME/{remote-root}:/work term-compose-linux sh -c "rm -rf /work/out /work/run && mkdir -p /work/run && jpackage {arguments} && cd /work/run && TERM_WINDOW_AWAY=1 timeout 300 /work/out/{name}/bin/{name}" 2\>&1>
+  save ran, remote-command(machine, command, 900000)
+  save output, <{host-field-text(ran, <stdout>)}{host-field-text(ran, <stderr>)}>
+  save picture, remote-fetch(machine, <{remote-root}/run/{shot}>, pulled)
+  back make(remote-ran, bind(state, <ran>), bind(output, output), bind(picture, picture))
+
+# two steps, each reporting what it ran and what it said, so a failure names the step
+task run-on-windows
+  take machine, like dynamic
+  take reached, like remote-reach
+  take input, like text
+  take built, like compose-built
+  take name, like text
+  take remote-root, like text
+  take shot, like text
+  take pulled, like text
+  like remote-ran
+
+  save root, replace-all(remote-root, </>, <\\>)
+  remote-ship(machine, input, <{root}\\input>)
+  save arguments, jpackage-line(<input>, built, name, <out>, true)
+  save packaging, <cd /d %USERPROFILE%\\{root} && (if exist out rmdir /s /q out) & (if exist run rmdir /s /q run) & mkdir run && "{reached/jpackage}" {arguments} 2\>&1>
+  save packaged, remote-command(machine, packaging, 900000)
+  fork test, is-unequal(remote-status(packaged), 0)
+    hold
+      save said, <{packaging}\n{host-field-text(packaged, <stdout>)}{host-field-text(packaged, <stderr>)}>
+      back make(remote-ran, bind(state, <failed>), bind(stage, <jpackage>), bind(reason, last-of(said, 1600)))
+  save running, <cd /d %USERPROFILE%\\{root}\\run && set TERM_WINDOW_AWAY=1&& ..\\out\\{name}\\{name}.exe 2\>&1>
+  save ran, remote-command(machine, running, 900000)
+  save heading, <>
+  fork test, is-unequal(remote-status(ran), 0)
+    hold
+      save heading, <{running}\n>
+  save output, <{heading}{host-field-text(ran, <stdout>)}{host-field-text(ran, <stderr>)}>
+  save picture, remote-fetch(machine, <{remote-root}/run/{shot}>, pulled)
+  back make(remote-ran, bind(state, <ran>), bind(output, output), bind(picture, picture))
+
+# the last `count` characters of a text
+task last-of
+  take said, like text
+  take count, like number
+  like text
+
+  save from, subtract(said/length, count)
+  fork test, is-below(from, 0)
+    hold
+      save from, 0
+  back substring(said, from)

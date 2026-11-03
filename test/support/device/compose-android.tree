@@ -1,0 +1,114 @@
+note <a Term program built for Jetpack Compose, installed on the emulator, run, its log read and its picture pulled>
+
+# Ported from test/compile/shared/compose-android.ts (item 0548, compose-target-0006). The build is the CLI's,
+# `buildComposeAndroid` in deck/call/code/compose.ts (what `term make --target compose-android` runs), docked as the
+# subject. `run-compose-android` installs the APK clean, launches it, reads its `native-dom` log until it says it exits
+# (./android-log), and pulls its PNG off the device. A caller holds the emulator (./hold) around it: this never takes
+# the hold itself, and never starts an emulator.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find contains, name text-contains
+
+load ./android-log
+  find android-device
+  find android-found
+  find follow-app-log
+
+load ./host-fields
+  find host-field-text
+  find host-object
+
+dock load
+  load <@term/call/code/compose>, name compose-android-cli
+
+# an APK built, or why not: `state` <built>, <failed> or <skipped>
+form compose-apk
+  link state, like text
+  link stage, like text, fall <>
+  link reason, like text, fall <>
+  link apk, like text, fall <>
+
+# a run on the emulator: `state` <ran> or <skipped> (with the reason), whether the install took, what the app said and
+# whether it said it exits 0
+form android-ran
+  link state, like text
+  link reason, like text, fall <>
+  link installed, like boolean, fall false
+  link output, like text, fall <>
+  link exited, like boolean, fall false
+
+# the arguments for buildComposeAndroid
+form compose-android-input
+  link root, like text
+  link dir, like text
+  link name, like text
+  link text, like text
+  link identifier, like text
+  link assets, like dynamic
+
+# compile `text` for Jetpack Compose and make a signed APK of it, `identifier` its package. `assets` are files it carries
+# by name, read as `asset:<name>`, since an emulator cannot read the build machine's paths. Skipped without the SDK
+task build-compose-android
+  take root, like text
+  take folder, like text
+  take name, like text
+  take text, like text
+  take identifier, like text
+  take assets
+    like hash, like text, like text
+    fall make hash
+  like compose-apk
+
+  save input, make(compose-android-input, bind(root, root), bind(dir, folder), bind(name, name), bind(text, text), bind(identifier, identifier), bind(assets, host-object(assets)))
+  save answer, compose-android-cli/build-compose-android(input)
+  save state, host-field-text(answer, <form>)
+  back make(compose-apk, bind(state, state), bind(stage, host-field-text(answer, <stage>)), bind(reason, host-field-text(answer, <reason>)), bind(apk, host-field-text(answer, <apk>)))
+
+# what nothing prepares: a run with no grant or value to hand the emulator
+task prepare-nothing
+  take serial, like text
+  like void
+
+  back
+
+# copy a file the app wrote under its external files directory to `pulled`, true when it came
+task pull-file
+  take adb, like text
+  take serial, like text
+  take from, like text
+  take pulled, like text
+  like boolean
+
+  save got, run(adb, make list(<-s>, serial, <pull>, from, pulled))
+  back is-equal(got/code, 0)
+
+# install the APK clean, start it, and read its log until it says it exits, two minutes at most. `shot` is the name of
+# the PNG it writes in its external files directory, copied to `pulled`. `before-launch` runs with the emulator's serial once
+# the app is installed and before it starts: a grant, or a value the emulator is told
+task run-compose-android
+  take apk, like text
+  take identifier, like text
+  take shot, like text
+  take pulled, like text
+  take before-launch
+    like task
+      take serial, like text
+      like void
+  like android-ran
+
+  save found, android-device()
+  fork test, is-unequal(found/missing, <>)
+    hold
+      back make(android-ran, bind(state, <skipped>), bind(reason, found/missing))
+  save adb, found/adb
+  save serial, found/serial
+  run(adb, make list(<-s>, serial, <uninstall>, identifier))
+  save installed, run(adb, make list(<-s>, serial, <install>, <-r>, apk))
+  before-launch(serial)
+  run(adb, make list(<-s>, serial, <shell>, <am>, <start>, <-n>, <{identifier}/.TermActivity>))
+  save output, follow-app-log(adb, serial, identifier)
+  pull-file(adb, serial, </sdcard/Android/data/{identifier}/files/{shot}>, pulled)
+  back make(android-ran, bind(state, <ran>), bind(installed, is-equal(installed/code, 0)), bind(output, output), bind(exited, text-contains(output, <native-view exit 0>)))

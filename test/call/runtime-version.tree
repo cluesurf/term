@@ -1,0 +1,142 @@
+note <The runtime version of a native build: the hash a page update is checked against>
+
+# Ported from runtime-version.ts by statement (item 0550, decision 116: the converter left 112 of 138 code lines).
+# deck/call/code/runtime-version.ts and deck/call/code/cask.ts `stampRuntimeVersion` are the subjects (decision 106). The
+# version is the same for the same native half, whatever order the sources arrive in, and different the moment anything
+# that decides compatibility differs: one byte of a source, the target, the minimum OS, the toolchain. Length framing keeps
+# two different splits of the same bytes apart (native-dom-0015).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find throws
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find replace-all, name text-replace-all
+
+dock load
+  load <@term/call/code/runtime-version>, name version-module
+  load <@term/call/code/cask>, name version-cask
+  load <node:fs>, name version-fs
+  load <node:path>, name version-path
+
+form version-source
+  link name, like text
+  link text, like text
+
+form version-input
+  link target, like text
+  link minimum, like text
+  link toolchain, like text
+  link sources, like list, like version-source
+
+form version-stamp
+  link target, like text
+  link native, like text
+  link into, like text
+
+host app-source, make(version-source, bind(name, <app.swift>), bind(text, <func boot() \{\}\n>))
+host cask-source, make(version-source, bind(name, <runtime/cask.swift>), bind(text, <final class Cask \{\}\n>))
+host swift-line, <swift-driver version: 1.0 Apple Swift version 6.2>
+
+# the base input, with its two sources as given
+task input-with
+  take target, like text
+  take minimum, like text
+  take toolchain, like text
+  take sources, like list, like version-source
+  like version-input
+
+  back make(version-input, bind(target, target), bind(minimum, minimum), bind(toolchain, toolchain), bind(sources, sources))
+
+task hex-of
+  take input, like version-input
+  like text
+
+  back version-module/runtime-version(input)/hex
+
+host base-sources, make list(app-source, cask-source)
+host base, input-with(<macos>, <14.0>, swift-line, base-sources)
+host v, version-module/runtime-version(base)
+
+host hex-pattern, make pattern, <<^[0-9a-f]{64}$>>
+host tone-pattern, make pattern, <<^([mndbtkhsfvzxcwlr]{8}-){7}[mndbtkhsfvzxcwlr]{8}$>>
+
+test <the hex is a sha256>
+  want hold, matches(hex-pattern, v/hex)
+
+test <the tone is eight groups of eight>
+  want hold, matches(tone-pattern, v/tone)
+
+test <the tone is the hex re-lettered, nothing dropped>
+  want hold, is-equal text-replace-all(v/tone, <->, <>)/length, 64
+
+test <the same input gives the same version>
+  want hold, is-equal hex-of(base), v/hex
+
+test <source order does not matter>
+  want hold, is-equal hex-of(input-with(<macos>, <14.0>, swift-line, make list(cask-source, app-source))), v/hex
+
+test <one byte of one source changes it>
+  host spaced, make(version-source, bind(name, <runtime/cask.swift>), bind(text, <final class Cask \{ \}\n>))
+  want hold, is-unequal hex-of(input-with(<macos>, <14.0>, swift-line, make list(app-source, spaced))), v/hex
+
+test <the target changes it>
+  want hold, is-unequal hex-of(input-with(<ios>, <14.0>, swift-line, base-sources)), v/hex
+
+test <the minimum OS changes it>
+  want hold, is-unequal hex-of(input-with(<macos>, <15.0>, swift-line, base-sources)), v/hex
+
+test <the toolchain changes it>
+  want hold, is-unequal hex-of(input-with(<macos>, <14.0>, <swift 6.3>, base-sources)), v/hex
+
+test <a source renamed changes it>
+  host renamed, make(version-source, bind(name, <main.swift>), bind(text, <func boot() \{\}\n>))
+  want hold, is-unequal hex-of(input-with(<macos>, <14.0>, swift-line, make list(renamed, cask-source))), v/hex
+
+# the framing: the same bytes split differently between name and text must not collide
+test <framing keeps two splits of the same bytes apart>
+  host a, input-with(<macos>, <14.0>, swift-line, make list(make(version-source, bind(name, <ab>), bind(text, <c>))))
+  host b, input-with(<macos>, <14.0>, swift-line, make list(make(version-source, bind(name, <a>), bind(text, <bc>))))
+  want hold, is-unequal hex-of(a), hex-of(b)
+
+test <toneOf letters 0 as m and f as r>
+  want hold, is-equal version-module/tone-of(<0f>), <mr>
+
+task tone-of-non-hex
+  like dynamic
+
+  back version-module/tone-of(<0g>)
+
+test <toneOf refuses a non-hex character>
+  want hold, throws(tone-of-non-hex)
+
+# the toolchain line is read from the compiler, and an absent one is `none` rather than an empty text
+test <a toolchain line is never empty>
+  want hold, is-above version-module/toolchain-of(<linux>)/length, 0
+
+# what `term make --target` writes into the app: the hex, one line, in a file named `runtime-version`, and the same native
+# half stamps the same version every time
+host into, temp-folder(<term-runtime-version->)
+
+task stamp
+  take native, like text
+  like dynamic
+
+  back version-cask/stamp-runtime-version(make(version-stamp, bind(target, <android>), bind(native, native), bind(into, into)))
+
+host first, stamp(<class Program \{\}\n>)
+
+test <the build writes the hex into the app>
+  want hold, is-equal version-fs/read-file-sync(version-path/join(into, <runtime-version>), <utf8>), <{first/hex}\n>
+
+test <the same native half stamps the same version>
+  want hold, is-equal stamp(<class Program \{\}\n>)/hex, first/hex
+
+test <a different native half stamps a different one>
+  want hold, is-unequal stamp(<class Program \{ \}\n>)/hex, first/hex

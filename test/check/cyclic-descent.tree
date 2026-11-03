@@ -5,7 +5,8 @@ note <Structural descent only through a required field of a form not marked shar
 # shared form is a reference that may hold itself (`save a/next, a`), and a `need false` field typed by a form has no
 # empty value, so a field of either is not smaller than what holds it: a walk over one reads as not terminating, and a
 # claim filled by one is `looping-proof`. Each refusal sits beside a control that must still read as terminating.
-# Decision 114 of note/project/term/self-host/change/001-finish-self-host, item 0886.
+# Decision 114 of note/project/term/self-host/change/001-finish-self-host, item 0886. Decision 117 (item 0901): a
+# `need false` field typed `like maybe, like T` descends too, its absence being `none` on every backend.
 
 load ../support/compiling
   find compile-text
@@ -49,6 +50,26 @@ task proven
 
   back compile-text(text, choice())/ok
 
+# a fixture that loads @term/base/maybe compiles in a project, which resolves the stdlib
+task stdlib-choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <s.tree>), bind(project, <deck/make>), bind(project-env, <node>))
+
+task looping-with-stdlib
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, stdlib-choice())
+  back and(out/ok, contains(out/warnings, <non-terminating>))
+
+task ending-with-stdlib
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, stdlib-choice())
+  back and(out/ok, not(contains(out/warnings, <non-terminating>)))
+
 # ---- a shared form ----
 test <a field read of a shared ring is no descent>
   want hold, looping(<form ring\n  mark shared\n  link size, like number\n  link next, like ring\n\ntask walk-ring\n  take r, like ring\n  like number\n  send back\n    call walk-ring\n      read r/next\n>)
@@ -80,6 +101,26 @@ test <a need-false arm field of a value union is no descent>
 
 test <control: a need-false list beside a required field leaves the required one a descent>
   want hold, ending(<form tally\n  case stop\n  case more\n    link rest, like tally\n    link notes, like list, like text, need false\n\ntask count\n  take t, like tally\n  like number\n  fork case, read t\n    case stop\n      send back\n        code 0\n    case more\n      send back\n        call count\n          read rest\n>)
+
+# ---- a need-false maybe field (decision 117, item 0901) ----
+# A `need false` field typed `like maybe, like T` holds `none` when absent on every backend, so it descends as a required
+# field does, and the `some` payload past it is the required field `value` of maybe. The shape of compile/node-walk.tree
+# gather-statement and compile/incremental-parsing.tree shift-node
+test <a need-false maybe arm field, sifted as a variable, descends through its some>
+  want hold, ending-with-stdlib(<load @term/base/maybe\n  find maybe\n\nform box\n  case stop\n  case wrap\n    link m\n      like maybe, like box\n      need false\n\ntask depth\n  take b, like box\n  like number\n  fork case, read b\n    case stop\n      send back\n        code 0\n    case wrap\n      fork case, read m\n        case some\n          link inner\n          send back\n            call depth\n              read inner\n        case none\n          send back\n            code 0\n>)
+
+# a member read descends only from the parameter itself, so the read `b/m` and the sift of its maybe sit in two tasks
+test <a need-false maybe field read as a member, sifted, descends through its some>
+  want hold, ending-with-stdlib(<load @term/base/maybe\n  find maybe\n\nform box\n  link size, like number\n  link m\n    like maybe, like box\n    need false\n\ntask depth\n  take b, like box\n  like number\n  send back\n    call depth-of\n      read b/m\n\ntask depth-of\n  take o, like maybe, like box\n  like number\n  fork case, read o\n    case some\n      link inner\n      send back\n        call depth\n          read inner\n    case none\n      send back\n        code 0\n>)
+
+test <a need-false maybe arm field of a shared union is no descent>
+  want hold, looping-with-stdlib(<load @term/base/maybe\n  find maybe\n\nform box\n  mark shared\n  case stop\n  case wrap\n    link m\n      like maybe, like box\n      need false\n\ntask depth\n  take b, like box\n  like number\n  fork case, read b\n    case stop\n      send back\n        code 0\n    case wrap\n      fork case, read m\n        case some\n          link inner\n          send back\n            call depth\n              read inner\n        case none\n          send back\n            code 0\n>)
+
+test <a need-false arm field typed by its own form, no maybe, is no descent>
+  want hold, looping-with-stdlib(<load @term/base/maybe\n  find maybe\n\nform box\n  case stop\n  case wrap\n    link m\n      like box\n      need false\n\ntask depth\n  take b, like box\n  like number\n  fork case, read b\n    case stop\n      send back\n        code 0\n    case wrap\n      send back\n        call depth\n          read m\n>)
+
+test <control: a required maybe arm field descends through its some>
+  want hold, ending-with-stdlib(<load @term/base/maybe\n  find maybe\n\nform box\n  case stop\n  case wrap\n    link m\n      like maybe, like box\n\ntask depth\n  take b, like box\n  like number\n  fork case, read b\n    case stop\n      send back\n        code 0\n    case wrap\n      fork case, read m\n        case some\n          link inner\n          send back\n            call depth\n              read inner\n        case none\n          send back\n            code 0\n>)
 
 # ---- proofs ----
 test <a claim of never from a shared ring is looping-proof>

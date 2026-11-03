@@ -1,0 +1,180 @@
+note <one app's log on the Android emulator, read until it says it exits>
+
+# Ported from test/compile/shared/android-log.ts (item 0548): the one reader every Android leg uses, the views leg of
+# ./toolkit-run and ./compose-android.
+#
+# THIS APP'S lines only, by its process: another app on the emulator logs under the same `native-dom` tag, and reading
+# every process's lines judged this app on that one's output, stopping at the first `native-view exit` anybody printed.
+# And STREAMED, from the moment the process is found, into a file of this run's own: the log is a ring buffer every run
+# on the emulator shares, and a snapshot (`logcat -d`) lost this app's first lines whenever another run cleared it
+# meanwhile. Nothing here clears it either, which is what made two runs at once corrupt each other.
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find contains, name text-contains
+  find index-of
+  find substring
+
+load @term/base/list
+  find push
+
+load @term/base/clock
+  find sleep
+
+load @term/base/time
+  find now, name epoch-now
+
+load ./host-fields
+  find host-field-text
+
+dock load
+  load <node:fs>, name log-file
+  load <node:os>, name log-os
+  load <node:path>, name log-path
+  load <node:child_process>, name log-child
+  load <@term/call/code/cask>, name log-cask
+
+# the emulator a test may use, by `serial`, or `missing` saying why none can be used
+form android-found
+  link serial, like text, fall <>
+  link missing, like text, fall <>
+  link adb, like text, fall <>
+
+# what the cask's androidDevice answered, read: `{ serial }` or `{ missing }`
+task android-found-of
+  take answer, like dynamic
+  take adb, like text
+  like android-found
+
+  save missing, host-field-text(answer, <missing>)
+  fork test, is-unequal(missing, <>)
+    hold
+      back make(android-found, bind(missing, missing))
+  save serial, host-field-text(answer, <serial>)
+  fork test, is-equal(serial, <>)
+    hold
+      back make(android-found, bind(missing, <no Android device is online>))
+  back make(android-found, bind(serial, serial), bind(adb, adb))
+
+# the online emulator, and the adb that reaches it, the cask's own choice (the one `term make --target android` makes).
+# It never starts one: no device online, or no SDK, is `missing`
+task android-device
+  like android-found
+
+  fork
+    mark unsafe
+    save adb, host-field-text(log-cask/android-tools(), <adb>)
+    back android-found-of(log-cask/android-device(), adb)
+  halt take
+    take cause
+    back make(android-found, bind(missing, <adb could not list the devices: the Android SDK is not installed, or adb did not run>))
+
+bind log-own-pid
+  take seed, like number
+  like text
+  case node
+    text <String(process.pid)>
+
+bind log-stdio
+  take into, like dynamic
+  like dynamic
+  case node
+    text <(\{ stdio: ["ignore", $into, $into] \})>
+
+bind log-stop
+  take reader, like dynamic
+  like boolean
+  case node
+    text <$reader.kill()>
+
+bind log-quiet
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ force: true \})>
+
+# whether the app's lines so far say it has ended: it exited, or it crashed
+task log-ended
+  take log, like text
+  like boolean
+
+  back or(text-contains(log, <native-view exit>), text-contains(log, <FATAL EXCEPTION>))
+
+# the app's lines, each `native-dom` line with logcat's prefix removed, every other line as it was
+task app-lines
+  take log, like text
+  like text
+
+  save tag, <native-dom:>
+  save out, make list
+  walk text-split(log, <\n>)
+    take line, like text
+    save at, index-of(line, tag)
+    fork test, is-below(at, 0)
+      hold
+        out/push(line)
+      miss
+        out/push(trim(substring(line, add(at, tag/length))))
+  back out/join(<\n>)
+
+# the app's process on the device, <> when it is not running (yet). The first of pidof's answers
+task app-process
+  take adb, like text
+  take serial, like text
+  take identifier, like text
+  like text
+
+  save said, run(adb, make list(<-s>, serial, <shell>, <pidof>, identifier))
+  save first, trim(said/output)
+  fork test, is-equal(first, <>)
+    hold
+      back <>
+  back text-split(first, < >)/0
+
+# the app's lines once it has said it exits, crashed, or two minutes have gone. `adb` is the tool's path and `serial` the
+# emulator's. The app must have been started already; its process is looked for for 20 seconds
+task follow-app-log
+  take adb, like text
+  take serial, like text
+  take identifier, like text
+  like text
+
+  save pid, <>
+  save started, add(epoch-now(), 20000)
+  walk test
+    hook test, and(is-equal(pid, <>), is-below(epoch-now(), started))
+    hook hold
+      save pid, app-process(adb, serial, identifier)
+      fork test, is-equal(pid, <>)
+        hold
+          sleep(500)
+  save arguments, make list(<-s>, serial, <logcat>)
+  fork test, is-unequal(pid, <>)
+    hold
+      arguments/push(<--pid>)
+      arguments/push(pid)
+  arguments/push(<-s>)
+  arguments/push(<native-dom:I>)
+  arguments/push(<AndroidRuntime:E>)
+  save file, log-path/join(log-os/tmpdir(), <term-android-{identifier}-{log-own-pid(0)}-{epoch-now()}.log>)
+  save into, log-file/open-sync(file, <w>)
+  save reader, log-child/spawn(adb, arguments, log-stdio(into))
+  save log, <>
+  save deadline, add(epoch-now(), 120000)
+  save ended, false
+  walk test
+    hook test, and(not(ended), is-below(epoch-now(), deadline))
+    hook hold
+      save log, log-file/read-file-sync(file, <utf8>)
+      save ended, log-ended(log)
+      fork test, not(ended)
+        hold
+          sleep(1000)
+  log-stop(reader)
+  log-file/close-sync(into)
+  log-file/rm-sync(file, log-quiet(0))
+  back app-lines(log)
