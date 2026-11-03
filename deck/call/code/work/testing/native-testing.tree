@@ -31,6 +31,7 @@ load @term/call/test-run-words
   find report-text
   find settle-report
   find settled-test
+  find skip-reason
 
 load ./report-running
   find run-reported
@@ -183,7 +184,9 @@ bind call-resolver
 
 # ---- the tools ----
 
-# the tools a backend needs that this machine lacks
+# the tools a backend needs that this machine lacks: exactly what the native build (work/native/building.tree) spawns
+# for every program of that backend. Rust's `cargo` is spawned only for a program that names a crate, and the build
+# refuses that program itself, naming the crates, so it is not asked here
 task missing-tools
   take env, like text
   like list, like text
@@ -198,6 +201,7 @@ task missing-tools
   fork test, is-equal(env, <kotlin>)
     hold
       tools/push(<kotlinc>)
+      tools/push(<jar>)
       tools/push(<java>)
   save missing, make list
   walk tools
@@ -304,7 +308,7 @@ task run-native-test-file
   walk settle-report(names, ran/report/entries, ran/stop)
     take settled, like settled-test
     save one, result-of(input/tests/{at}, settled, env, host-text(input/source))
-    fork test, not(one/held)
+    fork test, and(not(one/held), not(one/skipped))
       hold
         save all-held, false
     results/push(one)
@@ -328,7 +332,12 @@ task result-of
     hold
       save line, want-number(want)
   save held, is-equal(settled/verdict, <held>)
-  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, host-text(test-asked/label)), bind(held, held), bind(ms, settled/ms), bind(line, line))
+  save skipped, is-equal(settled/verdict, <skipped>)
+  save one, make(test-result, bind(name, host-text(test-asked/name)), bind(label, host-text(test-asked/label)), bind(held, held), bind(skipped, skipped), bind(ms, settled/ms), bind(line, line))
+  fork test, skipped
+    hold
+      save one/reason, skip-reason(settled/note)
+      back one
   fork test, and(not(held), settled/said)
     hold
       save one/error, settled/note

@@ -12,6 +12,16 @@ load ../support/compiling
 load ../support/temp
   find temp-folder
 
+load ../support/reading
+  find lines-of
+
+load ../support/judging
+  find make-record
+
+load @term/base/text
+  find trim
+  find contains, name text-contains
+
 dock load
   load <@term/call/code/make>, name feed-make
   load <node:fs>, name feed-file
@@ -26,25 +36,45 @@ host helper-text, <task hex-digit-value\n  take code, like number\n  like number
 host vague-text, <mine thing\n  mine form, form other\n\nmine other\n  mine form, form thing\n>
 
 # hex's own shipped grammar, with its `mark draft` (or the older `note draft`) removed
-bind without-draft
+task without-draft
   take text, like text
   like text
-  case node
-    text <$text.split("\n").filter(line =\> line.trim() !== "mark draft" && line.trim() !== "note draft").join("\n")>
 
-bind write-below
+  save out, <>
+  save first, true
+  walk lines-of(text)
+    take line, like text
+    host bare, trim(line)
+    fork test, not(or(is-equal(bare, <mark draft>), is-equal(bare, <note draft>)))
+      hold
+        fork test, first
+          hold
+            save out, line
+            save first, false
+          miss
+            save out, <{out}\n{line}>
+  back out
+
+task write-below
   take root, like text
   take name, like text
   take text, like text
   like void
-  case node
-    text <(() =\> \{ const fs = process.getBuiltinModule("node:fs"); const path = process.getBuiltinModule("node:path"); const full = path.join($root, $name); fs.mkdirSync(path.dirname(full), \{ recursive: true \}); fs.writeFileSync(full, $text) \})()>
 
-bind says-why
+  host full, feed-path/join(root, name)
+  feed-file/mkdir-sync(feed-path/dirname(full), make-record(make(list, <recursive>, true)))
+  feed-file/write-file-sync(full, text)
+
+task says-why
   take errors, like dynamic
   like boolean
-  case node
-    text <$errors.some(e =\> e.includes("bytes or text") && e.includes("mark draft"))>
+
+  walk errors
+    take one, like text
+    fork test, and(text-contains(one, <bytes or text>), text-contains(one, <mark draft>))
+      hold
+        back true
+  back false
 
 bind text-holds
   take whole, like text

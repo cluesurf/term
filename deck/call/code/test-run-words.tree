@@ -16,6 +16,8 @@ load @term/base/text
   find contains, name text-contains
   find split, name text-split
   find trim, name text-trim
+  find substring
+  find char-count
 
 load @term/host/base
   find data
@@ -366,6 +368,15 @@ task stop-note
     hold
       back <the program stopped (exit {exit})>
   back <the program stopped (exit {exit}): {said}>
+
+# why a test was skipped: its note past `skip:`, without the input a sampled test's raise appends, so one reason is one
+# text whatever input reached it
+task skip-reason
+  take note, like text
+  like text
+
+  save first, get(text-split(note, < sampled at >), 0)
+  back substring(first, 5, char-count(first))
 
 # what the runner says past the first test a child never reported
 task not-reached

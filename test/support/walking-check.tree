@@ -1,0 +1,68 @@
+note <the walking helpers hold: a value's kind, a record's fields, a visit of every record, and the records of one form>
+
+load ./walking
+  find kind-of
+  find fields-of
+  find field-of
+  find visit
+  find nodes-of
+
+load @term/base/list
+  find push
+
+bind parsed
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+host program-text, <[\{"form":"function","name":"outer","span":\{"form":"call"\},"body":[\{"form":"call","callee":\{"form":"variable","name":"inner"\},"args":[\{"form":"call","callee":\{"form":"variable","name":"deep"\},"args":[],"type":\{"form":"call"\}\}]\}]\}]>
+
+task names-called
+  take value, like dynamic
+  like text
+
+  save out, <>
+  walk nodes-of(value, <call>)
+    take call, like dynamic
+    save out, <{out}{field-of(field-of(call, <callee>), <name>)},>
+  back out
+
+task count-visited
+  take value, like dynamic
+  like number
+
+  host seen, make list
+  visit
+    read value
+    task
+      take node, like dynamic
+      like void
+      seen/push(node)
+  back seen/length
+
+test <kind-of names a list, a record, null and the host's scalars>
+  want hold, is-equal kind-of(parsed(<[1]>)), <list>
+  want hold, is-equal kind-of(parsed(<\{"a":1\}>)), <object>
+  want hold, is-equal kind-of(parsed(<null>)), <null>
+  want hold, is-equal kind-of(<a>), <string>
+  want hold, is-equal kind-of(1), <number>
+
+test <fields-of names a record's fields in order>
+  host fields, fields-of(parsed(<\{"form":"call","callee":1,"args":2\}>))
+  want hold, is-equal fields/length, 3
+  want hold, is-equal fields/0, <form>
+  want hold, is-equal fields/2, <args>
+
+test <nodes-of finds every record of a form, outer before inner, and none under type or span>
+  host program, parsed(program-text)
+  want hold, is-equal nodes-of(program, <call>)/length, 2
+  want hold, is-equal names-called(program), <inner,deep,>
+  want hold, is-equal nodes-of(program, <variable>)/length, 2
+  want hold, is-equal nodes-of(program, <function>)/length, 1
+  want hold, is-equal nodes-of(program, <missing>)/length, 0
+
+test <visit hands every record to the task, and none of a scalar>
+  host program, parsed(program-text)
+  want hold, is-equal count-visited(program), 5
+  want hold, is-equal count-visited(1), 0

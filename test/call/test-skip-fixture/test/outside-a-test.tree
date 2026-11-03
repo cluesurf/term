@@ -1,0 +1,7 @@
+task helper
+  like boolean
+  skip <not in a test>
+  send back, true
+
+test <calls the helper>
+  want hold, helper()

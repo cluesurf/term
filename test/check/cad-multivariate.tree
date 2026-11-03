@@ -2,15 +2,71 @@ note <Multivariate real arithmetic by cylindrical algebraic decomposition (CAD)>
 
 # Ported from cad-multivariate.ts by task/term/suite-port.ts.
 
+load @term/base/text
+  find split, name text-split
+  find trim
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find push
+
+load @term/base/math
+  find maximum
+
+load ../support/judging
+  find make-record
+  find big-number
+  find read-at
+
 dock load
   load <@term/make/code/check/cad>, name cad-check
 
+# the coefficient of x^i y^j among the `i j coeff` rows, the last row naming it winning, 0 when none does
+task coefficient-at
+  take rows, like dynamic
+  take i, like number
+  take j, like number
+  like text
+
+  save found, <0>
+  walk rows
+    take row, like dynamic
+    fork test, and(is-equal(parse-integer(read-at(row, 0)), i), is-equal(parse-integer(read-at(row, 1)), j))
+      hold
+        save found, read-at(row, 2)
+  back found
+
 # a bivariate as check/cad takes it from a text of `i j coeff` terms: each coefficient a big integer, `{ dock }` on TypeScript
-bind biv
+task biv
   take terms, like text
   like dynamic
-  case node
-    text <<(() => { const rows = $terms.split(",").map(t => t.trim().split(" ").map(Number)); let maxI = 0; let maxJ = 0; for (const [i, j] of rows) { maxI = Math.max(maxI, i); maxJ = Math.max(maxJ, j) } const out = []; for (let i = 0; i <= maxI; i++) { out.push(new Array(maxJ + 1).fill(0n)) } for (const [i, j, c] of rows) { out[i][j] = BigInt(c) } return out.map(row => row.map(value => ({ dock: value }))) })()>>
+
+  host rows, make list
+  save max-i, 0
+  save max-j, 0
+  walk text-split(terms, <,>)
+    take term, like text
+    host row, text-split(trim(term), < >)
+    rows/push(row)
+    save max-i, maximum(max-i, parse-integer(read-at(row, 0)))
+    save max-j, maximum(max-j, parse-integer(read-at(row, 1)))
+  host out, make list
+  save i, 0
+  walk test
+    hook test, is-maximum(i, max-i)
+    hook hold
+      host line, make list
+      save j, 0
+      walk test
+        hook test, is-maximum(j, max-j)
+        hook hold
+          line/push(make-record(make(list, <dock>, big-number(coefficient-at(rows, i, j)))))
+          save j, add(j, 1)
+      out/push(line)
+      save i, add(i, 1)
+  back out
 
 # Multivariate real arithmetic by cylindrical algebraic decomposition (CAD): the BIVARIATE non-negativity decision
 # `p(x, y) >= 0 for all real x, y`. It projects onto the x-axis (the y-discriminant and the y-coefficient polynomials),

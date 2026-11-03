@@ -1,0 +1,10 @@
+task skip
+  take reason, like text
+  like boolean
+  send back, true
+
+test <a file with its own skip keeps it>
+  call skip
+    text <mine>
+  skip <mine>
+  want hold, true

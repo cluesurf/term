@@ -11,6 +11,17 @@ load ../support/compiling
   find compile-choice
   find compile-outcome
 
+load ../support/reading
+  find any-holding
+  find joined-names
+
+load ../support/judging
+  find read-field
+  find truth
+
+load @term/base/text
+  find contains, name text-contains
+
 dock load
   load <@term/make/code/parser/tree>, name view-parser
   load <@term/make/code/compile/view>, name view-read
@@ -21,17 +32,20 @@ bind parse-input
   case node
     text <(\{ file: "page.tree", text: $text \})>
 
-bind messages-joined
+task messages-joined
   take found, like dynamic
   like text
-  case node
-    text <$found.map(d =\> d.message).join(" | ")>
 
-bind view-said
+  back joined-names(found, <message>, < | >)
+
+task view-said
   take result, like dynamic
   like text
-  case node
-    text <($result.ok ? "" : $result.diagnostics.map(d =\> d.message).join(" | "))>
+
+  fork test, truth(read-field(result, <ok>))
+    hold
+      back <>
+  back joined-names(read-field(result, <diagnostics>), <message>, < | >)
 
 bind text-holds
   take whole, like text
@@ -53,12 +67,28 @@ bind parse-ok
     text <$parsed.ok>
 
 # n macros, each fusing the next `fan`, and a view placing the first
-bind dense
+task dense
   take n, like number
   take fan, like number
   like text
-  case node
-    text <(() =\> \{ const lines = []; for (let i = 0; i \< $n; i++) \{ lines.push("tree m" + i); lines.push("  hook fuse"); for (let k = 1; k \<= $fan && i + k \< $n; k++) lines.push("    fuse m" + (i + k)); if (i + 1 \>= $n) lines.push("    text \\u003cend\\u003e") \} lines.push("view page"); lines.push("  fuse m0"); return lines.join("\\n") + "\\n" \})()>
+
+  save out, <>
+  save i, 0
+  walk test
+    hook test, is-below(i, n)
+    hook hold
+      save out, <{out}tree m{i}\n  hook fuse\n>
+      save k, 1
+      walk test
+        hook test, and(is-maximum(k, fan), is-below(add(i, k), n))
+        hook hold
+          save out, <{out}    fuse m{add(i, k)}\n>
+          save k, add(k, 1)
+      fork test, is-minimum(add(i, 1), n)
+        hold
+          save out, <{out}    text \<end\>\n>
+      save i, add(i, 1)
+  back <{out}view page\n  fuse m0\n>
 
 bind buried-in
   take text, like text
@@ -72,12 +102,17 @@ bind list-size
   case node
     text <$found.length>
 
-bind any-saying
+task any-saying
   take found, like dynamic
   take word, like text
   like boolean
-  case node
-    text <$found.some(d =\> d.message.includes($word))>
+
+  walk found
+    take one, like dynamic
+    fork test, text-contains(read-field(one, <message>), word)
+      hold
+        back true
+  back false
 
 bind clock-now
   take seed, like number
@@ -178,9 +213,9 @@ test <a cycle buried in a dense graph is still found>
   want hold, is-above(list-size(found), 0)
   want hold, any-saying(found, <cannot fuse itself>)
 
-bind some-saying
+task some-saying
   take messages, like list, like text
   take word, like text
   like boolean
-  case node
-    text <$messages.some(m =\> m.includes($word))>
+
+  back any-holding(messages, word)

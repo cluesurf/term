@@ -26,6 +26,8 @@ load @term/call/test-plan
   find round-totals
   find totals-counts
   find round-failed
+  find round-verdict
+  find reasons-once
   find round-subject
   find case-subject
   find failure-fact
@@ -258,6 +260,8 @@ form round-count
   link proved, like number
   # files that did not build, which ran no test at all
   link broken, like number
+  # tests that said `skip`, neither passed nor failed
+  link skips, like number
   # files holding no test `--case` asked for
   link skipped, like number
   # controls refused exactly as their headers expect
@@ -625,7 +629,7 @@ task run-round
       save resolve, face-session(context/session)
     miss
       save resolve, face-project-resolver(make-project-resolver(context/root))
-  save tally, make(round-count, bind(pass, 0), bind(fail, 0), bind(proved, 0), bind(broken, 0), bind(skipped, 0), bind(controls, 0))
+  save tally, make(round-count, bind(pass, 0), bind(fail, 0), bind(proved, 0), bind(broken, 0), bind(skips, 0), bind(skipped, 0), bind(controls, 0))
   walk files
     take file
     save rel, host-text(node-path/relative(context/root, file))
@@ -644,7 +648,7 @@ task run-round
   save context/graph/turned, false
   save last-test-turns/rounds, add(last-test-turns/rounds, 1)
   save last-test-turns/turns, context/session/turns
-  back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skipped, tally/skipped), bind(controls, tally/controls))
+  back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skips, tally/skips), bind(skipped, tally/skipped), bind(controls, tally/controls))
 
 # one test file of a round, its counts added to the round's
 task run-file
@@ -765,12 +769,18 @@ task run-file
       back
   save total, ran/results/length
   save held, 0
+  save skips, 0
+  save reasons, make list
   walk ran/results
     take one, like dynamic
     fork test, is-truthy(one/held)
       hold
         save held, add(held, 1)
-  save missed, subtract(total, held)
+    fork test, is-truthy(one/skipped)
+      hold
+        save skips, add(skips, 1)
+        reasons/push(host-text(one/reason))
+  save missed, subtract(total, add(held, skips))
   # a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked: counted as such, not as a test
   fork test, is-equal(total, 0)
     hold
@@ -781,16 +791,24 @@ task run-file
       back
   save tally/pass, add(tally/pass, held)
   save tally/fail, add(tally/fail, missed)
+  save tally/skips, add(tally/skips, skips)
   save counts, make list
   counts/push(count(total, <tests>, <test>))
   counts/push(count(held, <passed>))
   fork test, is-above(missed, 0)
     hold
       counts/push(count(missed, <failed>))
+  fork test, is-above(skips, 0)
+    hold
+      counts/push(count(skips, <skipped>))
   fork test, recorded
     hold
       counts/push(count(written, <snapshots written>, <snapshot written>))
+  # a file that only skipped did no work to call done
   save glyph, <done>
+  fork test, and(is-equal(held, 0), is-above(skips, 0))
+    hold
+      save glyph, <skipped>
   fork test, is-above(missed, 0)
     hold
       save glyph, <failed>
@@ -798,11 +816,19 @@ task run-file
   fork test, is-above(printed/length, 0)
     hold
       save item/quote, printed
+  # each reason a test skipped for, once
+  fork test, is-above(skips, 0)
+    hold
+      save skip-fields, make list
+      walk reasons-once(reasons)
+        take reason, like text
+        skip-fields/push(field(<skip>, reason))
+      save item/fields, skip-fields
   report(item)
-  # each test that did not hold is a Problem of its own, under the verb `case` (section 9)
+  # each test that did not hold is a Problem of its own, under the verb `case` (section 9). A skip is neither
   walk ran/results
     take one, like dynamic
-    fork test, not(is-truthy(one/held))
+    fork test, not(or(is-truthy(one/held), is-truthy(one/skipped)))
       hold
         report-case(one, rel)
 
@@ -920,17 +946,13 @@ task run-seed-tests
   fork test, not(ride)
     hold
       # `--case` that matched no test anywhere ran nothing, which is not a pass
-      fork test, and(is-unequal(chosen, <>), and(is-equal(add(first/pass, first/fail), 0), is-equal(first/broken, 0)))
+      fork test, and(is-unequal(chosen, <>), and(is-equal(add(add(first/pass, first/fail), first/skips), 0), is-equal(first/broken, 0)))
         hold
           save message, make list
           message/push(<No test's phrase or name holds "{chosen}".>)
           set-exit-code(close-run(make(close-ask, bind(verdict, <No test matched>), bind(failure, <usage>), bind(message, message))))
           back
-      save verdict, <Tests passed>
-      fork test, round-failed(first)
-        hold
-          save verdict, <Test run failed>
-      close-run(make(close-ask, bind(verdict, verdict), bind(counts, totals-counts(first))))
+      close-run(make(close-ask, bind(verdict, round-verdict(first)), bind(counts, totals-counts(first))))
       back
   # WATCH (`term test --ride`): after an edit, the test files whose closure holds a file that moved run again, and no
   # other. A test file added or removed, or a round whose closure the session cannot see (compiled whole, or on a

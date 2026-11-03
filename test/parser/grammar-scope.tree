@@ -6,6 +6,22 @@ note <GRAMMAR SCOPES in the parser (parser/token.tree `scope-at`, note/project/t
 # a use of the name as a variable, a literal already written), the one refusal (parentheses left open), and that `term form`
 # writes every spelling back exactly as it was written. The parser and the formatter are the subject (decision 106).
 
+load @term/base/text
+  find split, name text-split
+  find trim
+  find trim-start
+
+load ../support/judging
+  find read-field
+  find read-at
+  find truth
+
+load ../support/reading
+  find joined-names
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/parser/tree>, name parser-tree
   load <@term/make/code/format/format>, name format
@@ -18,35 +34,158 @@ bind source-of
   case node
     text <(\{ file: "scope.tree", text: $text \})>
 
+# a regular expression's test of a text, which Term has no literal for
+bind matches
+  take text, like text
+  take pattern, like text
+  like boolean
+  case node
+    text <new RegExp($pattern).test($text)>
+
+# a part's text, <> when it has none, as `p.text ?? ""` read it
+task text-of-part
+  take part, like dynamic
+  like text
+
+  host value, read-field(part, <text>)
+  host kind, kind-of(value)
+  fork test, or(is-equal(kind, <undefined>), is-equal(kind, <null>))
+    hold
+      back <>
+  back value
+
+task parts-text
+  take parts, like dynamic
+  like text
+
+  save out, <>
+  walk parts
+    take part, like dynamic
+    save out, <{out}{text-of-part(part)}>
+  back out
+
+# the shapes of the nodes, one space between
+task shapes-joined
+  take nodes, like dynamic
+  like text
+
+  save out, <>
+  save first, true
+  walk nodes
+    take node, like dynamic
+    fork test, first
+      hold
+        save out, shape(node)
+        save first, false
+      miss
+        save out, <{out} {shape(node)}>
+  back out
+
 # the tree as a line: a group is `(...)`, a name its text, a scope `\{spelling:text\}`, a literal `\<text\>`
-bind shapes-of
+task shape
+  take node, like dynamic
+  like text
+
+  host kind, read-field(node, <kind>)
+  fork test, is-equal(kind, <group>)
+    hold
+      back <({shapes-joined(read-field(node, <nodes>))})>
+  fork test, is-equal(kind, <name>)
+    hold
+      back parts-text(read-field(node, <parts>))
+  fork test, is-equal(kind, <text>)
+    hold
+      host scope, read-field(node, <scope>)
+      fork test, truth(scope)
+        hold
+          back <\{{scope}:{read-field(node, <raw>)}\}>
+      back <\<{parts-text(read-field(node, <parts>))}\>>
+  back <{read-field(node, <value>)}>
+
+task not-ok
   take parsed, like dynamic
   like text
-  case node
-    text <(() =\> \{ const shape = n =\> \{ switch (n.kind) \{ case "group": return `($\{n.nodes.map(shape).join(" ")\})`; case "name": return n.parts.map(p =\> p.text ?? "").join(""); case "text": return n.scope ? `\{$\{n.scope\}:$\{n.raw\}\}` : `\<$\{n.parts.map(p =\> p.text ?? "").join("")\}\>`; default: return String(n.value) \} \}; if (!$parsed.ok) return `NOT OK: $\{$parsed.diagnostics.map(d =\> d.message).join(" | ")\}`; return $parsed.tree.nodes.map(shape).join(" ") \})()>
+
+  back <NOT OK: {joined-names(read-field(parsed, <diagnostics>), <message>, < | >)}>
+
+task shapes-of
+  take parsed, like dynamic
+  like text
+
+  fork test, not(truth(read-field(parsed, <ok>)))
+    hold
+      back not-ok(parsed)
+  back shapes-joined(read-field(read-field(parsed, <tree>), <nodes>))
 
 # the last top-level group, past the load
-bind last-shape-of
+task last-shape-of
   take parsed, like dynamic
   like text
-  case node
-    text <(() =\> \{ const shape = n =\> \{ switch (n.kind) \{ case "group": return `($\{n.nodes.map(shape).join(" ")\})`; case "name": return n.parts.map(p =\> p.text ?? "").join(""); case "text": return n.scope ? `\{$\{n.scope\}:$\{n.raw\}\}` : `\<$\{n.parts.map(p =\> p.text ?? "").join("")\}\>`; default: return String(n.value) \} \}; if (!$parsed.ok) return `NOT OK: $\{$parsed.diagnostics.map(d =\> d.message).join(" | ")\}`; const nodes = $parsed.tree.nodes; return shape(nodes[nodes.length - 1]) \})()>
+
+  fork test, not(truth(read-field(parsed, <ok>)))
+    hold
+      back not-ok(parsed)
+  host nodes, read-field(read-field(parsed, <tree>), <nodes>)
+  back shape(read-at(nodes, subtract(read-field(nodes, <length>), 1)))
+
+# how far a line is set in
+task indent-of
+  take line, like text
+  like number
+
+  back subtract(line/length, trim-start(line)/length)
 
 # the lines a scope is written on, as written: its opener's line and, for a block, the lines under it
-bind scope-lines
+task scope-lines
   take text, like text
   like text
-  case node
-    text <(() =\> \{ const lines = $text.split("\\n"); const at = lines.findIndex(line =\> /role note|note [^\<]|note\(/.test(line) && !/find/.test(line)); const own = lines[at].length - lines[at].trimStart().length; const out = [lines[at]]; for (const line of lines.slice(at + 1)) \{ if (line.trim() !== "" && line.length - line.trimStart().length \<= own) break; out.push(line) \} return out.filter(line =\> line.trim() !== "").join("\\n") \})()>
 
-bind refused-at
+  host lines, text-split(text, <\n>)
+  save at, -1
+  save index, 0
+  walk lines
+    take line, like text
+    fork test, and(is-below(at, 0), and(matches(line, <role note|note [^\<]|note\(>), not(matches(line, <find>))))
+      hold
+        save at, index
+    save index, add(index, 1)
+  host opener, read-at(lines, at)
+  host own, indent-of(opener)
+  save out, opener
+  save going, true
+  save next, add(at, 1)
+  walk test
+    hook test, and(going, is-below(next, lines/length))
+    hook hold
+      host line, read-at(lines, next)
+      fork test, and(is-unequal(trim(line), <>), is-maximum(indent-of(line), own))
+        hold
+          save going, false
+        miss
+          fork test, is-unequal(trim(line), <>)
+            hold
+              save out, <{out}\n{line}>
+          save next, add(next, 1)
+  back out
+
+task refused-at
   take parsed, like dynamic
   take pattern, like text
   take line, like number
   take column, like number
   like boolean
-  case node
-    text <(!$parsed.ok && $parsed.diagnostics.some(d =\> new RegExp($pattern).test(d.message) && ($line \< 0 || d.span.start.line === $line) && d.span.start.column === $column))>
+
+  fork test, truth(read-field(parsed, <ok>))
+    hold
+      back false
+  walk read-field(parsed, <diagnostics>)
+    take found, like dynamic
+    host start, read-field(read-field(found, <span>), <start>)
+    host on-line, or(is-below(line, 0), is-equal(read-field(start, <line>), line))
+    fork test, and(matches(read-field(found, <message>), pattern), and(on-line, is-equal(read-field(start, <column>), column)))
+      hold
+        back true
+  back false
 
 bind report-kept
   take report, like dynamic

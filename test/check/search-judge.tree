@@ -6,52 +6,189 @@ note <A forward-chaining proof search over the decided kernel (judge.ts)>
 # kernel-typed, so a found proof is real. It auto-discovers the pinch-point proof (antisymmetry applied to the ceiling and the floor)
 # and multi-step propositional chains. check/judge is the subject (decision 106), handed to the search whole.
 
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+load ../support/judging
+  find make-record
+  find read-field
+  find empty-list
+  find const-term
+  find pi
+  find app
+  find var
+  find id
+  find refl
+
 dock load
   load <@term/make/code/check/judge>, name judge
 
+# a universe at a level
+task type-at
+  take level, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, level))
+
+# a hypothesis of the signature: a name at a type
+task hyp
+  take name, like text
+  take type, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name, <type>, type))
+
+# true when the kernel checks the term against the goal's value
+task proves
+  take kernel, like dynamic
+  take context, like dynamic
+  take term, like dynamic
+  take goal-value, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    kernel/check(context, term, goal-value)
+    back true
+  halt take
+    take cause
+    back false
+
+# true when the kernel infers a type for the term
+task infers
+  take kernel, like dynamic
+  take context, like dynamic
+  take term, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    kernel/infer(context, term)
+    back true
+  halt take
+    take cause
+    back false
+
+task holds-text
+  take texts, like dynamic
+  take one, like text
+  like boolean
+
+  walk texts
+    take seen, like text
+    fork test, is-equal(seen, one)
+      hold
+        back true
+  back false
+
+# the first of the facts the kernel checks against the goal, else void
+task first-proving
+  take kernel, like dynamic
+  take context, like dynamic
+  take facts, like dynamic
+  take goal-value, like dynamic
+  like dynamic
+
+  walk facts
+    take t, like dynamic
+    fork test, proves(kernel, context, t, goal-value)
+      hold
+        back t
+  back void
+
 # the forward-chaining search, as the suite's own function
-bind search
+task search
   take kernel, like dynamic
   take hyps, like dynamic
   take goal, like dynamic
   take depth, like number
   like dynamic
-  case node
-    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const context = $kernel.contextWithSignature($hyps); const goalValue = $kernel.evaluate([], $goal); const proves = term =\> \{ try \{ $kernel.check(context, term, goalValue); return true \} catch \{ return false \} \}; if ($goal.tag === "id") \{ const r = \{ tag: "refl", type: $goal.type, value: $goal.left \}; if (proves(r)) return r \} const seen = new Set(); let facts = []; for (const h of $hyps) \{ const t = kc(h.name); facts.push(t); seen.add($kernel.showTerm(t)) \} for (let round = 0; round \<= $depth; round++) \{ for (const t of facts) if (proves(t)) return t; const next = [...facts]; for (const f of facts) \{ for (const x of facts) \{ const candidate = app(f, x); const key = $kernel.showTerm(candidate); if (seen.has(key)) continue; try \{ $kernel.infer(context, candidate); seen.add(key); next.push(candidate) \} catch \{ \} \} \} facts = next \} for (const t of facts) if (proves(t)) return t; return null \})()>
 
-bind found-holds
+  host context, kernel/context-with-signature(hyps)
+  host goal-value, kernel/evaluate(empty-list(), goal)
+  fork test, is-equal(read-field(goal, <tag>), <id>)
+    hold
+      host r, refl(read-field(goal, <type>), read-field(goal, <left>))
+      fork test, proves(kernel, context, r, goal-value)
+        hold
+          back r
+  host seen, make list
+  save facts, empty-list()
+  walk hyps
+    take h, like dynamic
+    host t, const-term(read-field(h, <name>))
+    facts/push(t)
+    seen/push(kernel/show-term(t))
+  save round, 0
+  walk test
+    hook test, is-maximum(round, depth)
+    hook hold
+      host found, first-proving(kernel, context, facts, goal-value)
+      fork test, is-unequal(found, void)
+        hold
+          back found
+      host next, empty-list()
+      walk facts
+        take one, like dynamic
+        next/push(one)
+      walk facts
+        take f, like dynamic
+        walk facts
+          take x, like dynamic
+          host candidate, app(f, x)
+          host key, kernel/show-term(candidate)
+          fork test, and(not(holds-text(seen, key)), infers(kernel, context, candidate))
+            hold
+              seen/push(key)
+              next/push(candidate)
+      save facts, next
+      save round, add(round, 1)
+  back first-proving(kernel, context, facts, goal-value)
+
+task found-holds
   take kernel, like dynamic
   take found, like dynamic
   take word, like text
   like boolean
-  case node
-    text <($found !== null && $kernel.showTerm($found).includes($word))>
+
+  fork test, is-equal(found, void)
+    hold
+      back false
+  back text-contains(kernel/show-term(found), word)
 
 # multi-step propositional chain: prove C from f : A -\> B, g : B -\> C, a : A. needs g (f a)
-bind chain-hyps
+task chain-hyps
   take zero, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const ty = \{ tag: "type", level: $zero \}; const pi = (mult, domain, codomain) =\> (\{ tag: "pi", mult, domain, codomain \}); return [\{ name: "A", type: ty \}, \{ name: "B", type: ty \}, \{ name: "C", type: ty \}, \{ name: "f", type: pi("many", kc("A"), kc("B")) \}, \{ name: "g", type: pi("many", kc("B"), kc("C")) \}, \{ name: "a", type: kc("A") \}] \})()>
 
-bind const-term
-  take name, like text
+  host ty, type-at(zero)
+  back make(list, hyp(<A>, ty), hyp(<B>, ty), hyp(<C>, ty), hyp(<f>, pi(<many>, const-term(<A>), const-term(<B>))), hyp(<g>, pi(<many>, const-term(<B>), const-term(<C>))), hyp(<a>, const-term(<A>)))
+
+task le
+  take a, like dynamic
+  take b, like dynamic
   like dynamic
-  case node
-    text <(\{ tag: "const", name: $name \})>
+
+  back app(app(const-term(<Le>), a), b)
 
 # the pinch-point: from the ceiling and the floor, antisymmetry forces the dimension to eight
-bind pinch-hyps
+task pinch-hyps
   take zero, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const ty = \{ tag: "type", level: $zero \}; const pi = (mult, domain, codomain) =\> (\{ tag: "pi", mult, domain, codomain \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const le = (a, b) =\> app(app(kc("Le"), a), b); const at = index =\> (\{ tag: "var", index \}); const antisym = pi("many", kc("Dim"), pi("many", kc("Dim"), pi("many", le(at(1), at(0)), pi("many", le(at(1), at(2)), \{ tag: "id", type: kc("Dim"), left: at(3), right: at(2) \})))); return [\{ name: "Dim", type: ty \}, \{ name: "Le", type: pi("many", kc("Dim"), pi("many", kc("Dim"), ty)) \}, \{ name: "antisym", type: antisym \}, \{ name: "dimension", type: kc("Dim") \}, \{ name: "eight", type: kc("Dim") \}, \{ name: "ceiling", type: le(kc("dimension"), kc("eight")) \}, \{ name: "floor", type: le(kc("eight"), kc("dimension")) \}] \})()>
 
-bind pinch-goal
+  host ty, type-at(zero)
+  host dim, const-term(<Dim>)
+  host antisym, pi(<many>, dim, pi(<many>, dim, pi(<many>, le(var(1), var(0)), pi(<many>, le(var(1), var(2)), id(dim, var(3), var(2))))))
+  back make(list, hyp(<Dim>, ty), hyp(<Le>, pi(<many>, dim, pi(<many>, dim, ty))), hyp(<antisym>, antisym), hyp(<dimension>, dim), hyp(<eight>, dim), hyp(<ceiling>, le(const-term(<dimension>), const-term(<eight>))), hyp(<floor>, le(const-term(<eight>), const-term(<dimension>))))
+
+task pinch-goal
   take seed, like number
   like dynamic
-  case node
-    text <(\{ tag: "id", type: \{ tag: "const", name: "Dim" \}, left: \{ tag: "const", name: "dimension" \}, right: \{ tag: "const", name: "eight" \} \})>
+
+  back id(const-term(<Dim>), const-term(<dimension>), const-term(<eight>))
 
 test <search finds a two-step chain g (f a) : C>
   want hold, found-holds(judge, search(judge, chain-hyps(judge/lit-level(0)), const-term(<C>), 3), <>)

@@ -13,6 +13,13 @@ load @term/base/text
   find substring
   find index-of
 
+load @term/base/list
+  find push
+
+load ../support/judging
+  find make-record
+  find read-field
+
 # Part 4's subject is the separate build (decision 106). The cache is the empty one that build takes, so a run holds nothing of another's.
 dock load
   load <@term/make/code/compile/separate>, name separate-driver
@@ -108,12 +115,67 @@ host use, <load ./theory\n  find flag\n  find both\n  find flip\n  find both-com
 host use-false, <load ./theory\n  find flag\n  find both\n  find flip\n  find flip-twice\n\nrule false-across-files\n  seat a, like flag\n  show hold, is-equal flip(a), a\n  cite flip-twice\n>
 
 # the options of the separate build: lean, ./theory answered from the text, a fresh cache, every module its own name
-bind separate-options
-  take theory, like text
+bind new-cache
   take caching, like dynamic
   like dynamic
   case node
-    text <<({ resolve: path => path === "./theory" ? { file: "theory.tree", text: $theory } : undefined, cache: new $caching.CompileCache(), modules: file => `./${file.replace(/\W/g, "_")}.mjs`, leanOf: () => true })>>
+    text <new $caching.CompileCache()>
+
+# ./theory answered from the text, nothing else
+task resolve-theory
+  take path, like text
+  take theory, like text
+  like dynamic
+
+  fork test, is-equal(path, <./theory>)
+    hold
+      back make-record(make(list, <file>, <theory.tree>, <text>, theory))
+  back void
+
+# a module's own name: every character but a letter, a digit or `_` made `_`, as /\W/g did
+task module-name
+  take file, like text
+  like text
+
+  host word-characters, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, file/length)
+    hook hold
+      host one, substring(file, at, add(at, 1))
+      fork test, text-contains(word-characters, one)
+        hold
+          save out, <{out}{one}>
+        miss
+          save out, <{out}_>
+      save at, add(at, 1)
+  back <./{out}.mjs>
+
+task separate-options
+  take theory, like text
+  take caching, like dynamic
+  like dynamic
+
+  back
+    make-record
+      make list
+        <resolve>
+        task
+          take path, like text
+          like dynamic
+          back resolve-theory(path, theory)
+        <cache>
+        new-cache(caching)
+        <modules>
+        task
+          take file, like text
+          like text
+          back module-name(file)
+        <leanOf>
+        task
+          like boolean
+          back true
 
 bind separate-ok
   take result, like dynamic
@@ -121,11 +183,18 @@ bind separate-ok
   case node
     text <$result.ok>
 
-bind separate-messages
+task separate-messages
   take result, like dynamic
   like list, like text
-  case node
-    text <<($result.ok ? [] : $result.diagnostics.map(d => `${d.name}: ${d.message}`))>>
+
+  host out, make list
+  fork test, separate-ok(result)
+    hold
+      back out
+  walk read-field(result, <diagnostics>)
+    take one, like dynamic
+    out/push(<{read-field(one, <name>)}: {read-field(one, <message>)}>)
+  back out
 
 task separately
   take entry, like text

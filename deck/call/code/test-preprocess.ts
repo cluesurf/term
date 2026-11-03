@@ -1162,6 +1162,27 @@ export function readable(
   }
 }
 
+// A line of a test block, a `skip <reason>` made a raise whose note is `skip:<reason>`, which the report reads back as
+// `want:` is read (call/code/test-report.tree, decision 022 T4), on every target. Any other line as written. A `skip`
+// with no text literal is the test's own failure, said when it runs, as a `want` of no known mode is. Outside a test block
+// nothing lowers it, so the build refuses the name there, on its line
+function loweredSkip(line: string, at: number): string {
+  if (line.trim().split(/[\s,]/)[0] !== 'skip') {
+    return line
+  }
+
+  const lead = line.slice(0, indentOf(line))
+  const literal = /^\s*skip\s+(<.*>)\s*$/.exec(line)?.[1]
+
+  if (!literal) {
+    return `${lead}halt <line ${at + 1}: a skip takes a text literal>`
+  }
+
+  return literal.startsWith('<<')
+    ? `${lead}halt <<skip:${literal.slice(2)}`
+    : `${lead}halt <skip:${literal.slice(1)}`
+}
+
 // `plainWants`: every `want` raises the plain marker (`halt <want:12>`), never the two values it compared. A native
 // backend's report reads a raise's `note` and cannot read the values a `want-missed` carries in its `link`, a generic
 // field that is a boxed dynamic there, so a run on Rust, Swift or Kotlin (`term test --env`) names the line that did not
@@ -1222,6 +1243,14 @@ export function preprocessTests(
     ) {
       body.push(i)
       i++
+    }
+
+    // a `skip` at any depth of the block, in place, so a sampled test's body has it too. A file that defines or finds
+    // its own `skip` keeps the word
+    if (!taken.has('skip')) {
+      for (const n of body) {
+        lines[n] = loweredSkip(lines[n]!, n)
+      }
     }
 
     // a test that TAKES inputs is a property, checked on sampled values of their types

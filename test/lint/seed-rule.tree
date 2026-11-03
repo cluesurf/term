@@ -9,9 +9,20 @@ load ../support/compiling
   find compiling-options-of
   find project-path
 
+load ../support/reading
+  find any-with
+  find all-with
+
+load @term/base/text
+  find starts-with
+  find substring
+
 dock load
+  load <node:fs>, name fs-sync
+  load <node:path>, name path-module
   load <@term/make/code/lint/lint>, name lint-module
   load <@term/make/code/lint/seed-rule>, name seed-rule
+    mark async
   load <@term/make/code/parser/tree>, name parser-tree
   load <@term/make/code/compile/mill>, name mill-module
 
@@ -22,11 +33,20 @@ bind resolver-of
     text <$options.resolve>
 
 # the runtime reader of seed-rule.ts: a path under @term/base read from deck/base, nothing else
-bind runtime-reader
+task read-runtime
   take root, like text
+  take path, like text
   like dynamic
-  case node
-    text <(path =\> \{ const fs = process.getBuiltinModule("node:fs"); const prefix = "@term/base/"; if (!path.startsWith(prefix)) return undefined; const file = process.getBuiltinModule("node:path").join($root, path.slice(prefix.length)); return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined \})>
+
+  host prefix, <@term/base/>
+  fork test, not(starts-with(path, prefix))
+    hold
+      back void
+  host file, path-module/join(root, substring(path, prefix/length))
+  fork test, not(fs-sync/exists-sync(file))
+    hold
+      back void
+  back fs-sync/read-file-sync(file, <utf8>)
 
 bind source-of
   take text, like text
@@ -46,33 +66,42 @@ bind size-of
   case node
     text <$found.length>
 
-bind has-rule
+task has-rule
   take rules, like dynamic
   take name, like text
   take code, like text
   like boolean
-  case node
-    text <$rules.some(r =\> r.name === $name && r.code === $code)>
 
-bind any-code
+  back any-with(all-with(rules, <name>, name), <code>, code)
+
+task any-code
   take found, like dynamic
   take code, like text
   like boolean
-  case node
-    text <$found.some(f =\> f.code === $code)>
 
-bind every-other-code
+  back any-with(found, <code>, code)
+
+task every-other-code
   take found, like dynamic
   take code, like text
   like boolean
-  case node
-    text <$found.every(f =\> f.code !== $code)>
+
+  back not(any-with(found, <code>, code))
 
 task loaded-rules
   like dynamic
 
   host resolver, resolver-of(compiling-options-of(make(compile-choice, bind(stdlib, <node>))))
-  back wait seed-rule/load-seed-rules(project-path(<.>, <rule>), resolver, runtime-reader(project-path(<.>, <deck/base>)))
+  host base-root, project-path(<.>, <deck/base>)
+  host rules-root, project-path(<.>, <rule>)
+  back
+    seed-rule/load-seed-rules
+      read rules-root
+      read resolver
+      task
+        take path, like text
+        like dynamic
+        back read-runtime(base-root, path)
 
 task findings
   take text, like text

@@ -1,0 +1,199 @@
+note <judging a docked subject: records made from parts, a field read, a truth, lists, a raise caught, and the kernel's terms>
+
+# Decision 113 of term/self-host/change/001-finish-self-host, section Shared helpers. Every helper is Term over binds of one host
+# expression, so a suite that hands records to a docked module (the -judge suites, and what tmp/self-host/suite-kernel-port.mjs
+# writes) loads these and holds no logic in a bind.
+
+load @term/base/list
+  find push
+
+bind empty-record
+  like dynamic
+  case node
+    text <({})>
+
+bind set-field
+  take record, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($record[$field] = $value, $record)>
+
+bind read-field
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value?.[$field]>
+
+bind read-at
+  take items, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$items[$at]>
+
+bind big-number
+  take digits, like text
+  like dynamic
+  case node
+    text <BigInt($digits)>
+
+bind truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-instance
+  take value, like dynamic
+  take kind, like dynamic
+  like boolean
+  case node
+    text <($value instanceof $kind)>
+
+# a record from its parts, a field name then its value, again and again: make-record(make(list, <tag>, <pi>, <mult>, m))
+task make-record
+  take parts, like list, like dynamic
+  like dynamic
+
+  host made, empty-record()
+  save field, <>
+  save named, false
+  walk parts
+    take part, like dynamic
+    fork test, named
+      hold
+        set-field(made, field, part)
+        save named, false
+      miss
+        save field, part
+        save named, true
+  back made
+
+task empty-list
+  like list, like dynamic
+
+  back make list
+
+# the items of one list, then the other
+task joined-list
+  take first, like dynamic
+  take second, like dynamic
+  like list, like dynamic
+
+  host out, make list
+  walk first
+    take one, like dynamic
+    out/push(one)
+  walk second
+    take one, like dynamic
+    out/push(one)
+  back out
+
+# raises when the value is false, as a TypeScript test's `if (!x) throw` did
+task assert-true
+  take value, like dynamic
+  like boolean
+
+  fork test, not(truth(value))
+    hold
+      halt <not so>
+  back true
+
+# true when the run raises
+task throws
+  take run
+    like task
+      like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    run()
+    back false
+  halt take
+    take cause
+    back true
+
+# true when the run raises the module's TypeError, false when it raises something else or nothing
+task throws-type-error
+  take module, like dynamic
+  take run
+    like task
+      like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    run()
+    back false
+  halt take
+    take cause
+    back is-instance(cause, read-field(module, <TypeError>))
+
+# true when the module's checks answers true for the term at the type, false when it answers false or raises
+task checks
+  take module, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    back truth(module/checks(term, type))
+  halt take
+    take cause
+    back false
+
+# The kernel's terms, the tag set of check/judge every -judge suite shares: a variable by index, a constant by name, a function
+# type, a function, an application, the identity type and its one proof.
+
+task var
+  take index, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <var>, <index>, index))
+
+task const-term
+  take name, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <const>, <name>, name))
+
+task pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <pi>, <mult>, mult, <domain>, domain, <codomain>, codomain))
+
+task lam
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <lam>, <body>, body))
+
+task app
+  take fun, like dynamic
+  take arg, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <app>, <fun>, fun, <arg>, arg))
+
+task id
+  take type, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <id>, <type>, type, <left>, left, <right>, right))
+
+task refl
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <refl>, <type>, type, <value>, value))

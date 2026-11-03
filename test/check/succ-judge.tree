@@ -7,18 +7,60 @@ note <A GENERIC recursive constructor on the decided kernel (judge.ts)>
 # anywhere. check/judge is the subject (decision 106). The terms are the TypeScript's, in one bind, level 0 and 1 handed in. A
 # constant's definition is set once per test, as a test holds no state another may read.
 
+load ../support/judging
+  find make-record
+  find const-term
+  find pi
+  find app
+  find lam
+  find var
+  find id
+  find refl
+
 dock load
   load <@term/make/code/check/judge>, name judge
 
 # the step case inside the Nat body: (k : Nat) -\> P k -\> P (succ k)
 # Nat = Self n. (P : Nat -\> Type0) -\> P zero -\> ((k:Nat) -\> P k -\> P (succ k)) -\> P n
 # zero = \ P z s. z, and the REAL successor, succ = \ m P z s. s m (m P z s)
-bind terms-of
+task type-at
+  take level, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <type>, <level>, level))
+
+task self-term
+  take body, like dynamic
+  like dynamic
+
+  back make-record(make(list, <tag>, <self>, <body>, body))
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like dynamic
+
+  back make-record(make(list, <name>, name, <type>, type))
+
+task terms-of
   take zero, like dynamic
   take one, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const v = i =\> (\{ tag: "var", index: i \}); const kc = n =\> (\{ tag: "const", name: n \}); const ty = n =\> (\{ tag: "type", level: n === 0 ? $zero : $one \}); const pi = (m, domain, codomain) =\> (\{ tag: "pi", mult: m, domain, codomain \}); const lam = body =\> (\{ tag: "lam", body \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const self = body =\> (\{ tag: "self", body \}); const aps = (f, ...a) =\> a.reduce((g, x) =\> app(g, x), f); const stepInBody = pi("many", kc("Nat"), pi("many", app(v(2), v(0)), app(v(3), app(kc("succ"), v(1))))); const natBody = pi(0, pi("many", kc("Nat"), ty(0)), pi("many", app(v(0), kc("zero")), pi("many", stepInBody, app(v(2), v(3))))); const natTerm = self(natBody); const zeroTerm = lam(lam(lam(v(1)))); const succTerm = lam(lam(lam(lam(app(app(v(0), v(3)), aps(v(3), v(2), v(1), v(0))))))); const signature = [\{ name: "Nat", type: ty(1) \}, \{ name: "zero", type: kc("Nat") \}, \{ name: "succ", type: pi("many", kc("Nat"), kc("Nat")) \}, \{ name: "M", type: pi("many", kc("Nat"), ty(0)) \}, \{ name: "base", type: app(kc("M"), kc("zero")) \}, \{ name: "step", type: pi("many", kc("Nat"), pi("many", app(kc("M"), v(0)), app(kc("M"), app(kc("succ"), v(1))))) \}]; const one = app(kc("succ"), kc("zero")); const elim = aps(one, kc("M"), kc("base"), kc("step")); const stepZeroBase = app(app(kc("step"), kc("zero")), kc("base")); const T = app(kc("M"), one); return \{ natTerm, zeroTerm, succTerm, signature, natToNat: pi("many", natTerm, natTerm), one, nat: kc("Nat"), reflexive: \{ tag: "refl", type: T, value: stepZeroBase \}, computed: \{ tag: "id", type: T, left: elim, right: stepZeroBase \} \} \})()>
+
+  host nat, const-term(<Nat>)
+  host many, <many>
+  host step-in-body, pi(many, nat, pi(many, app(var(2), var(0)), app(var(3), app(const-term(<succ>), var(1)))))
+  host nat-body, pi(0, pi(many, nat, type-at(zero)), pi(many, app(var(0), const-term(<zero>)), pi(many, step-in-body, app(var(2), var(3)))))
+  host nat-term, self-term(nat-body)
+  host zero-term, lam(lam(lam(var(1))))
+  host succ-term, lam(lam(lam(lam(app(app(var(0), var(3)), app(app(app(var(3), var(2)), var(1)), var(0)))))))
+  host m, const-term(<M>)
+  host signature, make(list, hyp(<Nat>, type-at(one)), hyp(<zero>, nat), hyp(<succ>, pi(many, nat, nat)), hyp(<M>, pi(many, nat, type-at(zero))), hyp(<base>, app(m, const-term(<zero>))), hyp(<step>, pi(many, nat, pi(many, app(m, var(0)), app(m, app(const-term(<succ>), var(1)))))))
+  host succ-zero, app(const-term(<succ>), const-term(<zero>))
+  host elim, app(app(app(succ-zero, m), const-term(<base>)), const-term(<step>))
+  host step-zero-base, app(app(const-term(<step>), const-term(<zero>)), const-term(<base>))
+  host wanted, app(m, succ-zero)
+  back make-record(make(list, <natTerm>, nat-term, <zeroTerm>, zero-term, <succTerm>, succ-term, <signature>, signature, <natToNat>, pi(many, nat-term, nat-term), <one>, succ-zero, <nat>, nat, <reflexive>, refl(wanted, step-zero-base), <computed>, id(wanted, elim, step-zero-base)))
 
 bind empty-env
   take seed, like number

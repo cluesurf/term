@@ -1,0 +1,108 @@
+note <reading a suite's findings: does a list hold a word, a field's value, how many, the first, and a text of them>
+
+# Decision 113 of term/self-host/change/001-finish-self-host, section Shared helpers. Every helper is Term: a suite reads its
+# diagnostics, findings and messages through these, never through a closure in a bind.
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+# true when a text of the list contains the word
+task any-holding
+  take texts, like dynamic
+  take word, like text
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, text-contains(one, word)
+      hold
+        back true
+  back false
+
+# true when an item of the list has the field at the value
+task any-with
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like boolean
+
+  walk items
+    take one, like dynamic
+    fork test, is-equal(one/{field}, value)
+      hold
+        back true
+  back false
+
+# how many items of the list have the field at the value
+task count-with
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like number
+
+  save count, 0
+  walk items
+    take one, like dynamic
+    fork test, is-equal(one/{field}, value)
+      hold
+        save count, add(count, 1)
+  back count
+
+# the items of the list with the field at the value, in order
+task all-with
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like list, like dynamic
+
+  host found, make list
+  walk items
+    take one, like dynamic
+    fork test, is-equal(one/{field}, value)
+      hold
+        found/push(one)
+  back found
+
+# the first item of the list with the field at the value, else void
+task first-with
+  take items, like dynamic
+  take field, like text
+  take value, like dynamic
+  like dynamic
+
+  walk items
+    take one, like dynamic
+    fork test, is-equal(one/{field}, value)
+      hold
+        back one
+  back void
+
+# the lines of a text
+task lines-of
+  take text, like text
+  like list, like text
+
+  back text-split(text, <\n>)
+
+# the field of every item, joined by the separator
+task joined-names
+  take items, like dynamic
+  take field, like text
+  take separator, like text, fall < | >
+  like text
+
+  save out, <>
+  save first, true
+  walk items
+    take one, like dynamic
+    fork test, first
+      hold
+        save out, <{one/{field}}>
+        save first, false
+      miss
+        save out, <{out}{separator}{one/{field}}>
+  back out

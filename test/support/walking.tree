@@ -1,0 +1,70 @@
+note <walking a host value: what kind a value is, its fields, a visit of every record under it, and the records of one form>
+
+# Decision 113 of term/self-host/change/001-finish-self-host, section Shared helpers. A suite reading an AST or a program walks it
+# with these. The walk is Term: two host words, kind-of and fields-of, read what only the host can. A record's `type` and `span`
+# are not walked: they hold the checker's types and the source places, not the tree.
+
+load @term/base/list
+  find push
+
+# host reflect: what kind a host value is, `list`, `null`, or the host's own word (`object`, `string`, `number`, `undefined`)
+bind kind-of
+  take value, like dynamic
+  like text
+  case node
+    text <(Array.isArray($value) ? "list" : $value === null ? "null" : typeof $value)>
+
+# host reflect: the field names of a record, in the host's order
+bind fields-of
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value)>
+
+bind field-of
+  take value, like dynamic
+  take field, like text
+  like dynamic
+  case node
+    text <$value[$field]>
+
+# hand every record under the value to seen, a record before what it holds, in field order
+task visit
+  take value, like dynamic
+  take seen
+    like task
+      take node, like dynamic
+      like void
+  like void
+
+  host kind, kind-of(value)
+  fork test, is-equal(kind, <list>)
+    hold
+      walk value
+        take one, like dynamic
+        visit(one, seen)
+  fork test, is-equal(kind, <object>)
+    hold
+      seen(value)
+      walk fields-of(value)
+        take field, like text
+        fork test, and(is-unequal(field, <type>), is-unequal(field, <span>))
+          hold
+            visit(field-of(value, field), seen)
+
+# every record under the value whose `form` is the one given, in visit order
+task nodes-of
+  take value, like dynamic
+  take form, like text
+  like list, like dynamic
+
+  host found, make list
+  visit
+    read value
+    task
+      take node, like dynamic
+      like void
+      fork test, is-equal(field-of(node, <form>), form)
+        hold
+          found/push(node)
+  back found

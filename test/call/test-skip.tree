@@ -1,0 +1,131 @@
+# A test can say it was skipped, and why, on every target (decision 022 T4, item 0184). `skip <reason>` is neither a pass
+# nor a failure: a file counts it apart, names each reason once, and a run whose only non-passes are skips exits 0, closing
+# on words that say nothing was checked when nothing passed. Each case runs the fixture through TERM_TEST_SELF, the `term`
+# under test. `--case` no-match stays its own count.
+
+load @term/base/environment
+  find variable
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/text
+  find contains
+
+task run-fixture
+  take arguments, like list, like text
+  like run-result
+  mark async
+
+  save argument-list, make list
+  save entry, variable(<TERM_TEST_SELF_ENTRY>)
+  fork test, is-unequal(entry, <>)
+    hold
+      argument-list/push(entry)
+  argument-list/push(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--color>)
+  argument-list/push(<never>)
+  back run(variable(<TERM_TEST_SELF>), argument-list, <test/call/test-skip-fixture>, bind(limit, 280000))
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+# how many times a text stands in another
+task times-in
+  take text, like text
+  take part, like text
+  like number
+
+  save parts, text/split(part)
+  back subtract(parts/length, 1)
+
+test <a pass, a skip and a failure count apart, and the failure fails the run>
+  save ran, run-fixture(make list(<one-of-each>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 1 passed · 1 failed · 1 skipped>)
+  want hold, contains(said(ran), <term-no-such-tool is not installed>)
+  want hold, contains(said(ran), <Does not hold>)
+  want miss, contains(said(ran), <Asks for a tool nobody has>)
+  want hold, contains(said(ran), <Test run failed>)
+
+test <skips beside passes exit 0, and the run still says it passed>
+  save ran, run-fixture(make list(<no-failure>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 skipped>)
+  want hold, contains(said(ran), <term-no-such-tool is not installed>)
+  want hold, contains(said(ran), <Tests passed>)
+
+test <a run of nothing but skips exits 0 and does not read as passed>
+  save ran, run-fixture(make list(<skips-alone>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <3 tests · 0 passed · 3 skipped>)
+  want hold, contains(said(ran), <Every test was skipped>)
+  want miss, contains(said(ran), <Tests passed>)
+
+test <a file names each reason once>
+  save ran, run-fixture(make list(<skips-alone>))
+  want hold, is-equal(times-in(said(ran), <no device online>), 1)
+  want hold, is-equal(times-in(said(ran), <no \{raw\} browser>), 1)
+
+test <a sampled test's skip is a skip, its reason without the input>
+  save ran, run-fixture(make list(<sampled-skip>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 skipped>)
+  want hold, contains(said(ran), <no sampling today>)
+  want miss, contains(said(ran), <sampled at>)
+
+test <a skip outside a test block is refused, naming its line>
+  save ran, run-fixture(make list(<outside-a-test>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <The name "skip" is not defined>)
+  want hold, contains(said(ran), <outside-a-test.tree:3>)
+
+test <a reason that is no text literal fails the test, naming its line>
+  save ran, run-fixture(make list(<bad-reason>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <line 2: a skip takes a text literal>)
+
+test <a file that defines skip keeps its own word>
+  save ran, run-fixture(make list(<own-word>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <1 test · 1 passed>)
+
+test <a case nothing matches stays its own count, never a skip>
+  save ran, run-fixture(make list(<one-of-each>, <--case>, <passes on its own>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <1 test · 1 passed>)
+  want miss, contains(said(ran), <1 skipped>)
+
+test <a run that chose only a skip is not "No test matched">
+  save ran, run-fixture(make list(<skips-alone>, <--case>, <the first says why>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 skipped>)
+  want miss, contains(said(ran), <No test matched>)
+
+test <rust counts the same, and its failure fails the run>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save ran, run-fixture(make list(<one-of-each>, <--env>, <rust>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <3 tests · 1 passed · 1 failed · 1 skipped>)
+  want hold, contains(said(ran), <term-no-such-tool is not installed>)
+
+test <on rust skips beside a pass exit 0>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save ran, run-fixture(make list(<no-failure>, <--env>, <rust>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 1 passed · 1 skipped>)

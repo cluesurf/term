@@ -3,6 +3,14 @@ note <Totality tests: strict positivity (hard error) and termination (warning)>
 # Ported from totality.ts (item 0566). check/totality is the subject, and its front end is docked with it, parse, mill, resolve and
 # check, as the suite runs the steps itself (decision 106).
 
+load ../support/judging
+  find make-record
+  find read-field
+  find empty-list
+
+load ../support/reading
+  find any-with
+
 dock load
   load <@term/make/code/parser/tree>, name parser-tree
   load <@term/make/code/compile/mill>, name mill-module
@@ -17,12 +25,15 @@ bind source-of
     text <(\{ file: "t.tree", text: $text \})>
 
 # a record type of one field, written as the program node the checker reads
-bind record
+task record
   take name, like text
   take type, like dynamic
   like dynamic
-  case node
-    text <[\{ form: "record-type", name: $name, params: [], fields: [\{ name: "f", type: $type \}], variants: [], span: \{ start: \{ line: 0, column: 0, offset: 0 \}, end: \{ line: 0, column: 0, offset: 0 \} \} \}]>
+
+  host place, make-record(make(list, <line>, 0, <column>, 0, <offset>, 0))
+  host field, make-record(make(list, <name>, <f>, <type>, type))
+  host span, make-record(make(list, <start>, place, <end>, place))
+  back make(list, make-record(make(list, <form>, <record-type>, <name>, name, <params>, empty-list(), <fields>, make(list, field), <variants>, empty-list(), <span>, span)))
 
 # a self-reference to the left of an arrow (a parameter) is negative
 bind negative-type
@@ -44,12 +55,12 @@ bind number-type
   case node
     text <(\{ kind: "number" \})>
 
-bind errors-name
+task errors-name
   take report, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$report.errors.some(d =\> d.name === $name)>
+
+  back any-with(read-field(report, <errors>), <name>, name)
 
 bind errors-size
   take report, like dynamic
@@ -57,12 +68,12 @@ bind errors-size
   case node
     text <$report.errors.length>
 
-bind warnings-name
+task warnings-name
   take report, like dynamic
   take name, like text
   like boolean
-  case node
-    text <$report.warnings.some(d =\> d.name === $name)>
+
+  back any-with(read-field(report, <warnings>), <name>, name)
 
 bind warnings-size
   take report, like dynamic

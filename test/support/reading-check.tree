@@ -1,0 +1,51 @@
+note <the reading helpers hold: a word in a list, a field's value, a count, the first, the lines, a joined text>
+
+load ./reading
+  find any-holding
+  find any-with
+  find count-with
+  find all-with
+  find first-with
+  find lines-of
+  find joined-names
+
+form finding
+  link code, like text
+  link message, like text
+
+host findings, make(list, make(finding, bind(code, <L040>), bind(message, <a twice key>)), make(finding, bind(code, <L044>), bind(message, <a line laid out>)), make(finding, bind(code, <L040>), bind(message, <another twice key>)))
+
+test <any-holding finds a word in one text of a list, and not a word in none>
+  want hold, any-holding(make(list, <one cycle>, <a self loop>), <self>)
+  want hold, not(any-holding(make(list, <one cycle>, <a self loop>), <missing>))
+  want hold, not(any-holding(make(list), <self>))
+
+test <any-with finds an item by a field's value>
+  want hold, any-with(findings, <code>, <L044>)
+  want hold, not(any-with(findings, <code>, <L001>))
+  want hold, not(any-with(findings, <message>, <L044>))
+
+test <count-with counts the items with the value>
+  want hold, is-equal count-with(findings, <code>, <L040>), 2
+  want hold, is-equal count-with(findings, <code>, <L044>), 1
+  want hold, is-equal count-with(findings, <code>, <L001>), 0
+
+test <all-with keeps the items with the value, in order>
+  host twice, all-with(findings, <code>, <L040>)
+  want hold, is-equal twice/length, 2
+  want hold, is-equal twice/1/message, <another twice key>
+
+test <first-with answers the first item with the value, and void when none has it>
+  want hold, is-equal first-with(findings, <code>, <L040>)/message, <a twice key>
+  want hold, is-equal first-with(findings, <code>, <L001>), void
+
+test <lines-of splits a text at each line>
+  host lines, lines-of(<one\ntwo\n>)
+  want hold, is-equal lines/length, 3
+  want hold, is-equal lines/1, <two>
+  want hold, is-equal lines/2, <>
+
+test <joined-names joins one field of each item, by a bar unless told>
+  want hold, is-equal joined-names(findings, <code>), <L040 | L044 | L040>
+  want hold, is-equal joined-names(findings, <code>, <,>), <L040,L044,L040>
+  want hold, is-equal joined-names(make(list), <code>), <>

@@ -1,0 +1,16 @@
+load @term/base/process/tool
+  find find-tool
+
+test <passes on its own>
+  want hold, is-equal add(1, 1), 2
+
+test <asks for a tool nobody has>
+  fork test
+    hook test
+      call is-equal
+        call find-tool
+          text <term-no-such-tool>
+        text <>
+    hook hold
+      skip <term-no-such-tool is not installed>
+  want hold, false

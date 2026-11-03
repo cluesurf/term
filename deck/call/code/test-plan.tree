@@ -269,6 +269,9 @@ form round-totals
   link fail, like number
   link proved, like number
   link broken, like number
+  # tests that said `skip`, neither passed nor failed
+  link skips, like number
+  # files holding no test `--case` asked for, which ran nothing
   link skipped, like number
   link controls, like number
 
@@ -292,11 +295,14 @@ task totals-counts
   like list, like tally
 
   save counts, make list
-  push(counts, tally-of(add(totals/pass, totals/fail), <tests>, <test>))
+  push(counts, tally-of(add(add(totals/pass, totals/fail), totals/skips), <tests>, <test>))
   push(counts, tally-of(totals/pass, <passed>, <>))
   fork test, is-above(totals/fail, 0)
     hold
       push(counts, tally-of(totals/fail, <failed>, <>))
+  fork test, is-above(totals/skips, 0)
+    hold
+      push(counts, tally-of(totals/skips, <skipped>, <>))
   fork test, is-above(totals/proved, 0)
     hold
       push(counts, tally-of(totals/proved, <proof files checked>, <proof file checked>))
@@ -317,6 +323,39 @@ task round-failed
   like boolean
 
   back or(is-above(totals/fail, 0), is-above(totals/broken, 0))
+
+# what a round closes on. A skip fails nothing (decision 022 T4), so a run of nothing but skips exits 0, and says it passed
+# nothing rather than that its tests passed
+task round-verdict
+  take totals, like round-totals
+  like text
+
+  fork test, round-failed(totals)
+    hold
+      back <Test run failed>
+  fork test, and(is-equal(totals/pass, 0), is-above(totals/skips, 0))
+    hold
+      back <Every test was skipped>
+  back <Tests passed>
+
+# each reason once, in the order first given
+task reasons-once
+  take reasons, like list, like text
+  like list, like text
+
+  save out, make list
+  walk reasons
+    take reason, like text
+    save seen, false
+    walk out
+      take held, like text
+      fork test, is-equal(held, reason)
+        hold
+          save seen, true
+    fork test, not(seen)
+      hold
+        push(out, reason)
+  back out
 
 # the subject of a watched round's item: every file, or how many of them an edit reached
 task round-subject

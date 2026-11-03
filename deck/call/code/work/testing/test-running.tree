@@ -24,6 +24,7 @@ load @term/call/test-run-words
   find report-text
   find settle-report
   find settled-test
+  find skip-reason
 
 load ./report-running
   find run-reported
@@ -94,6 +95,11 @@ form test-result
   link name, like text
   link label, like text
   link held, like boolean
+  # it said `skip`: not held, and no failure either. `reason` is why
+  link skipped, like boolean
+  link reason
+    like text
+    need false
   # absent for a native run, which times no test
   link ms
     like number
@@ -890,7 +896,7 @@ task run-test-file
   save all-held, true
   walk results
     take one, like test-result
-    fork test, not(one/held)
+    fork test, and(not(one/held), not(one/skipped))
       hold
         save all-held, false
   save run, make(test-run, bind(ok, all-held), bind(results, results))
@@ -1021,7 +1027,12 @@ task settled-result
   take source, like text
   like test-result
 
-  save result, make(test-result, bind(name, one/test), bind(label, label), bind(held, is-equal(one/verdict, <held>)), bind(ms, one/ms), bind(line, line))
+  save skipped, is-equal(one/verdict, <skipped>)
+  save result, make(test-result, bind(name, one/test), bind(label, label), bind(held, is-equal(one/verdict, <held>)), bind(skipped, skipped), bind(ms, one/ms), bind(line, line))
+  fork test, skipped
+    hold
+      save result/reason, skip-reason(one/note)
+      back result
   fork test, or(is-equal(one/verdict, <held>), is-equal(one/note, <>))
     hold
       back result

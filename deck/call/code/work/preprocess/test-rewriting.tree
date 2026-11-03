@@ -171,6 +171,25 @@ bind snapshot-inline
   case node
     text <(/^want snapshot\s*(?:,\s*(.*))?$/.exec($head)?.[1]?.trim() ?? "")>
 
+# a `skip` line's literal as written, `<...>` or `<<...>>`, the empty text when what follows is no literal
+bind skip-literal
+  take line, like text
+  like text
+  case node
+    text <<(/^\s*skip\s+(<.*>)\s*$/.exec($line)?.[1] ?? "")>>
+
+bind line-lead
+  take line, like text
+  like text
+  case node
+    text <$line.slice(0, $line.length - $line.trimStart().length)>
+
+bind is-raw-literal
+  take literal, like text
+  like boolean
+  case node
+    text <$literal.startsWith("\<\<")>
+
 # a name a file defines, the empty text for a line that defines none
 bind defined-name
   take line, like text
@@ -1106,6 +1125,28 @@ bind comma-joined
   case node
     text <$texts.join(", ")>
 
+# A line of a test block, a `skip <reason>` made a raise whose note is `skip:<reason>`, which the report reads back as
+# `want:` is read (call/code/test-report.tree, decision 022 T4), on every target. Any other line as written. A `skip`
+# with no text literal is the test's own failure, said when it runs, as a `want` of no known mode is. Outside a test block
+# nothing lowers it, so the build refuses the name there, on its line
+task lowered-skip
+  take line, like text
+  take at, like number
+  like text
+
+  fork test, not(is-equal(statement-head(line), <skip>))
+    hold
+      back line
+  save lead, line-lead(line)
+  save literal, skip-literal(line)
+  fork test, is-equal(literal, <>)
+    hold
+      back <{lead}halt \<line {add(at, 1)}: a skip takes a text literal\>>
+  fork test, is-raw-literal(literal)
+    hold
+      back <{lead}halt \<\<skip:{rewrite-cut(literal, 2)}>
+  back <{lead}halt \<skip:{rewrite-cut(literal, 1)}>
+
 # ---- the file ----
 
 # `plain-wants`: every `want` raises the plain marker, never the two values it compared. A native backend's report
@@ -1128,6 +1169,8 @@ task preprocess-tests
   save compares, false
   save sampled, false
   save snapshotted, false
+  # a file that defines or finds its own `skip` keeps the word
+  save lowers-skip, not(name-set-has(taken, <skip>))
 
   save i, 0
   walk test
@@ -1164,6 +1207,12 @@ task preprocess-tests
                   halt
               body/push(i)
               save i, add(i, 1)
+          # a `skip` at any depth of the block, in place, so a sampled test's body has it too
+          fork test, lowers-skip
+            hold
+              walk body
+                take n, like number
+                save lines/{n}, lowered-skip(lines/{n}, n)
           save groups, statements(lines, body, 2)
           # a test that TAKES inputs is a property, checked on sampled values of their types
           save takes, false

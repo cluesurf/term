@@ -91,7 +91,8 @@ task report-clock
   send back
     call report-now
 
-# what a test that raised is: `missed` for a `want` that did not hold, `raised` for anything else
+# what a test that raised is: `missed` for a `want` that did not hold, `skipped` for a `skip` (its note `skip:<reason>`,
+# decision 022 T4), `raised` for anything else
 task report-verdict
   take note, like text
   like text
@@ -102,6 +103,13 @@ task report-verdict
         text <want:>
     hook hold
       send back, text <missed>
+  fork test
+    hook test
+      call report-starts-with
+        read note
+        text <skip:>
+    hook hold
+      send back, text <skipped>
   send back, text <raised>
 
 # one finished test: its task's name, its verdict, what it raised, the two values a comparing `want` held (shown), its

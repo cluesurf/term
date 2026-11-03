@@ -1,0 +1,4 @@
+test <a sampled test can skip>
+  take n, like number
+  skip <no sampling today>
+  want hold, is-below n, 10

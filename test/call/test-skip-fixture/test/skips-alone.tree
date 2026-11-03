@@ -1,0 +1,11 @@
+test <the first says why>
+  skip <no device online>
+  want hold, false
+
+test <the second says the same>
+  skip <no device online>
+  want hold, false
+
+test <the third says something else>
+  skip <<no {raw} browser>>
+  want hold, false

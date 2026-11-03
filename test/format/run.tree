@@ -4,6 +4,23 @@ note <Formatter tests: canonical layout, idempotence, comment preservation, and 
 # (decision 106). The rules part holds "Where each part of a line goes", note/project/term/compiler/format-rules.md, from its
 # before and after.
 
+load @term/base/text
+  find trim
+  find starts-with
+  find index-of
+  find substring
+
+load ../support/reading
+  find lines-of
+
+load ../support/judging
+  find read-field
+  find truth
+  find empty-list
+
+load ../support/walking
+  find kind-of
+
 dock load
   load <@term/make/code/format/format>, name format-module
   load <@term/make/code/parser/tree>, name parser-tree
@@ -28,11 +45,52 @@ bind role-choice
     text <(\{ role: $role \})>
 
 # a structural fingerprint, ignoring layout and comments, to prove the formatter never changes meaning
-bind shape-of-parsed
+task or-else
+  take value, like dynamic
+  take fall, like dynamic
+  like dynamic
+
+  host kind, kind-of(value)
+  fork test, or(is-equal(kind, <undefined>), is-equal(kind, <null>))
+    hold
+      back fall
+  back value
+
+task shape-node
+  take node, like dynamic
+  like text
+
+  host kind, read-field(node, <kind>)
+  fork test, or(is-equal(kind, <group>), is-equal(kind, <root>))
+    hold
+      save out, <>
+      save first, true
+      walk or-else(read-field(node, <nodes>), empty-list())
+        take one, like dynamic
+        fork test, first
+          hold
+            save out, shape-node(one)
+            save first, false
+          miss
+            save out, <{out},{shape-node(one)}>
+      back <{kind}({out})>
+  fork test, or(is-equal(kind, <name>), is-equal(kind, <text>))
+    hold
+      save joined, <>
+      walk or-else(read-field(node, <parts>), empty-list())
+        take part, like dynamic
+        save joined, <{joined}{or-else(read-field(part, <text>), <\{\}>)}>
+      back <{kind}:{joined}>
+  back <lit:{or-else(read-field(read-field(node, <token>), <text>), read-field(node, <value>))}>
+
+task shape-of-parsed
   take parsed, like dynamic
   like text
-  case node
-    text <(() =\> \{ const shape = node =\> \{ if (node.kind === "group" || node.kind === "root") return `$\{node.kind\}($\{(node.nodes ?? []).map(shape).join(",")\})`; if (node.kind === "name" || node.kind === "text") return `$\{node.kind\}:$\{(node.parts ?? []).map(p =\> p.text ?? "\{\}").join("")\}`; return `lit:$\{node.token?.text ?? node.value\}` \}; return $parsed.ok ? shape($parsed.tree) : "unparsed" \})()>
+
+  fork test, truth(read-field(parsed, <ok>))
+    hold
+      back shape-node(read-field(parsed, <tree>))
+  back <unparsed>
 
 bind says
   take text, like text
@@ -60,33 +118,64 @@ bind first-line
   case node
     text <$text.split("\\n")[0]>
 
-bind dense
+task dense
   take text, like text
   like text
-  case node
-    text <$text.split("\\n").filter(line =\> line.trim() !== "").join("\\n")>
 
-bind fits-columns
+  save out, <>
+  save first, true
+  walk lines-of(text)
+    take line, like text
+    fork test, is-unequal(trim(line), <>)
+      hold
+        fork test, first
+          hold
+            save out, line
+            save first, false
+          miss
+            save out, <{out}\n{line}>
+  back out
+
+task fits-columns
   take text, like text
   take most, like number
   like boolean
-  case node
-    text <$text.split("\\n").every(line =\> line.length \<= $most)>
 
-bind blank-before
+  walk lines-of(text)
+    take line, like text
+    fork test, is-above(line/length, most)
+      hold
+        back false
+  back true
+
+task blank-before
   take text, like text
   take needle, like text
   like boolean
-  case node
-    text <(() =\> \{ const lines = $text.split("\\n"); const i = lines.findIndex(l =\> l.trim().startsWith($needle)); return i \> 0 && lines[i - 1] === "" \})()>
 
-bind replaced
+  save previous, <>
+  save index, 0
+  walk lines-of(text)
+    take line, like text
+    fork test, starts-with(trim(line), needle)
+      hold
+        back and(is-above(index, 0), is-equal(previous, <>))
+    save previous, line
+    save index, add(index, 1)
+  back false
+
+# the text with its first `from` made `into`, nothing read as a pattern
+task replaced
   take text, like text
   take from, like text
   take into, like text
   like text
-  case node
-    text <$text.replace($from, () =\> $into)>
+
+  host at, index-of(text, from)
+  fork test, is-below(at, 0)
+    hold
+      back text
+  back <{substring(text, 0, at)}{into}{substring(text, add(at, from/length))}>
 
 bind ninety
   take seed, like number

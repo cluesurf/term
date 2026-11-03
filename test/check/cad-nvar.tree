@@ -2,16 +2,40 @@ note <n-variable cylindrical algebraic decomposition>
 
 # Ported from cad-nvar.ts by task/term/suite-port.ts, finished by hand.
 
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find push
+
+load ../support/judging
+  find make-record
+  find big-number
+  find read-at
+
 dock load
   load <@term/make/code/check/cad-nvar>, name nvar-check
 
 # the terms check/cad-nvar takes, from a text of `exponents:coefficient` terms: each coefficient a big integer, `{ dock }`
 # on TypeScript
-bind nvar-terms
+task nvar-terms
   take terms, like text
   like dynamic
-  case node
-    text <<$terms.split(", ").map(term => { const [exponents, c] = term.split(":"); return { exponents: exponents.split(" ").map(Number), coefficient: { dock: BigInt(c) } } })>>
+
+  host out, make list
+  walk text-split(terms, <, >)
+    take term, like text
+    host halves, text-split(term, <:>)
+    host exponents, make list
+    walk text-split(read-at(halves, 0), < >)
+      take one, like text
+      exponents/push(parse-integer(one))
+    host coefficient, make-record(make(list, <dock>, big-number(read-at(halves, 1))))
+    out/push(make-record(make(list, <exponents>, exponents, <coefficient>, coefficient)))
+  back out
 
 # PORT: bind cad-full comes back with the two tests below that read it
 # PORT: bind cad-full
