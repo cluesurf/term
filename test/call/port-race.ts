@@ -118,7 +118,15 @@ function clone(): void {
 
 type Run = { code: number; out: string }
 
+// the clone's line lock as its holder wrote it (line-lock.ts lockPath and holder.json)
+const heldToken = (): string =>
+  (JSON.parse(readFileSync(join(copy, '.base', '@term', 'code', 'line-lock', 'holder.json'), 'utf8')) as { token: string }).token
+
 function build(...args: string[]): Run {
+  return buildWith({}, ...args)
+}
+
+function buildWith(env: Record<string, string>, ...args: string[]): Run {
   try {
     return {
       code: 0,
@@ -127,6 +135,7 @@ function build(...args: string[]): Run {
         [TSX, 'task/port-build.ts', ...args],
         {
           cwd: copy,
+          env: { ...process.env, ...env },
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'inherit'],
         },
@@ -218,7 +227,9 @@ try {
 
   edit('race-new')
 
-  const b = build('--only', ONLY)
+  // B slips past the lock A holds, as the builds of 2026-10-23 slipped past theirs: it runs under A's token, which
+  // line-lock.ts reads as the lock being its own already (the make:line hand-down), so the two overlap
+  const b = buildWith({ TERM_LINE_LOCK: heldToken() }, '--only', ONLY)
   ok(
     'B builds the edited probe',
     b.code === 0 &&
@@ -402,11 +413,8 @@ try {
     after.out.slice(-400),
   )
 } finally {
-  if (fail === 0) {
-    rmSync(copy, { recursive: true, force: true })
-  } else {
-    console.log(`the clone is kept for a look: ${copy}`)
-  }
+  // the clone goes either way: a failure's output above names what went wrong, and a kept clone fills the disk
+  rmSync(cloneRoot, { recursive: true, force: true })
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
