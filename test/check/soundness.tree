@@ -1,0 +1,576 @@
+note <Soundness: false statements the checker used to PROVE, each beside the true statement that must still pass>
+
+# Ported from soundness.ts by tmp/self-host/suite-unroll.mjs, the TypeScript run with each call of its helpers recorded (items 0563
+# and 0564). Every case here compiled clean before 2026-10-02 (proof-by-default-0001 to 0004). The cause was one defect in two
+# places: path facts are equations over NAMES, and a name is not a mathematical variable. `save` gives it a new value, a branch
+# or a loop may have, a closure may at any call, a call may write through a record, and two calls to an impure task may answer
+# differently. check/facts.ts holds the rules both provers now share, and a proof (a claim's fill) must be verified by the
+# kernel, terminate, and be pure. See note/project/term/proof/readme.md.
+#
+# A suite of false statements is only half a test: a checker that refused everything would pass it. So every refusal sits beside
+# a control that must still be PROVEN.
+#
+# The fixtures the TypeScript built by local functions are written out whole, one per test.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+load @term/base/list
+  find contains
+
+task choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <s.tree>))
+
+task proven
+  take text, like text
+  like boolean
+
+  back compile-text(text, choice())/ok
+
+task refused
+  take text, like text
+  take code, like text
+  like boolean
+
+  back refused-as(compile-text(text, choice()), code)
+
+bind ends-left
+  take kinds, like dynamic
+  like number
+  case node
+    text <(($kinds?.ends?.total ?? 0) - ($kinds?.ends?.proven ?? 0))>
+
+# a tier-0 obligation is counted rather than refused, so a case about one reads the tally: does every walk end
+task ends-shown
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, choice())
+  back and(out/ok, is-equal(ends-left(out/obligations/kinds), 0))
+
+task ends-unshown
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, choice())
+  back and(out/ok, is-above(ends-left(out/obligations/kinds), 0))
+
+# ---- the pure lowering (proof-by-default-0009) ----
+#
+# A task that saves a name again, or saves it in one arm of a fork, is lowered to the kernel as one term: every save a
+# new name, every join a local task over the names the arms saved (check/elaborating-terms.tree `assign-term`,
+# `joined-term`). So the kernel unfolds it as a definition, and a hold about its VALUE is decided by what it computes.
+# Each fact below beside its false twin: before the lowering every one of them was out of reach (`unchecked-hold`), and
+# a lowering that kept the first save, or a branch's value on the path that skips it, would prove the false twin.
+test <a task saved twice computes its last save>
+  want hold, proven(<task twice-saved\n  take n, like number\n  like number\n  save x, code 0\n  save x\n    call add\n      read n\n      code 5\n  send back x\n\nhold\n  call is-equal\n    call twice-saved(code 1)\n    code 6\n>)
+
+test <not its first>
+  want hold, refused(<task twice-saved\n  take n, like number\n  like number\n  save x, code 0\n  save x\n    call add\n      read n\n      code 5\n  send back x\n\nhold\n  call is-equal\n    call twice-saved(code 1)\n    code 0\n>, <unchecked-hold>)
+
+# The kernel computes a `fork case` (its eliminator reduces on a constructor), and leaves `cond` and a comparison of
+# numbers standing, so a join's VALUE is decided here through `fork case`. A `fork test` join is held to being one
+# term by test/check/lowering.ts
+test <a fork that saves joins its value: the arm taken>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask choose\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork case, read s\n    case left\n      save m, code 3\n    case right\n      save m, read m\n  send back m\n\nhold\n  call is-equal\n    call choose\n      make left\n      code 10\n    code 3\n>)
+
+test <and an arm that keeps it passes the old version>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask choose\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork case, read s\n    case left\n      save m, code 3\n    case right\n      save m, read m\n  send back m\n\nhold\n  call is-equal\n    call choose\n      make right\n      code 10\n    code 10\n>)
+
+test <the value before the arm is not a fact after it>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask choose\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork case, read s\n    case left\n      save m, code 3\n    case right\n      save m, read m\n  send back m\n\nhold\n  call is-equal\n    call choose\n      make left\n      code 10\n    code 10\n>, <invalid-proof>)
+
+test <nor is the arm`s value on the other path>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask choose\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork case, read s\n    case left\n      save m, code 3\n    case right\n      save m, read m\n  send back m\n\nhold\n  call is-equal\n    call choose\n      make right\n      code 10\n    code 3\n>, <invalid-proof>)
+
+test <a join over two names swapped in one arm>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask spread\n  take s, like side\n  take a, like number\n  take b, like number\n  like number\n  save low, read a\n  save high, read b\n  fork case, read s\n    case left\n      save low, read b\n      save high, read a\n    case right\n      save low, read low\n  send back\n    call subtract\n      read high\n      read low\n\nhold\n  call is-equal\n    call spread\n      make left\n      code 2\n      code 5\n    code -3\n>)
+
+test <and unswapped in the other>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask spread\n  take s, like side\n  take a, like number\n  take b, like number\n  like number\n  save low, read a\n  save high, read b\n  fork case, read s\n    case left\n      save low, read b\n      save high, read a\n    case right\n      save low, read low\n  send back\n    call subtract\n      read high\n      read low\n\nhold\n  call is-equal\n    call spread\n      make right\n      code 2\n      code 5\n    code 3\n>)
+
+test <not the unswapped difference after the swap>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask spread\n  take s, like side\n  take a, like number\n  take b, like number\n  like number\n  save low, read a\n  save high, read b\n  fork case, read s\n    case left\n      save low, read b\n      save high, read a\n    case right\n      save low, read low\n  send back\n    call subtract\n      read high\n      read low\n\nhold\n  call is-equal\n    call spread\n      make left\n      code 2\n      code 5\n    code 3\n>, <unchecked-hold>)
+
+test <a fork inside an arm joins into the outer join>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask bucket\n  take s, like side\n  take t, like side\n  like number\n  save b, code 0\n  fork case, read s\n    case left\n      save b, code 1\n      fork case, read t\n        case left\n          save b, code 2\n        case right\n          save b, read b\n    case right\n      save b, read b\n  send back b\n\nhold\n  call is-equal\n    call bucket\n      make left\n      make left\n    code 2\n>)
+
+test <the inner arm that keeps the value>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask bucket\n  take s, like side\n  take t, like side\n  like number\n  save b, code 0\n  fork case, read s\n    case left\n      save b, code 1\n      fork case, read t\n        case left\n          save b, code 2\n        case right\n          save b, read b\n    case right\n      save b, read b\n  send back b\n\nhold\n  call is-equal\n    call bucket\n      make left\n      make right\n    code 1\n>)
+
+test <the outer arm that keeps the value>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask bucket\n  take s, like side\n  take t, like side\n  like number\n  save b, code 0\n  fork case, read s\n    case left\n      save b, code 1\n      fork case, read t\n        case left\n          save b, code 2\n        case right\n          save b, read b\n    case right\n      save b, read b\n  send back b\n\nhold\n  call is-equal\n    call bucket\n      make right\n      make left\n    code 0\n>)
+
+test <not the inner value on the path that skips it>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask bucket\n  take s, like side\n  take t, like side\n  like number\n  save b, code 0\n  fork case, read s\n    case left\n      save b, code 1\n      fork case, read t\n        case left\n          save b, code 2\n        case right\n          save b, read b\n    case right\n      save b, read b\n  send back b\n\nhold\n  call is-equal\n    call bucket\n      make left\n      make right\n    code 2\n>, <invalid-proof>)
+
+test <not the outer arm`s value on the path that skips it>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask bucket\n  take s, like side\n  take t, like side\n  like number\n  save b, code 0\n  fork case, read s\n    case left\n      save b, code 1\n      fork case, read t\n        case left\n          save b, code 2\n        case right\n          save b, read b\n    case right\n      save b, read b\n  send back b\n\nhold\n  call is-equal\n    call bucket\n      make right\n      make left\n    code 1\n>, <invalid-proof>)
+
+# a closure reads the variable when it RUNS, so it sees the later save. A lowering that gave it the version at its
+# creation would prove late(1) == 1, and the program returns 2. Such a task is not lowered
+test <a closure does not see the version at its creation>
+  want hold, refused(<task late\n  take n, like number\n  like number\n  save x, read n\n  host f\n    task g\n      like number\n      send back, read x\n  save x\n    call add\n      read n\n      code 1\n  send back\n    call f\n\nhold\n  call is-equal\n    call late(code 1)\n    code 1\n>, <unchecked-hold>)
+
+# ---- walks (proof-by-default-0010) ----
+#
+# A `walk list` is the list eliminator, which computes on a list built by its constructors, so a hold about what a
+# walk over a written list gives is decided by the kernel unfolding it. Each beside its false twin: a fold that ran
+# the items in the wrong order, dropped one, or let a `turn next` or `halt` fall through would prove the twin
+test <a walk over a list adds every item>
+  want hold, proven(<task total\n  take xs, like list, like number\n  like number\n  save t, code 0\n  walk list, read xs\n    hook next\n      take x\n      save t\n        call add\n          read t\n          read x\n  send back t\n\nhold\n  call is-equal\n    call total\n      make list\n        code 1\n        code 2\n        code 3\n    code 6\n>)
+
+test <not one item fewer>
+  want hold, refused(<task total\n  take xs, like list, like number\n  like number\n  save t, code 0\n  walk list, read xs\n    hook next\n      take x\n      save t\n        call add\n          read t\n          read x\n  send back t\n\nhold\n  call is-equal\n    call total\n      make list\n        code 1\n        code 2\n        code 3\n    code 5\n>, <unchecked-hold>)
+
+test <the index counts from 0, in order>
+  want hold, proven(<task weigh\n  take xs, like list, like number\n  like number\n  save t, code 0\n  walk list, read xs\n    hook next\n      take x\n      take i\n      save t\n        call add\n          read t\n          call multiply\n            read x\n            read i\n  send back t\n\nhold\n  call is-equal\n    call weigh\n      make list\n        code 5\n        code 7\n        code 5\n    code 17\n>)
+
+test <not from 1>
+  want hold, refused(<task weigh\n  take xs, like list, like number\n  like number\n  save t, code 0\n  walk list, read xs\n    hook next\n      take x\n      take i\n      save t\n        call add\n          read t\n          call multiply\n            read x\n            read i\n  send back t\n\nhold\n  call is-equal\n    call weigh\n      make list\n        code 5\n        code 7\n        code 5\n    code 29\n>, <unchecked-hold>)
+
+# the three ways out of a turn, decided by a `fork case` (the kernel leaves `cond` standing)
+test <turn next skips the rest of the turn>
+  want hold, proven(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make skip\n        make keep\n        make skip\n    code 11\n>)
+
+test <not running it>
+  want hold, refused(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make skip\n        make keep\n        make skip\n    code 31\n>, <unchecked-hold>)
+
+test <halt leaves the walk with the versions it holds>
+  want hold, proven(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make keep\n        make stop\n        make keep\n    code 11\n>)
+
+test <not finishing it>
+  want hold, refused(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make keep\n        make stop\n        make keep\n    code 22\n>, <unchecked-hold>)
+
+test <send back answers for the task>
+  want hold, proven(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make keep\n        make answer\n        make keep\n    code 99\n>)
+
+test <not the walk`s count>
+  want hold, refused(<form step\n  case skip\n  case stop\n  case keep\n  case answer\n\ntask run\n  take xs, like list, like step\n  like number\n  save n, code 0\n  walk list, read xs\n    hook next\n      take s\n      fork case, read s\n        case skip\n          turn next\n        case stop\n          halt\n        case answer\n          send back, code 99\n        case keep\n          save n\n            call add\n              read n\n              code 1\n      save n\n        call add\n          read n\n          code 10\n  send back n\n\nhold\n  call is-equal\n    call run\n      make list\n        make keep\n        make answer\n        make keep\n    code 11\n>, <invalid-proof>)
+
+# a lifted `walk test` is a definition the kernel unfolds only when it has a `down`, which rests on the build failing
+# for a `down` that does not fall
+test <a down that grows fails the build>
+  want hold, refused(<task move\n  take n, like number\n  like number\n  save m, read n\n  walk test\n    down m\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      save m\n        call add\n          read m\n          code 1\n  send back m\n>, <unproven>)
+
+test <control: a down that falls builds>
+  want hold, proven(<task move\n  take n, like number\n  like number\n  save m, read n\n  walk test\n    down m\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      save m\n        call subtract\n          read m\n          code 1\n  send back m\n>)
+
+# ---- guarded forks (proof-by-default-0011) ----
+#
+# A raise inside a guarded fork calls its handler with the versions the path holds where it raised. A lowering that
+# handed the handler the versions at the fork, or let the raise fall through, would prove the false twin
+test <a raise takes the handler with the version it holds>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask cap\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    save m\n      call add\n        read n\n        code 1\n    sift s\n      case left\n        halt \<Too far\>\n      case right\n        save m\n          call add\n            read m\n            code 1\n  halt take\n    take problem\n    save m\n      call add\n        read m\n        code 100\n  send back m\n\nhold\n  call is-equal\n    call cap\n      make left\n      code 3\n    code 104\n>)
+
+test <not the version at the fork>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask cap\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    save m\n      call add\n        read n\n        code 1\n    sift s\n      case left\n        halt \<Too far\>\n      case right\n        save m\n          call add\n            read m\n            code 1\n  halt take\n    take problem\n    save m\n      call add\n        read m\n        code 100\n  send back m\n\nhold\n  call is-equal\n    call cap\n      make left\n      code 3\n    code 103\n>, <unchecked-hold>)
+
+test <and no raise does not take it>
+  want hold, proven(<form side\n  case left\n  case right\n\ntask cap\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    save m\n      call add\n        read n\n        code 1\n    sift s\n      case left\n        halt \<Too far\>\n      case right\n        save m\n          call add\n            read m\n            code 1\n  halt take\n    take problem\n    save m\n      call add\n        read m\n        code 100\n  send back m\n\nhold\n  call is-equal\n    call cap\n      make right\n      code 3\n    code 5\n>)
+
+test <not the handler`s value on the path that does not raise>
+  want hold, refused(<form side\n  case left\n  case right\n\ntask cap\n  take s, like side\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    save m\n      call add\n        read n\n        code 1\n    sift s\n      case left\n        halt \<Too far\>\n      case right\n        save m\n          call add\n            read m\n            code 1\n  halt take\n    take problem\n    save m\n      call add\n        read m\n        code 100\n  send back m\n\nhold\n  call is-equal\n    call cap\n      make right\n      code 3\n    code 105\n>, <unchecked-hold>)
+
+# ---- a save through a field (proof-by-default-0014, decision 002) ----
+#
+# Under D1 a record is a value, so `save x/a, v` is a new version of `x` with `a` replaced, and the other fields keep
+# what they held. A lowering that dropped the write, kept the field's old value, or lost `b` would prove a twin
+test <a write through a field is the record made again, every other field kept>
+  want hold, proven(<form box\n  link a, like number\n  link b, like number\n\ntask bump\n  take p, like number\n  take q, like number\n  like number\n  save x\n    make box\n      bind a, read p\n      bind b, read q\n  save x/a, code 5\n  save x/a\n    call add\n      read x/a\n      code 1\n  send back\n    call add\n      read x/a\n      read x/b\n\nhold\n  call is-equal\n    call bump\n      code 1\n      code 2\n    code 8\n>)
+
+test <not the field it held before the write>
+  want hold, refused(<form box\n  link a, like number\n  link b, like number\n\ntask bump\n  take p, like number\n  take q, like number\n  like number\n  save x\n    make box\n      bind a, read p\n      bind b, read q\n  save x/a, code 5\n  save x/a\n    call add\n      read x/a\n      code 1\n  send back\n    call add\n      read x/a\n      read x/b\n\nhold\n  call is-equal\n    call bump\n      code 1\n      code 2\n    code 3\n>, <unchecked-hold>)
+
+test <not the first write alone>
+  want hold, refused(<form box\n  link a, like number\n  link b, like number\n\ntask bump\n  take p, like number\n  take q, like number\n  like number\n  save x\n    make box\n      bind a, read p\n      bind b, read q\n  save x/a, code 5\n  save x/a\n    call add\n      read x/a\n      code 1\n  send back\n    call add\n      read x/a\n      read x/b\n\nhold\n  call is-equal\n    call bump\n      code 1\n      code 2\n    code 7\n>, <unchecked-hold>)
+
+# the signature's bound is still the surface checker's: a raise it does not declare is refused
+test <a raise the signature does not declare is still refused>
+  want hold, refused(<form lack\n  like absence\n\ntask strict\n  take n, like number\n  like number\n  halt lack\n  fork test\n    hook test\n      call is-above\n        read n\n        code 10\n    hook hold\n      halt \<Too big\>\n  send back n\n>, <raise-bound>)
+
+# ---- a cited rule's `have` (term-proof-0003) ----
+#
+# `assumed` is true only under its hypothesis, and the kernel proved it by `fold` from that hypothesis. It used to be
+# recorded as an UNCONDITIONAL lemma, so `cite assumed` (or `seek`) closed `g == yes` for every flag, `no` included.
+# A lemma proven from the path's equations (a `have`, a guard) is no rewrite the kernel may use at any seat, so the
+# false law is refused, while an unconditional lemma is still cited.
+test <control: the conditional rule itself is proven>
+  want hold, proven(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n>)
+
+test <cite of a rule with a have does not drop the have>
+  want hold, refused(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n\nrule every-flag-is-yes\n  seat g, like flag\n  show hold, is-equal(g, make yes)\n  cite assumed\n>, <unproven>)
+
+test <nor does seek, rewriting by every lemma>
+  want hold, refused(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n\nrule every-flag-is-yes\n  seat g, like flag\n  show hold, is-equal(g, make yes)\n  seek\n>, <invalid-proof>)
+
+test <nor a cite under a fold>
+  want hold, refused(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n\nrule every-flag-is-yes\n  seat g, like flag\n  show hold, is-equal(g, make yes)\n  fold g\n    cite assumed\n>, <invalid-proof>)
+
+test <control: under the same have, the goal still holds>
+  want hold, proven(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n\nrule yes-when-yes\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  cite assumed\n>)
+
+test <control: an unconditional rule is still cited>
+  want hold, proven(<form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  sift g\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule assumed\n  seat g, like flag\n  have hold, is-equal(g, make yes)\n  show hold, is-equal(g, make yes)\n  fold g\n\nrule flip-twice\n  seat g, like flag\n  show hold, is-equal(flip(flip(g)), g)\n  fold g\n\nrule flip-twice-again\n  seat h, like flag\n  show hold, is-equal(flip(flip(h)), h)\n  cite flip-twice\n>)
+
+# ---- reassignment ----
+test <reassigned: the old value is not a fact>
+  want hold, refused(<task a\n  save x, code 0\n  save x, code 5\n  hold\n    call is-equal\n      read x\n      code 0\n>, <unproven>)
+
+test <control: the new value is a fact>
+  want hold, proven(<task a\n  save x, code 0\n  save x, code 5\n  hold\n    call is-equal\n      read x\n      code 5\n>)
+
+test <control: an immutable binding is a fact>
+  want hold, proven(<task a\n  host x, code 0\n  hold\n    call is-equal\n      read x\n      code 0\n>)
+
+# ---- conditions outlived by a write ----
+test <a branch condition is not a fact after the branch writes its variable>
+  want hold, refused(<task b\n  take n, like natural-number\n  save m, read n\n  fork test\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      save m\n        call subtract\n          read m\n          code 5\n      hold\n        call is-above\n          read m\n          code 0\n>, <unproven>)
+
+test <control: a branch condition is a fact inside the branch>
+  want hold, proven(<task b\n  take n, like natural-number\n  save m, read n\n  fork test\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      hold\n        call is-above\n          read m\n          code 0\n>)
+
+test <a loop condition is not a fact after the body writes its variable>
+  want hold, refused(<task c\n  take n, like natural-number\n  save m, read n\n  walk test\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      save m\n        call subtract\n          read m\n          code 5\n      hold\n        call is-above\n          read m\n          code 0\n>, <unproven>)
+
+# ---- facts after a compound statement ----
+test <a fact is gone after a branch that may have written it>
+  want hold, refused(<task d\n  take c, like boolean\n  save x, code 0\n  fork test\n    hook test\n      read c\n    hook hold\n      save x, code 5\n  hold\n    call is-equal\n      read x\n      code 0\n>, <unproven>)
+
+test <a fact is gone after a loop that may have written it>
+  want hold, refused(<task e\n  take n, like natural-number\n  save x, code 0\n  walk test\n    hook test\n      call is-below\n        read x\n        read n\n    hook hold\n      save x\n        call add\n          read x\n          code 1\n  hold\n    call is-equal\n      read x\n      code 0\n>, <unproven>)
+
+test <control: a fact about a name the branch does not write survives it>
+  want hold, proven(<task d\n  take c, like boolean\n  host y, code 3\n  save x, code 0\n  fork test\n    hook test\n      read c\n    hook hold\n      save x, code 5\n  hold\n    call is-equal\n      read y\n      code 3\n>)
+
+# ---- holds nobody checked ----
+test <a hold inside a note unsafe guard is checked>
+  want hold, refused(<task f\n  take n, like natural-number\n  fork\n    mark unsafe\n    hold\n      call is-below\n        read n\n        code 0\n  halt take\n    take e\n>, <unproven>)
+
+test <a hold inside a closure is checked>
+  want hold, refused(<task g\n  take n, like natural-number\n  host f\n    task\n      hold\n        call is-below\n          read n\n          code 0\n>, <unproven>)
+
+# ---- writes through a record ----
+test <a copy of a field is not equal to the field after the field is saved>
+  want hold, refused(<form box\n  link size, like number\n\ntask h\n  take b, like box\n  host s, read b/size\n  save b/size, code 9\n  hold\n    call is-equal\n      read s\n      read b/size\n>, <unproven>)
+
+test <control: a copy of a field equals the field while nothing writes it>
+  want hold, proven(<form box\n  link size, like number\n\ntask h\n  take b, like box\n  host s, read b/size\n  hold\n    call is-equal\n      read s\n      read b/size\n>)
+
+# ---- impure calls ----
+test <two calls to a task with no body are not equal>
+  want hold, refused(<task roll\n  like number\n\ntask i\n  hold\n    call is-equal\n      call roll\n      call roll\n>, <unchecked-hold>)
+
+test <a value is not equal to a second call of the task that made it>
+  want hold, refused(<task roll\n  like number\n\ntask i\n  host a\n    call roll\n  hold\n    call is-equal\n      read a\n      call roll\n>, <unchecked-hold>)
+
+# a task that only calls the function it is handed is as pure as that function, so the USE SITE answers for it
+test <an impure task passed as a value makes the call impure>
+  want hold, refused(<task roll\n  like number\n\ntask apply\n  take f\n    like task\n      like number\n  like number\n  send back\n    call f\n\ntask i\n  hold\n    call is-equal\n      call apply\n        read roll\n      call apply\n        read roll\n>, <unchecked-hold>)
+
+test <control: two calls to a pure task are equal>
+  want hold, proven(<task twice\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask i\n  take k, like number\n  hold\n    call is-equal\n      call twice\n        read k\n      call twice\n        read k\n>)
+
+# ---- equality is a family over its two values ----
+# Until 2026-10-02 the stdlib's `equal` took `x` and `y` as FIELDS, a use wrote `like equal a x y`, and the checker
+# dropped the two extra type arguments, so the kernel proved "any x equals any y". `equal` is an indexed family now,
+# and the kernel reads every type as written wherever the surface checker's seeding lost something. A claim's proof
+# the kernel refuses is `unverified-proof` since 2026-10-05 (it was `type-mismatch`, the name of any mistyped task)
+test <any x does not equal any y>
+  want hold, refused(<form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule everything\n  head a\n  take x, like a\n  take y, like a\n  like equal a\n    head\n      read x\n    head\n      read y\n\ntask everything\n  take x\n  take y\n  send back\n    make equal/refl\n      bind c, read x\n>, <unverified-proof>)
+
+test <x == y does not give x == z>
+  want hold, refused(<form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule bogus\n  head a\n  take x, like a\n  take y, like a\n  take z, like a\n  take proof\n    like equal a\n      head\n        read x\n      head\n        read y\n  like equal a\n    head\n      read x\n    head\n      read z\n\ntask bogus\n  take x\n  take y\n  take z\n  take proof\n  send back, read proof\n>, <unverified-proof>)
+
+test <control: symmetry is proven>
+  want hold, proven(<form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule symmetry\n  head a\n  take x, like a\n  take y, like a\n  take proof\n    like equal a\n      head\n        read x\n      head\n        read y\n  like equal a\n    head\n      read y\n    head\n      read x\n\ntask symmetry\n  take x\n  take y\n  take proof\n  fork case, read proof\n    case refl\n      link c\n      send back\n        make equal/refl\n          bind c, read c\n>)
+
+# a type family applied to values: without the equality, p x is not p y
+test <a predicate at x does not hold at y without x == y>
+  want hold, refused(<form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule forged\n  head a\n  take p\n    like task\n      take value, like a\n      like type\n  take x, like a\n  take y, like a\n  take px\n    like p\n      head\n        read x\n  like p\n    head\n      read y\n\ntask forged\n  take p\n  take x\n  take y\n  take px\n  send back, read px\n>, <unverified-proof>)
+
+# ---- lists that change between turns ----
+# a length known before a loop is not known at the top of a later turn when the body pushes
+test <a length is not assumed across turns when the body pushes>
+  want hold, refused(<task grow\n  take n, like natural-number\n  save xs, make list\n  call xs/push\n    code 1\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      hold\n        call is-equal\n          read xs/length\n          code 1\n      call xs/push\n        code 2\n      save i\n        call add\n          read i\n          code 1\n>, <unproven>)
+
+test <control: a lower bound on a length survives pushes>
+  want hold, proven(<task grow\n  take n, like natural-number\n  save xs, make list\n  call xs/push\n    code 1\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      hold\n        call is-minimum\n          read xs/length\n          code 1\n      call xs/push\n        code 2\n      save i\n        call add\n          read i\n          code 1\n>)
+
+test <control: a push grows the length by one>
+  want hold, proven(<task grow\n  save xs, make list\n  call xs/push\n    code 1\n  call xs/push\n    code 2\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>)
+
+# a relation between two names that step together is not kept when one of them steps only on SOME turns
+test <a relation is not kept when a push happens on some turns only>
+  want hold, refused(<task fill\n  take n, like natural-number\n  take c, like boolean\n  save xs, make list\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      fork test\n        hook test\n          read c\n        hook hold\n          call xs/push\n            read i\n      save i\n        call add\n          read i\n          code 1\n  hold\n    call is-equal\n      read xs/length\n      read i\n>, <unproven>)
+
+# an impure call handed the list itself may change its length, and the fact goes
+test <a length is not kept across an impure call that is handed the list>
+  want hold, refused(<task shrink\n  take xs, like list, like number\n  like number\n\ntask use\n  save ys, make list\n  call ys/push\n    code 1\n  call shrink\n    read ys\n  hold\n    call is-equal\n      read ys/length\n      code 1\n>, <unproven>)
+
+# a task with no body may keep anything in a global, so even handed only a number it may change a list the caller
+# holds. Only a STATE-FREE task (facts.ts) handed scalars is known to leave lists alone.
+test <a length is not kept across a body-less task, even one handed only a number>
+  want hold, refused(<task tick\n  take n, like number\n  like number\n\ntask use\n  save ys, make list\n  call ys/push\n    code 1\n  call tick\n    code 5\n  hold\n    call is-equal\n      read ys/length\n      code 1\n>, <unproven>)
+
+test <control: a pure call leaves a local length alone>
+  want hold, proven(<task twice\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask use\n  save ys, make list\n  call ys/push\n    code 1\n  call twice\n    code 5\n  hold\n    call is-equal\n      read ys/length\n      code 1\n>)
+
+# ---- exact arithmetic in the polynomial provers ----
+# a = 2^30 - 1, b = 2^30, d = 2^30 + 1: the minor a·d - b² is -1, and a floating determinant read it as 0, so this
+# indefinite quadratic was proven non-negative. At x = 2^30, y = -(2^30 - 1) it is -1073741823.
+test <an indefinite quadratic is not proven non-negative by a rounded determinant>
+  want hold, refused(<task t\n  take x, like number\n  take y, like number\n  hold\n    call is-minimum\n      call add\n        call add\n          call multiply\n            code 1073741823\n            call multiply\n              read x\n              read x\n          call multiply\n            code 2147483648\n            call multiply\n              read x\n              read y\n        call multiply\n          code 1073741825\n          call multiply\n            read y\n            read y\n      code 0\n>, <unchecked-hold>)
+
+test <control: a sum of squares is non-negative>
+  want hold, proven(<task t\n  take x, like number\n  take y, like number\n  hold\n    call is-minimum\n      call add\n        call multiply\n          read x\n          read x\n        call multiply\n          read y\n          read y\n      code 0\n>)
+
+# ---- what the backends compute ----
+# every backend truncates, so the remainder of a negative number is negative: -1 % 3 is -1
+test <a remainder is not assumed non-negative>
+  want hold, refused(<task t\n  take n, like number\n  hold\n    call is-minimum\n      call modulo\n        read n\n        code 3\n      code 0\n>, <unproven>)
+
+test <control: a remainder is below its divisor>
+  want hold, proven(<task t\n  take n, like number\n  hold\n    call is-below\n      call modulo\n        read n\n        code 3\n      code 3\n>)
+
+# ---- a claim's proof must be a proof ----
+test <a claim filled by a task that never ends is refused>
+  want hold, refused(<rule anything\n  take x, like number\n  take y, like number\n  like number\n\ntask anything\n  take x\n  take y\n  send back\n    call anything\n      read x\n      read y\n>, <looping-proof>)
+
+# the same loop through the task READ AS A VALUE: `save again, read anything` then `call again`. The call graph
+# counted only calls by name, so this looked non-recursive and was accepted, and with `like equal a` as the result it
+# proved any two values equal (2026-10-05, check/totality.ts valueEdges)
+test <a claim filled by a loop through the task saved as a value is refused>
+  want hold, refused(<rule anything\n  take x, like number\n  like number\n\ntask anything\n  take x\n  save again, read anything\n  send back\n    call again\n      read x\n>, <looping-proof>)
+
+# and through a closure that calls the task by name: the closure's call is a call of the task, walked as one
+test <a claim filled by a loop through a closure that captures the task is refused>
+  want hold, refused(<rule anything\n  take x, like number\n  like number\n\ntask anything\n  take x\n  save again\n    task\n      take y\n      send back\n        call anything\n          read y\n  send back\n    call again\n      read x\n>, <looping-proof>)
+
+# NUMERIC descent needs a floor on the path to the call (check/totality.ts strictlyDecreases). Until 2026-10-05 each of
+# these was a descent with no condition, so a proof that recursed at every step, and so never had a base case to type,
+# was "terminating", and with `like equal a` as the result it proved any two values equal
+test <a claim filled by a recursion on n % 2, which is n itself at 0 and 1 is refused>
+  want hold, refused(<rule anything\n  take n, like number\n  like number\n\ntask anything\n  take n\n  send back\n    call anything\n      call modulo\n        read n\n        code 2\n>, <looping-proof>)
+
+test <a claim filled by a recursion on n / 2, which is 0 again at 0 is refused>
+  want hold, refused(<rule anything\n  take n, like number\n  like number\n\ntask anything\n  take n\n  send back\n    call anything\n      call divide\n        read n\n        code 2\n>, <looping-proof>)
+
+test <a claim filled by a recursion on n - 1 with no floor, which runs down forever from 0 is refused>
+  want hold, refused(<rule anything\n  take n, like number\n  like number\n\ntask anything\n  take n\n  send back\n    call anything\n      call subtract\n        read n\n        code 1\n>, <looping-proof>)
+
+test <control: n - 1 past an early return at n \<= 0 descends>
+  want hold, proven(<rule count-down\n  take n, like number\n  like number\n\ntask count-down\n  take n\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back, code 0\n  send back\n    call count-down\n      call subtract\n        read n\n        code 1\n>)
+
+# the termination verdict itself, on a plain task: a value fork's miss arm is reached when its test failed. (As a claim's proof
+# this body is `unverified-proof`, because the kernel does not read a value fork as one term)
+test <control: n - 1 in the miss arm of a value fork on n \<= 0 descends>
+  host out, compile-text(<task count-down\n  take n, like number\n  like number\n  send back\n    fork test\n      hook test\n        call is-maximum\n          read n\n          code 0\n      hook hold\n        code 0\n      hook miss\n        call count-down\n          call subtract\n            read n\n            code 1\n>, choice())
+  want hold, out/ok
+  want hold, not(contains(out/warnings, <non-terminating>))
+
+# the termination verdict itself, on a plain task: a value fork's miss arm is reached when its test failed. (As a
+# claim's proof this body is `unverified-proof`, because the kernel does not read a value fork as one term)
+test <a REBOUND parameter carries no descent: n + 5 then n - 1 grows>
+  want hold, refused(<rule grows\n  take n, like number\n  like number\n\ntask grows\n  take n\n  save n\n    call add\n      read n\n      code 5\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back, code 0\n  send back\n    call grows\n      call subtract\n        read n\n        code 1\n>, <looping-proof>)
+
+test <a REBOUND field carries no descent: link prior, then save prior, read n>
+  want hold, refused(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nrule shrinks\n  take n, like nat\n  like number\n\ntask shrinks\n  take n\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link prior\n      save prior, read n\n      send back\n        call shrinks\n          read prior\n>, <looping-proof>)
+
+test <control: a task handed a DIFFERENT, non-recursive task as a value still ends>
+  want hold, proven(<task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2\n\nrule twice\n  take x, like number\n  like number\n\ntask twice\n  take x\n  save step, read double\n  send back\n    call step\n      call step\n        read x\n>)
+
+test <a claim filled by an impure task is refused>
+  want hold, refused(<task roll\n  like number\n\nrule chosen\n  like number\n\ntask chosen\n  send back\n    call roll\n>, <impure-proof>)
+
+test <a claim stated at a type the kernel cannot read is refused>
+  want hold, refused(<rule vague\n  take x, like nothing-by-this-name\n  like nothing-by-this-name\n\ntask vague\n  take x\n  send back, read x\n>, <unverified-proof>)
+
+test <a claim filled by a body that never returns a value is refused>
+  want hold, refused(<rule some-number\n  take x, like number\n  like number\n\ntask some-number\n  take x\n  save y, code 1\n  save y, code 2\n>, <unverified-proof>)
+
+# `void` is a unit the stdlib constructs (`make void`), so "from a void, anything" is false, and it compiled as
+# proven until fills were held to the kernel. `never`, whose one case needs a `never`, has no values at all.
+test <absurd over an inhabited type is refused>
+  want hold, refused(<form void\n\nrule absurd\n  head a\n  take proof, like void\n  like a\n\ntask absurd\n  take proof\n  fork case, read proof\n>, <unverified-proof>)
+
+test <control: absurd over a type with no values is proven>
+  want hold, proven(<form never\n  case later\n    link next, like never\n\nrule absurd\n  head a\n  take proof, like never\n  like a\n\ntask absurd\n  take proof\n  fork case, read proof\n    case later\n      send back\n        call absurd\n          read next\n>)
+
+test <control: a claim filled by a terminating pure task is proven>
+  want hold, proven(<rule identity\n  take x, like number\n  like number\n\ntask identity\n  take x\n  send back, read x\n>)
+
+# ---- a constant table's length ----
+test <a table handed whole to a task that pushes onto it has no known length>
+  want hold, refused(<host table\n  code 1\n  code 2\n  code 3\n\ntask grow\n  take xs, like list, like number\n  call xs/push\n    code 9\n\ntask sink\n  take n, like number\n  save out, make list\n  call out/push\n    read n\n\ntask use\n  call grow\n    read table\n  hold\n    call is-equal\n      read table/length\n      code 3\n>, <unproven>)
+
+test <control: one number read out of the table, handed on, leaves its length>
+  want hold, proven(<host table\n  code 1\n  code 2\n  code 3\n\ntask grow\n  take xs, like list, like number\n  call xs/push\n    code 9\n\ntask sink\n  take n, like number\n  save out, make list\n  call out/push\n    read n\n\ntask use\n  call sink\n    read table/0\n  hold\n    call is-equal\n      read table/length\n      code 3\n>)
+
+# ---- a remainder's sign and size ----
+test <a remainder keeps the sign its dividend had, not the sign of a later value under the same name>
+  want hold, refused(<task t\n  take x, like number\n  have\n    call is-below\n      read x\n      code 0\n  save r\n    call modulo\n      read x\n      code 3\n  save x, code 5\n  hold\n    call is-minimum\n      read r\n      code 0\n>, <unproven>)
+
+test <control: a remainder of a non-negative dividend is non-negative>
+  want hold, proven(<task t\n  take x, like natural-number\n  save r\n    call modulo\n      read x\n      code 3\n  save x, code 5\n  hold\n    call is-minimum\n      read r\n      code 0\n>)
+
+test <a remainder by a positive divisor is below it>
+  want hold, proven(<task t\n  take x, like number\n  take y, like number\n  have\n    call is-above\n      read y\n      code 0\n  save r\n    call modulo\n      read x\n      read y\n  hold\n    call is-below\n      read r\n      read y\n>)
+
+test <not when the divisor may be negative>
+  want hold, refused(<task t\n  take x, like number\n  take y, like number\n  save r\n    call modulo\n      read x\n      read y\n  hold\n    call is-below\n      read r\n      read y\n>, <unproven>)
+
+# ---- a branch that changes a list ----
+test <a push to another, fresh list in a branch keeps the length>
+  want hold, proven(<task grow\n  take xs, like list, like number\n  call xs/push\n    code 9\n\ntask t\n  take xs, like list, like number\n  take go, like boolean\n  have\n    call is-equal\n      read xs/length\n      code 2\n  save m, make list\n  fork test\n    hook test\n      read go\n    hook hold\n      call m/push\n        code 1\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>)
+
+test <a push to the list itself in a branch does not>
+  want hold, refused(<task grow\n  take xs, like list, like number\n  call xs/push\n    code 9\n\ntask t\n  take xs, like list, like number\n  take go, like boolean\n  have\n    call is-equal\n      read xs/length\n      code 2\n  save m, make list\n  fork test\n    hook test\n      read go\n    hook hold\n      call xs/push\n        code 1\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>, <unproven>)
+
+test <nor a call in a branch to a task that pushes to it>
+  want hold, refused(<task grow\n  take xs, like list, like number\n  call xs/push\n    code 9\n\ntask t\n  take xs, like list, like number\n  take go, like boolean\n  have\n    call is-equal\n      read xs/length\n      code 2\n  save m, make list\n  fork test\n    hook test\n      read go\n    hook hold\n      call grow\n        read xs\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>, <unproven>)
+
+# ---- what the branches of a fork agree on ----
+test <a bound every path through a fork shows holds after it>
+  want hold, proven(<task t\n  take total, like number\n  have\n    call is-above\n      read total\n      code 0\n  have\n    call is-below\n      read total\n      code 510\n  save d, read total\n  fork test\n    hook test\n      call is-above\n        read total\n        code 255\n    hook hold\n      save d\n        call subtract\n          code 510\n          read total\n  hold\n    call is-minimum\n      read d\n      code 1\n>)
+
+test <not when one path breaks it>
+  want hold, refused(<task t\n  take total, like number\n  have\n    call is-above\n      read total\n      code 0\n  have\n    call is-below\n      read total\n      code 510\n  save d, read total\n  fork test\n    hook test\n      call is-above\n        read total\n        code 255\n    hook hold\n      save d\n        call subtract\n          code 255\n          read total\n  hold\n    call is-minimum\n      read d\n      code 1\n>, <unproven>)
+
+# ---- the far side of a min or max ----
+# the stdlib's shape: `min` is a task over the host Math global's `min`, recognized by that shape
+test <a min of two non-negative numbers is non-negative>
+  want hold, proven(<dock load\n  load \<global:Math\>, name math\n\ntask smaller\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call math/min\n      read a\n      read b\n\ntask t\n  take a, like number\n  take b, like number\n  have\n    call is-minimum\n      read a\n      code 0\n  have\n    call is-minimum\n      read b\n      code 0\n  save low\n    call smaller\n      read a\n      read b\n  hold\n    call is-minimum\n      read low\n      code 0\n>)
+
+test <not when only one of them is>
+  want hold, refused(<dock load\n  load \<global:Math\>, name math\n\ntask smaller\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call math/min\n      read a\n      read b\n\ntask t\n  take a, like number\n  take b, like number\n  have\n    call is-minimum\n      read a\n      code 0\n  save low\n    call smaller\n      read a\n      read b\n  hold\n    call is-minimum\n      read low\n      code 0\n>, <unproven>)
+
+# ---- a record's number field ----
+#
+# These forms are `mark shared`: the facts below are about one object reached through two names, and a write in a
+# callee reaching the caller. A plain form is a value since D1, where `zero` writing its own copy is refused as a
+# lost write (check/lost-writes.ts) and a callee's promise is about its copy alone
+test <a field is a fact while nothing writes it>
+  want hold, proven(<form counter\n  mark shared\n  link count, like number\n\ntask zero\n  take c, like counter\n  save c/count, code 0\n\ntask use\n  take a, like counter\n  take b, like counter\n  have\n    call is-minimum\n      read a/count\n      code 1\n  hold\n    call is-minimum\n      read a/count\n      code 1\n>)
+
+test <a write to a different field, through any name, keeps both facts>
+  want hold, proven(<form pair\n  mark shared\n  link count, like number\n  link size, like number\n  link items, like list, like number\n\ntask use\n  take a, like pair\n  take b, like pair\n  have\n    call is-minimum\n      read a/count\n      code 1\n  have\n    call is-equal\n      read a/items/length\n      code 2\n  save b/size, code 0\n  hold\n    call is-minimum\n      read a/count\n      code 1\n  hold\n    call is-equal\n      read a/items/length\n      code 2\n>)
+
+test <a write that replaces the list a length is read through forgets that length>
+  want hold, refused(<form pair\n  mark shared\n  link count, like number\n  link size, like number\n  link items, like list, like number\n\ntask use\n  take a, like pair\n  take b, like pair\n  have\n    call is-minimum\n      read a/count\n      code 1\n  have\n    call is-equal\n      read a/items/length\n      code 2\n  save b/items, make list\n  hold\n    call is-minimum\n      read a/count\n      code 1\n  hold\n    call is-equal\n      read a/items/length\n      code 2\n>, <unproven>)
+
+test <a call statement is owed its callee`s promise about its argument>
+  want hold, proven(<form pair\n  mark shared\n  link count, like number\n\ntask fill\n  take p, like pair\n  must\n    call is-minimum\n      read p/count\n      code 1\n  save p/count, code 5\n\ntask use\n  take a, like pair\n  call fill\n    read a\n  hold\n    call is-minimum\n      read a/count\n      code 1\n>)
+
+test <a write through another name for the same record forgets it>
+  want hold, refused(<form counter\n  mark shared\n  link count, like number\n\ntask zero\n  take c, like counter\n  save c/count, code 0\n\ntask use\n  take a, like counter\n  take b, like counter\n  have\n    call is-minimum\n      read a/count\n      code 1\n  save b/count, code 0\n  hold\n    call is-minimum\n      read a/count\n      code 1\n>, <unproven>)
+
+test <a call to a task that writes the field forgets it>
+  want hold, refused(<form counter\n  mark shared\n  link count, like number\n\ntask zero\n  take c, like counter\n  save c/count, code 0\n\ntask use\n  take a, like counter\n  take b, like counter\n  have\n    call is-minimum\n      read a/count\n      code 1\n  call zero\n    read a\n  hold\n    call is-minimum\n      read a/count\n      code 1\n>, <unproven>)
+
+# ---- what a write into a field states ----
+test <a write into a number field states its new value>
+  want hold, proven(<form pair\n  link count, like number\n\nform box\n  link items\n    like list\n      like number\n\ntask use\n  take a, like pair\n  take b, like box\n  take k, like number\n  save a/count, read k\n  hold\n    call is-equal\n      read a/count\n      read k\n>)
+
+test <a field written from itself states no equation between its old and new value>
+  want hold, refused(<form pair\n  link count, like number\n\nform box\n  link items\n    like list\n      like number\n\ntask use\n  take a, like pair\n  take b, like box\n  take k, like number\n  save a/count\n    call add\n      read a/count\n      code 1\n  hold\n    call is-equal\n      code 0\n      code 1\n>, <unproven>)
+
+test <a list stored in a field has that list`s length>
+  want hold, proven(<form pair\n  link count, like number\n\nform box\n  link items\n    like list\n      like number\n\ntask use\n  take a, like pair\n  take b, like box\n  take k, like number\n  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n  hold\n    call is-equal\n      read b/items/length\n      code 1\n>)
+
+test <not after a push to the list it was given>
+  want hold, refused(<form pair\n  link count, like number\n\nform box\n  link items\n    like list\n      like number\n\ntask use\n  take a, like pair\n  take b, like box\n  take k, like number\n  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n  call next/push\n    code 2\n  hold\n    call is-equal\n      read b/items/length\n      code 1\n>, <unproven>)
+
+test <nor is the given list`s length kept after a push through the field>
+  want hold, refused(<form pair\n  link count, like number\n\nform box\n  link items\n    like list\n      like number\n\ntask use\n  take a, like pair\n  take b, like box\n  take k, like number\n  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n  call b/items/push\n    code 2\n  hold\n    call is-equal\n      read next/length\n      code 1\n>, <unproven>)
+
+# ---- a join no path reaches ----
+test <a walk whose every branch ends its turn is held to each branch, not to the state the turn began in>
+  want hold, proven(<task passes\n  take total, like number\n  have\n    call is-minimum\n      read total\n      code 0\n  like number\n  save width, code 1\n  walk test\n    must\n      call is-minimum\n        read width\n        code 1\n    must\n      call is-maximum\n        read width\n        call add\n          read total\n          code 1\n    down\n      call subtract\n        call add\n          read total\n          code 1\n        read width\n    hook test\n      call is-below\n        read width\n        read total\n    hook step\n      fork test\n        hook test\n          call is-above\n            call multiply\n              read width\n              code 2\n            read total\n        hook hold\n          save width, read total\n          turn next\n        hook miss\n          save width\n            call multiply\n              read width\n              code 2\n          turn next\n  send back, read width\n>)
+
+test <but a join one path still reaches is not taken as unreachable>
+  want hold, refused(<task stuck\n  take total, like number\n  like number\n  save width, code 1\n  walk test\n    down\n      call subtract\n        read total\n        read width\n    hook test\n      call is-below\n        read width\n        read total\n    hook step\n      fork test\n        hook test\n          call is-above\n            read width\n            code 5\n        hook hold\n          save width\n            call add\n              read width\n              code 1\n          turn next\n  send back, read width\n>, <unproven>)
+
+test <what the facts before a fork imply about names no branch writes survives it, the written names projected out>
+  want hold, proven(<task kept\n  take n, like number\n  take c, like boolean\n  like number\n  save i, code 0\n  fork test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save at, read i\n      save i\n        call add\n          read i\n          code 1\n      fork test\n        hook test\n          read c\n        hook hold\n          save i\n            call add\n              read i\n              code 2\n        hook miss\n          save i\n            call add\n              read i\n              code 5\n      hold\n        call is-below\n          read at\n          read n\n  send back, read i\n>)
+
+# ---- a module's constant table beside a fresh list ----
+test <a push to a fresh list keeps a constant table`s length>
+  want hold, proven(<host table\n  code 1\n  code 2\n\ntask use\n  save m, make list\n  call m/push\n    code 1\n  hold\n    call is-equal\n      read table/length\n      code 2\n>)
+
+test <not a module binding the task points at that fresh list>
+  want hold, refused(<save cache, make list\n\ntask use\n  save m, make list\n  save cache, read m\n  call m/push\n    code 1\n  hold\n    call is-equal\n      read cache/length\n      code 0\n>, <unproven>)
+
+# ---- a walk that pushes only to one list keeps the others whole ----
+test <a walk pushing to another fresh list keeps a list`s exact length>
+  want hold, proven(<task use\n  save m, make list\n  call m/push\n    code 1\n  save w, make list\n  save k, code 0\n  walk test\n    hook test\n      call is-below\n        read k\n        code 4\n    hook hold\n      call w/push\n        read k\n      save k, call increment(read k)\n  hold\n    call is-equal\n      read m/length\n      code 1\n>)
+
+test <not when the walk pushes to that list>
+  want hold, refused(<task use\n  save m, make list\n  call m/push\n    code 1\n  save w, make list\n  save k, code 0\n  walk test\n    hook test\n      call is-below\n        read k\n        code 4\n    hook hold\n      call m/push\n        read k\n      save k, call increment(read k)\n  hold\n    call is-equal\n      read m/length\n      code 1\n>, <unproven>)
+
+# ---- a text's length ----
+test <a text`s length survives an impure call: a text does not change>
+  want hold, proven(<dock load\n  load \<global:Math\>, name math\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  take s, like text\n  have\n    call is-equal\n      read s/length\n      code 3\n  save r\n    call roll\n  hold\n    call is-equal\n      read s/length\n      code 3\n>)
+
+test <but not the name being given another text>
+  want hold, refused(<dock load\n  load \<global:Math\>, name math\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  take s, like text\n  have\n    call is-equal\n      read s/length\n      code 3\n  save s, text \<four\>\n  hold\n    call is-equal\n      read s/length\n      code 3\n>, <unproven>)
+
+# ---- an impure call inside a mask ----
+test <a masked roll is inside its mask, whatever the roll was>
+  want hold, proven(<dock load\n  load \<global:Math\>, name math\n  load \<global:bit\>, name bit\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call bit/and\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255\n  send back, code 0\n>)
+
+test <two unmasked rolls are still not equal>
+  want hold, refused(<dock load\n  load \<global:Math\>, name math\n  load \<global:bit\>, name bit\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call bit/and\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-equal\n      call roll\n      call roll\n  send back, code 0\n>, <unchecked-hold>)
+
+# ---- a pop ----
+test <a pop off a list of three leaves two>
+  want hold, proven(<task t\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 3\n  call xs/pop\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>)
+
+test <a pop off a list that may be empty says nothing>
+  want hold, refused(<task t\n  take xs, like list, like number\n  have\n    call is-maximum\n      read xs/length\n      code 3\n  call xs/pop\n  hold\n    call is-equal\n      read xs/length\n      code 2\n>, <unproven>)
+
+# ---- an integer quotient ----
+test <a parent index (i - 1) / 2 is below i when i \> 0>
+  want hold, proven(<task t\n  take i, like number\n  have\n    call is-above\n      read i\n      code 0\n  save p\n    call divide\n      call subtract\n        read i\n        code 1\n      code 2\n  hold\n    call is-below\n      read p\n      read i\n>)
+
+test <and not below i - 1 for every i>
+  want hold, refused(<task t\n  take i, like number\n  have\n    call is-above\n      read i\n      code 0\n  save p\n    call divide\n      call subtract\n        read i\n        code 1\n      code 2\n  hold\n    call is-below\n      read p\n      call subtract\n        read i\n        code 1\n>, <unproven>)
+
+# ---- a disequality ----
+test <a length that is not zero is at least one>
+  want hold, proven(<task use\n  take xs, like list, like number\n  fork test\n    hook test\n      call is-equal\n        read xs/length\n        code 0\n    hook hold\n      send back, code 0\n    hook miss\n      hold\n        call is-above\n          read xs/length\n          code 0\n  send back, code 0\n>)
+
+test <a length that is not two is not thereby above two>
+  want hold, refused(<task use\n  take xs, like list, like number\n  fork test\n    hook test\n      call is-equal\n        read xs/length\n        code 2\n    hook hold\n      send back, code 0\n    hook miss\n      hold\n        call is-above\n          read xs/length\n          code 2\n  send back, code 0\n>, <unproven>)
+
+# ---- a walk that only sets ----
+test <a walk of sets keeps a length it was given>
+  want hold, proven(<task fill\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 8\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 8\n    hook hold\n      call xs/set\n        read i\n        code 0\n      save i, call increment(read i)\n  hold\n    call is-equal\n      read xs/length\n      code 8\n>)
+
+# a local named like an impure task is the local: its goals are decided. Calling the task in a goal still is not
+test <a local that shares a name with an impure task is decided as the local>
+  want hold, proven(<task tally\n  take xs, like list, like number\n  like number\n  call xs/push\n    code 0\n  send back, read xs/length\n\ntask use\n  take xs, like list, like number\n  save tally, code 3\n  hold\n    call is-above\n      read tally\n      code 0\n>)
+
+test <control: the impure task called in a goal is not decided>
+  want hold, refused(<task tally\n  take xs, like list, like number\n  like number\n  call xs/push\n    code 0\n  send back, read xs/length\n\ntask use\n  take xs, like list, like number\n  hold\n    call is-above\n      call tally\n        read xs\n      code 0\n>, <unchecked-hold>)
+
+# a counted walk reads its head once: an impure head (it grows the list each time it is called) still bounds it
+test <a walk size with an impure head ends: the head is read once>
+  want hold, ends-shown(<task grow\n  take xs, like list, like number\n  like number\n  call xs/push\n    code 0\n  send back, read xs/length\n\ntask count\n  take xs, like list, like number\n  save n, code 0\n  walk size\n    bind base, code 0\n    bind head\n      call grow\n        read xs\n    hook next\n      take site, name at\n      save n, call increment(read n)\n  send back, read n\n>)
+
+test <and a walk test that calls it every turn is not shown to end>
+  want hold, ends-unshown(<task grow\n  take xs, like list, like number\n  like number\n  call xs/push\n    code 0\n  send back, read xs/length\n\ntask count\n  take xs, like list, like number\n  save at, code 0\n  walk test\n    hook test\n      call is-below\n        read at\n        call grow\n          read xs\n    hook hold\n      save at, call increment(read at)\n  send back, read at\n>)
+
+test <a callback between the check and the return forgets the length>
+  want hold, refused(<task first\n  take xs, like list, like number\n  take test\n    like task\n      take item, like number\n      like boolean\n  like number\n  must\n    call is-below\n      read back\n      read xs/length\n  save i, code 0\n  fork test\n    hook test\n      call is-below\n        read i\n        read xs/length\n    hook hold\n      save hit\n        call test\n          read xs/0\n      send back, read i\n  send back\n    call subtract\n      code 0\n      code 1\n>, <unproven>)
+
+test <control: with nothing in between the check holds>
+  want hold, proven(<task first\n  take xs, like list, like number\n  take test\n    like task\n      take item, like number\n      like boolean\n  like number\n  must\n    call is-below\n      read back\n      read xs/length\n  save i, code 0\n  fork test\n    hook test\n      call is-below\n        read i\n        read xs/length\n    hook hold\n      save hit, code 0\n      send back, read i\n  send back\n    call subtract\n      code 0\n      code 1\n>)
+
+test <and a walk that pushes does not>
+  want hold, refused(<task fill\n  take xs, like list, like number\n  have\n    call is-equal\n      read xs/length\n      code 8\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 8\n    hook hold\n      call xs/push\n        code 0\n      save i, call increment(read i)\n  hold\n    call is-equal\n      read xs/length\n      code 8\n>, <unproven>)

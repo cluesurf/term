@@ -1,0 +1,119 @@
+note <A definition's hold key text, kept>
+
+# Ported from hold-key-memo.ts by hand (item 0557). Decision 102, check/hold-key-memo, the subject (decision 106). The memo's key must tell
+# apart every two statements whose node-json differs, and may leave out only `span`. The fixtures are host values Term has no literal for
+# (NaN, -0, a bigint, an absent list value, a Map, a Set, a cycle, a function, a Date), so they sit in one table. The original's whole check
+# with the memo full and empty compares raw warnings without their spans: this compares the same through compile-outcome, with places,
+# which is stricter. The run is one sequence with the memo as its state, so it is done once, and each test reads what it saw.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+dock load
+  load <@term/make/code/check/holds>, name holds-module
+  load <@term/make/code/check/hold-key-memo>, name key-memo
+
+bind fixture
+  take name, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const at = line =\> (\{ start: \{ line, column: 1, offset: 0 \}, end: \{ line, column: 9, offset: 8 \} \}); const literal = (value, line = 1) =\> (\{ form: "return", value: \{ form: "some", value: \{ form: "number", value, span: at(line) \} \}, span: at(line) \}); const cycle = \{ form: "return" \}; cycle.self = cycle; return (\{ "three-1": literal(3, 1), "three-40": literal(3, 40), three: literal(3), four: literal(4), nan: literal(Number.NaN), null: literal(null), infinity: literal(Number.POSITIVE_INFINITY), "minus-zero": literal(-0), zero: literal(0), bigint: literal(5n), "five-text": literal("5"), "list-absent": \{ list: [undefined] \}, "list-null": \{ list: [null] \}, "map-1": \{ m: new Map([["a", 1]]) \}, "map-2": \{ m: new Map([["a", 2]]) \}, "set-a": \{ s: new Set(["a"]) \}, "set-b": \{ s: new Set(["b"]) \}, "span-1": \{ a: \{ b: 1, span: at(1) \} \}, "span-9": \{ a: \{ b: 1, span: at(9) \} \}, cycle, function: \{ form: "call", run: () =\> 1 \}, date: \{ when: new Date(0) \} \})[$name] \})()>
+
+bind key-with
+  take module, like dynamic
+  take value, like dynamic
+  like text
+  case node
+    text <$module.holdKeyMemo.key($value)>
+
+task key
+  take name, like text
+  like text
+
+  back key-with(key-memo, fixture(name))
+
+form memo-run
+  link size-met, like number
+  link size-cleared, like number
+  link empty, like compile-outcome
+  link full, like compile-outcome
+  link again, like compile-outcome
+
+host program-text, <task lift\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      code 1\n\ntask total\n  take xs, like list, like number\n  like number\n  save sum, code 0\n  walk size\n    bind base, code 0\n    bind head\n      read xs/length\n    hook next\n      take site, name i\n      save sum\n        call add\n          read sum\n          call lift\n            read xs/\{i\}\n  send back, read sum\n\ntask third\n  take xs, like list, like number\n  take n, like number\n  like number\n  save one, read xs/\{n\}\n  send back, read one\n>
+
+task compile-memo
+  like compile-outcome
+
+  back compile-text(program-text, make(compile-choice, bind(file, <memo.tree>)))
+
+# the whole check, the memo full and then empty: every diagnostic and warning the same
+task run-memo
+  like memo-run
+
+  call holds-module/clear-hold-memo
+  host empty, compile-memo()
+  host size-met, key-memo/hold-key-memo-size()
+  host full, compile-memo()
+  call holds-module/clear-hold-memo
+  host size-cleared, key-memo/hold-key-memo-size()
+  host again, compile-memo()
+  back make(memo-run, bind(size-met, size-met), bind(size-cleared, size-cleared), bind(empty, empty), bind(full, full), bind(again, again))
+
+host run, run-memo()
+
+test <a statement moved in its file keeps its key>
+  want hold, is-equal(key(<three-1>), key(<three-40>))
+
+test <two numbers, two keys>
+  want hold, not(is-equal(key(<three>), key(<four>)))
+
+test <NaN is not null>
+  want hold, not(is-equal(key(<nan>), key(<null>)))
+
+test <Infinity is not null>
+  want hold, not(is-equal(key(<infinity>), key(<null>)))
+
+test <-0 is not 0>
+  want hold, not(is-equal(key(<minus-zero>), key(<zero>)))
+
+test <a bigint is not its text>
+  want hold, not(is-equal(key(<bigint>), key(<five-text>)))
+
+test <an absent value in a list is not null>
+  want hold, not(is-equal(key(<list-absent>), key(<list-null>)))
+
+test <a Map holds its entries>
+  want hold, not(is-equal(key(<map-1>), key(<map-2>)))
+
+test <a Set holds its values>
+  want hold, not(is-equal(key(<set-a>), key(<set-b>)))
+
+test <a span is left out at every depth>
+  want hold, is-equal(key(<span-1>), key(<span-9>))
+
+test <a cycle has no key>
+  want hold, is-equal(key(<cycle>), <>)
+
+test <a function has no key>
+  want hold, is-equal(key(<function>), <>)
+
+test <a class instance has no key>
+  want hold, is-equal(key(<date>), <>)
+
+test <the memo keeps the definitions the check met>
+  want hold, is-above(run/size-met, 0)
+
+test <emptied with the hold memo>
+  want hold, is-equal(run/size-cleared, 0)
+
+test <the check answers the same with the memo full>
+  want hold, is-equal(run/full/ok, run/empty/ok)
+  want hold, is-equal(run/full/notes, run/empty/notes)
+  want hold, is-equal(run/full/warning-notes, run/empty/warning-notes)
+
+test <and empty again>
+  want hold, is-equal(run/again/ok, run/empty/ok)
+  want hold, is-equal(run/again/notes, run/empty/notes)
+  want hold, is-equal(run/again/warning-notes, run/empty/warning-notes)

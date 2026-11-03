@@ -1,0 +1,23 @@
+note <Linear / commutative-ring identities under `calm hold`>
+
+# Ported from linear-arithmetic.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Linear / commutative-ring identities under `calm hold`: the ring normalizer (a sound decision procedure for the
+# +/-/* integer fragment, omega/lia for the equality case) is reached not only by a bare hold but also as a FALLBACK
+# when an explicit `calm` tactic does not close by definitional equality. So a user can write `calm hold` for a law
+# like `add a b == add b a` without knowing to drop the tactic. Soundness: a false linear claim is still rejected.
+# Run: npx tsx test/check/linear-arithmetic.ts
+# 1. commutativity of addition, proven with an explicit `calm hold` (ring fallback).
+test <add commutes under calm hold>
+  want hold, compile-text(<rule add-commutes\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-equal\n      call add\n        read a\n        read b\n      call add\n        read b\n        read a\n  calm hold\n>)/ok
+
+# 2. a linear rearrangement: (x + y) + x == (x + x) + y.
+test <linear rearrangement under calm hold>
+  want hold, compile-text(<rule linear-cancel\n  seat x, like integer\n  seat y, like integer\n  show hold\n    call is-equal\n      call add\n        call add\n          read x\n          read y\n        read x\n      call add\n        call add\n          read x\n          read x\n        read y\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL: a + a == a is false. Must be rejected even under calm hold.
+test <false linear claim is rejected>
+  want hold, not(compile-text(<rule false-linear\n  seat a, like integer\n  show hold\n    call is-equal\n      call add\n        read a\n        read a\n      read a\n  calm hold\n>)/ok)

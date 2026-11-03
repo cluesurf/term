@@ -1,0 +1,115 @@
+note <IR to Perceus MIR lowering tests>
+
+# Ported from mir-lower.ts (item 0590). A real compiled function body lowers to ANF, heap-owned bindings are classified, and the
+# result drives correct dup/drop through perceusControl. ir/mir-lower and ir/perceus are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/ir/mir-lower>, name mir-module
+  load <@term/make/code/ir/perceus>, name perceus
+
+bind function-of
+  take program, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$program.find(s =\> s.form === "function" && s.name === $name)>
+
+bind param-names
+  take params, like dynamic
+  like list, like text
+  case node
+    text <$params.map(p =\> p.name)>
+
+bind copied
+  take items, like dynamic
+  like dynamic
+  case node
+    text <[...$items]>
+
+bind size-of
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind has-item
+  take items, like dynamic
+  take item, like text
+  like boolean
+  case node
+    text <$items.includes($item)>
+
+bind any-holds
+  take items, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <$items.some(l =\> l.includes($word))>
+
+bind any-starts
+  take items, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <$items.some(l =\> l.startsWith($word))>
+
+task shown
+  take insts, like dynamic
+  like list, like text
+
+  host lines, make list
+  walk insts
+    take inst
+    lines/push(perceus/show-inst(inst))
+  back lines
+
+# unoptimized: the lowering is what is tested, and the simplifier would inline the small tasks whose calls it lowers
+task function-in
+  take text, like text
+  take name, like text
+  like dynamic
+
+  host out, compile-text(text, make(compile-choice, bind(file, <t.tree>), bind(optimize, false)))
+  fork test, not(out/ok)
+    hold
+      halt <compile failed>
+  back function-of(out/program, name)
+
+task lowered
+  take fn, like dynamic
+  like dynamic
+
+  back mir-module/lower-to-mir(fn/body, fn/params)
+
+task counted
+  take fn, like dynamic
+  like list, like text
+
+  host mir, lowered(fn)
+  back shown(perceus/perceus-control-heap(param-names(fn/params), mir/insts, copied(mir/heap)))
+
+# a function that builds a record (heap) and returns it: the record binding is classified heap, the numeric field literal stays
+# copyable, and the returned value is not dropped (its ownership passes out)
+host box-text, <form box\n  link n, like number\n\ntask build\n  like box\n  send back\n    make box\n      bind n, code 5\n>
+
+test <record build: the make is lowered>
+  want hold, any-holds(shown(lowered(function-in(box-text, <build>))/insts), <make box>)
+
+test <record build: exactly the record binding is heap (the literal is copyable)>
+  want hold, is-equal(size-of(lowered(function-in(box-text, <build>))/heap), 1)
+
+test <record build: returned value is not dropped>
+  want hold, not(any-starts(counted(function-in(box-text, <build>)), <drop>))
+
+# a heap parameter used twice gets a dup at the earlier use, the analysis fires through the lowered call
+host twice-text, <form box\n  link n, like number\n\ntask pick\n  take a, like box\n  take b, like box\n  like box\n  send back, read a\n\ntask twice\n  take b, like box\n  like box\n  send back\n    call pick\n      read b\n      read b\n>
+
+test <heap param `b` is in the RC set>
+  want hold, has-item(lowered(function-in(twice-text, <twice>))/heap, <b>)
+
+test <heap param used twice gets a dup>
+  want hold, has-item(counted(function-in(twice-text, <twice>)), <dup b>)

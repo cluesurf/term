@@ -1,0 +1,195 @@
+note <Benchmark harness tests that need the host>
+
+# Ported from run.ts by task/term/suite-port.ts, finished by hand (item 0596). The pure pieces (stats, durations, comparison
+# and its gate, the spread rule, the table) are Term tests since 2026-10-04, deck/make/test/time.tree. What stays here: the
+# saved baseline's on-disk format (time/output.ts), discovery of `time-*` tasks (the compiler), and one end-to-end smoke run
+# that compiles a tiny `time-*` task and executes it through the real runner (compile -> spawn node -> collect samples ->
+# stat). It uses a small iteration count on purpose: it verifies the pipeline runs, it does not measure anything, so timing
+# noise is irrelevant. The driver tests each make their own run, as a test holds no state another test may read.
+
+dock load
+  load <@term/make/code/time/stats>, name time-stats
+  load <@term/make/code/time/runner>, name time-runner
+  load <@term/make/code/time/benchmark>, name time-benchmark
+  load <@term/make/code/time/output>, name time-output
+  load <node:os>, name time-os
+
+host found-source, <task time-add\n  send back\n    call add\n      code 1\n      code 2\n\ntask time-mul\n  send back\n    call multiply\n      code 2\n      code 3\n\ntask helper\n  take n, like number\n  send back, read n\n>
+
+host noop-source, <task time-noop\n  send back, code 1\n>
+
+# a list of plain numbers, the samples of a result
+bind samples-of
+  take seed, like number
+  like dynamic
+  case node
+    text <[10, 20, 30]>
+
+# the first saved result of a suite as its on-disk JSON text holds it
+bind first-written
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text).results[0]>
+
+bind keys-of
+  take value, like dynamic
+  like text
+  case node
+    text <Object.keys($value).sort().join(",")>
+
+bind one-result
+  take result, like dynamic
+  like dynamic
+  case node
+    text <[$result]>
+
+bind saved-mean
+  take name, like text
+  take mean, like number
+  like dynamic
+  case node
+    text <(\{ name: $name, mean_ns: $mean \})>
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ text: $text, file: "t.tree" \})>
+
+bind filtered-source-of
+  take text, like text
+  take filter, like text
+  like dynamic
+  case node
+    text <(\{ text: $text, file: "t.tree", filter: $filter \})>
+
+bind names-of
+  take found, like dynamic
+  like list, like text
+  case node
+    text <$found.benchmarks.map(b =\> b.name).sort()>
+
+bind driver-input
+  take text, like text
+  take root, like text
+  take baseline, like dynamic
+  like dynamic
+  case node
+    text <(\{ text: $text, file: "bench.tree", root: $root, warmup: 2, iterations: 5, baseline: \{ results: [$baseline] \} \})>
+
+bind suite-size
+  take run, like dynamic
+  like number
+  case node
+    text <$run.suite.results.length>
+
+bind first-name
+  take run, like dynamic
+  like text
+  case node
+    text <($run.suite.results[0]?.name ?? "")>
+
+bind first-iterations
+  take run, like dynamic
+  like number
+  case node
+    text <($run.suite.results[0]?.iterations ?? 0)>
+
+bind regressed
+  take run, like dynamic
+  like boolean
+  case node
+    text <$run.regressed === false ? false : true>
+
+bind has-comparison
+  take run, like dynamic
+  like boolean
+  case node
+    text <$run.comparison !== undefined>
+
+bind spread-form
+  take side, like dynamic
+  like text
+  case node
+    text <$side.stdDevNs.form>
+
+bind spread-equals
+  take side, like dynamic
+  take result, like dynamic
+  like boolean
+  case node
+    text <$side.stdDevNs.value === $result.stdDevNs>
+
+bind side-mean
+  take side, like dynamic
+  like number
+  case node
+    text <$side.meanNs>
+
+bind side-samples
+  take side, like dynamic
+  like number
+  case node
+    text <$side.samples>
+
+task one-stat
+  like dynamic
+
+  back time-stats/compute-stats(<disk>, samples-of(0))
+
+task written-of
+  take result, like dynamic
+  like dynamic
+
+  back first-written(time-output/formatJson(time-output/build-suite(one-result(result))))
+
+# one end-to-end run of the driver, against a baseline far slower than any noop
+task driver-run
+  like dynamic
+
+  host baseline, time-output/from-saved(saved-mean(<time-noop>, 1000000000))
+  back wait time-benchmark/benchmark(driver-input(noop-source, time-os/tmpdir(), baseline))
+
+test <the saved baseline is snake_case>
+  want hold, is-equal(keys-of(written-of(one-stat())), <cv,iterations,max_ns,mean_ns,median_ns,min_ns,name,ops_per_sec,std_dev_ns,timings_ns>)
+
+test <a saved result reads back>
+  host stat, one-stat()
+  host back-side, time-output/from-saved(written-of(stat))
+  want hold, is-equal(side-mean(back-side), 20)
+  want hold, is-equal(spread-form(back-side), <some>)
+  want hold, spread-equals(back-side, stat)
+  want hold, is-equal(side-samples(back-side), 3)
+
+test <a pre-2026-10-04 baseline, the mean alone, reads back with no spread>
+  host old, time-output/from-saved(saved-mean(<old>, 5))
+  want hold, is-equal(side-mean(old), 5)
+  want hold, is-equal(spread-form(old), <none>)
+  want hold, is-equal(side-samples(old), 0)
+
+test <discovers both time-* tasks, skips the helper>
+  host names, names-of(time-runner/compile-benchmarks(source-of(found-source)))
+  want hold, is-equal(names/length, 2)
+  want hold, is-equal(names/0, <time-add>)
+  want hold, is-equal(names/1, <time-mul>)
+
+test <filter narrows to one benchmark>
+  host names, names-of(time-runner/compile-benchmarks(filtered-source-of(found-source, <add>)))
+  want hold, is-equal(names/length, 1)
+  want hold, is-equal(names/0, <time-add>)
+
+test <driver produced one result>
+  want hold, is-equal(suite-size(driver-run()), 1)
+
+test <driver result is the named benchmark>
+  want hold, is-equal(first-name(driver-run()), <time-noop>)
+
+test <driver recorded the iteration count>
+  want hold, is-equal(first-iterations(driver-run()), 5)
+
+test <driver did not flag a regression vs a slow baseline>
+  want hold, not(regressed(driver-run()))
+
+test <driver attached a comparison>
+  want hold, has-comparison(driver-run())

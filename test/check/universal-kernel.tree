@@ -1,0 +1,63 @@
+note <UNIVERSAL HYPOTHESES IN THE KERNEL, over any type (math-foundations-0004)>
+
+# Ported from universal-kernel.ts by tmp/self-host/suite-unroll.mjs (item 0566), each fixture written out whole. `have h / mark u, like a /
+# L == R` is instantiated at the goal's own terms of type `a` (check/elaborate.ts universalInstances), the instances decided by the
+# truth table's pruned search (`truthTable`) and by congruence closure (check/judge.ts `congruent`). Each acceptance sits beside a
+# refusal of the same shape with one thing changed, and the soundness cases come first: an instance at a term of another type, two
+# unrelated hypotheses, and a universal used past the terms the goal names.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+  find refused-saying
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <u.tree>), bind(lean, true)))
+
+# UNIVERSAL HYPOTHESES IN THE KERNEL, over any type (math-foundations-0004): `have h / mark u, like a / L == R` is
+# instantiated at the goal's own terms of type `a` (check/elaborate.ts universalInstances), the instances decided by the
+# truth table's pruned search (`truthTable`) and by congruence closure (check/judge.ts `congruent`). Each acceptance
+# sits beside a refusal of the same shape with one thing changed, and the soundness cases come first: an instance at a
+# term of another type, two unrelated hypotheses, and a universal used past the terms the goal names.
+# Run: npx tsx test/check/universal-kernel.ts
+# `want` is 'ok', or a diagnostic name, optionally with a phrase its message must hold
+test <an instance is never taken at a term of another type>
+  want hold, refused-as(built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule other-type\n  head a\n  head b\n  seat r, like relation a\n  seat p, like relation b\n  seat x, like a\n  seat y, like b\n  have p-is-reflexive\n    seat u, like b\n    is-equal p(u, u), make yes\n  show hold, is-equal r(x, x), make yes\n>), <invalid-proof>)
+
+test <two unrelated hypotheses do not join their ends>
+  want hold, refused-as(built(<\nrule unrelated\n  head a\n  seat f\n    like task\n      take x, like a\n      like a\n  seat x, like a\n  seat y, like a\n  seat z, like a\n  seat w, like a\n  have first, is-equal f(x), y\n  have second, is-equal f(z), w\n  show hold, is-equal y, w\n>), <unproven>)
+
+test <a universal is used only at the terms the goal names, and says so>
+  want hold, refused-saying(built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule symmetry-alone\n  head a\n  seat r, like relation a\n  seat x, like a\n  seat y, like a\n  seat z, like a\n  have symmetric\n    seat u, like a\n    seat v, like a\n    is-equal r(u, v), r(v, u)\n  have first, is-equal r(x, y), make yes\n  have second, is-equal r(y, z), make yes\n  show hold, is-equal r(x, z), make yes\n>), <invalid-proof>, <does not follow from its hypotheses at the terms it names: they all hold where r(x, z) is no, r(x, y) is yes, r(y, z) is yes,>)
+
+test <symmetry at two named elements>
+  want hold, built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule symmetric-twice\n  head a\n  seat r, like relation a\n  seat x, like a\n  seat y, like a\n  have symmetric\n    seat u, like a\n    seat v, like a\n    is-equal r(u, v), r(v, u)\n  have related, is-equal r(x, y), make yes\n  show hold, is-equal r(y, x), make yes\n>)/ok
+
+test <transitivity chains two steps>
+  want hold, built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule transitive-chain\n  head a\n  seat r, like relation a\n  seat x, like a\n  seat y, like a\n  seat z, like a\n  have transitive\n    seat u, like a\n    seat v, like a\n    seat w, like a\n    is-equal implies(both(r(u, v), r(v, w)), r(u, w)), make yes\n  have first, is-equal r(x, y), make yes\n  have second, is-equal r(y, z), make yes\n  show hold, is-equal r(x, z), make yes\n>)/ok
+
+test <sixteen atoms, decided by the pruned search: overlapping classes agree>
+  want hold, built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule overlapping\n  head a\n  seat r, like relation a\n  seat x, like a\n  seat y, like a\n  seat z, like a\n  seat w, like a\n  have symmetric\n    seat u, like a\n    seat v, like a\n    is-equal r(u, v), r(v, u)\n  have transitive\n    seat u, like a\n    seat v, like a\n    seat t, like a\n    is-equal implies(both(r(u, v), r(v, t)), r(u, t)), make yes\n  have z-with-x, is-equal r(x, z), make yes\n  have z-with-y, is-equal r(y, z), make yes\n  show hold, is-equal r(x, w), r(y, w)\n>)/ok
+
+test <and without symmetry they need not>
+  want hold, refused-as(built(<form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask implies\n  take a, like flag\n  take b, like flag\n  like flag\n  sift a\n    case yes\n      back b\n    case no\n      back make yes\n\nform relation\n  head a\n  like task\n    take x, like a\n    take y, like a\n    like flag\n\nrule overlapping-without-symmetry\n  head a\n  seat r, like relation a\n  seat x, like a\n  seat y, like a\n  seat z, like a\n  seat w, like a\n  have transitive\n    seat u, like a\n    seat v, like a\n    seat t, like a\n    is-equal implies(both(r(u, v), r(v, t)), r(u, t)), make yes\n  have z-with-x, is-equal r(x, z), make yes\n  have z-with-y, is-equal r(y, z), make yes\n  show hold, is-equal r(x, w), r(y, w)\n>), <invalid-proof>)
+
+test <a left inverse makes a function injective, by congruence>
+  want hold, built(<\nrule injective\n  head a\n  head b\n  seat f\n    like task\n      take x, like a\n      like b\n  seat g\n    like task\n      take y, like b\n      like a\n  seat x, like a\n  seat y, like a\n  have g-undoes-f\n    seat u, like a\n    is-equal g(f(u)), u\n  have same-image, is-equal f(x), f(y)\n  show hold, is-equal x, y\n>)/ok
+
+test <and a section does not>
+  want hold, refused-as(built(<\nrule not-injective\n  head a\n  head b\n  seat f\n    like task\n      take x, like a\n      like b\n  seat g\n    like task\n      take y, like b\n      like a\n  seat x, like a\n  seat y, like a\n  have f-undoes-g\n    seat v, like b\n    is-equal f(g(v)), v\n  have same-image, is-equal f(x), f(y)\n  show hold, is-equal x, y\n>), <unproven>)
+
+test <a section makes it surjective, through the witness>
+  want hold, built(<\nrule surjective\n  head a\n  head b\n  seat f\n    like task\n      take x, like a\n      like b\n  seat g\n    like task\n      take y, like b\n      like a\n  seat z, like b\n  have f-undoes-g\n    seat v, like b\n    is-equal f(g(v)), v\n  find x, g(z)\n  show hold, is-equal f(x), z\n>)/ok
+
+test <and a left inverse does not>
+  want hold, refused-as(built(<\nrule not-surjective\n  head a\n  head b\n  seat f\n    like task\n      take x, like a\n      like b\n  seat g\n    like task\n      take y, like b\n      like a\n  seat z, like b\n  have g-undoes-f\n    seat u, like a\n    is-equal g(f(u)), u\n  find x, g(z)\n  show hold, is-equal f(x), z\n>), <unproven>)
+
+test <a universal over numbers stays the hold checker’s, and still proves>
+  want hold, built(<\nrule numbers\n  seat x\n    like task\n      take t, like integer\n      like integer\n  seat n, like integer\n  have non-decreasing\n    seat t, like integer\n    is-maximum x(t), x(add(t, 1))\n  show hold, is-maximum x(n), x(add(n, 2))\n>)/ok

@@ -1,0 +1,60 @@
+note <`case some` and `case none` test a maybe (term-self-host-001-0056, traps.md T038)>
+
+# Ported from maybe-case-refused.ts by task/term/suite-port.ts.
+
+load @term/base/text
+  find contains, name text-contains
+
+task says
+  take messages, like list, like text
+  take word, like text
+  like boolean
+
+  walk messages
+    take message
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+# `case some` and `case none` test a maybe (term-self-host-001-0056, traps.md T038). A `sift` with them over a value
+# that is never a maybe (a `need false` BOOLEAN, a number, a text, a list) was accepted until 2026-10-29 and took
+# neither arm: TypeScript compared `false` with "some". Now it is refused at the sift, naming the type, and a sift over
+# a real `need false` maybe still builds.
+# Run: npx tsx test/check/maybe-case-refused.ts
+task over-text
+  take field, like text
+  take read-text, like text
+  like text
+
+  back <load @term/base/maybe\n  find maybe\n\nform opts\n  link quiet\n{field}\n\ntask loud\n  take o, like opts\n  like number\n  sift {read-text}\n    case some\n      back 1\n    case none\n      back 2\n>
+
+test <a sift over a boolean with `case some` and `case none` is refused, naming the type>
+  host built, compile-text(over-text(<    like boolean\n    need false>, <o/quiet>), make(compile-choice, bind(file, </gate/code/maybe-case.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, says(built/messages, <`case some` tests a maybe>)
+  want hold, says(built/messages, <`case none` tests a maybe>)
+
+test <a sift over a number with `case some` and `case none` is refused, naming the type>
+  host built, compile-text(over-text(<    like number\n    need false>, <o/quiet>), make(compile-choice, bind(file, </gate/code/maybe-case.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, says(built/messages, <`case some` tests a maybe>)
+  want hold, says(built/messages, <`case none` tests a maybe>)
+
+test <a sift over a string with `case some` and `case none` is refused, naming the type>
+  host built, compile-text(over-text(<    like text>, <o/quiet>), make(compile-choice, bind(file, </gate/code/maybe-case.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, says(built/messages, <`case some` tests a maybe>)
+  want hold, says(built/messages, <`case none` tests a maybe>)
+
+test <a sift over a list with `case some` and `case none` is refused, naming the type>
+  host built, compile-text(over-text(<    like list, like text>, <o/quiet>), make(compile-choice, bind(file, </gate/code/maybe-case.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, says(built/messages, <`case some` tests a maybe>)
+  want hold, says(built/messages, <`case none` tests a maybe>)
+
+test <a sift over a need-false maybe with the same arms still builds>
+  host built, compile-text(over-text(<    like maybe, like boolean\n    need false>, <o/quiet>), make(compile-choice, bind(file, </gate/code/maybe-case.tree>), bind(lean, false), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  host maybe, built/messages
+  want hold, is-equal(maybe/length, 0)

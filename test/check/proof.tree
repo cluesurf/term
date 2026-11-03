@@ -1,0 +1,49 @@
+note <Proof step tests>
+
+# Ported from proof.ts by tmp/self-host/suite-unroll.mjs (item 0562), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+load @term/base/list
+  find contains
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))
+
+task proved
+  take text, like text
+  like boolean
+
+  host out, built(text)
+  back and(out/ok, not(contains(out/warnings, <unchecked-hold>)))
+
+# `melt both`: a non-linear equality discharged by definitional equality (double is transparent, so it unfolds)
+test <melt both proves a definitional equality>
+  want hold, proved(<task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask use-it\n  take n, like number\n  like number\n  hold\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n    melt both\n  send back n\n>)
+
+# `cite`: prove a named lemma, then cite it for another hold of the same statement
+test <cite reuses a named lemma>
+  want hold, proved(<task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask use-it\n  take n, like number\n  like number\n  hold double-fact\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n    melt both\n  hold\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n    cite double-fact\n  send back n\n>)
+
+# a `melt both` that cannot compute the two sides equal is an invalid proof
+test <melt both on unequal sides is rejected>
+  want hold, refused-as(built(<task use-it\n  take n, like number\n  like number\n  hold\n    call is-equal\n      read n\n      code 5\n    melt both\n  send back n\n>), <invalid-proof>)
+
+# citing a lemma that was never proven is an invalid proof
+test <cite of an unknown lemma is rejected>
+  want hold, refused-as(built(<task use-it\n  take n, like number\n  like number\n  hold\n    call is-equal\n      read n\n      read n\n    cite no-such-lemma\n  send back n\n>), <invalid-proof>)
+
+# `turn`: symmetry, proving a == b from a cited reversed lemma b == a
+test <turn proves an equality by symmetry of a lemma>
+  want hold, proved(<task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask use-turn\n  take n, like number\n  like number\n  hold rev\n    call is-equal\n      call add\n        read n\n        read n\n      call double\n        read n\n    melt both\n  hold\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n    turn rev\n  send back n\n>)
+
+# `link`: transitivity, chaining two lemmas double n == add n n and add n n == twice n
+test <link proves an equality by chaining two lemmas>
+  want hold, proved(<task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\ntask twice\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n\ntask use-link\n  take n, like number\n  like number\n  hold step-one\n    call is-equal\n      call double\n        read n\n      call add\n        read n\n        read n\n    melt both\n  hold step-two\n    call is-equal\n      call add\n        read n\n        read n\n      call twice\n        read n\n    melt both\n  hold\n    call is-equal\n      call double\n        read n\n      call twice\n        read n\n    link\n      cite step-one\n      cite step-two\n  send back n\n>)

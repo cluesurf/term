@@ -1,0 +1,68 @@
+note <A GENERIC recursive constructor on the decided kernel (judge.ts)>
+
+# Ported from succ-judge.ts (item 0565). The payoff of self-introduction and self-elimination firing automatically. Earlier the
+# self-typed naturals could only state `succ` as an opaque postulate, because a constructor lambda whose codomain is a self type failed
+# the pi check, and a recursive argument could not be applied without a hand-written annotation. With both rules in the kernel, the
+# real successor, succ m = \ P z s. s m (m P z s), type-checks against Nat -\> Nat and its eliminator computes, with no manual coercions
+# anywhere. check/judge is the subject (decision 106). The terms are the TypeScript's, in one bind, level 0 and 1 handed in. A
+# constant's definition is set once per test, as a test holds no state another may read.
+
+dock load
+  load <@term/make/code/check/judge>, name judge
+
+# the step case inside the Nat body: (k : Nat) -\> P k -\> P (succ k)
+# Nat = Self n. (P : Nat -\> Type0) -\> P zero -\> ((k:Nat) -\> P k -\> P (succ k)) -\> P n
+# zero = \ P z s. z, and the REAL successor, succ = \ m P z s. s m (m P z s)
+bind terms-of
+  take zero, like dynamic
+  take one, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const v = i =\> (\{ tag: "var", index: i \}); const kc = n =\> (\{ tag: "const", name: n \}); const ty = n =\> (\{ tag: "type", level: n === 0 ? $zero : $one \}); const pi = (m, domain, codomain) =\> (\{ tag: "pi", mult: m, domain, codomain \}); const lam = body =\> (\{ tag: "lam", body \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const self = body =\> (\{ tag: "self", body \}); const aps = (f, ...a) =\> a.reduce((g, x) =\> app(g, x), f); const stepInBody = pi("many", kc("Nat"), pi("many", app(v(2), v(0)), app(v(3), app(kc("succ"), v(1))))); const natBody = pi(0, pi("many", kc("Nat"), ty(0)), pi("many", app(v(0), kc("zero")), pi("many", stepInBody, app(v(2), v(3))))); const natTerm = self(natBody); const zeroTerm = lam(lam(lam(v(1)))); const succTerm = lam(lam(lam(lam(app(app(v(0), v(3)), aps(v(3), v(2), v(1), v(0))))))); const signature = [\{ name: "Nat", type: ty(1) \}, \{ name: "zero", type: kc("Nat") \}, \{ name: "succ", type: pi("many", kc("Nat"), kc("Nat")) \}, \{ name: "M", type: pi("many", kc("Nat"), ty(0)) \}, \{ name: "base", type: app(kc("M"), kc("zero")) \}, \{ name: "step", type: pi("many", kc("Nat"), pi("many", app(kc("M"), v(0)), app(kc("M"), app(kc("succ"), v(1))))) \}]; const one = app(kc("succ"), kc("zero")); const elim = aps(one, kc("M"), kc("base"), kc("step")); const stepZeroBase = app(app(kc("step"), kc("zero")), kc("base")); const T = app(kc("M"), one); return \{ natTerm, zeroTerm, succTerm, signature, natToNat: pi("many", natTerm, natTerm), one, nat: kc("Nat"), reflexive: \{ tag: "refl", type: T, value: stepZeroBase \}, computed: \{ tag: "id", type: T, left: elim, right: stepZeroBase \} \} \})()>
+
+bind empty-env
+  take seed, like number
+  like dynamic
+  case node
+    text <[]>
+
+task terms
+  like dynamic
+
+  host made, terms-of(judge/lit-level(0), judge/lit-level(1))
+  judge/define-constant(<Nat>, judge/evaluate(empty-env(0), made/natTerm))
+  judge/define-constant(<zero>, judge/evaluate(empty-env(0), made/zeroTerm))
+  judge/define-constant(<succ>, judge/evaluate(empty-env(0), made/succTerm))
+  back made
+
+task checks
+  take term, like dynamic
+  take type, like dynamic
+  take signature, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    judge/check(judge/context-with-signature(signature), term, judge/evaluate(empty-env(0), type))
+    back true
+  halt take
+    take problem
+    back false
+
+# the intro checks present the self type as a value (natTerm), the form the kernel introduces against. The named constant Nat is its
+# alias, reconciled by conversion everywhere the name is used (in succ zero and the eliminator).
+test <zero : Nat (self introduction fires directly against the self type)>
+  host made, terms()
+  want hold, checks(made/zeroTerm, made/natTerm, made/signature)
+
+test <succ : Nat -\> Nat (a GENERIC recursive constructor type-checks)>
+  host made, terms()
+  want hold, checks(made/succTerm, made/natToNat, made/signature)
+
+test <succ zero : Nat>
+  host made, terms()
+  want hold, checks(made/one, made/nat, made/signature)
+
+test <the successor's eliminator computes: (succ zero) M base step = step zero base>
+  host made, terms()
+  want hold, checks(made/reflexive, made/computed, made/signature)

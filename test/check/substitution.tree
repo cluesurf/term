@@ -1,0 +1,123 @@
+note <Substitution unit test (Tier 2 modular checker)>
+
+# Ported from substitution.ts (item 0565). The unifier extracted from the inference closure, testable on its own: fresh variables,
+# path-compressed resolve, the occurs check, and structural unification. check/substitution is the subject (decision 106).
+
+dock load
+  load <@term/make/code/check/substitution>, name subst
+
+bind number-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "number" \})>
+
+bind string-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "string" \})>
+
+bind unknown-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "unknown" \})>
+
+bind array-of
+  take element, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "array", element: $element \})>
+
+bind function-of
+  take param, like dynamic
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "function", params: [$param], result: $result \})>
+
+bind function-empty
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "function", params: [], result: $result \})>
+
+bind apart
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a.kind === "variable" && $b.kind === "variable" && $a.id !== $b.id)>
+
+bind kind-of
+  take type, like dynamic
+  like text
+  case node
+    text <$type.kind>
+
+bind span-of
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ start: \{ line: 1, column: 0 \}, end: \{ line: 1, column: 1 \} \})>
+
+bind origin-kind
+  take state, like dynamic
+  take variable, like dynamic
+  like text
+  case node
+    text <($state.origin.get($variable.id)?.type.kind ?? "")>
+
+# fresh mints distinct variables
+test <fresh variables are distinct>
+  host s, subst/new-substitution()
+  want hold, apart(subst/fresh-type(s), subst/fresh-type(s))
+
+# a variable unifies with a concrete type, then resolves to it
+test <unify a variable with a concrete type>
+  host s, subst/new-substitution()
+  want hold, subst/unify-types(s, subst/fresh-type(s), number-type(0))
+
+test <resolve follows the binding>
+  host s, subst/new-substitution()
+  host v, subst/fresh-type(s)
+  subst/unify-types(s, v, number-type(0))
+  want hold, is-equal(kind-of(subst/resolve-type(s, v)), <number>)
+
+# unknown is gradual: unifies with anything, binds nothing
+test <unknown unifies with a concrete type>
+  want hold, subst/unify-types(subst/new-substitution(), unknown-type(0), number-type(0))
+
+# mismatched concretes do not unify
+test <number does not unify with string>
+  want hold, not(subst/unify-types(subst/new-substitution(), number-type(0), string-type(0)))
+
+# structural unification: arrays, functions, maps
+test <arrays unify element-wise>
+  host s, subst/new-substitution()
+  host v, subst/fresh-type(s)
+  want hold, subst/unify-types(s, array-of(v), array-of(number-type(0)))
+  want hold, is-equal(kind-of(subst/resolve-type(s, v)), <number>)
+
+test <functions unify param + result>
+  host s, subst/new-substitution()
+  host v, subst/fresh-type(s)
+  want hold, subst/unify-types(s, function-of(v, string-type(0)), function-of(number-type(0), string-type(0)))
+  want hold, is-equal(kind-of(subst/resolve-type(s, v)), <number>)
+
+test <functions of different arity do not unify>
+  want hold, not(subst/unify-types(subst/new-substitution(), function-empty(string-type(0)), function-of(number-type(0), string-type(0))))
+
+# the occurs check prevents an infinite type
+test <occurs check rejects a self-referential binding>
+  host s, subst/new-substitution()
+  host v, subst/fresh-type(s)
+  want hold, not(subst/unify-types(s, v, array-of(v)))
+
+# origin records where a variable was solved (for diagnostics / hover)
+test <origin records the solving span>
+  host s, subst/new-substitution()
+  host v, subst/fresh-type(s)
+  subst/unify-types-at(s, v, number-type(0), span-of(0))
+  want hold, is-equal(origin-kind(s, v), <number>)

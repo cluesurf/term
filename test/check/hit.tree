@@ -1,0 +1,30 @@
+note <Higher inductive types: the propositional truncation>
+
+# Ported from hit.ts by hand (item 0557). The truncation `|| A ||` is declared `mark prop`, and the kernel's proof-irrelevance gives the
+# squash definitionally: in `||nat||`, `wrap 0 == wrap 1` even though `0 != 1` in `nat` itself. A map out of the truncation into any other
+# proposition factors through the inclusion.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take source, like text
+  like boolean
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# `squash` is `||nat||`: a `mark prop` type with an inclusion constructor `wrap : nat -> squash`
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform squash\n  mark prop\n  case wrap\n    link val, like nat\n>
+
+# 1. the truncation COLLAPSES: any two elements are equal
+test <propositional truncation collapses: wrap 0 == wrap 1>
+  want hold, compiles(<{prelude}\nrule collapse\n  show hold\n    call is-equal\n      make wrap\n        bind val\n          make zero\n      make wrap\n        bind val\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)
+
+# 2. SOUNDNESS: `nat` itself keeps its real equality, so `0 == 1` is still rejected
+test <the truncation does not leak (0 == 1 in nat is rejected)>
+  want hold, not(compiles(<{prelude}\nrule leak\n  show hold\n    call is-equal\n      make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>))
+
+# 3. UNIVERSAL PROPERTY: a map into another proposition factors through the inclusion, and sends every element to the same value
+test <universal property: a map into a prop respects the collapse>
+  want hold, compiles(<{prelude}\nform answer\n  mark prop\n  case yes\n\ntask to-answer\n  take s, like squash\n  like answer\n  fork case, read s\n    case wrap\n      link val\n      send back\n        make yes\n\nrule rec\n  show hold\n    call is-equal\n      call to-answer\n        make wrap\n          bind val\n            make zero\n      call to-answer\n        make wrap\n          bind val\n            make succ\n              bind prior\n                make zero\n  calm hold\n>)

@@ -1,0 +1,90 @@
+note <a find that reaches a real form named list, hash or task binds to that form, and a word beside a real form>
+
+# Decision 110 of term/self-host/change/001-finish-self-host. test/compile/native-shadow.ts holds a module declaring its
+# own word through real toolchains. Nothing held a find reaching one of the three words the mint reads past the table
+# (list, hash, task), which is where the mint's find branch and settle-words meet. The compile is on TypeScript: the text
+# it wrote says which meaning the word took.
+
+load ../support/compiling
+  find compile-choice
+  find compile-outcome
+  find compile-text
+  find compiling-source
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+# the module that holds the real form, answering ./words
+task built
+  take words, like text
+  take text, like text
+  like compile-outcome
+
+  save files, make list
+  files/push(make(compiling-source, bind(file, <./words>), bind(text, words)))
+  back compile-text(text, make(compile-choice, bind(file, <entry.tree>), bind(lean, true), bind(files, files)))
+
+task alone
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <entry.tree>), bind(lean, true)))
+
+task said
+  take out, like compile-outcome
+  like text
+
+  back join(out/messages, < | >)
+
+host real-list, <form list\n  link zone, like integer\n>
+
+host real-hash, <form hash\n  link zone, like integer\n>
+
+host real-task, <form task\n  link title, like native-string\n>
+
+host methods-list, <form list\n  task size\n    take self, like list\n    like integer\n\n    back 1\n>
+
+# ---- a find reaching a real form: the word is that form ----
+
+test <a find reaching a real list reads its field and types by it>
+  host out, built(real-list, <load ./words\n  find list\n\ntask zone-of\n  take x, like list\n  like integer\n\n  back x/zone\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <x: List>)
+
+test <a find reaching a real hash reads its field and types by it>
+  host out, built(real-hash, <load ./words\n  find hash\n\ntask zone-of\n  take x, like hash\n  like integer\n\n  back x/zone\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <x: Hash>)
+
+test <a find reaching a real task reads its field and types by it>
+  host out, built(real-task, <load ./words\n  find task\n\ntask title-of\n  take x, like task\n  like native-string\n\n  back x/title\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <x: Task>)
+
+test <a function type stays a function type beside a real task>
+  host out, built(real-task, <load ./words\n  find task\n\ntask apply\n  take f\n    like task\n      take n, like integer\n      like integer\n  like integer\n\n  back f(1)\n>)
+  want hold, out/ok
+
+# ---- no find, or a find of something else: the word is the language's own ----
+
+test <a module with no find keeps the native list beside one that holds a real list>
+  host out, built(real-list, <load ./words\n\ntask size-of\n  take x, like list, like integer\n  like integer\n\n  back x/length\n>)
+  want hold, out/ok
+
+test <a find reaching a form of methods only keeps the native list>
+  host out, built(methods-list, <load ./words\n  find list\n\ntask size-of\n  take x, like list, like integer\n  like integer\n\n  back x/length\n>)
+  want hold, out/ok
+
+# ---- a value beside a real form of its word ----
+
+test <text under host in a module holding a real form text is refused, as the form>
+  host out, alone(<form text\n  link data, like native-string\n\nhost x, text \<a\>\n>)
+  want hold, not(out/ok)
+  want hold, text-contains(said(out), <binding: expected text>)
+
+test <the same line in a module with no real form text builds>
+  host out, alone(<host x, text \<a\>\n>)
+  want hold, out/ok

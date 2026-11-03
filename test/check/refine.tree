@@ -1,0 +1,75 @@
+note <Refinement prover tests: the Fourier-Motzkin decision procedure discharges verification conditions>
+
+# Ported from refine.ts (item 0562). check/refine is the subject (decision 106).
+
+dock load
+  load <@term/make/code/check/refine>, name refine
+
+bind term-of
+  take name, like text
+  take scale, like number
+  like dynamic
+  case node
+    text <(\{ [$name]: $scale \})>
+
+bind no-terms
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{\})>
+
+task v
+  take name, like text
+  like dynamic
+
+  back refine/linear(term-of(name, 1))
+
+task k
+  take value, like number
+  like dynamic
+
+  back refine/linear(no-terms(0), value)
+
+task v-plus
+  take name, like text
+  take value, like number
+  like dynamic
+
+  back refine/linear(term-of(name, 1), value)
+
+# n >= 0 implies n + 1 > 0
+test <n\>=0 =\> n+1\>0>
+  want hold, refine/proves(make(list, refine/at-least(v(<n>), k(0))), refine/above(v-plus(<n>, 1), k(0)))
+
+# n >= 0 does NOT imply n - 1 >= 0 (n = 0 is a counterexample)
+test <n\>=0 does not give n-1\>=0>
+  want hold, not(refine/proves(make(list, refine/at-least(v(<n>), k(0))), refine/at-least(v-plus(<n>, -1), k(0))))
+
+# n > 0 implies n - 1 >= 0 over integers (n > 0 means n >= 1). The prover tightens strict inequalities, so it reasons over the
+# integers, not the rationals: this is now valid.
+test <n\>0 =\> n-1\>=0 (integers)>
+  want hold, refine/proves(make(list, refine/above(v(<n>), k(0))), refine/at-least(v-plus(<n>, -1), k(0)))
+
+# and the integer tightening is real: n > 0 proves n >= 1
+test <n\>0 =\> n\>=1 (integers)>
+  want hold, refine/proves(make(list, refine/above(v(<n>), k(0))), refine/at-least(v(<n>), k(1)))
+
+# index safety: 0 <= i AND i < len implies i < len
+test <bounds =\> i\<len>
+  want hold, refine/proves(make(list, refine/at-least(v(<i>), k(0)), refine/below(v(<i>), v(<len>))), refine/below(v(<i>), v(<len>)))
+
+# index safety: 0 <= i AND i < len implies i >= 0
+test <bounds =\> i\>=0>
+  want hold, refine/proves(make(list, refine/at-least(v(<i>), k(0)), refine/below(v(<i>), v(<len>))), refine/at-least(v(<i>), k(0)))
+
+# transitivity: a <= b AND b <= c implies a <= c
+test <a\<=b, b\<=c =\> a\<=c>
+  want hold, refine/proves(make(list, refine/at-most(v(<a>), v(<b>)), refine/at-most(v(<b>), v(<c>))), refine/at-most(v(<a>), v(<c>)))
+
+# unsound goal rejected: a <= b does NOT imply b <= a
+test <a\<=b =/=\> b\<=a>
+  want hold, not(refine/proves(make(list, refine/at-most(v(<a>), v(<b>))), refine/at-most(v(<b>), v(<a>))))
+
+# contradiction in assumptions proves anything (ex falso): n >= 5 AND n <= 0
+test <contradiction proves anything>
+  want hold, refine/proves(make(list, refine/at-least(v(<n>), k(5)), refine/at-most(v(<n>), k(0))), refine/at-most(v(<n>), k(-100)))

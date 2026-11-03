@@ -1,0 +1,80 @@
+note <Which recursive forms Swift holds in a final class, held both ways>
+
+# Ported from swift-node.ts by hand (item 0576). swift.ts, `nodeClasses`: a form takes the class only where some task opens a node at
+# a local's last read and builds one, since the class alone measured slower than `indirect`. A wrong class costs time and never an
+# answer, because a node is built again only when `isKnownUniquelyReferenced` says nothing else holds it. The meaning fixtures
+# `payload` and `slot` hold the answers.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find file-text
+  find project-path
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# the emitted Swift of one program. A refused program stops the suite, as the original's throw does
+task swift-of
+  take file, like text
+  take entry, like text
+  take source, like text
+  like text
+
+  host built, compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <swift>), bind(env, <swift>), bind(entry, entry)))
+  fork test, not(built/ok)
+    hold
+      halt <{file} was refused>
+  back emit-text(built, <swift>)
+
+task mark-swift
+  take path, like text
+  take entry, like text
+  like text
+
+  back swift-of(project-path(<.>, path), entry, file-text(path))
+
+host towers, mark-swift(<mark/towers/term.tree>, <towers>)
+host trees, mark-swift(<mark/binary-trees/term.tree>, <binary-trees>)
+host param, swift-of(<main.tree>, <use>, <form chain\n  case stop\n  case link\n    link head, like number\n    link rest, like chain\n\ntask use\n  take c, like chain\n  like chain\n  fork case, read c\n    case stop\n      send back\n        make stop\n    case link\n      send back\n        make link\n          bind head\n            call add\n              read head\n              code 1\n          bind rest, read rest\n>)
+host two, swift-of(<main.tree>, <use>, <form knot\n  case tip\n  case one\n    link value, like number\n    link next, like knot\n  case two\n    link left, like knot\n    link right, like knot\n\ntask use\n  take n, like number\n  like number\n  host t\n    make one\n      bind value, read n\n      bind next\n        make tip\n  fork case, read t\n    case tip\n      send back, code 0\n    case one\n      host u\n        make one\n          bind value, read value\n          bind next, read next\n      send back, read value\n    case two\n      send back, code 2\n>)
+
+# 1. Towers: the move pops a node at its local's last read and pushes one, so `stack` is a node class, the pop's match consumes
+# its subject and keeps the node, and the push builds in the spare
+test <towers: the payload case holds a final class>
+  want hold, matches(make(pattern, <<case disk\(StackDisk\)>>), towers)
+  want hold, matches(make(pattern, <<final class StackDisk \{>>), towers)
+  want hold, not(text-contains(towers, <indirect enum Stack>))
+
+test <towers: the pop consumes its subject and keeps the node>
+  want hold, matches(make(pattern, <<switch consume top\d*>>), towers)
+  want hold, matches(make(pattern, <<isKnownUniquelyReferenced\(&__node\) \{ __spareStack = __node \}>>), towers)
+
+test <towers: the push builds in the spare>
+  want hold, matches(make(pattern, <<termNodeStackDisk\(&__spareStack, >>), towers)
+
+test <towers: the class compares by its fields>
+  want hold, matches(make(pattern, <<a === b \|\| \(a\.size == b\.size && a\.below == b\.below\)>>), towers)
+
+test <towers: a task that only builds builds new>
+  want hold, matches(make(pattern, <<\.disk\(StackDisk\(size: i, below: top\d*\)\)>>), towers)
+
+# 2. binary-trees builds trees and reads them through a parameter, opening nothing at a local's last read: `indirect`
+test <binary-trees: the tree stays an indirect enum>
+  want hold, text-contains(trees, <indirect enum Tree>)
+  want hold, not(text-contains(trees, <final class Tree>))
+
+# 3. a node opened only from a parameter, then built: a parameter cannot be consumed, so nothing is kept
+test <a node opened only from a parameter: indirect>
+  want hold, text-contains(param, <indirect enum Chain>)
+  want hold, not(text-contains(param, <__spare>))
+
+# 4. a form with two cases that hold it: no one payload case, so `indirect`
+test <two cases holding the form: indirect>
+  want hold, text-contains(two, <indirect enum Knot>)
+  want hold, not(text-contains(two, <final class Knot>))

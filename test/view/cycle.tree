@@ -1,0 +1,186 @@
+note <A document cannot loop forever, and cannot take the compiler down trying>
+
+# Ported from cycle.ts, by hand (item 0598). Two graphs, checked in two places. A MACRO cycle is caught before expansion, because
+# expansion is what it destroys: `compile/template.ts` recurses on a `fuse`, so a macro that fuses itself overflows the stack and
+# a crash is not a diagnostic. A VIEW that places itself is caught after reading, where a component use and a view definition
+# are told apart. See note/project/term/view/05-sandbox.md. Checker bound: the walk was EXPONENTIAL on a graph that merely fans
+# out, so the time of a dense acyclic graph is held under its budget.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+dock load
+  load <@term/make/code/parser/tree>, name view-parser
+  load <@term/make/code/compile/view>, name view-read
+
+bind parse-input
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "page.tree", text: $text \})>
+
+bind messages-joined
+  take found, like dynamic
+  like text
+  case node
+    text <$found.map(d =\> d.message).join(" | ")>
+
+bind view-said
+  take result, like dynamic
+  like text
+  case node
+    text <($result.ok ? "" : $result.diagnostics.map(d =\> d.message).join(" | "))>
+
+bind text-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+bind parse-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.tree>
+
+bind parse-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <$parsed.ok>
+
+# n macros, each fusing the next `fan`, and a view placing the first
+bind dense
+  take n, like number
+  take fan, like number
+  like text
+  case node
+    text <(() =\> \{ const lines = []; for (let i = 0; i \< $n; i++) \{ lines.push("tree m" + i); lines.push("  hook fuse"); for (let k = 1; k \<= $fan && i + k \< $n; k++) lines.push("    fuse m" + (i + k)); if (i + 1 \>= $n) lines.push("    text \\u003cend\\u003e") \} lines.push("view page"); lines.push("  fuse m0"); return lines.join("\\n") + "\\n" \})()>
+
+bind buried-in
+  take text, like text
+  like text
+  case node
+    text <$text.replace("tree m39\\n  hook fuse\\n    text \\u003cend\\u003e", "tree m39\\n  hook fuse\\n    fuse m0")>
+
+bind list-size
+  take found, like dynamic
+  like number
+  case node
+    text <$found.length>
+
+bind any-saying
+  take found, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <$found.some(d =\> d.message.includes($word))>
+
+bind clock-now
+  take seed, like number
+  like number
+  case node
+    text <Date.now()>
+
+task cycles
+  take text, like text
+  like text
+
+  host parsed, view-parser/parse(parse-input(text))
+  fork test, not(parse-ok(parsed))
+    hold
+      back <parse fail>
+  back messages-joined(view-read/view-cycles(parse-tree(parsed), <page.tree>))
+
+task places
+  take text, like text
+  like text
+
+  host parsed, view-parser/parse(parse-input(text))
+  fork test, not(parse-ok(parsed))
+    hold
+      back <parse fail>
+  back view-said(view-read/read-view(parse-tree(parsed), <page.tree>))
+
+# the cycles of a text, and how long the walk took
+form walked
+  link found, like dynamic
+  link spent, like number
+
+task walk-cycles
+  take text, like text
+  like walked
+
+  host tree, parse-tree(view-parser/parse(parse-input(text)))
+  host started, clock-now(0)
+  host found, view-read/view-cycles(tree, <page.tree>)
+  back make(walked, bind(found, found), bind(spent, subtract(clock-now(0), started)))
+
+host loop-text, <tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n>
+
+task built
+  like compile-outcome
+
+  back compile-text(loop-text, make(compile-choice, bind(file, </app/page/loop.tree>), bind(role, <view>), bind(optimize, false)))
+
+test <a macro that fuses itself is named>
+  want hold, text-holds(cycles(loop-text), <a fuses a>)
+
+test <a two-macro cycle is named>
+  host said, cycles(<tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n>)
+  want hold, or(text-holds(said, <a fuses b fuses a>), text-holds(said, <b fuses a fuses b>))
+
+test <a three-macro cycle is named>
+  want hold, text-holds(cycles(<tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse c\ntree c\n  hook fuse\n    fuse a\nview page\n  fuse a\n>), <fuses>)
+
+test <a macro used twice is not a cycle>
+  want hold, is-equal(cycles(<tree a\n  hook fuse\n    text \<x\>\ntree b\n  hook fuse\n    fuse a\n    fuse a\nview page\n  fuse b\n>), <>)
+
+test <a chain with no cycle is not a cycle>
+  want hold, is-equal(cycles(<tree a\n  hook fuse\n    text \<x\>\ntree b\n  hook fuse\n    fuse a\ntree c\n  hook fuse\n    fuse b\nview page\n  fuse c\n>), <>)
+
+test <the compile path refuses a macro cycle instead of crashing>
+  want hold, not(built()/ok)
+
+test <and names the cycle>
+  want hold, some-saying(built()/messages, <a macro cannot fuse itself>)
+
+test <a view that places itself is named>
+  want hold, text-holds(places(<view page\n  view page\n    bind a, text \<x\>\n>), <page places page>)
+
+test <a two-view cycle is named>
+  host said, places(<view one\n  view two\n    bind a, text \<x\>\nview two\n  view one\n    bind a, text \<x\>\n>)
+  want hold, or(text-holds(said, <one places two places one>), text-holds(said, <two places one places two>))
+
+test <a view placing a component it does not define is fine>
+  want hold, is-equal(places(<view page\n  view text/item\n    bind a, text \<x\>\n>), <>)
+
+test <one view placing another, once, is fine>
+  want hold, is-equal(places(<view one\n  text \<x\>\nview two\n  view one\n>), <>)
+
+test <60 macros fanning out to 4 report no cycle>
+  want hold, is-equal(list-size(walk-cycles(dense(60, 4))/found), 0)
+
+test <and finish well inside 250ms>
+  want hold, is-below(walk-cycles(dense(60, 4))/spent, 250)
+
+test <200 macros fanning out to 4 report no cycle>
+  want hold, is-equal(list-size(walk-cycles(dense(200, 4))/found), 0)
+
+test <and finish well inside 500ms>
+  want hold, is-below(walk-cycles(dense(200, 4))/spent, 500)
+
+test <a cycle buried in a dense graph is still found>
+  host found, walk-cycles(buried-in(dense(40, 4)))/found
+  want hold, is-above(list-size(found), 0)
+  want hold, any-saying(found, <cannot fuse itself>)
+
+bind some-saying
+  take messages, like list, like text
+  take word, like text
+  like boolean
+  case node
+    text <$messages.some(m =\> m.includes($word))>

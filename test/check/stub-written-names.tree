@@ -1,0 +1,250 @@
+note <A stub's carried shape and body name each task as its module wrote it>
+
+# Ported from stub-written-names.ts by tmp/self-host/suite-unroll.mjs (item 0565), each entry written out whole. Items
+# term-self-host-001-0323, 0324, 0325, compile/stub.ts `carried`. A task two files define is split by file, and the split name a
+# unit gives is that unit's: mid.tree's `lift` sends back pub.tree's `bump`, `bump__in0_1` in mid's unit, and in a unit that also holds
+# priv.tree's PRIVATE `bump` (x + 2) that name is priv's. Carried as mid's unit left it, the separate build proved the false rule
+# `lift(x) == x + 2` and refused the true `lift(x) == x + 1`, and the kernel ran priv's identity `flip` for pub's negation. Each case is
+# built merged and separate in three load orders, and both must give the expected answer. compile/separate and compile/cache are
+# the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find compiling-options-of
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind slugs
+  take seed, like number
+  like dynamic
+  case node
+    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+task one-file
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <./{name}>), bind(text, text), bind(answer, <{name}.tree>))
+
+host pub-text, <task bump\n  take a, like integer\n  like integer\n  send back, add(a, 1)\n>
+host priv-text, <task bump\n  mark private\n  take a, like integer\n  like integer\n  send back, add(a, 2)\n\ntask other\n  take a, like integer\n  like integer\n  send back, bump(a)\n>
+host early-text, <task bump\n  take a, like integer\n  like integer\n  send back, add(a, 3)\n>
+host mid-text, <load ./priv\n  find other\n\nload ./pub\n  find bump\n\ntask lift\n  take a, like integer\n  like integer\n  send back, bump(a)\n>
+
+# pub's bump adds 1, priv's private bump adds 2, early's adds 3, and mid's lift is pub's
+task int-files
+  like list, like compiling-source
+
+  back make(list, one-file(<pub>, pub-text), one-file(<priv>, priv-text), one-file(<early>, early-text), one-file(<mid>, mid-text))
+
+# the same with pub's bump overloaded by arity, so the carried call is split AND mangled (`bump__in0_1__1`): the importer's arity pass
+# gives the written call its arity again (check/disambiguate.tree `arity-statement`)
+task over-files
+  like list, like compiling-source
+
+  back make(list, one-file(<pub>, <{pub-text}\ntask bump\n  take a, like integer\n  take b, like integer\n  like integer\n  send back, add(a, b)\n>), one-file(<priv>, priv-text), one-file(<early>, early-text), one-file(<mid>, mid-text))
+
+task flip-of
+  take yes, like text
+  take no, like text
+  take mark, like text
+  like text
+
+  back <load ./flags\n  find flag\n\ntask flip\n{mark}  take g, like flag\n  like flag\n  save h, read g\n  sift h\n    case yes\n      send back, make {yes}\n    case no\n      send back, make {no}\n>
+
+# pub's flip negates, priv's private flip is the identity, early's is constant, and mid's toggle is pub's
+task flag-files
+  like list, like compiling-source
+
+  host priv-flip, flip-of(<yes>, <no>, <  mark private\n>)
+  back make(list, one-file(<flags>, <form flag\n  case yes\n  case no\n>), one-file(<pub>, flip-of(<no>, <yes>, <>)), one-file(<priv>, <{priv-flip}\ntask other\n  take g, like flag\n  like flag\n  send back, flip(g)\n>), one-file(<early>, flip-of(<yes>, <yes>, <>)), one-file(<mid>, <load ./flags\n  find flag\n\nload ./priv\n  find other\n\nload ./pub\n  find flip\n\ntask toggle\n  take g, like flag\n  like flag\n  send back, flip(g)\n>))
+
+task resolver
+  take files, like list, like compiling-source
+  like dynamic
+
+  back resolver-of(compiling-options-of(make(compile-choice, bind(files, files))))
+
+task merged
+  take files, like list, like compiling-source
+  take entry, like text
+  like boolean
+
+  back compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files), bind(cache, new-cache(cache-module))))/ok
+
+task separate
+  take files, like list, like compiling-source
+  take entry, like text
+  like boolean
+
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver(files), new-cache(cache-module), slugs(0)))/ok
+
+# pub's bump adds 1, priv's private bump adds 2, early's adds 3, and mid's lift is pub's
+# the same with pub's bump overloaded by arity, so the carried call is split AND mangled (`bump__in0_1__1`): the
+# importer's arity pass gives the written call its arity again (check/disambiguate.tree `arity-statement`)
+# pub's flip negates, priv's private flip is the identity, early's is constant, and mid's toggle is pub's
+test <rule lift(x) == x + 1, early, priv, mid: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, early, priv, mid: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, mid, priv, early: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, mid, priv, early: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, priv, early, mid: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, priv, early, mid: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 2 (priv's bump), early, priv, mid: merged refuses>
+  want hold, is-equal(merged(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2 (priv's bump), early, priv, mid: separate refuses>
+  want hold, is-equal(separate(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2 (priv's bump), mid, priv, early: merged refuses>
+  want hold, is-equal(merged(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2 (priv's bump), mid, priv, early: separate refuses>
+  want hold, is-equal(separate(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2 (priv's bump), priv, early, mid: merged refuses>
+  want hold, is-equal(merged(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2 (priv's bump), priv, early, mid: separate refuses>
+  want hold, is-equal(separate(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <hold lift(x) == x + 1, early, priv, mid: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <hold lift(x) == x + 1, early, priv, mid: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <hold lift(x) == x + 1, mid, priv, early: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <hold lift(x) == x + 1, mid, priv, early: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <hold lift(x) == x + 1, priv, early, mid: merged proves>
+  want hold, is-equal(merged(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <hold lift(x) == x + 1, priv, early, mid: separate proves>
+  want hold, is-equal(separate(int-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 1))\n  send back, x\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, early, priv, mid: merged proves>
+  want hold, is-equal(merged(over-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, early, priv, mid: separate proves>
+  want hold, is-equal(separate(over-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, mid, priv, early: merged proves>
+  want hold, is-equal(merged(over-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, mid, priv, early: separate proves>
+  want hold, is-equal(separate(over-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, priv, early, mid: merged proves>
+  want hold, is-equal(merged(over-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 1, pub's bump overloaded, priv, early, mid: separate proves>
+  want hold, is-equal(separate(over-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 1\n>), true)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, early, priv, mid: merged refuses>
+  want hold, is-equal(merged(over-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, early, priv, mid: separate refuses>
+  want hold, is-equal(separate(over-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, mid, priv, early: merged refuses>
+  want hold, is-equal(merged(over-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, mid, priv, early: separate refuses>
+  want hold, is-equal(separate(over-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, priv, early, mid: merged refuses>
+  want hold, is-equal(merged(over-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <rule lift(x) == x + 2, pub's bump overloaded, priv, early, mid: separate refuses>
+  want hold, is-equal(separate(over-files(), <load ./priv\n  find other\n\nload ./early\n  find bump\n\nload ./mid\n  find lift\n\nrule lift-adds\n  seat x, like integer\n  show hold\n    call is-equal\n      call lift\n        read x\n      call add\n        read x\n        code 2\n>), false)
+
+test <claim toggle(toggle(g)) == g, early, priv, mid: merged proves>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./early\n  find flip\n\nload ./priv\n  find other\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(toggle(g)) == g, early, priv, mid: separate proves>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./early\n  find flip\n\nload ./priv\n  find other\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(toggle(g)) == g, mid, priv, early: merged proves>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./mid\n  find toggle\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(toggle(g)) == g, mid, priv, early: separate proves>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./mid\n  find toggle\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(toggle(g)) == g, priv, early, mid: merged proves>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(toggle(g)) == g, priv, early, mid: separate proves>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(toggle(g))\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), true)
+
+test <claim toggle(g) == g (priv's identity), early, priv, mid: merged refuses>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./early\n  find flip\n\nload ./priv\n  find other\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+test <claim toggle(g) == g (priv's identity), early, priv, mid: separate refuses>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./early\n  find flip\n\nload ./priv\n  find other\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+test <claim toggle(g) == g (priv's identity), mid, priv, early: merged refuses>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./mid\n  find toggle\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+test <claim toggle(g) == g (priv's identity), mid, priv, early: separate refuses>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./mid\n  find toggle\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+test <claim toggle(g) == g (priv's identity), priv, early, mid: merged refuses>
+  want hold, is-equal(merged(flag-files(), <load ./flags\n  find flag\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+test <claim toggle(g) == g (priv's identity), priv, early, mid: separate refuses>
+  want hold, is-equal(separate(flag-files(), <load ./flags\n  find flag\n\nload ./priv\n  find other\n\nload ./early\n  find flip\n\nload ./mid\n  find toggle\n\nform equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n\nrule toggle-law\n  take g, like flag\n  like equal flag\n    head\n      toggle(g)\n    head\n      read g\n\ntask toggle-law\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>), false)
+
+# ONE PROCESS, THE SEPARATE BUILD FIRST (item 0325): the hold lift(x) == x + 2 is false, and the separate build of the same closure
+# in another load order once proved it and left that answer for the merged build after it
+test <the false hold, separate first: refused>
+  want hold, not(separate(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n>))
+
+test <and the merged build after it in the same process: refused>
+  want hold, not(separate(int-files(), <load ./early\n  find bump\n\nload ./priv\n  find other\n\nload ./mid\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n>))
+  want hold, not(merged(int-files(), <load ./mid\n  find lift\n\nload ./priv\n  find other\n\nload ./early\n  find bump\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n>))

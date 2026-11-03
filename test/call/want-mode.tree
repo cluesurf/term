@@ -1,0 +1,46 @@
+note <a want line of a mode no guard knows fails the test by saying so, in a program that builds>
+
+# `want equal, 1, 1` matched no head of the guard, so its condition was left empty, the test file emitted `else` with no
+# `if`, and the build died on `Unexpected "else"` in a file the person never wrote (item 0808, seen, and 0823).
+
+load ../support/compiling
+  find compile-choice
+  find compile-text
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/call/work/preprocess/test-rewriting
+  find preprocess-tests
+
+bind no-options
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+task rewritten
+  take source, like text
+  like text
+
+  back preprocess-tests(source, no-options(0))/text
+
+task builds
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <t.tree>), bind(lean, true)))/ok
+
+host unknown, <test \<one\>\n  want equal, 1, 1\n>
+
+test <an unknown mode says so on its own line>
+  want hold, text-contains(rewritten(unknown), <line 2: a want takes hold, miss or snapshot>)
+
+test <and it writes no fork with an empty test, which is what emitted the else with no if>
+  want hold, builds(rewritten(unknown))
+  want miss, text-contains(rewritten(unknown), <hook test>)
+
+test <hold, miss and no mode still write a guard>
+  want hold, text-contains(rewritten(<test \<one\>\n  want hold, true\n>), <hook miss>)
+  want hold, text-contains(rewritten(<test \<one\>\n  want miss, true\n>), <hook hold>)
+  want hold, text-contains(rewritten(<test \<one\>\n  want, true\n>), <hook miss>)

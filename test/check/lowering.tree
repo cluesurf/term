@@ -1,0 +1,283 @@
+note <The pure lowering (proof-by-default-0009)>
+
+# Ported from lowering.ts by task/term/suite-port.ts.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name lowering-parser
+  load <@term/make/code/compile/template>, name lowering-template
+  load <@term/make/code/compile/mill>, name lowering-mill
+  load <@term/make/code/check/resolve>, name lowering-resolve
+  load <@term/make/code/check/infer>, name lowering-infer
+  load <@term/make/code/check/elaborate>, name lowering-elaborate
+  load <@term/make/code/check/judge>, name lowering-judge
+
+# the kernel's own verdict, the surface checker's diagnostics set aside. parser, template, mill, resolve, infer and elaborate are the subject (decision 106)
+bind report-with
+  take parser, like dynamic
+  take expander, like dynamic
+  take miller, like dynamic
+  take resolver, like dynamic
+  take inferrer, like dynamic
+  take elaborator, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const parsed = $parser.parse(\{ file: "t.tree", text: $text \}); if (!parsed.ok) throw new Error(parsed.diagnostics.map(d =\> d.message).join("; ")); const built = $miller.mill($expander.expandTemplates(parsed.tree), "t.tree"); if (!built.ok) throw new Error(built.diagnostics.map(d =\> d.message).join("; ")); $resolver.resolve(built.program, "t.tree"); $inferrer.check(built.program, "t.tree"); return $elaborator.elaborateReport(built.program, "t.tree") \})()>
+
+bind is-proven
+  take r, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$r.proven.includes($name)>
+
+bind is-verified
+  take r, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$r.verified.includes($name)>
+
+bind no-diagnostics
+  take r, like dynamic
+  like boolean
+  case node
+    text <$r.diagnostics.length === 0>
+
+bind kernel-refused
+  take r, like dynamic
+  like boolean
+  case node
+    text <$r.diagnostics.some(d =\> d.message.startsWith("kernel:"))>
+
+# the reason a task was checked statement by statement, <> for one that was not
+bind reason-of
+  take r, like dynamic
+  take name, like text
+  like text
+  case node
+    text <$r.statementwise.find(one =\> one.name === $name)?.reason ?? "">
+
+bind is-declined
+  take r, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <[...$r.statementwise, ...$r.declined].some(one =\> one.name === $name)>
+
+# the kernel's transparent definitions after the last report
+bind is-defined
+  take judge, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$judge.judgeState().definition.has($name)>
+
+task report
+  take source, like text
+  like dynamic
+
+  back report-with(lowering-parser, lowering-template, lowering-mill, lowering-resolve, lowering-infer, lowering-elaborate, source)
+
+
+# The pure lowering (proof-by-default-0009): an imperative body whose names are saved again, or saved in the arms of a
+# fork that falls through, is ONE kernel term (every save a new binder, every join a local task over the names the
+# arms saved), and a body that cannot be lowered is checked statement by statement WITH ITS REASON, never in silence.
+# The values these terms compute are held in test/check/soundness.ts (`lowering`). Run: npx tsx test/check/lowering.ts
+# the kernel's transparent definitions after the last report
+# the kernel's own verdict, the surface checker's diagnostics set aside
+host clamp, <task clamp\n  take n, like number\n  like number\n  save m, read n\n  fork test\n    hook test\n      call is-above\n        read m\n        code 3\n    hook hold\n      save m, code 3\n  send back m\n>
+
+host nested, <task bucket\n  take n, like number\n  like number\n  save b, code 0\n  fork test\n    hook test\n      call is-above\n        read n\n        code 10\n    hook hold\n      save b, code 1\n      fork test\n        hook test\n          call is-above\n            read n\n            code 100\n        hook hold\n          save b, code 2\n    hook miss\n      save b\n        call add\n          read b\n          read n\n  save b\n    call add\n      read b\n      code 1\n  send back b\n>
+
+# one arm returns, the other falls through to the join
+host early, <task early\n  take n, like number\n  like number\n  save m, read n\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      send back, code 0\n    hook miss\n      save m, code 1\n  send back m\n>
+
+host saved-twice, <task twice\n  take n, like number\n  like number\n  save x, read n\n  save x\n    call add\n      read x\n      code 1\n  save x\n    call multiply\n      read x\n      read x\n  send back x\n>
+
+# an ill-typed save is the kernel's to refuse, as the command checker refused it
+host bad-save, <task wrong\n  take n, like number\n  like number\n  save total, code 0\n  save total, true\n  send back total\n>
+
+host bad-save-in-arm, <task wrong-arm\n  take n, like number\n  like number\n  save total, code 0\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      save total, true\n  send back total\n>
+
+host closure, <task late\n  take n, like number\n  like number\n  save x, read n\n  host f\n    task g\n      like number\n      send back, read x\n  save x\n    call add\n      read n\n      code 1\n  send back\n    call f\n>
+
+host loop, <task sum-below\n  take n, like number\n  like number\n  save total, code 0\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save total\n        call add\n          read total\n          read i\n      save i\n        call add\n          read i\n          code 1\n  send back total\n>
+
+# a counted walk over a list, its index read
+host list-sum, <task sum-at\n  take xs, like list, like number\n  like number\n  save total, code 0\n  walk list, read xs\n    hook next\n      take x\n      take i\n      save total\n        call add\n          read total\n          call multiply\n            read x\n            read i\n  send back total\n>
+
+# `turn next`, `halt` and a `send back` inside the walk, each in a case of its own
+host list-exits, <task first-big\n  take xs, like list, like number\n  like number\n  save seen, code 0\n  walk list, read xs\n    hook next\n      take x\n      fork test\n        hook test\n          call is-below\n            read x\n            code 0\n        hook hold\n          turn next\n      fork test\n        hook test\n          call is-above\n            read x\n            code 100\n        hook hold\n          send back x\n      fork test\n        hook test\n          call is-above\n            read seen\n            code 9\n        hook hold\n          halt\n      save seen\n        call add\n          read seen\n          code 1\n  send back seen\n>
+
+# a walk last in an arm: its end joins the fork's
+host list-in-arm, <task count-if\n  take xs, like list, like number\n  take on, like boolean\n  like number\n  save n, code 0\n  fork test\n    hook test\n      read on\n    hook hold\n      walk list, read xs\n        hook next\n          take x\n          save n\n            call add\n              read n\n              code 1\n  send back n\n>
+
+host size, <task triangle\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take k\n      save total\n        call add\n          read total\n          read k\n  send back total\n>
+
+host down, <task halve\n  take n, like number\n  like number\n  save m, read n\n  walk test\n    down m\n    hook test\n      call is-above\n        read m\n        code 0\n    hook hold\n      save m\n        call subtract\n          read m\n          code 1\n  send back m\n>
+
+# nested walks, the inner one leaving the outer turn by name
+host nested-walks, <task pairs\n  take xs, like list, like number\n  like number\n  save c, code 0\n  walk list\n    read xs\n    name outer\n    hook next\n      take x\n      walk list, read xs\n        hook next\n          take y\n          fork test\n            hook test\n              call is-equal\n                read x\n                read y\n            hook hold\n              turn next, name outer\n          save c\n            call add\n              read c\n              code 1\n  send back c\n>
+
+host over-hash, <task keys\n  take h, like text\n  like number\n  save n, code 0\n  walk list, read h\n    hook next\n      take v\n      save n\n        call add\n          read n\n          code 1\n  send back n\n>
+
+# proof-by-default-0011: a guarded fork whose handler takes the raise
+host guarded, <task cap\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    fork test\n      hook test\n        call is-above\n          read n\n          code 10\n      hook hold\n        halt \<Too big\>\n    save m\n      call add\n        read n\n        code 1\n  halt take\n    take problem\n    save m, code 10\n  send back m\n>
+
+# a raise inside a walk inside the guarded fork reaches the handler too
+host guarded-walk, <task first-negative\n  take xs, like list, like number\n  like number\n  save at, code 0\n  fork\n    mark unsafe\n    walk list, read xs\n      hook next\n        take x\n        fork test\n          hook test\n            call is-below\n              read x\n              code 0\n          hook hold\n            halt \<Found\>\n        save at\n          call add\n            read at\n            code 1\n    save at, code -1\n  halt take\n    take problem\n    send back at\n  send back at\n>
+
+host reads-raise, <task why\n  take n, like number\n  like text\n  fork\n    mark unsafe\n    halt \<No\>\n  halt take\n    take problem\n    send back problem/note\n  send back \<yes\>\n>
+
+host raising-call, <task risky\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read n\n        code 10\n    hook hold\n      halt \<Too big\>\n  send back n\n\ntask safe\n  take n, like number\n  like number\n  save m, read n\n  fork\n    mark unsafe\n    save m\n      call risky\n        read n\n  halt take\n    take problem\n    save m, code 0\n  send back m\n>
+
+host escapes, <task loud\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read n\n        code 10\n    hook hold\n      halt \<Too big\>\n  send back n\n>
+
+# proof-by-default-0014: a save through a field is a new version of the record (D1)
+host field-save, <form box\n  link a, like number\n  link b, like number\n\ntask reset\n  take x, like box\n  like box\n  save x/a, code 0\n  send back x\n>
+
+# a `mark shared` form is one object every name sees: a write through it is no new version
+host shared-save, <form counter\n  mark shared\n  link count, like number\n\ntask tick\n  take c, like counter\n  like number\n  save c/count, code 1\n  send back, read c/count\n>
+
+host falls-off, <task falls\n  take n, like number\n  like number\n  save m, read n\n  fork test\n    hook test\n      call is-above\n        read m\n        code 3\n    hook hold\n      send back m\n>
+
+test <a fork test whose arm saves is one term>
+  host r, report(clamp)
+  want hold, is-proven(r, <clamp>)
+  want hold, no-diagnostics(r)
+
+test <a fork inside an arm, a miss arm, and a save after the join>
+  host r, report(nested)
+  want hold, is-proven(r, <bucket>)
+  want hold, no-diagnostics(r)
+
+test <an arm that returns beside an arm that falls through>
+  host r, report(early)
+  want hold, is-proven(r, <early>)
+  want hold, no-diagnostics(r)
+
+test <a name saved three times is three binders>
+  host r, report(saved-twice)
+  want hold, is-proven(r, <twice>)
+  want hold, no-diagnostics(r)
+
+test <the kernel refuses a save of the wrong type>
+  host r, report(bad-save)
+  want hold, kernel-refused(r)
+  want hold, not(is-proven(r, <wrong>))
+
+test <and one inside an arm>
+  host r, report(bad-save-in-arm)
+  want hold, kernel-refused(r)
+  want hold, not(is-proven(r, <wrong-arm>))
+
+test <a save to a name a closure reads is not lowered, and says so>
+  host r, report(closure)
+  want hold, not(is-proven(r, <late>))
+  want hold, is-verified(r, <late>)
+  want hold, is-equal(reason-of(r, <late>), <a save to a name a closure reads>)
+
+test <a walk test is one term, lifted to a task of its own>
+  host r, report(loop)
+  want hold, is-proven(r, <sum-below>)
+  want hold, no-diagnostics(r)
+
+test <a counted walk over a list, its index read, is one term>
+  host r, report(list-sum)
+  want hold, is-proven(r, <sum-at>)
+  want hold, no-diagnostics(r)
+
+test <turn next, halt and send back inside a walk, each a case of its own>
+  host r, report(list-exits)
+  want hold, is-proven(r, <first-big>)
+  want hold, no-diagnostics(r)
+
+test <a walk last in an arm joins the arm>
+  host r, report(list-in-arm)
+  want hold, is-proven(r, <count-if>)
+  want hold, no-diagnostics(r)
+
+test <walk size is one term>
+  host r, report(size)
+  want hold, is-proven(r, <triangle>)
+  want hold, no-diagnostics(r)
+
+test <a walk test with a down is one term>
+  host r, report(down)
+  want hold, is-proven(r, <halve>)
+  want hold, no-diagnostics(r)
+
+test <turn next out of a nested walk, by name>
+  host r, report(nested-walks)
+  want hold, is-proven(r, <pairs>)
+  want hold, no-diagnostics(r)
+
+test <the kernel refuses a save of the wrong type inside a walk over a list>
+  host r, report(<task wrong-turn\n  take xs, like list, like number\n  like number\n  save total, code 0\n  walk list, read xs\n    hook next\n      take x\n      save total, true\n  send back total\n>)
+  want hold, kernel-refused(r)
+  want hold, not(is-proven(r, <wrong-turn>))
+
+test <the kernel refuses a save of the wrong type inside a walk test>
+  host r, report(<task wrong-turn\n  take xs, like list, like number\n  like number\n  save total, code 0\n  walk test\n    hook test\n      call is-below\n        read total\n        code 3\n    hook hold\n      save total, true\n  send back total\n>)
+  want hold, kernel-refused(r)
+  want hold, not(is-proven(r, <wrong-turn>))
+
+test <a walk over a text is no fold, and is not proven>
+  want hold, not(is-proven(report(over-hash), <keys>))
+
+test <a walk test with a down is a definition>
+  host r, report(down)
+  want hold, is-defined(lowering-judge, <halve__walk0>)
+
+test <one without is an opaque constant: nothing is computed through a loop not shown to end>
+  host r, report(loop)
+  want hold, not(is-defined(lowering-judge, <sum-below__walk0>))
+  want hold, is-defined(lowering-judge, <sum-below>)
+
+test <a guarded fork and its handler are one term>
+  host r, report(guarded)
+  want hold, is-proven(r, <cap>)
+  want hold, no-diagnostics(r)
+
+test <a raise inside a walk inside the guarded fork>
+  host r, report(guarded-walk)
+  want hold, is-proven(r, <first-negative>)
+  want hold, no-diagnostics(r)
+
+# neither is one term: the statement-by-statement checker then declines the guarded fork with its own reason
+test <a handler that reads what was raised is not one term>
+  host r, report(reads-raise)
+  want hold, not(is-proven(r, <why>))
+  want hold, is-declined(r, <why>)
+
+test <a call that may raise inside a guarded fork is not one term>
+  host r, report(raising-call)
+  want hold, not(is-proven(r, <safe>))
+  want hold, is-declined(r, <safe>)
+
+test <a raise that leaves the task is not lowered, and says so>
+  host r, report(escapes)
+  want hold, not(is-proven(r, <loud>))
+  want hold, is-verified(r, <loud>)
+  want hold, is-equal(reason-of(r, <loud>), <a raise>)
+
+test <a save through a field is one term, the record made again>
+  host r, report(field-save)
+  want hold, is-proven(r, <reset>)
+  want hold, no-diagnostics(r)
+
+test <a save through a field of a mark shared form is not lowered, and says so>
+  host r, report(shared-save)
+  want hold, not(is-proven(r, <tick>))
+  want hold, is-verified(r, <tick>)
+  want hold, is-equal(reason-of(r, <tick>), <a save through a member of a mark shared form>)
+
+test <a path that ends without a return is named>
+  host r, report(falls-off)
+  want hold, not(is-proven(r, <falls>))
+  want hold, is-verified(r, <falls>)
+  want hold, is-equal(reason-of(r, <falls>), <a path that ends without a return>)

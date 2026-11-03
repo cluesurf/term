@@ -1,0 +1,249 @@
+note <A width is a range>
+
+# Ported from width-range.ts by tmp/self-host/suite-unroll.mjs (item 0568), each fixture written out whole. note/project/term/decisions-2026-10/decisions-2026-10.md, D12.
+# With TERM_WIDTH_RANGES on, a value passed to a width-typed parameter, or sent back from a width-typed result, owes
+# `low <= value <= high` as a tier-0 obligation. The task may assume it of its parameter, and a call to a width-typed result is
+# known to fit. Off, nothing is owed. Each refusal sits beside the same shape proven, so a prover that proved nothing, or
+# everything, fails here. check/width-range is the subject and its switch is docked (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/check/width-range>, name width-range
+
+task resolved
+  like compile-choice
+
+  back make(compile-choice, bind(file, <w.tree>), bind(stdlib, <node>))
+
+bind width-total
+  take kinds, like dynamic
+  like number
+  case node
+    text <($kinds?.width?.total ?? 0)>
+
+bind width-proven
+  take kinds, like dynamic
+  like number
+  case node
+    text <($kinds?.width?.proven ?? 0)>
+
+bind any-says
+  take texts, like list, like text
+  take word, like text
+  like boolean
+  case node
+    text <$texts.some(t =\> t.includes($word))>
+
+# the `width` obligations of the entry file: how many, and how many proven
+task owes
+  take text, like text
+  take total, like number
+  take proven, like number
+  take ranges, like boolean
+  like boolean
+
+  width-range/set-width-ranges(ranges)
+  host out, compile-text(text, resolved())
+  width-range/set-width-ranges(false)
+  fork test, not(out/ok)
+    hold
+      back false
+  host kinds, out/obligations/kinds
+  back and(is-equal(width-total(kinds), total), is-equal(width-proven(kinds), proven))
+
+# refused for the width, with no stdlib, as the TypeScript compiles it
+task outside-u8
+  take text, like text
+  take ranges, like boolean
+  like boolean
+
+  width-range/set-width-ranges(ranges)
+  host out, compile-text(text, make(compile-choice, bind(file, <w.tree>)))
+  width-range/set-width-ranges(false)
+  back and(not(out/ok), any-says(out/messages, <is outside `u8`>))
+
+# a task whose whole body is one `send back` is an accessor: what it owes is lifted onto its callers (contract.ts
+# `liftedOf`), as a list read is. So each task below that should owe on its own has a statement first
+test <off: a computed argument owes nothing>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take x, like number\n  like number\n  save y, read x\n  send back\n    call paint\n      read y\n>, 0, 0, false)
+
+test <on: an unbounded argument is owed and not proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take x, like number\n  like number\n  save y, read x\n  send back\n    call paint\n      read y\n>, 1, 0, true)
+
+test <on: an accessor's width is owed by its caller, with the caller's argument, and proven there>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask relay\n  take x, like number\n  like number\n  send back\n    call paint\n      read x\n\ntask run\n  like number\n  save small, code 9\n  send back\n    call relay\n      read small\n>, 1, 1, true)
+
+test <on: an argument the path bounds is proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take x, like number\n  like number\n  fork test\n    hook test\n      call and\n        call is-minimum\n          read x\n          code 0\n        call is-maximum\n          read x\n          code 255\n    hook hold\n      send back\n        call paint\n          read x\n  send back, code 0\n>, 1, 1, true)
+
+test <on: one bound short is not proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take x, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read x\n        code 255\n    hook hold\n      send back\n        call paint\n          read x\n  send back, code 0\n>, 1, 0, true)
+
+test <on: a `u8` parameter passed on to a `u8` parameter is proven, by the width it was owed>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask relay\n  take level, like u8\n  like number\n  save same, read level\n  send back\n    call paint\n      read same\n>, 1, 1, true)
+
+test <on: a `u8` plus one is not proven to stay a `u8`>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask brighter\n  take level, like u8\n  like number\n  save next, call add(level, 1)\n  send back\n    call paint\n      read next\n>, 1, 0, true)
+
+test <on: a `u16` parameter does not fit a `u8`>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask narrow\n  take level, like u16\n  like number\n  save same, read level\n  send back\n    call paint\n      read same\n>, 1, 0, true)
+
+test <on: a `u8` result is owed where it is sent back, and proven by the check before it>
+  want hold, owes(<task clamp\n  take x, like number\n  like u8\n  fork test\n    hook test\n      call is-below\n        read x\n        code 0\n    hook hold\n      send back, code 0\n  fork test\n    hook test\n      call is-above\n        read x\n        code 255\n    hook hold\n      send back, code 255\n  send back, read x\n>, 1, 1, true)
+
+test <on: a `u8` result sent back unchecked is not proven>
+  want hold, owes(<task loose\n  take x, like number\n  like u8\n  send back, read x\n>, 1, 0, true)
+
+test <on: a call to a `u8` result fits a `u8` parameter, the result's own obligation paid in its task>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask clamp\n  take x, like number\n  like u8\n  fork test\n    hook test\n      call is-below\n        read x\n        code 0\n    hook hold\n      send back, code 0\n  fork test\n    hook test\n      call is-above\n        read x\n        code 255\n    hook hold\n      send back, code 255\n  send back, read x\n\ntask run\n  take x, like number\n  like number\n  send back\n    call paint\n      call clamp\n        read x\n>, 2, 2, true)
+
+test <on: the stdlib `to-u8` is a checked way in>
+  want hold, owes(<load @term/base/integer/unsigned\n  find to-u8\n\ntask paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take x, like number\n  like number\n  send back\n    call paint\n      call to-u8\n        read x\n>, 1, 1, true)
+
+test <on: an `i64` parameter owes nothing, every number is one>
+  want hold, owes(<task wide\n  take n, like i64\n  like number\n  send back, read n\n\ntask run\n  take x, like number\n  like number\n  send back\n    call wide\n      read x\n>, 0, 0, true)
+
+test <on: a literal argument owes nothing here, the literal check holds it>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  like number\n  send back\n    call paint\n      code 7\n>, 0, 0, true)
+
+# A FIELD carries its width as a parameter does: a value put in it owes the range, and one read from it is known to
+# fit. gzip's `file/os` passed to a `u8` writer is the shape the census found unproven
+test <off: a computed value put in a `u8` field owes nothing>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask make-header\n  take x, like number\n  like header\n  save made\n    make header\n      bind os, read x\n      bind size, read x\n  send back, read made\n>, 0, 0, false)
+
+test <on: an unbounded value put in a `u8` field is owed and not proven>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask make-header\n  take x, like number\n  like header\n  save made\n    make header\n      bind os, read x\n      bind size, read x\n  send back, read made\n>, 1, 0, true)
+
+test <on: a value the path bounds, put in a `u8` field, is proven>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask make-header\n  take x, like number\n  like header\n  fork test\n    hook test\n      call and\n        call is-minimum\n          read x\n          code 0\n        call is-maximum\n          read x\n          code 255\n    hook hold\n      save made\n        make header\n          bind os, read x\n          bind size, read x\n      send back, read made\n  save other\n    make header\n      bind os, code 0\n      bind size, read x\n  send back, read other\n>, 1, 1, true)
+
+test <on: a `u8` field read and passed to a `u8` parameter is proven, by the width every construction owed>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask write-os\n  take h, like header\n  like number\n  save os, read h/os\n  send back\n    call paint\n      read os\n>, 1, 1, true)
+
+test <on: a plain `number` field passed to a `u8` parameter is not proven>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask write-size\n  take h, like header\n  like number\n  save size, read h/size\n  send back\n    call paint\n      read size\n>, 1, 0, true)
+
+test <on: a case's `u8` field is owed where the case is made>
+  want hold, owes(<form packet\n  case ping\n    link level, like u8\n  case done\n\ntask make-ping\n  take x, like number\n  like packet\n  save made\n    make ping\n      bind level, read x\n  send back, read made\n>, 1, 0, true)
+
+test <off: a literal outside the width is refused>
+  want hold, outside-u8(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  like number\n  send back\n    call paint\n      code 300\n>, false)
+
+test <on: a literal outside the width is refused>
+  want hold, outside-u8(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  like number\n  send back\n    call paint\n      code 300\n>, true)
+
+test <off: a literal outside the width of a field is refused>
+  want hold, outside-u8(<form header\n  link os, like u8\n  link size, like number\n\ntask run\n  like header\n  save made\n    make header\n      bind os, code 300\n      bind size, code 300\n  send back, read made\n>, false)
+
+test <on: a literal outside the width of a field is refused>
+  want hold, outside-u8(<form header\n  link os, like u8\n  link size, like number\n\ntask run\n  like header\n  save made\n    make header\n      bind os, code 300\n      bind size, code 300\n  send back, read made\n>, true)
+
+test <on: a literal inside the width of a field owes nothing, the literal check holds it>
+  want hold, owes(<form header\n  link os, like u8\n  link size, like number\n\ntask run\n  like header\n  save made\n    make header\n      bind os, code 3\n      bind size, code 300\n  send back, read made\n>, 0, 0, true)
+
+# EVERY WRITE INTO A LIST OF A WIDTH OWES IT (width-0004): `push`, `set`, a member `push`, `unshift` and `splice`, and an
+# index assignment. The list's element type is read off the receiver's checked type
+test <on: push(xs, v) with v a number owes the width>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  push(xs, v)\n  back 0\n>, 1, 0, true)
+
+test <on: xs/push(v) with v a number owes the width>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  xs/push(v)\n  back 0\n>, 1, 0, true)
+
+test <on: xs/unshift(v) with v a number owes the width>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  xs/unshift(v)\n  back 0\n>, 1, 0, true)
+
+test <on: set(xs, i, v) with v a number owes the width>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  set(xs, i, v)\n  back 0\n>, 1, 0, true)
+
+test <on: save xs/\{i\}, v with v a number owes the width>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  save xs/\{i\}, v\n  back 0\n>, 1, 0, true)
+
+test <on: push(xs, v) with v a u8 owes it, proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like u8\n  take i, like number\n  like number\n  push(xs, v)\n  back 0\n>, 1, 1, true)
+
+test <on: xs/push(v) with v a u8 owes it, proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like u8\n  take i, like number\n  like number\n  xs/push(v)\n  back 0\n>, 1, 1, true)
+
+test <on: xs/unshift(v) with v a u8 owes it, proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like u8\n  take i, like number\n  like number\n  xs/unshift(v)\n  back 0\n>, 1, 1, true)
+
+test <on: set(xs, i, v) with v a u8 owes it, proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like u8\n  take i, like number\n  like number\n  set(xs, i, v)\n  back 0\n>, 1, 1, true)
+
+test <on: save xs/\{i\}, v with v a u8 owes it, proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like u8\n  take i, like number\n  like number\n  save xs/\{i\}, v\n  back 0\n>, 1, 1, true)
+
+test <off: push(xs, v) owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  push(xs, v)\n  back 0\n>, 0, 0, false)
+
+test <off: xs/push(v) owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  xs/push(v)\n  back 0\n>, 0, 0, false)
+
+test <off: xs/unshift(v) owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  xs/unshift(v)\n  back 0\n>, 0, 0, false)
+
+test <off: set(xs, i, v) owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  set(xs, i, v)\n  back 0\n>, 0, 0, false)
+
+test <off: save xs/\{i\}, v owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  save xs/\{i\}, v\n  back 0\n>, 0, 0, false)
+
+test <on: xs/splice(i, 0, v, v) owes each inserted item>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  xs/splice(i, 0, v, v)\n  back 0\n>, 2, 0, true)
+
+test <on: a literal pushed inside the width is owed and proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  push(xs, 7)\n  back 0\n>, 1, 1, true)
+
+test <on: a literal pushed past the width is owed and not proven>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like u8\n  take v, like number\n  take i, like number\n  like number\n  push(xs, 300)\n  back 0\n>, 1, 0, true)
+
+test <on: a push into a list of number owes nothing>
+  want hold, owes(<load @term/base/list\n  find push\n  find set\n\ntask run\n  take xs, like list, like number\n  take v, like number\n  take i, like number\n  like number\n  push(xs, v)\n  back 0\n>, 0, 0, true)
+
+# A VALUE OF A WIDTH TYPE IS KNOWN TO FIT (width-0005): an element of a list of u8, read by index, by `get` or as a
+# walk's item, is inside u8, since every way into the list owed it
+test <on: an element read by index, passed to a u8 parameter, is proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take xs, like list, like u8\n  take i, like number\n  like number\n  save shown, paint(xs/\{i\})\n  back shown\n>, 1, 1, true)
+
+test <on: a walk item of a list of u8, passed to a u8 parameter, is proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take xs, like list, like u8\n  like number\n  save total, 0\n  walk xs\n    take b\n    save total, paint(b)\n  back total\n>, 1, 1, true)
+
+test <on: a walk item the body writes is not assumed>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take xs, like list, like u8\n  like number\n  save total, 0\n  walk xs\n    take b\n    save b, add(b, 300)\n    save total, paint(b)\n  back total\n>, 1, 0, true)
+
+test <on: get(xs, i) sent back from a like-u8 task is proven>
+  want hold, owes(<load @term/base/list\n  find get\n\ntask first\n  take xs, like list, like u8\n  take i, like number\n  like u8\n  save start, 0\n  back get(xs, i)\n>, 1, 1, true)
+
+test <on: a walk item of a list of number passed to a u8 parameter is not proven>
+  want hold, owes(<task paint\n  take level, like u8\n  like number\n  send back, read level\n\ntask run\n  take xs, like list, like number\n  like number\n  save total, 0\n  walk xs\n    take b\n    save total, paint(b)\n  back total\n>, 1, 0, true)
+
+# width-0011: a `make list` declared or returned as a list of a width is built at that width. Its literal items are held
+# to the width where they are written, and every other item owes the range, as a push does
+test <on: a make list of literals declared a list of u8 builds and owes nothing>
+  want hold, owes(<task run\n  like number\n  save ys\n    like list\n      like u8\n    make list(3, 7)\n  back ys/length\n>, 0, 0, true)
+
+test <on: a computed item of a make list declared a list of u8 owes the range, not proven>
+  want hold, owes(<task run\n  take v, like number\n  like number\n  save ys\n    like list\n      like u8\n    make list(v, 7)\n  back ys/length\n>, 1, 0, true)
+
+test <on: a u8 item of a make list declared a list of u8 owes the range, proven>
+  want hold, owes(<task run\n  take v, like u8\n  like number\n  save ys\n    like list\n      like u8\n    make list(v, 7)\n  back ys/length\n>, 1, 1, true)
+
+test <on: a make list returned as a list of u8 builds at u8>
+  want hold, owes(<task run\n  take v, like number\n  like list, like u8\n  save start, 0\n  back make list(v, 7)\n>, 1, 0, true)
+
+test <on: a literal item outside u8 in a make list declared a list of u8 is refused>
+  want hold, outside-u8(<task run\n  like number\n  save ys\n    like list\n      like u8\n    make list(3, 300)\n  back ys/length\n>, true)
+
+test <off: the same literal item is refused>
+  want hold, outside-u8(<task run\n  like number\n  save ys\n    like list\n      like u8\n    make list(3, 300)\n  back ys/length\n>, false)
+
+# a list of number that is not a literal is still refused as a list of u8: only the literal is built at the width
+test <on: a list of number held in a variable is still refused as a list of u8>
+  width-range/set-width-ranges(true)
+  host out, compile-text(<task run\n  like number\n  save xs, make list(3, 7)\n  save ys\n    like list\n      like u8\n    read xs\n  back ys/length\n>, resolved())
+  width-range/set-width-ranges(false)
+  want hold, not(out/ok)
+  want hold, any-says(out/messages, <a list of number where a list of u8 is wanted>)

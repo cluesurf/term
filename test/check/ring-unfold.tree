@@ -1,0 +1,47 @@
+note <A ring identity through a named task>
+
+# Ported from ring-unfold.ts by tmp/self-host/suite-unroll.mjs (item 0565), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task accepted
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <ring-unfold.tree>)))/ok
+
+# DEFINITIONAL UNFOLDING FOR THE RING PROVER. A task whose whole body is one polynomial over integer parameters may be
+# named inside a ring identity, and the prover unfolds it (check/unfold.ts). Each case carries the control that would
+# catch the unfolding going unsound: a false identity through the same task must still be refused, a recursive task
+# must never be unfolded, and a task over `natural-number` (whose `subtract` truncates) must never be unfolded.
+#
+# Run: npx tsx test/check/ring-unfold.ts
+# true when the file compiles with no error
+# the Eisenstein norm of x + y w, once, as a task
+# N(a + b w) N(c + d w) = N((ac - bd) + (ad + bc - bd) w), with the omega coordinate's middle sign given
+test <a ring identity through a named task is proved>
+  want hold, accepted(<task norm\n  take x, like integer\n  take y, like integer\n  like integer\n  send back\n    call add\n      call subtract\n        call multiply\n          read x\n          read x\n        call multiply\n          read x\n          read y\n      call multiply\n        read y\n        read y\n\nrule norm-is-multiplicative\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  seat d, like integer\n  show hold\n    call is-equal\n      call multiply\n        call norm\n          read a\n          read b\n        call norm\n          read c\n          read d\n      call norm\n        call subtract\n          call multiply\n            read a\n            read c\n          call multiply\n            read b\n            read d\n        call subtract\n          call add\n            call multiply\n              read a\n              read d\n            call multiply\n              read b\n              read c\n          call multiply\n            read b\n            read d\n>)
+
+test <a false identity through the same task is refused>
+  want hold, not(accepted(<task norm\n  take x, like integer\n  take y, like integer\n  like integer\n  send back\n    call add\n      call subtract\n        call multiply\n          read x\n          read x\n        call multiply\n          read x\n          read y\n      call multiply\n        read y\n        read y\n\nrule norm-is-multiplicative\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  seat d, like integer\n  show hold\n    call is-equal\n      call multiply\n        call norm\n          read a\n          read b\n        call norm\n          read c\n          read d\n      call norm\n        call subtract\n          call multiply\n            read a\n            read c\n          call multiply\n            read b\n            read d\n        call add\n          call add\n            call multiply\n              read a\n              read d\n            call multiply\n              read b\n              read c\n          call multiply\n            read b\n            read d\n>))
+
+# nested: a task that calls another unfoldable task
+test <a task calling a task unfolds through both>
+  want hold, accepted(<task norm\n  take x, like integer\n  take y, like integer\n  like integer\n  send back\n    call add\n      call subtract\n        call multiply\n          read x\n          read x\n        call multiply\n          read x\n          read y\n      call multiply\n        read y\n        read y\n\ntask double-norm\n  take x, like integer\n  take y, like integer\n  like integer\n  send back\n    call add\n      call norm\n        read x\n        read y\n      call norm\n        read x\n        read y\n\nrule double-norm-is-twice\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-equal\n      call double-norm\n        read a\n        read b\n      call multiply\n        code 2\n        call norm\n          read a\n          read b\n>)
+
+# a recursive task is never unfolded, so a goal that needs its unfolding stays unproved
+test <a recursive task is not unfolded>
+  want hold, not(accepted(<task loop\n  take x, like integer\n  like integer\n  send back\n    call add\n      call loop\n        read x\n      code 0\n\nrule loop-is-itself\n  seat a, like integer\n  show hold\n    call is-equal\n      call loop\n        read a\n      call add\n        call loop\n          read a\n        code 1\n>))
+
+# a natural-number task is never unfolded: monus(a, b) + b == a is false at a = 0, b = 1
+test <a task over natural-number is not unfolded>
+  want hold, not(accepted(<task monus\n  take x, like natural-number\n  take y, like natural-number\n  like natural-number\n  send back\n    call subtract\n      read x\n      read y\n\nrule monus-then-add-returns\n  seat a, like natural-number\n  seat b, like natural-number\n  show hold\n    call is-equal\n      call add\n        call monus\n          read a\n          read b\n        read b\n      read a\n>))
+
+# a named task inside a `have` is unfolded too: a unit boost (d^2 - n^2 = 1) keeps the interval t^2 - x^2
+test <a named task in a hypothesis is unfolded>
+  want hold, accepted(<task interval\n  take t, like integer\n  take x, like integer\n  like integer\n  send back\n    call subtract\n      call multiply\n        read t\n        read t\n      call multiply\n        read x\n        read x\n\nrule a-unit-boost-keeps-the-interval\n  seat d, like integer\n  seat n, like integer\n  seat t, like integer\n  seat x, like integer\n  have unit\n    call is-equal\n      call interval\n        read d\n        read n\n      code 1\n  show hold\n    call is-equal\n      call interval\n        call add\n          call multiply\n            read d\n            read t\n          call multiply\n            read n\n            read x\n        call add\n          call multiply\n            read n\n            read t\n          call multiply\n            read d\n            read x\n      call interval\n        read t\n        read x\n>)
+
+test <the same identity under a false premise for it is refused>
+  want hold, not(accepted(<task interval\n  take t, like integer\n  take x, like integer\n  like integer\n  send back\n    call subtract\n      call multiply\n        read t\n        read t\n      call multiply\n        read x\n        read x\n\nrule a-unit-boost-keeps-the-interval\n  seat d, like integer\n  seat n, like integer\n  seat t, like integer\n  seat x, like integer\n  have unit\n    call is-equal\n      call interval\n        read d\n        read n\n      code 2\n  show hold\n    call is-equal\n      call interval\n        call add\n          call multiply\n            read d\n            read t\n          call multiply\n            read n\n            read x\n        call add\n          call multiply\n            read n\n            read t\n          call multiply\n            read d\n            read x\n      call interval\n        read t\n        read x\n>))

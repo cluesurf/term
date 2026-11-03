@@ -1,0 +1,86 @@
+note <The quadratic prover>
+
+# Ported from quadratic.ts by tmp/self-host/suite-unroll.mjs (item 0562), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/list
+  find contains
+
+task proven
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, make(compile-choice, bind(file, <p.tree>)))
+  fork test, not(out/ok)
+    hold
+      back false
+  back not(or(contains(out/warnings, <unchecked-hold>), contains(out/warnings, <unproven>)))
+
+# Univariate quadratic non-negativity -- the nonlinear `nia` decision the linear prover and the syntactic-square test
+# both miss. A real quadratic a*x^2 + b*x + c is >= 0 for ALL x iff a > 0 and discriminant b^2 - 4ac <= 0 (the parabola
+# opens up and never crosses zero), or it is a non-negative constant. Real non-negativity implies integer
+# non-negativity, so the verdict is sound for Seed's integer variables, and it is COMPLETE for the univariate quadratic
+# fragment. `holds.ts` forms `L - R` and runs the discriminant test, so it catches forms NOT written as a square --
+# `(x-1)^2` as `x^2 + 1 >= 2x`. Soundness controls: a quadratic with positive discriminant (`x^2 >= 2x`, false at
+# x = 1) is not proven, and a downward parabola is not proven. Run: npx tsx test/check/quadratic.ts
+# a hold is genuinely PROVEN when it compiles with no `unchecked-hold` / `unproven` diagnostic (a nonlinear goal the
+# test does NOT prove is left unchecked -- still `ok` -- so `.ok` alone cannot tell proven from silently unverified).
+# 1. a PERFECT-SQUARE TRINOMIAL not written as a square: x^2 + 1 >= 2x  is  (x-1)^2 >= 0 (discriminant 0).
+test <perfect-square trinomial: x^2 + 1 \>= 2x  ((x-1)^2)>
+  want hold, proven(<rule square-trinomial\n  seat x, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          read x\n          read x\n        code 1\n      call multiply\n        code 2\n        read x\n  calm hold\n>)
+
+# 2. a strictly POSITIVE quadratic: x^2 + 1 > 0 (a = 1 > 0, discriminant -4 < 0).
+test <strictly positive quadratic: x^2 + 1 \> 0>
+  want hold, proven(<rule positive-quadratic\n  seat x, like integer\n  show hold\n    call is-above\n      call add\n        call multiply\n          read x\n          read x\n        code 1\n      code 0\n  calm hold\n>)
+
+# 3. SOUNDNESS CONTROL: x^2 >= 2x has positive discriminant (b^2 - 4ac = 4 > 0), it is FALSE at x = 1 (1 < 2). Must not
+# be proven.
+test <quadratic with positive discriminant is not proven (x^2 \>= 2x)>
+  want hold, not(proven(<rule not-everywhere\n  seat x, like integer\n  show hold\n    call is-minimum\n      call multiply\n        read x\n        read x\n      call multiply\n        code 2\n        read x\n  calm hold\n>))
+
+# 4. SOUNDNESS CONTROL: a downward parabola 0 >= x^2 (i.e. x^2 <= 0) is false for x != 0 and must not be proven.
+test <downward / non-positive quadratic is not proven (x^2 \<= 0)>
+  want hold, not(proven(<rule downward\n  seat x, like integer\n  show hold\n    call is-maximum\n      call multiply\n        read x\n        read x\n      code 0\n  calm hold\n>))
+
+# 5. MULTIVARIATE sum-of-squares: a^2 + b^2 >= 2ab  is  (a-b)^2 >= 0 -- the bivariate perfect square, proven by the
+# positive-semidefiniteness of the quadratic form (every principal minor >= 0), no square named.
+test <bivariate sum-of-squares: a^2 + b^2 \>= 2ab  ((a-b)^2)>
+  want hold, proven(<rule sos-bivariate\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          read a\n          read a\n        call multiply\n          read b\n          read b\n      call multiply\n        code 2\n        call multiply\n          read a\n          read b\n  calm hold\n>)
+
+# 6. SOUNDNESS CONTROL: a^2 + b^2 >= 3ab is NOT positive semidefinite (false at a = b = 1: 2 < 3). Must not be proven.
+test <bivariate form that is not PSD is not proven (a^2 + b^2 \>= 3ab)>
+  want hold, not(proven(<rule sos-too-strong\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          read a\n          read a\n        call multiply\n          read b\n          read b\n      call multiply\n        code 3\n        call multiply\n          read a\n          read b\n  calm hold\n>))
+
+# 7. HIGHER-DEGREE diagonal sum-of-squares: a^4 + b^4 >= 0 (degree 4, every monomial an even power) -- proven beyond
+# the quadratic fragment by the even-monomial certificate.
+test <degree-4 diagonal SOS: a^4 + b^4 \>= 0>
+  want hold, proven(<rule quartic-sos\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          call multiply\n            read a\n            read a\n          call multiply\n            read a\n            read a\n        call multiply\n          call multiply\n            read b\n            read b\n          call multiply\n            read b\n            read b\n      code 0\n  calm hold\n>)
+
+# 8. SOUNDNESS CONTROL: a^4 >= b^4 is false (a = 0, b = 1 gives 0 < 1), the difference has a negative even-power
+# monomial, so it is not certified and must not be proven.
+test <degree-4 non-tautology is not proven (a^4 \>= b^4)>
+  want hold, not(proven(<rule quartic-wrong\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call multiply\n        call multiply\n          read a\n          read a\n        call multiply\n          read a\n          read a\n      call multiply\n        call multiply\n          read b\n          read b\n        call multiply\n          read b\n          read b\n  calm hold\n>))
+
+# 9. NON-DIAGONAL perfect-square SOS at degree 4: x^4 + x^2 >= 2x^3 is (x^2 - x)^2 >= 0. The difference has negative
+# (odd-power) cross terms, so the even-monomial / diagonal test misses it, recovering the square root q = x^2 - x and
+# verifying q^2 == difference proves it.
+test <degree-4 perfect square: x^4 + x^2 \>= 2x^3  ((x^2 - x)^2)>
+  want hold, proven(<rule perfect-square-quartic\n  seat x, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          call multiply\n            read x\n            read x\n          call multiply\n            read x\n            read x\n        call multiply\n          read x\n          read x\n      call multiply\n        code 2\n        call multiply\n          call multiply\n            read x\n            read x\n          read x\n  calm hold\n>)
+
+# 10. SOUNDNESS CONTROL: x^4 >= 2x^3 (= x^4 - 2x^3) is NOT a square and is negative on (0, 2). Must not be proven.
+test <non-square quartic is not proven (x^4 \>= 2x^3)>
+  want hold, not(proven(<rule not-a-square\n  seat x, like integer\n  show hold\n    call is-minimum\n      call multiply\n        call multiply\n          read x\n          read x\n        call multiply\n          read x\n          read x\n      call multiply\n        code 2\n        call multiply\n          call multiply\n            read x\n            read x\n          read x\n  calm hold\n>))
+
+# 11. GENERAL MULTIVARIATE non-diagonal SOS: a^4 + b^4 >= 2 a^2 b^2 is (a^2 - b^2)^2 >= 0. The difference has a
+# negative cross term (-2 a^2 b^2), so it is not diagonal and not a single perfect square in one variable, the Gram
+# matrix search finds the PSD certificate, verified by z^T Q z == difference.
+test <multivariate SOS: a^4 + b^4 \>= 2 a^2 b^2  ((a^2 - b^2)^2)>
+  want hold, proven(<rule sos-difference\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          call multiply\n            read a\n            read a\n          call multiply\n            read a\n            read a\n        call multiply\n          call multiply\n            read b\n            read b\n          call multiply\n            read b\n            read b\n      call multiply\n        code 2\n        call multiply\n          call multiply\n            read a\n            read a\n          call multiply\n            read b\n            read b\n  calm hold\n>)
+
+# 12. SOUNDNESS CONTROL: a^4 + b^4 >= 3 a^2 b^2 is FALSE (a = b = 1 gives 2 < 3), no PSD Gram certificate exists, so it
+# must be rejected.
+test <multivariate non-SOS is rejected (a^4 + b^4 \>= 3 a^2 b^2)>
+  want hold, not(proven(<rule sos-too-strong\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-minimum\n      call add\n        call multiply\n          call multiply\n            read a\n            read a\n          call multiply\n            read a\n            read a\n        call multiply\n          call multiply\n            read b\n            read b\n          call multiply\n            read b\n            read b\n      call multiply\n        code 3\n        call multiply\n          call multiply\n            read a\n            read a\n          call multiply\n            read b\n            read b\n  calm hold\n>))

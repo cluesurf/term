@@ -1,0 +1,40 @@
+note <Higher-order functions and a parametricity-flavored free theorem>
+
+# Ported from higher-order.ts by hand (item 0557). A function-typed PARAMETER is now applied in the kernel: the `call` elaborator, when its
+# callee is a LOCAL binding rather than a global function, applies that binding's de Bruijn variable directly. So a higher-order call
+# REDUCES, and the law that mapping a structure preserves its length is PROVABLE by induction over the polymorphic container for an
+# ARBITRARY element function `f`. Soundness controls: a wrong value is rejected, and a false shape law is rejected.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take source, like text
+  like boolean
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))/ok
+
+host nat, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask bump\n  take x, like nat\n  like nat\n  send back\n    make succ\n      bind prior\n        read x\n>
+
+# the function-typed parameter `f` is declared in the indented form, where its `take`/`like` children nest under the `like task` group the
+# kernel reads
+host container, <{nat}\nform stack\n  head a\n  case empty\n  case push\n    link top, like a\n    link rest, like stack\n      head a\n\ntask length\n  take s, like stack\n    head nat\n  like nat\n  fork case, read s\n    case empty\n      send back\n        make zero\n    case push\n      link top\n      link rest\n      send back\n        make succ\n          bind prior\n            call length\n              read rest\n\ntask map\n  take f\n    like task\n      take x, like nat\n      like nat\n  take s, like stack\n    head nat\n  like stack\n    head nat\n  fork case, read s\n    case empty\n      send back\n        make empty\n    case push\n      link top\n      link rest\n      send back\n        make push\n          bind top\n            call f\n              read top\n          bind rest\n            call map\n              read f\n              read rest\n>
+
+host apply-twice, <{nat}\ntask apply-twice\n  take f\n    like task\n      take x, like nat\n      like nat\n  take n, like nat\n  like nat\n  send back\n    call f\n      call f\n        read n\n>
+
+# 1. a higher-order call REDUCES: apply a callback `f` twice to a value
+test <higher-order call reduces (apply a callback twice)>
+  want hold, compiles(<{apply-twice}\nrule twice-bump\n  show hold\n    call is-equal\n      call apply-twice\n        read bump\n        make zero\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)
+
+# 2. SOUNDNESS CONTROL: `apply-twice bump zero` is `succ (succ zero)`, NOT `succ zero`
+test <higher-order call computes the exact value (wrong value rejected)>
+  want hold, not(compiles(<{apply-twice}\nrule twice-bump-wrong\n  show hold\n    call is-equal\n      call apply-twice\n        read bump\n        make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>))
+
+# 3. THE FREE THEOREM: `length (map f s) == length s` for an ARBITRARY `f`, by induction (`fold s`), using the hypothesis on the tail
+test <free theorem: length (map f s) == length s, proven by induction>
+  want hold, compiles(<{container}\nrule map-preserves-length\n  seat f\n    like task\n      take x, like nat\n      like nat\n  seat s, like stack\n    head nat\n  show hold\n    call is-equal\n      call length\n        call map\n          read f\n          read s\n      call length\n        read s\n  fold s\n>)
+
+# 4. SOUNDNESS CONTROL: `length (map f s)` is NOT identically `zero`
+test <false shape law over higher-order map is rejected>
+  want hold, not(compiles(<{container}\nrule map-collapses-wrong\n  seat f\n    like task\n      take x, like nat\n      like nat\n  seat s, like stack\n    head nat\n  show hold\n    call is-equal\n      call length\n        call map\n          read f\n          read s\n      make zero\n  fold s\n>))

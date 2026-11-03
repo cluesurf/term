@@ -1,0 +1,163 @@
+note <Termination across two files, merged and separate: both builds reach the same verdict>
+
+# Ported from termination-across-units.ts by hand (item 0576), term-term-gates-0005. The merged build of
+# deck/make/code/check/elaborating-terms.tree warned that 8 tasks were in a mutual-recursion cycle and the separate one did not. The
+# merged one was wrong: judging.tree's `quote` binds `link body` in a match arm, the walk's `local-names` does not list an arm's names,
+# and the merged program held a TASK named `body`, so the local read looked like a read of that task as a value and closed a cycle
+# through it. A name the resolver bound to a local or a parameter now names no task (check/termination.tree `locally-bound`). A cycle
+# that does cross the two files is still reported by both. compile/separate and compile/cache are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find compiling-options-of
+
+load @term/base/list
+  find size
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+form verdict
+  link merged, like list, like text
+  link separate, like list, like text
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind slugs
+  take seed, like number
+  like dynamic
+  case node
+    text <(file =\> `./$\{file.replace(/\.tree$/, "").replace(/\W/g, "_")\}.mjs`)>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind separate-options
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+# the entry's own cycle warnings, or what refused it
+bind own
+  take ok, like boolean
+  take warnings, like dynamic
+  take diagnostics, like dynamic
+  like list, like text
+  case node
+    text <$ok ? ($warnings ?? []).filter(w =\> w.file === "entry.tree" && /cycle|calls itself/.test(w.message)).map(w =\> w.message).sort() : [`REFUSED $\{($diagnostics ?? []).map(d =\> d.message.slice(0, 160)).join(" | ")\}`]>
+
+bind result-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok>
+
+bind result-warnings
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.warnings>
+
+bind result-diagnostics
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.diagnostics>
+
+bind says-mutual
+  take found, like list, like text
+  like boolean
+  case node
+    text <$found.some(m =\> /mutual-recursion cycle/.test(m))>
+
+task one-file
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <./{name}>), bind(text, text), bind(answer, <{name}.tree>))
+
+task cycles
+  take entry, like text
+  take files, like list, like compiling-source
+  like verdict
+
+  host merged, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files), bind(cache, new-cache(cache-module))))
+  host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(files, files))))
+  host separate, separate-module/compile-separate(entry-of(entry), separate-options(resolve, new-cache(cache-module), slugs(0)))
+  back make(verdict, bind(merged, own(merged/ok, merged/warning-notes, merged/notes)), bind(separate, own(result-ok(separate), result-warnings(separate), result-diagnostics(separate))))
+
+# A LOCAL NAMED LIKE A TASK OF ANOTHER FILE. The model's `walk-it` binds `body` in an arm and reads it, the entry defines a task `body`
+# that calls `walk-it`. No task reaches itself
+host shape, <form shape\n  case leaf\n  case node\n    link body, like number\n\ntask walk-it\n  take s, like shape\n  like number\n  sift s\n    case leaf\n      send back, 0\n    case node\n      link body\n      send back, add(body, 1)\n>
+host local-entry, <load ./shape\n  find shape\n  find walk-it\n\ntask body\n  take s, like shape\n  like number\n  send back, walk-it(s)\n>
+
+task local
+  like verdict
+
+  back cycles(local-entry, make(list, one-file(<shape>, shape)))
+
+test <a local named like a task closes no cycle, merged>
+  want hold, is-equal(size(local()/merged), 0)
+
+test <a local named like a task closes no cycle, separate>
+  want hold, is-equal(size(local()/separate), 0)
+
+# A REAL CYCLE THROUGH ANOTHER FILE: the entry hands `again` to the model's `apply`, which calls it, and `again` calls `apply` with
+# itself. Nothing descends: both builds must say so
+host apply, <task apply\n  take f\n    like task\n      take n, like number\n      like number\n  take n, like number\n  like number\n  send back, f(n)\n>
+host value-entry, <load ./apply\n  find apply\n\ntask again\n  take n, like number\n  like number\n  send back, apply(again, n)\n>
+
+task through-value
+  like verdict
+
+  back cycles(value-entry, make(list, one-file(<apply>, apply)))
+
+test <a cycle through a task handed to another file is reported, merged>
+  want hold, is-above(size(through-value()/merged), 0)
+
+test <a cycle through a task handed to another file is reported, separate>
+  want hold, is-above(size(through-value()/separate), 0)
+
+test <both builds say the same of it>
+  host found, through-value()
+  want hold, is-equal(found/merged, found/separate)
+
+# A MUTUAL RECURSION BETWEEN TWO FILES THAT LOAD EACH OTHER (one unit of two files), with no descent
+host ping, <load ./entry\n  find pong\n\ntask ping\n  take n, like number\n  like number\n  send back, pong(n)\n>
+host pong-entry, <load ./ping\n  find ping\n\ntask pong\n  take n, like number\n  like number\n  send back, ping(n)\n>
+
+task mutual
+  like verdict
+
+  back cycles(pong-entry, make(list, one-file(<ping>, ping), one-file(<entry>, pong-entry)))
+
+test <a mutual recursion across two files is reported, merged>
+  want hold, says-mutual(mutual()/merged)
+
+test <a mutual recursion across two files is reported, separate>
+  want hold, says-mutual(mutual()/separate)
+
+test <both builds say the same of a mutual recursion>
+  host found, mutual()
+  want hold, is-equal(found/merged, found/separate)

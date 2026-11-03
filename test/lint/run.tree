@@ -1,0 +1,477 @@
+note <Linter and unified-analysis tests>
+
+# Ported from run.ts by task/term/suite-port.ts, finished by hand (item 0592). The linter, the analysis, the parser and the mill
+# are the subject (decision 106).
+
+dock load
+  load <@term/make/code/lint/lint>, name lint-module
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind with-code
+  take found, like dynamic
+  take code, like text
+  like dynamic
+  case node
+    text <$found.filter(f =\> f.code === $code)>
+
+bind size-of
+  take found, like dynamic
+  like number
+  case node
+    text <$found.length>
+
+bind first-fix
+  take found, like dynamic
+  like text
+  case node
+    text <($found[0]?.fix?.text ?? "")>
+
+bind first-says
+  take found, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <($found[0]?.message ?? "").includes($word)>
+
+bind any-says
+  take found, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <$found.some(f =\> f.message.includes($word))>
+
+bind says
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+bind later-line-is
+  take text, like text
+  take line, like text
+  like boolean
+  case node
+    text <$text.split("\\n").slice(1).some(l =\> l.trim() === $line)>
+
+bind x-run
+  take size, like number
+  like text
+  case node
+    text <"x".repeat($size)>
+
+bind analysis-format
+  take analysis, like dynamic
+  like text
+  case node
+    text <$analysis.format()>
+
+bind analysis-lint
+  take analysis, like dynamic
+  like dynamic
+  case node
+    text <$analysis.lint()>
+
+bind analysis-fix
+  take analysis, like dynamic
+  like text
+  case node
+    text <$analysis.fix()>
+
+task program
+  take text, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(<t.tree>, text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <t.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  back built/program
+
+task findings
+  take text, like text
+  like dynamic
+
+  back lint-module/lint(program(text), <t.tree>, text)
+
+task count-of
+  take text, like text
+  take code, like text
+  like number
+
+  back size-of(with-code(findings(text), code))
+
+task fixed-of
+  take text, like text
+  like text
+
+  back lint-module/apply-fixes(text, findings(text))
+
+task parses
+  take text, like text
+  like boolean
+
+  back parser-tree/parse(source-of(<x.tree>, text))/ok
+
+# L005: an empty BLOCK, and never a signature-only task. The rule had no test, and that is exactly how it came to report 4,757
+# findings across the stdlib, @term/site, @term/face and @term/host: it flagged every task with no body. A signature-only task
+# is a deliberate, documented construct that emits a native stub, which is how a binding library is written.
+test <L005 leaves a signature-only task alone>
+  want hold, is-equal(count-of(<task later\n  take x, like number\n  like number\n>, <L005>), 0)
+
+test <L005 catches an empty fork branch>
+  want hold, is-minimum(count-of(<task go\n  fork test\n    hook test\n      true\n    hook hold\n    hook miss\n      show \<x\>\n>, <L005>), 1)
+
+# L003: redundant arithmetic, with a verbatim-slice fix
+host redundant-add, <save y\n  call add\n    read x\n    code 0\n>
+
+test <L003 detects x + 0>
+  want hold, is-equal(count-of(redundant-add, <L003>), 1)
+
+test <L003 fix is the surviving operand>
+  want hold, is-equal(first-fix(with-code(findings(redundant-add), <L003>)), <read x>)
+
+# L004: a never-reassigned `save` should be `host`
+test <L004 flags never-reassigned save>
+  want hold, is-equal(count-of(<save a, code 5\n>, <L004>), 1)
+
+test <L004 fix swaps save -\> host>
+  want hold, is-equal(first-fix(with-code(findings(<save a, code 5\n>), <L004>)), <host>)
+
+# the second `save a` is a fresh binding, not an assignment
+test <L004 still fires when only rebound>
+  want hold, is-minimum(count-of(<save a, code 5\nsave a, code 7\n>, <L004>), 1)
+
+# an EMPTY list or hash filled after it is bound is not a constant: as a `host` it is generalized and never learns its element,
+# and on Rust comes out a boxed `Vec<Rc<dyn Any>>` (self-hosting, 2026-10-04: the fix broke six ports)
+test <L004 leaves an empty list alone>
+  want hold, is-equal(count-of(<task go\n  like number\n  save out, make list\n  send back, code 0\n>, <L004>), 0)
+
+test <L004 leaves an empty hash alone>
+  want hold, is-equal(count-of(<task go\n  like number\n  save out, make hash\n  send back, code 0\n>, <L004>), 0)
+
+# L001: non-kebab declared name
+test <L001 flags camelCase task name>
+  want hold, is-equal(count-of(<task fooBar\n  send back, code 1\n>, <L001>), 1)
+
+# analyze: one parse drives format + lint, inline suppression silences a rule
+host suppressed, <save y\n  # lint off L003\n  call add\n    read x\n    code 0\n>
+
+test <analyze formats from the same parse>
+  want hold, is-above(analysis-format(analyze-module/analyze(source-of(<t.tree>, suppressed)))/length, 0)
+
+test <analyze suppresses L003 via comment>
+  want hold, is-equal(size-of(with-code(analysis-lint(analyze-module/analyze(source-of(<t.tree>, suppressed))), <L003>)), 0)
+
+# L006: a fork test whose condition is a boolean literal is constant control flow
+test <L006 flags a constant `true` condition>
+  want hold, is-equal(count-of(<fork test\n  hook test, true\n  hook hold\n    send back, code 1\n>, <L006>), 1)
+
+test <L006 leaves a real condition alone>
+  want hold, is-equal(count-of(<fork test\n  hook test\n    read x\n  hook hold\n    send back, code 1\n>, <L006>), 0)
+
+# L007: comparing an expression to itself is always constant
+test <L007 flags is-equal(x, x)>
+  want hold, is-equal(count-of(<save r\n  call is-equal\n    read x\n    read x\n>, <L007>), 1)
+
+test <L007 leaves is-equal(x, y) alone>
+  want hold, is-equal(count-of(<save r\n  call is-equal\n    read x\n    read y\n>, <L007>), 0)
+
+test <L007 flags a self ordering comparison (n \< n)>
+  want hold, is-equal(count-of(<save r\n  call is-below\n    read n\n    read n\n>, <L007>), 1)
+
+# L008: a native import whose alias is never referenced is flagged
+test <L008 flags an unused native import>
+  want hold, is-equal(count-of(<dock load\n  load \<node:fs/promises\>, name fs\n\ntask noop\n  send back, code 1\n>, <L008>), 1)
+
+test <L008 leaves a used native import alone>
+  want hold, is-equal(count-of(<dock load\n  load \<node:fs/promises\>, name fs\n\ntask read-it\n  mark async\n  send back\n    call fs/read-file\n      text \</tmp/x\>\n>, <L008>), 0)
+
+# two imports, only one used: exactly the unused one is flagged
+test <L008 flags only the unused import in a mixed dock>
+  host mixed, with-code(findings(<dock load\n  load \<node:fs/promises\>, name fs\n  load \<node:path\>, name pathlib\n\ntask use-path\n  send back\n    call pathlib/join\n      text \<a\>\n      text \<b\>\n>), <L008>)
+  want hold, is-equal(size-of(mixed), 1)
+  want hold, first-says(mixed, <fs>)
+
+# L009: two branches of a fork test with the same condition (the later one is dead)
+test <L009 flags a duplicated branch condition>
+  want hold, is-equal(count-of(<fork test\n  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code 1\n  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code 2\n>, <L009>), 1)
+
+test <L009 leaves distinct conditions alone>
+  want hold, is-equal(count-of(<fork test\n  hook test\n    call is-above\n      read x\n      code 5\n  hook hold\n    send back\n      code 1\n  hook test\n    call is-above\n      read x\n      code 9\n  hook hold\n    send back\n      code 2\n>, <L009>), 0)
+
+# L010: assigning a place to itself has no effect
+test <L010 flags a self assignment>
+  want hold, is-equal(count-of(<task f\n  take x, like number\n  save x\n    read x\n>, <L010>), 1)
+
+test <L010 leaves a real assignment alone>
+  want hold, is-equal(count-of(<task f\n  take x, like number\n  save x\n    call add\n      read x\n      code 1\n>, <L010>), 0)
+
+# L011: a statement after a terminator in the same block is unreachable
+test <L011 flags a statement after `send back`>
+  want hold, is-equal(count-of(<task f\n  send back\n    code 1\n  send back\n    code 2\n>, <L011>), 1)
+
+test <L011 leaves a single trailing return alone>
+  want hold, is-equal(count-of(<task f\n  send back\n    code 1\n>, <L011>), 0)
+
+# L012: a fork test whose two branches run identical statements
+test <L012 flags identical fork branches>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 1\n>, <L012>), 1)
+
+test <L012 leaves diverging branches alone>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n>, <L012>), 0)
+
+# L013: two arms of a fork case with the same label
+test <L013 flags a duplicated case label>
+  want hold, is-equal(count-of(<form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<a\>\n    case green\n      send back, text \<b\>\n    case red\n      send back, text \<c\>\n>, <L013>), 1)
+
+test <L013 leaves distinct cases alone>
+  want hold, is-equal(count-of(<form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<a\>\n    case green\n      send back, text \<b\>\n>, <L013>), 0)
+
+# L014: a comparison of two literals is always constant
+test <L014 flags a two-literal comparison>
+  want hold, is-equal(count-of(<task f\n  like boolean\n  send back\n    call is-below\n      code 5\n      code 3\n>, <L014>), 1)
+
+test <L014 leaves a variable comparison alone>
+  want hold, is-equal(count-of(<task f\n  take x, like number\n  like boolean\n  send back\n    call is-below\n      read x\n      code 3\n>, <L014>), 0)
+
+# L015: duplicate record field
+test <L015 flags a duplicate record field>
+  want hold, is-equal(count-of(<form point\n  link x, like number\n  link y, like number\n\ntask f\n  send back\n    make point\n      bind x, code 1\n      bind y, code 2\n      bind x, code 3\n>, <L015>), 1)
+
+test <L015 leaves distinct fields alone>
+  want hold, is-equal(count-of(<form point\n  link x, like number\n  link y, like number\n\ntask f\n  send back\n    make point\n      bind x, code 1\n      bind y, code 2\n>, <L015>), 0)
+
+# L016: double negation
+host double-negation, <task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      fork lack\n        read x\n>
+
+test <L016 flags a double negation>
+  want hold, is-equal(count-of(double-negation, <L016>), 1)
+
+test <L016 leaves a single negation alone>
+  want hold, is-equal(count-of(<task f\n  take x, like boolean\n  like boolean\n  send back\n    fork lack\n      read x\n>, <L016>), 0)
+
+# L017: comparison to a boolean literal
+host equal-true, <task f\n  take x, like boolean\n  like boolean\n  send back\n    call is-equal\n      read x\n      true\n>
+
+test <L017 flags `x == true`>
+  want hold, is-equal(count-of(equal-true, <L017>), 1)
+
+# L018: a binding returned on the very next line
+test <L018 flags a bind-then-return>
+  want hold, is-equal(count-of(<task f\n  like number\n  save x\n    call add\n      code 1\n      code 2\n  send back\n    read x\n>, <L018>), 1)
+
+test <L018 leaves a used binding alone>
+  want hold, is-equal(count-of(<task f\n  like number\n  save x\n    code 5\n  send back\n    call add\n      read x\n      read x\n>, <L018>), 0)
+
+# L019: a line longer than 84 characters
+test <L019 flags a line over 84 chars>
+  host run, x-run(80)
+  want hold, is-minimum(count-of(<task f\n  send back, text \<{run}\>\n>, <L019>), 1)
+
+test <L019 leaves short lines alone>
+  want hold, is-equal(count-of(<task f\n  send back, code 1\n>, <L019>), 0)
+
+# L020: a tab (indent with two spaces), caught wherever the parser tolerates a tab (a comment)
+test <L020 flags a tab>
+  want hold, is-equal(count-of(<# a\tcomment with a tab\ntask f\n  send back, code 1\n>, <L020>), 1)
+
+test <L020 leaves a two-space-indented file alone>
+  want hold, is-equal(count-of(<task f\n  send back, code 1\n>, <L020>), 0)
+
+# L021: two string literals concatenated
+test <L021 flags two concatenated string literals>
+  want hold, is-equal(count-of(<task f\n  like text\n  send back\n    call add\n      text \<a\>\n      text \<b\>\n>, <L021>), 1)
+
+# L022: a continue as the last statement of a loop
+test <L022 flags a trailing continue>
+  want hold, is-equal(count-of(<task f\n  walk test\n    hook test\n      read go\n    hook hold\n      turn next\n>, <L022>), 1)
+
+# applyFixes: the double-negation fix collapses `!!x` to `x` in the source
+test <applyFixes removes the double negation>
+  host fixed, fixed-of(double-negation)
+  want hold, not(says(fixed, <fork lack>))
+  want hold, says(fixed, <read x>)
+
+# applying fixes to already-clean source is a no-op
+test <applyFixes is a no-op on clean source>
+  want hold, is-equal(fixed-of(<task f\n  send back, code 1\n>), <task f\n  send back, code 1\n>)
+
+# L023: no-else-return (every branch exits)
+test <L023 flags an unnecessary else after exiting branches>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n>, <L023>), 1)
+
+# L024: no-duplicate-load
+test <L024 flags a module loaded twice>
+  want hold, is-equal(count-of(<dock load\n  load \<node:fs\>, name fs\n  load \<node:fs\>, name fs2\n\ntask f\n  send back, code 1\n>, <L024>), 2)
+
+# L025: no-negated-condition
+test <L025 flags a negated fork condition with an else>
+  want hold, is-equal(count-of(<task f\n  take x, like boolean\n  like number\n  fork test\n    hook test\n      fork lack\n        read x\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n>, <L025>), 1)
+
+# L026: no-lonely-if
+test <L026 flags an else that holds only a fork>
+  want hold, is-equal(count-of(<task f\n  take a, like boolean\n  take b, like boolean\n  like number\n  fork test\n    hook test, read a\n    hook hold\n      send back, code 1\n    hook miss\n      fork test\n        hook test, read b\n        hook hold\n          send back, code 2\n>, <L026>), 1)
+
+# L027: consistent-return
+test <L027 flags a function returning a value on some paths and nothing on others>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back\n>, <L027>), 1)
+
+# L028: no-useless-return
+host useless-return, <task f\n  show \<hi\>\n  send back\n>
+
+test <L028 flags a trailing value-less send back>
+  want hold, is-equal(count-of(useless-return, <L028>), 1)
+
+# L017 fix: `x == true` to `x`
+test <L017 fix collapses `x == true` to `x`>
+  host fixed, fixed-of(equal-true)
+  want hold, not(says(fixed, <is-equal>))
+  want hold, not(says(fixed, <true>))
+
+# deletion fixes (L028 useless-return) remove the no-op line and the result still parses
+test <L028 fix deletes the trailing return and re-parses cleanly>
+  host fixed, fixed-of(useless-return)
+  want hold, parses(fixed)
+  want hold, not(later-line-is(fixed, <send back>))
+
+# L029: trailing whitespace
+test <L029 flags trailing whitespace>
+  want hold, is-equal(count-of(<task f  \n  send back, code 1\n>, <L029>), 1)
+
+# L030: more than two consecutive blank lines
+test <L030 flags 3+ consecutive blank lines>
+  want hold, is-equal(count-of(<task f\n  send back, code 1\n\n\n\ntask g\n  send back, code 2\n>, <L030>), 1)
+
+# analyze().fix() does the full lint, apply-fixes, re-format in one call
+test <analyze().fix() collapses !!x and re-formats>
+  host fixed, analysis-fix(analyze-module/analyze(source-of(<a.tree>, double-negation)))
+  want hold, not(says(fixed, <fork lack>))
+  want hold, says(fixed, <read x>)
+  want hold, parser-tree/parse(source-of(<a.tree>, fixed))/ok
+
+# L031: returning a boolean literal from each fork branch is just the condition
+host redundant-fork, <task f\n  take c, like boolean\n  like boolean\n  fork test\n    hook test, read c\n    hook hold\n      send back, true\n    hook miss\n      send back, false\n>
+
+test <L031 flags `if c \{ true \} else \{ false \}`>
+  want hold, is-equal(count-of(redundant-fork, <L031>), 1)
+
+test <L031 fix returns the condition directly>
+  want hold, is-equal(first-fix(with-code(findings(redundant-fork), <L031>)), <send back, read c>)
+
+test <L031 leaves non-boolean returns alone>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  like number\n  fork test\n    hook test, read c\n    hook hold\n      send back, code 1\n    hook miss\n      send back, code 2\n>, <L031>), 0)
+
+# the fix collapses the fork and the result still parses
+test <L031 fix re-parses cleanly without the fork>
+  host fixed, fixed-of(redundant-fork)
+  want hold, parses(fixed)
+  want hold, not(says(fixed, <fork test>))
+
+# L032: a value-position conditional with boolean-literal arms is just the condition
+host redundant-value, <task f\n  take c, like boolean\n  like boolean\n  save r\n    fork test\n      hook test, read c\n      hook hold, true\n      hook miss, false\n  send back, read r\n>
+
+test <L032 flags a `c ? true : false` conditional>
+  want hold, is-equal(count-of(redundant-value, <L032>), 1)
+
+test <L032 fix uses the bare condition>
+  want hold, is-equal(first-fix(with-code(findings(redundant-value), <L032>)), <read c>)
+
+test <L032 leaves non-boolean arms alone>
+  want hold, is-equal(count-of(<task f\n  take c, like boolean\n  like number\n  save r\n    fork test\n      hook test, read c\n      hook hold, code 1\n      hook miss, code 2\n  send back, read r\n>, <L032>), 0)
+
+# L033: a negated equality is clearer as the opposite comparison
+test <L033 flags `!(a == b)`>
+  want hold, is-equal(count-of(<task f\n  take a, like number\n  take b, like number\n  like boolean\n  send back\n    fork lack\n      call is-equal\n        read a\n        read b\n>, <L033>), 1)
+
+test <L033 leaves a plain negation alone>
+  want hold, is-equal(count-of(<task f\n  take a, like boolean\n  like boolean\n  send back\n    fork lack\n      read a\n>, <L033>), 0)
+
+# L034: comparing a size to zero reads as an emptiness check
+test <L034 flags `size(items) == 0`>
+  want hold, is-equal(count-of(<task f\n  take items, like list\n  like boolean\n  send back\n    call is-equal\n      call size, read items\n      code 0\n>, <L034>), 1)
+
+test <L034 leaves a plain `a == 0` alone>
+  want hold, is-equal(count-of(<task f\n  take a, like number\n  like boolean\n  send back\n    call is-equal\n      read a\n      code 0\n>, <L034>), 0)
+
+# L035: a fork case with no arms handles nothing
+test <L035 flags an empty fork case>
+  want hold, is-equal(count-of(<form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  fork case, read c\n>, <L035>), 1)
+
+test <L035 leaves a populated fork case alone>
+  want hold, is-equal(count-of(<form color\n  case red\n  case green\n\ntask f\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<a\>\n    case green\n      send back, text \<b\>\n>, <L035>), 0)
+
+# L036: a map literal with a duplicate key
+test <L036 flags a duplicated map key>
+  want hold, is-equal(count-of(<save m\n  make hash\n    save a, code 1\n    save b, code 2\n    save a, code 3\n>, <L036>), 1)
+
+test <L036 leaves distinct keys alone>
+  want hold, is-equal(count-of(<save m\n  make hash\n    save a, code 1\n    save b, code 2\n>, <L036>), 0)
+
+# L037, L038, L039: the tell advice of note/project/term/hive/06-tell.md, on a program that makes decisions (declares a tell)
+host tell-stdlib, <form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\nform absence\n  like exception\n    bind note, \<Not found\>\n    link thing, like text\n\nform outage\n  like exception\n    bind note, \<Down\>\n    link thing, like text\n\nform denial\n  like exception\n    bind note, \<Not allowed\>\n    link thing, like text\n\nform missing-user\n  like absence\n    bind note, \<No such user\>\n\nform database-outage\n  like outage\n    bind note, \<Database down\>\n\nform private-document\n  like denial\n    bind note, \<Not yours\>\n>
+host tell-raises, <task find-user\n  take id, like text\n  like text\n  halt missing-user\n    bind thing, read id\n\ntask query\n  like text\n  halt database-outage\n    bind thing, text \<primary\>\n\ntask open-document\n  like text\n  halt private-document\n    bind thing, text \<doc\>\n>
+
+# a library that tells nothing gets no advice
+test <L037 stays quiet in a program that decides nothing>
+  want hold, is-equal(count-of(<{tell-stdlib}\n{tell-raises}>, <L037>), 0)
+
+# an app that tells one exception is asked about the fix-the-input one it left private
+task app-findings
+  like dynamic
+
+  back findings(<{tell-stdlib}\n{tell-raises}\ntell @local/private-document\n  note \<You cannot open this document\>\n>)
+
+test <L037 flags a reachable absence with no tell>
+  host missing, with-code(app-findings(), <L037>)
+  want hold, is-equal(size-of(missing), 1)
+  want hold, first-says(missing, <"missing-user" is an absence>)
+
+test <L037 leaves the outage alone (not the caller's business)>
+  want hold, not(any-says(with-code(app-findings(), <L037>), <database-outage>))
+
+# a tell on a server failure
+test <L038 flags a tell on an outage>
+  host failure, with-code(findings(<{tell-stdlib}\n{tell-raises}\ntell @local/database-outage\n  note \<The database is down\>\n>), <L038>)
+  want hold, is-equal(size-of(failure), 1)
+  want hold, first-says(failure, <never the caller>)
+
+# a tell on a denial that names the resource
+test <L039 flags a denial tell that carries a link>
+  host revealing, with-code(findings(<{tell-stdlib}\n{tell-raises}\ntell @local/private-document\n  note \<Not yours\>\n  link thing\n>), <L039>)
+  want hold, is-equal(size-of(revealing), 1)
+  want hold, first-says(revealing, <confirms it exists>)
+
+test <L039 leaves a denial tell without a link alone>
+  want hold, is-equal(size-of(with-code(app-findings(), <L039>)), 0)
+
+# L041: a call to a raising task outside a guard without `halt kink`
+host raise-stdlib, <form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\nform absence\n  like exception\n    bind note, \<Not found\>\n    link thing, like text\n\nform failure\n  like exception\n    bind note, \<Something went wrong\>\n    link thing, like text\n>
+host raiser, <task find\n  take key, like text\n  like text\n  halt absence\n    bind thing, read key\n>
+
+test <L041 flags a bare call to a raising task>
+  host unhandled, with-code(findings(<{raise-stdlib}\n{raiser}\ntask use\n  like text\n  send back\n    call find\n      text \<a\>\n>), <L041>)
+  want hold, is-equal(size-of(unhandled), 1)
+  want hold, first-says(unhandled, <"find" can raise absence>)
+
+test <L041 leaves a call with halt kink alone>
+  want hold, is-equal(count-of(<{raise-stdlib}\n{raiser}\ntask use\n  like text\n  send back\n    call find\n      text \<a\>\n      halt kink\n>, <L041>), 0)
+
+test <L041 leaves a guarded call alone>
+  want hold, is-equal(count-of(<{raise-stdlib}\n{raiser}\ntask use\n  like text\n  fork\n    mark unsafe\n    send back\n      call find\n        text \<a\>\n  halt take\n    take e\n    send back, read e/note\n>, <L041>), 0)
+
+test <L041 leaves a failure-only native shim alone>
+  want hold, is-equal(count-of(<{raise-stdlib}\ndock load\n  load \<node:fs/promises\>, name fs\n\ntask read-file\n  take path, like text\n  like text\n  send back\n    call fs/read-file\n      read path\n\ntask use\n  like text\n  send back\n    call read-file\n      text \<a\>\n>, <L041>), 0)

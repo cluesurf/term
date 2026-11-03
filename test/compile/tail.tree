@@ -1,0 +1,67 @@
+note <The tasks that are loops, held both ways>
+
+# Ported from tail.ts by hand (item 0576). compile/backend.ts `tailTasks`, the suite's subject (decision 106): a task whose every self
+# call is a tail call becomes a loop on TypeScript and `tailrec` on Kotlin, and for every rule a task that must NOT, because a wrong one
+# drops work (a non-tail call's result) or continues the wrong loop. The answers themselves are held on all four toolchains by
+# test/compile/meaning-native/tail.tree.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/backend>, name tail-backend
+
+bind names-of
+  take tasks, like dynamic
+  like text
+  case node
+    text <[...$tasks.keys()].join()>
+
+task tails
+  take source, like text
+  like compile-outcome
+
+  host built, compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+  fork test, not(built/ok)
+    hold
+      halt <the fixture was refused>
+  back built
+
+task tail-names
+  take built, like compile-outcome
+  like text
+
+  back names-of(tail-backend/tail-tasks(built/program))
+
+# 1. a countdown with an accumulator: every self call a tail call
+host sum, tails(<task sum-down\n  take n, like number\n  take acc, like number\n  like number\n  fork test\n    hook test\n      call is-equal\n        read n\n        code 0\n    hook hold\n      send back, read acc\n  send back\n    call sum-down\n      call subtract\n        read n\n        code 1\n      call add\n        read acc\n        read n\n>)
+
+test <a task whose every self call is a tail call is a loop>
+  want hold, is-equal(tail-names(sum), <sum-down>)
+
+test <TypeScript writes it inside while (true), its tail call rebinding the parameters>
+  want hold, matches(make(pattern, <<while \(true\)>>), sum/emitted)
+  want hold, matches(make(pattern, <<n = __tail>>), sum/emitted)
+  want hold, matches(make(pattern, <<continue>>), sum/emitted)
+
+test <Kotlin marks it tailrec>
+  want hold, matches(make(pattern, <<tailrec fun sumDown>>), emit-text(sum, <kotlin>))
+
+# 2. a self call whose result is added to: not a tail call
+test <a self call whose result is used is NOT a loop>
+  want hold, is-equal(tail-names(tails(<task count-down\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-equal\n        read n\n        code 0\n    hook hold\n      send back, code 0\n  send back\n    call add\n      code 1\n      call count-down\n        call subtract\n          read n\n          code 1\n>)), <>)
+
+# 3. a tail call inside a walk: a continue there would continue the walk
+test <a self call inside a walk is NOT a loop>
+  want hold, is-equal(tail-names(tails(<task find\n  take n, like number\n  like number\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      fork test\n        hook test\n          call is-above\n            read i\n            code 3\n        hook hold\n          send back\n            call find\n              call subtract\n                read n\n                code 1\n  send back, read n\n>)), <>)
+
+# 4. the task taken as a value
+test <a task also taken as a value is NOT a loop>
+  want hold, is-equal(tail-names(tails(<task again\n  take n, like number\n  like number\n  host f, read again\n  fork test\n    hook test\n      call is-equal\n        read n\n        code 0\n    hook hold\n      send back, code 0\n  send back\n    call again\n      call subtract\n        read n\n        code 1\n>)), <>)

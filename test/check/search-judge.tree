@@ -1,0 +1,60 @@
+note <A forward-chaining proof search over the decided kernel (judge.ts)>
+
+# Ported from search-judge.ts (item 0565). The next step of the ATP tactic layer past the one-step `auto`. From the hypotheses it
+# derives new terms by application, inferring each result type with the sound kernel, for a bounded number of rounds, and stops when
+# a derived term checks against the goal. It is breadth-first and backtracking-free but multi-step, and every term it builds is
+# kernel-typed, so a found proof is real. It auto-discovers the pinch-point proof (antisymmetry applied to the ceiling and the floor)
+# and multi-step propositional chains. check/judge is the subject (decision 106), handed to the search whole.
+
+dock load
+  load <@term/make/code/check/judge>, name judge
+
+# the forward-chaining search, as the suite's own function
+bind search
+  take kernel, like dynamic
+  take hyps, like dynamic
+  take goal, like dynamic
+  take depth, like number
+  like dynamic
+  case node
+    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const context = $kernel.contextWithSignature($hyps); const goalValue = $kernel.evaluate([], $goal); const proves = term =\> \{ try \{ $kernel.check(context, term, goalValue); return true \} catch \{ return false \} \}; if ($goal.tag === "id") \{ const r = \{ tag: "refl", type: $goal.type, value: $goal.left \}; if (proves(r)) return r \} const seen = new Set(); let facts = []; for (const h of $hyps) \{ const t = kc(h.name); facts.push(t); seen.add($kernel.showTerm(t)) \} for (let round = 0; round \<= $depth; round++) \{ for (const t of facts) if (proves(t)) return t; const next = [...facts]; for (const f of facts) \{ for (const x of facts) \{ const candidate = app(f, x); const key = $kernel.showTerm(candidate); if (seen.has(key)) continue; try \{ $kernel.infer(context, candidate); seen.add(key); next.push(candidate) \} catch \{ \} \} \} facts = next \} for (const t of facts) if (proves(t)) return t; return null \})()>
+
+bind found-holds
+  take kernel, like dynamic
+  take found, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <($found !== null && $kernel.showTerm($found).includes($word))>
+
+# multi-step propositional chain: prove C from f : A -\> B, g : B -\> C, a : A. needs g (f a)
+bind chain-hyps
+  take zero, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const ty = \{ tag: "type", level: $zero \}; const pi = (mult, domain, codomain) =\> (\{ tag: "pi", mult, domain, codomain \}); return [\{ name: "A", type: ty \}, \{ name: "B", type: ty \}, \{ name: "C", type: ty \}, \{ name: "f", type: pi("many", kc("A"), kc("B")) \}, \{ name: "g", type: pi("many", kc("B"), kc("C")) \}, \{ name: "a", type: kc("A") \}] \})()>
+
+bind const-term
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+# the pinch-point: from the ceiling and the floor, antisymmetry forces the dimension to eight
+bind pinch-hyps
+  take zero, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const kc = name =\> (\{ tag: "const", name \}); const ty = \{ tag: "type", level: $zero \}; const pi = (mult, domain, codomain) =\> (\{ tag: "pi", mult, domain, codomain \}); const app = (fun, arg) =\> (\{ tag: "app", fun, arg \}); const le = (a, b) =\> app(app(kc("Le"), a), b); const at = index =\> (\{ tag: "var", index \}); const antisym = pi("many", kc("Dim"), pi("many", kc("Dim"), pi("many", le(at(1), at(0)), pi("many", le(at(1), at(2)), \{ tag: "id", type: kc("Dim"), left: at(3), right: at(2) \})))); return [\{ name: "Dim", type: ty \}, \{ name: "Le", type: pi("many", kc("Dim"), pi("many", kc("Dim"), ty)) \}, \{ name: "antisym", type: antisym \}, \{ name: "dimension", type: kc("Dim") \}, \{ name: "eight", type: kc("Dim") \}, \{ name: "ceiling", type: le(kc("dimension"), kc("eight")) \}, \{ name: "floor", type: le(kc("eight"), kc("dimension")) \}] \})()>
+
+bind pinch-goal
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: \{ tag: "const", name: "Dim" \}, left: \{ tag: "const", name: "dimension" \}, right: \{ tag: "const", name: "eight" \} \})>
+
+test <search finds a two-step chain g (f a) : C>
+  want hold, found-holds(judge, search(judge, chain-hyps(judge/lit-level(0)), const-term(<C>), 3), <>)
+
+test <search auto-discovers the pinch-point proof (antisym applied to ceiling and floor)>
+  want hold, found-holds(judge, search(judge, pinch-hyps(judge/lit-level(0)), pinch-goal(0), 5), <antisym>)

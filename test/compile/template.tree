@@ -1,0 +1,122 @@
+note <Template (tree/fuse) expansion>
+
+# Ported from template.ts by hand (item 0576). parser/tree and compile/template are the suite's subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name template-parser
+  load <@term/make/code/compile/template>, name template-expander
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "t.tree", text: $text \})>
+
+bind parsed-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <$parsed.ok>
+
+bind parsed-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.tree>
+
+host doubler, <tree doubler\n  take name\n  hook fuse\n    task double-\{name\}\n      take n, like u64\n      send back\n        call multiply\n          read n\n          code 2\n\nfuse doubler\n  bind name, int\n>
+host accessor, <tree accessor\n  take name\n  take type\n  hook fuse\n    task get-\{name\}\n      like \{type\}\n    task set-\{name\}\n      take value, like \{type\}\n\nfuse accessor\n  bind name, age\n  bind type, u64\n>
+host slotted, <tree wrapper\n  take name\n  hook fuse\n    form \{name\}\n      site fields\n\nfuse wrapper\n  bind name, point\n  beam fields\n    link x, like u64\n    link y, like u64\n>
+
+# the program printed after expansion. A source that does not parse answers <>, which holds no word, as the original's two checks
+# read it: one that wants a word fails, one that wants a word gone passes
+task expanded
+  take source, like text
+  like text
+
+  host parsed, template-parser/parse(source-of(source))
+  fork test, not(parsed-ok(parsed))
+    hold
+      back <>
+  back template-parser/print-tree(template-expander/expand-templates(parsed-tree(parsed)))
+
+task compiled
+  take source, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, file)))
+
+# the doubler template instantiates with the bound name
+test <doubler -\> double-int>
+  want hold, text-contains(expanded(doubler), <double-int>)
+
+# the template body is fully expanded (the call survives)
+test <doubler body expanded>
+  want hold, text-contains(expanded(doubler), <multiply>)
+
+# the template definition itself is removed after expansion
+test <tree def removed>
+  want hold, not(text-contains(expanded(doubler), <doubler>))
+
+# multiple parameters
+test <accessor get-age>
+  want hold, text-contains(expanded(accessor), <get-age>)
+
+test <accessor set-age>
+  want hold, text-contains(expanded(accessor), <set-age>)
+
+# the type parameter is substituted
+test <accessor type u64>
+  want hold, text-contains(expanded(accessor), <u64>)
+
+# site/beam: the beamed fields are injected at the site, inside the substituted form name
+test <site/beam form name>
+  want hold, text-contains(expanded(slotted), <point>)
+
+test <site/beam injects fields>
+  want hold, text-contains(expanded(slotted), <link>)
+
+test <site/beam injects x>
+  want hold, text-contains(expanded(slotted), <x>)
+
+test <site keyword gone>
+  want hold, not(text-contains(expanded(slotted), <site fields>))
+
+# injected template code flows through the full compile (expand -> mill -> resolve -> CHECK -> emit)
+test <fused code compiles + names the expansion (addOne)>
+  host out, compiled(<tree make-adder\n  take suffix\n  hook fuse\n    task add-\{suffix\}\n      take n, like u64\n      send back\n        call add\n          read n\n          code 1\n\nfuse make-adder\n  bind suffix, one\n>, <tmpl.tree>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <addOne>)
+
+# compile-time meta-loop: a fuse over a `host` enumeration generates one definition per item (dynamic `fuse read` resolves the inner
+# template name from a parameter, and `{name}` substitutes the item)
+test <meta-loop unrolls a fuse over a host enumeration (isHearts, isSpades)>
+  host out, compiled(<host suit\n  term hearts\n  term spades\n\ntree make-flag\n  take name\n  hook bind\n    task is-\{name\}\n      like boolean\n\ntree each\n  take items\n  take maker\n  hook fuse\n    walk list, read items\n      hook step\n        take item\n        fuse read maker\n          read item\n\nfuse each, read suit\n  read make-flag\n>, <meta.tree>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <isHearts>)
+  want hold, text-contains(out/emitted, <isSpades>)
+
+# a fuse whose expanded body has a type error must be caught by the checker (proves injected code is checked)
+test <type error inside a fused template is caught>
+  host out, compiled(<tree bad-tmpl\n  take x\n  hook fuse\n    task bad-\{x\}\n      take n, like u64\n      save s, text \<hi\>\n      send back\n        call add\n          read n\n          read s\n\nfuse bad-tmpl\n  bind x, one\n>, <tmpl.tree>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <type-mismatch>)
+
+# `read <param>` inside a template body substitutes the BOUND VALUE (compiler-hygiene-0013): a numeric bind rides in as the literal, so
+# the fused task computes with it rather than reading the bound group's head as a variable that does not exist
+test <read \<param\> substitutes the bound value>
+  host out, compiled(<tree adder\n  take amount\n  hook fuse\n    task add-\{amount\}\n      take x, like number\n      like number\n      send back\n        call add\n          read x\n          read amount\n\nfuse adder, bind amount, 5\n\ntask probe\n  like number\n  send back\n    call add-5\n      code 1\n>, <tmpl.tree>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <x + 5>)

@@ -1,0 +1,98 @@
+note <A NATIVE MEMBER CALL HOLDS ITS ARGUMENT TO THE SLOT, whatever either type is yet>
+
+# Ported from member-pin.ts by task/term/suite-port.ts.
+
+bind out-line
+  take text, like text
+  like text
+  case node
+    text <$text.split("\n").filter(l =\> /\bout\b/.test(l)).join(" | ")>
+
+bind argument-mismatch
+  take names, like list, like text
+  take messages, like list, like text
+  like boolean
+  case node
+    text <$names.some((name, at) =\> name === "type-mismatch" && /argument/.test($messages[at]))>
+
+task said
+  take messages, like list, like text
+  take word, like text
+  like boolean
+
+  walk messages
+    take message
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+host gather, <load @term/base/list\n  find list\n\ntask gather\n  take x\n  like list, like number\n  save out, make list\n  call out/push, read x\n  send back, read out\n\ntask run\n  like number\n  save got, call gather, code 4\n  send back, read got/length\n>
+
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+  find emit-text
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# A NATIVE MEMBER CALL HOLDS ITS ARGUMENT TO THE SLOT, whatever either type is yet. `xs/push(x)`, `xs/set(i, x)`,
+# `m/set(k, v)` and the key of `m/get`, `m/has`, `m/delete` unified their argument with the slot only when the slot was
+# still free and the argument's type was ground, on the belief that this path had no occurs check (the substitution's
+# `bind-variable` has one). Two holes followed: text pushed into a list of numbers built, and a slot met by a value
+# whose type was still open stayed free, so a native backend spelled it as the boxed unknown. A list pushed into
+# itself is named as that, not as an opaque mismatch. guides/architecture/types/inference, "What is missing"
+# (decisions-2026-10.md, D10, 2026-10-05).
+# Run: sh tmp/run-term-ts.sh test/check/member-pin.ts
+# text pushed into a list of numbers
+test <text pushed into a list of numbers is refused>
+  host built, compile-text(<load @term/base/list\n  find list\n\ntask fill\n  take xs, like list, like number\n  call xs/push, text \<seven\>\n>, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <fill>)))
+  want hold, not(built/ok)
+  want hold, argument-mismatch(built/names, built/messages)
+
+# a hash key of the wrong type
+test <a number looked up in a hash keyed by text is refused>
+  host built, compile-text(<load @term/base/hash\n  find hash\n\ntask look\n  take table, like hash, like text, like number\n  like boolean\n  send back, call table/has, code 3\n>, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <look>)))
+  want hold, refused-as(built, <type-mismatch>)
+
+# the right types still build
+test <the right element and key types build>
+  host built, compile-text(<load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask fill\n  take xs, like list, like number\n  take table, like hash, like text, like number\n  call xs/push, code 7\n  call xs/set, code(0), code 8\n  call table/set, text(\<a\>), code 1\n>, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <fill>)))
+  want hold, built/ok
+
+# a list pushed into itself
+test <a list pushed into itself is named as a type with no end>
+  host built, compile-text(<load @term/base/list\n  find list\n\ntask loop\n  save xs, make list\n  call xs/push, read xs\n>, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <loop>)))
+  want hold, not(built/ok)
+  want hold, said(built/messages, <"xs" would hold a value of its own type>)
+
+# a value whose type is still OPEN when it is pushed: `x` is a parameter with no `like`, decided only by the caller.
+# The element of `out` was left free, and Rust spelled `out` as a list of the boxed unknown
+test <a value of an open type pins the element (TypeScript)>
+  host node, compile-text(gather, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <run>)))
+  want hold, node/ok
+
+test <the list is a list of numbers on TypeScript>
+  host node, compile-text(gather, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <run>)))
+  host ts, emit-text(node, <typescript>)
+  host pattern-3, make pattern, <<out: number\[\]|out = \[\] as number\[\]|Array<number>>>
+  want hold, node/ok
+  want hold, or(matches(pattern-3, ts), not(text-contains(out-line(ts), <any>)))
+
+test <a value of an open type pins the element (Rust)>
+  host rust, compile-text(gather, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <rust>), bind(env, <rust>), bind(entry, <run>)))
+  want hold, rust/ok
+
+test <the list is not a list of the boxed unknown on Rust>
+  host rust, compile-text(gather, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <rust>), bind(env, <rust>), bind(entry, <run>)))
+  host emitted, emit-text(rust, <rust>)
+  want hold, rust/ok
+  want hold, not(text-contains(emitted, <dyn std::any::Any>))

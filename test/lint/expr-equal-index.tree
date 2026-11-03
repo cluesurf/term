@@ -1,0 +1,48 @@
+note <Two member reads with different computed indexes are different places>
+
+# Ported from expr-equal-index.ts (item 0592). A computed member's name is empty, and compile/expr-equal compared the name alone,
+# so `grid/{i}` and `grid/{j}` were the same and L010 called `save grid/{i}, read grid/{j}` a self-assignment (found porting
+# expr-equal to Term, 2026-10-05). Fails without the index comparison. The linter, the parser and the mill are the subject
+# (decision 106).
+
+dock load
+  load <@term/make/code/lint/lint>, name lint-module
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "t.tree", text: $text \})>
+
+bind self-count
+  take found, like dynamic
+  like number
+  case node
+    text <$found.filter(f =\> f.code === "L010").length>
+
+task self-assignments
+  take target, like text
+  take value, like text
+  like number
+
+  host text, <task go\n  take grid, like list, like number\n  take i, like number\n  take j, like number\n  save {target}, read {value}\n>
+  host parsed, parser-tree/parse(source-of(text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <t.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  back self-count(lint-module/lint(built/program, <t.tree>, text))
+
+test <two different indexes are two places>
+  want hold, is-equal(self-assignments(<grid/\{i\}>, <grid/\{j\}>), 0)
+
+test <the same index is one place, and is reported>
+  want hold, is-equal(self-assignments(<grid/\{i\}>, <grid/\{i\}>), 1)
+
+test <a plain field to itself is still reported>
+  want hold, is-equal(self-assignments(<grid/size>, <grid/size>), 1)

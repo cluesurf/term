@@ -1,0 +1,24 @@
+note <Mutual structural recursion>
+
+# Ported from mutual-recursion.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Mutual structural recursion: two functions that call each other (a rose-tree `count-rose` <-> `count-forest`) are now
+# verified terminating -- and made transparent so their laws reduce -- when there is a FIXED argument position that
+# strictly descends (structurally) on every call in the cycle. Sound: that position's structural size is a well-founded
+# measure decreasing on every step. The soundness control is essential: a NON-descending mutual recursion (a ping-pong
+# that passes its argument unchanged, i.e. never terminates) must NOT be made transparent, so a law over it does not
+# discharge. Run: npx tsx test/check/mutual-recursion.ts
+# a rose tree (node with a child forest) + a mutually-recursive node count
+host rose, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform forest\n  case empty\n  case grow\n    link top, like rose\n    link rest, like forest\n\nform rose\n  case node\n    link label, like nat\n    link kids, like forest\n\ntask count-rose\n  take r, like rose\n  like nat\n  fork case, read r\n    case node\n      link label\n      link kids\n      send back\n        make succ\n          bind prior\n            call count-forest\n              read kids\n\ntask count-forest\n  take f, like forest\n  like nat\n  fork case, read f\n    case empty\n      send back\n        make zero\n    case grow\n      link top\n      link rest\n      send back\n        call count-rose\n          read top\n>
+
+# 1. the mutually-recursive count reduces: a single leaf node has count one.
+test <mutual structural recursion reduces>
+  want hold, compile-text(<{rose}\nrule count-leaf\n  show hold\n    call is-equal\n      call count-rose\n        make node\n          bind label\n            make zero\n          bind kids\n            make empty\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: a non-descending mutual recursion (ping passes its argument to pong unchanged, and back) never
+# terminates, so it must NOT be transparent -- `ping x == x` must NOT discharge (ping stays an opaque neutral).
+test <non-descending mutual recursion is not made transparent>
+  want hold, not(compile-text(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask ping\n  take n, like nat\n  like nat\n  send back\n    call pong\n      read n\n\ntask pong\n  take n, like nat\n  like nat\n  send back\n    call ping\n      read n\n\nrule ping-identity\n  seat x, like nat\n  show hold\n    call is-equal\n      call ping\n        read x\n      read x\n  calm hold\n>)/ok)

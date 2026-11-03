@@ -1,0 +1,29 @@
+note <Ring reasoning modulo a hypothesis>
+
+# Ported from ring-modulo.ts by tmp/self-host/suite-unroll.mjs (item 0565), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# Ring identity MODULO hypotheses (ideal membership): prove a polynomial equality `L == R` given equational `have`
+# hypotheses, by reducing `L - R` to zero in the ideal the hypotheses generate. This is the algebraic case of
+# congruence under hypotheses -- it threads a hypothesis like `a*d = c*b` through an AC-normalized polynomial, which
+# the literal-subterm rewrite cannot reach (rational well-definedness, conditional ring identities). Sound over the
+# integers: see `ringEqualModulo` in ring.ts. The negative control is essential -- a NON-consequence must be rejected.
+# Run: npx tsx test/check/ring-modulo.ts
+# the shared hypothesis `a*d = c*b` and a goal body, parameterised by the two trailing summands so the false control
+# reuses the structure with a mismatch
+# TRUE modulo the hypothesis: e*(a*d) + f = e*(c*b) + f. The hypothesis must thread inside the AC monomial e*a*d.
+test <conditional ring identity discharges>
+  want hold, compiles(<load @cluesurf/form/code/number/integer\n  find integer\n\nrule conditional\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  seat d, like integer\n  seat e, like integer\n  seat f, like integer\n  seat g, like integer\n  have h\n    call is-equal\n      call multiply\n        read a\n        read d\n      call multiply\n        read c\n        read b\n  show hold\n    call is-equal\n      call add\n        call multiply\n          read e\n          call multiply\n            read a\n            read d\n        read f\n      call add\n        call multiply\n          read e\n          call multiply\n            read c\n            read b\n        read f\n  calm hold\n>)
+
+# FALSE: e*(a*d) + f = e*(c*b) + g is NOT a consequence of a*d = c*b. Must be rejected, or the prover is unsound.
+test <non-consequence is rejected>
+  want hold, not(compiles(<load @cluesurf/form/code/number/integer\n  find integer\n\nrule conditional\n  seat a, like integer\n  seat b, like integer\n  seat c, like integer\n  seat d, like integer\n  seat e, like integer\n  seat f, like integer\n  seat g, like integer\n  have h\n    call is-equal\n      call multiply\n        read a\n        read d\n      call multiply\n        read c\n        read b\n  show hold\n    call is-equal\n      call add\n        call multiply\n          read e\n          call multiply\n            read a\n            read d\n        read f\n      call add\n        call multiply\n          read e\n          call multiply\n            read c\n            read b\n        read g\n  calm hold\n>))

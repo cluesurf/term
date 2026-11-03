@@ -1,0 +1,175 @@
+note <The self-typed naturals with computation on the decided kernel>
+
+# Ported from naturals2-judge.ts by hand (item 0560). check/judge is the subject (decision 106). Applying a self-typed value needs
+# self-elimination, which judge.ts does not auto-insert in `infer`, but the elimination is available explicitly via an annotation (`ann`)
+# that coerces the value to its unfolded type. With that coercion zero's eliminator reduces to the base case.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind j-var
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind j-const
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind j-type
+  take module, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $module.litLevel($size) \})>
+
+bind j-pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: $mult, domain: $domain, codomain: $codomain \})>
+
+bind j-lam
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind j-app
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind j-ann
+  take term, like dynamic
+  take type, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "ann", term: $term, type: $type \})>
+
+bind j-id
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind j-refl
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+bind j-self
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "self", body: $body \})>
+
+bind j-define
+  take module, like dynamic
+  take name, like text
+  take term, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($name, $module.evaluate([], $term))>
+
+bind j-context
+  take module, like dynamic
+  take hyps, like list, like judge-hyp
+  like dynamic
+  case node
+    text <$module.contextWithSignature($hyps)>
+
+bind j-check
+  take module, like dynamic
+  take context, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.check($context, $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+task kc
+  take name, like text
+  like dynamic
+
+  back j-const(name)
+
+task v
+  take index, like number
+  like dynamic
+
+  back j-var(index)
+
+task a2
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+
+  back j-app(callee, given)
+
+task many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back j-pi(<many>, domain, codomain)
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+host ty-zero, j-type(judge-kernel, 0)
+host ty-one, j-type(judge-kernel, 1)
+
+# the step case: (k : Nat) -> P k -> P (succ k)
+host step-in-body, many(kc(<Nat>), many(a2(v(2), v(0)), a2(v(3), a2(kc(<succ>), v(1)))))
+# Nat body, with the self value n referenced in the conclusion P n (P = v2, n = v3)
+host nat-body, j-pi(0, many(kc(<Nat>), ty-zero), many(a2(v(0), kc(<zero>)), many(step-in-body, a2(v(2), v(3)))))
+host nat-term, j-self(nat-body)
+# Nat body with the self value replaced by zero (the unfolded type of zero), the coercion target
+host unfold-zero, j-pi(0, many(kc(<Nat>), ty-zero), many(a2(v(0), kc(<zero>)), many(step-in-body, a2(v(2), kc(<zero>)))))
+# zero = \ P. \ z. \ s. z
+host zero-term, j-lam(j-lam(j-lam(v(1))))
+
+task make-context
+  like dynamic
+
+  host step-type, many(kc(<Nat>), many(a2(kc(<M>), v(0)), a2(kc(<M>), a2(kc(<succ>), v(1)))))
+  host context, j-context(judge-kernel, make(list, hyp(<Nat>, ty-one), hyp(<zero>, kc(<Nat>)), hyp(<succ>, many(kc(<Nat>), kc(<Nat>))), hyp(<M>, many(kc(<Nat>), ty-zero)), hyp(<base>, a2(kc(<M>), kc(<zero>))), hyp(<step>, step-type)))
+  # alias the constant Nat to the self type itself, so the self value and the constant Nat are convertible
+  j-define(judge-kernel, <Nat>, nat-term)
+  j-define(judge-kernel, <zero>, zero-term)
+  back context
+
+host context, make-context()
+
+test <Nat is a self type at Type 1>
+  want hold, j-check(judge-kernel, context, nat-term, ty-one)
+
+# zero : Nat, by self introduction. A lambda is checked against the unfolded type Nat[self := zero] directly
+test <zero : Nat (self introduction, explicit)>
+  want hold, j-check(judge-kernel, context, zero-term, unfold-zero)
+
+# the eliminator computes: (coerce zero to its unfolded type) applied to motive, base, step reduces to base
+test <zero's eliminator computes to the base case>
+  host elim, a2(a2(a2(j-ann(kc(<zero>), unfold-zero), kc(<M>)), kc(<base>)), kc(<step>))
+  host at-zero, a2(kc(<M>), kc(<zero>))
+  want hold, j-check(judge-kernel, context, j-refl(at-zero, kc(<base>)), j-id(at-zero, elim, kc(<base>)))

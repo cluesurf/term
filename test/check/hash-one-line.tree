@@ -1,0 +1,75 @@
+note <The one-line hash type: like hash, like text, like number is a hash of text to number>
+
+# Ported from hash-one-line.ts by hand (item 0557). Each comma nests the next `like` under the one before, so the value arrived as the
+# KEY's child: the mill read the key as `text` applied to `number` and left the value free. Without a use that pinned it a native backend
+# emitted `SeedMap<String, T>` and swiftc refused the program (deck/make/test/affected.tree, 2026-10-04). compile/mint-bridge.ts: a
+# primitive key takes no argument, so a `like` under it is the hash's value. parser/tree and compile/mill are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+dock load
+  load <@term/make/code/parser/tree>, name hash-parser
+  load <@term/make/code/compile/mill>, name hash-mill
+
+bind result-with
+  take parser, like dynamic
+  take miller, like dynamic
+  take like, like text
+  take lean, like boolean
+  like text
+  case node
+    text <(() =\> \{ const parsed = $parser.parse(\{ file: "p.tree", text: `task t\n  $\{$like\}\n  host out, make hash\n  back out\n` \}); if (!parsed.ok) return `parse: $\{parsed.diagnostics[0]?.message\}`; const built = $miller.mill(parsed.tree, "p.tree", undefined, $lean); if (!built.ok) return `mill: $\{built.diagnostics[0]?.message\}`; const task = built.program.find(d =\> d.name === "t"); return JSON.stringify(task.returnType ?? task.result ?? task.type) \})()>
+
+bind build-line
+  take swift, like text
+  like text
+  case node
+    text <$swift.split("\n").find(text =\> /func build/.test(text)) ?? "">
+
+bind holds-hash
+  take line, like text
+  like boolean
+  case node
+    text </SeedMap\<String, SeedList\<String\>\>/.test($line)>
+
+task result-of
+  take like, like text
+  take lean, like boolean
+  like text
+
+  back result-with(hash-parser, hash-mill, like, lean)
+
+host text-number, <\{"kind":"map","key":\{"kind":"string"\},"value":\{"kind":"number"\}\}>
+host text-list, <\{"kind":"map","key":\{"kind":"string"\},"value":\{"kind":"array","element":\{"kind":"string"\}\}\}>
+host number-boolean, <\{"kind":"map","key":\{"kind":"number"\},"value":\{"kind":"boolean"\}\}>
+
+test <longhand: like hash, like text, like number>
+  want hold, is-equal(result-of(<like hash, like text, like number>, false), text-number)
+
+test <lean: like hash, like text, like number>
+  want hold, is-equal(result-of(<like hash, like text, like number>, true), text-number)
+
+test <longhand: like hash, like text, like list, like text>
+  want hold, is-equal(result-of(<like hash, like text, like list, like text>, false), text-list)
+
+test <lean: like hash, like text, like list, like text>
+  want hold, is-equal(result-of(<like hash, like text, like list, like text>, true), text-list)
+
+test <longhand: like hash, like number, like boolean>
+  want hold, is-equal(result-of(<like hash, like number, like boolean>, false), number-boolean)
+
+test <lean: like hash, like number, like boolean>
+  want hold, is-equal(result-of(<like hash, like number, like boolean>, true), number-boolean)
+
+# the stacked spelling reads as it always did
+test <stacked: like hash / like text / like number>
+  want hold, is-equal(result-of(<like hash\n    like text\n    like number>, false), text-number)
+
+# and a native backend sees the value with nothing to infer it from
+test <Swift emits the hash of text to a list of text>
+  host out, compile-text(<load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask build\n  like hash, like text, like list, like text\n  host out, make hash\n  host none, make list\n  call out/set\n    text \<none\>\n    read none\n  send back, read out\n>, make(compile-choice, bind(file, <one-line.tree>), bind(stdlib, <swift>), bind(env, <swift>), bind(entry, <build>)))
+  want hold, out/ok
+  want hold, holds-hash(build-line(emit-text(out, <swift>)))

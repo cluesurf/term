@@ -1,0 +1,75 @@
+note <A template's holes are counted and may be typed>
+
+# Ported from template-holes.ts by hand (item 0576). compile/template.ts: `take tag, like number` holds a number literal, `like text` a
+# text, `like boolean` a flag, `like name` one word, and `fall <value>` fills a hole a fuse leaves out. A fuse that does not fit is refused
+# AT THE FUSE: a hole left out, a value too many, a `bind` or a `beam` the template does not take, a value of the wrong kind, a template
+# nothing defines. Before 2026-10-05 each of these expanded anyway.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+host badge, <tree badge\n  take name, like name\n  take size, like number\n  take label, like text\n  take loud, like boolean, fall false\n  hook fuse\n    task badge-\{name\}\n      like text\n      fork test, \{loud\}\n        hold\n          back \<\{label\} \{size\}!\>\n      back \<\{label\} \{size\}\>\n>
+
+bind placed
+  take notes, like dynamic
+  like text
+  case node
+    text <$notes.map(d =\> `$\{d.line\}: $\{d.message\}`).join(" | ")>
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <holes.tree>), bind(stdlib, <node>)))
+
+# what a refused fixture said, each diagnostic with the line it stands at. A fixture that compiled says nothing
+task messages
+  take source, like text
+  like text
+
+  host out, built(source)
+  fork test, out/ok
+    hold
+      back <>
+  back placed(out/notes)
+
+test <holes of each kind fill, and a hole with `fall` may be left out>
+  host typed, built(<{badge}\nfuse badge, warn, 3, \<careful\>\n\nfuse badge\n  bind name, shout\n  bind size, 9\n  bind label, \<hey\>\n  bind loud, true\n\ntask run\n  like text\n  back \<\{badge-warn()\} / \{badge-shout()\}\>\n>)
+  want hold, typed/ok
+  want hold, text-contains(typed/emitted, <careful 3>)
+  want hold, text-contains(typed/emitted, <hey 9!>)
+
+# spans count lines from 0: the fuse is the file's fourteenth line
+test <a hole left out is refused at the fuse, naming it>
+  host missing, messages(<{badge}\nfuse badge, warn, 3\n>)
+  want hold, matches(make(pattern, <<^13: `fuse badge` leaves out `label`, which the template takes>>), missing)
+  want hold, not(text-contains(missing, <`loud`>))
+
+test <a value too many is refused, with the count>
+  want hold, text-contains(messages(<{badge}\nfuse badge, warn, 3, \<careful\>, true, more\n>), <`fuse badge` gives 5 values in order, and the template takes 4>)
+
+test <a `bind` the template does not take is refused, naming what it takes>
+  want hold, text-contains(messages(<{badge}\nfuse badge, warn, 3, \<careful\>\n  bind colour, red\n>), <`fuse badge` binds `colour`, and the template takes `name`, `size`, `label`, `loud`>)
+
+test <a value of the wrong kind is refused, naming the kind the hole takes>
+  want hold, text-contains(messages(<{badge}\nfuse badge, warn, big, \<careful\>\n>), <`fuse badge` gives `size` a name, and the template takes a number there (`take size, like number`)>)
+
+# with a task beside it, so the file is code: a file of nothing but `fuse` lines is data (compile/host.ts), which refuses an unknown
+# fuse in its own words
+test <a fuse of a template nothing defines is refused>
+  want hold, text-contains(messages(<fuse nowhere, a\n\ntask run\n  like number\n  back 0\n>), <`fuse nowhere` names no template>)
+
+test <a `beam` naming no site is refused, naming the sites>
+  want hold, text-contains(messages(<tree record-of\n  take name\n  hook fuse\n    form \{name\}\n      site fields\n\nfuse record-of\n  bind name, spot\n  beam feilds\n    link x, like number\n>), <`fuse record-of` beams `feilds`, and the template has the sites `fields`>)
+
+test <an untyped hole holds any word or literal, as before>
+  want hold, built(<tree is-tag\n  take name\n  take tag\n  hook fuse\n    task is-\{name\}\n      take value, like number\n      like boolean\n      back is-equal(value, code \{tag\})\n\nfuse is-tag\n  bind name, red\n  bind tag, 0\n>)/ok

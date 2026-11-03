@@ -1,0 +1,196 @@
+note <Per-definition holds: an edit keeps the other tasks' proof walks and answers as a fresh build>
+
+# Ported from hold-memo.ts by hand (item 0557). note/project/term/incremental-best-in-class.md, step 12. check/holds is the subject (decision
+# 106). A module edited in one task is checked again whole, and its other tasks' proof walks are answered from the memo (`holdKey`): only a
+# task whose walk refused nothing is kept. The run is one sequence with the memo as its state, so it runs once and each test reads what it
+# saw. The original's `answer` holds each diagnostic's place and message and the obligations, and here through compile-outcome.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+
+dock load
+  load <@term/make/code/check/holds>, name holds-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind replayed-now
+  take module, like dynamic
+  like number
+  case node
+    text <$module.holdsReplayed.tasks>
+
+bind answer
+  take out, like dynamic
+  like text
+  case node
+    text <JSON.stringify(\{ ok: $out.ok, said: ($out.ok ? $out.warningNotes : $out.notes).map(d =\> `$\{d.name\} $\{d.line\}:$\{d.column\} $\{d.message\}`).sort(), owed: $out.ok ? $out.obligations : undefined \})>
+
+bind holds-of
+  take module, like dynamic
+  take program, like dynamic
+  like text
+  case node
+    text <(() =\> \{ const tally = \{ total: 0, proven: 0, failed: [] \}; const said = $module.checkHolds($program, "m.tree", \{ tally \}).map(d =\> `$\{d.name\} $\{d.span.start.line\}:$\{d.span.start.column\} $\{d.message\}`); return JSON.stringify(\{ said: said.sort(), total: tally.total, proven: tally.proven, kinds: tally.kinds \}) \})()>
+
+# THE KEY IS NODE-JSON'S TEXT (decision 034 section 1, item 0319): a `need false` field absent and the same field at its default are one
+# node. Every task that carries no `async` is handed `async: false`, and every member read no `nick` the empty text
+bind with-defaults
+  take program, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const copy = structuredClone($program); let written = 0; const walk = value =\> \{ if (Array.isArray(value)) \{ value.forEach(walk); return \} if (value && typeof value === "object") \{ if (value.form === "function" && Array.isArray(value.body) && !("async" in value)) \{ value.async = false; written++ \} if (value.form === "member" && !("nick" in value)) \{ value.nick = ""; written++ \} Object.values(value).forEach(walk) \} \}; walk(copy); return \{ copy, written \} \})()>
+
+bind defaults-copy
+  take made, like dynamic
+  like dynamic
+  case node
+    text <$made.copy>
+
+bind defaults-written
+  take made, like dynamic
+  like number
+  case node
+    text <$made.written>
+
+host unproven, <task third\n  take xs, like list, like number\n  take n, like number\n  like number\n  save one, read xs/\{n\}\n  send back, read one\n>
+
+task reads
+  take at, like number
+  like text
+
+  back <  save total, code {at}\n  walk size\n    bind base, code 0\n    bind head\n      read xs/length\n    hook next\n      take site, name i\n      save total\n        call add\n          read total\n          read xs/\{i\}\n  send back, read total>
+
+task task-text
+  take name, like text
+  take body, like text
+  like text
+
+  back <task {name}\n  take xs, like list, like number\n  like number\n{body}\n>
+
+task module-text
+  take half, like number
+  like text
+
+  host first, task-text(<sum-all>, reads(0))
+  host middle, task-text(<half>, <  send back\n    call divide\n      code {half}\n      code 2>)
+  host last, task-text(<sum-again>, reads(1))
+  back <{first}\n{unproven}\n{middle}\n{last}>
+
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <m.tree>), bind(closed, true)))
+
+host entry, <load ./dep\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n>
+
+# THE KEY HOLDS EVERY DEFINITION THE WALK CAN UNFOLD (item 0326): the same entry over a dependency whose task changed is another question
+task over
+  take by, like number
+  like boolean
+
+  host dep, make(compiling-source, bind(file, <./dep>), bind(text, <task lift\n  take a, like integer\n  like integer\n  send back, add(a, {by})\n>), bind(answer, <dep.tree>))
+  back compile-text(entry, make(compile-choice, bind(file, <e.tree>), bind(files, make list(dep)), bind(cache, new-cache(cache-module))))/ok
+
+form memo-run
+  link first, like compile-outcome
+  link replayed, like number
+  link kept, like text
+  link fresh, like text
+  link written, like number
+  link replayed-same, like number
+  link replayed-defaults, like number
+  link plain, like text
+  link defaulted, like text
+  link defaulted-fresh, like text
+  link true-alone, like boolean
+  link false-alone, like boolean
+  link true-first, like boolean
+  link false-after, like boolean
+  link false-first, like boolean
+  link true-after, like boolean
+
+task run-memo
+  like memo-run
+
+  call holds-module/clear-hold-memo
+  host first, build(module-text(8))
+  host before, replayed-now(holds-module)
+  host kept, build(module-text(10))
+  host replayed, subtract(replayed-now(holds-module), before)
+  call holds-module/clear-hold-memo
+  host fresh, build(module-text(10))
+  host made, with-defaults(first/program)
+  call holds-module/clear-hold-memo
+  host plain, holds-of(holds-module, first/program)
+  host before-same, replayed-now(holds-module)
+  host again, holds-of(holds-module, first/program)
+  host replayed-same, subtract(replayed-now(holds-module), before-same)
+  host before-defaults, replayed-now(holds-module)
+  host defaulted, holds-of(holds-module, defaults-copy(made))
+  host replayed-defaults, subtract(replayed-now(holds-module), before-defaults)
+  call holds-module/clear-hold-memo
+  host defaulted-fresh, holds-of(holds-module, defaults-copy(made))
+  call holds-module/clear-hold-memo
+  host true-alone, over(2)
+  call holds-module/clear-hold-memo
+  host false-alone, over(1)
+  call holds-module/clear-hold-memo
+  host true-first, over(2)
+  host false-after, over(1)
+  call holds-module/clear-hold-memo
+  host false-first, over(1)
+  host true-after, over(2)
+  back make(memo-run, bind(first, first), bind(replayed, replayed), bind(kept, answer(kept)), bind(fresh, answer(fresh)), bind(written, defaults-written(made)), bind(replayed-same, replayed-same), bind(replayed-defaults, replayed-defaults), bind(plain, plain), bind(defaulted, defaulted), bind(defaulted-fresh, defaulted-fresh), bind(true-alone, true-alone), bind(false-alone, false-alone), bind(true-first, true-first), bind(false-after, false-after), bind(false-first, false-first), bind(true-after, true-after))
+
+host run, run-memo()
+
+test <the module builds>
+  want hold, run/first/ok
+
+test <and owes obligations, one of them unproven>
+  want hold, run/first/ok
+  want hold, is-above(run/first/obligations/total, 0)
+  want hold, is-below(run/first/obligations/proven, run/first/obligations/total)
+
+test <an edit to one task replays the walks of the tasks it did not touch>
+  want hold, is-minimum(run/replayed, 2)
+
+test <and the build is the build the provers give afresh>
+  want hold, is-equal(run/kept, run/fresh)
+
+test <the copy writes a default the program left out>
+  want hold, is-above(run/written, 0)
+
+test <the program checked twice replays its kept walks>
+  want hold, is-minimum(run/replayed-same, 2)
+
+test <a task differing only absent against default replays from the memo>
+  want hold, is-equal(run/replayed-defaults, run/replayed-same)
+
+test <and answers as the program as written>
+  want hold, is-equal(run/plain, run/defaulted)
+
+test <which is what the provers give afresh>
+  want hold, is-equal(run/defaulted-fresh, run/defaulted)
+
+# `run`'s hold is true over lift = x + 2 and false over lift = x + 1, each answered as it is alone, in either order
+test <the hold over lift = x + 2 holds, and over lift = x + 1 is refused, each alone>
+  want hold, run/true-alone
+  want hold, not(run/false-alone)
+
+test <the false one is refused after the true one>
+  want hold, run/true-first
+  want hold, not(run/false-after)
+
+test <and the true one holds after the false one>
+  want hold, not(run/false-first)
+  want hold, run/true-after

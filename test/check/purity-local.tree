@@ -1,0 +1,103 @@
+note <Local purity: what a task writes that nobody else can see>
+
+# Ported from purity-local.ts (item 0562). check/facts is the subject, with the module steps it reads after, as the suite runs them
+# itself (decision 106). The stdlib resolver is the harness's under the node env, where the TypeScript takes it bare: the one load,
+# @term/base/code/list, reaches no platform slot, read from the same pure answers.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/check/resolve>, name resolve-module
+  load <@term/make/code/check/infer>, name infer-module
+  load <@term/make/code/check/facts>, name facts-module
+  load <@term/make/code/check/bind-modules>, name bind-modules-module
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "main.tree", text: $text \})>
+
+bind empty-program
+  take seed, like number
+  like dynamic
+  case node
+    text <[]>
+
+bind push-all
+  take into, like dynamic
+  take items, like dynamic
+  like void
+  case node
+    text <$into.push(...$items)>
+
+bind has-name
+  take names, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$names.has($name)>
+
+host program-text, <load @term/base/code/list\n  find list\n\n# builds a list of its own and returns it: nobody else can see the pushes\ntask fresh\n  take n, like number\n  like list, like number\n  save out\n    make list\n  call push\n    bind list, read out\n    bind item, read n\n  send back, read out\n\n# calls it: still pure\ntask calls-fresh\n  like number\n  host made\n    call fresh\n      code 3\n  send back\n    call size\n      read made\n\n# pushes onto the list it was HANDED: the caller sees the change\ntask into-parameter\n  take xs, like list, like number\n  like number\n  call push\n    bind list, read xs\n    bind item, code 1\n  send back, code 0\n\n# a second name for the parameter: the same list, so the same change\ntask through-alias\n  take xs, like list, like number\n  like number\n  save ys, read xs\n  call push\n    bind list, read ys\n    bind item, code 1\n  send back, code 0\n\n# made here, then rebound to the parameter: no longer only its own\ntask rebound\n  take xs, like list, like number\n  like number\n  save ys\n    make list\n  save ys, read xs\n  call push\n    bind list, read ys\n    bind item, code 1\n  send back, code 0\n\n# hands its own parameter on to a task that writes into it: writes through it in turn\ntask passes-parameter\n  take xs, like list, like number\n  like number\n  send back\n    call into-parameter\n      read xs\n\n# hands a list it made to the task that writes: that write is its own business\ntask passes-fresh\n  like number\n  save mine\n    make list\n  send back\n    call into-parameter\n      read mine\n\n# reads the list it was handed: reading changes nothing\ntask reads-parameter\n  take xs, like list, like number\n  like number\n  send back\n    call size\n      read xs\n>
+
+task pure
+  like dynamic
+
+  host resolver, resolver-of(compiling-options-of(make(compile-choice, bind(stdlib, <node>))))
+  host found, load-module/collect-modules(source-of(program-text), resolver)
+  host program, empty-program(0)
+  walk found/sources
+    take unit
+    host parsed, parser-tree/parse(unit)
+    fork test, not(parsed/ok)
+      hold
+        halt <parse failed>
+    host built, mill-module/mill(parsed/tree, unit/file)
+    fork test, not(built/ok)
+      hold
+        halt <mill failed>
+    bind-modules-module/stamp-module(built/program, unit/file)
+    push-all(program, built/program)
+  # module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
+  bind-modules-module/bind-modules(program, found/scope, <main.tree>)
+  resolve-module/resolve(program, <main.tree>)
+  infer-module/check(program, <main.tree>)
+  back facts-module/pure-functions(program)
+
+test <a task that builds a list of its own and returns it is pure>
+  want hold, has-name(pure(), <fresh>)
+
+test <a task calling it is pure>
+  want hold, has-name(pure(), <calls-fresh>)
+
+test <a task that pushes onto its parameter is NOT pure>
+  want hold, not(has-name(pure(), <into-parameter>))
+
+test <a task that pushes through a second name for its parameter is NOT pure>
+  want hold, not(has-name(pure(), <through-alias>))
+
+test <a local made fresh and then rebound to the parameter is NOT its own>
+  want hold, not(has-name(pure(), <rebound>))
+
+test <a task handing its parameter to one that writes into it is NOT pure>
+  want hold, not(has-name(pure(), <passes-parameter>))
+
+test <a task handing a list it made to one that writes into it is pure>
+  want hold, has-name(pure(), <passes-fresh>)
+
+test <a task that only reads its parameter is pure>
+  want hold, has-name(pure(), <reads-parameter>)
+
+test <the stdlib's own push, which writes through `self`, is NOT pure>
+  want hold, not(has-name(pure(), <list_push>))

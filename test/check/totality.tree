@@ -1,0 +1,148 @@
+note <Totality tests: strict positivity (hard error) and termination (warning)>
+
+# Ported from totality.ts (item 0566). check/totality is the subject, and its front end is docked with it, parse, mill, resolve and
+# check, as the suite runs the steps itself (decision 106).
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/check/resolve>, name resolve-module
+  load <@term/make/code/check/infer>, name infer-module
+  load <@term/make/code/check/totality>, name totality-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "t.tree", text: $text \})>
+
+# a record type of one field, written as the program node the checker reads
+bind record
+  take name, like text
+  take type, like dynamic
+  like dynamic
+  case node
+    text <[\{ form: "record-type", name: $name, params: [], fields: [\{ name: "f", type: $type \}], variants: [], span: \{ start: \{ line: 0, column: 0, offset: 0 \}, end: \{ line: 0, column: 0, offset: 0 \} \} \}]>
+
+# a self-reference to the left of an arrow (a parameter) is negative
+bind negative-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "function", params: [\{ kind: "named", name: "bad" \}], result: \{ kind: "number" \} \})>
+
+# a self-reference only in the result is positive
+bind positive-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "function", params: [\{ kind: "number" \}], result: \{ kind: "named", name: "good" \} \})>
+
+bind number-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "number" \})>
+
+bind errors-name
+  take report, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$report.errors.some(d =\> d.name === $name)>
+
+bind errors-size
+  take report, like dynamic
+  like number
+  case node
+    text <$report.errors.length>
+
+bind warnings-name
+  take report, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$report.warnings.some(d =\> d.name === $name)>
+
+bind warnings-size
+  take report, like dynamic
+  like number
+  case node
+    text <$report.warnings.length>
+
+task front-end
+  take text, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <t.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  resolve-module/resolve(built/program, <t.tree>)
+  infer-module/check(built/program, <t.tree>)
+  back built/program
+
+task report-of
+  take text, like text
+  like dynamic
+
+  back totality-module/check-totality(front-end(text), <t.tree>)
+
+# fib decreases its argument on both recursive calls
+host fib-text, <task fib\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          call fib\n            call subtract\n              read n\n              code 1\n          call fib\n            call subtract\n              read n\n              code 2\n>
+
+# loops forever: the recursive call passes the argument unchanged
+host loop-text, <task loop\n  take n, like number\n  like number\n  send back\n    call loop\n      read n\n>
+
+# not recursive at all
+host plain-text, <task plus-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+
+# mutual recursion with no cross-function descent argument: neither calls itself directly, so only the call graph reveals the cycle
+host mutual-text, <task ping\n  take n, like number\n  like number\n  send back\n    call pong\n      read n\n\ntask pong\n  take n, like number\n  like number\n  send back\n    call ping\n      read n\n>
+
+# a sum on a natural number: the miss arm of n == 0 is n >= 1 there, so n - 1 descends (check/totality.ts `sharpened`)
+task count-down
+  take kind, like text
+  take base, like number
+  like text
+
+  back <task sum\n  take n, like {kind}\n  like number\n  fork test\n    hook test\n      call is-equal\n        read n\n        code {base}\n    hook hold\n      send back\n        code 0\n    hook miss\n      send back\n        call add\n          call sum\n            call subtract\n              read n\n              code 1\n          read n\n>
+
+# ---- positivity ----
+test <strict positivity rejects a negative self-occurrence>
+  want hold, errors-name(totality-module/check-totality(record(<bad>, negative-type(0)), <t.tree>), <non-positive>)
+
+test <strict positivity accepts a positive self-occurrence>
+  want hold, is-equal(errors-size(totality-module/check-totality(record(<good>, positive-type(0)), <t.tree>)), 0)
+
+# an ordinary first-order record is fine
+test <strict positivity accepts a first-order field>
+  want hold, is-equal(errors-size(totality-module/check-totality(record(<point>, number-type(0)), <t.tree>)), 0)
+
+# ---- termination ----
+test <termination accepts decreasing recursion (fibonacci)>
+  want hold, not(warnings-name(report-of(fib-text), <non-terminating>))
+
+test <termination flags non-decreasing recursion>
+  want hold, warnings-name(report-of(loop-text), <non-terminating>)
+
+test <termination is silent for non-recursive functions>
+  want hold, is-equal(warnings-size(report-of(plain-text)), 0)
+
+test <termination flags mutual recursion (via the call graph)>
+  want hold, warnings-name(report-of(mutual-text), <non-terminating>)
+
+test <a natural number past n == 0 descends by n - 1>
+  want hold, not(warnings-name(report-of(count-down(<natural-number>, 0)), <non-terminating>))
+
+# n != 5 beside n >= 0 is not n >= 1: from 0 the recursion runs down forever
+test <but past n == 5 it does not: n = 0 is not 5 and runs down>
+  want hold, warnings-name(report-of(count-down(<natural-number>, 5)), <non-terminating>)
+
+# and an integer past n == 0 may be negative
+test <nor does an integer past n == 0, which may be negative>
+  want hold, warnings-name(report-of(count-down(<number>, 0)), <non-terminating>)

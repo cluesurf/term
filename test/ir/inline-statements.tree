@@ -1,0 +1,298 @@
+note <The statement-level inliner (ir/inline-statements.ts), held both ways>
+
+# Ported from inline-statements.ts (item 0590). Towers' pop and push inlined into the move that calls them, and for every rule a task
+# it must NOT inline, each one otherwise the shape it does. Then what `simplify` does with the names it answers: an inlined task
+# that is no root is dropped, a root keeps its definition, and a compile that names no roots keeps them all. ir/inline-statements
+# and ir/simplify are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/make/code/ir/inline-statements>, name inline-module
+  load <@term/make/code/ir/simplify>, name simplify-module
+
+# the names a task's body still calls directly
+bind callees
+  take program, like dynamic
+  take owner, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const found = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === "call" && value.callee?.form === "variable") found.push(value.callee.name); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit($program.find(n =\> n.form === "function" && n.name === $owner)?.body); return found \})()>
+
+# every node of a form in a task's body
+bind nodes
+  take program, like dynamic
+  take owner, like text
+  take form, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const found = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === $form) found.push(value); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit($program.find(n =\> n.form === "function" && n.name === $owner)?.body); return found \})()>
+
+bind let-names
+  take found, like dynamic
+  like dynamic
+  case node
+    text <$found.map(n =\> n.name)>
+
+bind expression-forms
+  take found, like dynamic
+  like dynamic
+  case node
+    text <$found.map(n =\> n.expr?.form)>
+
+bind has-item
+  take items, like dynamic
+  take item, like text
+  like boolean
+  case node
+    text <$items.includes($item)>
+
+bind size-of
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind count-of
+  take items, like dynamic
+  take item, like text
+  like number
+  case node
+    text <$items.filter(c =\> c === $item).length>
+
+bind every-other
+  take items, like dynamic
+  take item, like text
+  like boolean
+  case node
+    text <$items.every(c =\> c !== $item)>
+
+bind all-apart
+  take items, like dynamic
+  like boolean
+  case node
+    text <(new Set($items).size === $items.length)>
+
+bind one-number
+  take items, like dynamic
+  like boolean
+  case node
+    text <$items.every(n =\> /^[a-z]+(-[a-z]+)*-\d+$/.test(n))>
+
+bind spelled-alike
+  take items, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$items.some(n =\> n.replace(/[-_]/g, "") === $name)>
+
+bind has-function
+  take program, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($program.find(n =\> n.form === "function" && n.name === $name) !== undefined)>
+
+bind roots
+  take names, like dynamic
+  like dynamic
+  case node
+    text <new Set($names)>
+
+# the arm of `disk` in the match inlined into `outer` binds two fields, and its first is the name the body reads
+bind arm-reads-first
+  take program, like dynamic
+  take found, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ const arm = $found.flatMap(n =\> n.cases).find(a =\> a.label === "disk"); const read = []; const visit = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(visit); if (value.form === "variable") read.push(value.name); for (const [key, child] of Object.entries(value)) if (key !== "type" && key !== "span") visit(child) \}; visit(arm?.body); return arm?.binds?.length === 2 && read.includes(arm.binds[0]) \})()>
+
+# the checked program, before the simplifier
+task checked
+  take text, like text
+  like dynamic
+
+  host out, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+  fork test, not(out/ok)
+    hold
+      halt <not checked>
+  back out/program
+
+task inlined
+  take text, like text
+  like dynamic
+
+  back inline-module/inline-statements(checked(text))
+
+host stack-text, <form stack\n  case empty\n  case disk\n    link size, like number\n    link below, like stack\n>
+
+host push-text, <task push-disk\n  take piles, like list, like stack\n  take size, like number\n  take pile, like number\n  host top, read piles/\{pile\}\n  save piles/\{pile\}\n    make disk\n      bind size, read size\n      bind below, read top\n>
+
+host pop-text, <task pop-disk\n  take piles, like list, like stack\n  take pile, like number\n  like number\n  host top, read piles/\{pile\}\n  fork case, read top\n    case empty\n      halt \<empty\>\n    case disk\n      save piles/\{pile\}, read below\n      send back, read size\n>
+
+host move-text, <task move-top\n  take piles, like list, like stack\n  take from, like number\n  take to, like number\n  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n>
+
+host towers-text, <{stack-text}\n{push-text}\n{pop-text}\n{move-text}>
+
+# 1. Towers' move: pop taken out into a `let`, both bodies in the move, neither called
+test <towers: move-top calls neither>
+  want hold, is-equal(size-of(callees(inlined(towers-text)/program, <move-top>)), 0)
+
+test <towers: both answered as inlined>
+  host out, inlined(towers-text)
+  want hold, has-item(out/inlined, <push-disk>)
+  want hold, has-item(out/inlined, <pop-disk>)
+
+test <towers: the popped size is a `let` named for its task>
+  want hold, has-item(let-names(nodes(inlined(towers-text)/program, <move-top>, <let>)), <pop-disk-1>)
+
+test <towers: each callee local renamed apart>
+  host lets, let-names(nodes(inlined(towers-text)/program, <move-top>, <let>))
+  want hold, has-item(lets, <top-1>)
+  want hold, has-item(lets, <top-2>)
+
+test <towers: the raise kept>
+  want hold, is-equal(size-of(nodes(inlined(towers-text)/program, <move-top>, <throw>)), 1)
+
+test <towers: the definitions are left for simplify>
+  host out, inlined(towers-text)
+  want hold, has-function(out/program, <push-disk>)
+  want hold, has-function(out/program, <pop-disk>)
+
+# 1b. the move inlined into its own caller in a later round: the move's body already holds both callees' locals, so every name must
+# come out apart, each with one tag
+host twice-text, <{towers-text}\ntask move-twice\n  take piles, like list, like stack\n  call move-top\n    read piles\n    code 0\n    code 1\n  call move-top\n    read piles\n    code 1\n    code 2\n>
+
+task twice-lets
+  like dynamic
+
+  back let-names(nodes(inlined(twice-text)/program, <move-twice>, <let>))
+
+test <twice: move-twice calls nothing>
+  want hold, is-equal(size-of(callees(inlined(twice-text)/program, <move-twice>)), 0)
+
+test <twice: every local apart>
+  want hold, all-apart(twice-lets())
+  want hold, is-minimum(size-of(twice-lets()), 6)
+
+test <twice: one number a name>
+  want hold, one-number(twice-lets())
+
+# 1c. a name an inlining makes is one nothing in the program spells the same way, on any backend: a caller that already has `top-1`,
+# and `top1`, which Swift's camel case writes alike
+host clash-text, <{stack-text}\n{push-text}\ntask crowded\n  take piles, like list, like stack\n  take top-1, like number\n  take top1, like number\n  call push-disk\n    read piles\n    read top-1\n    read top1\n>
+
+test <clash: inlined>
+  want hold, is-equal(size-of(callees(inlined(clash-text)/program, <crowded>)), 0)
+
+test <clash: no name the caller spells alike>
+  want hold, not(spelled-alike(let-names(nodes(inlined(clash-text)/program, <crowded>, <let>)), <top1>))
+
+# 2. a call whose answer is dropped: the arm's `send back, read size` leaves no statement of a bare variable
+host dropped-text, <{stack-text}\n{pop-text}\ntask drop-top\n  take piles, like list, like stack\n  call pop-disk\n    read piles\n    code 0\n>
+
+test <dropped answer: inlined>
+  want hold, is-equal(size-of(callees(inlined(dropped-text)/program, <drop-top>)), 0)
+
+test <dropped answer: no bare variable left as a statement>
+  want hold, not(has-item(expression-forms(nodes(inlined(dropped-text)/program, <drop-top>, <expression>)), <variable>))
+
+# 2b. a dropped answer that is a construction: its parts that do something, in order, never the construction itself, which on
+# TypeScript was a bare object literal JavaScript reads as a block (the regex engine's `prepare-anew`)
+host built-text, <{stack-text}\ntask weigh\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n\ntask wrap\n  take piles, like list, like stack\n  take n, like number\n  like stack\n  host top, read piles/0\n  send back\n    make disk\n      bind size\n        call weigh\n          read n\n      bind below, read top\n\ntask use\n  take piles, like list, like stack\n  call wrap\n    read piles\n    code 3\n>
+
+test <dropped construction: inlined>
+  want hold, every-other(callees(inlined(built-text)/program, <use>), <wrap>)
+
+test <dropped construction: no record left as a statement>
+  want hold, not(has-item(expression-forms(nodes(inlined(built-text)/program, <use>, <expression>)), <record>))
+
+test <dropped construction: the field that calls a task kept>
+  want hold, has-item(callees(inlined(built-text)/program, <use>), <weigh>)
+
+# 3. what must NOT be inlined, each the shape that is but for one thing
+task refuses
+  take text, like text
+  take callee, like text
+  take owner, like text
+  like boolean
+
+  host out, inlined(text)
+  back and(has-item(callees(out/program, owner), callee), not(has-item(out/inlined, callee)))
+
+# nothing is inlined INTO a task that calls itself: Towers' `move-disks` keeps calling `move-top`, into which pop and push are still
+# inlined (70 ms to 38 on Rust, the move's frame paid at every level of the recursion)
+host recursive-text, <{towers-text}\ntask move-disks\n  take piles, like list, like stack\n  take disks, like number\n  take from, like number\n  take to, like number\n  like number\n  fork test\n    hook test\n      call is-equal\n        read disks\n        code 1\n    hook hold\n      call move-top\n        read piles\n        read from\n        read to\n      send back, code 1\n  host before\n    call move-disks\n      read piles\n      call subtract\n        read disks\n        code 1\n      read from\n      read to\n  call move-top\n    read piles\n    read from\n    read to\n  send back, read before\n>
+
+test <recursive caller: move-disks still calls move-top>
+  host out, inlined(recursive-text)
+  want hold, is-equal(count-of(callees(out/program, <move-disks>), <move-top>), 2)
+  want hold, not(has-item(out/inlined, <move-top>))
+
+test <recursive caller: move-top still inlines pop and push>
+  want hold, is-equal(size-of(callees(inlined(recursive-text)/program, <move-top>)), 0)
+
+test <refuses a task that calls itself>
+  want hold, refuses(<{stack-text}\ntask depth\n  take s, like stack\n  like number\n  fork case, read s\n    case empty\n      send back, code 0\n    case disk\n      send back\n        call add\n          call depth(read(below))\n          code 1\n\ntask outer\n  take s, like stack\n  like number\n  host d, call depth(read(s))\n  send back, read d\n>, <depth>, <outer>)
+
+test <refuses a return before the end>
+  want hold, refuses(<{stack-text}\ntask early\n  take s, like stack\n  like number\n  fork test\n    hook test\n      call is-equal\n        code 1\n        code 1\n    hook hold\n      send back, code 1\n  fork case, read s\n    case empty\n      send back, code 0\n    case disk\n      send back, read size\n\ntask outer\n  take s, like stack\n  like number\n  host d, call early(read(s))\n  send back, read d\n>, <early>, <outer>)
+
+test <refuses a loop>
+  want hold, refuses(<{stack-text}\ntask spin\n  take piles, like list, like stack\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 3\n    hook hold\n      save piles/0, make empty\n      save i\n        call add\n          read i\n          code 1\n\ntask outer\n  take piles, like list, like stack\n  call spin(read(piles))\n>, <spin>, <outer>)
+
+test <refuses a field written of a record it was handed>
+  want hold, refuses(<{stack-text}\nform tally\n  link count, like number\n  link top, like stack\n\ntask bump\n  take t, like tally\n  like number\n  save t/count\n    call add\n      read t/count\n      code 1\n  save t/top\n    make disk\n      bind size, read t/count\n      bind below, read t/top\n  send back, read t/count\n\ntask outer\n  take t, like tally\n  like number\n  host n, call bump(read(t))\n  send back, read n\n>, <bump>, <outer>)
+
+test <refuses a task that touches no recursive form>
+  want hold, refuses(<task pick\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read a\n        read b\n    hook hold\n      send back, read a\n    hook miss\n      send back, read b\n\ntask outer\n  take a, like number\n  like number\n  host p\n    call pick\n      read a\n      code 3\n  send back, read p\n>, <pick>, <outer>)
+
+test <refuses a recursive form with no field-less case>
+  want hold, refuses(<form ring\n  case node\n    link size, like number\n    link next, like ring\n\ntask size-of\n  take r, like ring\n  like number\n  fork case, read r\n    case node\n      send back, read size\n\ntask outer\n  take r, like ring\n  like number\n  host n, call size-of(read(r))\n  send back, read n\n>, <size-of>, <outer>)
+
+test <refuses an arm reading a field by the name of a parameter>
+  want hold, refuses(<{stack-text}\ntask clash\n  take s, like stack\n  take size, like number\n  like number\n  fork case, read s\n    case empty\n      send back, read size\n    case disk\n      send back, read size\n\ntask outer\n  take s, like stack\n  like number\n  host n\n    call clash\n      read s\n      code 4\n  send back, read n\n>, <clash>, <outer>)
+
+test <refuses an async task>
+  want hold, refuses(<{stack-text}\ntask later\n  take s, like stack\n  mark async\n  like number\n  fork case, read s\n    case empty\n      send back, code 0\n    case disk\n      send back, read size\n\ntask outer\n  take s, like stack\n  like number\n  host n, call later(read(s))\n  send back, read n\n>, <later>, <outer>)
+
+test <refuses a task the view lowering calls by name>
+  want hold, refuses(<{stack-text}\ntask append\n  take piles, like list, like stack\n  take size, like number\n  save piles/0\n    make disk\n      bind size, read size\n      bind below, read piles/0\n\ntask outer\n  take piles, like list, like stack\n  call append\n    read piles\n    code 1\n>, <append>, <outer>)
+
+# an inlined arm reads the fields of its SUBJECT's form when another form names a case alike: `plate` is declared after `stack` and
+# has a `disk` too, with other fields. Keyed by the case alone, the arm bound `label` renamed, the emitter read that as a rename of
+# `size`, and the inlined read of `size` named nothing (check/substitution's port, 2026-10-05, over node.tree's `type` and
+# `expression`, which both have a `variable`)
+host owned-text, <{stack-text}\nform plate\n  case disk\n    link label, like text\n  case bare\n\ntask size-of\n  take s, like stack\n  like number\n  mark private\n  fork case, read s\n    case disk\n      send back, read size\n    case empty\n      send back, code 0\n\ntask outer\n  take s, like stack\n  like number\n  host n, call size-of(read(s))\n  send back, read n\n>
+
+test <owned case: size-of inlined into outer>
+  want hold, has-item(inlined(owned-text)/inlined, <size-of>)
+
+test <owned case: the arm binds stack's fields, and its first is the name the body reads>
+  host out, inlined(owned-text)/program
+  want hold, arm-reads-first(out, nodes(out, <outer>, <match>))
+
+# 4. the definitions after `simplify`: dropped when no root, kept when a root, all kept when no roots are named
+task drop-all
+  like dynamic
+
+  back simplify-module/simplify(checked(towers-text), roots(make list(<move-top>)))
+
+test <simplify: inlined tasks that are no root are dropped>
+  want hold, not(has-function(drop-all(), <push-disk>))
+  want hold, not(has-function(drop-all(), <pop-disk>))
+
+test <simplify: the root kept>
+  want hold, has-function(drop-all(), <move-top>)
+
+test <simplify: an inlined root keeps its definition>
+  host kept, simplify-module/simplify(checked(towers-text), roots(make list(<move-top>, <pop-disk>)))
+  want hold, has-function(kept, <pop-disk>)
+  want hold, not(has-function(kept, <push-disk>))
+
+test <simplify: no roots named keeps every definition>
+  host kept, simplify-module/simplify(checked(towers-text))
+  want hold, has-function(kept, <push-disk>)
+  want hold, has-function(kept, <pop-disk>)

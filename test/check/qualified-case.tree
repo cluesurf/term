@@ -1,0 +1,42 @@
+note <A case shared by two forms, qualified by its owner>
+
+# Ported from qualified-case.ts (item 0562). `literal` and `outcome` share `integer` with one field of different types, `expression`
+# is also the name of a case of `statement`, so the form is renamed `expression__form`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-saying
+
+host forms, <form literal\n  case integer\n    link value, like number\n  case word\n    link value, like text\n\nform outcome\n  case integer\n    link value, like text\n  case nothing\n\nform expression\n  case integer\n    link value, like literal\n  case name\n    link text, like text\n\nform statement\n  case expression\n    link body, like expression\n  case stop\n>
+
+bind any-says
+  take texts, like list, like text
+  take word, like text
+  like boolean
+  case node
+    text <$texts.some(t =\> t.includes($word))>
+
+task build
+  take body, like text
+  like compile-outcome
+
+  back compile-text(<{forms}\n{body}>, make(compile-choice, bind(file, <qualified.tree>), bind(stdlib, <node>)))
+
+test <a qualified construction of a shared case builds>
+  want hold, build(<task one\n  like literal\n  send back\n    make literal/integer\n      bind value, code 1\n>)/ok
+
+test <the other owner of the same case builds with its own field type>
+  want hold, build(<task one\n  like outcome\n  send back\n    make outcome/integer\n      bind value, text \<seven\>\n>)/ok
+
+test <a form renamed for a case of its name is qualified by the written name>
+  want hold, build(<task one\n  like expression\n  send back\n    make expression/integer\n      bind value\n        make literal/integer\n          bind value, code 4\n>)/ok
+
+test <the named owner is the one checked: a field of the other owner is refused>
+  want hold, not(build(<task one\n  like outcome\n  send back\n    make outcome/integer\n      bind value, code 7\n>)/ok)
+
+test <an owner that names no form is refused>
+  host out, build(<task one\n  like outcome\n  send back\n    make nowhere/integer\n      bind value, code 7\n>)
+  want hold, not(out/ok)
+  want hold, any-says(out/messages, <names no form>)

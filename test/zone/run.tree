@@ -1,0 +1,228 @@
+note <Reactive runtime tests>
+
+# Ported from run.ts by task/term/suite-port.ts, finished by hand (item 0599): signals, effects, memoized computeds, batching,
+# and glitch-free diamond propagation. The TypeScript reads a scenario's counters as it goes, so each scenario here is a task
+# answering what it read, in that order, and each test reads one of them.
+
+dock load
+  load <@term/make/code/view/reactive>, name reactive
+
+# a signal is a [read, write] pair of host functions, and a computed one host function
+bind signal-read
+  take held, like dynamic
+  like number
+  case node
+    text <$held[0]()>
+
+bind signal-write
+  take held, like dynamic
+  take value, like number
+  like void
+  case node
+    text <$held[1]($value)>
+
+bind computed-read
+  take held, like dynamic
+  like number
+  case node
+    text <$held()>
+
+bind dispose-now
+  take held, like dynamic
+  like void
+  case node
+    text <$held()>
+
+task effect-reads
+  like list, like number
+
+  host count, reactive/signal(0)
+  host read-list, make list
+  save seen, -1
+  save watch
+    task
+      save seen, signal-read(count)
+  reactive/effect(watch)
+  read-list/push(seen)
+  signal-write(count, 5)
+  read-list/push(seen)
+  back read-list
+
+task computed-reads
+  like list, like number
+
+  host held, reactive/signal(2)
+  host read-list, make list
+  save compute-count, 0
+  save work
+    task
+      like number
+      save compute-count, add(compute-count, 1)
+      back multiply(signal-read(held), 2)
+  host double, reactive/computed(work)
+  read-list/push(computed-read(double))
+  read-list/push(computed-read(double))
+  read-list/push(compute-count)
+  signal-write(held, 3)
+  read-list/push(computed-read(double))
+  read-list/push(compute-count)
+  back read-list
+
+task unrelated-reads
+  like list, like number
+
+  host a, reactive/signal(1)
+  host b, reactive/signal(10)
+  host read-list, make list
+  save runs, 0
+  save watch
+    task
+      signal-read(a)
+      save runs, add(runs, 1)
+  reactive/effect(watch)
+  read-list/push(runs)
+  signal-write(a, 2)
+  read-list/push(runs)
+  back read-list
+
+task batch-reads
+  like list, like number
+
+  host x, reactive/signal(0)
+  host read-list, make list
+  save runs, 0
+  save watch
+    task
+      signal-read(x)
+      save runs, add(runs, 1)
+  reactive/effect(watch)
+  save writes
+    task
+      signal-write(x, 1)
+      signal-write(x, 2)
+      signal-write(x, 3)
+  reactive/batch(writes)
+  read-list/push(runs)
+  read-list/push(signal-read(x))
+  back read-list
+
+task diamond-reads
+  like list, like number
+
+  host a, reactive/signal(1)
+  save left-side
+    task
+      like number
+      back add(signal-read(a), 1)
+  save right-side
+    task
+      like number
+      back add(signal-read(a), 2)
+  host b, reactive/computed(left-side)
+  host c, reactive/computed(right-side)
+  host read-list, make list
+  save runs, 0
+  save last, 0
+  save watch
+    task
+      save last, add(computed-read(b), computed-read(c))
+      save runs, add(runs, 1)
+  reactive/effect(watch)
+  read-list/push(last)
+  read-list/push(runs)
+  signal-write(a, 10)
+  read-list/push(last)
+  read-list/push(runs)
+  back read-list
+
+task root-reads
+  like list, like number
+
+  host a, reactive/signal(0)
+  host b, reactive/signal(0)
+  host read-list, make list
+  save a-runs, 0
+  save b-runs, 0
+  save dispose-a, void
+  save inside
+    task
+      take dispose, like dynamic
+      save watch-a
+        task
+          signal-read(a)
+          save a-runs, add(a-runs, 1)
+      reactive/effect(watch-a)
+      save dispose-a, dispose
+  reactive/create-root(inside)
+  # a sibling effect outside the root must survive the root's disposal
+  save watch-b
+    task
+      signal-read(b)
+      save b-runs, add(b-runs, 1)
+  reactive/effect(watch-b)
+  read-list/push(a-runs)
+  signal-write(a, 1)
+  read-list/push(a-runs)
+  dispose-now(dispose-a)
+  signal-write(a, 2)
+  read-list/push(a-runs)
+  signal-write(b, 1)
+  read-list/push(b-runs)
+  back read-list
+
+test <effect runs initially>
+  want hold, is-equal(effect-reads()/0, 0)
+
+test <effect re-runs on change>
+  want hold, is-equal(effect-reads()/1, 5)
+
+test <computed value>
+  want hold, is-equal(computed-reads()/0, 4)
+
+test <computed cached on second read>
+  want hold, is-equal(computed-reads()/1, 4)
+
+test <computed ran once>
+  want hold, is-equal(computed-reads()/2, 1)
+
+test <computed recomputes after change>
+  want hold, is-equal(computed-reads()/3, 6)
+
+test <computed ran twice total>
+  want hold, is-equal(computed-reads()/4, 2)
+
+test <effect ran once>
+  want hold, is-equal(unrelated-reads()/0, 1)
+
+test <effect ran twice (its dep changed)>
+  want hold, is-equal(unrelated-reads()/1, 2)
+
+test <batched writes run the effect once more>
+  want hold, is-equal(batch-reads()/0, 2)
+
+test <final value>
+  want hold, is-equal(batch-reads()/1, 3)
+
+test <diamond initial>
+  want hold, is-equal(diamond-reads()/0, 5)
+
+test <diamond effect ran once initially>
+  want hold, is-equal(diamond-reads()/1, 1)
+
+test <diamond updated>
+  want hold, is-equal(diamond-reads()/2, 23)
+
+test <diamond effect ran once more (no glitch)>
+  want hold, is-equal(diamond-reads()/3, 2)
+
+test <root effect ran initially>
+  want hold, is-equal(root-reads()/0, 1)
+
+test <root effect re-runs while live>
+  want hold, is-equal(root-reads()/1, 2)
+
+test <root effect stops after dispose>
+  want hold, is-equal(root-reads()/2, 2)
+
+test <an effect outside the root is unaffected>
+  want hold, is-equal(root-reads()/3, 2)

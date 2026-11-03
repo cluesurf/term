@@ -1,0 +1,62 @@
+note <Lockfile tests>
+
+# Ported from lock.ts, by hand (item 0578): parse the resolved-graph format and round-trip it deterministically. The TypeScript
+# compares JSON texts, so a wanted value here is its JSON text, keys in the same order.
+
+dock load
+  load <@term/make/code/deck/lock>, name deck-lock
+
+host sample, <base \<0.0.1\>\n\nload @termsurf/wolf\n  mark \<*\>\n  lock \<0.0.1\>\n\nlink \<@termsurf/wolf:0.0.1\>\n  hash \<sha512-abc\>\n  load @termsurf/note\n    mark \<0.0.1\>\n>
+
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the two lockfiles the ordering test serializes, the same requests in two orders
+bind shuffled-lock
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ base: "0.0.1", requests: [\{ name: "@a/z", range: "*", locked: "1.0.0" \}, \{ name: "@a/a", range: "*", locked: "2.0.0" \}], links: [] \})>
+
+bind sorted-lock
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ base: "0.0.1", requests: [\{ name: "@a/a", range: "*", locked: "2.0.0" \}, \{ name: "@a/z", range: "*", locked: "1.0.0" \}], links: [] \})>
+
+task parsed
+  like dynamic
+
+  back deck-lock/parse-lockfile(sample)
+
+test <base version>
+  want hold, is-equal(parsed()/base, <0.0.1>)
+
+test <one request>
+  want hold, is-equal(parsed()/requests/length, 1)
+
+test <request parsed>
+  want hold, is-equal(json-of(parsed()/requests/0), <\{"name":"@termsurf/wolf","range":"*","locked":"0.0.1"\}>)
+
+test <one link>
+  want hold, is-equal(parsed()/links/length, 1)
+
+test <link ref>
+  want hold, is-equal(parsed()/links/0/ref, <@termsurf/wolf:0.0.1>)
+
+test <link hash>
+  want hold, is-equal(parsed()/links/0/hash, <sha512-abc>)
+
+test <link dep>
+  want hold, is-equal(json-of(parsed()/links/0/deps/0), <\{"name":"@termsurf/note","version":"0.0.1"\}>)
+
+test <round-trip is stable>
+  host once, deck-lock/serialize-lockfile(parsed())
+  host twice, deck-lock/serialize-lockfile(deck-lock/parse-lockfile(once))
+  want hold, is-equal(json-of(once), json-of(twice))
+
+test <ordering is deterministic>
+  want hold, is-equal(json-of(deck-lock/serialize-lockfile(shuffled-lock(0))), json-of(deck-lock/serialize-lockfile(sorted-lock(0))))

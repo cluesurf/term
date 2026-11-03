@@ -1,0 +1,41 @@
+note <A body the source wrote never reaches a native backend empty (ir/simplify.ts keepWritten)>
+
+# Ported from written-body.ts (item 0590). The native emitters read an empty body as a signature-only declaration and emit the
+# not-implemented trap, so a no-op task written as one dead binding (`save skip, code 0`) lost it to dead-binding elimination and
+# crashed a macOS app with "stub: push-path" (native-navigation-0007). Both directions are held: a written no-op is not a stub, and
+# a declaration still is.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+bind holds
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+host program-text, <# a no-op written as one dead binding, the abstract page's convention\ntask do-nothing\n  take path, like text\n  save skip, code 0\n\n# declared, never written\ntask not-written\n  take path, like text\n\ntask run\n  call do-nothing\n    text \</a\>\n>
+
+task built
+  like compile-outcome
+
+  back compile-text(program-text, make(compile-choice, bind(file, <written.tree>), bind(env, <swift>)))
+
+test <compiles for swift>
+  want hold, built()/ok
+
+test <swift: the written no-op is not a stub>
+  want hold, not(holds(emit-text(built(), <swift>), <stub: do-nothing>))
+
+test <kotlin: the written no-op is not a stub>
+  want hold, not(holds(emit-text(built(), <kotlin>), <stub: do-nothing>))
+
+test <swift: a task declared with no body is still the trap>
+  want hold, holds(emit-text(built(), <swift>), <stub: not-written>)
+
+test <kotlin: a task declared with no body is still the trap>
+  want hold, holds(emit-text(built(), <kotlin>), <stub: not-written>)

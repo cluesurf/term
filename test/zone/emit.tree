@@ -1,0 +1,121 @@
+note <Tests the zone/dock emit>
+
+# Ported from emit.ts by task/term/suite-port.ts, finished by hand (item 0599): mill the DSL surface to AST, emit it back to
+# `.tree` (the render-runtime call shape), and confirm the emitted source parses and contains the expected runtime calls.
+
+dock load
+  load <@term/make/code/parser/tree>, name zone-parser
+  load <@term/make/code/compile/mill>, name zone-mill
+  load <@term/make/code/view/tree>, name zone-view
+
+host zone-source, <view counter\n  take label, like text\n  view div\n    seed class, text \<c\>\n    view button\n      seed click, call add\n      text \<go\>\n    read app/count\n    fork test\n      hook test\n        call is-above\n          read app/count\n          code 10\n      hook hold\n        text \<high\>\n      hook miss\n        text \<low\>\n>
+
+host server-source, <hook /users\n  task get\n    call list-users\n  task post\n    call make-user\n>
+
+host client-source, <hook /counter\n  view counter\n>
+
+bind parse-input
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind parsed-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <$parsed.ok === true>
+
+bind parsed-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.tree>
+
+bind milled-program
+  take milled, like dynamic
+  like dynamic
+  case node
+    text <$milled.program>
+
+bind first-of-form
+  take program, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$program.find(s =\> s.form === $name)>
+
+bind text-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+bind text-opens
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.startsWith($word)>
+
+task lower
+  take source, like text
+  like dynamic
+
+  host parsed, zone-parser/parse(parse-input(<t.tree>, source))
+  back milled-program(zone-mill/mill(parsed-tree(parsed), <t.tree>))
+
+task parses
+  take source, like text
+  like boolean
+
+  back parsed-ok(zone-parser/parse(parse-input(<emit.tree>, source)))
+
+task zone-out
+  like text
+
+  back zone-view/emit-zone-tree(first-of-form(lower(zone-source), <view>))
+
+task server-out
+  like text
+
+  back zone-view/emit-dock-tree(first-of-form(lower(server-source), <dock>))
+
+test <zone emit re-parses>
+  want hold, parses(zone-out())
+
+test <zone emit builds an element>
+  want hold, text-holds(zone-out(), <call element>)
+
+test <zone emit binds an attribute>
+  want hold, text-holds(zone-out(), <call attribute>)
+
+test <zone emit wires an event>
+  want hold, text-holds(zone-out(), <call event>)
+
+test <zone emit makes a dynamic text>
+  want hold, text-holds(zone-out(), <call dynamic>)
+
+test <zone emit lowers fork to show>
+  want hold, text-holds(zone-out(), <call show>)
+
+test <zone emit is a build task>
+  want hold, text-opens(zone-out(), <task counter>)
+
+test <dock emit re-parses>
+  want hold, parses(server-out())
+
+test <dock emit carries the path>
+  want hold, text-holds(server-out(), <bind path, text \</users\>>)
+
+test <dock emit carries methods>
+  want hold, text-holds(server-out(), <text \<get\>>)
+  want hold, text-holds(server-out(), <text \<post\>>)
+
+test <dock emit carries the handler>
+  want hold, text-holds(server-out(), <text \<list-users\>>)
+
+test <client route emit maps to a view>
+  want hold, text-holds(zone-view/emit-dock-tree(first-of-form(lower(client-source), <dock>)), <bind view, text \<counter\>>)

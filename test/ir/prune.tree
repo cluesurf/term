@@ -1,0 +1,50 @@
+note <The reachability prune (ir/prune.ts), held both ways>
+
+# Ported from prune.ts (item 0590). A form reached only through its cases (`make one`, `case one`) is kept, which it was not until
+# 2026-10-04 (every backend then wrote the cases as records nothing declared), and a form and a task nothing reaches are still
+# dropped. ir/prune and its front end are the subject (decision 106).
+
+dock load
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/check/resolve>, name resolve-module
+  load <@term/make/code/ir/prune>, name prune-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "main.tree", text: $text \})>
+
+bind kept-holds
+  take program, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$program.flatMap(n =\> "name" in n && typeof n.name === "string" ? [n.name] : []).includes($name)>
+
+task shaped
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(<form knot\n  case tip\n  case one\n    link value, like number\n    link next, like knot\n\nform unused\n  case nothing\n\ntask stray\n  like number\n  send back, code 7\n\ntask use\n  take n, like number\n  like number\n  host t\n    make one\n      bind value, read n\n      bind next\n        make tip\n  fork case, read t\n    case tip\n      send back, code 0\n    case one\n      send back, read value\n>))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <main.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  resolve-module/resolve(built/program, <main.tree>)
+  back prune-module/prune-to-reachable(built/program, make list(<use>))
+
+test <a form built and matched only by its cases is kept>
+  want hold, kept-holds(shaped(), <knot>)
+
+test <a form nothing reaches is dropped>
+  want hold, not(kept-holds(shaped(), <unused>))
+
+test <a task nothing reaches is dropped>
+  want hold, not(kept-holds(shaped(), <stray>))
+
+test <the root is kept>
+  want hold, kept-holds(shaped(), <use>)

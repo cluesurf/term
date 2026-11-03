@@ -1,0 +1,22 @@
+note <Lexicographic termination (the foetus criterion)>
+
+# Ported from lexicographic.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Lexicographic termination (the foetus criterion): a recursive function where NO single argument decreases on every
+# call, but the argument TUPLE decreases lexicographically, is now verified terminating and made transparent. Ackermann
+# is the canonical case: ack(m, n) recurses on (m-1, ..) and on (m, n-1) -- m alone does not always decrease, but (m, n)
+# does lexicographically. Soundness control: a swap recursion `bad(a, b) = bad(b, a)` does NOT descend at any position
+# and must NOT be made transparent, so a law over it does not discharge. Run: npx tsx test/check/lexicographic.ts
+host nat, <form nat\n  case zero\n  case succ\n    link prior, like nat\n>
+
+# 1. Ackermann reduces: ack(1, 0) = ack(0, 1) = 2 -- only if ack is transparent (lexicographic termination verified).
+test <Ackermann (lexicographic) reduces>
+  want hold, compile-text(<{nat}\ntask ack\n  take m, like nat\n  take n, like nat\n  like nat\n  fork case, read m\n    case zero\n      send back\n        make succ\n          bind prior\n            read n\n    case succ\n      link mp\n      fork case, read n\n        case zero\n          send back\n            call ack\n              read mp\n              make succ\n                bind prior\n                  make zero\n        case succ\n          link np\n          send back\n            call ack\n              read mp\n              call ack\n                read m\n                read np\n\nrule ack-one-zero\n  show hold\n    call is-equal\n      call ack\n        make succ\n          bind prior\n            make zero\n        make zero\n      make succ\n        bind prior\n          make succ\n            bind prior\n              make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: a swap recursion does not descend at any position, so `bad` must stay opaque and a law over it
+# must NOT discharge.
+test <non-descending swap recursion is not made transparent>
+  want hold, not(compile-text(<{nat}\ntask bad\n  take a, like nat\n  take b, like nat\n  like nat\n  send back\n    call bad\n      read b\n      read a\n\nrule bad-identity\n  seat x, like nat\n  seat y, like nat\n  show hold\n    call is-equal\n      call bad\n        read x\n        read y\n      read x\n  calm hold\n>)/ok)

@@ -1,0 +1,24 @@
+note <hProp surface syntax: a form marked mark prop is a propositional truncation>
+
+# Ported from hprop-surface.ts by hand (item 0557). Any two inhabitants are equal, so `make hold-true p == make hold-true q` discharges by
+# `calm` regardless of the evidence. The constructor is kept rigid and registered, so the kernel's irrelevance rule fires. An ordinary form
+# stays proof-RELEVANT.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take source, like text
+  like boolean
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))/ok
+
+host bit, <form bit\n  case off\n  case on\n>
+
+test <mark prop truncation is proof-irrelevant>
+  want hold, compiles(<{bit}\nform truth\n  mark prop\n  case hold-true\n    link proof, like bit\n\nrule truth-irrelevant\n  seat p, like bit\n  seat q, like bit\n  show hold\n    call is-equal\n      make hold-true\n        bind proof\n          read p\n      make hold-true\n        bind proof\n          read q\n  calm hold\n>)
+
+# SOUNDNESS CONTROL: distinct evidence must NOT be equated
+test <ordinary form stays proof-relevant>
+  want hold, not(compiles(<{bit}\nform box\n  case wrap\n    link held, like bit\n\nrule box-relevant\n  show hold\n    call is-equal\n      make wrap\n        bind held\n          make off\n      make wrap\n        bind held\n          make on\n  calm hold\n>))

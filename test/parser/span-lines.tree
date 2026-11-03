@@ -1,0 +1,134 @@
+note <A span names the PHYSICAL line, after a text literal that spans lines too>
+
+# Ported from span-lines.ts by task/term/suite-port.ts, finished by hand (item 0593). The tokenizer counted `newline` tokens,
+# and inside a literal a line's break is text, not a token, so every span after such a literal fell one line behind for each
+# break it held, and a compiler error there pointed at the wrong line (2026-10-06: call/code/work/mind.tree, whose two
+# literals held ten breaks between them, put its guard ten lines early). The parser and the mill's span are the subject
+# (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-note
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill-run>, name mill-run
+
+# the line each top-level group's head is on, as the span says and as the source says
+form head-place
+  link said, like number
+  link real, like text
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind head-nodes
+  take parsed, like dynamic
+  like list, like dynamic
+  case node
+    text <($parsed.ok ? $parsed.tree.nodes.map(n =\> n.nodes[0]) : [])>
+
+bind span-line
+  take span, like dynamic
+  like number
+  case node
+    text <($span?.start.line ?? -1)>
+
+bind span-column
+  take span, like dynamic
+  like number
+  case node
+    text <($span?.start.column ?? -1)>
+
+bind line-at
+  take text, like text
+  take at, like number
+  like text
+  case node
+    text <($text.split("\\n")[$at] ?? "")>
+
+bind first-line-holding
+  take text, like text
+  take word, like text
+  like number
+  case node
+    text <$text.split("\\n").findIndex(line =\> line.includes($word))>
+
+bind opens-with
+  take text, like text
+  take start, like text
+  like boolean
+  case node
+    text <$text.startsWith($start)>
+
+bind says
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+task heads
+  take text, like text
+  like list, like head-place
+
+  host found, make list
+  walk head-nodes(parser-tree/parse(source-of(<s.tree>, text)))
+    take node
+    host said, span-line(mill-run/span-of-node(node))
+    found/push(make(head-place, bind(said, said), bind(real, line-at(text, said))))
+  back found
+
+# the line a diagnostic naming this word is reported on, -1 when none names it
+task line-saying
+  take notes, like list, like compile-note
+  take word, like text
+  like number
+
+  walk notes
+    take note
+    fork test, says(note/message, word)
+      hold
+        back note/line
+  back -1
+
+host after-literal, <host a, \<one\ntwo\nthree\>\nhost b, 2\nhost c, 3\n>
+
+test <a group after a three-line literal is on its own line>
+  host found, heads(after-literal)
+  want hold, is-equal(found/1/real, <host b, 2>)
+  want hold, is-equal(found/2/real, <host c, 3>)
+
+test <the literal itself still opens on its first line>
+  want hold, is-equal(heads(after-literal)/0/said, 0)
+
+test <the tree is still three groups, the literal one value>
+  want hold, is-equal(heads(after-literal)/length, 3)
+
+# an interpolation inside a literal that spans lines, then a raw literal, then a code line
+host mixed, <host name, \<x\>\nhost page, \<\n  \{name\}\n  and \{name\} again\n\>\nhost raw, \<\<a\>b\>\>\nhost last, 1\n>
+
+test <after a literal holding interpolations over lines, the next group is on its line>
+  host found, heads(mixed)
+  want hold, opens-with(found/2/real, <host raw>)
+  want hold, is-equal(found/3/real, <host last, 1>)
+
+# and the place a compiler error is reported: the line the name is on
+host broken, <host greeting, \<hello\nthere\>\n\ntask f\n  like number\n  send back, read missing-name\n>
+
+test <an error after a literal over two lines points at its own line>
+  host out, compile-text(broken, make(compile-choice, bind(file, <b.tree>)))
+  want hold, is-equal(line-saying(out/notes, <missing-name>), first-line-holding(broken, <missing-name>))
+
+# a column on the line a literal closes on counts from that line's start
+host closing, <host a, \<one\ntwo\>\nhost b, 2\n>
+
+test <a group after the literal starts at column 0 of its line>
+  host second, mill-run/span-of-node(head-nodes(parser-tree/parse(source-of(<c.tree>, closing)))/1)
+  want hold, is-equal(span-line(second), 2)
+  want hold, is-equal(span-column(second), 0)

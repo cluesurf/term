@@ -1,0 +1,70 @@
+note <node-json writes an optional number field only when it is not 0>
+
+# Ported from node-json-number.ts, by hand (item 0621): node-json writes an optional number field (`need false`, absent reads 0)
+# only when it is not 0, as it leaves out every other optional field holding its default (decision 044 part 3,
+# task/term/node-json-gen.ts `writeField`): `place-row`, the first such field, on an expression and a statement, and a skip list
+# naming it leaves it out whatever it holds. A place-row of -1 here means left out of the node.
+
+dock load
+  load <@term/make/code/compile/node-json>, name node-json
+
+bind literal-node
+  take row, like number
+  like dynamic
+  case node
+    text <(\{ form: "string", value: "a 😀", span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 4 \} \}, ...($row === -1 ? \{\} : \{ placeRow: $row \}) \})>
+
+bind statement-node
+  take row, like number
+  take expr, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "expression", expr: $expr, span: \{ start: \{ line: 1, column: 1 \}, end: \{ line: 1, column: 4 \} \}, ...($row === -1 ? \{\} : \{ placeRow: $row \}) \})>
+
+bind text-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+bind text-closes
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.endsWith($word)>
+
+task literal-text
+  take place-row, like number
+  like text
+
+  host skip, make list
+  back node-json/expressionJson(skip, literal-node(place-row))
+
+task statement-text
+  take skip, like list, like text
+  like text
+
+  back node-json/statementJson(skip, statement-node(12, literal-node(7)))
+
+test <an absent place-row is left out>
+  want hold, not(text-holds(literal-text(-1), <placeRow>))
+
+test <a place-row of 0 is left out, the same text as absent>
+  want hold, is-equal(literal-text(0), literal-text(-1))
+
+test <a place-row of 3 is written as a number, last as node.tree declares it>
+  want hold, text-closes(literal-text(3), <,"placeRow":3\}>)
+
+test <a skip list naming placeRow leaves it out>
+  host skip, make list(<placeRow>)
+  want hold, is-equal(node-json/expressionJson(skip, literal-node(3)), literal-text(-1))
+
+test <a statement writes its own place-row and its expression's>
+  host whole, statement-text(make list)
+  want hold, text-holds(whole, <"placeRow":7\}>)
+  want hold, text-closes(whole, <,"placeRow":12\}>)
+
+test <skipped at every depth>
+  want hold, not(text-holds(statement-text(make list(<placeRow>)), <placeRow>))

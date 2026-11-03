@@ -1,0 +1,87 @@
+note <A task named where its result was meant>
+
+# Ported from task-value.ts by hand (item 0576). Three holes, all compiling clean and all found porting compile/view-cap (2026-10-02):
+# `f()` parsed exactly as `f`, so `save b, make-box()` saved the task itself. A member read off a task (`read make-box/size`) typed as
+# unknown and emitted `makeBox.size`. A `fall` default was never checked against its parameter, so `fall text <four>` on a number emitted
+# `n: number = "four"`, and `fall read make-box` passed the task.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+host box, <form box\n  link size, like number\n\ntask make-box\n  like box\n  send back\n    make box\n      bind size, 4\n>
+
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, </gate/code/task-value.tree>)))
+
+task build-lean
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, </gate/code/task-value.tree>), bind(lean, true)))
+
+task said
+  take out, like compile-outcome
+  take word, like text
+  like boolean
+
+  walk out/messages
+    take message
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+# the empty parentheses are a call
+test <lean `f()` is a call>
+  host out, build-lean(<{box}\ntask use\n  like number\n  save b, make-box()\n  back b/size\n>)
+  want hold, out/ok
+  want hold, not(text-contains(out/emitted, <makeBox.size>))
+
+test <lean `fall f()` is a call>
+  host out, build-lean(<{box}\ntask use\n  take b, like box, fall make-box()\n  like number\n  back b/size\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <b: Box = makeBox()>)
+
+test <longhand `f()` is a call too>
+  host out, build(<{box}\ntask use\n  like number\n  save b, make-box()\n  send back, read b/size\n>)
+  want hold, out/ok
+  want hold, not(text-contains(out/emitted, <makeBox.size>))
+
+# a task has no fields
+test <a member read off a task is refused>
+  host out, build(<{box}\ntask use\n  like number\n  send back, read make-box/size\n>)
+  want hold, not(out/ok)
+  want hold, said(out, <"make-box" is a task, which has no field "size">)
+
+test <a member read off a local holding a task is refused>
+  host out, build(<{box}\ntask use\n  like number\n  save b, read make-box\n  send back, read b/size\n>)
+  want hold, not(out/ok)
+  want hold, said(out, <"b" holds a task>)
+
+test <a member read off the call is fine>
+  want hold, build(<{box}\ntask use\n  like number\n  save b, call make-box\n  send back, read b/size\n>)/ok
+
+# a default is a value of its parameter's type
+test <a text default for a number is refused>
+  host out, build(<task use\n  take n\n    like number\n    fall text \<four\>\n  like number\n  send back, read n\n>)
+  want hold, not(out/ok)
+  want hold, said(out, <the default of "n": expected number, found text>)
+
+test <a task default for a record is refused>
+  host out, build(<{box}\ntask use\n  take b\n    like box\n    fall read make-box\n  like number\n  send back, read b/size\n>)
+  want hold, not(out/ok)
+  want hold, said(out, <the default of "b": expected box>)
+
+test <a well-typed default compiles>
+  want hold, build(<{box}\ntask use\n  take b\n    like box\n    fall call make-box\n  take by, like number, fall 2\n  like number\n  send back\n    call multiply\n      read b/size\n      read by\n>)/ok
+
+test <a default for a generic parameter is not pinned here>
+  want hold, build(<task first-or\n  head t\n  take xs\n    like list\n      like t\n  take fallback\n    like t\n    fall code 0\n  like t\n  send back, read fallback\n>)/ok

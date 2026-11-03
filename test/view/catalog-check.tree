@@ -1,0 +1,293 @@
+note <The four closed vocabularies, and the messages a document gets when it steps outside one>
+
+# Ported from catalog.ts, by hand (item 0598). `catalog.tree` beside this file is the reference catalog, data the suite reads and
+# not a suite, so it stands and this port has another name. A name outside a catalog fails the compile, fails the save, and is
+# underlined in the editor, and the three read the SAME registry, so they cannot answer differently. See
+# note/project/term/view/04-catalog.md.
+
+load ../support/compiling
+  find file-text
+
+dock load
+  load <@term/make/code/parser/tree>, name view-parser
+  load <@term/make/code/compile/view>, name view-read
+  load <@term/make/code/compile/view-catalog>, name view-catalog
+
+host catalog-text, <\nhost deck, \<quenya\>\nlist view\n  \<text/heading\>\n  \<text/item\>\n  \<sound/phoneme-chart\>\nlist call\n  \<titlecase\>\n  \<weld\>\nlist load\n  \<@view/text\>\n  \<@view/sound\>\nlist task\n  mesh\n    host name, \<filter:phoneme\>\n    host back, \<list\>\n    host size, 200\n    list site\n      mesh\n        host name, \<kind\>\n        list hold\n          \<is-equal\>\n          \<is-unequal\>\n        host sort, false\n      mesh\n        host name, \<rank\>\n        list hold\n          \<is-equal\>\n          \<is-above\>\n          \<is-below\>\n        host sort, true\n  mesh\n    host name, \<select:language\>\n    host back, \<one\>\n    list site\n      mesh\n        host name, \<slug\>\n        list hold\n          \<is-equal\>\n        host sort, false\n>
+
+host good-text, <\nload @view/sound\n  find phoneme-chart\n\nfind vowel\n  task \<filter:phoneme\>\n  meet and\n    hold is-equal\n      read self/kind\n      text \<vowel\>\n    hold is-above\n      read self/rank\n      20\n  sort fall, read self/rank\n  size 50\n\nview page\n  view sound/phoneme-chart\n    bind name\n      call titlecase\n        text \<quenya\>\n    bind rows, read vowel\n>
+
+host any-text, <view page\n  view any/thing\n    bind a, text \<x\>\n>
+
+bind input
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind parse-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <$parsed.ok>
+
+bind parse-said
+  take parsed, like dynamic
+  like text
+  case node
+    text <$parsed.diagnostics.map(d =\> d.message).join(" | ")>
+
+bind parse-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.tree>
+
+bind said-of
+  take result, like dynamic
+  like text
+  case node
+    text <$result.diagnostics.map(d =\> d.message).join(" | ")>
+
+bind text-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+bind table-size
+  take table, like dynamic
+  like number
+  case node
+    text <$table.size>
+
+bind table-has
+  take table, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <$table.has($word)>
+
+bind query-field
+  take catalog, like dynamic
+  take name, like text
+  take field, like text
+  like dynamic
+  case node
+    text <$catalog.task.get($name)?.[$field]>
+
+bind site-sort
+  take catalog, like dynamic
+  take name, like text
+  take site, like text
+  like dynamic
+  case node
+    text <$catalog.task.get($name)?.site.get($site)?.sort>
+
+bind site-hold-has
+  take catalog, like dynamic
+  take name, like text
+  take site, like text
+  take word, like text
+  like dynamic
+  case node
+    text <$catalog.task.get($name)?.site.get($site)?.hold.has($word)>
+
+form checked
+  link ok, like boolean
+  link said, like text
+
+host read-catalog-answer, view-catalog/read-catalog(input(<catalog.tree>, catalog-text))
+
+host catalog, read-catalog-answer/catalog
+
+host reference-answer, view-catalog/read-catalog(input(<catalog.tree>, file-text(<test/view/catalog.tree>)))
+
+host it, reference-answer/catalog
+
+task check
+  take text, like text
+  like checked
+
+  host parsed, view-parser/parse(input(<page.tree>, text))
+  fork test, not(parse-ok(parsed))
+    hold
+      back make(checked, bind(ok, false), bind(said, parse-said(parsed)))
+  host result, view-read/read-view(parse-tree(parsed), <page.tree>, catalog)
+  back make(checked, bind(ok, result/ok), bind(said, said-of(result)))
+
+task refuses
+  take text, like text
+  take word, like text
+  like boolean
+
+  host result, check(text)
+  back and(not(result/ok), text-holds(result/said, word))
+
+test <the catalog reads>
+  want hold, is-equal(read-catalog-answer/ok, true)
+
+test <it names its deck>
+  want hold, is-equal(catalog/deck, <quenya>)
+
+test <it registers three components>
+  want hold, is-equal(table-size(catalog/view), 3)
+
+test <it registers two operators>
+  want hold, is-equal(table-size(catalog/call), 2)
+
+test <it registers two packages>
+  want hold, is-equal(table-size(catalog/load), 2)
+
+test <it registers two queries>
+  want hold, is-equal(table-size(catalog/task), 2)
+
+test <a filter returns a list>
+  want hold, is-equal(query-field(catalog, <filter:phoneme>, <back>), <list>)
+
+test <a select returns one>
+  want hold, is-equal(query-field(catalog, <select:language>, <back>), <one>)
+
+test <a query carries its own cap>
+  want hold, is-equal(query-field(catalog, <filter:phoneme>, <size>), 200)
+
+test <a field says which predicates it accepts>
+  want hold, is-equal(site-hold-has(catalog, <filter:phoneme>, <rank>, <is-above>), true)
+
+test <a field says whether it sorts>
+  want hold, is-equal(site-sort(catalog, <filter:phoneme>, <rank>), true)
+  want hold, is-equal(site-sort(catalog, <filter:phoneme>, <kind>), false)
+
+test <a document inside every catalog reads>
+  want hold, check(good-text)/ok
+
+test <refuses a component that is not registered>
+  want hold, refuses(<view page\n  view text/nowhere\n    bind a, text \<x\>\n>, <not a component this document may place>)
+
+test <refuses an operator that is not registered>
+  want hold, refuses(<view page\n  view text/item\n    bind a\n      call shout\n        text \<x\>\n>, <not a registered operator>)
+
+test <refuses a package that is not registered>
+  want hold, refuses(<load @view/secret\n  find thing\n>, <not a package this document may load>)
+
+test <refuses a query that is not registered>
+  want hold, refuses(<find v\n  task \<filter:nowhere\>\n>, <not a registered query>)
+
+test <refuses a field the query cannot filter>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/nowhere\n    text \<x\>\n>, <has no filterable field>)
+
+test <refuses a predicate no index answers>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  hold is-above\n    read self/kind\n    text \<x\>\n>, <does not accept "is-above">)
+
+test <refuses a sort on a field with no ordered index>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  sort rise, read self/kind\n>, <does not sort on "kind">)
+
+test <refuses a size over the query cap>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  size 5000\n>, <caps at 200>)
+
+test <a near miss says what was meant>
+  want hold, text-holds(check(<view page\n  view text/headng\n    bind a, text \<x\>\n>)/said, <Did you mean "text/heading"?>)
+
+test <a far miss says how many there are>
+  want hold, text-holds(check(<view page\n  view zzz/qqq\n    bind a, text \<x\>\n>)/said, <registers 3>)
+
+test <without a catalog no name is checked>
+  host result, view-read/read-view(parse-tree(view-parser/parse(input(<page.tree>, any-text))), <page.tree>)
+  want hold, result/ok
+
+test <an empty catalog registers nothing, so everything is refused>
+  host result, view-read/read-view(parse-tree(view-parser/parse(input(<page.tree>, any-text))), <page.tree>, view-catalog/empty-catalog())
+  want hold, not(result/ok)
+
+test <the reference catalog reads>
+  want hold, is-equal(reference-answer/ok, true)
+
+test <it registers the six view packages>
+  want hold, is-equal(table-size(it/load), 6)
+
+test <it registers the linguistic components>
+  want hold, table-has(it/view, <sound/phoneme-chart>)
+  want hold, table-has(it/view, <sound/paradigm-table>)
+
+test <it registers the string scope>
+  want hold, table-has(it/call, <titlecase>)
+  want hold, table-has(it/call, <weld>)
+
+test <it registers the math scope>
+  want hold, table-has(it/call, <clamp>)
+  want hold, table-has(it/call, <sum>)
+
+test <it registers the boolean scope>
+  want hold, table-has(it/call, <negate>)
+  want hold, table-has(it/call, <gte>)
+
+test <it registers the list scope>
+  want hold, table-has(it/call, <count>)
+  want hold, table-has(it/call, <slice>)
+
+test <a callback-taking list operator stays out: no "keep">
+  want hold, not(table-has(it/call, <keep>))
+
+test <a callback-taking list operator stays out: no "morph">
+  want hold, not(table-has(it/call, <morph>))
+
+test <a callback-taking list operator stays out: no "find">
+  want hold, not(table-has(it/call, <find>))
+
+test <a callback-taking list operator stays out: no "locate">
+  want hold, not(table-has(it/call, <locate>))
+
+test <a callback-taking list operator stays out: no "group">
+  want hold, not(table-has(it/call, <group>))
+
+test <a callback-taking list operator stays out: no "sort">
+  want hold, not(table-has(it/call, <sort>))
+
+test <a callback-taking list operator stays out: no "dedupe">
+  want hold, not(table-has(it/call, <dedupe>))
+
+test <the control scope stays out: no "walk">
+  want hold, not(table-has(it/call, <walk>))
+
+test <the control scope stays out: no "loop">
+  want hold, not(table-has(it/call, <loop>))
+
+test <the control scope stays out: no "branch">
+  want hold, not(table-has(it/call, <branch>))
+
+test <the control scope stays out: no "switch">
+  want hold, not(table-has(it/call, <switch>))
+
+test <the control scope stays out: no "match">
+  want hold, not(table-has(it/call, <match>))
+
+test <the control scope stays out: no "pick">
+  want hold, not(table-has(it/call, <pick>))
+
+test <the control scope stays out: no "attempt">
+  want hold, not(table-has(it/call, <attempt>))
+
+test <the random scope stays out: no "random">
+  want hold, not(table-has(it/call, <random>))
+
+test <the random scope stays out: no "uuid">
+  want hold, not(table-has(it/call, <uuid>))
+
+test <the resource scope stays out: no "resolve">
+  want hold, not(table-has(it/call, <resolve>))
+
+test <`now` is cut from the date scope>
+  want hold, not(table-has(it/call, <now>))
+  want hold, table-has(it/call, <shift>)
+
+test <`parse-json` is cut from the type scope>
+  want hold, not(table-has(it/call, <parse-json>))
+  want hold, table-has(it/call, <cast>)
+
+test <a query declares what it returns>
+  want hold, is-equal(query-field(it, <select:language>, <back>), <one>)
+
+test <and its per-field predicates>
+  want hold, is-equal(site-hold-has(it, <filter:phoneme>, <symbol>, <is-within>), true)

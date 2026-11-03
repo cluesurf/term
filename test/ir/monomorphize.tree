@@ -1,0 +1,83 @@
+note <Monomorphization tests>
+
+# Ported from monomorphize.ts (item 0590). A generic function called at two concrete types becomes two specialized functions, the
+# generic original is dropped, and the calls are rewritten. ir/monomorphize and its front end are the subject (decision 106).
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/check/resolve>, name resolve-module
+  load <@term/make/code/check/infer>, name infer-module
+  load <@term/make/code/ir/monomorphize>, name mono-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "m.tree", text: $text \})>
+
+bind has-function
+  take program, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$program.filter(s =\> s.form === "function").map(s =\> s.name).includes($name)>
+
+bind param-is-number
+  take program, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($program.find(s =\> s.form === "function" && s.name === $name)?.params[0]?.type?.kind === "number")>
+
+bind generics-empty
+  take program, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($program.find(s =\> s.form === "function" && s.name === $name)?.generics.length === 0)>
+
+bind call-rewritten
+  take program, like dynamic
+  take name, like text
+  take callee, like text
+  like boolean
+  case node
+    text <(() =\> \{ const ret = $program.find(s =\> s.form === "function" && s.name === $name)?.body.find(b =\> b.form === "return"); return ret?.value?.form === "call" && ret.value.callee.form === "variable" && ret.value.callee.name === $callee \})()>
+
+host source-text, <task identity\n  head t\n  take x, like t\n  like t\n  send back x\n\ntask run-number\n  like number\n  send back\n    call identity\n      code 1\n\ntask run-string\n  like text\n  send back\n    call identity\n      text \<hi\>\n>
+
+task result
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(source-text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <m.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  resolve-module/resolve(built/program, <m.tree>)
+  infer-module/check(built/program, <m.tree>)
+  back mono-module/monomorphize(built/program)
+
+test <the generic original is dropped>
+  want hold, not(has-function(result(), <identity>))
+
+test <specialized at number>
+  want hold, has-function(result(), <identity__number>)
+
+test <specialized at string>
+  want hold, has-function(result(), <identity__string>)
+
+# the specialized identity__number has a concrete number parameter (no generic name)
+test <specialization has a concrete param type>
+  want hold, param-is-number(result(), <identity__number>)
+
+test <specialization has no generics>
+  want hold, generics-empty(result(), <identity__number>)
+
+# the call in run-number was rewritten to the specialized name
+test <the call site is rewritten to the specialization>
+  want hold, call-rewritten(result(), <run-number>, <identity__number>)

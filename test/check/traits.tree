@@ -1,0 +1,106 @@
+note <Trait and generics tests>
+
+# Ported from traits.ts by tmp/self-host/suite-unroll.mjs (item 0566), each fixture written out whole. mask/wear/suit instance
+# completeness, the signature each worn task must fit, coherence, trait bounds, and generic functions.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+  find refused-saying
+
+bind holds
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <t.tree>)))
+
+task builds
+  take text, like text
+  like boolean
+
+  back built(text)/ok
+
+task builds-holding
+  take text, like text
+  take needle, like text
+  like boolean
+
+  host out, built(text)
+  back and(out/ok, holds(out/emitted, needle))
+
+# Trait + generics tests: mask/wear/suit instance completeness, the signature each worn task must fit, coherence, trait
+# bounds, and generic functions.
+# Run: npx tsx test/check/traits.ts
+# refused with this code, and, when given, a message holding `needle`
+# the two tasks as the mask declares them, for a form to wear
+# a complete instance: the form implements every method of the mask
+test <complete wear instance>
+  want hold, builds-holding(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform thing\n  link x, like u64\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>, <interface Comparison>)
+
+# an incomplete instance: missing a required method
+test <incomplete instance caught>
+  want hold, refused-as(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform thing\n  link x, like u64\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n>), <incomplete-instance>)
+
+# an instance of a trait that does not exist
+test <instance of unknown trait>
+  want hold, refused-as(built(<form thing\n  link x, like u64\n  wear nonexistent\n    task whatever\n      take self\n>), <unknown-name>)
+
+# a standalone suit implementation, complete, for a form declared apart from it
+test <complete suit instance>
+  want hold, builds(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform shape\n  link sides, like number\n\nsuit shape\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>)
+
+# a suit for a form the build does not have
+test <suit for no form refused>
+  want hold, refused-saying(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nsuit shape\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>), <unknown-name>, <`suit shape` wears "comparison" for the form "shape", which this build does not have>)
+
+# THE SIGNATURE A WORN TASK MUST FIT, which the mask declares: as many inputs, self first, each of the declared types,
+# and the declared result. Masks kept their tasks' names alone until 2026-10-05, and each of these built
+test <a worn task with too few inputs is refused>
+  want hold, refused-saying(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform thing\n  link x, like u64\n  wear comparison\n    task is-equal\n      take self\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>), <type-mismatch>, <whose "is-equal" takes 2 inputs, self first, and this "is-equal" takes 1>)
+
+test <a worn task with too many inputs is refused>
+  want hold, refused-saying(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform thing\n  link x, like u64\n  wear comparison\n    task is-equal\n      take self\n      take other\n      take third\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>), <type-mismatch>, <takes 2 inputs, self first, and this "is-equal" takes 3>)
+
+test <a worn task answering the wrong type is refused>
+  want hold, refused-saying(built(<mask scorer\n  task score\n    take self\n    like number\n\nform player\n  link name, like text\n  wear scorer\n    task score\n      take self\n      like text\n      back self/name\n>), <type-mismatch>, <whose "score" answers number, and this one answers text>)
+
+test <a worn task taking the wrong type is refused>
+  want hold, refused-saying(built(<mask sizer\n  task scale\n    take self\n    take by, like number\n    like number\n\nform box\n  link side, like number\n  wear sizer\n    task scale\n      take self\n      take by, like text\n      like number\n      back self/side\n>), <type-mismatch>, <whose "scale" takes number as "by", and this one takes text>)
+
+# a worn task that leaves a type off takes the mask's: `by` is a number, so a text there is refused at the call
+test <a worn task with no types takes the mask's>
+  want hold, refused-as(built(<mask sizer\n  task scale\n    take self\n    take by, like number\n    like number\n\nform box\n  link side, like number\n  wear sizer\n    task scale\n      take self\n      take by\n      back multiply(self/side, by)\n\ntask use\n  like number\n  save b, make box, bind side, 2\n  back scale(b, \<three\>)\n>), <type-mismatch>)
+
+# the TypeScript interface is typed by the mask's signatures, not `(...args: Array<unknown>): unknown` (gap 112,
+# term-compiler-0003)
+test <the mask interface types each method by its declared signature>
+  want hold, builds-holding(<mask sizer\n  task scale\n    take self\n    take by, like number\n    like number\n\nform box\n  link side, like number\n  wear sizer\n    task scale\n      take self\n      take by, like number\n      like number\n      back multiply(self/side, by)\n>, <scale(self: Self, input1: number): number>)
+
+# a generic function type-checks and emits a type parameter
+test <generic identity>
+  want hold, builds-holding(<task identity\n  head t\n  take x, like t\n  like t\n  send back x\n>, <function identity\<T\>>)
+
+# a generic with a valid trait bound
+test <generic with valid bound>
+  want hold, builds(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\ntask sort\n  head t, need comparison\n  take items\n  send back items\n>)
+
+# a generic with an unknown trait bound
+test <unknown trait bound caught>
+  want hold, refused-as(built(<task sort\n  head t, need nonexistent\n  take items\n  send back items\n>), <unknown-name>)
+
+# coherence: a type may implement a trait only once, an overlapping instance is rejected
+test <overlapping instances rejected (coherence)>
+  want hold, refused-as(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform shape\n  link sides, like number\n\nsuit shape\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n\nsuit shape\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>), <duplicate-instance>)
+
+# and a form that wears a mask and is also suited to it
+test <a wear and a suit of one mask rejected (coherence)>
+  want hold, refused-as(built(<mask comparison\n  task is-equal\n    take self\n    take other\n    like boolean\n  task is-not-equal\n    take self\n    take other\n    like boolean\n\nform shape\n  link sides, like number\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n\nsuit shape\n  wear comparison\n    task is-equal\n      take self\n      take other\n      send back, true\n    task is-not-equal\n      take self\n      take other\n      send back, false\n>), <duplicate-instance>)

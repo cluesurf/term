@@ -1,0 +1,43 @@
+note <VALUE-level transport (the dependent identity eliminator, J)>
+
+# Ported from transport.ts by tmp/self-host/suite-unroll.mjs (item 0566), each fixture written out whole. From a proof `eq a b` and a
+# value in `P a`, produce a value in `P b`. This is the convoy: a match on the equality proof whose result type is the FUNCTION
+# `P a -> P b`, so the dependent motive ABSTRACTS over the scrutinee's indices. Soundness: transporting WITHOUT the equality proof is
+# rejected.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# VALUE-level transport (the dependent identity eliminator, J). From a proof `eq a b` and a value in `P a`, produce a
+# value in `P b`. This is the convoy: a match on the equality proof whose result type is the FUNCTION `P a -> P b`, so
+# the dependent motive ABSTRACTS over the scrutinee's indices (`\i0 i1 x. vecnat i0 -> vecnat i1`), the `refl` branch is
+# then checked at `vecnat c -> vecnat c` and returns the identity. Two pieces made this expressible: a function type's
+# parameter / result indices are now preserved (`vecnat a -> vecnat b`, the fifth `head`->valueArgs site), and the
+# non-inversion motive abstracts over index variables. Soundness: transporting WITHOUT the equality proof is rejected.
+# Run: npx tsx test/check/transport.ts
+# 1. the CONVOY itself type-checks: a match on `eq a b` returning the function `vecnat a -> vecnat b`, via the
+# abstracting motive. The `refl` branch returns the identity at the refined index.
+test <convoy type-checks: eq a b -\> (vecnat a -\> vecnat b)>
+  want hold, compiles(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\nform eq\n  head a, like nat\n  head b, like nat\n  case refl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask transport-fn\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  like task\n    take w, like vecnat\n      head\n        read a\n    like vecnat\n      head\n        read b\n  fork case, read e\n    case refl\n      link c\n      send back\n        task id\n          take w, like vecnat\n            head\n              read c\n          like vecnat\n            head\n              read c\n          send back\n            read w\n>)
+
+# 2. full VALUE transport `eq a b -> vecnat a -> vecnat b` type-checks (apply the convoy function to the value).
+test <value transport type-checks: eq a b -\> vecnat a -\> vecnat b>
+  want hold, compiles(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\nform eq\n  head a, like nat\n  head b, like nat\n  case refl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask transport-fn\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  like task\n    take w, like vecnat\n      head\n        read a\n    like vecnat\n      head\n        read b\n  fork case, read e\n    case refl\n      link c\n      send back\n        task id\n          take w, like vecnat\n            head\n              read c\n          like vecnat\n            head\n              read c\n          send back\n            read w\n\ntask transport\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  take v, like vecnat\n    head\n      read a\n  like vecnat\n    head\n      read b\n  save f\n    call transport-fn\n      read a\n      read b\n      read e\n  send back\n    call f\n      read v\n>)
+
+# 3. the COMPUTATION rule `transport refl x = x`: transporting along reflexivity returns the value unchanged, and this
+# reduces definitionally -- transport (refl 0) nil == nil. (This needs `save`-bound tasks to reduce in proofs, which
+# they now do.)
+test <transport computes: transport (refl 0) nil == nil>
+  want hold, compiles(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\nform eq\n  head a, like nat\n  head b, like nat\n  case refl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask transport-fn\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  like task\n    take w, like vecnat\n      head\n        read a\n    like vecnat\n      head\n        read b\n  fork case, read e\n    case refl\n      link c\n      send back\n        task id\n          take w, like vecnat\n            head\n              read c\n          like vecnat\n            head\n              read c\n          send back\n            read w\n\ntask transport\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  take v, like vecnat\n    head\n      read a\n  like vecnat\n    head\n      read b\n  save f\n    call transport-fn\n      read a\n      read b\n      read e\n  send back\n    call f\n      read v\n\nrule transport-refl\n  show hold\n    call is-equal\n      call transport\n        make zero\n        make zero\n        make refl\n          bind c\n            make zero\n        make vnil\n      make vnil\n  calm hold\n>)
+
+# 4. SOUNDNESS CONTROL: a value of `vecnat a` may NOT be returned as `vecnat b` WITHOUT an `eq a b` proof. Transport is
+# the only bridge, forging it (just `send back v`) must be rejected.
+test <transport without the equality proof is rejected>
+  want hold, not(compiles(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nform vecnat\n  head n, like nat\n  case vnil\n    head\n      make zero\n  case vcons\n    link count, like nat\n    link item, like nat\n    link rest, like vecnat\n      head\n        read count\n    head\n      make succ\n        bind prior\n          read count\n\nform eq\n  head a, like nat\n  head b, like nat\n  case refl\n    link c, like nat\n    head\n      read c\n    head\n      read c\n\ntask transport-fn\n  take a, like nat\n  take b, like nat\n  take e, like eq\n    head\n      read a\n    head\n      read b\n  like task\n    take w, like vecnat\n      head\n        read a\n    like vecnat\n      head\n        read b\n  fork case, read e\n    case refl\n      link c\n      send back\n        task id\n          take w, like vecnat\n            head\n              read c\n          like vecnat\n            head\n              read c\n          send back\n            read w\n\ntask bad-transport\n  take a, like nat\n  take b, like nat\n  take v, like vecnat\n    head\n      read a\n  like vecnat\n    head\n      read b\n  send back\n    read v\n>))

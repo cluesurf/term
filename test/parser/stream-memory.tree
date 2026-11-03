@@ -1,0 +1,13 @@
+note <Does the streaming reader hold memory FLAT on a file far larger than the heap it is given?>
+
+# Ported from stream-memory.ts (item 0593). The TypeScript runs under `node --expose-gc --max-old-space-size=32`
+# (pnpm term:stream-memory), which only a child can be given, so the three tests stay PORT comments until a suite can start
+# node with flags (follow-up item, as 0755 for cad-nvar). The source is a generator of 4,500,000 groups of six lines, so
+# 24 million lines and about 340 MB never held in memory, and walkGroups reads them one group at a time.
+# PORT: needs a child with --expose-gc and a capped heap
+# PORT: test <every group is read (4500000 of 4500000)>
+# PORT:   want hold, is-equal(seen, 4500000)
+# PORT: test <heap is flat: resident heap at the end at most 3 times the heap after 1,000 groups>
+# PORT:   want hold, is-maximum(divide(maximum(end, peak), early), 3)
+# PORT: test <the source is more than ten times the heap>
+# PORT:   want hold, is-above(divide(multiply(4500000, 80), 1048576), multiply(32, 10))

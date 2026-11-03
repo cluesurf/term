@@ -1,0 +1,45 @@
+note <A list variable put into a field the record owns as a plain array goes in as an array>
+
+# Ported from swift-owned-field.ts by hand (item 0576). `fieldLists` in compile/swift.ts. An async function owns no locals, so
+# `host none, make list` there stayed a `SeedList<Int>` and was passed whole to a `[Int]` field, found the first time
+# deck/test/code/smt-query.tree's `check-sat` ran on Swift (2026-10-05). The field takes a plain local as it is and any other
+# variable's `.data`. Whether a field is owned is a whole-program analysis (`ownedFields`, `privateForms`), which a small program does
+# not reach, so this compiles the program that found it: @term/test's weakest-precondition, through its own resolver. The original
+# reads the second check only when the first holds, and here the second holds the first too, so a refused build fails both.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find file-text
+  find project-path
+
+bind verdict-field
+  take swift, like text
+  like text
+  case node
+    text <(() =\> \{ const lines = $swift.split("\n"); return lines.find(l =\> /^\s+var values: /.test(l) && lines[lines.indexOf(l) - 2]?.includes("struct Verdict")) ?? "" \})()>
+
+bind goes-in-as-data
+  take swift, like text
+  like boolean
+  case node
+    text <(() =\> \{ const found = $swift.split("\n").filter(l =\> /Verdict\(status: .*values: none/.test(l)); return found.length \> 0 && found.every(l =\> /values: none\.data\)/.test(l)) \})()>
+
+bind owned
+  take field, like text
+  like boolean
+  case node
+    text </var values: \[Int\]/.test($field)>
+
+host program-path, project-path(<deck/test>, <code/weakest-precondition.tree>)
+host built, compile-text(file-text(program-path), make(compile-choice, bind(file, program-path), bind(project, <deck/test>), bind(stdlib, <swift>), bind(env, <swift>), bind(entry, <verify-procedure>), bind(project-lean, true)))
+host swift, emit-text(built, <swift>)
+
+test <the program reaches the owned-field path (Verdict.values is a plain array)>
+  want hold, built/ok
+  want hold, owned(verdict-field(swift))
+
+test <the async task's empty SeedList goes in as its data>
+  want hold, owned(verdict-field(swift))
+  want hold, goes-in-as-data(swift)

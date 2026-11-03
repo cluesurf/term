@@ -1,0 +1,205 @@
+note <Self-typed naturals with arithmetic on judge.ts: plus and times type-check and compute>
+
+# Ported from naturals-judge.ts by hand (item 0560). check/judge is the subject (decision 106). The bottom universe is impredicative, so the
+# self-encoded Nat lives in Type0, and the constant Nat is typed at ty(0). This is what makes plus and times, which return Nat, well typed.
+# The signature gives the types, defineConstant the values (transparent, so reduction fires).
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind j-var
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind j-const
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind j-type
+  take module, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $module.litLevel($size) \})>
+
+bind j-pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: $mult, domain: $domain, codomain: $codomain \})>
+
+bind j-lam
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind j-app
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind j-id
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind j-refl
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+bind j-self
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "self", body: $body \})>
+
+bind j-define
+  take module, like dynamic
+  take name, like text
+  take term, like dynamic
+  like dynamic
+  case node
+    text <$module.defineConstant($name, $module.evaluate([], $term))>
+
+bind j-context
+  take module, like dynamic
+  take hyps, like list, like judge-hyp
+  like dynamic
+  case node
+    text <$module.contextWithSignature($hyps)>
+
+bind j-check
+  take module, like dynamic
+  take context, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.check($context, $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+task kc
+  take name, like text
+  like dynamic
+
+  back j-const(name)
+
+task v
+  take index, like number
+  like dynamic
+
+  back j-var(index)
+
+task a2
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+
+  back j-app(callee, given)
+
+task many
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+
+  back j-pi(<many>, domain, codomain)
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+host ty-zero, j-type(judge-kernel, 0)
+
+# (k : Nat) -> P k -> P (succ k), in [n,P,zc,k]: P=v2, k=v0
+host step-type, many(kc(<Nat>), many(a2(v(2), v(0)), a2(v(3), a2(kc(<succ>), v(1)))))
+# (0 P : Nat -> Type0) -> P zero -> step -> P n, in [n,P,zc,sc]: P=v2, n=v3
+host nat-body, j-pi(0, many(kc(<Nat>), ty-zero), many(a2(v(0), kc(<zero>)), many(step-type, a2(v(2), v(3)))))
+host nat-term, j-self(nat-body)
+# zero = \ P. \ z. \ s. z
+host zero-term, j-lam(j-lam(j-lam(v(1))))
+# succ = \ n. \ P. \ z. \ s. (s n (n P z s))
+host succ-term, j-lam(j-lam(j-lam(j-lam(a2(a2(v(0), v(3)), a2(a2(a2(v(3), v(2)), v(1)), v(0)))))))
+# plus = \ a. \ b. a (\_. Nat) b (\_. \ r. succ r)
+host plus-term, j-lam(j-lam(a2(a2(a2(v(1), j-lam(kc(<Nat>))), v(0)), j-lam(j-lam(a2(kc(<succ>), v(0)))))))
+# times = \ a. \ b. a (\_. Nat) zero (\_. \ r. plus b r)
+host times-term, j-lam(j-lam(a2(a2(a2(v(1), j-lam(kc(<Nat>))), kc(<zero>)), j-lam(j-lam(a2(a2(kc(<plus>), v(2)), v(0)))))))
+host nat-to-nat, many(nat-term, nat-term)
+host nat-to-nat-to-nat, many(nat-term, nat-to-nat)
+host one, a2(kc(<succ>), kc(<zero>))
+host two, a2(kc(<succ>), one)
+host three, a2(kc(<succ>), two)
+host four, a2(kc(<succ>), three)
+
+task make-context
+  like dynamic
+
+  host context, j-context(judge-kernel, make(list, hyp(<Nat>, ty-zero), hyp(<zero>, kc(<Nat>)), hyp(<succ>, many(kc(<Nat>), kc(<Nat>))), hyp(<plus>, nat-to-nat-to-nat), hyp(<times>, nat-to-nat-to-nat)))
+  j-define(judge-kernel, <Nat>, nat-term)
+  j-define(judge-kernel, <zero>, zero-term)
+  j-define(judge-kernel, <succ>, succ-term)
+  j-define(judge-kernel, <plus>, plus-term)
+  j-define(judge-kernel, <times>, times-term)
+  back context
+
+host context, make-context()
+
+# a definitional-equality check: the named term reduces to the expected value, witnessed by refl
+task computes
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like boolean
+
+  back j-check(judge-kernel, context, j-refl(kc(<Nat>), rhs), j-id(kc(<Nat>), lhs, rhs))
+
+test <Nat is a self type in Type 0 (impredicative bottom universe)>
+  want hold, j-check(judge-kernel, context, nat-term, ty-zero)
+
+test <zero : Nat (self introduction against the self type)>
+  want hold, j-check(judge-kernel, context, zero-term, nat-term)
+
+test <succ : Nat -\> Nat (a generic recursive constructor)>
+  want hold, j-check(judge-kernel, context, succ-term, nat-to-nat)
+
+test <one = succ zero : Nat>
+  want hold, j-check(judge-kernel, context, one, kc(<Nat>))
+
+# addition: it type-checks (it returns Nat, the large recursion the impredicative universe unblocks) and it reduces
+test <plus : Nat -\> Nat -\> Nat type-checks (large recursion, returns Nat)>
+  want hold, j-check(judge-kernel, context, plus-term, nat-to-nat-to-nat)
+
+test <plus zero one = one>
+  want hold, computes(a2(a2(kc(<plus>), kc(<zero>)), one), one)
+
+test <plus one one = two>
+  want hold, computes(a2(a2(kc(<plus>), one), one), two)
+
+test <plus two one = three>
+  want hold, computes(a2(a2(kc(<plus>), two), one), three)
+
+# multiplication, defined in terms of plus: also type-checks and reduces
+test <times : Nat -\> Nat -\> Nat type-checks>
+  want hold, j-check(judge-kernel, context, times-term, nat-to-nat-to-nat)
+
+test <times two two = four>
+  want hold, computes(a2(a2(kc(<times>), two), two), four)

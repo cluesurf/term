@@ -1,0 +1,119 @@
+note <An implicit runtime is skipped by its resolved file, never by path text>
+
+# Ported from implicit-runtime.ts, by hand (item 0621, beat-term-0064, decision D026). A module with a top-level `view` is given
+# the render runtime (deck/site/code/view/render.tree) and a module with a web route the route runtime
+# (view/route-runtime.tree) without a written load. compile/loading.tree `walk-one` leaves one out only when the module IS that
+# file or a written load RESOLVES to it. An app's own `./view/render` is another file, so it gets the runtime too. Each case
+# counts the runtime's file among the sources `collectModules` returns.
+#
+# A relative load must stay inside the project root (the project resolver), so every program is written under tmp/. The
+# resolver comes through the harness, from the options a project choice makes.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+  find compiling-field
+  find file-text
+  find project-path
+
+dock load
+  load <@term/make/code/compile/load>, name implicit-load
+  load <node:fs>, name implicit-file
+
+host render-file, <deck/site/code/view/render.tree>
+
+host route-file, <deck/site/code/view/route-runtime.tree>
+
+host view-text, <\nview screen\n  take host, like view\n  view span\n    text \<hello\>\n>
+
+host route-table, <\nhook /\n  view screen\n>
+
+# the app's own file of the same name as a runtime: it defines one unrelated task
+host own-text, <\ntask shout\n  take first, like text\n  like text\n  send back, text \<\{first\}!\>\n>
+
+host own-load, <load ./view/render\n  find shout\n>
+
+host own-route-load, <load ./view/route-runtime\n  find shout\n>
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind make-folders
+  take folder, like text
+  like void
+  case node
+    text <process.getBuiltinModule("node:fs").mkdirSync($folder, \{ recursive: true \})>
+
+bind count-ending
+  take walked, like dynamic
+  take ending, like text
+  like number
+  case node
+    text <$walked.sources.filter(s =\> s.file.endsWith($ending)).length>
+
+bind diagnostic-count
+  take walked, like dynamic
+  like number
+  case node
+    text <$walked.diagnostics.length>
+
+task resolver
+  like dynamic
+
+  back compiling-field(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, <node>))), <resolve>)
+
+# write one case's folder (rewritten each run) and walk its entry
+task walk-case
+  take name, like text
+  take entry, like text
+  take own-file, like text
+  like dynamic
+
+  host folder, project-path(<tmp/implicit-runtime>, name)
+  make-folders(project-path(folder, <view>))
+  fork test, is-unequal(own-file, <>)
+    hold
+      implicit-file/write-file-sync(project-path(folder, own-file), own-text)
+  host file, project-path(folder, <main.tree>)
+  implicit-file/write-file-sync(file, entry)
+  back implicit-load/collect-modules(source-of(file, entry), resolver())
+
+task render-entry
+  like dynamic
+
+  host file, project-path(<.>, render-file)
+  back implicit-load/collect-modules(source-of(file, file-text(file)), resolver())
+
+test <a: a view with no loads is given the render runtime once>
+  want hold, is-equal(count-ending(walk-case(<a>, view-text, <>), render-file), 1)
+
+test <b: the app's own ./view/render still gets the render runtime, once>
+  want hold, is-equal(count-ending(walk-case(<b>, <{own-load}{view-text}>, <view/render.tree>), render-file), 1)
+
+test <b: the app's own file is walked too>
+  want hold, is-equal(count-ending(walk-case(<b>, <{own-load}{view-text}>, <view/render.tree>), <implicit-runtime/b/view/render.tree>), 1)
+
+test <c: a written load of the runtime by its package path gives it once>
+  want hold, is-equal(count-ending(walk-case(<c>, <load @term/site/view/render\n  find show\n{view-text}>, <>), render-file), 1)
+
+test <d: the legacy @cluesurf/site/code spelling gives it once>
+  want hold, is-equal(count-ending(walk-case(<d>, <load @cluesurf/site/code/view/render\n  find show\n{view-text}>, <>), render-file), 1)
+
+test <e: no view, no render runtime>
+  want hold, is-equal(count-ending(walk-case(<e>, own-load, <view/render.tree>), render-file), 0)
+
+test <f: the app's own ./view/route-runtime still gets the route runtime, once>
+  want hold, is-equal(count-ending(walk-case(<f>, <{own-route-load}{view-text}{route-table}>, <view/route-runtime.tree>), route-file), 1)
+
+test <f: the app's own file is walked too>
+  want hold, is-equal(count-ending(walk-case(<f>, <{own-route-load}{view-text}{route-table}>, <view/route-runtime.tree>), <implicit-runtime/f/view/route-runtime.tree>), 1)
+
+test <g: the runtime as the entry holds itself once>
+  want hold, is-equal(count-ending(render-entry(), render-file), 1)
+
+test <g: and no diagnostic>
+  want hold, is-equal(diagnostic-count(render-entry()), 0)

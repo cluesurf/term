@@ -1,0 +1,70 @@
+note <A record's ring laws in the kernel>
+
+# Ported from record-ring.ts by tmp/self-host/suite-unroll.mjs (item 0562), each rule written out beside one shared prelude.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+host prelude, <form vector-two\n  slot x, like integer\n  slot y, like integer\n\ntask dot\n  take u, like vector-two\n  take v, like vector-two\n\n  like integer\n\n  back add(multiply(u/x, v/x), multiply(u/y, v/y))\n\ntask sum\n  take u, like vector-two\n  take v, like vector-two\n\n  like vector-two\n\n  back make vector-two(add(u/x, v/x), add(u/y, v/y))\n\ntask origin\n  like vector-two\n\n  back make vector-two(0, 0)\n\nform matrix-two\n  slot xx, like integer\n  slot xy, like integer\n  slot yx, like integer\n  slot yy, like integer\n\ntask product\n  take m, like matrix-two\n  take n, like matrix-two\n\n  like matrix-two\n\n  back\n    make matrix-two\n      bind xx, add(multiply(m/xx, n/xx), multiply(m/xy, n/yx))\n      bind xy, add(multiply(m/xx, n/xy), multiply(m/xy, n/yy))\n      bind yx, add(multiply(m/yx, n/xx), multiply(m/yy, n/yx))\n      bind yy, add(multiply(m/yx, n/xy), multiply(m/yy, n/yy))\n\ntask determinant\n  take m, like matrix-two\n\n  like integer\n\n  back subtract(multiply(m/xx, m/yy), multiply(m/xy, m/yx))\n>
+
+task ran
+  take rule, like text
+  like boolean
+
+  back compile-text(<{prelude}\n{rule}\n>, make(compile-choice, bind(file, <r.tree>), bind(lean, true)))/ok
+
+task accepted
+  take rule, like text
+  like boolean
+
+  back ran(rule)
+
+task refused
+  take rule, like text
+  like boolean
+
+  back not(ran(rule))
+
+# Laws over FORMS WITH FIELDS, decided on the fields: vectors and matrices as records, their operations as tasks.
+#
+#   1. a task reading `u/x` unfolds with its parameters substituted inside the read (check/unfold.ts). It used to read
+#      as closed and keep the callee's names, so one more step (the normalizer reading members) would prove
+#      `dot(u, v) == dot(u, u)`. Held below by exactly that law, which must stay refused
+#   2. a field read of a name is an unknown of its own (`u/x`), of a construction its value
+#   3. two constructions of one form are equal when their fields are (check/ring.ts), and a name of a form with no cases
+#      is the construction of its fields (record eta, check/elaborate.ts `etaPair`)
+#   4. an inequality naming a task is asked again through the definitions (check/holds.ts): Cauchy-Schwarz
+# Run: npx tsx test/check/record-ring.ts
+test <THE LATENT UNSOUNDNESS: dot(u, v) == dot(u, u), the callee's own names, stays refused>
+  want hold, refused(<rule dangling\n  seat u, like vector-two\n  seat v, like vector-two\n  show hold, is-equal dot(u, v), dot(u, u)>)
+
+test <and renamed: dot(p, q) == dot(q, q) stays refused>
+  want hold, refused(<rule dangling-renamed\n  seat p, like vector-two\n  seat q, like vector-two\n  show hold, is-equal dot(p, q), dot(q, q)>)
+
+test <dot is symmetric, on the fields>
+  want hold, accepted(<rule dot-is-symmetric\n  seat u, like vector-two\n  seat v, like vector-two\n  show hold, is-equal dot(u, v), dot(v, u)>)
+
+test <a vector is the construction of its fields (record eta): v + 0 = v>
+  want hold, accepted(<rule origin-is-identity\n  seat v, like vector-two\n  show hold, is-equal sum(v, origin()), v>)
+
+test <but v + v = v is refused>
+  want hold, refused(<rule doubled-is-itself\n  seat v, like vector-two\n  show hold, is-equal sum(v, v), v>)
+
+test <two constructions are equal field by field: the product associates>
+  want hold, accepted(<rule product-associates\n  seat m, like matrix-two\n  seat n, like matrix-two\n  seat p, like matrix-two\n  show hold, is-equal product(product(m, n), p), product(m, product(n, p))>)
+
+test <and the product does not commute>
+  want hold, refused(<rule product-commutes\n  seat m, like matrix-two\n  seat n, like matrix-two\n  show hold, is-equal product(m, n), product(n, m)>)
+
+test <the determinant is multiplicative>
+  want hold, accepted(<rule determinant-of-a-product\n  seat m, like matrix-two\n  seat n, like matrix-two\n  show hold, is-equal determinant(product(m, n)), multiply(determinant(m), determinant(n))>)
+
+test <an inequality through the definitions: Cauchy-Schwarz>
+  want hold, accepted(<rule cauchy-schwarz\n  seat u, like vector-two\n  seat v, like vector-two\n  show hold, is-maximum multiply(dot(u, v), dot(u, v)), multiply(dot(u, u), dot(v, v))>)
+
+test <and reversed, refused>
+  want hold, refused(<rule cauchy-schwarz-reversed\n  seat u, like vector-two\n  seat v, like vector-two\n  show hold, is-minimum multiply(dot(u, v), dot(u, v)), multiply(dot(u, u), dot(v, v))>)
+
+test <a task calling its parameter unfolds to a call of the argument: apply(g, a) == apply(h, a) is refused>
+  want hold, not(compile-text(<task apply\n  take f\n    like task\n      take x, like integer\n      like integer\n  take x, like integer\n\n  like integer\n\n  back f(x)\n\nrule every-two-functions-agree\n  seat g\n    like task\n      take x, like integer\n      like integer\n  seat h\n    like task\n      take x, like integer\n      like integer\n  seat a, like integer\n  show hold, is-equal apply(g, a), apply(h, a)\n>, make(compile-choice, bind(file, <r.tree>), bind(lean, true)))/ok)

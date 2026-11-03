@@ -1,0 +1,26 @@
+note <Record eta in the kernel>
+
+# Ported from record-eta.ts by tmp/self-host/suite-unroll.mjs (item 0562), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# Record eta / extensionality (surjective pairing): two values of a record type are equal iff their fields agree. The
+# hold-level check (where the goal's type is available, unlike the untyped kernel `convert`) projects each field of both
+# sides and compares -- so `x == make pair (x.left) (x.right)` discharges, and any record equality with matching fields.
+# Sound: a record is determined by its fields, and a record equality whose fields DIFFER is rejected.
+# Run: npx tsx test/check/record-eta.ts
+# 1. ETA: a record equals its own re-bundling from its projections.
+test <record eta: x == make pair (x.left) (x.right)>
+  want hold, compiles(<form bit\n  case off\n  case on\n\nform pair\n  link left, like bit\n  link right, like bit\n\nrule pair-eta\n  seat x, like pair\n  show hold\n    call is-equal\n      read x\n      make pair\n        bind left\n          read x/left\n        bind right\n          read x/right\n  calm hold\n>)
+
+# 2. SOUNDNESS CONTROL: two pairs differing in a field are NOT equal. Must be rejected.
+test <records differing in a field are not equated>
+  want hold, not(compiles(<form bit\n  case off\n  case on\n\nform pair\n  link left, like bit\n  link right, like bit\n\nrule pair-distinct\n  show hold\n    call is-equal\n      make pair\n        bind left\n          make off\n        bind right\n          make on\n      make pair\n        bind left\n          make off\n        bind right\n          make off\n  calm hold\n>))

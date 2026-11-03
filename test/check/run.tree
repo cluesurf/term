@@ -1,0 +1,60 @@
+note <Checker tests: names and blame>
+
+# Ported from run.ts by tmp/self-host/suite-unroll.mjs (item 0565), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+task bad
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <bad.tree>)))
+
+task first-name
+  take text, like text
+  like text
+
+  host out, bad(text)
+  fork test, out/ok
+    hold
+      back <>
+  back out/names/0
+
+task blamed
+  take text, like text
+  like boolean
+
+  host out, bad(text)
+  fork test, out/ok
+    hold
+      back false
+  back is-minimum(out/notes/0/markers/length, 2)
+
+# mismatches and arity errors. Run: npx tsx test/check/run.ts
+# confirm a type error blames more than one location (multi-span)
+# unknown name: `missing` is not defined
+test <unknown name>
+  want hold, is-equal(first-name(<task bad\n  take n\n  send back\n    call add\n      read n\n      read missing\n>), <unknown-name>)
+
+# type mismatch: adding a string to a number
+test <type mismatch (string + number)>
+  want hold, is-equal(first-name(<task bad\n  take n\n  save s, text \<hi\>\n  send back\n    call add\n      read n\n      read s\n>), <type-mismatch>)
+
+# type mismatch: a non-boolean loop condition
+test <type mismatch (number condition)>
+  want hold, is-equal(first-name(<task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  send back n\n>), <type-mismatch>)
+
+# arity mismatch: calling a one-argument function with two arguments
+test <arity mismatch>
+  want hold, is-equal(first-name(<task one\n  take a\n  send back a\n\ntask bad\n  take n\n  send back\n    call one\n      read n\n      read n\n>), <type-mismatch>)
+
+# a clean program with a forward reference (helper defined after use) resolves and checks
+test <forward reference resolves>
+  want hold, compile-text(<task main\n  take n\n  send back\n    call helper\n      read n\n\ntask helper\n  take x\n  send back\n    call add\n      read x\n      code 1\n>, make(compile-choice, bind(file, <good.tree>)))/ok
+
+# multi-span blame: n is used as boolean (loop condition) and as a number (assignment)
+test <blame points at both uses>
+  want hold, blamed(<task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  send back n\n>)

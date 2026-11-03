@@ -1,0 +1,93 @@
+note <TypeScript tests a field-less case by identity where every value of it is the one frozen constant>
+
+# Ported from ts-identity.ts by hand (item 0576). typescript.ts `identityCases`, the suite's subject (decision 106), held both ways:
+# List's empty list through a type guard, and a program that fills data into forms, one with a stub of another unit's task, and a
+# module emitted alone each keep reading the tag. A wrong identity test is a wrong branch, so every refusal is a place a second object
+# of the case could come from.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/typescript>, name identity-typescript
+
+bind set-size
+  take cases, like dynamic
+  like number
+  case node
+    text <$cases.size>
+
+bind set-holds
+  take cases, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$cases.has($name)>
+
+# the shape a real `call fill / ... / like <form>` has once it reaches the backends: a call to `fill-form`, in a copy
+bind with-fill-form
+  take program, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const copy = structuredClone($program); const rename = value =\> \{ if (typeof value !== "object" || value === null) return; if (Array.isArray(value)) return value.forEach(rename); if (value.form === "call" && value.callee?.form === "variable" && value.callee.name === "depth") value.callee.name = "fill-form"; Object.values(value).forEach(rename) \}; rename(copy.find(n =\> n.form === "function" && n.name === "use")); return copy \})()>
+
+# the same program with its `depth` a stub of another unit's task, in a copy
+bind with-stub
+  take program, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const copy = structuredClone($program); copy.find(n =\> n.form === "function" && n.name === "depth").stub = true; return copy \})()>
+
+task built
+  take source, like text
+  take entry, like text
+  take file, like text
+  like compile-outcome
+
+  host out, compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <node>), bind(entry, entry)))
+  fork test, not(out/ok)
+    hold
+      halt <{file} was refused>
+  back out
+
+host chain, <form chain\n  case end\n  case link\n    link value, like number\n    link next, like chain\n\ntask depth\n  take c, like chain\n  like number\n  fork case, read c\n    case end\n      send back, code 0\n    case link\n      send back, code 1\n>
+host use-depth, <{chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n>
+
+host chain-list, built(file-text(<mark/list/term.tree>), <list-runs>, <mark/list/term.tree>)
+
+# 1. List: the empty case by identity, through its guard
+test <list: the empty case is an identity case>
+  want hold, set-holds(identity-typescript/identity-cases(chain-list/program, false), <chain/end>)
+
+test <list: matches test it through its guard>
+  want hold, matches(make(pattern, <<__termIsEnd\(\w+\)>>), chain-list/emitted)
+  want hold, not(text-contains(chain-list/emitted, <.form === "end">))
+
+test <list: the guard narrows by the constant>
+  want hold, text-contains(chain-list/emitted, <function __termIsEnd(value: \{ form: string \}): value is \{ form: "end" \} \{ return value === __termVariantEnd \}>)
+
+test <a module emitted alone keeps the tag>
+  want hold, is-equal(set-size(identity-typescript/identity-cases(chain-list/program, true)), 0)
+
+# 2. what keeps reading the tag, each the list program but for one thing
+test <a program that fills data keeps the tag>
+  host filled, built(<{chain}\ntask fill\n  take x, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read x\n    hook next\n      take site, name i\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n\ntask use\n  take c, like chain\n  like number\n  send back\n    call add\n      call depth(read(c))\n      call fill(code 1)\n>, <use>, <main.tree>)
+  want hold, is-equal(set-size(identity-typescript/identity-cases(filled/program, false)), 0)
+
+test <a program with a `fill-form` call keeps the tag>
+  host out, built(use-depth, <use>, <main.tree>)
+  want hold, is-equal(set-size(identity-typescript/identity-cases(with-fill-form(out/program), false)), 0)
+
+test <a program holding a stub keeps the tag>
+  host out, built(use-depth, <use>, <main.tree>)
+  want hold, is-equal(set-size(identity-typescript/identity-cases(with-stub(out/program), false)), 0)

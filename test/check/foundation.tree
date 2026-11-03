@@ -1,0 +1,216 @@
+note <The bottom of the math genome as kernel terms, every definition checked>
+
+# Ported from foundation.ts by hand (item 0557). check/kernel-terms is the subject (decision 106). The same self-typed Calculus of
+# Constructions that is the type system is the foundation the math library elaborates into: the kernel checks the booleans and the
+# natural numbers, with zero, successor, induction and addition, all as self types. The original's closures take a placeholder and abstract
+# it. Here a binder names its placeholder, and `pi-of` is a binder whose name is never read. A binder is a term (spec 4.6), so "one plus
+# one computes to two" compares the two normal forms in full.
+
+dock load
+  load <@term/make/code/check/kernel-terms>, name coc-terms
+
+bind coc-named
+  take module, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$module.makeVariable(-1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7))>
+
+bind coc-abstract
+  take module, like dynamic
+  take name, like text
+  take term, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const m = $module; const level = -1000 - [...$name].reduce((a, c) =\> a * 31 + c.charCodeAt(0), 7); const walk = (t, d) =\> \{ switch (t.tag) \{ case "variable": return t.level === level ? m.makeBound(d) : t; case "pi": return m.makePi(walk(t.input, d), walk(t.body, d + 1)); case "lambda": return m.makeLambda(walk(t.body, d + 1)); case "self": return m.makeSelf(walk(t.body, d + 1)); case "apply": return m.makeApply(walk(t.fun, d), walk(t.arg, d)); case "annotate": return m.makeAnnotate(walk(t.value, d), walk(t.type, d)); default: return t \} \}; return walk($term, 0) \})()>
+
+bind result-ok
+  take results, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$results.some(r =\> r.name === $name && r.ok)>
+
+bind results-size
+  take results, like dynamic
+  like number
+  case node
+    text <$results.length>
+
+# a kernel fault raised by the kernel is what `normalize` answers a bad annotation with
+bind rejects-annotation
+  take module, like dynamic
+  take book, like dynamic
+  take term, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.normalize($book, $term, 0); return false \} catch (error) \{ const note = error?.note; return typeof note === "string" && (note.startsWith("kernel-mismatch:") || note.startsWith("kernel-fault:")) \} \})()>
+
+host universe, coc-terms/make-universe()
+
+task v
+  take name, like text
+  like dynamic
+
+  back coc-named(coc-terms, name)
+
+task r
+  take name, like text
+  like dynamic
+
+  back coc-terms/make-reference(name)
+
+task a2
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+
+  back coc-terms/make-apply(callee, given)
+
+task a3
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  like dynamic
+
+  back a2(a2(callee, one), two)
+
+task a4
+  take callee, like dynamic
+  take one, like dynamic
+  take two, like dynamic
+  take three, like dynamic
+  like dynamic
+
+  back a2(a3(callee, one, two), three)
+
+task lambda-of
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-lambda(coc-abstract(coc-terms, name, body))
+
+task pi-named
+  take input, like dynamic
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-pi(input, coc-abstract(coc-terms, name, body))
+
+task pi-of
+  take input, like dynamic
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-pi(input, body)
+
+task self-of
+  take name, like text
+  take body, like dynamic
+  like dynamic
+
+  back coc-terms/make-self(coc-abstract(coc-terms, name, body))
+
+task eq
+  take x, like dynamic
+  take y, like dynamic
+  like dynamic
+
+  back a3(r(<Equal>), x, y)
+
+task entry
+  take name, like text
+  take type, like dynamic
+  take value, like dynamic
+  like dynamic
+
+  back coc-terms/make-entry(name, type, value)
+
+task nat-to-universe
+  like dynamic
+
+  back pi-of(r(<Natural>), universe)
+
+# forall (n: Natural). P n -> P (succ n)
+task step-type
+  like dynamic
+
+  back pi-named(r(<Natural>), <n>, pi-of(a2(v(<P>), v(<n>)), a2(v(<P>), a2(r(<succ>), v(<n>)))))
+
+task make-book
+  like list, like dynamic
+
+  host self-entry, entry(<Self>, universe, lambda-of(<F>, self-of(<s>, coc-terms/make-annotate(v(<s>), a2(v(<F>), v(<s>))))))
+  host equal-entry, entry(<Equal>, universe, lambda-of(<a>, lambda-of(<b>, pi-named(pi-of(universe, universe), <P>, pi-of(a2(v(<P>), v(<a>)), a2(v(<P>), v(<b>)))))))
+  host refl-entry, entry(<refl>, pi-named(universe, <a>, eq(v(<a>), v(<a>))), lambda-of(<_a>, lambda-of(<_P>, lambda-of(<x>, v(<x>)))))
+  host natural-entry, entry(<Natural>, universe, a2(r(<Self>), lambda-of(<s>, pi-named(nat-to-universe(), <P>, pi-of(a2(v(<P>), r(<zero>)), pi-of(step-type(), a2(v(<P>), v(<s>))))))))
+  host zero-entry, entry(<zero>, r(<Natural>), lambda-of(<_P>, lambda-of(<z>, lambda-of(<_s>, v(<z>)))))
+  host succ-entry, entry(<succ>, pi-of(r(<Natural>), r(<Natural>)), lambda-of(<n>, lambda-of(<P>, lambda-of(<z>, lambda-of(<s>, a3(v(<s>), v(<n>), a4(v(<n>), v(<P>), v(<z>), v(<s>))))))))
+  host induct-entry, entry(<induct>, pi-named(nat-to-universe(), <P>, pi-of(a2(v(<P>), r(<zero>)), pi-of(step-type(), pi-named(r(<Natural>), <m>, a2(v(<P>), v(<m>)))))), lambda-of(<P>, lambda-of(<z>, lambda-of(<s>, lambda-of(<m>, a4(v(<m>), v(<P>), v(<z>), v(<s>)))))))
+  host plus-entry, entry(<plus>, pi-of(r(<Natural>), pi-of(r(<Natural>), r(<Natural>))), lambda-of(<a>, lambda-of(<b>, a4(v(<a>), lambda-of(<_x>, r(<Natural>)), v(<b>), lambda-of(<_y>, lambda-of(<t>, a2(r(<succ>), v(<t>))))))))
+  host one-entry, entry(<one>, r(<Natural>), a2(r(<succ>), r(<zero>)))
+  host two-entry, entry(<two>, r(<Natural>), a2(r(<succ>), r(<one>)))
+  # proven theorems, discharged as proof terms, not asserted axioms
+  host add-zero-left, entry(<addZeroLeft>, pi-named(r(<Natural>), <n>, eq(a3(r(<plus>), r(<zero>), v(<n>)), v(<n>))), lambda-of(<_n>, a2(r(<refl>), universe)))
+  host add-succ-left, entry(<addSuccLeft>, pi-named(r(<Natural>), <m>, pi-named(r(<Natural>), <n>, eq(a3(r(<plus>), a2(r(<succ>), v(<m>)), v(<n>)), a2(r(<succ>), a3(r(<plus>), v(<m>), v(<n>)))))), lambda-of(<_m>, lambda-of(<_n>, a2(r(<refl>), universe))))
+  host double-entry, entry(<double>, pi-of(r(<Natural>), r(<Natural>)), lambda-of(<n>, a3(r(<plus>), v(<n>), v(<n>))))
+  host double-one, entry(<doubleOne>, eq(a2(r(<double>), r(<one>)), r(<two>)), a2(r(<refl>), universe))
+  back make(list, self-entry, equal-entry, refl-entry, natural-entry, zero-entry, succ-entry, induct-entry, plus-entry, one-entry, two-entry, add-zero-left, add-succ-left, double-entry, double-one)
+
+host book, make-book()
+host results, coc-terms/check-book(book)
+
+test <Self>
+  want hold, is-equal(results-size(results), 14)
+  want hold, result-ok(results, <Self>)
+
+test <Equal>
+  want hold, result-ok(results, <Equal>)
+
+test <refl>
+  want hold, result-ok(results, <refl>)
+
+test <Natural>
+  want hold, result-ok(results, <Natural>)
+
+test <zero>
+  want hold, result-ok(results, <zero>)
+
+test <succ>
+  want hold, result-ok(results, <succ>)
+
+test <induct>
+  want hold, result-ok(results, <induct>)
+
+test <plus>
+  want hold, result-ok(results, <plus>)
+
+test <one>
+  want hold, result-ok(results, <one>)
+
+test <two>
+  want hold, result-ok(results, <two>)
+
+test <addZeroLeft>
+  want hold, result-ok(results, <addZeroLeft>)
+
+test <addSuccLeft>
+  want hold, result-ok(results, <addSuccLeft>)
+
+test <double>
+  want hold, result-ok(results, <double>)
+
+test <doubleOne>
+  want hold, result-ok(results, <doubleOne>)
+
+# one plus one normalizes to the same normal form as two: the computation rules fire, shown in full, every waiting body run
+test <one plus one computes to two>
+  host sum, coc-terms/normalize(book, coc-terms/make-annotate(a3(r(<plus>), r(<one>), r(<one>)), r(<Natural>)), 0)
+  host two, coc-terms/normalize(book, coc-terms/make-annotate(r(<two>), r(<Natural>)), 0)
+  want hold, is-equal(coc-terms/show-term(book, sum, 0), coc-terms/show-term(book, two, 0))
+
+# a deliberate type mismatch must be caught
+test <rejects a bad annotation>
+  want hold, rejects-annotation(coc-terms, book, coc-terms/make-annotate(coc-terms/make-annotate(coc-terms/make-variable(0), r(<zero>)), r(<Equal>)))

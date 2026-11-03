@@ -1,0 +1,51 @@
+note <Swift holds a list a variant owns as a plain array>
+
+# Ported from swift-variant-arrays.ts by hand (item 0576). swift.ts, `fieldLists` over backend.ts `ownedFields`, and a list made empty
+# and filled by a counted loop gets its room first (`reserveAt`). Storage's leaf items and node kids are `[Int]` and `[Storage]`, its
+# kids reserved four, and an arm that pushes onto the list it binds keeps the variant's list a shared `SeedList`, since a plain array
+# would take the push into a copy the variant never sees. The meaning fixtures (`variant-array`, `records`) hold the answers on Swift.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find file-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+task swift-of
+  take file, like text
+  take source, like text
+  like text
+
+  host built, compile-text(source, make(compile-choice, bind(file, file), bind(stdlib, <swift>), bind(env, <swift>)))
+  fork test, not(built/ok)
+    hold
+      halt <{file} was refused>
+  back emit-text(built, <swift>)
+
+host storage, swift-of(<mark/storage/term.tree>, file-text(<mark/storage/term.tree>))
+host pushed, swift-of(<pushed.tree>, <load @term/base/list\n  find list\n  find push\n  find size\n\nform bag\n  case empty\n  case full\n    link items, like list, like number\n\ntask grow\n  take b, like bag\n  like number\n  fork case, read b\n    case empty\n      send back, code 0\n    case full\n      call push\n        bind list, read items\n        bind item, code 1\n      send back, call size(read(items))\n\ntask compute\n  like number\n  host items\n    make list\n  call push\n    bind list, read items\n    bind item, code 7\n  send back\n    call grow\n      make full\n        bind items, read items\n>)
+
+# 1. Storage: both variants' lists plain arrays, built and read as the hand version does
+test <storage: the leaf holds `[Int]`>
+  want hold, text-contains(storage, <case leaf(items: [Int])>)
+
+test <storage: the node holds `[Storage]`>
+  want hold, text-contains(storage, <case node(kids: [Storage])>)
+
+test <storage: the kids are a plain local, reserved for the four the loop pushes>
+  want hold, matches(make(pattern, <<var kids: \[Storage\] = \[\]\n\s+kids\.reserveCapacity\(4\)>>), storage)
+
+test <storage: the arm walks the plain array>
+  want hold, text-contains(storage, <for kid in kids \{>)
+  want hold, not(text-contains(storage, <kids.data>))
+
+# 2. an arm that pushes onto the list it binds: the variant's list stays shared, so the push reaches it
+test <pushed: the variant keeps a shared `SeedList`>
+  want hold, text-contains(pushed, <case full(items: SeedList\<Int\>)>)

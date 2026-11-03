@@ -1,0 +1,29 @@
+note <No-confusion at depth>
+
+# Ported from no-confusion.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# No-confusion at depth: an equation between two values is absurd if they are distinct constructors of the same enum,
+# OR they share a constructor (or are the same record) but a corresponding FIELD pair is itself absurd. The recursion
+# descends through record projections (which now reduce) and enum fields. Soundness is the delicate part: the check
+# must fire ONLY on genuine distinct constructors, never on neutral / equal fields, or it would refute a satisfiable
+# equation. These tests pin both the positive (deep refutation works) and the negative (no false refutation) sides.
+# Run: npx tsx test/check/no-confusion.ts
+host prelude, <form bit\n  case off\n  case on\n\nform box\n  link tag, like bit\n  link rest, like bit\n\ntask make-box\n  take a, like bit\n  take b, like bit\n  like box\n  send back\n    make box\n      bind tag, read a\n      bind rest, read b\n>
+
+# 1. DEEP REFUTATION: two records sharing the `make box` constructor but with distinct `tag` constructors (off vs on)
+# are absurd. The `calm miss` must discharge (so the file compiles).
+test <distinct tag field refutes through the record>
+  want hold, compile-text(<{prelude}\nrule boxes-with-distinct-tags-differ\n  seat b, like bit\n  show miss\n    call is-equal\n      call make-box\n        make off\n        read b\n      call make-box\n        make on\n        read b\n  calm miss\n>)/ok
+
+# 2. SOUNDNESS CONTROL A: a reflexive record equality must still HOLD (no-confusion must not have made the record
+# type inconsistent).
+test <reflexive record equality still holds>
+  want hold, compile-text(<{prelude}\nrule same-box-is-equal\n  seat a, like bit\n  seat b, like bit\n  show hold\n    call is-equal\n      call make-box\n        read a\n        read b\n      call make-box\n        read a\n        read b\n  calm hold\n>)/ok
+
+# 3. SOUNDNESS CONTROL B: two boxes sharing a tag but with NEUTRAL (variable) rest fields are NOT provably distinct.
+# A `calm miss` here must FAIL (the file must NOT compile), or the checker is unsound.
+test <neutral fields are not wrongly refuted>
+  want hold, not(compile-text(<{prelude}\nrule neutral-rest-boxes-are-not-distinct\n  seat a, like bit\n  seat b, like bit\n  seat c, like bit\n  show miss\n    call is-equal\n      call make-box\n        read a\n        read b\n      call make-box\n        read a\n        read c\n  calm miss\n>)/ok)

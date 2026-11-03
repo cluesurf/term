@@ -1,0 +1,44 @@
+note <Propositional truncation in the kernel: proof irrelevance>
+
+# Ported from hprop.ts by hand (item 0557). check/judge is the subject (decision 106). The kernel's `convert` equates two applications of a
+# registered truncation constructor on all spine elements EXCEPT the proof (the last). Soundness: a NON-truncation constructor stays
+# proof-relevant, and a different TYPE argument is not equated.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+bind spine
+  take names, like list, like text
+  like dynamic
+  case node
+    text <$names.map(name =\> (\{ tag: "const", name \})).reduce((f, a) =\> (\{ tag: "app", fun: f, arg: a \}))>
+
+bind convertible-in
+  take module, like dynamic
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ $module.resetDefinitions(); $module.registerTruncation("squash", 2); return $module.areConvertible(0, $module.evaluate([], $left), $module.evaluate([], $right)) \})()>
+
+task convertible
+  take left, like list, like text
+  take right, like list, like text
+  like boolean
+
+  back convertible-in(judge-kernel, spine(left), spine(right))
+
+test <proof irrelevance: squash A x == squash A y>
+  want hold, convertible(make(list, <squash>, <A>, <x>), make(list, <squash>, <A>, <y>))
+
+test <different type argument is not equated>
+  want hold, not(convertible(make(list, <squash>, <A>, <x>), make(list, <squash>, <B>, <x>)))
+
+# SOUNDNESS CONTROL: a non-truncation constructor stays proof-relevant
+test <non-truncation constructor is proof-relevant>
+  want hold, not(convertible(make(list, <pair>, <x>), make(list, <pair>, <y>)))
+
+# SOUNDNESS CONTROL: applied PAST its arity the constructor is not the proof any more. The eliminator's computing rule applies it to a motive
+# and a branch, and the branch is then the last argument: two different branches must not be equated (they were, before 2026-10-05)
+test <past its arity a truncation constructor is proof-relevant again>
+  want hold, not(convertible(make(list, <squash>, <A>, <x>, <motive>, <yes>), make(list, <squash>, <A>, <x>, <motive>, <no>)))

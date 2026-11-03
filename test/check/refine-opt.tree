@@ -1,0 +1,100 @@
+note <Soundness and performance of the optimized Fourier-Motzkin prover (refine.ts)>
+
+# Ported from refine-opt.ts (item 0562). Valid implications must prove, INVALID ones must NOT (the dedup, gcd-normalize and
+# smart-order optimizations must never make it wrongly prove a false goal), and a deep chain must stay fast. check/refine is the
+# subject (decision 106). The TypeScript prints the stress time and asserts nothing of it, so neither does this.
+
+dock load
+  load <@term/make/code/check/refine>, name refine
+
+bind term-of
+  take name, like text
+  take scale, like number
+  like dynamic
+  case node
+    text <(\{ [$name]: $scale \})>
+
+bind two-terms
+  take first, like text
+  take second, like text
+  like dynamic
+  case node
+    text <(\{ [$first]: 1, [$second]: 1 \})>
+
+bind no-terms
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind no-facts
+  take seed, like number
+  like dynamic
+  case node
+    text <[]>
+
+bind steps
+  take size, like number
+  like dynamic
+  case node
+    text <Array.from(\{ length: $size \}, (_, i) =\> i)>
+
+task v
+  take name, like text
+  like dynamic
+
+  back refine/linear(term-of(name, 1))
+
+task n
+  take value, like number
+  like dynamic
+
+  back refine/linear(no-terms(0), value)
+
+# x0 <= x1, x1 <= x2, ... up to size
+task chain
+  take size, like number
+  like dynamic
+
+  host facts, make list
+  walk steps(size)
+    take step
+    host next, add(step, 1)
+    facts/push(refine/at-most(v(<x{step}>), v(<x{next}>)))
+  back facts
+
+test <transitivity a\<=b,b\<=c =\> a\<=c>
+  want hold, refine/proves(make(list, refine/at-most(v(<a>), v(<b>)), refine/at-most(v(<b>), v(<c>))), refine/at-most(v(<a>), v(<c>)))
+
+test <n\>=1 =\> n\>=0>
+  want hold, refine/proves(make(list, refine/at-least(v(<n>), n(1))), refine/at-least(v(<n>), n(0)))
+
+test <strict n\>0 =\> n\>=1 (integer)>
+  want hold, refine/proves(make(list, refine/above(v(<n>), n(0))), refine/at-least(v(<n>), n(1)))
+
+test <a\<=b =\> a+c\<=b+c>
+  want hold, refine/proves(make(list, refine/at-most(v(<a>), v(<b>))), refine/at-most(refine/linear(two-terms(<a>, <c>)), refine/linear(two-terms(<b>, <c>))))
+
+test <chain x0..x8 =\> x0\<=x8>
+  want hold, refine/proves(chain(8), refine/at-most(v(<x0>), v(<x8>)))
+
+test <2a\<=2b =\> a\<=b (gcd reduce)>
+  want hold, refine/proves(make(list, refine/at-most(refine/linear(term-of(<a>, 2)), refine/linear(term-of(<b>, 2)))), refine/at-most(v(<a>), v(<b>)))
+
+test <NOT: a\<=b =\> b\<=a>
+  want hold, not(refine/proves(make(list, refine/at-most(v(<a>), v(<b>))), refine/at-most(v(<b>), v(<a>))))
+
+test <NOT: n\>=0 =\> n\>=1>
+  want hold, not(refine/proves(make(list, refine/at-least(v(<n>), n(0))), refine/at-least(v(<n>), n(1))))
+
+test <NOT: a\<=b,b\<=c =\> a\<c>
+  want hold, not(refine/proves(make(list, refine/at-most(v(<a>), v(<b>)), refine/at-most(v(<b>), v(<c>))), refine/below(v(<a>), v(<c>))))
+
+test <NOT: \{\} =\> a\<=b>
+  want hold, not(refine/proves(no-facts(0), refine/at-most(v(<a>), v(<b>))))
+
+test <NOT: a\<=5 =\> a\<=4>
+  want hold, not(refine/proves(make(list, refine/at-most(v(<a>), n(5))), refine/at-most(v(<a>), n(4))))
+
+test <stress: 20-var chain x0\<=x20>
+  want hold, refine/proves(chain(20), refine/at-most(v(<x0>), v(<x20>)))

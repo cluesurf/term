@@ -1,0 +1,118 @@
+note <Does term make compile a DIALECT, rather than only the test harness?>
+
+# Ported from feed-mill-build.ts, by hand (item 0621). A `mine.tree` IS THE SOURCE: `compileProject` recognises one, generates
+# the reader it describes, and compiles that into `host/` at the grammar's own path, so a dialect is written once. This holds the
+# three claims that makes: the grammar is recognised by CONTENT, not by its name (a 0-byte mine.tree is ordinary code), the
+# substrate is INFERRED, and a grammar it cannot infer is REPORTED, never guessed. Each of the three projects is built once, by
+# a top-level `host`, and its tests read that answer.
+
+load ../support/compiling
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+dock load
+  load <@term/call/code/make>, name feed-make
+  load <node:fs>, name feed-file
+  load <node:path>, name feed-path
+
+host deck-text, <deck @term/probe\n>
+
+# the helper hex's `mine value` calls, which the grammar imports with its own `load ./code`. The fixture takes only the helper,
+# because the hand-written `read-hex` would collide with the generated one
+host helper-text, <task hex-digit-value\n  take code, like number\n  like number\n  send back\n    call subtract\n      read code\n      code 48\n>
+
+host vague-text, <mine thing\n  mine form, form other\n\nmine other\n  mine form, form thing\n>
+
+# hex's own shipped grammar, with its `mark draft` (or the older `note draft`) removed
+bind without-draft
+  take text, like text
+  like text
+  case node
+    text <$text.split("\n").filter(line =\> line.trim() !== "mark draft" && line.trim() !== "note draft").join("\n")>
+
+bind write-below
+  take root, like text
+  take name, like text
+  take text, like text
+  like void
+  case node
+    text <(() =\> \{ const fs = process.getBuiltinModule("node:fs"); const path = process.getBuiltinModule("node:path"); const full = path.join($root, $name); fs.mkdirSync(path.dirname(full), \{ recursive: true \}); fs.writeFileSync(full, $text) \})()>
+
+bind says-why
+  take errors, like dynamic
+  like boolean
+  case node
+    text <$errors.some(e =\> e.includes("bytes or text") && e.includes("mark draft"))>
+
+bind text-holds
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+# a project on disk: the manifest and one more file, or two when `other-name` is not empty
+task project
+  take name, like text
+  take text, like text
+  take other-name, like text
+  take other-text, like text
+  like text
+
+  host root, temp-folder(<feed-mill-build->)
+  write-below(root, <deck.tree>, deck-text)
+  write-below(root, name, text)
+  fork test, is-unequal(other-name, <>)
+    hold
+      write-below(root, other-name, other-text)
+  back root
+
+host built, project(<code/hex/mine.tree>, without-draft(file-text(<deck/mill/code/text/hex/mine.tree>)), <code/hex/code.tree>, helper-text)
+
+host built-result, feed-make/compile-project(built)
+
+host empty-result, feed-make/compile-project(project(<code/thing/mine.tree>, <>, <>, <>))
+
+host vague-result, feed-make/compile-project(project(<code/vague/mine.tree>, vague-text, <>, <>))
+
+task emitted
+  like text
+
+  back feed-path/join(built, <host/code/hex/mine.ts>)
+
+test <a dialect grammar compiles as part of an ordinary build>
+  want hold, is-equal(built-result/failed, 0)
+  want hold, is-equal(built-result/compiled, 2)
+
+test <the reader is emitted at the grammar's own path>
+  want hold, feed-file/exists-sync(emitted())
+
+test <the emitted module defines readHex>
+  want hold, text-holds(file-text(emitted()), <function readHex>)
+
+test <the emitted module defines readHexByte>
+  want hold, text-holds(file-text(emitted()), <function readHexByte>)
+
+test <the emitted module defines readHexDigit>
+  want hold, text-holds(file-text(emitted()), <function readHexDigit>)
+
+test <the emitted reader reads a text cursor, as inferred>
+  host js, file-text(emitted())
+  want hold, text-holds(js, <readTextCursor(>)
+  want hold, not(text-holds(js, <feedCursorRead(>))
+
+test <the helper the grammar imports is in scope>
+  want hold, text-holds(file-text(emitted()), <hexDigitValue>)
+
+test <an empty mine.tree is compiled as code, not read as a grammar>
+  want hold, is-equal(empty-result/failed, 0)
+  want hold, is-equal(empty-result/compiled, 1)
+
+test <a grammar with no leaf to infer from fails the build>
+  want hold, is-equal(vague-result/failed, 1)
+  want hold, is-equal(vague-result/compiled, 0)
+
+test <and says why, and what to do about it>
+  want hold, says-why(vague-result/errors)

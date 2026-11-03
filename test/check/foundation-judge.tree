@@ -1,0 +1,274 @@
+note <The decided kernel judge.ts: universe polymorphism, quantities, equality, function extensionality, Sigma, self types>
+
+# Ported from foundation-judge.ts by hand (item 0557). check/judge is the subject (decision 106). Each term is built by the same small
+# constructors as the original. A check that throws is a failed check, as the original's `ok` reads it.
+
+dock load
+  load <@term/make/code/check/judge>, name judge-kernel
+
+form judge-hyp
+  link name, like text
+  link type, like dynamic
+
+bind j-var
+  take index, like number
+  like dynamic
+  case node
+    text <(\{ tag: "var", index: $index \})>
+
+bind j-const
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "const", name: $name \})>
+
+bind j-type
+  take module, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: $module.litLevel($size) \})>
+
+bind j-type-var
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ tag: "type", level: \{ constant: 0, vars: new Map([[$name, 0]]) \} \})>
+
+bind j-pi
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pi", mult: $mult, domain: $domain, codomain: $codomain \})>
+
+bind j-sigma
+  take mult, like dynamic
+  take domain, like dynamic
+  take codomain, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "sigma", mult: $mult, domain: $domain, codomain: $codomain \})>
+
+bind j-lam
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "lam", body: $body \})>
+
+bind j-app
+  take callee, like dynamic
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "app", fun: $callee, arg: $given \})>
+
+bind j-id
+  take family, like dynamic
+  take lhs, like dynamic
+  take rhs, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "id", type: $family, left: $lhs, right: $rhs \})>
+
+bind j-refl
+  take family, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "refl", type: $family, value: $value \})>
+
+bind j-pair
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "pair", first: $first, second: $second \})>
+
+bind j-self
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "self", body: $body \})>
+
+bind j-jay
+  take module, like dynamic
+  take proof, like dynamic
+  take motive, like dynamic
+  take start, like dynamic
+  like dynamic
+  case node
+    text <(\{ tag: "j", proof: $proof, motive: $motive, base: $start, level: $module.litLevel(0) \})>
+
+bind j-checks
+  take module, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <$module.checks($term, $type)>
+
+bind j-checks-throws
+  take module, like dynamic
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.checks($term, $type); return false \} catch \{ return true \} \})()>
+
+# whether `check` takes the term at the type, evaluated from nothing: it answers by throwing
+bind j-check
+  take module, like dynamic
+  take hyps, like list, like judge-hyp
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+  case node
+    text <(() =\> \{ try \{ $module.check($module.contextWithSignature($hyps), $term, $module.evaluate([], $type)); return true \} catch \{ return false \} \})()>
+
+bind j-instantiate
+  take module, like dynamic
+  take term, like dynamic
+  take name, like text
+  take size, like number
+  like dynamic
+  case node
+    text <$module.instantiateLevel($term, $name, $module.litLevel($size))>
+
+task ty
+  take size, like number
+  like dynamic
+
+  back j-type(judge-kernel, size)
+
+task hyp
+  take name, like text
+  take type, like dynamic
+  like judge-hyp
+
+  back make(judge-hyp, bind(name, name), bind(type, type))
+
+task const-a
+  like dynamic
+
+  back j-const(<A>)
+
+task const-b
+  take name, like text
+  like dynamic
+
+  back j-const(name)
+
+task checks
+  take hyps, like list, like judge-hyp
+  take term, like dynamic
+  take type, like dynamic
+  like boolean
+
+  back j-check(judge-kernel, hyps, term, type)
+
+# universe-polymorphic identity: (0 u : level) (0 A : Type u) (1 x : A) -> A
+task id-type-poly
+  like dynamic
+
+  back j-pi(0, j-type-var(<u>), j-pi(1, j-var(0), j-var(1)))
+
+task id-term
+  like dynamic
+
+  back j-lam(j-lam(j-var(0)))
+
+# universe polymorphism: one definition checks at every level
+test <identity checks at universe level 0>
+  want hold, j-checks(judge-kernel, id-term(), j-instantiate(judge-kernel, id-type-poly(), <u>, 0))
+
+test <identity checks at universe level 5 (cumulative, polymorphic)>
+  want hold, j-checks(judge-kernel, id-term(), j-instantiate(judge-kernel, id-type-poly(), <u>, 5))
+
+test <Type 0 has type Type 1>
+  want hold, j-checks(judge-kernel, ty(0), ty(1))
+
+test <Type : Type is rejected (Type 0 is not in Type 0)>
+  want hold, j-checks-throws(judge-kernel, ty(0), ty(0))
+
+# quantities (QTT): linear use is enforced
+task region-sig
+  like list, like judge-hyp
+
+  back make(list, hyp(<R>, ty(0)), hyp(<unit>, ty(0)), hyp(<nothing>, j-const(<unit>)))
+
+test <a linear value is used exactly once>
+  want hold, checks(region-sig(), j-lam(j-var(0)), j-pi(1, j-const(<R>), j-const(<R>)))
+
+test <using a linear value twice is rejected>
+  want hold, not(checks(region-sig(), j-lam(j-pair(j-var(0), j-var(0))), j-pi(1, j-const(<R>), j-sigma(<many>, j-const(<R>), j-const(<R>)))))
+
+test <dropping a linear value is rejected>
+  want hold, not(checks(region-sig(), j-lam(j-const(<nothing>)), j-pi(1, j-const(<R>), j-const(<unit>))))
+
+# identity type and reflexivity
+test <refl proves a reflexive equality>
+  want hold, j-checks(judge-kernel, j-refl(ty(1), ty(0)), j-id(ty(1), ty(0), ty(0)))
+
+# observational function extensionality (derivable, the identity)
+# funext : (0 A : Type0) (0 B : Type0) (0 f g : A -> B) (1 _ : (1 x : A) -> Id B (f x) (g x)) -> Id (A -> B) f g
+test <function extensionality is derivable (Id at Pi computes)>
+  host pointwise, j-pi(1, j-var(3), j-id(j-var(3), j-app(j-var(2), j-var(0)), j-app(j-var(1), j-var(0))))
+  host funext-type, j-pi(0, ty(0), j-pi(0, ty(0), j-pi(0, j-pi(1, j-var(1), j-var(1)), j-pi(0, j-pi(1, j-var(2), j-var(2)), j-pi(1, pointwise, j-id(j-pi(1, j-var(4), j-var(4)), j-var(2), j-var(1)))))))
+  want hold, j-checks(judge-kernel, j-lam(j-lam(j-lam(j-lam(j-lam(j-var(0)))))), funext-type)
+
+# dependent pairs (Sigma)
+test <a dependent pair checks against its sigma type>
+  want hold, checks(make(list, hyp(<Nat>, ty(0)), hyp(<value>, j-const(<Nat>))), j-pair(j-const(<value>), j-const(<value>)), j-sigma(<many>, j-const(<Nat>), j-const(<Nat>)))
+
+# self types (the inductive foundation). Self x. Nat : Type0, a trivial self type, formation only
+test <a self type is a well-formed type>
+  want hold, checks(make(list, hyp(<Nat>, ty(0))), j-self(j-const(<Nat>)), ty(0))
+
+# discharged proofs: real theorems of the foundations, as judge.ts proof terms
+task jay
+  take proof, like dynamic
+  take motive, like dynamic
+  take start, like dynamic
+  like dynamic
+
+  back j-jay(judge-kernel, proof, motive, start)
+
+task k
+  take name, like text
+  like dynamic
+
+  back j-const(name)
+
+# symmetry of equality: given p : Id A x y, prove Id A y x, by J. Motive \ y'. \ p'. Id A y' x, base refl
+test <equality is symmetric (Id A x y -\> Id A y x), proved by J>
+  host hyps, make(list, hyp(<A>, ty(0)), hyp(<x>, k(<A>)), hyp(<y>, k(<A>)), hyp(<p>, j-id(k(<A>), k(<x>), k(<y>))))
+  want hold, checks(hyps, jay(k(<p>), j-lam(j-lam(j-id(k(<A>), j-var(1), k(<x>)))), j-refl(k(<A>), k(<x>))), j-id(k(<A>), k(<y>), k(<x>)))
+
+# transport (substitution): given P : A -> Type, p : Id A x y, and P x, produce P y, by J. Motive \ y'. \ p'. P y', base P x
+test <transport along equality (P x -\> P y), proved by J>
+  host hyps, make(list, hyp(<A>, ty(0)), hyp(<P>, j-pi(<many>, k(<A>), ty(0))), hyp(<x>, k(<A>)), hyp(<y>, k(<A>)), hyp(<p>, j-id(k(<A>), k(<x>), k(<y>))), hyp(<px>, j-app(k(<P>), k(<x>))))
+  want hold, checks(hyps, jay(k(<p>), j-lam(j-lam(j-app(k(<P>), j-var(1)))), k(<px>)), j-app(k(<P>), k(<y>)))
+
+# transitivity: given p : Id A x y and q : Id A y z, prove Id A x z, by J on q. Motive \ z'. \ q'. Id A x z', base p
+test <equality is transitive (Id A x y -\> Id A y z -\> Id A x z), proved by J>
+  host hyps, make(list, hyp(<A>, ty(0)), hyp(<x>, k(<A>)), hyp(<y>, k(<A>)), hyp(<z>, k(<A>)), hyp(<p>, j-id(k(<A>), k(<x>), k(<y>))), hyp(<q>, j-id(k(<A>), k(<y>), k(<z>))))
+  want hold, checks(hyps, jay(k(<q>), j-lam(j-lam(j-id(k(<A>), k(<x>), j-var(1)))), k(<p>)), j-id(k(<A>), k(<x>), k(<z>)))
+
+# congruence: given f : A -> B and p : Id A x y, prove Id B (f x) (f y), by J on p. Motive \ y'. \ p'. Id B (f x) (f y'), base refl
+test <equality is a congruence (f respects =), proved by J>
+  host hyps, make(list, hyp(<A>, ty(0)), hyp(<B>, ty(0)), hyp(<f>, j-pi(<many>, k(<A>), k(<B>))), hyp(<x>, k(<A>)), hyp(<y>, k(<A>)), hyp(<p>, j-id(k(<A>), k(<x>), k(<y>))))
+  host fx, j-app(k(<f>), k(<x>))
+  want hold, checks(hyps, jay(k(<p>), j-lam(j-lam(j-id(k(<B>), fx, j-app(k(<f>), j-var(1))))), j-refl(k(<B>), fx)), j-id(k(<B>), fx, j-app(k(<f>), k(<y>))))
+
+# a Peano signature: given succ : Nat -> Nat and p : Id Nat m n, prove Id Nat (succ m) (succ n), by J
+test <successor respects equality (Id Nat m n -\> Id Nat (succ m) (succ n))>
+  host hyps, make(list, hyp(<Nat>, ty(0)), hyp(<succ>, j-pi(<many>, k(<Nat>), k(<Nat>))), hyp(<m>, k(<Nat>)), hyp(<n>, k(<Nat>)), hyp(<p>, j-id(k(<Nat>), k(<m>), k(<n>))))
+  host sm, j-app(k(<succ>), k(<m>))
+  want hold, checks(hyps, jay(k(<p>), j-lam(j-lam(j-id(k(<Nat>), sm, j-app(k(<succ>), j-var(1))))), j-refl(k(<Nat>), sm)), j-id(k(<Nat>), sm, j-app(k(<succ>), k(<n>))))
+
+# proof erasure: a multiplicity-0 proof may go unused, a linear value must be used once.
+# \ (0 p : P). \ (1 x : A). x : (0 _ : P) -> (1 x : A) -> A
+test <an erased (0) proof can be dropped while a linear (1) value is used once>
+  want hold, checks(make(list, hyp(<P>, ty(0)), hyp(<A>, ty(0))), j-lam(j-lam(j-var(0))), j-pi(0, k(<P>), j-pi(1, k(<A>), k(<A>))))

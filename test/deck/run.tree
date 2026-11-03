@@ -1,0 +1,62 @@
+note <Tests for the load resolver>
+
+# Ported from run.ts, by hand (item 0578): classification, file resolution with fallback, package parsing, deck-root walk, and
+# store paths. The TypeScript compares JSON texts, so a wanted value here is its JSON text, keys in the same order.
+
+dock load
+  load <@term/make/code/deck/resolve>, name deck-resolve
+
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+host exists, make list(</proj/deck.tree>, </proj/code/base.tree>, </proj/code/helper.tree>, </proj/code/widget/base.tree>)
+
+host from-base, </proj/code/base.tree>
+
+test <classify relative>
+  want hold, is-equal(deck-resolve/classify-load(<./foo>), <relative>)
+
+test <classify absolute>
+  want hold, is-equal(deck-resolve/classify-load(</foo/bar>), <absolute>)
+
+test <classify package>
+  want hold, is-equal(deck-resolve/classify-load(<@termsurf/wolf>), <package>)
+
+test <classify glob>
+  want hold, is-equal(deck-resolve/classify-load(<**/*.tree>), <glob>)
+
+test <classify native>
+  want hold, is-equal(deck-resolve/classify-load(<\<node:fs\>>, true), <native>)
+
+test <resolve sibling .tree>
+  want hold, is-equal(json-of(deck-resolve/resolve-load(<./helper>, from-base, exists)), <\{"kind":"file","path":"/proj/code/helper.tree"\}>)
+
+test <resolve dir to base.tree>
+  want hold, is-equal(json-of(deck-resolve/resolve-load(<./widget>, from-base, exists)), <\{"kind":"file","path":"/proj/code/widget/base.tree"\}>)
+
+test <resolve missing>
+  want hold, is-equal(json-of(deck-resolve/resolve-load(<./nope>, from-base, exists)), <\{"kind":"missing","target":"./nope"\}>)
+
+test <parse scoped package>
+  want hold, is-equal(json-of(deck-resolve/parse-package(<@termsurf/wolf>)), <\{"host":"termsurf","name":"wolf"\}>)
+
+test <parse scoped with subpath>
+  want hold, is-equal(json-of(deck-resolve/parse-package(<@termsurf/wolf/code/tool>)), <\{"host":"termsurf","name":"wolf","subpath":"code/tool"\}>)
+
+test <resolve package load>
+  want hold, is-equal(json-of(deck-resolve/resolve-load(<@termsurf/wolf/code>, from-base, exists)), <\{"kind":"package","host":"termsurf","name":"wolf","subpath":"code"\}>)
+
+test <resolve native>
+  want hold, is-equal(json-of(deck-resolve/resolve-load(<\<node:fs\>>, from-base, exists, true)), <\{"kind":"native","module":"node:fs"\}>)
+
+test <find deck root>
+  want hold, is-equal(deck-resolve/find-deck-root(</proj/code/widget/base.tree>, exists), </proj>)
+
+test <no deck root>
+  want hold, is-equal(deck-resolve/find-deck-root(</other/x.tree>, exists), <>)
+
+test <store path>
+  want hold, is-equal(deck-resolve/store-path(</home/me>, <termsurf>, <wolf>, <0.0.1>), </home/me/.base/@term/code/deck/link/termsurf/wolf/0.0.1>)

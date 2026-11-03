@@ -1,0 +1,49 @@
+note <Record projections in the provers>
+
+# Ported from record-projection.ts by tmp/self-host/suite-unroll.mjs (item 0562), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/list
+  find contains
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))
+
+task discharges
+  take text, like text
+  like boolean
+
+  host out, built(text)
+  back and(out/ok, not(or(contains(out/warnings, <unchecked-hold>), contains(out/warnings, <unproven>))))
+
+task rejected
+  take text, like text
+  like boolean
+
+  back not(built(text)/ok)
+
+# Record projection reduction: a struct is encoded as a single-variant self-encoding, so a projection applied to a
+# freshly-built record reduces definitionally (`r__field_i (make__r a_0..a_{k-1}) = a_i`). Before this, `make__r` and
+# each `r__field` were opaque postulates with no computation rule, so `read p/left` on a constructed pair stayed stuck
+# and `calm` could not discharge it. Constructor injectivity falls out of the same encoding. These tests lock both in.
+# Run: npx tsx test/check/record-projection.ts
+# a true hold compiles with no unproven / unchecked-hold complaint
+# a false hold fails compilation outright
+# 1. PROJECTION REDUCES: first(make-pair a b) = a, by computation.
+test <left projection reduces>
+  want hold, discharges(<form pair\n  link left, like integer\n  link right, like integer\n\ntask make-pair\n  take a, like integer\n  take b, like integer\n  like pair\n  send back\n    make pair\n      bind left, read a\n      bind right, read b\n\ntask first\n  take p, like pair\n  like integer\n  send back\n    read p/left\n\ntask second\n  take p, like pair\n  like integer\n  send back\n    read p/right\n\nrule project-left\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-equal\n      call first\n        call make-pair\n          read a\n          read b\n      read a\n  calm hold\n>)
+
+# 2. THE OTHER FIELD: second(make-pair a b) = b.
+test <right projection reduces>
+  want hold, discharges(<form pair\n  link left, like integer\n  link right, like integer\n\ntask make-pair\n  take a, like integer\n  take b, like integer\n  like pair\n  send back\n    make pair\n      bind left, read a\n      bind right, read b\n\ntask first\n  take p, like pair\n  like integer\n  send back\n    read p/left\n\ntask second\n  take p, like pair\n  like integer\n  send back\n    read p/right\n\nrule project-right\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-equal\n      call second\n        call make-pair\n          read a\n          read b\n      read b\n  calm hold\n>)
+
+# 3. GENUINELY COMPUTED: the left projection is NOT the right field, so this false claim must be rejected.
+test <wrong projection is rejected>
+  want hold, rejected(<form pair\n  link left, like integer\n  link right, like integer\n\ntask make-pair\n  take a, like integer\n  take b, like integer\n  like pair\n  send back\n    make pair\n      bind left, read a\n      bind right, read b\n\ntask first\n  take p, like pair\n  like integer\n  send back\n    read p/left\n\ntask second\n  take p, like pair\n  like integer\n  send back\n    read p/right\n\nrule project-left-is-right\n  seat a, like integer\n  seat b, like integer\n  show hold\n    call is-equal\n      call first\n        call make-pair\n          read a\n          read b\n      read b\n  calm hold\n>)

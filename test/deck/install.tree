@@ -1,0 +1,136 @@
+note <End-to-end package-manager install test>
+
+# Ported from install.ts, by hand (item 0578): a local registry with a transitive dependency, installed into a temp project,
+# verifying the content-addressed store, the project links, transitive resolution, and the lockfile. Each test makes its own
+# install, since a test holds no state another may read.
+
+load ../support/compiling
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+dock load
+  load <@term/make/code/deck/install>, name deck-install
+  load <@term/make/code/deck/resolve>, name deck-resolve
+  load <node:fs>, name deck-file
+  load <node:path>, name deck-path
+
+host b-deck, <deck @termsurf/b\n  mark \<0.0.1\>\n>
+
+host a-deck, <deck @termsurf/a\n  mark \<0.0.1\>\n  link @termsurf/b\n    mark \<*\>\n>
+
+host app-deck, <deck @my/app\n  mark \<0.1.0\>\n  link @termsurf/a\n    mark \<*\>\n>
+
+host code-text, <task hello\n  back, code 1\n>
+
+form installed
+  link result, like dynamic
+  link store-home, like text
+  link project, like text
+
+bind make-folders
+  take folder, like text
+  like void
+  case node
+    text <process.getBuiltinModule("node:fs").mkdirSync($folder, \{ recursive: true \})>
+
+bind is-link
+  take path, like text
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").lstatSync($path).isSymbolicLink()>
+
+bind requests-a
+  take lockfile, like dynamic
+  like boolean
+  case node
+    text <$lockfile.requests.some(r =\> r.name === "@termsurf/a" && r.locked === "0.0.1")>
+
+bind a-needs-b
+  take lockfile, like dynamic
+  like boolean
+  case node
+    text <$lockfile.links.find(l =\> l.ref.startsWith("@termsurf/a"))?.deps.some(d =\> d.name === "@termsurf/b") === true>
+
+bind holds-word
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+task write-package
+  take registry, like text
+  take name, like text
+  take deck-text, like text
+  like void
+
+  host folder, deck-path/join(registry, <termsurf>, name, <0.0.1>)
+  make-folders(folder)
+  deck-file/write-file-sync(deck-path/join(folder, <deck.tree>), deck-text)
+  deck-file/write-file-sync(deck-path/join(folder, <code.tree>), code-text)
+
+# registry: package b (no deps), package a (depends on b). The project depends on a, which transitively needs b
+task install-all
+  like installed
+
+  host root, temp-folder(<seed-install->)
+  host registry, deck-path/join(root, <registry>)
+  host store-home, deck-path/join(root, <store>)
+  host project, deck-path/join(root, <project>)
+  make-folders(project)
+  write-package(registry, <b>, b-deck)
+  write-package(registry, <a>, a-deck)
+  deck-file/write-file-sync(deck-path/join(project, <deck.tree>), app-deck)
+  back make(installed, bind(result, deck-install/install(project, registry, store-home)), bind(store-home, store-home), bind(project, project))
+
+task store-of
+  take done, like installed
+  take name, like text
+  like text
+
+  back deck-resolve/store-path(done/store-home, <termsurf>, name, <0.0.1>)
+
+task link-of
+  take done, like installed
+  take name, like text
+  like text
+
+  back deck-path/join(done/project, <link>, <termsurf>, name)
+
+test <install succeeds>
+  want hold, is-equal(install-all()/result/ok, true)
+
+test <store has a>
+  want hold, deck-file/exists-sync(store-of(install-all(), <a>))
+
+test <store has b (transitive)>
+  want hold, deck-file/exists-sync(store-of(install-all(), <b>))
+
+test <store copied files>
+  want hold, deck-file/exists-sync(deck-path/join(store-of(install-all(), <a>), <code.tree>))
+
+test <project links a>
+  want hold, is-link(link-of(install-all(), <a>))
+
+test <project links b>
+  want hold, is-link(link-of(install-all(), <b>))
+
+test <link resolves to store file>
+  want hold, deck-file/exists-sync(deck-path/join(link-of(install-all(), <a>), <code.tree>))
+
+test <lockfile requests a>
+  want hold, requests-a(install-all()/result/lockfile)
+
+test <lockfile links a and b>
+  want hold, is-equal(install-all()/result/lockfile/links/length, 2)
+
+test <a depends on b in lockfile>
+  want hold, a-needs-b(install-all()/result/lockfile)
+
+test <lockfile on disk>
+  want hold, deck-file/exists-sync(deck-path/join(install-all()/project, <deck.lock.tree>))
+
+test <lockfile mentions b>
+  want hold, holds-word(file-text(deck-path/join(install-all()/project, <deck.lock.tree>)), <@termsurf/b>)

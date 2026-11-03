@@ -1,0 +1,79 @@
+note <A dotted dock type whose head is a shim namespace needs no module import>
+
+# Ported from swift-shim-namespace.ts by hand (item 0576). compile/swift.ts, the `shimNames` rule. `load <runtime.Running>` beside
+# `load <global:server>, name runtime` names a type inside the prepended shim's `enum runtime`, already in scope. The rule compared the
+# alias as written (`watch-file`) with the head as typed (`watchFile`), so a two-word alias never matched and the file said
+# `import watchFile`, which swiftc answers `no such module` (D026, item 0211). Emits Swift only, no swiftc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load @term/base/list
+  find contains
+
+bind imports-of
+  take swift, like text
+  like list, like text
+  case node
+    text <$swift.split("\n").filter(line =\> /^import /.test(line))>
+
+# the real case's program must hold both, or the test proves nothing
+bind holds-dotted-type
+  take program, like dynamic
+  like boolean
+  case node
+    text <$program.some(n =\> n.form === "native" && n.kind === "type" && n.module === "watchFile.Watcher")>
+
+bind holds-kebab-alias
+  take program, like dynamic
+  like boolean
+  case node
+    text <$program.some(n =\> n.form === "native" && n.module.startsWith("global:") && n.alias === "watch-file")>
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <shim-namespace.tree>), bind(stdlib, <swift>), bind(env, <swift>)))
+
+task program-text
+  take dock-type, like text
+  take dock-load, like text
+  like text
+
+  back <dock type\n  load \<{dock-type}\>, name handle-dock\n{dock-load}\nform handle\n  link dock, like handle-dock, mark private\n\ntask nothing\n  like integer\n  send back, code 1\n>
+
+task imports
+  take out, like compile-outcome
+  like list, like text
+
+  back imports-of(emit-text(out, <swift>))
+
+# a kebab alias: the type names the camelCase namespace the shim declares
+test <a kebab alias (foo-bar) shims \<fooBar.Thing\>: no import fooBar>
+  host out, built(program-text(<fooBar.Thing>, <dock load\n  load \<global:foo-bar\>, name foo-bar\n>))
+  want hold, out/ok
+  want hold, not(contains(imports(out), <import fooBar>))
+
+# today's rule, kept: a single-word alias
+test <a single-word alias (runtime) shims \<runtime.Running\>: no import runtime>
+  host out, built(program-text(<runtime.Running>, <dock load\n  load \<global:server\>, name runtime\n>))
+  want hold, out/ok
+  want hold, not(contains(imports(out), <import runtime>))
+
+# kept: a head no shim owns is a module and is imported
+test <\<SwiftUI.AnyView\> with no shim: import SwiftUI is emitted>
+  host out, built(program-text(<SwiftUI.AnyView>, <>))
+  want hold, out/ok
+  want hold, contains(imports(out), <import SwiftUI>)
+
+# the real case: the stdlib's swift file/watch binding, `<watchFile.Watcher>` beside `name watch-file`
+test <a program that loads @term/base/file/watch: no import watchFile>
+  host out, built(<load @term/base/file/watch\n  find watch\n  find watcher\n\ntask open\n  mark async\n  take path, like text\n  like watcher\n  send back\n    call watch\n      read path\n>)
+  want hold, out/ok
+  want hold, holds-dotted-type(out/program)
+  want hold, holds-kebab-alias(out/program)
+  want hold, not(contains(imports(out), <import watchFile>))

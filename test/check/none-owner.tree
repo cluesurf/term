@@ -1,0 +1,137 @@
+note <`make none` beside a `mark text` form with a case `none` (self-host traps T038, item term-self-host-001-0053, diagnosed by 0393)>
+
+# Ported from none-owner.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find compiling-source
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+form emission
+  link ok, like boolean
+  link ts, like text
+  link rs, like text
+  link said, like list, like text
+
+bind function-of
+  take text, like text
+  take head, like text
+  like text
+  case node
+    text <(() =\> \{ const at = $text.indexOf($head); return $text.slice(at, $text.indexOf("\n\}\n", at)) \})()>
+
+task said-word
+  take messages, like list, like text
+  take word, like text
+  like boolean
+
+  walk messages
+    take message
+    fork test, text-contains(message, word)
+      hold
+        back true
+  back false
+
+# `make none` beside a `mark text` form with a case `none` (self-host traps T038, item term-self-host-001-0053,
+# diagnosed by 0393). An optional field (`like maybe, like text`, `need false`) built with `make none` must hold the
+# stdlib maybe's absent value, never the text "none", whether the text form is loaded and found, loaded only, or the
+# file's own. Where the file defines the text form and does not import maybe (maybe reached as a type only, through
+# another module's closure), check/scope.ts `bindSharedCases` binds the construction to the file's own case, and the
+# field refuses it LOUDLY: the file names maybe's case only by loading maybe. Since decision 101 (item 0514) the same
+# holds where the file FINDS the text form and not maybe. Each emit is read on TypeScript and Rust.
+# Run from deck/term/deck/term: npx tsx test/check/none-owner.ts
+# a module with a text form whose case is `none`, which itself loads maybe, so maybe is in every program here
+host kinds, <load @term/base/maybe\n  find maybe\n\nform primitive\n  mark text\n  case word\n  case none\n\ntask hold-kind\n  take k, like maybe, like primitive\n  like boolean\n  back true\n>
+
+host holder, <load @term/base/list\n  find push\n\nform holder\n  link name\n    like maybe, like text\n    need false\n  link names\n    like list, like maybe, like text\n    need false\n>
+
+host body, <task build\n  take n, like number\n  like holder\n  save m, make none\n  save xs, make list\n  push(xs, make none)\n  fork test, is-above(n, 0)\n    hold\n      back make holder, bind(name, m)\n  save h\n    make holder\n      bind name, make none\n      bind names, xs\n  save h/name, make none\n  back h\n>
+
+# every `make none` in build is the maybe's none: no text "none" on TypeScript, no Primitive or Shade on Rust
+host shade, <form shade\n  mark text\n  case none\n  case dark\n>
+
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(project, <deck/make>), bind(project-env, <node>), bind(lean, true), bind(files, make list(make(compiling-source, bind(file, <@app/kinds>), bind(text, kinds), bind(answer, <kinds.tree>))))))
+
+# the TypeScript and Rust of `build`, or the diagnostics
+task emitted
+  take main, like text
+  like emission
+
+  host out, build(main)
+  fork test, not(out/ok)
+    hold
+      back make(emission, bind(ok, false), bind(ts, <>), bind(rs, <>), bind(said, out/messages))
+  back make(emission, bind(ok, true), bind(ts, function-of(out/emitted, <function build(>)), bind(rs, function-of(emit-text(out, <rust>), <fn build(>)), bind(said, make list))
+
+test <loaded and found, maybe loaded: builds>
+  want hold, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find primitive\n  find hold-kind\n\n{holder}\n{body}>)/ok
+
+test <loaded and found, maybe loaded: TypeScript holds no text "none">
+  host out, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find primitive\n  find hold-kind\n\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+  want hold, text-contains(out/ts, <__termVariantNone>)
+
+test <loaded and found, maybe loaded: Rust builds Maybe::None>
+  host out, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find primitive\n  find hold-kind\n\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Maybe::None>)
+  want hold, not(matches(make(pattern, <<(Primitive|Shade)::None>>), out/rs))
+
+test <loaded and found, maybe a type only: refused, naming maybe>
+  host out, emitted(<load @app/kinds\n  find primitive\n  find hold-kind\n\n{holder}\n{body}>)
+  want hold, not(out/ok)
+  want hold, said-word(out/said, <expected maybe, like text, found primitive>)
+
+test <loaded, not found, maybe a type only: builds>
+  want hold, emitted(<load @app/kinds\n  find hold-kind\n\n{holder}\n{body}>)/ok
+
+test <loaded, not found, maybe a type only: TypeScript holds no text "none">
+  host out, emitted(<load @app/kinds\n  find hold-kind\n\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+  want hold, text-contains(out/ts, <__termVariantNone>)
+
+test <loaded, not found, maybe a type only: Rust builds Maybe::None>
+  host out, emitted(<load @app/kinds\n  find hold-kind\n\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Maybe::None>)
+  want hold, not(matches(make(pattern, <<(Primitive|Shade)::None>>), out/rs))
+
+test <the file's own text form, maybe loaded: builds>
+  want hold, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find hold-kind\n\n{shade}\n{holder}\n{body}>)/ok
+
+test <the file's own text form, maybe loaded: TypeScript holds no text "none">
+  host out, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find hold-kind\n\n{shade}\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+  want hold, text-contains(out/ts, <__termVariantNone>)
+
+test <the file's own text form, maybe loaded: Rust builds Maybe::None>
+  host out, emitted(<load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find hold-kind\n\n{shade}\n{holder}\n{body}>)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Maybe::None>)
+  want hold, not(matches(make(pattern, <<(Primitive|Shade)::None>>), out/rs))
+
+test <the file's own text form, maybe a type only: refused, naming maybe>
+  host out, emitted(<load @app/kinds\n  find hold-kind\n\n{shade}\n{holder}\n{body}>)
+  want hold, not(out/ok)
+  want hold, said-word(out/said, <expected maybe, like text, found shade>)
+
+test <a text form position still builds its own none>
+  host out, build(<load @app/kinds\n  find primitive\n\ntask pick\n  like primitive\n  back make none\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <return "none">)

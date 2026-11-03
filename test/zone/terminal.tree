@@ -1,0 +1,99 @@
+note <String/ANSI render target tests>
+
+# Ported from terminal.ts by task/term/suite-port.ts, finished by hand (item 0599): the reactive graph drives a terminal view,
+# updating minimally on change. A scenario is a task answering what it read, and each test reads one of them.
+
+dock load
+  load <@term/make/code/view/reactive>, name reactive
+  load <@term/make/code/view/terminal>, name terminal
+
+bind signal-read
+  take held, like dynamic
+  like dynamic
+  case node
+    text <$held[0]()>
+
+bind signal-write
+  take held, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$held[1]($value)>
+
+bind number-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+task count-renders
+  like list, like text
+
+  host count, reactive/signal(0)
+  save cell
+    task
+      like text
+      back number-text(signal-read(count))
+  host view, terminal/group(make list(terminal/still(<Count: >), terminal/text(cell)))
+  host renders, make list
+  renders/push(terminal/render(view))
+  signal-write(count, 5)
+  renders/push(terminal/render(view))
+  signal-write(count, 42)
+  renders/push(terminal/render(view))
+  back renders
+
+task minimal-reads
+  like list, like unknown
+
+  host name, reactive/signal(<ann>)
+  save answers, make list
+  save recomputes, 0
+  save cell
+    task
+      like dynamic
+      save recomputes, add(recomputes, 1)
+      back signal-read(name)
+  host reactive-cell, terminal/text(cell)
+  answers/push(recomputes)
+  host static-view, terminal/group(make list(reactive-cell, terminal/still(<!>)))
+  terminal/render(static-view)
+  terminal/render(static-view)
+  answers/push(recomputes)
+  signal-write(name, <bob>)
+  answers/push(recomputes)
+  answers/push(terminal/render(static-view))
+  back answers
+
+task styled-render
+  like text
+
+  save cell
+    task
+      like text
+      back <error>
+  back terminal/render(terminal/text(cell, terminal/ansi/red))
+
+test <initial render>
+  want hold, is-equal(count-renders()/0, <Count: 0>)
+
+test <render after change>
+  want hold, is-equal(count-renders()/1, <Count: 5>)
+
+test <render after another change>
+  want hold, is-equal(count-renders()/2, <Count: 42>)
+
+test <cell computed once>
+  want hold, is-equal(minimal-reads()/0, 1)
+
+test <render does not recompute>
+  want hold, is-equal(minimal-reads()/1, 1)
+
+test <recomputes only on change>
+  want hold, is-equal(minimal-reads()/2, 2)
+
+test <updated render>
+  want hold, is-equal(minimal-reads()/3, <bob!>)
+
+test <ansi red applied>
+  want hold, is-equal(styled-render(), <\e[31merror\e[0m>)

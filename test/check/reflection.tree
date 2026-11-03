@@ -1,0 +1,31 @@
+note <Reflection: a boolean decision reflected to a proof>
+
+# Ported from reflection.ts by tmp/self-host/suite-unroll.mjs (item 0562), each fixture written out whole.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+task compiles
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, <p.tree>)))/ok
+
+# Proof by reflection (`decide`): a decidable proposition is proven by COMPUTING its decision procedure to the expected
+# result. `calm` already provides this -- it runs the transparent decision function and checks the normal form -- so a
+# goal `decide args == verdict` discharges when the procedure computes that verdict, and is rejected otherwise. This is
+# the reflection technique (run a verified decider, trust its output) generalizing what `calm` does for equalities.
+# Run: npx tsx test/check/reflection.ts
+# a three-valued colour and a DECISION PROCEDURE `same` returning a yes/no verdict
+# 1. reflection: same(red, red) computes to yes.
+test <decider computes the true verdict>
+  want hold, compiles(<form colour\n  case red\n  case green\n  case blue\n\nform verdict\n  case yes\n  case no\n\ntask same\n  take x, like colour\n  take y, like colour\n  like verdict\n  fork case, read x\n    case red\n      fork case, read y\n        case red\n          send back\n            make yes\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make no\n    case green\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make yes\n        case blue\n          send back\n            make no\n    case blue\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make yes\n\nrule red-is-red\n  show hold\n    call is-equal\n      call same\n        make red\n        make red\n      make yes\n  calm hold\n>)
+
+# 2. reflection: same(red, blue) computes to no.
+test <decider computes the false verdict>
+  want hold, compiles(<form colour\n  case red\n  case green\n  case blue\n\nform verdict\n  case yes\n  case no\n\ntask same\n  take x, like colour\n  take y, like colour\n  like verdict\n  fork case, read x\n    case red\n      fork case, read y\n        case red\n          send back\n            make yes\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make no\n    case green\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make yes\n        case blue\n          send back\n            make no\n    case blue\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make yes\n\nrule red-not-blue\n  show hold\n    call is-equal\n      call same\n        make red\n        make blue\n      make no\n  calm hold\n>)
+
+# 3. SOUNDNESS CONTROL: same(red, blue) is NOT yes. Must be rejected.
+test <wrong verdict is rejected>
+  want hold, not(compiles(<form colour\n  case red\n  case green\n  case blue\n\nform verdict\n  case yes\n  case no\n\ntask same\n  take x, like colour\n  take y, like colour\n  like verdict\n  fork case, read x\n    case red\n      fork case, read y\n        case red\n          send back\n            make yes\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make no\n    case green\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make yes\n        case blue\n          send back\n            make no\n    case blue\n      fork case, read y\n        case red\n          send back\n            make no\n        case green\n          send back\n            make no\n        case blue\n          send back\n            make yes\n\nrule red-blue-wrong\n  show hold\n    call is-equal\n      call same\n        make red\n        make blue\n      make yes\n  calm hold\n>))

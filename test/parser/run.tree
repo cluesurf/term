@@ -1,0 +1,133 @@
+note <Parser conformance tests>
+
+# Ported from run.ts by task/term/suite-port.ts, finished by hand (item 0593). Each case is a source text and the expected
+# canonical expanded tree. The parser is the subject (decision 106).
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "test.tree", text: $text \})>
+
+bind trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+bind first-name
+  take result, like dynamic
+  like text
+  case node
+    text <($result.diagnostics[0]?.name ?? "")>
+
+# the source reads clean and prints as the expected tree
+task reads-as
+  take source, like text
+  take expected, like text
+  like boolean
+
+  host result, parser-tree/parse(source-of(source))
+  fork test, not(result/ok)
+    hold
+      back false
+  back is-equal(trimmed(parser-tree/print-tree(result/tree)), trimmed(expected))
+
+# the source is refused, and its first diagnostic has this name
+task refused-first
+  take source, like text
+  take expected, like text
+  like boolean
+
+  host result, parser-tree/parse(source-of(source))
+  fork test, result/ok
+    hold
+      back false
+  back is-equal(first-name(result), expected)
+
+test <space nesting>
+  want hold, reads-as(<a b c>, <a\n  b\n    c>)
+
+test <indent attaches to head>
+  want hold, reads-as(<a b c\n  d>, <a\n  b\n    c\n  d>)
+
+test <indent chain>
+  want hold, reads-as(<a\n  b\n    c>, <a\n  b\n    c>)
+
+# A comma POPS ONE LEVEL: the part after it is a sibling of the part before it. When the previous part is a single token
+# that is the same as returning to the head, which is why these first cases look unchanged.
+test <comma siblings>
+  want hold, reads-as(<a b, c, d>, <a\n  b\n  c\n  d>)
+
+# `read a` nested two deep, so `read b` lands beside `a`, INSIDE `read`, rather than beside `read`. This is why a multi-word
+# argument cannot be followed by a comma.
+test <comma after a nested part>
+  want hold, reads-as(<call add, read a, read b>, <call\n  add\n  read\n    a\n    read\n      b>)
+
+test <comma then an indented child>
+  want hold, reads-as(<foo x, bar\n  foo y bar>, <foo\n  x\n  bar\n  foo\n    y\n      bar>)
+
+# a comma after a literal stays at the literal's level (2026-10-02), so `have` is the literal's sibling
+test <comma after a literal>
+  want hold, reads-as(<link @x, code \<1.x.x\>, have 1>, <link\n  @x\n  code\n    \<1.x.x\>\n    have\n      1>)
+
+test <comma after a closed literal part>
+  want hold, reads-as(<link @x, code(\<1.x.x\>), have 1>, <link\n  @x\n  code\n    \<1.x.x\>\n  have\n    1>)
+
+test <path>
+  want hold, reads-as(<deck @termsurf/wolf>, <deck\n  @termsurf/wolf>)
+
+test <integer value>
+  want hold, reads-as(<add 1, 2>, <add\n  1\n  2>)
+
+# parentheses: the children of the group whose head they follow. A name directly after `(` or `,` opens a child group,
+# and `)` closes back to the owner. This is the compact spelling of Term data (note/project/term/host/02-compact.md).
+test <paren name child>
+  want hold, reads-as(<h(x,1)>, <h\n  x\n  1>)
+
+test <paren nested>
+  want hold, reads-as(<h(x,h(y,123))>, <h\n  x\n  h\n    y\n    123>)
+
+test <paren siblings after a nested paren>
+  want hold, reads-as(<h(x,h(y,h(z,1)),h(w,2))>, <h\n  x\n  h\n    y\n    h\n      z\n      1\n  h\n    w\n    2>)
+
+test <paren list>
+  want hold, reads-as(<l(a,5,6,7)>, <l\n  a\n  5\n  6\n  7>)
+
+test <paren mesh>
+  want hold, reads-as(<m(h(name,\<foo\>))>, <m\n  h\n    name\n    \<foo\>>)
+
+test <paren text with commas and parens>
+  want hold, reads-as(<h(k,\<a, b (c)\>)>, <h\n  k\n  \<a, b (c)\>>)
+
+# inside a paren the rule is the same: the comma pops one level off `x`, so `2` lands beside `x` inside `read`
+test <paren in code keeps working>
+  want hold, reads-as(<call add(read x, 2)>, <call\n  add\n    read\n      x\n      2>)
+
+test <paren spaced>
+  want hold, reads-as(<add (1, 2)>, <add\n  1\n  2>)
+
+test <two paren lines>
+  want hold, reads-as(<h(1,2)\nh(3,4)>, <h\n  1\n  2\nh\n  3\n  4>)
+
+test <decimal value>
+  want hold, reads-as(<add 3.14>, <add\n  3.14>)
+
+test <text literal>
+  want hold, reads-as(<write \<hello world\>>, <write\n  \<hello world\>>)
+
+# the indent-2 line `j` attaches to `h`, the head of the indent-1 line, alongside `i`
+test <deep nest>
+  want hold, reads-as(<a b c d e f g\n  h i\n    j>, <a\n  b\n    c\n      d\n        e\n          f\n            g\n  h\n    i\n    j>)
+
+test <invalid indentation>
+  want hold, refused-first(<foo\n    bar>, <invalid-indentation>)
+
+test <number as head>
+  want hold, refused-first(<123 term>, <invalid-nesting>)
+
+test <number then node>
+  want hold, refused-first(<foo 123 bar>, <invalid-nesting>)

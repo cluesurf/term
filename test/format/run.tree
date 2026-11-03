@@ -1,0 +1,423 @@
+note <Formatter tests: canonical layout, idempotence, comment preservation, and meaning preservation>
+
+# Ported from run.ts by task/term/suite-port.ts, finished by hand (item 0588). The formatter and the parser are the subject
+# (decision 106). The rules part holds "Where each part of a line goes", note/project/term/compiler/format-rules.md, from its
+# before and after.
+
+dock load
+  load <@term/make/code/format/format>, name format-module
+  load <@term/make/code/parser/tree>, name parser-tree
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind lean-choice
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ lean: true \})>
+
+bind role-choice
+  take role, like text
+  like dynamic
+  case node
+    text <(\{ role: $role \})>
+
+# a structural fingerprint, ignoring layout and comments, to prove the formatter never changes meaning
+bind shape-of-parsed
+  take parsed, like dynamic
+  like text
+  case node
+    text <(() =\> \{ const shape = node =\> \{ if (node.kind === "group" || node.kind === "root") return `$\{node.kind\}($\{(node.nodes ?? []).map(shape).join(",")\})`; if (node.kind === "name" || node.kind === "text") return `$\{node.kind\}:$\{(node.parts ?? []).map(p =\> p.text ?? "\{\}").join("")\}`; return `lit:$\{node.token?.text ?? node.value\}` \}; return $parsed.ok ? shape($parsed.tree) : "unparsed" \})()>
+
+bind says
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+bind has-line
+  take text, like text
+  take line, like text
+  like boolean
+  case node
+    text <$text.split("\\n").includes($line)>
+
+bind trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+bind first-line
+  take text, like text
+  like text
+  case node
+    text <$text.split("\\n")[0]>
+
+bind dense
+  take text, like text
+  like text
+  case node
+    text <$text.split("\\n").filter(line =\> line.trim() !== "").join("\\n")>
+
+bind fits-columns
+  take text, like text
+  take most, like number
+  like boolean
+  case node
+    text <$text.split("\\n").every(line =\> line.length \<= $most)>
+
+bind blank-before
+  take text, like text
+  take needle, like text
+  like boolean
+  case node
+    text <(() =\> \{ const lines = $text.split("\\n"); const i = lines.findIndex(l =\> l.trim().startsWith($needle)); return i \> 0 && lines[i - 1] === "" \})()>
+
+bind replaced
+  take text, like text
+  take from, like text
+  take into, like text
+  like text
+  case node
+    text <$text.replace($from, () =\> $into)>
+
+bind ninety
+  take seed, like number
+  like text
+  case node
+    text <"\<" + "x".repeat(90) + "\>">
+
+task shape-of
+  take text, like text
+  like text
+
+  back shape-of-parsed(parser-tree/parse(source-of(<s.tree>, text)))
+
+task formatted
+  take file, like text
+  take text, like text
+  like text
+
+  back format-module/format(source-of(file, text))
+
+task formatted-lean
+  take file, like text
+  take text, like text
+  like text
+
+  back format-module/format(source-of(file, text), lean-choice(0))
+
+host source-text, <task find-fibonacci\n  take n, like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          read n\n          code 1\n>
+
+task once-text
+  like text
+
+  back formatted(<s.tree>, source-text)
+
+test <idempotent: format(format(x)) === format(x)>
+  want hold, is-equal(once-text(), formatted(<s.tree>, once-text()))
+
+test <meaning preserved: same structure after formatting>
+  want hold, is-equal(shape-of(source-text), shape-of(once-text()))
+
+# a short value list stays inline (round-trips and fits)
+test <short value list stays inline>
+  want hold, says(once-text(), <take n, like number>)
+
+# a call with arguments inlines them when they fit. A part that a COMMA FOLLOWS is parenthesized, because a comma pops exactly
+# one level: `call add, read n, code 1` would read `code 1` as a child of `read`, leaving `add` one argument. `read(n)` closes
+# its own group, so the comma lands where it belongs. The last part needs nothing after it, so `code 1` stays bare.
+test <call arguments inline when they fit>
+  want hold, says(once-text(), <call add, read(n), code 1>)
+
+# a stacked value list that could fit on one line is normalized to the inline form
+test <normalizes stacked value list to inline>
+  want hold, is-equal(trimmed(formatted(<s.tree>, <save\n  a\n  code 0\n>)), <save a, code 0>)
+
+test <preserves comments>
+  want hold, says(formatted(<s.tree>, <task f\n  # a leading comment\n  back n\n>), <# a leading comment>)
+
+# blank-line grouping in a task body: signature heads grouped (take | like), signature set off from the body, and a block
+# (walk) set off from the preceding simple statement, but a statement after a block (send) stays tight.
+host spaced-source, <task work\n  take xs\n  like number\n  save n, code 0\n  walk list\n    read xs\n    hook next\n      take site, name item\n      save n, code 1\n  send back, read n\n>
+
+task spaced
+  like text
+
+  back formatted(<b.tree>, spaced-source)
+
+test <blank before the result type (signature head change)>
+  want hold, blank-before(spaced(), <like number>)
+
+test <blank before the first statement (signature -\> body)>
+  want hold, blank-before(spaced(), <save n, code 0>)
+
+test <blank before a block after a simple statement (walk)>
+  want hold, blank-before(spaced(), <walk list>)
+
+test <no blank before a statement that follows a block (send)>
+  want hold, not(blank-before(spaced(), <send back>))
+
+test <task-body spacing is idempotent>
+  want hold, is-equal(formatted(<b.tree>, spaced()), spaced())
+
+# a task / form definition always stacks (head on its own line), never collapsed onto one line
+test <a single-statement task stays stacked>
+  host stacked, formatted(<d.tree>, <task one\n  send back, code 1\n>)
+  want hold, is-equal(first-line(stacked), <task one>)
+  want hold, says(stacked, <\n  send back, code 1>)
+
+# a comment longer than 80 chars is word-wrapped, a short comment is left untouched
+host long-comment, <# this is a very long leading comment that definitely goes well beyond the eighty character limit and keeps going>
+
+task wrapped
+  like text
+
+  back formatted(<c.tree>, <{long-comment}\ntask f\n  # lint off L003\n  send back, code 1\n>)
+
+test <a long comment wraps to \<= 84 chars>
+  want hold, fits-columns(wrapped(), 84)
+
+test <a short directive comment is left intact>
+  want hold, says(wrapped(), <# lint off L003>)
+
+# ---- an interpolation's brace depth survives, in a TEXT literal too ----
+#
+# `{x}` is compile-time substitution (and the view dialect's field interpolation), `{{x}}` is runtime interpolation. The NAME
+# case was fixed to re-emit each part at its own depth after `{platform}` import paths doubled. The TEXT case still hardcoded
+# two braces, so canonicalizing a guide turned one brace into two, a different construct, silently. Found by the word.surf
+# guide round-trip test, which requires format(x) to parse and mean the same thing.
+test <a single-brace text interpolation stays single-brace>
+  want hold, says(formatted(<doc.tree>, <view page\n  view text\n    text \<\{sound/symbol\}\>\n>), <\<\{sound/symbol\}\>>)
+
+test <a double-brace runtime interpolation stays double-brace>
+  want hold, says(formatted(<r.tree>, <task t\n  take x, like text\n  like text\n  send back, text \<a \{\{x\}\} b\>\n>), <\{\{x\}\}>)
+
+# ---- "Where each part of a line goes": the two columns of the page's example, exactly. The formatter also applies "Blank
+# lines", which the page's right column leaves out to show where the parts go, so the comparison drops blank lines and
+# nothing else.
+host before-column, <load @term/base/list\n  find list\n\ntask list-demo\n  like number\n  save items\n    make list\n      3\n      1\n  push\n    items\n    2\n  save doubled\n    map\n      items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n>
+
+host after-column, <load @term/base/list\n  find list\n\ntask list-demo\n  like number\n  save items, make list, 3, 1\n  push items, 2\n  save doubled\n    map items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n>
+
+task out-text
+  like text
+
+  back formatted(<list-demo.tree>, before-column)
+
+test <the before column formats to the after column, blank lines aside>
+  want hold, is-equal(dense(out-text()), dense(after-column))
+
+test <the after column is already formatted, blank lines aside>
+  want hold, is-equal(dense(formatted(<a.tree>, after-column)), dense(after-column))
+
+test <the before and after columns are one tree>
+  want hold, is-equal(shape-of(before-column), shape-of(after-column))
+
+# 1. a statement is one line
+test <1. `push` over `items` and `2` is `push items, 2`>
+  want hold, has-line(out-text(), <  push items, 2>)
+
+# 2. Term's own words chain with commas
+test <2. `save items` over `make list` over `3` and `1` is `save items, make list, 3, 1`>
+  want hold, has-line(out-text(), <  save items, make list, 3, 1>)
+
+host typed-source, <task f\n  take xs\n    like list\n      like number\n  like list\n    like number\n  back xs\n>
+
+test <2. `like list` over `like number` is `like list, like number`>
+  want hold, says(formatted(<t.tree>, typed-source), <\n  like list, like number\n>)
+
+test <2. ...and under a `take`, `take xs, like list, like number`>
+  want hold, says(formatted(<t.tree>, typed-source), <\n  take xs, like list, like number\n>)
+
+# a word closed in parentheses mid-line would read as a call (`bind(x, 1)`), so the group stacks instead
+test <2. a record stacks rather than write `bind(x, 1)`>
+  want hold, says(formatted(<r.tree>, <task f\n  insert\n    seen\n    make point\n      bind x, 1\n      bind y, 2\n>), <  insert seen\n    make point\n      bind x, 1\n      bind y, 2\n>)
+
+test <2. ...while `call add, read(a), read(b)` keeps its one-part words>
+  want hold, says(formatted(<a.tree>, <task f\n  call add\n    read a\n    read b\n>), <  call add, read(a), read b\n>)
+
+# 3. a call reads by where it stands
+test <3. a call after `back` takes parentheses: `back multiply(n, 2)`>
+  want hold, has-line(out-text(), <        back multiply(n, 2)>)
+
+test <3. ...and `back sum(doubled)`>
+  want hold, has-line(out-text(), <  back sum(doubled)>)
+
+host placed-source, <task f\n  take cursor, like text\n  take n, like number\n  push\n    result\n    read-number\n      cursor\n  want hold\n    is-equal\n      get(found, 1)\n      14\n  fork test\n    is-above\n      n\n      0\n    hold\n      back 1\n  back 0\n>
+
+task placed
+  like text
+
+  back formatted(<p.tree>, placed-source)
+
+test <3. an argument that is a call takes parentheses: `push result, read-number(cursor)`>
+  want hold, has-line(placed(), <  push result, read-number(cursor)>)
+
+test <3. a CONDITION reads with commas: `want hold, is-equal get(found, 1), 14`>
+  want hold, has-line(placed(), <  want hold, is-equal get(found, 1), 14>)
+
+test <3. ...never `is-equal(get(found, 1), 14)`>
+  want hold, not(says(placed(), <is-equal(>))
+
+test <3. a condition on its fork: `fork test, is-above n, 0`>
+  want hold, has-line(placed(), <  fork test, is-above n, 0>)
+
+test <3. the layout parses to the stacked tree>
+  want hold, is-equal(shape-of(placed()), shape-of(replaced(placed(), <push result, read-number(cursor)>, <push\n    result\n    read-number\n      cursor>)))
+
+# 4. a block stacks, from the block on
+test <4. `map items` keeps `items` on its line and stacks the `task`>
+  want hold, says(out-text(), <\n    map items\n      task twice\n>)
+
+test <4. `save doubled` keeps `doubled` on its line and stacks the `map`>
+  want hold, says(out-text(), <\n  save doubled\n    map items\n>)
+
+test <4. a longhand loop keeps its list on the head line: `walk list, read xs`>
+  want hold, says(formatted(<w.tree>, <task f\n  take xs, like list\n  walk list\n    read xs\n    hook next\n      take site, name x\n      log x\n>), <\n  walk list, read xs\n    hook next\n>)
+
+# 5. too wide, or a comment inside, stacks. One part per line, under rule 4's head line, which keeps the one leading word
+test <5. past 84 columns the group stacks>
+  host wide, formatted(<w.tree>, <task f\n  back add-all(first-long-argument-name, second-long-argument-name, third-long-argument-name)\n>)
+  want hold, fits-columns(wide, 84)
+  want hold, says(wide, <\n  back\n    add-all first-long-argument-name\n      second-long-argument-name\n>)
+
+test <5. a comment inside stacks the group, and survives>
+  want hold, says(formatted(<c.tree>, <task f\n  push\n    items\n    # the second\n    2\n>), <  push items\n    # the second\n    2\n>)
+
+# the meaning check: the parser keeps no node for parentheses, so these two are one tree with two programs, and the
+# formatter must re-emit what the tokens said
+host empty-source, <task f\n  answer()\n  save b, make-box()\n  back b\n>
+
+test <a call with no arguments keeps its parentheses: `answer()`>
+  want hold, says(formatted-lean(<e.tree>, empty-source), <\n  answer()\n>)
+
+test <...and in a value position: `save b, make-box()`>
+  want hold, says(formatted-lean(<e.tree>, empty-source), <\n  save b, make-box()\n>)
+
+test <`host(route, port)` stays a call, not the constant `host route, port`>
+  want hold, says(formatted(<h.tree>, <task f\n  take route, like text\n  take port, like number\n  host(route, port)\n>), <\n  host(route, port)\n>)
+
+# in a LEAN file a bare head under a call may be a label, which only the checker can tell from a call, so a call-shaped part
+# keeps its written parentheses and a part written on its own line stays there
+host labels, <task use-gap\n  like number\n  back gap height(3), width 4\n\ntask origin\n  like point\n  back point x(0), y 0\n>
+
+test <3. lean: a label keeps its spelling, `back gap height(3), width 4`>
+  want hold, says(formatted-lean(<l.tree>, labels), <\n  back gap height(3), width 4\n>)
+
+test <3. lean: ...and `back point x(0), y 0`>
+  want hold, says(formatted-lean(<l.tree>, labels), <\n  back point x(0), y 0\n>)
+
+test <3. lean: labels written one per line stay one per line>
+  want hold, says(formatted-lean(<s.tree>, <task f\n  back\n    gap\n      height 3\n      width 4\n>), <  back\n    gap\n      height 3\n      width 4\n>)
+
+test <3. outside lean the same lines are calls, and take their parentheses>
+  want hold, says(formatted(<o.tree>, <task f\n  back\n    gap\n      height 3\n      width 4\n>), <  back gap(height(3), width(4))\n>)
+
+# rule 3's parentheses are a call's: a dialect gets none
+test <3. a `mill` file gets no call parentheses>
+  want hold, not(says(format-module/format(source-of(<m.tree>, <mine flow\n  back\n    seed head\n      text\n>), role-choice(<mill>)), <(>))
+
+# a statement in a `test` block is a statement, not a value
+test <3. a statement in a `test` reads with commas, `log \<parts: \{size(parts)\}\>`>
+  want hold, says(formatted(<t.tree>, <test \<split\>\n  save parts, split(\<a,,b\>, \<,\>)\n  log \<parts: \{size(parts)\}\>\n>), <\n  log \<parts: \{size(parts)\}\>\n>)
+
+# a grammar file is known by its `mine` heads, with no role to say so
+test <a grammar is returned as written>
+  want hold, is-equal(formatted(<g.tree>, <mine version\n  mine form, form digits\n    send major\n  mine char, \<.\>\n>), <mine version\n  mine form, form digits\n    send major\n  mine char, \<.\>\n>)
+
+# a lean line one character too wide in the parentheses it was written with: the stack drops them anyway, so the bare line is
+# the first run's answer too, or the second run joins what the first broke
+host too-wide, <task t\n  want hold, is-equal(shown(run(call-program(\<join\>, make list(letters, str(\<-\>))))), \<a-b-c\>)\n>
+
+test <lean: a line too wide in its parentheses is written bare when that fits>
+  want hold, says(formatted-lean(<w.tree>, too-wide), <\n    is-equal shown(run(call-program(\<join\>, make list(letters, str(\<-\>))))), \<a-b-c\>\n>)
+
+test <lean: ...and formatting it again changes nothing (too wide)>
+  host once, formatted-lean(<w.tree>, too-wide)
+  want hold, is-equal(formatted-lean(<w.tree>, once), once)
+
+# a lean part under a call written `name(<x>)` keeps its parentheses, inline and on a line of its own however wide: the meaning
+# check does not compare `leanShaped`, and without them a label-or-call refusal (decision 009) would turn into the label
+# (term-compiler-0069)
+test <lean: a call-shaped part under a call keeps its parentheses, `greet(name(\<x\>))`>
+  want hold, says(formatted-lean(<l.tree>, <task run\n  back greet(name(\<x\>))\n>), <back greet(name(\<x\>))\n>)
+
+task wide-call
+  like text
+
+  host long, ninety(0)
+  back formatted-lean(<l.tree>, <task run\n  back greet(name({long}))\n>)
+
+test <lean: ...and on its own line when the call stacks>
+  host long, ninety(0)
+  want hold, says(wide-call(), <\n      name({long})\n>)
+
+test <lean: ...and formatting it again changes nothing (wide)>
+  want hold, is-equal(formatted-lean(<l.tree>, wide-call()), wide-call())
+
+# a part written `f(...)` that holds a comment stacks, and its head line keeps the parentheses (term-compiler-0071)
+host commented-call, <task run\n  greet\n    name(\<x\>)\n      # who\n      \<y\>\n>
+
+test <lean: a call-shaped part holding a comment keeps its parentheses, `name(\<x\>)` over `# who`>
+  want hold, is-equal(formatted-lean(<l.tree>, commented-call), commented-call)
+
+test <lean: ...and formatting it again changes nothing (commented)>
+  host held, formatted-lean(<l.tree>, commented-call)
+  want hold, is-equal(formatted-lean(<l.tree>, held), held)
+
+test <lean: ...and `greet(name(\<x\>))` over a comment stacks to the same call>
+  want hold, is-equal(formatted-lean(<l.tree>, <task run\n  greet(name(\<x\>))\n    # who\n    \<y\>\n>), <task run\n  greet\n    name(\<x\>)\n    # who\n    \<y\>\n>)
+
+# a path after a call is written back as it was, never as the braces the parser holds it in
+test <a path after a call keeps its spelling, `greeting()/text`>
+  want hold, says(formatted-lean(<p.tree>, <task t\n  log greeting()/text\n  log greet(\<ada\>)/text\n  log \<\{greet(who)/count\} left\>\n>), <  log greeting()/text\n  log greet(\<ada\>)/text\n  log \<\{greet(who)/count\} left\>\n>)
+
+# a walk's head line keeps ONE name or mark part after a one-part list, a second stacks as its first child, and a longhand
+# `walk list, read xs` keeps its mark stacked (decision 073 of term/self-host change 001)
+host walk-mark, <task f\n  take xs, like list\n\n  walk xs\n    mark parallel\n    take x\n    log x\n>
+host walk-mark-want, <task f\n  take xs, like list\n\n  walk xs, mark parallel\n    take x\n    log x\n>
+host walk-name, <task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n>
+host walk-both, <task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n>
+host walk-long, <task f\n  take xs, like list\n\n  walk list\n    read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n>
+host walk-long-want, <task f\n  take xs, like list\n\n  walk list, read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n>
+
+test <lean: `walk xs` over `mark parallel` becomes `walk xs, mark parallel`>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-mark), walk-mark-want)
+
+test <lean: `walk xs` over `mark parallel` becomes `walk xs, mark parallel`: and formatting it again changes nothing>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-mark-want), walk-mark-want)
+
+test <lean: `walk xs, name outer` stays on one line>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-name), walk-name)
+
+test <lean: `walk xs, name outer` stays on one line: and formatting it again changes nothing>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-name), walk-name)
+
+test <lean: `walk xs, name outer` over `mark parallel` keeps the mark a child>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-both), walk-both)
+
+test <lean: `walk xs, name outer` over `mark parallel` keeps the mark a child: and formatting it again changes nothing>
+  want hold, is-equal(formatted-lean(<w.tree>, walk-both), walk-both)
+
+test <longhand: `walk list, read xs` over `mark parallel` stays stacked>
+  want hold, is-equal(formatted(<w.tree>, walk-long), walk-long-want)
+
+test <longhand: `walk list, read xs` over `mark parallel` stays stacked: and formatting it again changes nothing>
+  want hold, is-equal(formatted(<w.tree>, walk-long-want), walk-long-want)
+
+# every rule's output is idempotent
+test <idempotent on the after column>
+  host once, formatted(<i.tree>, after-column)
+  want hold, is-equal(formatted(<i.tree>, once), once)
+
+test <idempotent on the before column>
+  host once, formatted(<i.tree>, before-column)
+  want hold, is-equal(formatted(<i.tree>, once), once)

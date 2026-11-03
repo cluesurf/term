@@ -1,0 +1,182 @@
+note <GRAMMAR SCOPES in the parser (parser/token.tree `scope-at`, note/project/term/mill/02-role-scopes.md)>
+
+# Ported from grammar-scope.ts by task/term/suite-port.ts, finished by hand (item 0593). The stretch after `role <name>`, or
+# after a name the file's loads import as a grammar, is handed over WHOLE as one literal that remembers how it was written.
+# Held here: where each spelling's literal lands in the tree, its text verbatim, what is NOT a scope (a file's role, a `find`,
+# a use of the name as a variable, a literal already written), the one refusal (parentheses left open), and that `term form`
+# writes every spelling back exactly as it was written. The parser and the formatter are the subject (decision 106).
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/format/format>, name format
+
+host load-note, <load @term/mill/text/note\n  find note\n\n>
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "scope.tree", text: $text \})>
+
+# the tree as a line: a group is `(...)`, a name its text, a scope `\{spelling:text\}`, a literal `\<text\>`
+bind shapes-of
+  take parsed, like dynamic
+  like text
+  case node
+    text <(() =\> \{ const shape = n =\> \{ switch (n.kind) \{ case "group": return `($\{n.nodes.map(shape).join(" ")\})`; case "name": return n.parts.map(p =\> p.text ?? "").join(""); case "text": return n.scope ? `\{$\{n.scope\}:$\{n.raw\}\}` : `\<$\{n.parts.map(p =\> p.text ?? "").join("")\}\>`; default: return String(n.value) \} \}; if (!$parsed.ok) return `NOT OK: $\{$parsed.diagnostics.map(d =\> d.message).join(" | ")\}`; return $parsed.tree.nodes.map(shape).join(" ") \})()>
+
+# the last top-level group, past the load
+bind last-shape-of
+  take parsed, like dynamic
+  like text
+  case node
+    text <(() =\> \{ const shape = n =\> \{ switch (n.kind) \{ case "group": return `($\{n.nodes.map(shape).join(" ")\})`; case "name": return n.parts.map(p =\> p.text ?? "").join(""); case "text": return n.scope ? `\{$\{n.scope\}:$\{n.raw\}\}` : `\<$\{n.parts.map(p =\> p.text ?? "").join("")\}\>`; default: return String(n.value) \} \}; if (!$parsed.ok) return `NOT OK: $\{$parsed.diagnostics.map(d =\> d.message).join(" | ")\}`; const nodes = $parsed.tree.nodes; return shape(nodes[nodes.length - 1]) \})()>
+
+# the lines a scope is written on, as written: its opener's line and, for a block, the lines under it
+bind scope-lines
+  take text, like text
+  like text
+  case node
+    text <(() =\> \{ const lines = $text.split("\\n"); const at = lines.findIndex(line =\> /role note|note [^\<]|note\(/.test(line) && !/find/.test(line)); const own = lines[at].length - lines[at].trimStart().length; const out = [lines[at]]; for (const line of lines.slice(at + 1)) \{ if (line.trim() !== "" && line.length - line.trimStart().length \<= own) break; out.push(line) \} return out.filter(line =\> line.trim() !== "").join("\\n") \})()>
+
+bind refused-at
+  take parsed, like dynamic
+  take pattern, like text
+  take line, like number
+  take column, like number
+  like boolean
+  case node
+    text <(!$parsed.ok && $parsed.diagnostics.some(d =\> new RegExp($pattern).test(d.message) && ($line \< 0 || d.span.start.line === $line) && d.span.start.column === $column))>
+
+bind report-kept
+  take report, like dynamic
+  take again, like dynamic
+  take want, like text
+  like boolean
+  case node
+    text <($report.refused === undefined && $report.text.includes($want) && $again.text === $report.text)>
+
+bind says
+  take text, like text
+  take word, like text
+  like boolean
+  case node
+    text <$text.includes($word)>
+
+task parsed-of
+  take text, like text
+  like dynamic
+
+  back parser-tree/parse(source-of(text))
+
+task tree-shape
+  take text, like text
+  like text
+
+  back shapes-of(parsed-of(text))
+
+task last-shape
+  take text, like text
+  like text
+
+  back last-shape-of(parsed-of(text))
+
+task form-keeps
+  take text, like text
+  like boolean
+
+  host report, format/format-report(source-of(text))
+  host again, format/format-report(source-of(report/text))
+  back report-kept(report, again, scope-lines(text))
+
+# ---- where each spelling lands ----
+
+test <`role note, x + y` is a sibling of the name>
+  want hold, is-equal(tree-shape(<a x, role note, x + y>), <(a (x) (role (note) \{line:x + y\}))>)
+
+test <`role note x + y` is refused, naming the comma: a role scope follows a comma>
+  want hold, refused-at(parsed-of(<a x, role note x + y>), <<a `role` scope follows a comma: `role note, x \+ y`>>, -1, 14)
+
+test <`role note(x + y)` in parentheses>
+  want hold, is-equal(tree-shape(<a role note(f(x) + y)>), <(a (role (note \{paren:f(x) + y\})))>)
+
+test <`role note` over a block, its lines dedented and kept>
+  want hold, is-equal(tree-shape(<a x\n  role note\n    x^2\n      + 1\n\nb>), <(a (x) (role (note \{block:x^2\n  + 1\}))) (b)>)
+
+test <an imported name: `note x + y`>
+  want hold, is-equal(last-shape(<{load-note}a x, note x + y>), <(a (x) (note \{line:x + y\}))>)
+
+test <an imported name in parentheses: `note(x + y)`>
+  want hold, is-equal(last-shape(<{load-note}a note(x + y)>), <(a (note \{paren:x + y\}))>)
+
+test <an imported name over a block>
+  want hold, is-equal(last-shape(<{load-note}note\n  9.81m/s^2>), <(note \{block:9.81m/s^2\})>)
+
+test <an alias: `find note, name math`>
+  want hold, is-equal(last-shape(<load @term/mill/text/note\n  find note, name math\n\na math 1 + 2>), <(a (math \{line:1 + 2\}))>)
+
+test <a relative mill: `load ./some/mill`>
+  want hold, is-equal(last-shape(<load ./some/mill\n  find note\n\na note 1 + 2>), <(a (note \{line:1 + 2\}))>)
+
+test <`find role note` under any load>
+  want hold, is-equal(last-shape(<load ./x\n  find role note\n\na note 1 + 2>), <(a (note \{line:1 + 2\}))>)
+
+test <the text is verbatim: `.tree` never reads it>
+  want hold, is-equal(tree-shape(<a role note, \{x\} \\ \<y\> # z>), <(a (role (note) \{line:\{x\} \\ \<y\> # z\}))>)
+
+test <trailing spaces are not the scope's>
+  want hold, is-equal(tree-shape(<a role note, x + y   >), <(a (role (note) \{line:x + y\}))>)
+
+# ---- what is not a scope ----
+
+test <`role mill` is a file's role, never a scope>
+  want hold, is-equal(tree-shape(<role mill\n  take @/code/**>), <(role (mill) (take (@/code/**)))>)
+
+test <a `role` heading an unindented line is a role rule, whatever it names, so a misspelling is still refused as a role>
+  want hold, is-equal(tree-shape(<role special\n  take @/code/**>), <(role (special) (take (@/code/**)))>)
+
+test <`find role note` itself is a load line>
+  want hold, not(says(tree-shape(<load ./x\n  find role note>), <\{>))
+
+test <the name used as a variable: `save note, 3`, `read note`>
+  want hold, not(says(last-shape(<{load-note}save note, 3\nread note>), <\{>))
+
+test <a literal already written: `note \<A sentence.\>`>
+  want hold, is-equal(last-shape(<{load-note}note \<A sentence.\>>), <(note \<A sentence.\>)>)
+
+test <without the import, `note` is code>
+  want hold, not(says(tree-shape(<a note x>), <\{>))
+
+test <`find` of a code module is not a grammar: `load @term/base/list / find get`>
+  want hold, not(says(last-shape(<load @term/base/list\n  find get\n\na get x>), <\{>))
+
+# ---- refused ----
+
+test <parentheses left open are refused, at the `(`>
+  want hold, refused-at(parsed-of(<{load-note}a note(x + 1>), <<must close with `\)` on the same line>>, 3, 6)
+
+# ---- written back as written ----
+
+test <term form keeps the meaning and writes the scope as written: "send back, role note, x + 1">
+  want hold, form-keeps(<task f\n  take x, like number\n  like number\n  send back, role note, x + 1\n>)
+
+test <term form keeps the meaning and writes the scope as written: "send back, role note(x * (x + 1))">
+  want hold, form-keeps(<task f\n  take x, like number\n  like number\n  send back, role note(x * (x + 1))\n>)
+
+test <term form keeps the meaning and writes the scope as written: "role note">
+  want hold, form-keeps(<task f\n  take x, like number\n  like number\n  send back\n    role note\n      x^2\n        + 1\n>)
+
+test <term form keeps the meaning and writes the scope as written: "send back, note x - 1">
+  want hold, form-keeps(<{load-note}task f\n  take x, like number\n  like number\n  send back, note x - 1\n>)
+
+test <term form keeps the meaning and writes the scope as written: "send back, note(x * 2)">
+  want hold, form-keeps(<{load-note}task f\n  take x, like number\n  like number\n  send back, note(x * 2)\n>)
+
+test <term form keeps the meaning and writes the scope as written: "note total = x * 3">
+  want hold, form-keeps(<{load-note}task f\n  take x, like number\n  like number\n  note total = x * 3\n  send back, read total\n>)
+
+test <the canonical printer writes a scope as the literal it reads the same as>
+  want hold, is-equal(parser-tree/print-tree(parsed-of(<a role note, x + y>)/tree), <a\n  role\n    note\n    \<\<x + y\>\>>)
+
+test <and that literal parses back to the same scope>
+  want hold, is-equal(tree-shape(<a\n  role\n    note\n    \<\<x + y\>\>>), <(a (role (note) \<x + y\>))>)

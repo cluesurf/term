@@ -1,0 +1,35 @@
+note <Two kernel gaps compile/node.tree found (2026-10-05), each held by a program that failed before>
+
+# Ported from form-named-type.ts by hand (item 0557).
+#   1. A form named `type`. The kernel reads `like type` as its universe, so every task answering the form failed as `kernel: type
+#      mismatch`. check/elaborate.ts `kindsApart` now renames such a form on the kernel's own copy.
+#   2. A construction that leaves a `need false` field out. The surface checker allows it, the kernel's constructor takes every field. The
+#      kernel now declines such a construction, as it declines an unresolved name.
+# The third check is reached in the original only when the second holds, and here it asks the same.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <kernel.tree>), bind(stdlib, <node>), bind(library, true), bind(lean, true)))
+
+host optional, <form shape\n  case open\n    link free\n      like boolean\n      need false\n  case closed\n\ntask open-shape\n  like shape\n\n  back make open\n>
+
+test <a task answering a form named type builds>
+  want hold, build(<form type\n  mark tag, name kind\n  case number\n  case named\n    link name, like text\n\ntask number-type\n  like type\n\n  back make number\n>)/ok
+
+test <a construction leaving a need false field out builds>
+  want hold, build(optional)/ok
+
+test <and the field is left out of what it builds>
+  host out, build(optional)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <\{ form: "open" \}>)
