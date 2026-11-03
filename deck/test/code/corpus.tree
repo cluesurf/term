@@ -14,8 +14,9 @@
 load @term/base/exception
   find absence
 
+# `read` is a reserved head, so `read(path)` would read the variable: the task goes by another name
 load @term/base/file
-  find read
+  find read, name read-file
 
 load @term/base/file/directory
   find walk, name walk-directory
@@ -64,7 +65,7 @@ task tree-files
     take path, like text
     fork test, and(ends-with(path, <.tree>), is-file(path))
       hold
-        fork test, not(declares-draft(read(path)))
+        fork test, not(declares-draft(read-file(path)))
           hold
             found/push(path)
   back sort(found, from-texts)

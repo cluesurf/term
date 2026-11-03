@@ -1,0 +1,40 @@
+note <A name inside a computed path segment is resolved like any other>
+
+# Item 0894. check/resolving.tree walked a member's target and never its computed segment, so `roles/{remainder(7, 3)}`
+# with no `remainder` in scope built clean and failed at run time (`ReferenceError: remainder is not defined` on
+# TypeScript), where the same call outside a segment is refused as unknown-name. A segment's names now get their binding
+# and an unknown one is refused at build, on every backend, since the resolver runs before any of them.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-saying
+
+host head, <task run\n  like number\n\n  save counts, make(list, 10, 20, 30)\n>
+
+task build
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, </gate/code/segment-name.tree>), bind(lean, true)))
+
+test <an unknown name in a computed segment is refused>
+  host out, build(<{head}  back counts/\{remainder(7, 3)\}\n>)
+  want hold, refused-saying(out, <unknown-name>, <remainder>)
+
+test <the same call outside a segment is refused the same way>
+  host out, build(<{head}  save at, remainder(7, 3)\n  back counts/\{at\}\n>)
+  want hold, refused-saying(out, <unknown-name>, <remainder>)
+
+test <an unknown plain name in a computed segment is refused>
+  host out, build(<{head}  back counts/\{missing\}\n>)
+  want hold, refused-saying(out, <unknown-name>, <missing>)
+
+test <a defined task in a computed segment builds>
+  host out, build(<task next\n  take at, like number\n  like number\n\n  back add(at, 1)\n\n{head}  back counts/\{next(1)\}\n>)
+  want hold, out/ok
+
+test <a local in a computed segment builds>
+  host out, build(<{head}  save at, 2\n  back counts/\{at\}\n>)
+  want hold, out/ok

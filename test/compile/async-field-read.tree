@@ -1,0 +1,48 @@
+note <A field read straight off a call to an async task waits for the call>
+
+# Item 0893 (trap T-0879). A call to an async task is waited with nothing written (await by default, deck/term/CLAUDE.md
+# `async`), so `fetch-parcel(5)/def` reads the field of the ANSWER. The TypeScript emitter wrote the wait in front of the
+# whole read, `await fetchParcel(5).def`, and since `await` binds looser than `.` that awaited the promise's own field:
+# void, with a clean build. compile/ts-emit.tree `emit-member-target` now writes `(await fetchParcel(5)).def`. A call in
+# a computed segment, `roles/{fetch-at(1)}`, was never waited at all, since check/async-resolve.tree did not walk a
+# segment. Swift and Kotlin read the answer already, and tmp/self-host/0893/probe.ts holds all four backends.
+
+form parcel
+  link def, like number
+
+task fetch-parcel
+  take value, like number
+  mark async
+  like parcel
+
+  back make(parcel, bind(def, value))
+
+task fetch-at
+  take value, like number
+  mark async
+  like number
+
+  back value
+
+task twice
+  take value, like number
+  like number
+
+  back add(value, value)
+
+test <a field read off a saved answer>
+  host got, fetch-parcel(5)
+  want hold, is-equal got/def, 5
+
+test <a field read straight off the call>
+  want hold, is-equal fetch-parcel(5)/def, 5
+
+test <a field read off the call as an argument>
+  want hold, is-equal twice(fetch-parcel(4)/def), 8
+
+test <two field reads off two calls in one expression>
+  want hold, is-equal add(fetch-parcel(1)/def, fetch-parcel(6)/def), 7
+
+test <an async call in a computed segment>
+  host roles, make(list, <admin>, <editor>, <viewer>)
+  want hold, is-equal roles/{fetch-at(1)}, <editor>
