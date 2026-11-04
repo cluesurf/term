@@ -1,4 +1,6 @@
-// Write doc/lint-rules.md: every lint rule, its code, what it catches, and where it is defined.
+// Write lint-rules.md: every lint rule, its code, what it catches, and where it is defined. The page is a user doc,
+// and user docs live on the term.surf site, never in this repository: TERM_DOC_OUT names the folder it goes to. Unset,
+// the page is built and compared with nothing, and nothing is written.
 //
 // GENERATED, so it cannot drift. The page is built from the RULES registry and from each rule file's own leading
 // comment, which is where the real explanation already lives. Hand-writing 36 entries produces a page that is wrong
@@ -6,21 +8,22 @@
 //
 // It REPORTS by default and WRITES only on --commit, the house rule, so running it to see the diff cannot rewrite
 // the page by accident. As a gate it runs without --commit and fails when the page on disk is out of date, which is
-// what keeps it honest.
+// what keeps it true.
 //
-// Run: npx tsx test/lint/catalog.ts             (check: does the page match the registry)
-//      npx tsx test/lint/catalog.ts --commit    (write it)
+// Run: TERM_DOC_OUT=<folder> npx tsx test/lint/catalog.ts             (check: does the page match the registry)
+//      TERM_DOC_OUT=<folder> npx tsx test/lint/catalog.ts --commit    (write it)
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { RULES } from '@term/make/code/lint/lint'
 
 const HERE =
   import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const RULE_DIR = join(TERM, 'deck/make/code/lint/rules')
-// the page lives in the repository it describes, beside the registry it is generated from
-const PAGE = join(TERM, 'doc/lint-rules.md')
+// the page goes to the folder TERM_DOC_OUT names (the site's), never into this repository
+const OUT = process.env.TERM_DOC_OUT
+const PAGE = OUT ? join(resolve(OUT), 'lint-rules.md') : undefined
 
 // the rule file each rule is defined in, by its exported name turned back into kebab
 function fileFor(name: string): string | undefined {
@@ -125,17 +128,24 @@ const body = [
   '',
 ].join('\n')
 
+if (PAGE === undefined) {
+  console.log(`skip the compare: TERM_DOC_OUT is unset, so lint-rules.md (${rows.length} rules) was built and written nowhere`)
+  console.log('\ncatalog: 1 pass, 0 fail')
+  process.exit(0)
+}
+
 const current = existsSync(PAGE) ? readFileSync(PAGE, 'utf8') : ''
 const same = current === body
 
 if (process.argv.includes('--commit')) {
+  mkdirSync(OUT!, { recursive: true })
   writeFileSync(PAGE, body)
   console.log(
-    `wrote doc/lint-rules.md (${rows.length} rules)`,
+    `wrote ${PAGE} (${rows.length} rules)`,
   )
 } else if (!same) {
   console.log(
-    'doc/lint-rules.md is out of date. Run `npx tsx test/lint/catalog.ts --commit` from the Term root',
+    `${PAGE} is out of date. Run \`npx tsx test/lint/catalog.ts --commit\` from the Term root with the same TERM_DOC_OUT`,
   )
 }
 

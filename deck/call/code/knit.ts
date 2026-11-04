@@ -97,27 +97,23 @@ export function lineOf(root = packageRoot()): string {
   return path.join(root, 'host/line.js')
 }
 
-// the fixed context: the syntax, the proof guide, the demo's traps, and the demo as an example. The same bytes every
-// run, so the API serves them from its cache
+// the fixed context: the syntax, any guides the person names, and the demo as an example. The same bytes every run,
+// so the API serves them from its cache. The repository keeps no guides of its own: TERM_KNIT_CONTEXT names more files
+// (the proof guide, the demo's traps), joined with the platform's path delimiter
 function contextFiles(
   root: string,
   example: boolean,
 ): { label: string; file: string }[] {
-  // all three inside the package: the agent rules, and the two guides kept under doc/knit/
   const files = [
     {
       label: 'The Term language: syntax, rules and conventions',
       file: path.join(root, 'AGENTS.md'),
     },
-    {
-      label: 'Laws and proofs in Term: claims, theorems, the kernel',
-      file: path.join(root, 'doc/knit/law-and-proof.md'),
-    },
-    {
-      label: 'Traps found while proving the notes demo',
-      file: path.join(root, 'doc/knit/demo-traps.md'),
-    },
   ]
+
+  for (const file of (process.env.TERM_KNIT_CONTEXT ?? '').split(path.delimiter).filter(one => one !== '')) {
+    files.push({ label: `Context the person named: ${path.basename(file)}`, file: path.resolve(file) })
+  }
 
   // the demo whole, every file of its code/, as it stands: law.tree loads the others
   if (example) {

@@ -31,7 +31,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import * as plan from '@term/call/code/knit-plan'
 import { codePath } from '@term/call/code/knit-plan'
 import {
@@ -811,15 +811,33 @@ ok(
 
 // ---- the system prompt and tools ----
 
+// the guides a person names come from TERM_KNIT_CONTEXT (the repository keeps none): two files in a folder of this test
+const contextDir = removeAtExit(mkdtempSync(join(root, 'tmp/knit-test', 'context-')))
+const guideOne = join(contextDir, 'proof-guide.md')
+const guideTwo = join(contextDir, 'demo-traps.md')
+writeFileSync(guideOne, '# the proof guide, as a person names it\n')
+writeFileSync(guideTwo, '# the traps, as a person names them\n')
+const contextWas = process.env.TERM_KNIT_CONTEXT
+process.env.TERM_KNIT_CONTEXT = [guideOne, guideTwo].join(delimiter)
 const system = systemOf(root, true)
 ok(
-  'the system prompt carries the syntax, the proof guide, the traps and the example',
+  'the system prompt carries the syntax, the guides TERM_KNIT_CONTEXT names, and the example',
   [
     'AGENTS.md',
-    'law-and-proof.md',
+    'proof-guide.md',
+    'the proof guide, as a person names it',
     'demo-traps.md',
     'EXAMPLE code/law.tree',
   ].every(part => system.includes(part.split('/').pop()!)),
+)
+ok(
+  'without TERM_KNIT_CONTEXT the system prompt holds the syntax and no guide',
+  (() => {
+    delete process.env.TERM_KNIT_CONTEXT
+    const bare = systemOf(root, true)
+    process.env.TERM_KNIT_CONTEXT = [guideOne, guideTwo].join(delimiter)
+    return bare.includes('AGENTS.md') && !bare.includes('proof-guide.md')
+  })(),
 )
 ok(
   'the system prompt is the same bytes every time, so it caches',
@@ -830,6 +848,8 @@ ok(
   !systemOf(root, false).includes('EXAMPLE') &&
     systemOf(root, false).length < system.length,
 )
+if (contextWas === undefined) delete process.env.TERM_KNIT_CONTEXT
+else process.env.TERM_KNIT_CONTEXT = contextWas
 ok(
   'every tool takes an object with no other properties',
   TOOLS.every(tool => tool.input_schema.additionalProperties === false),

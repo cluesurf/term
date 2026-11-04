@@ -1,4 +1,6 @@
-// Write doc/commands.md: every `term` verb, its subcommands, and its options.
+// Write commands.md: every `term` verb, its subcommands, and its options. The page is a user doc, and user docs live on
+// the term.surf site, never in this repository: TERM_DOC_OUT names the folder it goes to. Unset, the page is built and
+// compared with nothing, and nothing is written.
 //
 // GENERATED, from two sources, each used for what it is authoritative about:
 //
@@ -18,12 +20,12 @@
 // It REPORTS by default and WRITES only on --commit, the house rule. As a gate it runs without --commit and fails
 // when the page on disk no longer matches the CLI, which is the whole point.
 //
-// Run: npx tsx test/call/commands.ts             (check: is the page current)
-//      npx tsx test/call/commands.ts --commit    (write it)
+// Run: TERM_DOC_OUT=<folder> npx tsx test/call/commands.ts             (check: is the page current)
+//      TERM_DOC_OUT=<folder> npx tsx test/call/commands.ts --commit    (write it)
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { DockRoute } from '@term/make/code/compile/node'
 import {
@@ -37,8 +39,9 @@ import { LINE } from './cli'
 const HERE =
   import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-// the page lives in the repository it describes, beside the code it is generated from
-const PAGE = join(TERM, 'doc/commands.md')
+// the page goes to the folder TERM_DOC_OUT names (the site's), never into this repository
+const OUT = process.env.TERM_DOC_OUT
+const PAGE = OUT ? join(resolve(OUT), 'commands.md') : undefined
 const CONSOLE = join(TERM, 'deck/call/code/line/base.tree')
 
 // the console's routes, as `term make` reads the file: its program (the global options) and its commands
@@ -307,18 +310,26 @@ body.push(
 )
 
 const page = body.join('\n')
+
+if (PAGE === undefined) {
+  console.log(`skip the compare: TERM_DOC_OUT is unset, so commands.md (${verbs.length} verbs) was built and written nowhere`)
+  console.log('\ncommands: 1 pass, 0 fail')
+  process.exit(0)
+}
+
 const current = existsSync(PAGE) ? readFileSync(PAGE, 'utf8') : ''
 const same = current === page
 const commit = process.argv.includes('--commit')
 
 if (commit) {
+  mkdirSync(OUT!, { recursive: true })
   writeFileSync(PAGE, page)
   console.log(
-    `wrote doc/commands.md (${verbs.length} verbs)`,
+    `wrote ${PAGE} (${verbs.length} verbs)`,
   )
 } else if (!same) {
   console.log(
-    'doc/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from the Term root',
+    `${PAGE} is out of date. Run \`npx tsx test/call/commands.ts --commit\` from the Term root with the same TERM_DOC_OUT`,
   )
 }
 
