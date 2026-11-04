@@ -29,7 +29,17 @@ import { publishRelease } from '../../deck/deck/code/oci/release'
 import { httpTransport } from '../../deck/deck/code/oci/transport'
 import { startOciServer } from '../../deck/deck/test/oci-server'
 // as its default: the task/ scripts are CommonJS, whose exports Node finds only on `default`
-import windows from '../../../../../../task/term/cask/windows'
+
+// cask/windows.ts reaches the parent's machine module, so it stays in the parent: this test runs only where
+// TERM_PARENT_ROOT names the parent checkout, and loads it from there
+const PARENT = process.env.TERM_PARENT_ROOT
+
+if (!PARENT) {
+  console.log('skip needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts')
+  process.exit(0)
+}
+
+const windows = (await import(join(PARENT, 'task/term/cask/windows.ts'))).default
 
 const TERM = join(import.meta.dirname, '..', '..')
 // the installer term.surf serves at /load.ps1

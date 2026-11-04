@@ -16,7 +16,7 @@ note <one program compiled for a backend, built by its toolchain and run, answer
 # directory (the suite's project root, D022), which is what most suites of run-on.ts asked.
 #
 # `native-flags` is ported from test/compile/native-flags.ts: the dependency flags swiftc and kotlinc need to see the
-# stdlib's standard stacks, read from task/term/native/<env>.sh, held for the process.
+# stdlib's standard stacks, read from deck/base/code/native/toolchain/<env>.sh, held for the process.
 
 load ./compiling
   find compile-text
@@ -403,19 +403,14 @@ form running-flags
 
 host running-held, make(running-flags, bind(swift, make list), bind(kotlin, make list), bind(swift-read, false), bind(kotlin-read, false))
 
-# the repository root, four folders above the Term root a suite runs in (deck/term/deck/term)
-task repository-root
-  like text
-
-  back running-path/resolve(<../../../..>)
-
-# what task/term/native/<env>.sh flags printed: swift writes one argument per line, kotlin one classpath. A script that
-# fails gives none, with a warning: whatever reaches the standard stack then fails to build
+# what the stdlib's native/toolchain/<env>.sh flags printed: swift writes one argument per line, kotlin one classpath.
+# A script that fails gives none, with a warning: whatever reaches the standard stack then fails to build. The script is
+# under the Term root a suite runs in
 task read-native-flags
   take env, like text
   like list, like text
 
-  save script, running-path/join(repository-root(), <task/term/native/{env}.sh>)
+  save script, running-path/resolve(<deck/base/code/native/toolchain/{env}.sh>)
   save flags, make list
   save result, run(<bash>, make list(script, <flags>))
   fork test, is-unequal(result/code, 0)

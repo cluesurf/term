@@ -5,11 +5,14 @@
 // 22px">` a blank one. A span's color names its role by the palette of section 16, in either theme; `font-weight:
 // 600` is bold and a background is the focus highlight (or the terminal's cursor, which is no part of the output).
 //
-//   npx tsx test/item/mockup.ts            write test/item/mockups.json
-//   npx tsx test/item/mockup.ts --check    exit 1 when mockups.json is not what the page extracts to now
+//   npx tsx test/item/mockup.ts --page <mockups.html> --differences <mockup-differences.md>
+//       write test/item/mockups.json and test/item/mockup-differences.json (the entries the note writes down)
+//   ... --check    exit 1 when either is not what the notes extract to now
+//
+// The page and the note are written outside this repository: the parent repository's check runs this with --check.
 
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 export type MockupCharacter = {
   role: string
@@ -142,42 +145,73 @@ export function readMockups(html: string): Mockup[] {
   return cards
 }
 
-// the repository root, from the Term package root every suite runs in
-export const MOCKUP_PAGE = join(
-  process.cwd(),
-  '../../../../note/project/term/output/mockups.html',
-)
+// The two fixtures, in the Term package root every suite runs in. The mockup page and its list of differences are
+// written outside this repository, so the suites read these snapshots of them, and this file, run with the two notes
+// named, writes or checks the snapshots where the notes are
 export const MOCKUP_FIXTURE = join(
   process.cwd(),
   'test/item/mockups.json',
 )
-export const MOCKUP_DIFFERENCES = join(
+export const MOCKUP_DIFFERENCES_FIXTURE = join(
   process.cwd(),
-  '../../../../note/project/term/output/mockup-differences.md',
+  'test/item/mockup-differences.json',
 )
 
 export function loadMockups(): Mockup[] {
   return JSON.parse(readFileSync(MOCKUP_FIXTURE, 'utf8')) as Mockup[]
 }
 
+// every entry the differences note writes down (`### D33`), in its order
+export function readDifferences(text: string): string[] {
+  return [...text.matchAll(/^### (D\d+)$/gm)].map(match => match[1]!)
+}
+
+export function loadDifferences(): string[] {
+  return JSON.parse(
+    readFileSync(MOCKUP_DIFFERENCES_FIXTURE, 'utf8'),
+  ) as string[]
+}
+
 const isMain = process.argv[1]?.endsWith('mockup.ts')
 
+// a path the person typed, against the folder they typed it in
+const given = (flag: string): string | undefined => {
+  const at = process.argv.indexOf(flag)
+  const value = at === -1 ? undefined : process.argv[at + 1]
+
+  return value ? resolve(process.env.INIT_CWD ?? process.cwd(), value) : undefined
+}
+
 if (isMain) {
-  const extracted = readMockups(readFileSync(MOCKUP_PAGE, 'utf8'))
+  const page = given('--page')
+  const differences = given('--differences')
+
+  if (!page || !differences) {
+    console.log(
+      'usage: npx tsx test/item/mockup.ts --page <mockups.html> --differences <mockup-differences.md> [--check]',
+    )
+    process.exit(2)
+  }
+
+  const extracted = readMockups(readFileSync(page, 'utf8'))
   const written = `${JSON.stringify(extracted, null, 1)}\n`
+  const entries = `${JSON.stringify(readDifferences(readFileSync(differences, 'utf8')), null, 1)}\n`
 
   if (process.argv.includes('--check')) {
     const current = readFileSync(MOCKUP_FIXTURE, 'utf8')
+    const currentEntries = readFileSync(MOCKUP_DIFFERENCES_FIXTURE, 'utf8')
+    const same = current === written && currentEntries === entries
     console.log(
-      current === written
+      same
         ? `mockups: ${extracted.length} cards, current`
-        : 'mockups: STALE, run npx tsx test/item/mockup.ts',
+        : 'mockups: STALE, run npx tsx test/item/mockup.ts with the same --page and --differences, and no --check',
     )
-    process.exit(current === written ? 0 : 1)
+    process.exit(same ? 0 : 1)
   }
 
   writeFileSync(MOCKUP_FIXTURE, written)
+  writeFileSync(MOCKUP_DIFFERENCES_FIXTURE, entries)
   console.log(
-    `mockups: ${extracted.length} cards written to test/item/mockups.json`,
+    `mockups: ${extracted.length} cards written to test/item/mockups.json, and the differences to test/item/mockup-differences.json`,
   )
 }

@@ -3,14 +3,16 @@
 // derived data in <app>/host/uikit/derived-simulator. It builds and never installs
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { makeUikit, uikitIdentity } from '@term/call/code/uikit'
 
-// the app folder: deck/tool/tool/beat-term
-export const BEAT_TERM_ROOT = join(
-  import.meta.dirname,
-  '../../../../../../../deck/tool/tool/beat-term',
-)
+// the app folder, which this repository does not hold: BEAT_TERM_ROOT names it (the parent repository's term:test
+// alias passes its deck/tool/tool/beat-term). Empty when unset, and the suites that build the app skip, saying so. A
+// path given resolves against the folder it was typed in
+const GIVEN_ROOT = process.env.BEAT_TERM_ROOT?.trim() ?? ''
+export const BEAT_TERM_ROOT = GIVEN_ROOT
+  ? resolve(process.env.INIT_CWD ?? process.cwd(), GIVEN_ROOT)
+  : ''
 
 // xcodebuild's `error:` lines only, at most 30
 function errorLines(output: string): string {

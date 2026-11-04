@@ -1423,6 +1423,8 @@ function shimText(
       '  take handler',
       '    like task',
       '      take value, like text',
+      // the handler may raise, as on every other env's watcher (653d7276), or cask/device refuses `raise-escapes-slot`
+      '      halt exception',
       '  like task',
       '  send back',
       '    call bridge/watch',

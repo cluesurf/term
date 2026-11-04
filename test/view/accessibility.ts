@@ -258,27 +258,13 @@ function nameOf(element: Element): string {
   )
 }
 
-// the contract's DOM cell per word
-const note = readFileSync(
-  join(
-    process.cwd(),
-    '../../../../note/project/term/view/11-vocabulary.md',
-  ),
-  'utf8',
-)
-const table = note.slice(
-  note.indexOf('## Accessibility'),
-  note.indexOf('## The layout model'),
-)
+// the contract's DOM cell per word: the vocabulary's "Accessibility" table, held as test/fixture/accessibility.json (the
+// vocabulary is written outside this repository, and the check that holds the snapshot equal to it runs there)
+const table = JSON.parse(
+  readFileSync(join(process.cwd(), 'test/fixture/accessibility.json'), 'utf8'),
+) as string[][]
 const domCell = new Map(
   table
-    .split('\n')
-    .map(line =>
-      line
-        .split('|')
-        .slice(1, -1)
-        .map(cell => cell.trim()),
-    )
     .filter(cells => cells.length === 10)
     .map(cells => [cells[0]!, cells[1]!] as const),
 )

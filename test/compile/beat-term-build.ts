@@ -32,6 +32,13 @@ if (
   process.exit(0)
 }
 
+// the app lives outside this repository, where BEAT_TERM_ROOT names it
+if (!BEAT_TERM_ROOT) {
+  console.log('skip  beat-term-build: BEAT_TERM_ROOT names no beat-term app folder')
+  console.log('\nbeat-term-build: 0 pass, 0 fail, 1 skipped')
+  process.exit(0)
+}
+
 // one row per key (item 0018 adds its two rows here): `expected` is an exact text, `text` any non-empty text, or
 // `absent` for a key the plist must not hold
 type Row = { key: string; expected: string }

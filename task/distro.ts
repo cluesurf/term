@@ -3,9 +3,10 @@
 //
 //   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
 //   pnpm term:distro --commit   also write the signed apt and dnf indexes into the term.surf site's public/ (served at
-//                               https://term.surf/apt and /rpm) and the winget manifests into deck/fork-winget-pkgs/.
-//                               It writes files and nothing else: the GitHub release, the deploy and every git step
-//                               are printed for a person to run
+//                               https://term.surf/apt and /rpm; `--site <dir>` or TERM_SITE_DIR, else host/site/)
+//                               and the winget manifests into the winget-pkgs fork (`--winget <dir>` or
+//                               TERM_WINGET_FORK, else host/winget/). It writes files and nothing else: the GitHub
+//                               release, the deploy and every git step are printed for a person to run
 //
 // What it makes, all from tmp/release/<version>/term-<platform>.tar.gz, the bytes `@term/code` releases:
 //
@@ -19,7 +20,7 @@
 // NO PACKAGE IS STORED ON term.surf. Every file in packages/ is an asset of the GitHub release `v<version>` on
 // cluesurf/term, which winget downloads its zips from too. The indexes name each package under its version
 // (`pool/<v>/...`, `<v>/...`), and the term.surf Worker answers such a path with a redirect to that release asset
-// (mesh/site/term.surf/home/site/tool/release-redirect.ts). apt and dnf follow it and check the file against the
+// (the shapes test/distro-redirect.ts holds). apt and dnf follow it and check the file against the
 // signed index. So a release costs no storage and no git history, and the indexes a deploy carries are kilobytes.
 //
 // THE INDEXES KEEP THE NEWEST THREE VERSIONS. The older two are read back from their GitHub releases, so an index can
@@ -38,18 +39,23 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type * as Output from '@term/call/code/output'
+import { givenDir, siteDir } from './site-dir'
 
 // the Term package root: this file is task/distro.ts under it
 const TERM = path.resolve(import.meta.dirname, '..')
 
-// the repository root, four folders above
-const ROOT = path.resolve(TERM, '../../../..')
+// the term.surf site's static files, which Cloudflare serves before its Worker runs: `--site <dir>`, else
+// TERM_SITE_DIR, else host/site/ (task/site-dir.ts). The site is not part of this repository, so the person's alias
+// names it
+const SITE_PUBLIC = siteDir(TERM)
 
-// the term.surf site's static files, which Cloudflare serves before its Worker runs
-const SITE_PUBLIC = path.join(ROOT, 'mesh', 'site', 'term.surf', 'home', 'public')
+// the fork of microsoft/winget-pkgs a pull request is opened from: `--winget <dir>`, else TERM_WINGET_FORK, else
+// host/winget/, for a look at what --commit writes
+const WINGET_FORK = givenDir({ flag: '--winget', variable: 'TERM_WINGET_FORK', fallback: path.join(TERM, 'host', 'winget') })
 
-// the fork of microsoft/winget-pkgs a pull request is opened from
-const WINGET_FORK = path.resolve(TERM, '../../../fork-winget-pkgs')
+// the command that deploys the site once its folder is pushed, printed as the second publishing step when the person's
+// alias names it (TERM_SITE_DEPLOY), and described otherwise
+const SITE_DEPLOY = process.env.TERM_SITE_DEPLOY?.trim() ?? ''
 
 const SITE_URL = 'https://term.surf'
 
@@ -232,12 +238,12 @@ async function main(): Promise<void> {
     message: [
       `1. the GitHub release on ${REPOSITORY}, which holds every package the indexes and the winget manifests name`,
       '   (the Term repository pushed first, so the tag names the commit they were built from):',
-      `   pnpm --dir ${ROOT} term:github-release ${version} --commit`,
+      `   pnpm --dir ${TERM} run term:github-release ${version} --commit`,
       '2. term.surf, which then serves the new indexes (a deploy builds from what is pushed):',
-      `   git -C ${path.join(ROOT, 'mesh')} add site/term.surf/home/public/apt site/term.surf/home/public/rpm site/term.surf/home/public/term.asc`,
-      `   git -C ${path.join(ROOT, 'mesh')} commit -m "term ${version} for apt and dnf"`,
-      `   git -C ${path.join(ROOT, 'mesh')} push`,
-      `   pnpm --dir ${ROOT} host term:home`,
+      `   git -C ${SITE_PUBLIC} add apt rpm term.asc`,
+      `   git -C ${SITE_PUBLIC} commit -m "term ${version} for apt and dnf"`,
+      `   git -C ${SITE_PUBLIC} push`,
+      SITE_DEPLOY ? `   ${SITE_DEPLOY}` : '   then deploy the site that serves this folder',
       '3. the winget pull request, on a branch of its own from upstream:',
       `   git -C ${WINGET_FORK} fetch upstream master`,
       `   git -C ${WINGET_FORK} switch -c ${branch} upstream/master`,
@@ -452,7 +458,7 @@ function dockerAnswers(): void {
 // gpg asks for the key's passphrase through pinentry, which draws on the terminal GPG_TTY names. This run captures
 // gpg's output, so it names the terminal itself; with no terminal (a test's throwaway key in GNUPGHOME has no
 // passphrase) gpg runs in batch mode. APT_PWD, zone's passphrase for this key (`zone deck` / `zone task`), is handed
-// to gpg on its stdin instead, so `deck/zone/bin/zone load deck/task -- pnpm term:distro` signs with no terminal
+// to gpg on its stdin instead, so `zone load deck/task -- pnpm term:distro` signs with no terminal
 function gpg(args: string[]): void {
   const passphrase = process.env.TERM_DISTRO_KEY ? undefined : process.env.APT_PWD
   if (passphrase) {

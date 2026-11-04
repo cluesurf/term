@@ -17,6 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildSync } from 'esbuild'
@@ -28,7 +29,8 @@ const PORT = join(
   TERM,
   'deck/call/host/port/code/work/need/running-install.ts',
 )
-const TSX = join(TERM, '../../../../node_modules/tsx/dist/cli.mjs')
+// tsx as the Term package resolves it (a devDependency), never a path into a folder above the package
+const TSX = createRequire(join(TERM, 'package.json')).resolve('tsx/cli')
 
 // a probe: both answers, then the root again after a new pin, printed as JSON
 const PROBE = (

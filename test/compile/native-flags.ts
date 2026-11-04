@@ -6,7 +6,7 @@
 // reaches `file/*` or `network/server` fails with `no such module '_NIOFileSystem'` or an unresolved
 // `kotlinx.coroutines` from a line that mentions neither.
 //
-// task/term/native/{swift,kotlin}.sh own the resolving and the cache. This only reads what they wrote, so a
+// The stdlib's native/toolchain/{swift,kotlin}.sh own the resolving and the cache. This only reads what they wrote, so a
 // harness and the gate cannot disagree about which swift-nio the code was checked against. The answer is cached
 // for the process: the scripts are cheap when warm but not free, and a harness calls this once per compile.
 //
@@ -16,13 +16,10 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// this file is at <repo>/deck/term/deck/term/test/compile/, which is SIX levels down: compile, test, term, deck,
-// term, deck. Off by one and the scripts are simply not found, `flags` returns empty, and every build fails with
-// an unresolved import from a file that imports it perfectly well.
-const ROOT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../../../..',
-)
+// this file is at <Term>/test/compile/, two levels below the Term root, and the scripts are in the stdlib's own tree
+// under it. Off by one and the scripts are simply not found, `flags` returns empty, and every build fails with an
+// unresolved import from a file that imports it perfectly well.
+const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const held = new Map<string, string[]>()
 
@@ -38,7 +35,7 @@ export function nativeFlags(env: 'swift' | 'kotlin'): string[] {
   try {
     const out = execFileSync(
       'bash',
-      [join(ROOT, `task/term/native/${env}.sh`), 'flags'],
+      [join(TERM, `deck/base/code/native/toolchain/${env}.sh`), 'flags'],
       {
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,

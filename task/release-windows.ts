@@ -1,9 +1,10 @@
 // The Windows step of `pnpm term:release` (D8, decided 2026-10-02: windows-x64 is built natively on an on-demand EC2
 // Windows machine and smoke-run in the same session). release.ts stages windows-x64 as it stages every platform, all
-// but its native part, and runs this under `zone load cluesurf/bench` for the EC2 key. This:
+// but its native part, and runs this with the environment it was given, which holds the EC2 key (the publisher's alias
+// runs the release under its secret store). This:
 //
-//   1  rents a machine (task/machine, windows-x64, use release) with Node, Go, the MSVC build tools and Rust, ending itself
-//      after --hours whatever happens here
+//   1  rents a machine (the library TERM_MACHINE_MODULE names, windows-x64, use release) with Node, Go, the MSVC build
+//      tools and Rust, ending itself after --hours whatever happens here
 //   2  says the toolchain's versions, and builds and runs a one-file Rust crate there: MSVC links on this machine
 //   3  BUILDS THE PAYLOAD'S NATIVE PART THERE: bin\term.exe (task/launcher/term.go) by Windows' own Go, brought back
 //      into the stage. The same source cross-built on this Mac is compared with it, digest for digest
@@ -19,18 +20,55 @@
 // It speaks to release.ts in JSON lines on stdout, as the push child does: { form: 'tools' | 'native' | 'smoke' |
 // 'built' | 'failed', ... }. Every other line (the machine's own progress) is a note.
 //
-//   zone load cluesurf/bench -- pnpm -s exec tsx task/release-windows.ts --stage <dir> --out <tar.gz> [--hours 2]
+//   TERM_MACHINE_MODULE=<machine.ts> pnpm -s exec tsx task/release-windows.ts --stage <dir> --out <tar.gz> [--hours 2]
 //     [--fail-at tools|native|packed|smoke]   throw at that step, to prove the machine still ends (never in a release)
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import * as machineModule from '../../../../../task/machine/machine'
+import { pathToFileURL } from 'node:url'
 import { packPayload } from './release-pack'
 
-// task/machine is CommonJS, whose exports Node hands an ES module on `default`
-const ec2 = ((machineModule as { default?: typeof machineModule }).default ?? machineModule) as typeof machineModule
+// THE MACHINE IS THE CALLER'S. Renting an EC2 Windows machine is the publisher's own library, not Term's, so the
+// module that does it is named by TERM_MACHINE_MODULE (the parent repository's term:release alias names its
+// task/machine/machine.ts, run under the zone that holds the EC2 key). These are the calls this step makes of it
+type Ran = { status: number | null; stdout: string; stderr: string }
+type Machine = { instance?: string }
+type MachineLibrary = {
+  session: <T>(input: {
+    platform: string
+    use: string
+    needs: string[]
+    hours: number
+    work: (machine: Machine, stopped: () => boolean) => Promise<T>
+  }) => Promise<{ answer: T; minutes: number; dollars: number }>
+  shipIn: (machine: Machine, from: string, to: string) => void
+  shipOut: (machine: Machine, from: string, to: string) => boolean
+  run: (machine: Machine, command: string, options: { timeout: number }) => Ran
+  runPowerShell: (machine: Machine, script: string, options: { timeout: number }) => Ran
+  redact: (text: string) => string
+}
+
+// the library, loaded from the module the environment names. A CommonJS module's exports arrive on `default`
+async function loadMachines(): Promise<MachineLibrary> {
+  const named = process.env.TERM_MACHINE_MODULE?.trim()
+
+  if (!named) {
+    throw new Error(
+      'the Windows step rents a machine through the module TERM_MACHINE_MODULE names, and it is not set. A dry run can pack windows-x64 here instead: --windows-cross',
+    )
+  }
+
+  const loaded = (await import(pathToFileURL(path.resolve(process.env.INIT_CWD ?? process.cwd(), named)).href)) as {
+    default?: MachineLibrary
+  } & MachineLibrary
+
+  return loaded.default ?? loaded
+}
+
+// the library once loaded, for the redaction of a failure message
+let ec2: MachineLibrary | undefined
 
 const TERM = path.resolve(import.meta.dirname, '..')
 const LAUNCHER = path.join(TERM, 'task', 'launcher')
@@ -90,7 +128,10 @@ async function main(): Promise<void> {
     stdio: ['ignore', 'ignore', 'pipe'],
   })
 
-  const { answer, minutes, dollars } = await ec2.session({
+  const machines = await loadMachines()
+  ec2 = machines
+
+  const { answer, minutes, dollars } = await machines.session({
     platform: 'windows-x64',
     use: 'release',
     needs: ['node', 'go', 'build'],
@@ -101,9 +142,9 @@ async function main(): Promise<void> {
       }
 
       // 2  the toolchain, and MSVC linking a crate
-      ec2.shipIn(machine, sent, REMOTE)
-      const tools = ec2.run(machine, 'node --version & go version & rustc --version & cargo --version', { timeout: 120_000 })
-      const crate = ec2.run(machine, `cd /d %USERPROFILE%\\${REMOTE}\\crate && cargo build --release --quiet && target\\release\\term-release-crate.exe`, { timeout: 900_000 })
+      machines.shipIn(machine, sent, REMOTE)
+      const tools = machines.run(machine, 'node --version & go version & rustc --version & cargo --version', { timeout: 120_000 })
+      const crate = machines.run(machine, `cd /d %USERPROFILE%\\${REMOTE}\\crate && cargo build --release --quiet && target\\release\\term-release-crate.exe`, { timeout: 900_000 })
 
       if (crate.status !== 0 || !crate.stdout.includes('crate linked for x86_64')) {
         throw new Error(`the Rust crate did not build and run with MSVC there:\n${tools.stdout}${crate.stdout}${crate.stderr}`)
@@ -114,11 +155,11 @@ async function main(): Promise<void> {
       halt()
 
       // 3  the native part, by Windows' own Go
-      const built = ec2.run(machine, `cd /d %USERPROFILE%\\${REMOTE}\\launcher && set CGO_ENABLED=0&& set GOOS=windows&& set GOARCH=amd64&& go build -trimpath -ldflags "-s -w" -o term.exe term.go`, { timeout: 600_000 })
+      const built = machines.run(machine, `cd /d %USERPROFILE%\\${REMOTE}\\launcher && set CGO_ENABLED=0&& set GOOS=windows&& set GOARCH=amd64&& go build -trimpath -ldflags "-s -w" -o term.exe term.go`, { timeout: 600_000 })
       const exe = path.join(stage, 'term', 'bin', 'term.exe')
       rmSync(exe, { force: true })
 
-      if (built.status !== 0 || !ec2.shipOut(machine, `${REMOTE}/launcher/term.exe`, exe)) {
+      if (built.status !== 0 || !machines.shipOut(machine, `${REMOTE}/launcher/term.exe`, exe)) {
         throw new Error(`term.exe was not built there:\n${built.stdout}${built.stderr}`)
       }
 
@@ -139,10 +180,10 @@ async function main(): Promise<void> {
       copyFileSync(out, path.join(smoke, 'term-windows-x64.tar.gz'))
       writeFileSync(path.join(smoke, 'sample', 'deck.tree'), 'deck @sample/hello\nhead <A sample project the release smoke-runs on Windows>\nmark <0.0.0>\n')
       writeFileSync(path.join(smoke, 'sample', 'code', 'base.tree'), 'task greet\n  take name, like text\n  like text\n  send back, text <hello {name}>\n')
-      ec2.shipIn(machine, smoke, `${REMOTE}\\smoke`)
+      machines.shipIn(machine, smoke, `${REMOTE}\\smoke`)
       halt()
 
-      const ran = ec2.runPowerShell(machine, [
+      const ran = machines.runPowerShell(machine, [
         `$root = "$env:USERPROFILE\\${REMOTE}"`,
         '$hash = (Get-FileHash "$root\\smoke\\term-windows-x64.tar.gz" -Algorithm SHA256).Hash.ToLower()',
         'Write-Output "digest sha256:$hash"',
@@ -189,6 +230,7 @@ async function main(): Promise<void> {
 try {
   await main()
 } catch (error) {
-  say({ form: 'failed', message: ec2.redact(error instanceof Error ? error.message : String(error)) })
+  const message = error instanceof Error ? error.message : String(error)
+  say({ form: 'failed', message: ec2 ? ec2.redact(message) : message })
   process.exitCode = 1
 }

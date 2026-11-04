@@ -1,0 +1,833 @@
+{
+  "taken": "2026-11-03T23:51:51.762Z",
+  "cores": 18,
+  "rows": {
+    "zone/cold": {
+      "ms": 4408,
+      "built": 87,
+      "rssMb": 1325,
+      "runs": [
+        {
+          "ms": 5054,
+          "built": 87,
+          "reused": 1127,
+          "rssMb": 1325,
+          "exit": 0,
+          "load": 20.5,
+          "answers": 87
+        },
+        {
+          "ms": 4408,
+          "built": 87,
+          "reused": 1127,
+          "rssMb": 1337,
+          "exit": 0,
+          "load": 19.8,
+          "answers": 87
+        },
+        {
+          "ms": 4280,
+          "built": 87,
+          "reused": 1127,
+          "rssMb": 1315,
+          "exit": 0,
+          "load": 20.1,
+          "answers": 87
+        }
+      ]
+    },
+    "zone/noop-fresh": {
+      "ms": 289,
+      "built": 0,
+      "rssMb": 194,
+      "runs": [
+        {
+          "ms": 1008,
+          "built": 0,
+          "reused": 1184,
+          "rssMb": 254,
+          "exit": 0,
+          "load": 20.1
+        },
+        {
+          "ms": 278,
+          "built": 0,
+          "reused": 1184,
+          "rssMb": 194,
+          "exit": 0,
+          "load": 20.1
+        },
+        {
+          "ms": 289,
+          "built": 0,
+          "reused": 1184,
+          "rssMb": 194,
+          "exit": 0,
+          "load": 20.1
+        }
+      ],
+      "snapshotKb": 221
+    },
+    "zone/noop-session": {
+      "ms": 93,
+      "built": 0,
+      "rssMb": 369,
+      "runs": [
+        {
+          "child": true,
+          "ms": 107,
+          "built": 0,
+          "reused": 1183,
+          "rssMb": 350,
+          "exit": 0,
+          "load": 19.5
+        },
+        {
+          "child": true,
+          "ms": 93,
+          "built": 0,
+          "reused": 1183,
+          "rssMb": 371,
+          "exit": 0,
+          "load": 19.5
+        },
+        {
+          "child": true,
+          "ms": 86,
+          "built": 0,
+          "reused": 1183,
+          "rssMb": 369,
+          "exit": 0,
+          "load": 19.5
+        }
+      ]
+    },
+    "zone/body-fresh": {
+      "ms": 391,
+      "built": 1,
+      "rssMb": 201,
+      "runs": [
+        {
+          "ms": 407,
+          "built": 1,
+          "reused": 1183,
+          "rssMb": 201,
+          "exit": 0,
+          "load": 19.5
+        },
+        {
+          "ms": 386,
+          "built": 1,
+          "reused": 1183,
+          "rssMb": 201,
+          "exit": 0,
+          "load": 18.7
+        },
+        {
+          "ms": 391,
+          "built": 1,
+          "reused": 1183,
+          "rssMb": 201,
+          "exit": 0,
+          "load": 18.7
+        }
+      ]
+    },
+    "zone/body-session": {
+      "ms": 195,
+      "built": 1,
+      "rssMb": 371,
+      "runs": [
+        {
+          "child": true,
+          "ms": 133,
+          "built": 1,
+          "reused": 1182,
+          "rssMb": 365,
+          "exit": 0,
+          "load": 18.7
+        },
+        {
+          "child": true,
+          "ms": 245,
+          "built": 1,
+          "reused": 1182,
+          "rssMb": 371,
+          "exit": 0,
+          "load": 18.7
+        },
+        {
+          "child": true,
+          "ms": 195,
+          "built": 1,
+          "reused": 1182,
+          "rssMb": 373,
+          "exit": 0,
+          "load": 19.4
+        }
+      ]
+    },
+    "zone/pure-fresh": {
+      "ms": 489,
+      "built": 2,
+      "rssMb": 204,
+      "runs": [
+        {
+          "ms": 578,
+          "built": 2,
+          "reused": 1182,
+          "rssMb": 201,
+          "exit": 0,
+          "load": 19.4
+        },
+        {
+          "ms": 489,
+          "built": 2,
+          "reused": 1182,
+          "rssMb": 204,
+          "exit": 0,
+          "load": 19.4
+        },
+        {
+          "ms": 417,
+          "built": 2,
+          "reused": 1182,
+          "rssMb": 205,
+          "exit": 0,
+          "load": 19.4
+        }
+      ]
+    },
+    "zone/shape-fresh": {
+      "ms": 390,
+      "built": 4,
+      "rssMb": 205,
+      "runs": [
+        {
+          "ms": 394,
+          "built": 4,
+          "reused": 1180,
+          "rssMb": 205,
+          "exit": 0,
+          "load": 19.4
+        },
+        {
+          "ms": 384,
+          "built": 4,
+          "reused": 1180,
+          "rssMb": 205,
+          "exit": 0,
+          "load": 19.4
+        },
+        {
+          "ms": 390,
+          "built": 4,
+          "reused": 1180,
+          "rssMb": 206,
+          "exit": 0,
+          "load": 19.4
+        }
+      ]
+    },
+    "zone/server": {
+      "ms": 186,
+      "built": null,
+      "rssMb": 728,
+      "runs": [
+        {
+          "child": true,
+          "ms": 186,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 19.6,
+            "p95": 26.8
+          },
+          "rssMb": 679,
+          "exit": 0,
+          "load": 18.6
+        },
+        {
+          "child": true,
+          "ms": 177,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 18.2,
+            "p95": 31.2
+          },
+          "rssMb": 731,
+          "exit": 0,
+          "load": 19.4
+        },
+        {
+          "child": true,
+          "ms": 209,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 25.7,
+            "p95": 31.7
+          },
+          "rssMb": 728,
+          "exit": 0,
+          "load": 20.5
+        }
+      ],
+      "keystroke": {
+        "p50": 19.6,
+        "p95": 31.2
+      }
+    },
+    "host/cold": {
+      "ms": 9581,
+      "built": 53,
+      "rssMb": 1581,
+      "runs": [
+        {
+          "ms": 9114,
+          "built": 53,
+          "reused": 396,
+          "rssMb": 1556,
+          "exit": 0,
+          "load": 25.4,
+          "answers": 53
+        },
+        {
+          "ms": 9995,
+          "built": 53,
+          "reused": 396,
+          "rssMb": 1581,
+          "exit": 0,
+          "load": 28,
+          "answers": 53
+        },
+        {
+          "ms": 9581,
+          "built": 53,
+          "reused": 396,
+          "rssMb": 1596,
+          "exit": 0,
+          "load": 32.2,
+          "answers": 53
+        }
+      ]
+    },
+    "host/noop-fresh": {
+      "ms": 547,
+      "built": 0,
+      "rssMb": 200,
+      "runs": [
+        {
+          "ms": 1498,
+          "built": 0,
+          "reused": 421,
+          "rssMb": 294,
+          "exit": 0,
+          "load": 31.4
+        },
+        {
+          "ms": 537,
+          "built": 0,
+          "reused": 421,
+          "rssMb": 200,
+          "exit": 0,
+          "load": 31.4
+        },
+        {
+          "ms": 547,
+          "built": 0,
+          "reused": 421,
+          "rssMb": 199,
+          "exit": 0,
+          "load": 31.4
+        }
+      ],
+      "snapshotKb": 230
+    },
+    "host/noop-session": {
+      "ms": 116,
+      "built": 0,
+      "rssMb": 392,
+      "runs": [
+        {
+          "child": true,
+          "ms": 116,
+          "built": 0,
+          "reused": 420,
+          "rssMb": 390,
+          "exit": 0,
+          "load": 31.4
+        },
+        {
+          "child": true,
+          "ms": 118,
+          "built": 0,
+          "reused": 420,
+          "rssMb": 392,
+          "exit": 0,
+          "load": 31.2
+        },
+        {
+          "child": true,
+          "ms": 109,
+          "built": 0,
+          "reused": 420,
+          "rssMb": 396,
+          "exit": 0,
+          "load": 31.2
+        }
+      ]
+    },
+    "host/body-fresh": {
+      "ms": 622,
+      "built": 1,
+      "rssMb": 211,
+      "runs": [
+        {
+          "ms": 621,
+          "built": 1,
+          "reused": 420,
+          "rssMb": 204,
+          "exit": 0,
+          "load": 31.2
+        },
+        {
+          "ms": 626,
+          "built": 1,
+          "reused": 420,
+          "rssMb": 212,
+          "exit": 0,
+          "load": 31.2
+        },
+        {
+          "ms": 622,
+          "built": 1,
+          "reused": 420,
+          "rssMb": 211,
+          "exit": 0,
+          "load": 31.2
+        }
+      ]
+    },
+    "host/body-session": {
+      "ms": 193,
+      "built": 1,
+      "rssMb": 400,
+      "runs": [
+        {
+          "child": true,
+          "ms": 193,
+          "built": 1,
+          "reused": 419,
+          "rssMb": 400,
+          "exit": 0,
+          "load": 31.6
+        },
+        {
+          "child": true,
+          "ms": 193,
+          "built": 1,
+          "reused": 419,
+          "rssMb": 398,
+          "exit": 0,
+          "load": 31.6
+        },
+        {
+          "child": true,
+          "ms": 192,
+          "built": 1,
+          "reused": 419,
+          "rssMb": 401,
+          "exit": 0,
+          "load": 30.6
+        }
+      ]
+    },
+    "host/pure-fresh": {
+      "ms": 648,
+      "built": 2,
+      "rssMb": 220,
+      "runs": [
+        {
+          "ms": 663,
+          "built": 2,
+          "reused": 419,
+          "rssMb": 213,
+          "exit": 0,
+          "load": 30.6
+        },
+        {
+          "ms": 648,
+          "built": 2,
+          "reused": 419,
+          "rssMb": 220,
+          "exit": 0,
+          "load": 30.6
+        },
+        {
+          "ms": 645,
+          "built": 2,
+          "reused": 419,
+          "rssMb": 222,
+          "exit": 0,
+          "load": 30.6
+        }
+      ]
+    },
+    "host/shape-fresh": {
+      "ms": 659,
+      "built": 4,
+      "rssMb": 222,
+      "runs": [
+        {
+          "ms": 662,
+          "built": 4,
+          "reused": 417,
+          "rssMb": 222,
+          "exit": 0,
+          "load": 30.6
+        },
+        {
+          "ms": 659,
+          "built": 4,
+          "reused": 417,
+          "rssMb": 222,
+          "exit": 0,
+          "load": 30.6
+        },
+        {
+          "ms": 651,
+          "built": 4,
+          "reused": 417,
+          "rssMb": 222,
+          "exit": 0,
+          "load": 30.6
+        }
+      ]
+    },
+    "host/server": {
+      "ms": 247,
+      "built": null,
+      "rssMb": 722,
+      "runs": [
+        {
+          "child": true,
+          "ms": 261,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 25.8,
+            "p95": 38.2
+          },
+          "rssMb": 739,
+          "exit": 0,
+          "load": 28.8
+        },
+        {
+          "child": true,
+          "ms": 247,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 23.8,
+            "p95": 35.5
+          },
+          "rssMb": 722,
+          "exit": 0,
+          "load": 26.5
+        },
+        {
+          "child": true,
+          "ms": 245,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 24.7,
+            "p95": 35
+          },
+          "rssMb": 721,
+          "exit": 0,
+          "load": 25.4
+        }
+      ],
+      "keystroke": {
+        "p50": 24.7,
+        "p95": 35.5
+      }
+    },
+    "base/cold": {
+      "ms": 29047,
+      "built": 583,
+      "rssMb": 3269,
+      "runs": [
+        {
+          "ms": 32715,
+          "built": 583,
+          "reused": 3233,
+          "rssMb": 3269,
+          "exit": 0,
+          "load": 14.5
+        },
+        {
+          "ms": 27674,
+          "built": 580,
+          "reused": 3236,
+          "rssMb": 3211,
+          "exit": 0,
+          "load": 14
+        },
+        {
+          "ms": 29047,
+          "built": 582,
+          "reused": 3234,
+          "rssMb": 3321,
+          "exit": 0,
+          "load": 15.1
+        }
+      ]
+    },
+    "base/noop-fresh": {
+      "ms": 11754,
+      "built": 0,
+      "rssMb": 1129,
+      "runs": [
+        {
+          "ms": 13022,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1129,
+          "exit": 0,
+          "load": 13.5
+        },
+        {
+          "ms": 11754,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1150,
+          "exit": 0,
+          "load": 12.5
+        },
+        {
+          "ms": 11328,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1124,
+          "exit": 0,
+          "load": 12.2
+        }
+      ]
+    },
+    "base/noop-session": {
+      "ms": 939,
+      "built": 0,
+      "rssMb": 1192,
+      "runs": [
+        {
+          "child": true,
+          "ms": 939,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1221,
+          "exit": 0,
+          "load": 11.6
+        },
+        {
+          "child": true,
+          "ms": 886,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1119,
+          "exit": 0,
+          "load": 11.3
+        },
+        {
+          "child": true,
+          "ms": 1058,
+          "built": 0,
+          "reused": 3779,
+          "rssMb": 1192,
+          "exit": 0,
+          "load": 10.9
+        }
+      ]
+    },
+    "base/body-fresh": {
+      "ms": 15042,
+      "built": 1,
+      "rssMb": 1120,
+      "runs": [
+        {
+          "ms": 13138,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1120,
+          "exit": 0,
+          "load": 12
+        },
+        {
+          "ms": 15776,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1128,
+          "exit": 0,
+          "load": 12.3
+        },
+        {
+          "ms": 15042,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1114,
+          "exit": 0,
+          "load": 12.1
+        }
+      ]
+    },
+    "base/body-session": {
+      "ms": 1629,
+      "built": 1,
+      "rssMb": 1119,
+      "runs": [
+        {
+          "child": true,
+          "ms": 1629,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1119,
+          "exit": 0,
+          "load": 12.8
+        },
+        {
+          "child": true,
+          "ms": 1669,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1040,
+          "exit": 0,
+          "load": 13.4
+        },
+        {
+          "child": true,
+          "ms": 1236,
+          "built": 1,
+          "reused": 3778,
+          "rssMb": 1141,
+          "exit": 0,
+          "load": 13.5
+        }
+      ]
+    },
+    "base/pure-fresh": {
+      "ms": 16887,
+      "built": 4,
+      "rssMb": 1173,
+      "runs": [
+        {
+          "ms": 15465,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1173,
+          "exit": 0,
+          "load": 13.4
+        },
+        {
+          "ms": 16887,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1145,
+          "exit": 0,
+          "load": 12.8
+        },
+        {
+          "ms": 18649,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1295,
+          "exit": 0,
+          "load": 14.2
+        }
+      ]
+    },
+    "base/shape-fresh": {
+      "ms": 15110,
+      "built": 4,
+      "rssMb": 1138,
+      "runs": [
+        {
+          "ms": 16054,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1138,
+          "exit": 0,
+          "load": 14.5
+        },
+        {
+          "ms": 15110,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1133,
+          "exit": 0,
+          "load": 14.1
+        },
+        {
+          "ms": 13829,
+          "built": 4,
+          "reused": 3775,
+          "rssMb": 1183,
+          "exit": 0,
+          "load": 12.9
+        }
+      ]
+    },
+    "base/server": {
+      "ms": 786,
+      "built": null,
+      "rssMb": 740,
+      "runs": [
+        {
+          "child": true,
+          "ms": 906,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 28.8,
+            "p95": 41.3
+          },
+          "rssMb": 740,
+          "exit": 0,
+          "load": 12.3
+        },
+        {
+          "child": true,
+          "ms": 769,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 29.8,
+            "p95": 40.9
+          },
+          "rssMb": 738,
+          "exit": 0,
+          "load": 11.7
+        },
+        {
+          "child": true,
+          "ms": 786,
+          "built": null,
+          "reused": null,
+          "keystroke": {
+            "p50": 28.7,
+            "p95": 42.1
+          },
+          "rssMb": 755,
+          "exit": 0,
+          "load": 11.4
+        }
+      ],
+      "keystroke": {
+        "p50": 28.8,
+        "p95": 41.3
+      }
+    }
+  }
+}

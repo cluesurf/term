@@ -45,9 +45,9 @@ test <resolve joins a relative path to its base>
   want hold
     call is-equal
       call resolve-path
-        text </home/user>
+        text </srv/user>
         text <../docs/./x>
-      text </home/docs/x>
+      text </srv/docs/x>
 
 test <resolve keeps an absolute path>
   want hold

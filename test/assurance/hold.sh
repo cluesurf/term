@@ -3,9 +3,9 @@
 # A twin that holds is a law not yet enforced. Prints one line per package, exits 1 when any verdict is not the one
 # expected. EXPECTED_HOLD lists the twins known to hold today, each with the item that will make it refuse.
 #
-# usage: sh /Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/hold.sh
-line=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/host/line.js
-here=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance
+# usage: sh test/assurance/hold.sh   (from the Term root, or by its path from anywhere: the root is found from this file)
+here=$(cd "$(dirname "$0")" && pwd)
+line="$(cd "$here/../.." && pwd)/host/line.js"
 # every directory under twin/ is a twin, one law broken in each. Law 7, safe text: twin/raw-text (the refusal page writes
 # its text unescaped), refused at `safe-text-of-refusal` and `safe-text` (2026-10-21)
 # none pending: no-forged-permit (check/hide.ts) and permit-reused (check/sole.ts) are refused since 2026-10-21

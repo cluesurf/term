@@ -95,20 +95,19 @@ type Compiler = {
 }
 // THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time, since this
 // compiles with whatever compiler is half edited in the working tree. Under make:line the token it passes down says
-// the lock is ours already. Loaded by its path from this file: <repo>/deck/term/deck/term/task/ is five levels below
-// <repo>, whose task/term/line-lock.ts it is. A missing lock module is an ERROR, never a skip: with one `../` too few
-// the path named <repo>/deck/task/term/line-lock.ts, which never exists, so from 2026-10-23 to item
-// term-self-host-001-0475 every port-build ran with no lock at all and nothing said so. test/call/port-build-skip.ts
-// clones the tree into the same layout and copies the lock module beside it, so its runs lock their own clone
-const LINE_LOCK = new URL('../../../../../task/term/line-lock.ts', import.meta.url)
+// the lock is ours already. Loaded by its path from this file: task/term/line-lock.ts, beside this file's folder in the
+// Term repository. A missing lock module is an ERROR, never a skip: with one `../` too few the path once named a file
+// that never exists, so from 2026-10-23 to item term-self-host-001-0475 every port-build ran with no lock at all and
+// nothing said so. test/call/port-build-skip.ts copies the lock module into its clone, so its runs lock their own clone
+const LINE_LOCK = new URL('./term/line-lock.ts', import.meta.url)
 
 // the lock held for this process, which `--stage-check` frees before its step 2. Throws where the lock module is absent
 async function holdLineLock(by: string): Promise<{ free: () => void } | undefined> {
   if (!untraced(() => existsSync(LINE_LOCK))) {
     throw new Error(
       `port-build: the line lock module is not at ${fileURLToPath(LINE_LOCK)}, so this run cannot take the lock and ` +
-        'refuses to compile (note/project/term/decision/002-make-line-lock.md). Run port-build from its place in the ' +
-        'repository, five levels below the task/term/ that holds line-lock.ts',
+        'refuses to compile (decision 002, the make:line lock). Run port-build from its place in the Term ' +
+        'repository, beside the task/term/ that holds line-lock.ts',
     )
   }
 

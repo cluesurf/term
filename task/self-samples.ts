@@ -3,7 +3,7 @@
 // install of the older into a scratch home, and each command run as a person would, printed with its command line.
 //
 // Needs the payload `pnpm run release --dry` writes. Writes nothing outside the system temp directory.
-// Run: npx tsx task/self-samples.ts
+// Run: npx tsx task/self-samples.ts --site <the term.surf public folder holding `load`>
 import { execFile, execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,9 +15,12 @@ import { ensurePublisher } from '../deck/deck/code/oci/keys'
 import { currentPlatform, publishRelease } from '../deck/deck/code/oci/release'
 import { httpTransport } from '../deck/deck/code/oci/transport'
 import { startOciServer } from '../deck/deck/test/oci-server'
+import { siteDir } from './site-dir'
 
 const TERM = join(import.meta.dirname, '..')
-const LOADER = join(TERM, '..', '..', '..', '..', 'mesh', 'site', 'term.surf', 'home', 'public', 'load')
+// the loader script `curl -fsSL https://term.surf/load | sh` runs, from the term.surf public folder (task/site-dir.ts:
+// `--site`, else TERM_SITE_DIR, else host/site/)
+const LOADER = join(siteDir(TERM), 'load')
 const VERSION = (JSON.parse(readFileSync(join(TERM, 'package.json'), 'utf8')) as { version: string }).version
 const NEXT = VERSION.replace(/\.(\d+)$/, (_, patch: string) => `.${Number(patch) + 2}`)
 const PLATFORM = currentPlatform()!

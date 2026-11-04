@@ -8,7 +8,8 @@
 //   the stack (t held itself) and Rust, Swift and Kotlin did not build (the arm's local was written, or a val).
 // - a record stored in a `make` and written after keeps the holder's copy (1): before, TypeScript and Kotlin answered 5.
 // - `save r/u, make(node, bind(r, r))`, a record holding a union that holds the record, ends (1).
-// - a union parameter written in an arm (node.tree `with-type`'s shape) leaves the caller's value as it was.
+// - a union parameter written in an arm (node.tree `with-type`'s shape) leaves the caller's value as it was, and so does
+//   a union let that aliases another: on Rust, Swift and Kotlin now, on TypeScript from item 0907 (a gap until then).
 // - the plain record legs that already held: an aliasing let and a written parameter.
 // Run: npx tsx test/compile/value-store-native.ts   (from deck/term/deck/term; SLOT_ONLY=typescript|rust|swift|kotlin,
 // SLOT_CASE=<name>)
@@ -40,6 +41,11 @@ form pair
 form holder
   link p, like pair
 `
+
+// a union reaches TypeScript as a value only after 016's projections, the compiler's own union sites and the lowerings
+// (decision 118 step 5): until then a written union parameter and an aliasing union let alias there, as before 0888
+const UNION_ON_TYPESCRIPT =
+  'a union is copied at a written parameter or an aliasing let on TypeScript from item term-self-host-001-0907 (decision 118)'
 
 // `gap` names a backend a case cannot pass on yet, and why: never the store this file holds
 const CASES: { name: string; expected: string; body: string; gap?: Partial<Record<Backend, string>> }[] = [
@@ -141,6 +147,7 @@ task run
     // a union parameter written in an arm, as node.tree with-type writes its expression: the caller's value stays
     name: 'union-param-written',
     expected: '1 9',
+    gap: { typescript: UNION_ON_TYPESCRIPT },
     body: `form shape
   case dot
     link size, like number
@@ -170,6 +177,38 @@ task run
   like text
   save a, make(dot, bind(size, 1))
   save b, grow(a)
+  back <{size-of(a)} {size-of(b)}>
+`,
+  },
+  {
+    // a union let that aliases another, written in an arm: the first name's value stays
+    name: 'union-alias-let',
+    expected: '1 9',
+    gap: { typescript: UNION_ON_TYPESCRIPT },
+    body: `form shape
+  case dot
+    link size, like number
+  case box
+    link size, like number
+
+task size-of
+  take s, like shape
+  like number
+  sift s
+    case dot
+      back size
+    case box
+      back size
+
+task run
+  like text
+  save a, make(dot, bind(size, 1))
+  save b, a
+  sift b
+    case dot
+      save b/size, 9
+    case box
+      save b/size, 8
   back <{size-of(a)} {size-of(b)}>
 `,
   },

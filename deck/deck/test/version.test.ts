@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { buildVersion } from '../code/object/version'
@@ -23,13 +23,30 @@ function make(dir: string): void {
   chmodSync(path.join(dir, 'task/run.sh'), 0o755)
 }
 
+// every temporary folder the file makes, removed once its tests end, so a plain `npx vitest run` leaves none in the
+// machine's own temporary folder (release 2.9.0)
+const made: string[] = []
+const temp = (prefix: string): string => {
+  const at = mkdtempSync(path.join(tmpdir(), prefix))
+
+  made.push(at)
+
+  return at
+}
+
 beforeAll(() => {
-  root = mkdtempSync(path.join(tmpdir(), 'version-test-'))
+  root = temp('version-test-')
   mkdirSync(path.join(root, 'task'), { recursive: true })
   make(root)
   store = localObjectStore({
-    root: mkdtempSync(path.join(tmpdir(), 'version-objects-')),
+    root: temp('version-objects-'),
   })
+})
+
+afterAll(() => {
+  for (const at of made.splice(0)) {
+    rmSync(at, { recursive: true, force: true })
+  }
 })
 
 describe('buildVersion', () => {
@@ -111,7 +128,7 @@ describe('buildVersion', () => {
   // comments-only one (the parser's `empty .tree input`), and a lean `role.tree`, whose `mark lean` parses as a
   // record identity and is then refused by the encoder for not being 32 characters.
   it('ships a .tree the record grammar cannot hold as bytes, and keeps the bytes', async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'version-bytes-'))
+    const dir = temp('version-bytes-')
     const shapes: Record<string, string> = {
       'blank.tree': '',
       'comments.tree': '# a placeholder, bound later\n# and nothing else\n',

@@ -35,7 +35,6 @@ export type Backend = 'node' | 'rust' | 'swift' | 'kotlin'
 // this file is at <Term>/test/compile/. Read from the file's own URL, as native-flags.ts does: `import.meta.dirname`
 // is undefined when a script outside the package (task/term/pattern-bench.ts) loads this as CommonJS
 const TERM = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const ROOT = join(TERM, '..', '..', '..', '..')
 const BASE = join(TERM, 'deck', 'base')
 const PREFIX = /^@term\/base\//
 
@@ -50,7 +49,7 @@ export const readRuntime = (path: string): string | undefined => {
 }
 
 const CARGO_TOML = readFileSync(
-  join(ROOT, 'task/term/native-gate.ts'),
+  join(TERM, 'task/term/native-gate.ts'),
   'utf8',
 )
   .match(/const CARGO_TOML = `([\s\S]*?)`/)![1]!

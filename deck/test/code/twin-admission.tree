@@ -1052,7 +1052,9 @@ task compare-in-child
   admission-fs/write-file-sync(runner, <import \{ readFileSync \} from 'node:fs'\nimport \{ compareModule \} from {admission-json(own)}\nconst result = await compareModule(JSON.parse(readFileSync(process.argv[2]!, 'utf8')))\nprocess.stdout.write(JSON.stringify(result))\n>)
   admission-fs/write-file-sync(request-file, admission-json(request))
 
-  host ran, admission-spawn(runner, request-file, seconds, admission-path/join(own, <../../../../../..>))
+  # the child's cwd is the Term root: six steps up from this module's emitted port file (deck/test/host/port/code/), one
+  # a segment, so the walk stays inside the root
+  host ran, admission-spawn(runner, request-file, seconds, admission-path/join(own, <..>, <..>, <..>, <..>, <..>, <..>))
   back admission-child-answer(ran)
 
 # build the module with its twins exposed, and write its TypeScript where a child process can load it

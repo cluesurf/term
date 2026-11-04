@@ -103,11 +103,11 @@ export const SWIFT_MODULE = 'TermApp'
 const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
-// The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
-// into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
+// The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by the stdlib's
+// code/native/toolchain/swift.sh into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
 // modules builds without them. The path is the script's own convention, so the two cannot disagree.
 //
-// Present, they are answered by that script (`flags`) whenever it is beside the stdlib, which trusts the cache only
+// Present, they are answered by that script (`flags`) whenever the stdlib carries it, which trusts the cache only
 // whole (every module map and folder the flags name, and a stamp written last) and rebuilds it otherwise: a purge of
 // TMPDIR left a flags file naming 111 module maps that were gone, and 7 swift suites failed (term-cli-in-term-0217).
 // A script that fails answers no flags
@@ -124,11 +124,7 @@ export function swiftFlags(): string[] {
 
   const stdlib = stdlibBase()
   const script = stdlib
-    ? path.join(
-        stdlib,
-        '../../../../../..',
-        'task/term/native/swift.sh',
-      )
+    ? path.join(stdlib, 'code/native/toolchain/swift.sh')
     : ''
 
   let text = ''

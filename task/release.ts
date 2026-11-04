@@ -9,8 +9,12 @@
 //   pnpm term:release --ping     build nothing: tell the index about every version already released, which is how the
 //                                releases from before the index read them get listed
 //
-// Only the push needs a secret, so only the push runs under zone (`--push <version>`, a child of this run), and zone's
-// own output nests under this run instead of opening the terminal before it (section 15)
+// SECRETS COME FROM THE ENVIRONMENT. The push (`--push <version>`, a child of this run) reads GHCR_TOKEN or
+// TERM_OCI_TOKEN, and the Windows step the EC2 key and TERM_MACHINE_MODULE, all from the environment this run was given.
+// This repository holds no secret store and spawns none: the publisher's alias runs the release inside its own.
+//
+// Every staged payload passes the payload gate (task/term/self-contained.ts --payload) before it is packed, and a leak
+// refuses the release with nothing published.
 //
 // THE PAYLOAD IS THE NODE BUILD, for now. 09's target is a native binary per platform, which the self-hosting port
 // has not produced yet, so each platform's tarball is the console's run entry
@@ -47,7 +51,7 @@
 // linux-x64 tarball and fail only on that machine.
 
 import { createHash } from 'node:crypto'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import path from 'node:path'
@@ -348,15 +352,16 @@ function shipped(from: string): (source: string) => boolean {
 }
 
 // THE WINDOWS STEP (D8): windows-x64 staged here, all but its native part, then handed to task/release-windows.ts
-// under zone for the EC2 key. It rents a Windows machine, builds bin\term.exe there with Windows' own Go, packs the
+// with this run's environment, which holds the EC2 key. It rents a Windows machine, builds bin\term.exe there with Windows' own Go, packs the
 // stage here with packPayload, smoke-runs the tarball there, and destroys the machine. The child says each step as a
 // JSON line on stdout, drawn here as the release's own items. `--windows-cross` packs windows-x64 here instead, cross
 // built and not run anywhere, for a dry run with no EC2 key or network
 async function windowsStep(input: { stage: string; file: string }): Promise<Built> {
-  const root = path.resolve(TERM, '../../../..')
-  output.report({ glyph: 'info', verb: 'pack', subject: 'windows-x64 on an EC2 Windows machine', facts: ['zone cluesurf/bench'] })
-  const child = spawn(path.join(root, 'deck/zone/bin/zone'), ['load', 'cluesurf/bench', '--', 'pnpm', '-s', '--dir', TERM, 'exec', 'tsx', 'task/release-windows.ts', '--stage', input.stage, '--out', input.file], {
-    cwd: root,
+  output.report({ glyph: 'info', verb: 'pack', subject: 'windows-x64 on an EC2 Windows machine' })
+  // the machine and its key come from this run's environment (TERM_MACHINE_MODULE, and the EC2 key the publisher's
+  // alias puts there): a child of this release, never a secret store of its own
+  const child = spawn('pnpm', ['-s', '--dir', TERM, 'exec', 'tsx', 'task/release-windows.ts', '--stage', input.stage, '--out', input.file], {
+    cwd: TERM,
     stdio: ['ignore', 'pipe', 'inherit'],
   })
   let built: Built | undefined
@@ -388,10 +393,35 @@ async function windowsStep(input: { stage: string; file: string }): Promise<Buil
   const status = await new Promise<number | null>(resolve => child.on('close', code => resolve(code)))
 
   if (status !== 0 || !built) {
-    throw Object.assign(new Error(failed || `the Windows step under zone exited ${status ?? 'on a signal'}`), { expected: true })
+    throw Object.assign(new Error(failed || `the Windows step exited ${status ?? 'on a signal'}`), { expected: true })
   }
 
   return built
+}
+
+// THE PAYLOAD GATE (decision term/004): no staged payload may carry an absolute path of the machine that built it, a
+// path that climbs out of it, or a name of the repository it was built in, which a stranger can neither open nor
+// should see. The gate reads the staged folder and exits 0 when it is clean, 1 with one line per leak and a summary
+// line, 2 on a usage error. Anything but 0 refuses the release, and so does a gate that is not there
+const GATE = path.join(TERM, 'task', 'term', 'self-contained.ts')
+
+// `name` keys the payload's entry in the gate's baseline: `oci` for the per-platform release images, `npm` for the npm
+// package
+function payloadLeaks(stage: string, name: 'oci' | 'npm'): { ok: boolean; lines: string[] } {
+  if (!existsSync(GATE)) {
+    return { ok: false, lines: [`the payload gate ${path.relative(TERM, GATE)} is not there, so nothing can be released`] }
+  }
+
+  const ran = spawnSync(process.execPath, ['--experimental-strip-types', GATE, '--payload', stage, '--name', name], {
+    cwd: TERM,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+
+  return {
+    ok: ran.status === 0,
+    lines: `${ran.stdout ?? ''}${ran.stderr ?? ''}`.split('\n').filter(line => line.trim() !== ''),
+  }
 }
 
 // the stdlib as the npm package ships it: no native build output, no build info, no cache
@@ -484,7 +514,7 @@ async function main(): Promise<void> {
   })
 
   if (!port.ok || port.failed > 0) {
-    output.closeRun({ verdict: 'Nothing released', next: 'pnpm --dir deck/term/deck/term run make:port' })
+    output.closeRun({ verdict: 'Nothing released', next: 'pnpm run make:port' })
 
     return
   }
@@ -539,6 +569,22 @@ async function main(): Promise<void> {
       dir: path.join(root, 'node_modules', platform.esbuild),
       cache,
     })
+
+    // the payload gate, before anything is packed or sent: a leak refuses the release here, with nothing published
+    const gate = payloadLeaks(stage, 'oci')
+
+    if (!gate.ok) {
+      output.report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'check',
+        subject: `the ${platform.name} payload names a path of this machine or of the repository it was built in`,
+        quote: gate.lines.slice(0, 40),
+      })
+      output.closeRun({ verdict: 'Nothing released', next: `node --experimental-strip-types task/term/self-contained.ts --payload ${stage} --name oci` })
+
+      return
+    }
 
     const file = path.join(out, `term-${platform.name}.tar.gz`)
     // the file list, the secrets check and the tar (task/release-pack.ts), here or, for windows-x64, by the Windows
@@ -657,19 +703,18 @@ type Pushed =
   | { form: 'index'; at: string; index: string }
   | { form: 'failed'; message: string }
 
-// P2: the push, run under zone for its one secret. The release stays the one run on the terminal, and zone, a Term
-// program booted by `term boot`, prints its own run nested under it (section 15) rather than at the top level before it,
-// which is what `zone load cluesurf -- pnpm run release` did. The child reports each step on stdout, and the release
-// draws them as its own items
+// P2: the push, a child of this run that reads its one secret from the environment. The release stays the one run on
+// the terminal: the child reports each step on stdout, and the release draws them as its own items
 async function publish(input: { version: string; built: Built[]; first: boolean }): Promise<void> {
   const route = releaseRoute({ package: PACKAGE })
-  const root = path.resolve(TERM, '../../../..')
-  // the push's own item, before the child starts: whatever the child prints (zone's boot, a build that failed) nests
-  // under the item last printed, and without this that was the last platform's `✓ pack`, which read as the pack
-  // having failed while it showed green (2026-10-05)
-  output.report({ glyph: 'info', verb: 'push', subject: `${PACKAGE}@${input.version}`, facts: ['zone cluesurf'] })
-  const child = spawn(path.join(root, 'deck/zone/bin/zone'), ['load', 'cluesurf', '--', 'pnpm', '-s', '--dir', TERM, 'exec', 'tsx', 'task/release.ts', '--push', input.version], {
-    cwd: root,
+  // the push's own item, before the child starts: whatever the child prints (a build that failed) nests under the item
+  // last printed, and without this that was the last platform's `✓ pack`, which read as the pack having failed while it
+  // showed green (2026-10-05)
+  output.report({ glyph: 'info', verb: 'push', subject: `${PACKAGE}@${input.version}` })
+  // the registry credential (GHCR_TOKEN, TERM_OCI_TOKEN) comes from this run's environment, which the publisher's alias
+  // fills from its secret store: a child of this release, never a secret store of its own
+  const child = spawn('pnpm', ['-s', '--dir', TERM, 'exec', 'tsx', 'task/release.ts', '--push', input.version], {
+    cwd: TERM,
     stdio: ['ignore', 'pipe', 'inherit'],
   })
   let index = ''
@@ -703,7 +748,7 @@ async function publish(input: { version: string; built: Built[]; first: boolean 
 
   if (status !== 0 || !index) {
     output.report({ glyph: 'failed', verb: 'push', subject: `${PACKAGE}@${input.version}`, ...(status ? { exit: status } : {}) })
-    throw Object.assign(new Error(failed || `the push under zone exited ${status ?? 'on a signal'}`), { expected: true })
+    throw Object.assign(new Error(failed || `the push exited ${status ?? 'on a signal'}`), { expected: true })
   }
 
   // the package index lists `@term/code` like any package. Told here, by the release, which holds the index digest the
@@ -731,9 +776,9 @@ async function publish(input: { version: string; built: Built[]; first: boolean 
   })
 }
 
-// `--push <version>`, the child `publish` starts under zone: push every platform built under tmp/release/<version>
+// `--push <version>`, the child `publish` starts: push every platform built under tmp/release/<version>
 // to `@term/code`'s route, signed by this machine's publish key, which must be in (or will found) the scope's key set.
-// Credentials come from GHCR_TOKEN, which zone hands it. It opens no run: it says each step to the release as a line
+// Credentials come from GHCR_TOKEN (or TERM_OCI_TOKEN) in the environment. It opens no run: it says each step to the release as a line
 async function push(version: string): Promise<void> {
   const say = (said: Pushed): void => {
     process.stdout.write(`${JSON.stringify(said)}\n`)

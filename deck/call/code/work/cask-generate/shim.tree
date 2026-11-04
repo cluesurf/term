@@ -15,6 +15,8 @@ load ./kinds
   find bridge-watcher
   find record-forms
   find watch-command-of
+  find kind-name-of
+  find kind-form-of
 
 load ./seam
   find bridge-counter
@@ -116,7 +118,7 @@ task shim-text
       hold
         save param, signature/params/0
         save param-name, param/name
-        save released, param/kind/form
+        save released, kind-form-of(param/kind)
         lines/push <# let {param-name} go now: the cask drops it from its table, and a use after this is refused>
         lines/push <task {native}>
         lines/push <  mark async>
@@ -156,7 +158,7 @@ task shim-text
       lines/push <      read {json-local}>
 
     save result, signature/result
-    save result-kind, result/kind
+    save result-kind, kind-name-of(result)
     fork test, is-converted(result-kind)
       hold
         lines/push <  save reply>
@@ -215,7 +217,7 @@ task shim-text
     hold
       walk carried
         take site, name signature
-        fork test, and(not(is-release(signature)), is-equal(signature/result/kind, <text>))
+        fork test, and(not(is-release(signature)), is-equal(kind-name-of(signature/result), <text>))
           hold
             asked/push signature/native
       walk refused
@@ -236,6 +238,8 @@ task shim-text
     lines/push <  take handler>
     lines/push <    like task>
     lines/push <      take value, like text>
+    # the handler may raise, as on every other env's watcher, or cask/device refuses `raise-escapes-slot`
+    lines/push <      halt exception>
     lines/push <  like task>
     lines/push <  send back>
     lines/push <    call bridge/watch>

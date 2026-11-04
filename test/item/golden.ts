@@ -9,7 +9,6 @@
 //
 // Run: npx tsx test/item/golden.ts
 
-import { readFileSync } from 'node:fs'
 import { blankLine, lineText } from '@term/call/code/work/item/layout'
 import type { Line } from '@term/call/code/work/item/layout'
 import { drawCommand } from '@term/call/code/work/item/run'
@@ -22,12 +21,7 @@ import { writeJsonEvent } from '@term/call/code/work/item/json'
 import { CARDS, machineEvents } from './cards'
 import { OFFSET, STANDARD, room } from './build'
 import type { Card, Expected, Mark, Patch } from './build'
-import {
-  MOCKUP_DIFFERENCES,
-  MOCKUP_FIXTURE,
-  MOCKUP_PAGE,
-  readMockups,
-} from './mockup'
+import { loadDifferences, loadMockups } from './mockup'
 import type { Mockup } from './mockup'
 
 let pass = 0
@@ -45,15 +39,11 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 // ---- the fixture is the page ----
 
-const mockups = readMockups(readFileSync(MOCKUP_PAGE, 'utf8'))
-const fixture = JSON.parse(
-  readFileSync(MOCKUP_FIXTURE, 'utf8'),
-) as Mockup[]
+// The page and its differences note are written outside this repository, so the snapshots test/item/mockups.json and
+// mockup-differences.json stand for them here, and the check that they are what the notes extract to now
+// (`test/item/mockup.ts --check`) runs where the notes are
+const mockups = loadMockups()
 
-ok(
-  'test/item/mockups.json is what the mockup page extracts to',
-  JSON.stringify(mockups) === JSON.stringify(fixture),
-)
 ok(
   'every card on the page has a golden test, and in page order',
   mockups.length === CARDS.length &&
@@ -61,13 +51,7 @@ ok(
 )
 
 // every difference from the mockup is written down, and every one written down is still applied
-const written = new Set(
-  [
-    ...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(
-      /^### (D\d+)$/gm,
-    ),
-  ].map(match => match[1]!),
-)
+const written = new Set(loadDifferences())
 // D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
 // D35 and D41 are the other way round: the cards are drawn with the mockups' clocks and gray verb (build.ts `STANDARD`)
 // D43 (a problem's code on its title) is on no card, and test/item/unit.ts holds it

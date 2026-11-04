@@ -10,7 +10,7 @@
 //                    one base APK with an R class per library, the program and the libraries dexed by d8, then aligned
 //                    and signed with the debug key, as the cask's APKs are
 //
-// The Compose libraries come from `task/term/native/kotlin.sh` (`compose-flags`, `compose-android-files`), which
+// The Compose libraries come from `deck/base/code/native/toolchain/kotlin.sh` (`compose-flags`, `compose-android-files`), which
 // resolves them with Gradle from deck/base/code/native/kotlin/compose/build.gradle.kts, fetching Gradle into the cache
 // when none is installed. Output goes under `host/<target>/`. The tests build through these same functions
 // (test/compile/shared/compose-build.ts, compose-android.ts).
@@ -89,16 +89,16 @@ function startTask(
   )
 }
 
-// the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
+// the toolchain script that resolves the Compose libraries, shipped in the stdlib's own tree
 function toolchainScript(): string {
   const stdlib = stdlibBase()
   const script = stdlib
-    ? join(stdlib, '../../../../../..', 'task/term/native/kotlin.sh')
+    ? join(stdlib, 'code/native/toolchain/kotlin.sh')
     : ''
 
   if (!script || !existsSync(script)) {
     throw new Error(
-      'the Compose toolchain script task/term/native/kotlin.sh was not found beside the stdlib',
+      'the Compose toolchain script code/native/toolchain/kotlin.sh was not found in the stdlib',
     )
   }
 
@@ -205,7 +205,7 @@ function refusedScope(
   return undefined
 }
 
-// where compiled Compose runtimes are kept between builds: the native toolchain's cache (task/term/native/common.sh)
+// where compiled Compose runtimes are kept between builds: the native toolchain's cache (deck/base/code/native/toolchain/common.sh)
 const RUNTIME_CACHE = join(
   process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'),
   'kotlin',

@@ -32,7 +32,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
@@ -70,12 +70,13 @@ const LEAVE = new Set([
 ])
 
 // the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`. The clone sits
-// five levels below its root, as the Term tree sits in the repository, and the root holds a copy of the line lock at
-// task/term/line-lock.ts: port-build loads the lock by that path and refuses to run without it (item
+// five levels below its root, and holds a copy of the line lock at task/term/line-lock.ts with the package.json beside it
+// that keeps that folder CommonJS: port-build loads the lock by that path and refuses to run without it (item
 // term-self-host-001-0475), so the clone's runs lock the clone, never the tree the other builds share
 const cloneRoot = realpathSync(tempDir('term-port-build-skip-'))
 const copy = join(cloneRoot, 'deck', 'term', 'deck', 'term')
-const LINE_LOCK = join(TERM, '..', '..', '..', '..', 'task', 'term', 'line-lock.ts')
+const LINE_LOCK = join(TERM, 'task', 'term', 'line-lock.ts')
+const LINE_LOCK_PACKAGE = join(TERM, 'task', 'term', 'package.json')
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {
@@ -113,13 +114,15 @@ function clone(): void {
     cpSync(join(TERM, file), join(copy, file))
   }
 
-  cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
+  cpSync(LINE_LOCK, join(copy, 'task', 'term', 'line-lock.ts'))
+  cpSync(LINE_LOCK_PACKAGE, join(copy, 'task', 'term', 'package.json'))
 
-  // the one path tsconfig.json writes relative to the package, outside it, made absolute for the clone
+  // a path tsconfig.json writes relative to the package and outside it (the @cluesurf/save mapping, item 0004 of
+  // term/self-contained), made absolute for the clone, however many levels it climbs
   const tsconfig = readFileSync(
     join(TERM, 'tsconfig.json'),
     'utf8',
-  ).replaceAll('"../../../../', `"${join(TERM, '../../../..')}/`)
+  ).replace(/"((?:\.\.\/)+)/g, (_whole, up: string) => `"${resolve(TERM, up)}/`)
 
   writeFileSync(join(copy, 'tsconfig.json'), tsconfig)
   symlinkSync(join(TERM, 'node_modules'), join(copy, 'node_modules'))

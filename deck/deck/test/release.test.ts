@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   mkdtempSync,
+  rmSync,
   mkdirSync,
   writeFileSync,
   readFileSync,
@@ -29,12 +30,29 @@ function seed(at: string): void {
   chmodSync(path.join(at, 'run.sh'), 0o755)
 }
 
+// every temporary folder a test makes, removed after it, so a plain `npx vitest run` leaves none in the machine's own
+// temporary folder (release 2.9.0)
+const made: string[] = []
+const temp = (prefix: string): string => {
+  const at = mkdtempSync(path.join(tmpdir(), prefix))
+
+  made.push(at)
+
+  return at
+}
+
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'release-src-'))
+  dir = temp('release-src-')
   seed(dir)
   store = localObjectStore({
-    root: mkdtempSync(path.join(tmpdir(), 'release-obj-')),
+    root: temp('release-obj-'),
   })
+})
+
+afterEach(() => {
+  for (const at of made.splice(0)) {
+    rmSync(at, { recursive: true, force: true })
+  }
 })
 
 describe('buildRelease', () => {
@@ -65,7 +83,7 @@ describe('buildRelease', () => {
   })
 
   it('a one-file edit costs a FLAT number of new objects', async () => {
-    const big = mkdtempSync(path.join(tmpdir(), 'release-big-'))
+    const big = temp('release-big-')
     mkdirSync(path.join(big, 'code'), { recursive: true })
 
     const counts: Array<number> = []
@@ -105,7 +123,7 @@ describe('buildRelease', () => {
 describe('restoreVersion', () => {
   it('round-trips a release back to disk', async () => {
     const release = await buildRelease({ dir, store, meta: META })
-    const dest = mkdtempSync(path.join(tmpdir(), 'release-out-'))
+    const dest = temp('release-out-')
 
     await restoreVersion({
       root: release.root,
@@ -121,7 +139,7 @@ describe('restoreVersion', () => {
 
   it('recreates an empty directory', async () => {
     const release = await buildRelease({ dir, store, meta: META })
-    const dest = mkdtempSync(path.join(tmpdir(), 'release-out-'))
+    const dest = temp('release-out-')
 
     await restoreVersion({
       root: release.root,
@@ -135,7 +153,7 @@ describe('restoreVersion', () => {
 
   it('restores the executable bit', async () => {
     const release = await buildRelease({ dir, store, meta: META })
-    const dest = mkdtempSync(path.join(tmpdir(), 'release-out-'))
+    const dest = temp('release-out-')
 
     await restoreVersion({
       root: release.root,

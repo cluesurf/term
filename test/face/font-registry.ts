@@ -28,12 +28,6 @@ import {
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
-import FONT from '../../../../../../mesh/deck/belt/code/base/font'
-import SCRIPT, {
-  SCRIPT_ALIAS,
-  scriptFontName,
-} from '../../../../../../mesh/deck/belt/code/base/script'
-import { resolveFontForScript } from '../../../../../../mesh/deck/face/code/tool/font/resolve'
 
 let pass = 0
 let fail = 0
@@ -54,58 +48,15 @@ const FONT_DIR = resolve(
 )
 const HOUSE = 'CrowMark'
 
-// every input, with what the web answers for it
+// every input, with what the web answers for it: every script belt sets, every alias, every family named outright,
+// a family and a script together, and the misses. The web's resolver and belt's tables are written outside this
+// repository, so their answers are held as test/fixture/font-probes.json, and the check that holds the snapshot equal
+// to them (and face's table.tree to belt's, the `term:font-table` report) runs where they are
 type Probe = { family: string; script: string; web: string }
 
-const probes: Probe[] = []
-const web = ({
-  family,
-  script,
-}: {
-  family?: string
-  script?: string
-}): string =>
-  resolveFontForScript({
-    font: family,
-    script,
-    scriptConfig: SCRIPT,
-    fontConfig: FONT,
-  })?.family ?? HOUSE
-
-for (const script of Object.keys(SCRIPT)) {
-  probes.push({ family: '', script, web: web({ script }) })
-}
-
-for (const alias of Object.keys(SCRIPT_ALIAS)) {
-  const family = scriptFontName(alias)
-  probes.push({
-    family: '',
-    script: alias,
-    web: (family && FONT[family]?.family) || HOUSE,
-  })
-}
-
-for (const family of Object.keys(FONT)) {
-  probes.push({ family, script: '', web: web({ family }) })
-}
-
-// a family named outright wins over the script, and the misses fall through in order
-probes.push({
-  family: 'Noto Sans Mono',
-  script: 'tibetan',
-  web: web({ family: 'Noto Sans Mono', script: 'tibetan' }),
-})
-probes.push({
-  family: 'No Such Face',
-  script: 'tibetan',
-  web: web({ family: 'No Such Face', script: 'tibetan' }),
-})
-probes.push({
-  family: 'No Such Face',
-  script: 'no-such-script',
-  web: web({ family: 'No Such Face', script: 'no-such-script' }),
-})
-probes.push({ family: '', script: '', web: web({}) })
+const probes = JSON.parse(
+  readFileSync(join(ROOT, 'test/fixture/font-probes.json'), 'utf8'),
+) as Probe[]
 
 // the program: an entry that resolves every probe, beside the contract's three files. A relative load may not leave
 // its package (projectResolver confines it), and the temporary directory is in no package, so the three are handed to
@@ -407,21 +358,6 @@ const legs = (process.env.FONT_LEGS || 'typescript,swift,kotlin').split(
 )
 
 if (legs.includes('typescript')) {
-  // face's table is belt's table as of now: the generator in report mode exits 1 on drift. Only for face's own copy,
-  // since a FONT_DIR elsewhere is a scratch copy the generator does not write
-  if (!process.env.FONT_DIR) {
-    const drift = spawnSync(
-      'npx',
-      ['tsx', join(ROOT, '../../../../task/term/font-table.ts')],
-      { encoding: 'utf8' },
-    )
-    ok(
-      "the table is belt's table (pnpm term:font-table reports it in step)",
-      drift.status === 0,
-      drift.stdout.trim().split('\n').pop() ?? '',
-    )
-  }
-
   runTypescript()
 }
 

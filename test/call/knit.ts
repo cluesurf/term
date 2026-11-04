@@ -58,8 +58,8 @@ import {
   applyStreamEvent,
   MessageRequestError,
   streamMessage,
-} from '../../../../../make/code/code/api-client'
-import type { StreamedMessage } from '../../../../../make/code/code/api-client'
+} from '@term/call/code/knit-stream'
+import type { StreamedMessage } from '@term/call/code/knit-stream'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 // each folder under tmp/knit-test is removed when the test ends (term-cli-in-term-0177)
@@ -815,9 +815,9 @@ const system = systemOf(root, true)
 ok(
   'the system prompt carries the syntax, the proof guide, the traps and the example',
   [
-    'deck/term/CLAUDE',
+    'AGENTS.md',
     'law-and-proof.md',
-    'traps.md',
+    'demo-traps.md',
     'EXAMPLE code/law.tree',
   ].every(part => system.includes(part.split('/').pop()!)),
 )
@@ -835,7 +835,7 @@ ok(
   TOOLS.every(tool => tool.input_schema.additionalProperties === false),
 )
 
-// ---- the request, and the raw-HTTP client it goes through (deck/make/code/code/api-client.ts) ----
+// ---- the request, and the raw-HTTP client it goes through (deck/call/code/knit-stream.ts) ----
 
 const { body, betas } = bodyOf({
   model: 'claude-opus-5-5',

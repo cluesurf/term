@@ -1211,6 +1211,28 @@ task lexicographically-descends
   like boolean
   mark private
 
+  save callers, make list
+  walk calls
+    take call
+    push(callers, param-names)
+  back descends-in-order(calls, callers, param-names/length, proves)
+
+# the same greedy order over the calls of a whole recursion group: `callers` holds, per call, the parameter names of
+# the task making it, and a position is read at one index in every member (term-foundations-0001). Each call carries
+# the value at position p from its caller's parameter p to its callee's parameter p, so a position `<` or `=` on every
+# remaining call and `<` on one orders the group's tuples as it orders one task's
+task descends-in-order
+  take calls, like list, like call-at
+  take callers, like list, like list, like text
+  take width, like number
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
   fork test, is-equal(calls/length, 0)
     hold
       back false
@@ -1227,21 +1249,21 @@ task lexicographically-descends
       save chosen, -1
       save p, 0
       walk test
-        hook test, is-below(p, param-names/length)
+        hook test, is-below(p, width)
         hook hold
           fork test, not(used/has(p))
             hold
               save no-unknown, true
               walk remaining
                 take ci
-                fork test, is-equal(classify(get(calls, ci), p, param-names, proves), <?>)
+                fork test, is-equal(classify(get(calls, ci), p, get(callers, ci), proves), <?>)
                   hold
                     save no-unknown, false
                     halt
               save some-strict, false
               walk remaining
                 take ci
-                fork test, is-equal(classify(get(calls, ci), p, param-names, proves), <\<>)
+                fork test, is-equal(classify(get(calls, ci), p, get(callers, ci), proves), <\<>)
                   hold
                     save some-strict, true
                     halt
@@ -1257,20 +1279,23 @@ task lexicographically-descends
       save kept, make list
       walk remaining
         take ci
-        fork test, is-unequal(classify(get(calls, ci), chosen, param-names, proves), <\<>)
+        fork test, is-unequal(classify(get(calls, ci), chosen, get(callers, ci), proves), <\<>)
           hold
             push(kept, ci)
       save remaining, kept
   back true
 
-# the verdict per task, in the order each name first appears: a function is terminating if it is non-recursive, or its
-# direct recursion strictly decreases some argument on every self-call, or its mutual-recursion group descends at one
-# fixed position on every call within it
+# the verdict per task, in the order each name first appears: a function is terminating if it is non-recursive, or it
+# recurses on itself alone and strictly decreases some argument on every self-call (one position, or an order of them),
+# or it sits in a cycle with other tasks and EVERY call of that group, its self-calls among them, descends at one fixed
+# position or in one order of positions (term-foundations-0001)
 form verdicts
   link names, like list, like text
   link ends, like hash, like text, like boolean
   # the calls each task's body makes, in the order made, for the warning's reason
   link self-calls, like hash, like text, like number
+  # the tasks not shown to end that sit in a cycle with other tasks, for the warning's reason
+  link grouped, like hash, like text, like boolean
 
 form program-calls
   mark shared
@@ -1279,6 +1304,10 @@ form program-calls
   link edges, like hash, like text, like list, like text
   link value-edges, like hash, like text, like list, like text
   link walks, like hash, like text, like walked
+  # a recursion group's verdict, kept under each member's name once judged, so a group is judged once
+  link group-ends, like hash, like text, like boolean
+  # each case of ONE field to that field's name, empty when a case of that name has more fields or another field
+  link unary, like hash, like text, like text
 
 task add-text
   take values, like list, like text
@@ -1423,6 +1452,8 @@ task termination-verdict
       bind edges, make hash
       bind value-edges, make hash
       bind walks, make hash
+      bind group-ends, make hash
+      bind unary, make hash
   save variant-fields, make hash
   save descends, make hash
   save form-names, make hash
@@ -1467,6 +1498,14 @@ task termination-verdict
                 miss
                   save descends/{key}, ok
           save variant-fields/{variant/name}, field-names
+          save only, <>
+          fork test, is-equal(field-names/length, 1)
+            hold
+              save only, get(field-names, 0)
+          fork test, and(known/unary/has(variant/name), is-unequal(known/unary/get(variant/name), only))
+            hold
+              save only, <>
+          save known/unary/{variant/name}, only
       miss
         save nothing, 0
   # each task's calls and the tasks it reads as a VALUE (`read f`, handed on or saved, not called by name). Such a task
@@ -1505,6 +1544,7 @@ task termination-verdict
     save known/edges/{name}, edges
   save ends, make hash
   save self-calls, make hash
+  save grouped, make hash
   walk known/order
     take name
     save one, known/functions/get(name)
@@ -1513,12 +1553,17 @@ task termination-verdict
     push(own, name)
     save self, calls-to(found, own)
     save self-calls/{name}, self/length
-    save ends/{name}, verdict-of(known, name, one, self, proves)
+    save ending, verdict-of(known, name, one, self, proves)
+    save ends/{name}, ending
+    fork test, not(ending)
+      hold
+        save grouped/{name}, is-above(scc-of(known, name)/length, 1)
   back
     make verdicts
       bind names, known/order
       bind ends, ends
       bind self-calls, self-calls
+      bind grouped, grouped
 
 task stub-ends
   take one, like statement
@@ -1574,6 +1619,19 @@ task verdict-of
       fork test, contains(group, target)
         hold
           back false
+  # A TASK IN A CYCLE WITH OTHERS is judged on the whole group's calls, never on its self-calls alone
+  # (term-foundations-0001, termination.md N-01). Two tasks whose self-calls each descend may still call each other
+  # with the same argument forever: `bad(0)` calls `helper(0)`, which calls `bad(0)`, a closed proof of `never`
+  fork test, is-above(group/length, 1)
+    hold
+      fork test, known/group-ends/has(name)
+        hold
+          back known/group-ends/get(name)
+      save judged, group-descends(known, group, proves)
+      walk group
+        take member
+        save known/group-ends/{member}, judged
+      back judged
   # DIRECT recursion: some single argument position strictly decreases on every SELF-call
   save param-names, steady-params(one)
   save positions, make hash
@@ -1607,28 +1665,55 @@ task verdict-of
       fork test, or(is-above(position-keys/length, 0), lexicographically-descends(self, param-names, proves))
         hold
           back true
-  save scc, scc-of(known, name)
   # direct recursion that does not descend: not verified
-  fork test, is-equal(scc/length, 1)
-    hold
-      back false
-  # MUTUAL recursion: there is a FIXED argument position p such that EVERY call within the group passes, at p, a strict
-  # structural subterm of the CALLER's position-p argument. Then the size at p strictly decreases on every step of the
-  # cycle, a well-founded measure. A position where one call GROWS is rejected, which rules out the size-constant loops
+  back false
+
+# MUTUAL recursion (term-foundations-0001). Every call made within the group, each member's self-calls among them, is
+# read at one argument position p in every member: the value at p moves from the caller's parameter p to the callee's
+# parameter p. The group ends when one FIXED position p strictly decreases on every call (the size at p falls on every
+# step of every cycle, a well-founded measure), or when an order of positions does (`descends-in-order`, the foetus
+# criterion over the group: Abel and Altenkirch 2002). A position where one call grows, or passes something unknown, is
+# rejected, which rules out the size-constant loops. Each call is judged with its caller's natural-number bounds, as a
+# self-call is. Weaker than size-change termination (Lee, Jones, Ben-Amram 2001): a cycle that descends only once
+# around, not on each call, is refused (termination.md N-07)
+task group-descends
+  take known, like program-calls
+  take group, like list, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
   save group-calls, make list
   save caller-params, make list
-  walk scc
+  save callers, make list
+  walk group
     take member
-    save member-params, steady-params(known/functions/get(member))
-    walk calls-to(known/walks/get(member), scc)
+    save member-one, known/functions/get(member)
+    save member-params, steady-params(member-one)
+    save member-bounds, natural-guards(member-one)
+    walk calls-to(known/walks/get(member), group)
       take call
-      push(group-calls, call)
+      save bounded
+        make call-at
+          bind callee, call/callee
+          bind args, call/args
+          bind frame, call/frame
+          bind guards, joined(member-bounds, call/guards)
+      push(group-calls, bounded)
       push(caller-params, member-params)
+      push(callers, member)
+  fork test, is-equal(group-calls/length, 0)
+    hold
+      back false
   save max-arity, 0
-  walk scc
+  walk group
     take member
     save arity, param-count(known/functions/get(member))
-    fork test, or(is-equal(max-arity, 0), is-above(arity, max-arity))
+    fork test, is-above(arity, max-arity)
       hold
         save max-arity, arity
   save p, 0
@@ -1649,11 +1734,286 @@ task verdict-of
           hold
             save every, false
             halt
-      fork test, and(is-above(group-calls/length, 0), every)
+      fork test, every
         hold
           back true
       save p, add(p, 1)
-  back false
+  fork test, descends-in-order(group-calls, caller-params, max-arity, proves)
+    hold
+      back true
+  back sizes-change-down(known, group-calls, caller-params, callers, max-arity, proves)
+
+# SIZE-CHANGE termination over a recursion group (Lee, Jones, Ben-Amram 2001, "The Size-Change Principle for Program
+# Termination"), asked when no fixed position and no order of positions descends on every call. Each call gets a
+# graph of arcs from its caller's parameter i to its callee's position j: strict when the argument at j is smaller than
+# parameter i (`strictly-decreases`), not strict when it is no larger (`size-relation`). The graphs are closed under
+# composition along the calls, and the group ends when every graph from a member to itself that composes with itself
+# to itself (an idempotent graph) has a strict arc from a parameter to the same parameter: then every infinite run of
+# calls would carry a value down a well-founded order forever. Accepts a cycle that descends once around rather than on
+# each call, as white-count and black-count of seed.tree's space/hyperbolic/splitting.tree do. A closure past
+# `size-change-limit` graphs is refused, never guessed
+task sizes-change-down
+  take known, like program-calls
+  take calls, like list, like call-at
+  take caller-params, like list, like list, like text
+  take callers, like list, like text
+  take width, like number
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
+  save all, make list
+  save seen, make hash
+  save work, make list
+  save k, 0
+  walk calls
+    take call
+    save params, get(caller-params, k)
+    save from, get(callers, k)
+    save k, add(k, 1)
+    save arcs, make hash
+    save i, 0
+    walk test
+      hook test, is-below(i, params/length)
+      hook hold
+        save j, 0
+        walk test
+          hook test, is-below(j, call/args/length)
+          hook hold
+            save label, size-relation(call, get(call/args, j), get(params, i), known/unary, proves)
+            save at-key, <{i}:{j}>
+            fork test, is-equal(label, <\<>)
+              hold
+                save arcs/{at-key}, true
+            fork test, is-equal(label, <=>)
+              hold
+                save arcs/{at-key}, false
+            save j, add(j, 1)
+        save i, add(i, 1)
+    save graph, size-change-of(from, call/callee, arcs, width)
+    fork test, not(seen/has(graph/key))
+      hold
+        save seen/{graph/key}, true
+        push(all, graph)
+        push(work, graph)
+  walk test
+    hook test, is-above(work/length, 0)
+    hook hold
+      fork test, is-above(all/length, size-change-limit())
+        hold
+          back false
+      save g, work/pop()
+      save found, make list
+      walk all
+        take h
+        fork test, is-equal(g/to, h/from)
+          hold
+            push(found, composed(g, h, width))
+        fork test, is-equal(h/to, g/from)
+          hold
+            push(found, composed(h, g, width))
+      walk found
+        take made
+        fork test, not(seen/has(made/key))
+          hold
+            save seen/{made/key}, true
+            push(all, made)
+            push(work, made)
+  walk all
+    take g
+    fork test, is-equal(g/from, g/to)
+      hold
+        save twice, composed(g, g, width)
+        fork test, is-equal(twice/key, g/key)
+          hold
+            save strict, false
+            save i, 0
+            walk test
+              hook test, is-below(i, width)
+              hook hold
+                save at-key, <{i}:{i}>
+                fork test, g/arcs/get-or-default(at-key, false)
+                  hold
+                    save strict, true
+                save i, add(i, 1)
+            fork test, not(strict)
+              hold
+                back false
+  back true
+
+# the most graphs a group's closure may hold before it is refused
+task size-change-limit
+  like number
+  mark private
+
+  back 4000
+
+# a size-change graph: arcs `<i>:<j>` from the parameter i of `from` to the position j of `to`, true when strict, and a
+# key naming it, the same for two graphs with the same arcs
+form size-change
+  link from, like text
+  link to, like text
+  link arcs, like hash, like text, like boolean
+  link key, like text
+
+task size-change-of
+  take from, like text
+  take to, like text
+  take arcs, like hash, like text, like boolean
+  take width, like number
+  like size-change
+  mark private
+
+  save key, <{from}\t{to}\t>
+  save i, 0
+  walk test
+    hook test, is-below(i, width)
+    hook hold
+      save j, 0
+      walk test
+        hook test, is-below(j, width)
+        hook hold
+          save at-key, <{i}:{j}>
+          fork test, arcs/has(at-key)
+            hold
+              fork test, arcs/get(at-key)
+                hold
+                  save key, <{key}{at-key}\<,>
+                miss
+                  save key, <{key}{at-key}=,>
+          save j, add(j, 1)
+      save i, add(i, 1)
+  back
+    make size-change
+      bind from, from
+      bind to, to
+      bind arcs, arcs
+      bind key, key
+
+# `first` then `second`, `first/to` being `second/from`: an arc i to k for each j with i to j in the first and j to k
+# in the second, strict when either is
+task composed
+  take first, like size-change
+  take second, like size-change
+  take width, like number
+  like size-change
+  mark private
+
+  save arcs, make hash
+  save i, 0
+  walk test
+    hook test, is-below(i, width)
+    hook hold
+      save j, 0
+      walk test
+        hook test, is-below(j, width)
+        hook hold
+          save first-key, <{i}:{j}>
+          fork test, first/arcs/has(first-key)
+            hold
+              save first-strict, first/arcs/get(first-key)
+              save k, 0
+              walk test
+                hook test, is-below(k, width)
+                hook hold
+                  save second-key, <{j}:{k}>
+                  fork test, second/arcs/has(second-key)
+                    hold
+                      save strict, or(first-strict, second/arcs/get(second-key))
+                      save at-key, <{i}:{k}>
+                      fork test, arcs/has(at-key)
+                        hold
+                          save strict, or(strict, arcs/get(at-key))
+                      save arcs/{at-key}, strict
+                  save k, add(k, 1)
+          save j, add(j, 1)
+      save i, add(i, 1)
+  back size-change-of(first/from, second/to, arcs, width)
+
+# how the argument at a callee's position stands to the caller's parameter `param`: `<` smaller, `=` no larger (the
+# parameter passed unchanged, or rebuilt: `rebuilds-within`), `?` unknown
+task size-relation
+  take call, like call-at
+  take arg, like expression
+  take param, like text
+  take unary, like hash, like text, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like text
+  mark private
+
+  fork test, strictly-decreases(arg, param, call/frame, call/guards, proves)
+    hold
+      back <\<>
+  sift arg
+    case variable
+      link arg-name
+      fork test, is-equal(arg-name, param)
+        hold
+          back <=>
+    case record
+      fork test, rebuilds-within(arg, param, call, unary, proves)
+        hold
+          back <=>
+    miss
+      save nothing, 0
+  back <?>
+
+# is the construction `arg` no larger than the parameter: a case of ONE field, that field a structural descent
+# (decisions 114 and 117), around a value STRUCTURALLY smaller than the parameter? Its rank is then at most the
+# parameter's, one constructor over a strict part of it: `make succ(m)` in the `succ` arm of a match on `n` binding `m`
+# is `n` rebuilt. A numeric descent inside (`make succ(n - 1)`) is no structural one, so it is not read
+task rebuilds-within
+  take arg, like expression
+  take param, like text
+  take call, like call-at
+  take unary, like hash, like text, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
+  sift arg
+    case record
+      save field-name, unary/get-or-default(name, <>)
+      fork test, is-equal(field-name, <>)
+        hold
+          back false
+      fork test, not(call/frame/descends/get-or-default(<c {name} {field-name}>, false))
+        hold
+          back false
+      save values, make list
+      walk fields
+        take field
+        fork test, is-unequal(field/name, field-name)
+          hold
+            back false
+        push(values, field/value)
+      walk positional
+        take one
+        push(values, one)
+      fork test, is-unequal(values/length, 1)
+        hold
+          back false
+      save inner, get(values, 0)
+      sift inner
+        case binary
+          back false
+        miss
+          save nothing, 0
+      back strictly-decreases(inner, param, call/frame, call/guards, proves)
+    miss
+      back false
 
 # the functions whose termination is verified (used to gate transparent definitions in the elaborator)
 task terminating-functions
@@ -1711,7 +2071,7 @@ task termination-warnings
       case none
         save nothing, 0
     save reason, <"{name}" calls itself without an argument that provably decreases>
-    fork test, is-equal(verdict/self-calls/get(name), 0)
+    fork test, or(is-equal(verdict/self-calls/get(name), 0), verdict/grouped/get-or-default(name, false))
       hold
         save reason, <"{name}" is part of a mutual-recursion cycle whose termination is not verified>
     save input

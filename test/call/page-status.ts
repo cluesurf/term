@@ -11,14 +11,10 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { borrowed } from '../borrow'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
-
-const HERE =
-  import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const MESH = join(HERE, '../../../../../../mesh')
 
 type Page = {
   on: (event: 'pageerror', handler: (error: Error) => void) => void
@@ -58,17 +54,11 @@ async function launchOwned(browser: Chromium): Promise<Launched> {
   }
 }
 
-// Playwright from mesh/, as the other browser suites take it, or the reason it is not there
+// Playwright as the other browser suites borrow it (test/borrow.ts), or the reason it is not there
 function chromium(): Chromium | string {
-  try {
-    return (
-      createRequire(join(MESH, 'package.json'))('@playwright/test') as {
-        chromium: Chromium
-      }
-    ).chromium
-  } catch (error) {
-    return `no @playwright/test under mesh/: ${String(error).slice(0, 120)}`
-  }
+  const playwright = borrowed<{ chromium: Chromium }>('@playwright/test')
+
+  return 'value' in playwright ? playwright.value.chromium : playwright.reason
 }
 
 let pass = 0

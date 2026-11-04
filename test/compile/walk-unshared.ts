@@ -10,7 +10,7 @@
 //   npx tsx test/compile/walk-unshared.ts      (from deck/term/deck/term)
 
 import { compile } from '@term/make/code/compile/compile'
-import * as sharedNodes from '../../../../../../task/term/shared-nodes'
+import * as sharedNodes from '../../task/term/shared-nodes'
 
 const census = ((sharedNodes as any).census ??
   (sharedNodes as any).default.census) as typeof sharedNodes.census

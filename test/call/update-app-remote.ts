@@ -25,9 +25,19 @@ import {
   stampRuntimeVersion,
 } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
-// as its default: the task/ scripts are CommonJS, whose exports Node finds only on `default`
-import remoteRust from '../../../../../../task/term/cask/rust-remote'
 import { tempDir } from '../temp'
+
+// cask/rust-remote.ts reaches the parent's machine module, so it stays in the parent: this test runs only where
+// TERM_PARENT_ROOT names the parent checkout, and loads it from there (as its default: the task/ scripts are CommonJS,
+// whose exports Node finds only on `default`)
+const PARENT = process.env.TERM_PARENT_ROOT
+
+if (!PARENT) {
+  console.log('skip needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/rust-remote.ts')
+  process.exit(0)
+}
+
+const remoteRust = (await import(join(PARENT, 'task/term/cask/rust-remote.ts'))).default
 
 type RemoteTarget = 'linux' | 'windows'
 

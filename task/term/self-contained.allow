@@ -1,0 +1,36 @@
+# Paths the self-contained gate (task/term/self-contained.ts) lets through: a test's fake root, a platform's own
+# folder named in a comment, the product's own home. One per line: the pattern, a tab, then the reason. A pattern
+# covers a path that is the pattern or goes on past it at a slash or a backslash. A path into the owner's own home
+# layout is never allowed, whatever this file says.
+/home/p	fake Linux home in test fixtures (cask scope, Documents and notes paths)
+/home/me	fake Linux home in test fixtures (language server roots, package store paths)
+/Users/me	fake macOS home in test fixtures (format-path)
+/Users/a	fake macOS home in test fixtures (self-manager, a source checkout)
+C:\Users\p	fake Windows profile in test fixtures (cask scope)
+C:\Users\a	fake Windows profile in test fixtures (self-manager, winget paths)
+D:/Users/p	fake Windows profile on a second drive in test fixtures (cask scope)
+C:/Users/Domenic	WPT URL test data (test/stdlib/url/urltestdata.json), a file URL from jsdom's own tests
+/etc/hosts	a system file used as a path outside any project in format-path tests
+/var/folders	the macOS temporary folder, named in comments about its two spellings
+/private/var	the macOS temporary folder's real path, named in comments about its two spellings
+~/.base/	the product's own home, where Term keeps installs, caches and the auth token
+/home/user	fake Linux home in a stdlib path test (edge-path.tree)
+~/.term	the product's home before it moved under ~/.base, in output mockups and older tool comments
+~/.seed	the product's home under its old name, Seed, in a publishing tool
+~/.ssh	the ssh folder, where a remote test machine's key and known hosts are
+~/.m2	the maven repository, named in the kotlin toolchain script
+~/shape	fake project folder in the terminal output fixtures and mockups
+~/other	fake path outside the project in format-path tests
+~/x	fake project folder in a knit output test
+~/Library	the macOS folder for an application's own files, named in comments
+~/.local/share	the XDG data folder on Linux, named in comments and the dev bootstrap
+~/.docker	the docker config folder, the registry credentials' last fallback
+~/.zshrc	a shell profile, in install instructions the CLI prints
+~/.zprofile	a shell profile, in install instructions the CLI prints
+~/.bashrc	a shell profile, in install instructions the CLI prints
+~/.bash_profile	a shell profile, in install instructions the CLI prints
+~/Documents	an example scope pattern in a comment
+~/work	an example folder in a comment about project names
+~/book	an example glob in a comment about the glob reader
+~/...	a placeholder for any path under the home folder, in a comment
+~/{rest}	the template that writes a path under the home folder (load-words.tree)

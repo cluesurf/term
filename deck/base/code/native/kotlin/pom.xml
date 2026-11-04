@@ -18,7 +18,7 @@
   no HTTP/2 support at all, so h2 on this target means Netty, which negotiates it by ALPN over TLS. That is why
   two engines are on this classpath: CIO answers network/server, Netty answers network/http2.
 
-  task/term/native/kotlin.sh resolves this into the classpath the native gate compiles against, and mirrors the
+  native/toolchain/kotlin.sh resolves this into the classpath the native gate compiles against, and mirrors the
   version list into build.gradle.kts so the two manifests cannot drift.
 
   kotlin.version must MATCH the installed kotlinc. A stdlib older than the compiler is missing the internals the

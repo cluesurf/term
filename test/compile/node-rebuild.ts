@@ -20,7 +20,7 @@ import {
   type NodeHandle,
 } from '@term/make/code/compile/node-children'
 import { programJson } from '@term/make/code/compile/node-json'
-import * as sharedNodes from '../../../../../../task/term/shared-nodes'
+import * as sharedNodes from '../../task/term/shared-nodes'
 
 type Node = Record<string, any>
 type Rebuild = (

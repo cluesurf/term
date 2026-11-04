@@ -69,6 +69,9 @@ load ./node
   find type
   find view-node
 
+load ./surface
+  find is-language-word
+
 # a trait method, and a trait declaring it, in the order the traits and their methods are declared (ir/dictionary.tree)
 form method-mask
   link method, like text
@@ -3219,6 +3222,12 @@ task bind-group
       back renamed-in(group, get(hits, 0))
   fork test, is-equal(hits/length, 0)
     hold
+      # a language word no import of this file reaches a real form of is the language's own (decision 110): never the
+      # last definer, or a `host x, text <a>` in a module that never named the form is typed as a DOM `Text`. The real
+      # form always takes a split name (rule 3), so the bare word left here is the primitive
+      fork test, is-language-word(group/name)
+        hold
+          back group/name
       back renamed-in(group, get(group/files, subtract(group/files/length, 1)))
   back renamed-in(group, get(hits, subtract(hits/length, 1)))
 

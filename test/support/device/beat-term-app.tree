@@ -15,6 +15,9 @@ load @term/base/text
 load @term/base/list
   find push
 
+load @term/base/environment
+  find variable
+
 load ./host-fields
   find host-field-text
 
@@ -35,11 +38,16 @@ form uikit-input
   link root, like text
   link team, like text
 
-# the app folder, deck/tool/tool/beat-term of the repository, four folders above the Term root a suite runs in
+# the app folder, which this repository does not hold: BEAT_TERM_ROOT names it (the parent repository's term:test
+# alias passes its deck/tool/tool/beat-term). The empty text when it is unset
 task beat-term-root
   like text
 
-  back beat-path/resolve(<../../../../deck/tool/tool/beat-term>)
+  save given, variable(<BEAT_TERM_ROOT>)
+  fork test, is-equal(given, <>)
+    hold
+      back <>
+  back beat-path/resolve(given)
 
 # xcodebuild's `error:` lines only, at most 30
 task xcode-errors
@@ -77,6 +85,9 @@ task build-beat-term-for-simulator
   like beat-term-built
 
   save root, beat-term-root()
+  fork test, is-equal(root, <>)
+    hold
+      back make(beat-term-built, bind(failed, <BEAT_TERM_ROOT names no beat-term app folder>))
   save identity, beat-uikit/uikit-identity(root)
   save name, host-field-text(identity, <name>)
   save identifier, host-field-text(identity, <identifier>)

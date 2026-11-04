@@ -230,6 +230,14 @@ form record-copies
   link params, like hash, like text, like hash, like number, like boolean
   link lets, like list, like let-copy
   link plain, like list, like text
+  # the plain forms with cases (decision 115 2a)
+  link unions, like list, like text
+  # a field write whose value holds its own root, which rebuilds the root (decision 115 2b), and per task the roots
+  link self-stores, like list, like statement
+  link self-roots, like hash, like text, like list, like text
+  # a variable stored into a field or a `make` and field-written after the store, copied there (decision 115 2c)
+  link store-copies, like list, like expression
+  link rebuilt, like list, like expression
 
 # the name and depth of a field write: `save t/a/b, v` is `t` at 2; a slot anywhere on the way is none
 task field-write-into
@@ -398,15 +406,198 @@ task aliases-into
     take child
     aliases-into(child, plain, written, lets)
 
+# ---- the stores (decision 115) ----
+
+# the variable a field write goes through, with no slot on its way: `t` of `save t/a/b, v`
+task field-root-of
+  take target, like expression
+  like maybe, like expression
+  mark private
+
+  save at, target
+  save depth, 0
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      sift at
+        case member
+          link root-target
+          link root-name
+          link root-index
+          fork test, or(has-index(root-index), is-digits(root-name))
+            hold
+              back make none
+          save depth, add(depth, 1)
+          save at, root-target
+        miss
+          save going, false
+  fork test, is-equal(depth, 0)
+    hold
+      back make none
+  sift at
+    case variable
+      back make(some, at)
+    miss
+      back make none
+
+# whether a value holds the variable `name` whole: the variable itself, or a field of a `make` at any depth
+task holds-root
+  take node, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      link held-name
+      back is-equal(held-name, name)
+    case record
+      link made-name
+      link made-fields
+      walk made-fields
+        take made-field
+        fork test, holds-root(made-field/value, name)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+form store-walk
+  mark shared
+  # the order a pre-order walk meets each node in
+  link at, like number
+  # each variable's last field write, and the variables written inside a loop or a closure
+  link last, like hash, like text, like number
+  link looped, like hash, like text, like boolean
+  link stored, like list, like expression
+  link stored-at, like list, like number
+  link stored-looped, like list, like boolean
+  # the root variable of each self store, for the `mark sole` refusal
+  link rebuilt, like list, like expression
+
+task is-loop-or-closure
+  take handle, like node-handle
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link loop-node
+      sift loop-node
+        case while
+          back true
+        case for-each
+          back true
+        miss
+          back false
+    case expression-handle
+      link closure-node
+      sift closure-node
+        case closure
+          back true
+        miss
+          back false
+    miss
+      back false
+
+task stored-variable
+  take node, like expression
+  take plain, like hash, like text, like boolean
+  take in-loop, like boolean
+  take sw, like store-walk
+  mark private
+
+  sift node
+    case variable
+      fork test, plain/has(form-name-of(expression-type(node)))
+        hold
+          push(sw/stored, node)
+          push(sw/stored-at, sw/at)
+          push(sw/stored-looped, in-loop)
+    miss
+      save nothing, 0
+
+task stores-into
+  take handle, like node-handle
+  take plain, like hash, like text, like boolean
+  # the forms a self store rebuilds: the plain ones, and on TypeScript the plain unions too (decision 118 step 1)
+  take self-plain, like hash, like text, like boolean
+  take in-loop, like boolean
+  take sw, like store-walk
+  take self-stores, like list, like statement
+  take roots, like list, like text
+  mark private
+
+  save sw/at, add(sw/at, 1)
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          save root-found, field-root-of(assign-target)
+          sift root-found
+            case some
+              link root
+              save root-name, variable-name-of(root)
+              save root-form, form-name-of(expression-type(root))
+              fork test, plain/has(root-form)
+                hold
+                  save sw/last/{root-name}, sw/at
+                  fork test, in-loop
+                    hold
+                      save sw/looped/{root-name}, true
+              fork test, and(self-plain/has(root-form), holds-root(assign-value, root-name))
+                hold
+                  push(self-stores, node)
+                  push(sw/rebuilt, root)
+                  fork test, not(has-text(roots, root-name))
+                    hold
+                      push(roots, root-name)
+              stored-variable(assign-value, plain, in-loop, sw)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case record
+          link made-name
+          link made-fields
+          walk made-fields
+            take made-field
+            stored-variable(made-field/value, plain, in-loop, sw)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save below, or(in-loop, is-loop-or-closure(handle))
+  walk node-children(handle, type-and-span())
+    take child
+    stores-into(child, plain, self-plain, below, sw, self-stores, roots)
+
 # D1 for RECORDS on the backends whose records are objects: where a copy must be made so a write through one name
 # cannot reach another. `context` is what a unit of the separate build imports
 task record-copies-of
   take program, like list, like statement
   take context, like list, like statement
+  # a form with cases is plain too (decision 115 2a). Kotlin leaves them out: a case's fields stay `val` there and every
+  # write to one rebuilds the case, so nothing aliases it
+  take with-unions, like boolean
+  # a self store on a union root rebuilds the root even where a union is not copied at a parameter or a let
+  # (TypeScript until item term-self-host-001-0907, decision 118 step 1)
+  take self-unions, like boolean
   like record-copies
 
   save plain, text-flags()
+  save self-plain, text-flags()
   save plain-order, make list
+  save union-order, make list
   save everything, make list
   walk context
     take one
@@ -423,12 +614,28 @@ task record-copies-of
         link record-indices
         link record-fields
         link record-variants
-        fork test, and(and(not(read(shared)), is-above(record-fields/length, 0)), is-equal(record-variants/length, 0))
+        link record-alias
+        link record-tag
+        link record-text
+        save is-union, is-above(record-variants/length, 0)
+        save holds, and(is-above(record-fields/length, 0), not(is-union))
+        fork test, and(with-unions, is-union)
+          hold
+            save holds, true
+        save valued, and(not(read(shared)), not(record-text))
+        fork test, and(valued, holds)
           hold
             fork test, not(plain/has(record-name))
               hold
                 push(plain-order, record-name)
             save plain/{record-name}, true
+            save self-plain/{record-name}, true
+        fork test, and(and(valued, is-union), or(with-unions, self-unions))
+          hold
+            fork test, not(has-text(union-order, record-name))
+              hold
+                push(union-order, record-name)
+            save self-plain/{record-name}, true
       miss
         save nothing, 0
   save fns, make list
@@ -499,11 +706,61 @@ task record-copies-of
           aliases-into(handle, plain, written, lets)
       miss
         save nothing, 0
+  # the stores, per task: a value holding its own root, and a variable stored and then field-written (a last use moves)
+  save self-stores, make list
+  save self-roots, text-lists()
+  save store-copies, make list
+  save rebuilt, make list
+  walk fns
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save sw
+          make store-walk
+            bind at, 0
+            bind last, make hash
+            bind looped, make hash
+            bind stored, make list
+            bind stored-at, make list
+            bind stored-looped, make list
+            bind rebuilt, make list
+        save roots, make list
+        walk block-handles(fn-body)
+          take handle
+          stores-into(handle, plain, self-plain, false, sw, self-stores, roots)
+        fork test, is-above(roots/length, 0)
+          hold
+            save self-roots/{fn-name}, roots
+        walk sw/rebuilt
+          take rebuilt-one
+          push(rebuilt, rebuilt-one)
+        save at, 0
+        walk sw/stored
+          take stored-one
+          save stored-name, variable-name-of(stored-one)
+          fork test, sw/last/has(stored-name)
+            hold
+              save after, is-above(sw/last/get(stored-name), get(sw/stored-at, at))
+              save looped, or(get(sw/stored-looped, at), sw/looped/has(stored-name))
+              fork test, or(after, looped)
+                hold
+                  push(store-copies, stored-one)
+          save at, add(at, 1)
+      miss
+        save nothing, 0
   back
     make record-copies
       bind params, params
       bind lets, lets
       bind plain, plain-order
+      bind unions, union-order
+      bind self-stores, self-stores
+      bind self-roots, self-roots
+      bind store-copies, store-copies
+      bind rebuilt, rebuilt
 
 # ---- the text parameters a task only reads as text ----
 

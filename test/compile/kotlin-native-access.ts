@@ -10,7 +10,7 @@
 //   manifest   the jar's manifest holds the attribute
 //   control    the same classes run with no manifest read and no flag (`java -cp`) DO warn on JDK 24 and newer, so a
 //              silent run above is the grant at work and not a program that never reaches the runner
-// Run: sh /Users/lancepollard/base/crew/cluesurf/tmp/run-term.sh npx tsx test/compile/kotlin-native-access.ts
+// Run: npx tsx test/compile/kotlin-native-access.ts
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'

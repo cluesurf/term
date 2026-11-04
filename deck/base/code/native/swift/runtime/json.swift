@@ -48,6 +48,17 @@ enum json {
             if double == double.rounded(), abs(double) < 1e15 { return String(Int(double)) }
             return String(double)
         }
+        return written(value)
+    }
+    // an object is written in its own key order, as on TypeScript and Kotlin. Through a Swift Dictionary the order was
+    // the hash's, which differs from one run to the next (`{"y":2,"x":"a"}` one run in two); each scalar and key is still
+    // spelled by JSONSerialization
+    static func written(_ value: Any) -> String {
+        if let object = value as? JsonObject {
+            let parts = object.order.map { key in "\(written(key)):\(written(object.fields[key]!))" }
+            return "{\(parts.joined(separator: ","))}"
+        }
+        if let array = value as? JsonArray { return "[\(array.items.map(written).joined(separator: ","))]" }
         guard let data = try? JSONSerialization.data(withJSONObject: plain(value), options: [.fragmentsAllowed]) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }

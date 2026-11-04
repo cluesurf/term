@@ -25,8 +25,12 @@ import {
 } from '@term/call/code/compose'
 // as their default: the task/ scripts are CommonJS, whose exports Node cannot name ahead of loading them, so a named or
 // namespace import of one finds them only on `default`
-import droplet from '../../../../../../../task/term/cask/droplet'
-import windows from '../../../../../../../task/term/cask/windows'
+import droplet from '../../../task/term/cask/droplet'
+
+// cask/windows.ts reaches the parent's machine module, so it stays in the parent: it is loaded from TERM_PARENT_ROOT
+// when that names the parent checkout, and the windows desktop is skipped without it
+const PARENT = process.env.TERM_PARENT_ROOT
+const windows = PARENT ? (await import(join(PARENT, 'task/term/cask/windows.ts'))).default : undefined
 
 export type RemoteDesktop = 'linux' | 'windows'
 
@@ -65,6 +69,10 @@ function reach(desktop: RemoteDesktop): Reached {
       return ran.status === 0 && ran.stdout.trim()
         ? { form: 'reached', target: 'linux-x64', jpackage: 'jpackage' }
         : unreachable(ran.stderr || ran.stdout)
+    }
+
+    if (!windows) {
+      return unreachable('needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts')
     }
 
     // three answers in one round trip: the architecture, a jpackage on the PATH, then any in the profile
@@ -129,7 +137,7 @@ export function runComposeRemote(input: {
   const libraries = execFileSync(
     'bash',
     [
-      join(input.root, '../../../../task/term/native/kotlin.sh'),
+      join(input.root, 'deck/base/code/native/toolchain/kotlin.sh'),
       'compose-desktop-files',
       reached.target,
     ],

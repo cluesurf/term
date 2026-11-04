@@ -567,7 +567,7 @@ if (spec.ok) {
 const bundled = spawnSync(
   'pnpm',
   ['exec', 'tsx', 'task/term/grammar-bundle.ts', '--check'],
-  { cwd: join(HERE, '../../../../../..'), encoding: 'utf8' },
+  { cwd: join(HERE, '../..'), encoding: 'utf8' },
 )
 
 ok(

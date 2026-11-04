@@ -1,0 +1,102 @@
+{
+ "clipboard": [
+  "`wl-copy` and `wl-paste`, `xclip` or `xsel`",
+  "PowerShell's clipboard",
+  "`pbcopy` and `pbpaste`"
+ ],
+ "battery": [
+  "`/sys/class/power_supply`",
+  "`GetSystemPowerStatus`",
+  "`pmset -g batt`"
+ ],
+ "network": [
+  "a UDP socket's route, which sends nothing",
+  "the same",
+  "the same"
+ ],
+ "open": [
+  "`xdg-open`, and no share sheet",
+  "the URL handler in `url.dll`, and no share sheet",
+  "`open`, and no share sheet"
+ ],
+ "notification": [
+  "`notify-send`",
+  "a toast from `powershell`",
+  "`display notification` through `osascript`"
+ ],
+ "files": [
+  "`zenity`, else `kdialog`",
+  "an `OpenFileDialog` from `powershell`",
+  "`choose file` through `osascript`"
+ ],
+ "permission": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "camera": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "microphone": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "audio": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "download": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "contacts": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "calendar": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "photos": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "torch": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "location": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "vibration": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "motion": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "secret": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ],
+ "biometric": [
+  "`unavailable`",
+  "`unavailable`",
+  "`unavailable`"
+ ]
+}

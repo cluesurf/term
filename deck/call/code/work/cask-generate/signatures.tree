@@ -37,6 +37,7 @@ load ./kinds
   find plain-kind
   find carried-kind
   find refused-kind
+  find kind-name-of
   find crosses-by-value
   find record-forms
 
@@ -294,13 +295,12 @@ task list-kind-of
     hold
       save refuse, item/refuse
       back refused-kind(<a list of {refuse}>)
-  fork test, is-equal(item/kind/kind, <void>)
+  fork test, is-equal(kind-name-of(item/kind), <void>)
     hold
       back refused-kind(<a list of nothing>)
   back
     carried-kind
-      make bridge-kind
-        bind kind, <list>
+      make bridge-list
         bind item, item/kind
 
 # a named type: an opaque handle, or a record by value when it is declared in a module of its own, has no variants and
@@ -320,7 +320,7 @@ task named-kind-of
         hold
           back
             carried-kind
-              make bridge-kind
+              make bridge-plain
                 bind kind, <handle>
                 bind form, name
   fork test, not(known)
@@ -357,11 +357,11 @@ task named-kind-of
         back refused-kind(<record {name}, whose field {field-name} is {refuse}>)
     fork test, not(crosses-by-value(inner/kind))
       hold
-        save inner-kind, inner/kind/kind
+        save inner-kind, kind-name-of(inner/kind)
         back refused-kind(<record {name}, whose field {field-name} is a {inner-kind}, which a record cannot carry>)
   back
     carried-kind
-      make bridge-kind
+      make bridge-plain
         bind kind, <record>
         bind form, name
         bind from, path
@@ -500,7 +500,7 @@ task signatures-of
           save refuse, answer/refuse
           save reason, <parameter {param-name} is {refuse}>
           halt
-      fork test, is-equal(answer/kind/kind, <void>)
+      fork test, is-equal(kind-name-of(answer/kind), <void>)
         hold
           save reason, <parameter {param-name} is nothing>
           halt

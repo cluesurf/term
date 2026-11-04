@@ -2,9 +2,9 @@
 // key is read from the environment at that moment, so `term` starts, and every other verb runs, with no key set
 // (note/project/term/assurance/prove-loop).
 //
-// The request goes through the repository's raw-HTTP Messages client, deck/make/code/code/api-client.ts
-// (`streamMessage`), so the Term CLI takes no SDK dependency (lead decision, 2026-10-21). Only the fields read below are
-// typed; they are the Messages API's own names.
+// The request goes through the package's raw-HTTP Messages client, knit-stream.ts (`streamMessage`), so the Term CLI
+// takes no SDK dependency (lead decision, 2026-10-21). Only the fields read below are typed; they are the Messages API's
+// own names.
 
 import type { Usage } from '@term/call/code/knit-plan'
 
@@ -125,8 +125,7 @@ export async function claudeSpeaker(input: {
     )
   }
 
-  const { streamMessage } =
-    await import('../../../../../../make/code/code/api-client')
+  const { streamMessage } = await import('./knit-stream')
 
   return {
     model: input.model,

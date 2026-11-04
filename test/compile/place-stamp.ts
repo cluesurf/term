@@ -16,8 +16,8 @@
 // PLACE_STAMP_MODULE names another module (an absolute path) exporting `stampPlaces`, to test a draft before it lands.
 
 import { programJson } from '@term/make/code/compile/node-json'
-import * as sharedNodes from '../../../../../../task/term/shared-nodes'
-import * as nodeTreeRead from '../../../../../../task/term/node-tree-read'
+import * as sharedNodes from '../../task/term/shared-nodes'
+import * as nodeTreeRead from '../../task/term/node-tree-read'
 
 type Node = Record<string, any>
 type Stamp = (program: Node[]) => Node[]

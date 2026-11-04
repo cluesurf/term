@@ -9,8 +9,8 @@
 //
 // Run: npx tsx test/stdlib/text-format-platforms.ts   (FORMAT_ONLY=typescript, swift or kotlin runs one;
 //      FORMAT_LIMIT=n keeps the first n cases, for a quick look)
-// Make the reference, once: npx tsx test/stdlib/text-format-platforms.ts --make   (reads the CLDR zip of
-//      TEXT_FORMAT_CLDR_ZIP, by default the dataset in land/base/datasets/unicode/cldr-json-48.0.0)
+// Make the reference, once: npx tsx test/stdlib/text-format-platforms.ts --make   (reads the CLDR zip
+//      TEXT_FORMAT_CLDR_ZIP names, cldr-48.0.0-json-full.zip, and refuses without it)
 // `--make` refuses to overwrite an existing reference or case file. `--refresh` writes reference.next.tsv and
 // cases.next.tsv beside them instead, for a person to compare and move into place.
 
@@ -29,9 +29,9 @@ import { projectResolver } from '@term/call/code/make'
 import { runOn } from '../compile/shared/run-on'
 
 const HERE = resolve(process.cwd(), 'test/stdlib/text-format')
-const ZIP =
-  process.env.TEXT_FORMAT_CLDR_ZIP ??
-  `${process.env.CLUESURF_LOCAL_DATASET_DIRECTORY?.trim() || '/Volumes/Data/datasets'}/unicode/cldr-json-48.0.0/cldr-48.0.0-json-full.zip`
+// the CLDR 48.0.0 JSON zip `--make` reads, wherever the person keeps it. The report reads only the frozen files, so it
+// runs without it
+const ZIP = process.env.TEXT_FORMAT_CLDR_ZIP?.trim() ?? ''
 
 // the values, as JavaScript writes them, and the (fewest, most) pairs
 const VALUES = [
@@ -189,6 +189,13 @@ const rowText = (one: Row): string =>
     : `c\t${one.locale}\t${one.value}\t${one.a}`
 
 function make(next: boolean): void {
+  if (!ZIP || !existsSync(ZIP)) {
+    console.log(
+      `refused: set TEXT_FORMAT_CLDR_ZIP to the CLDR 48.0.0 JSON zip (cldr-48.0.0-json-full.zip)${ZIP ? `, ${ZIP} is not there` : ''}`,
+    )
+    process.exit(2)
+  }
+
   const suffix = next ? '.next' : ''
   const referenceFile = join(HERE, `reference${suffix}.tsv`)
   const casesFile = join(HERE, `cases${suffix}.tsv`)

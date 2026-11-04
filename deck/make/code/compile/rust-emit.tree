@@ -248,6 +248,8 @@ form rust-facts
   link exception-forms, like hash, like text, like boolean
   link native-aliases, like hash, like text, like boolean
   link function-params, like hash, like text, like list, like maybe, like type
+  # each generic task's declared generic names (`head t`), which its parameter types name (a raising closure's answer)
+  link function-generics, like hash, like text, like list, like text
   link async-functions, like hash, like text, like boolean
   link impl-fn-params, like hash, like text, like list, like number
   # each task's pass-through parameters, by position (decision 089 rule 5)
@@ -384,6 +386,8 @@ form rust-state
   link current-params, like hash, like text, like boolean
   link current-result, like maybe, like type
   link closure-hint, like maybe, like type
+  # the generic names of the callee whose slot gave `closure-hint`, which mean nothing where the closure is written
+  link closure-hint-letters, like list, like text
   link closure-depth, like number
   link current-async, like boolean
   link guard-depth, like number
@@ -453,6 +457,7 @@ task new-rust-state
       bind current-params, make hash
       bind current-result, make none
       bind closure-hint, make none
+      bind closure-hint-letters, make list
       bind closure-depth, 0
       bind current-async, false
       bind guard-depth, 0
@@ -3835,13 +3840,18 @@ task emit-closure
           save nothing, 0
       save hinted, st/closure-hint
       save st/closure-hint, make none
+      save hint-letters, st/closure-hint-letters
+      save st/closure-hint-letters, make list
       save chosen, inferred
+      save from-hint, false
       fork test, and(or(is-equal(kind-of(inferred), <>), is-equal(kind-of(inferred), <unknown>)), and(is-unequal(kind-of(hinted), <>), is-unequal(kind-of(hinted), <unknown>)))
         hold
           save chosen, hinted
+          save from-hint, true
       sift closure-result
         case some
           save chosen, closure-result
+          save from-hint, false
         case none
           save nothing, 0
       # into a slot that answers `Result` and nothing else, the slot says what the answer is (its other answers may be
@@ -3849,6 +3859,7 @@ task emit-closure
       fork test, and(closure-raising, is-equal(kind-of(raising-slot-result), <unit>))
         hold
           save chosen, raising-slot-result
+          save from-hint, false
       save st/current-result, chosen
       save st/closure-depth, add(st/closure-depth, 1)
       save outer-locals, copy-flags(st/local-names)
@@ -3936,11 +3947,21 @@ task emit-closure
       fork test, and(closure-async, has-output)
         hold
           save pinned, <__term_boxed::\<{spell(closure-output, facts)}, _\>(async move \{ {body} \})>
-      # its answer spelled, since nothing else tells rustc the raise's type
+      # its answer spelled, since nothing else tells rustc the raise's type. An answer only the call site's hint gave is
+      # the callee's DECLARED slot, which may name the callee's generic letters (`Vec<T>` for render-each's `items`),
+      # undeclared here: each is spelled `_`, which rustc reads off the closure's body (release 2.9.0)
       save raising-answer, <()>
       fork test, has-output
         hold
           save raising-answer, spell(closure-output, facts)
+          fork test, and(from-hint, is-above(hint-letters/length, 0))
+            hold
+              sift closure-output
+                case some
+                  link hinted-known
+                  save raising-answer, spell-holed(with-holes(hinted-known, hint-letters), facts)
+                case none
+                  save nothing, 0
       save raising-answer, <std::result::Result\<{raising-answer}, TermException\>>
       fork test, and(closure-async, closure-raising)
         hold
@@ -4163,6 +4184,7 @@ task emit-argument
         hold
           save slot, get(params, i)
       save st/closure-hint, make none
+      save st/closure-hint-letters, make list
       fork test, is-form(a, <closure>)
         hold
           sift slot
@@ -4173,6 +4195,9 @@ task emit-argument
                   link fn-params
                   link fn-result
                   save st/closure-hint, make(some, fn-result)
+                  fork test, and(callee-variable, facts/function-generics/has(callee-name))
+                    hold
+                      save st/closure-hint-letters, facts/function-generics/get(callee-name)
                 miss
                   save nothing, 0
             case none
@@ -5132,6 +5157,65 @@ task slice-statements
         push(out, one)
   back out
 
+# a callee's declared slot type with each of its generic `letters` made a hole, the variable -1, which `spell-holed`
+# spells `_` (a raising closure's answer, above)
+task with-holes
+  take given, like type
+  take letters, like list, like text
+  like type
+  mark private
+
+  sift given
+    case named
+      link hole-name
+      link hole-args
+      save args, make list
+      walk hole-args
+        take arg
+        push(args, with-holes(arg, letters))
+      fork test, and(has-text(letters, hole-name), is-equal(args/length, 0))
+        hold
+          back
+            make type/variable
+              bind id, -1
+      back
+        make type/named
+          bind name, hole-name
+          bind args, args
+    case array
+      link hole-element
+      back
+        make type/array
+          bind element, with-holes(hole-element, letters)
+    case map
+      link hole-key
+      link hole-value
+      back
+        make type/map
+          bind key, with-holes(hole-key, letters)
+          bind value, with-holes(hole-value, letters)
+    miss
+      back given
+
+# a type spelled with its holes (the variable -1, `with-holes`) as `_`, which a closure's own signature may hold
+task spell-holed
+  take given, like type
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save context, facts/context
+  save saved, context/var-names
+  save widened, make hash
+  walk saved/keys()
+    take id
+    widened/set(id, saved/get(id))
+  widened/set(-1, <_>)
+  save context/var-names, widened
+  save spelled, rust-type-of(given, context)
+  save context/var-names, saved
+  back spelled
+
 task last-statement
   take body, like list, like statement
   like maybe, like statement
@@ -5706,6 +5790,62 @@ task emit-append
       save nothing, 0
   back <{pushed}.push_str(&{emit-expr(append/rest, st, facts)});>
 
+# a field of a match subject written in the arm that narrowed it to `label`: the value is read first (a clone of the
+# subject when it holds it), then the subject's case is written through `&mut`, its payload made unique when an `Rc`
+# shares it (decision 115 section 3)
+task arm-write
+  take target, like expression
+  take label, like text
+  take field-name, like text
+  take value, like expression
+  take st, like rust-state
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save subject-name, variable-name-of(target)
+  save owner, named-of(expression-type(target))
+  fork test, and(is-equal(owner, <>), facts/variant-owner/has(label))
+    hold
+      save owner, facts/variant-owner/get(label)
+  save key, <{label}/{field-name}>
+  save payload, payload-of(owner, label, facts)
+  save has-payload, false
+  sift payload
+    case some
+      save has-payload, true
+    case none
+      save nothing, 0
+  save holder, <std::rc::Rc>
+  fork test, facts/boxed-forms/has(owner)
+    hold
+      save holder, <Box>
+  save value-text, <>
+  fork test, is-equal(variable-name-of(value), subject-name)
+    hold
+      save value-text, <{vname(subject-name)}.clone()>
+      fork test, and(not(has-payload), facts/recursive-fields/has(key))
+        hold
+          save value-text, <{holder}::new({value-text})>
+    miss
+      fork test, facts/field-lists/has(key)
+        hold
+          save value-text, plain-list(value, st, facts)
+        miss
+          save value-text, bare(owned(value, st, facts))
+          fork test, and(not(has-payload), facts/recursive-fields/has(key))
+            hold
+              save value-text, <{holder}::new({value-text})>
+  save subject-text, vname(subject-name)
+  fork test, has-payload
+    hold
+      save through, <__w>
+      fork test, not(facts/boxed-forms/has(owner))
+        hold
+          save through, <std::rc::Rc::make_mut(__w)>
+      back <\{ let __arm = {value-text}; if let {pascal(owner)}::{pascal(label)}(__w) = &mut {subject-text} \{ {through}.{snake(field-name)} = __arm; \} \}>
+  back <\{ let __arm = {value-text}; if let {pascal(owner)}::{pascal(label)} \{ {snake(field-name)}: __w, .. \} = &mut {subject-text} \{ *__w = __arm; \} \}>
+
 task emit-assign
   take node, like statement
   take st, like rust-state
@@ -5741,6 +5881,19 @@ task emit-assign
             hold
               save value, bare(owned(assign-value, st, facts))
               back <\{ let __shared_value = {value}; {member-path(member-target, st, facts)}.borrow_mut().{snake(member-name)} {op} __shared_value; \}>
+          # a field of a match subject written in the arm that narrowed it: the subject's own case is written, never the
+          # arm's local (decision 115 section 3)
+          fork test, and(not(has-index), is-equal(op, <=>))
+            hold
+              save arm-root, variable-name-of(member-target)
+              fork test, and(is-unequal(arm-root, <>), st/narrowing/has(arm-root))
+                hold
+                  save arm-label, st/narrowing/get(arm-root)
+                  fork test, facts/variant-fields/has(arm-label)
+                    hold
+                      fork test, has-text(facts/variant-fields/get(arm-label), member-name)
+                        hold
+                          back arm-write(member-target, arm-label, member-name, assign-value, st, facts)
           # a write to a list slot or a map entry by a computed key goes through `borrow_mut`, the value and the key
           # computed first. A literal slot, `save xs/0, ...`, is a member named `0`: the same write at that index
           save literal, false
@@ -7103,6 +7256,38 @@ task emit-case-arm
       save text, tail-arm(text, depth)
   back <{pad(add(depth, 1))}{pascal(owner)}::{pascal(label)}{opened/arm} =\> \{\n{text}\n{pad(add(depth, 1))}\}>
 
+# whether anything here writes a field of the variable itself (`save x/f, ...`), closures and nested blocks included
+task writes-field-of
+  take roots, like list, like node-handle
+  take name, like text
+  like boolean
+  mark private
+
+  walk roots
+    take handle
+    sift handle
+      case statement-handle
+        link written-node
+        sift written-node
+          case assign
+            link written-target
+            sift written-target
+              case member
+                link written-holder
+                fork test, is-equal(variable-name-of(written-holder), name)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+    fork test, writes-field-of(node-children(handle, type-and-span()), name)
+      hold
+        back true
+  back false
+
 task emit-match
   take node, like statement
   take depth, like number
@@ -7165,8 +7350,18 @@ task emit-match
       # a clone of the subject is matched, unless this match is its last read: then it is matched by value
       save subject-var, variable-name-of(match-subject)
       save has-var, is-unequal(subject-var, <>)
-      save moved, false
+      # an arm that writes a field of the subject writes the subject itself, so the match holds a clone and neither
+      # moves nor borrows it (decision 115 section 3)
+      save arm-writes, false
       fork test, has-var
+        hold
+          walk match-cases
+            take written-case
+            fork test, writes-field-of(statement-handles(written-case/body), subject-var)
+              hold
+                save arm-writes, true
+      save moved, false
+      fork test, and(has-var, not(arm-writes))
         hold
           fork test, and(st/move-args/has(subject-var), not(st/cell-vars/has(subject-var)))
             hold
@@ -7178,10 +7373,10 @@ task emit-match
                 miss
                   save moved, is-some-slot(facts/slot-read-of(match-subject))
       # a borrowed record is matched as it is
-      save borrowed-subject, and(has-var, st/borrowed-names/has(subject-var))
+      save borrowed-subject, and(and(has-var, st/borrowed-names/has(subject-var)), not(arm-writes))
       # a local read again after the match is matched by reference: each arm copies or clones out only what it reads
       save referenced, false
-      fork test, and(and(not(moved), not(borrowed-subject)), and(has-var, not(st/cell-vars/has(subject-var))))
+      fork test, and(and(and(not(moved), not(borrowed-subject)), and(has-var, not(st/cell-vars/has(subject-var)))), not(arm-writes))
         hold
           fork test, and(is-equal(kind-of-node(match-subject), <named>), not(is-shared(expression-type(match-subject), facts)))
             hold

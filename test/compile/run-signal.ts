@@ -18,7 +18,7 @@
 //   group     INT to the whole process group, as a terminal's ctrl-c does: the child's trap runs, the parent (ignoring it)
 //             answers 9 and is not killed by it. This is the invariant: a child started this way still ends on ctrl-c
 // Each case holds under 10 s. The background `sleep 30` the script starts is killed by the test when the case ends.
-// Run: sh /Users/lancepollard/base/crew/cluesurf/tmp/run-term.sh npx tsx test/compile/run-signal.ts
+// Run: npx tsx test/compile/run-signal.ts
 // (SIGNAL_ONLY=typescript or rust runs one backend, SIGNAL_CASE=<name> one case)
 
 import { execFileSync, spawn } from 'node:child_process'

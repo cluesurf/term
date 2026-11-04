@@ -348,11 +348,18 @@ task separate-case-names
     walk form/indices
       take i
       save program/{i}, with-name(get(program, i), renamed)
+    # a real form named for a language word is that form only in a file that defines it or whose `find` reaches it
+    # (decision 110). Anywhere else the word is the language's own, and `make <word>` there is the case
+    save is-word, is-language-word(form/name)
     save position, 0
     walk program
       take one
       save file, file-of(one)
       fork test, has-text(type-parameters(one), form/name)
+        hold
+          save position, add(position, 1)
+          turn next
+      fork test, and(is-word, not(reaches-real-form(scopes, file, form/name, form-files)))
         hold
           save position, add(position, 1)
           turn next

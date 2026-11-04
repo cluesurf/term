@@ -15,7 +15,7 @@
 //                              serving plaintext and apologising for it.
 //
 // This target exists so `swift build` resolves and builds that graph. It is NOT where the shims live: a shim is a
-// source fragment the compiler prepends to an emitted module, not a module of its own. `task/term/native/swift.sh`
+// source fragment the compiler prepends to an emitted module, not a module of its own. `native/toolchain/swift.sh`
 // builds this package and turns its output into the include flags the native gate typechecks against.
 import PackageDescription
 

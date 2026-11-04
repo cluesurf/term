@@ -14,6 +14,7 @@ load ./kinds
   find watch-command-of
   find watch-starter-of
   find list-cask-commands
+  find kind-name-of
 
 load ./seam
   find bridge-counter
@@ -305,7 +306,7 @@ task dispatch-text
   save device-text, false
   walk signatures
     take site, name one
-    fork test, and(is-equal(one/result/kind, <text>), has-page-env(modules, one/module))
+    fork test, and(is-equal(kind-name-of(one/result), <text>), has-page-env(modules, one/module))
       hold
         save device-text, true
   fork test, device-text
@@ -405,7 +406,7 @@ task dispatch-text
       take site, name local
       call/push <  read {local}>
     # a device module's text answer goes through `device-answer`, which says `unhosted` for a build with no device host
-    save result-kind, signature/result/kind
+    save result-kind, kind-name-of(signature/result)
     save device, and(is-equal(result-kind, <text>), has-page-env(modules, module-name))
     fork test, is-equal(result-kind, <void>)
       hold

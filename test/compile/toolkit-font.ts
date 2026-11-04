@@ -4,7 +4,7 @@
 // and says what the PLATFORM reports for each text's face: NSFont/UIFont's own family name on Apple, and on Android the
 // family the host handed the TextView, since a Typeface cannot name itself.
 //
-// The face is mesh/site/word.surf/home/public/text/CrowMark.otf, ClueSurf's own (note/project/legal/fonts.md). macOS and
+// The face is CrowMark.otf, ClueSurf's own, at the path TERM_TEST_FACE names (skipped without it). macOS and
 // the simulator read it by path; the emulator cannot, so the APK carries it as an asset and the program reads
 // `asset:CrowMark.otf`. FONT_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-font.ts
 
@@ -27,10 +27,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const FACE = resolve(
-  process.cwd(),
-  '../../../../mesh/site/word.surf/home/public/text/CrowMark.otf',
-)
+// the face's file, which this repository does not carry: TERM_TEST_FACE names it (the parent repository's term:test
+// alias passes its copy). Unset, the suite is skipped and says so
+const GIVEN_FACE = process.env.TERM_TEST_FACE?.trim() ?? ''
+const FACE = GIVEN_FACE ? resolve(GIVEN_FACE) : ''
 const MISSING = 'No Such Face'
 
 // where each platform finds the file
@@ -233,7 +233,9 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   )
 }
 
-if (!existsSync(FACE)) {
+if (!FACE) {
+  console.log('skip  toolkit-font: TERM_TEST_FACE names no CrowMark.otf to register')
+} else if (!existsSync(FACE)) {
   ok('the face is on disk', false, FACE)
 } else {
   runToolkits(

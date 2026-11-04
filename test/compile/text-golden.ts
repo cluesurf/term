@@ -22,7 +22,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import SCRIPT from '../../../../../../mesh/deck/belt/code/base/script'
 import { runToolkits } from './shared/toolkit-run'
 import type { Leg } from './shared/toolkit-run'
 
@@ -38,6 +37,12 @@ function ok(name: string, cond: boolean, info = ''): void {
     console.log(`FAIL  ${name}  ${info}`)
   }
 }
+
+// every script slug the web font registry sets: the keys of belt's script table, which is written outside this
+// repository, so they are held as test/fixture/scripts.json and the check that holds them equal runs where belt is
+const SCRIPTS = JSON.parse(
+  readFileSync(join(import.meta.dirname, '../fixture/scripts.json'), 'utf8'),
+) as string[]
 
 // the slugs whose Unicode name is not the slug written in title case, and the scripts each covers
 const UNICODE_NAME: Record<string, string[]> = {
@@ -99,7 +104,7 @@ type Row = { slug: string; probe: string; size: number }
 const rows: Row[] = []
 const unmeasured: string[] = []
 
-for (const slug of Object.keys(SCRIPT).sort()) {
+for (const slug of [...SCRIPTS].sort()) {
   if (UNMEASURED.has(slug)) {
     unmeasured.push(slug)
     continue

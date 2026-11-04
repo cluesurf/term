@@ -5,7 +5,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import * as module from '../../../../../../task/term/shared-nodes'
+import * as module from '../../task/term/shared-nodes'
 
 const { build: buildUnit, census } = ((
   module as { default?: typeof module }

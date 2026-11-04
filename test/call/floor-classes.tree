@@ -34,7 +34,8 @@ bind floor-tools
   case node
     text <(process.env.FLOOR_TOOLS ?? "task/term")>
 
-host floor-home, <../../../..>
+# the Term root, where task/term and the package's own tsx are
+host floor-home, <.>
 
 task run-tool
   take tool, like text
@@ -122,8 +123,9 @@ task floor-run
 
   save here, run(<pwd>, floor-words(<-L>), floor-home)
   save repo, floor-trim(here/output)
-  save line, <{repo}/node_modules/tsx/dist/cli.mjs {repo}/{floor-tools(0)}/floor.ts {rest}>
-  save done, run(<node>, floor-words(line), home)
+  # floor.ts takes its roots from root.ts, so the fake repository is named to it: the Term tree inside, the parent around
+  save line, <TERM_ROOT={home}/{floor-t} TERM_PARENT_ROOT={home} node {repo}/node_modules/tsx/dist/cli.mjs {repo}/{floor-tools(0)}/floor.ts {rest}>
+  save done, run(<env>, floor-words(line), home)
   back <exit {done/code}\n{done/output}>
 
 task floor-items

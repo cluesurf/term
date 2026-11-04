@@ -5,5 +5,5 @@
 # example runs out of the box.
 
 host
-  database-url <postgresql://lancepollard@localhost:5432/postgres>
+  database-url <postgresql://localhost:5432/postgres>
   port <8787>

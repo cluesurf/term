@@ -103,23 +103,19 @@ function contextFiles(
   root: string,
   example: boolean,
 ): { label: string; file: string }[] {
-  // the repository: the Term package is deck/term/deck/term in it
-  const repo = path.resolve(root, '../../../..')
+  // all three inside the package: the agent rules, and the two guides kept under doc/knit/
   const files = [
     {
       label: 'The Term language: syntax, rules and conventions',
-      file: path.join(repo, 'deck/term/CLAUDE.md'),
+      file: path.join(root, 'AGENTS.md'),
     },
     {
       label: 'Laws and proofs in Term: claims, theorems, the kernel',
-      file: path.join(repo, 'note/project/term/proof/law-and-proof.md'),
+      file: path.join(root, 'doc/knit/law-and-proof.md'),
     },
     {
       label: 'Traps found while proving the notes demo',
-      file: path.join(
-        repo,
-        'note/project/term/assurance/demo/traps.md',
-      ),
+      file: path.join(root, 'doc/knit/demo-traps.md'),
     },
   ]
 

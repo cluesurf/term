@@ -1,0 +1,150 @@
+# verb-pair's rows for the takes it cannot generate (decision cli-in-term/013 part 2, task/term/verb-pair.ts).
+#
+# A boolean take is generated as its flag alone, and a take with choices as each choice and one value outside them. Every
+# other take (a text, a number, a list, a slot) is a row here, in verb-pair.txt's format: `<fixture> [NAME=value ...]
+# <arguments>`. A row covers every take its words pass, and is named for the first. A take that cannot run here is
+# `skip <verb path> --<take> <reason>` (network, publishing, signing, a device, or a run with no exit), which also stops
+# a boolean's or a choice's generated row. A take with neither stops verb-pair before any run.
+#
+# The values are chosen to reach the handler and come back fast: a refusal of a bad value is as good a witness as a
+# build, since a take the console drops answers as if it were never given.
+
+# ---- base ----
+empty base log main
+empty base diff a b
+empty base show a b
+empty base list a
+empty base status main
+empty base commit message --branch main --author pair
+empty base checkout a
+empty base merge a --into main --author pair
+empty base export a --out exported
+empty base import source.json --form x --key k --mark m --branch main --author pair --message imported
+empty base project a --mapping m --into i --repository r
+empty base tag v1 a --branch main
+
+# ---- packages ----
+empty wake other
+skip load --clean network: a clean install fetches every package again
+hello toss @pair/other
+hello link ../absent
+# no project here, so the add is refused before anything resolves: the refusal names the deck
+empty save @pair/absent 1.x.x
+skip seek --audit network: the advisory database is fetched
+skip seek --fix network: the safe versions come from the advisory database
+hello seek --code --sarif report.sarif
+skip host --registry publishing: it pushes the package to the registry it names
+skip host --trust signing: it changes the scope's published key set
+skip host --untrust signing: it changes the scope's published key set
+skip host --ping publishing: it announces a version to the package index
+skip bind --again network: a Google login through the browser
+
+# ---- self ----
+skip self find --range network: the releases are listed from the registry
+skip self find --all network: the releases are listed from the registry
+skip self load --range network: a release is downloaded
+empty self pick 0.0.0
+empty self need 1.x.x
+empty self toss 9.9.9
+empty self wash --days 3
+
+# ---- make ----
+hello make code/double.tree --emit node
+hello make code/double.tree --emit cobol
+hello make code/double.tree --emit node --out emitted.ts
+hello make --env cobol
+hello make --main start
+hello make --target nope
+skip make --ride a run with no exit: it watches the files until killed
+skip make --team signing: the Apple team an iPhone app is signed for
+skip make --sign signing: a Developer ID identity for codesign
+skip make --publish publishing: a signed over-the-air update
+skip make --channel publishing: the update channel --publish writes
+# a native app target refused by name before any toolchain runs: each take reaches the handler that refuses it
+hello make --link x --target nope
+hello make --page face/base.tree --target nope
+hello make --entry cask.tree --target nope
+hello make --url http://localhost:1 --target nope
+hello make --dmg --target nope
+
+# ---- check and inspect ----
+hello scan code/data.tree
+hello mind 'a fact'
+hello mind 'a fact' --name named
+hello mind --find fact
+hello mind --forget named
+hello test double
+hello test --case doubles
+hello test --env cobol
+hello test --limit 60
+skip test --ride a run with no exit: it runs the tests again on every edit until killed
+hello time double
+hello time --file code/double.tree
+hello time --cpu code/double.tree
+hello time --memory code/double.tree
+hello time --cpu code/double.tree --top 3
+hello time --save first
+hello time --compare first
+hello time --fail-on-regression 5
+hello time --history double
+empty mark list
+
+# ---- serve ----
+hello boot dev code/absent.tree
+hello boot dev code/absent.tree --port 9
+hello boot dev code/absent.tree --env node
+hello boot code/absent.tree --out served
+skip boot --remote network: the remote cache is pulled and pushed
+skip boot --remote-token network: the remote cache's bearer token
+hello cast code/other.tree
+hello cast code/absent.tree --target nope
+empty halt --port 1,2
+hello feed code/absent.tree
+hello feed --port 9
+hello feed --env node
+skip work --port a run with no exit: the compiler worker serves until killed
+skip work --env a run with no exit: the compiler worker serves until killed
+skip work --target a run with no exit: the compiler worker serves until killed
+skip work --page a run with no exit: the compiler worker serves until killed
+skip work --entry a run with no exit: the compiler worker serves until killed
+
+# ---- the project ----
+hello wash tail
+hello move mark 2
+hello note @term/base
+hello form code
+hello look code/data.tree
+hello roll exception
+hello roll --host @term/site
+hello roll --diff HEAD
+hello mold code/data.tree
+hello view code
+hello lint code
+hello hold code
+
+# ---- knit: no spec, or no key, so no request reaches the model ----
+empty knit a
+empty knit --spec-file spec.txt
+empty knit --port code/absent.ts
+empty knit a --law x
+empty knit --name named
+empty knit --out written
+empty knit --model none
+empty knit --cap 1
+empty knit --rounds 1
+empty knit --turns 1
+empty knit --minutes 1
+empty knit --max-tokens 1
+
+# ---- hunt ----
+hello hunt code --runs 1 --seeds 1
+hello hunt --runs 2 --seeds 1
+hello hunt --runs 1 --seeds 2
+hello hunt --runs 1 --seeds 1 --fuzz-timeout 5
+hello hunt --runs 1 --seeds 1 --budget 5000
+
+# ---- show and zone ----
+empty show tools
+empty show name absent
+empty show --budget 10
+empty zone list

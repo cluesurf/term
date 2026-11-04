@@ -8,7 +8,7 @@
 // conflict each time. Gradle reads the metadata, which is the whole difference.
 //
 // It resolves and builds nothing: `writeClasspath` writes the desktop runtime classpath and the Compose compiler
-// plugin jar to the paths task/term/native/kotlin.sh passes, and the gate compiles with kotlinc against them.
+// plugin jar to the paths native/toolchain/kotlin.sh passes, and the gate compiles with kotlinc against them.
 //
 //   compose.desktop          runtime, foundation, material and UI for the desktop JVM, drawn through Skia (skiko).
 //                            The same composables run on Android through Jetpack Compose: one lowering, four
@@ -57,7 +57,7 @@ val plugin: Configuration by configurations.creating { isTransitive = false }
 
 // Android (compose-target-0004): the same composables, as Jetpack Compose's Android builds. There is no Android Gradle
 // plugin here, so the configuration asks for Android runtime variants by their published attributes, and what comes
-// back is `.aar` and `.jar` files: task/term/native/kotlin.sh unpacks them, links their resources with aapt2 and dexes
+// back is `.aar` and `.jar` files: native/toolchain/kotlin.sh unpacks them, links their resources with aapt2 and dexes
 // the classes, the way the APK pipeline already builds an app without Gradle.
 //
 // By the JVM ENVIRONMENT, not the Kotlin platform type: the Android variants of these libraries are published with

@@ -117,6 +117,7 @@ load @term/base/text
 
 load @term/base/environment
   find set-variable
+  find variable
 
 load @term/base/file
   find write, name write-file
@@ -370,8 +371,15 @@ test <the sample photo made a JPEG by sips reads back as 321 by 123>
   want hold, is-equal(size/width, 321)
   want hold, is-equal(size/height, 123)
 
-test <beat-term is the app folder four folders above the Term root>
-  want hold, ends-with(beat-term-root(), </deck/tool/tool/beat-term>)
+test <beat-term is the app folder BEAT_TERM_ROOT names, and nothing when it names none>
+  host before, variable(<BEAT_TERM_ROOT>)
+  set-variable(<BEAT_TERM_ROOT>, </tmp/beat-term-check>)
+  host named, beat-term-root()
+  set-variable(<BEAT_TERM_ROOT>, <>)
+  host unnamed, beat-term-root()
+  set-variable(<BEAT_TERM_ROOT>, before)
+  want hold, ends-with(named, </beat-term-check>)
+  want hold, is-equal(unnamed, <>)
 
 host plain-app, make(toolkit-app, bind(root, <.>), bind(folder, <.>), bind(name, <Check>), bind(who, <device-check>), bind(ios-identifier, <surf.term.check>), bind(android-identifier, <surf.term.check>))
 

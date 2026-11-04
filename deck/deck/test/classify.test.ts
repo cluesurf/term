@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -63,17 +63,34 @@ describe('classify', () => {
 // only when it gives the file back byte for byte (object/version.ts `recordOf`)
 const CANONICAL = '# the corpus\nword hello\n  syllables @integer 2\n  # written form\n  text hello\n'
 
+// every temporary folder a test makes, removed after it: run outside the gate's per-suite TMPDIR (a plain `npx vitest
+// run`), these were left in the machine's own temporary folder, 191 of them by one gate run's end (release 2.9.0)
+const made: string[] = []
+const temp = (prefix: string): string => {
+  const at = mkdtempSync(path.join(tmpdir(), prefix))
+
+  made.push(at)
+
+  return at
+}
+
+afterEach(() => {
+  for (const at of made.splice(0)) {
+    rmSync(at, { recursive: true, force: true })
+  }
+})
+
 describe('`.tree` is parsed, not chunked', () => {
   let dir = ''
   let store: ObjectStore
 
   beforeEach(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'classify-src-'))
+    dir = temp('classify-src-')
     mkdirSync(path.join(dir, 'code'), { recursive: true })
     writeFileSync(path.join(dir, 'code/word.tree'), CANONICAL)
     writeFileSync(path.join(dir, 'code/main.ts'), 'export const x = 1\n')
     store = localObjectStore({
-      root: mkdtempSync(path.join(tmpdir(), 'classify-obj-')),
+      root: temp('classify-obj-'),
     })
   })
 
@@ -103,7 +120,7 @@ describe('`.tree` is parsed, not chunked', () => {
 
   it('regenerates the file on checkout, comments included', async () => {
     const built = await buildVersion({ dir, store })
-    const dest = mkdtempSync(path.join(tmpdir(), 'classify-out-'))
+    const dest = temp('classify-out-')
 
     await restoreVersion({
       root: built.root,

@@ -441,11 +441,13 @@ async function swiftServer(): Promise<void> {
   // producing an executable then fails at the link step with no useful message. SwiftPM does both.
   mkdirSync(join(dir, 'Sources', 'server'), { recursive: true })
   const file = join(dir, 'Sources', 'server', 'main.swift')
+  const swift = emitSwift(program)
+  // `serve` calls into the native server, so it raises `failure` in every program (compiler decision 014) and `boot`
+  // throws: the main calls it with `try`, a raise ending the program as an unhandled one does
+  const main = /func boot\(\)[^{]*throws/.test(swift) ? 'try boot()' : 'boot()'
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
-      program,
-    )}\nboot()\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${swift}\n${main}\n`,
   )
   writeFileSync(
     join(dir, 'Package.swift'),

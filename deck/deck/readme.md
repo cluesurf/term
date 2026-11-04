@@ -98,11 +98,14 @@ npm login --scope=@NAMESPACE --auth-type=legacy --registry=https://npm.pkg.githu
 
 ### Storage
 
-When you install packages, it hard symlinks them from your
-`~/Library/base` folder to your `./link` folder.
+When you install packages, it hard symlinks them from the
+package store to your `./link` folder. The store is a folder in
+your platform's data folder for applications, the one each
+operating system names for programs to keep their data in
+(written `<store>` below).
 
 ```
-~/Library/base/v000
+<store>/v000
   # global dependencies
   /hook
     /deck
@@ -133,14 +136,14 @@ When you install packages, it hard symlinks them from your
 Then, `/:host/:deck/:mark` is hard linked from:
 
 ```
-~/Library/base/deck/:host+deck
+<store>/deck/:host+deck
 ```
 
-And inside `~/Library/base/deck/*`, the files are hard linked to
-`~/Library/base/file/:code/:hash`.
+And inside `<store>/deck/*`, the files are hard linked to
+`<store>/file/:code/:hash`.
 
 When you `base link <deck>`, it symlinks from the symlink inside of
-`~/Library/base/deck/*`.
+`<store>/deck/*`.
 
 This handles:
 

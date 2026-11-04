@@ -1,0 +1,55 @@
+{
+  "note": "Parent-name lines per package may only fall (task/term/self-contained.ts). Lower it with --write-baseline. pending: known leaks the tree mode passes while their item is open. A payload never gets that pass.",
+  "parentNames": {
+    "deck/base": 150,
+    "deck/bind": 1,
+    "deck/call": 163,
+    "deck/cask": 5,
+    "deck/deck": 76,
+    "deck/face": 28,
+    "deck/flow": 4,
+    "deck/host": 14,
+    "deck/make": 265,
+    "deck/mark": 10,
+    "deck/mill": 158,
+    "deck/scan": 2,
+    "deck/site": 53,
+    "deck/test": 24,
+    "other": 11,
+    "task": 185,
+    "test": 415
+  },
+  "payload": {
+    "npm": 368,
+    "oci": 531
+  },
+  "pending": {
+    "term-self-contained-0004": [
+      {
+        "file": "tsconfig.json",
+        "match": "@cluesurf/save",
+        "reason": "the @cluesurf/save mapping, until its decision lands"
+      },
+      {
+        "file": "tsconfig.json",
+        "match": "\"rootDir\"",
+        "reason": "rootDir reaches up to take in the mapped save sources"
+      },
+      {
+        "file": "deck/deck/tsconfig.json",
+        "match": "@cluesurf/save",
+        "reason": "the @cluesurf/save mapping, until its decision lands"
+      },
+      {
+        "file": "deck/deck/tsconfig.json",
+        "match": "\"rootDir\"",
+        "reason": "rootDir reaches up to take in the mapped save sources"
+      },
+      {
+        "file": "deck/deck/vitest.config.ts",
+        "match": "@cluesurf/save",
+        "reason": "the @cluesurf/save mapping, until its decision lands"
+      }
+    ]
+  }
+}

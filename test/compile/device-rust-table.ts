@@ -1,6 +1,6 @@
 // The device modules on Linux and Windows (term-device-layer-0001): every module either has a Rust host, or answers
-// `unavailable` from its fallback, and the guide's table (note/project/term/guides/draft/applications/device.md, "On
-// Linux and Windows") says which, one row a module.
+// `unavailable` from its fallback, and the guide's table (the device guide's "On Linux and Windows", held here as
+// test/fixture/device-table.json) says which, one row a module.
 //
 // Two halves. The TABLE: every device module the cask carries has a row; a row reads `unavailable` on all three
 // platforms exactly when site/code/view/native/rust/<module>.tree does not exist; and every tool a hosted row names in
@@ -30,10 +30,9 @@ import { readTree } from '../../deck/deck/code/package/read'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const VIEW = join(ROOT, 'deck/site/code/view')
-const GUIDE = join(
-  ROOT,
-  '../../../../note/project/term/guides/draft/applications/device.md',
-)
+// the guide's table, held here as a snapshot: the guide is written outside this repository, and the check that holds the
+// snapshot equal to it runs where the guide is
+const TABLE = join(ROOT, 'test/fixture/device-table.json')
 
 let pass = 0
 let fail = 0
@@ -55,26 +54,11 @@ const hosted = (module: string): boolean =>
 
 // the rows of the guide's "On Linux and Windows" table: module, then the Linux, Windows and macOS cells
 function tableRows(): Map<string, string[]> {
-  const text = readFileSync(GUIDE, 'utf8')
-  const section = text.slice(
-    text.indexOf('## On Linux and Windows'),
-    text.indexOf('\n## ', text.indexOf('## On Linux and Windows') + 3),
+  return new Map(
+    Object.entries(
+      JSON.parse(readFileSync(TABLE, 'utf8')) as Record<string, string[]>,
+    ),
   )
-  const rows = new Map<string, string[]>()
-
-  for (const line of section.split('\n')) {
-    const cells = line
-      .split('|')
-      .slice(1, -1)
-      .map(cell => cell.trim())
-    const name = /^`([a-z-]+)`$/.exec(cells[0] ?? '')?.[1]
-
-    if (name && cells.length === 4) {
-      rows.set(name, cells.slice(1))
-    }
-  }
-
-  return rows
 }
 
 // the public tasks a contract declares, so a row may name them without the runtime calling them

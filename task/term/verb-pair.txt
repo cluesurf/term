@@ -1,0 +1,176 @@
+# verb-pair rows: `<fixture> [NAME=value ...] <arguments>`, run by task/term/verb-pair.ts against the 2026-10-23
+# baseline and the current host/line.js. A fixture is a folder under tmp/verb-pair/fixture/
+# (`empty` is an empty folder). Every verb `term --help` lists needs a `--help` row and a real row; a verb with only
+# a help row is named in HELP_ONLY in verb-pair.ts with its reason.
+#
+# A real row is chosen to end on its own and to reach nothing outside the run: no network service, no person's
+# ~/.base (each run has its own HOME), no other session's process (`halt` names a port nothing serves).
+
+# the top level
+empty --help
+empty --version
+
+# every verb's help
+empty base --help
+empty wake --help
+empty load --help
+empty save --help
+empty toss --help
+empty link --help
+empty seek --help
+empty host --help
+empty bind --help
+empty self --help
+empty update --help
+empty make --help
+empty scan --help
+empty mind --help
+empty test --help
+empty time --help
+empty mark --help
+empty boot --help
+empty cast --help
+empty halt --help
+empty feed --help
+empty work --help
+empty wash --help
+empty walk --help
+empty move --help
+empty note --help
+empty form --help
+empty look --help
+empty roll --help
+empty mold --help
+empty view --help
+empty lint --help
+empty hold --help
+empty knit --help
+empty hunt --help
+empty show --help
+empty zone --help
+empty fill --help
+
+# every subcommand's help
+empty base init --help
+empty base log --help
+empty base diff --help
+empty base show --help
+empty base list --help
+empty base check --help
+empty base status --help
+empty base commit --help
+empty base checkout --help
+empty base merge --help
+empty base export --help
+empty base import --help
+empty base project --help
+empty base tag --help
+empty self list --help
+empty self find --help
+empty self load --help
+empty self pick --help
+empty self need --help
+empty self show --help
+empty self toss --help
+empty self wash --help
+empty self check --help
+empty self update --help
+empty self back --help
+empty self skill --help
+
+# one real run of each verb
+empty base init
+empty base check
+empty wake demo
+hello load --offline
+hello save
+hello toss @pair/absent
+hello link
+hello seek
+hello host --dry
+empty bind --toss
+empty self list
+empty self show
+empty TERM_RELEASE_REGISTRY=oci://127.0.0.1:9/none update
+hello make
+hello scan code/double.tree
+hello mind
+hello test
+hello time
+empty mark list
+hello boot dev code/absent.tree
+hello cast code/absent.tree
+empty halt --port 1
+hello feed
+hello wash
+hello wash ""
+empty walk
+hello move mark 3
+hello note
+hello form --check
+hello look code/double.tree
+hello roll
+hello mold code/data.tree --json
+hello view
+hello lint
+hello hold
+empty knit
+hello hunt --runs 1 --seeds 1
+hello hunt --runs 0 --seeds 1
+empty show
+empty show kink type-mismatch
+empty zone
+empty fill
+
+# a maybe take given the empty value, which is not the take left out (decision cli-in-term/008 part 1); at the end so
+# no earlier row's number moves
+hello mind --forget ""
+hello move mark ""
+empty show ""
+empty show kink ""
+hello roll --diff ""
+empty knit --name ""
+
+# flags interleave with a list slot's words, and a slot marked `mark pass` halts at its first positional (decision
+# cli-in-term/012); at the end so no earlier row's number moves. The knit row never reaches a model: --law x names no
+# law of the library, so knit refuses it before the model is loaded
+empty knit a --law x b
+empty lint a --fix b
+empty zone call dev node -e x
+
+# shell completion: what the script `term fill` prints asks, `term` and the word under the cursor included (the empty
+# word after a space), under zsh (name:description) and bash (names); at the end so no earlier row's number moves.
+# The zone row is a `mark pass` command, which yargs ran rather than answered (term-cli-in-term-0144)
+empty SHELL=/bin/zsh --get-yargs-completions term ''
+empty SHELL=/bin/zsh --get-yargs-completions term ma
+empty SHELL=/bin/zsh --get-yargs-completions term base ''
+empty SHELL=/bin/zsh --get-yargs-completions term make --
+empty SHELL=/bin/zsh --get-yargs-completions term self p
+empty SHELL=/bin/zsh --get-yargs-completions term make --back ''
+empty SHELL=/bin/bash --get-yargs-completions term ''
+empty SHELL=/bin/bash --get-yargs-completions term ma
+empty SHELL=/bin/bash --get-yargs-completions term base ''
+empty SHELL=/bin/bash --get-yargs-completions term make --
+empty SHELL=/bin/bash --get-yargs-completions term self p
+empty SHELL=/bin/bash --get-yargs-completions term zone ''
+# test --update with a snapshot to write: the snap fixture holds one `want snapshot`, so both sides write
+# test/greet.snapshot.tree, which the row's files compare (hello has no snapshot test, so its generated --update row
+# writes none). At the end so no earlier row's number moves (term-cli-in-term-0194)
+snap test --update
+
+# a usage refusal, worded as yargs worded it (decision cli-in-term/016): a global option outside its choices under a
+# verb that does not declare it, and with no verb; three at once, listed in the order declared; the version before
+# the refusal; a required flag left out; two required slots left out. At the end so no earlier row's number moves
+empty walk --color not-a-choice
+empty --color not-a-choice
+empty walk --back not-a-choice --log x --color y
+empty --version --color not-a-choice
+empty base export a
+empty base show
+# a global option ending the line with no value: yargs gave --color its default (auto) and --log the empty text
+empty walk --color
+empty walk --log
+# term load in a project whose toolchain need resolves against a registry that refuses: the OCI refusal's own message
+# (OCI namespace does not fit the repository grammar: Bad_Name), never 'OCI request failed' (term-cli-in-term-0236,
+# decision 007)
+need TERM_RELEASE_REGISTRY=oci://127.0.0.1:9/Bad_Name load

@@ -8,7 +8,7 @@
 // until it is removed, so the list only shrinks. Each class carries its cause, and a `Diverges:` line at the fold.
 //
 // Prints `<backend> <passed> of <cases>` and the size of known.json per backend.
-// Run: sh /Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/tmp/dec-tsx.sh test/stdlib/text-format.ts
+// Run: npx tsx test/stdlib/text-format.ts
 //      FORMAT_ONLY=typescript|rust|swift|kotlin runs one backend.
 // Write known.json once, from a run: ... test/stdlib/text-format.ts --known   (refuses to overwrite a file that exists)
 

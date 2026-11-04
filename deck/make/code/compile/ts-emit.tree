@@ -185,6 +185,10 @@ form emit-facts
   link fills, like hash, like text, like fill
   link copy-params, like hash, like text, like hash, like number, like boolean
   link plain-records, like hash, like text, like boolean
+  # the plain forms with cases: a copy of one keeps a field-less case's frozen constant (decision 115 2a)
+  link plain-unions, like hash, like text, like boolean
+  # per task, the roots a self store rebuilds, so their binding is `let` (decision 115 2b)
+  link self-roots, like hash, like text, like list, like text
   link env, like text
   link hmr, like boolean
   # the render runtime names as the build bound them (D020), for a view's zone: empty where the build split no name
@@ -216,6 +220,14 @@ form emit-facts
       take node, like expression
       like boolean
   link is-reuse-site
+    like task
+      take node, like expression
+      like boolean
+  link is-self-store
+    like task
+      take node, like statement
+      like boolean
+  link is-store-copy
     like task
       take node, like expression
       like boolean
@@ -1765,6 +1777,10 @@ task emit-expression
       back <null>
     case variable
       link variable-name
+      # stored into a field or a make, and written after: the store holds its own copy (decision 115 2c)
+      fork test, facts/is-store-copy(node)
+        hold
+          back copy-of-value(to-camel(variable-name), node, facts)
       back to-camel(variable-name)
     case hole
       link hole-name
@@ -2309,7 +2325,7 @@ task emit-call
             save nothing, 0
         fork test, and(writes/has(at), not(is-record))
           hold
-            push(rendered, <\{ ...{text} \}>)
+            push(rendered, copy-of-value(text, arg, facts))
           miss
             push(rendered, text)
         save at, add(at, 1)
@@ -3173,7 +3189,7 @@ task emit-let
       sift alias
         case some
           save is-alias, true
-          save written, <\{ ...{written} \}>
+          save written, copy-of-value(written, let-init, facts)
         case none
           save nothing, 0
       save init, written
@@ -3191,6 +3207,25 @@ task emit-let
       back <{keyword} {to-camel(let-name)}{declared} = {init}>
     miss
       back <>
+
+# a value's own shallow copy (D1). A form with cases keeps a field-less case's frozen constant, which its case test
+# compares by identity (decision 115 2a); a value read more than once is bound first
+task copy-of-value
+  take text, like text
+  take node, like expression
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save holder, named-of(expression-type(node))
+  fork test, and(is-unequal(holder, <>), facts/plain-unions/has(holder))
+    hold
+      sift node
+        case variable
+          back <(Object.isFrozen({text}) ? {text} : \{ ...{text} \})>
+        miss
+          back <((__held: any) =\> Object.isFrozen(__held) ? __held : \{ ...__held \})({text})>
+  back <\{ ...{text} \}>
 
 task is-member
   take node, like expression
@@ -3325,13 +3360,30 @@ task emit-assign
                         case none
                           save nothing, 0
                       save holder, named-of(expression-type(base-target))
-                      fork test, or(or(is-digits(base-name), is-equal(holder, <>)), not(facts/plain-records/has(holder)))
+                      # a self store rebuilds a union root as well (decision 118 step 1)
+                      save holder-plain, facts/plain-records/has(holder)
+                      fork test, and(facts/plain-unions/has(holder), facts/is-self-store(node))
+                        hold
+                          save holder-plain, true
+                      fork test, or(or(is-digits(base-name), is-equal(holder, <>)), not(holder-plain))
                         hold
                           save rebuild, false
                       save segments, prepend(segments, base-name)
                       save base, base-target
                     miss
                       save nothing, 0
+              # a value that holds its own root rebuilds the root, so no value holds itself (decision 115 2b)
+              fork test, and(rebuild, facts/is-self-store(node))
+                hold
+                  save value, written-value(assign-target, assign-value, st, facts)
+                  save k, subtract(segments/length, 1)
+                  walk test
+                    hook test, is-minimum(k, 1)
+                    hook hold
+                      save value, <\{ ...{path-at(base, segments, k, st, facts)}, {to-camel(get(segments, k))}: {value} \}>
+                      save k, subtract(k, 1)
+                  save root-text, emit-expression(base, 0, st, facts)
+                  back <{root-text} = \{ ...{root-text}, {to-camel(get(segments, 0))}: {value} \}>
               fork test, and(rebuild, is-above(segments/length, 1))
                 hold
                   save value, written-value(assign-target, assign-value, st, facts)
@@ -4226,7 +4278,16 @@ task emit-function
       link fn-body
       link fn-result
       save previous, st/assigned-names
-      save st/assigned-names, collect-assigned(fn-body)
+      save assigned, collect-assigned(fn-body)
+      # a root a self store rebuilds is assigned (decision 115 2b)
+      fork test, facts/self-roots/has(fn-name)
+        hold
+          walk facts/self-roots/get(fn-name)
+            take root-name
+            fork test, not(has-text(assigned, root-name))
+              hold
+                push(assigned, root-name)
+      save st/assigned-names, assigned
       save previous-fn, st/current-fn
       save st/current-fn, make(some, node)
       save previous-carriers, st/carrier-locals

@@ -100,8 +100,8 @@ function main(): void {
   // store path layout
   expect(
     'store path',
-    storePath('/home/me', 'termsurf', 'wolf', '0.0.1'),
-    '/home/me/.base/@term/code/deck/link/termsurf/wolf/0.0.1',
+    storePath('/home/p', 'termsurf', 'wolf', '0.0.1'),
+    '/home/p/.base/@term/code/deck/link/termsurf/wolf/0.0.1',
   )
 
   console.log(`\ndeck: ${pass} pass, ${fail} fail`)

@@ -449,8 +449,10 @@ task source-fuzz-entry
       back hunt-nothing(0)
 
   host campaign, hunt-path/join(hunt-text-of(here), <fuzz-entry.ts>)
-  # the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths
-  host tsconfig, hunt-path/resolve(hunt-text-of(here), <../../../../../tsconfig.json>)
+  # the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths. The
+  # Term root's tsconfig.json is five folders above this module's emitted port (deck/test/host/port/code/): one step a
+  # segment, so the walk is plain to read and stays inside the root
+  host tsconfig, hunt-path/resolve(hunt-text-of(here), <..>, <..>, <..>, <..>, <..>, <tsconfig.json>)
   fork test, hunt-fs/exists-sync(campaign)
     hold
       back hunt-tsx-entry(tsconfig, campaign)

@@ -9,6 +9,7 @@
 // Run: npx tsx test/item/unit.ts
 
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { lineText } from '@term/call/code/work/item/layout'
 import type { Line, Room } from '@term/call/code/work/item/layout'
@@ -71,6 +72,9 @@ import {
   room,
   tally,
 } from './build'
+
+// tsx as the Term package resolves it (a devDependency), never a path into a folder above the package
+const TSX = createRequire(join(process.cwd(), 'package.json')).resolve('tsx/cli')
 
 let pass = 0
 let fail = 0
@@ -1756,7 +1760,7 @@ function runChild(
   const run = spawnSync(
     process.execPath,
     [
-      join(process.cwd(), '../../../../node_modules/tsx/dist/cli.mjs'),
+      TSX,
       'test/item/emit-child.ts',
       ...flags,
     ],
@@ -1882,10 +1886,7 @@ function runChild(
     spawnSync(
       process.execPath,
       [
-        join(
-          process.cwd(),
-          '../../../../node_modules/tsx/dist/cli.mjs',
-        ),
+        TSX,
         'test/item/follow-child.ts',
         ...flags,
       ],
@@ -1961,10 +1962,7 @@ function runChild(
     spawnSync(
       process.execPath,
       [
-        join(
-          process.cwd(),
-          '../../../../node_modules/tsx/dist/cli.mjs',
-        ),
+        TSX,
         'test/item/progress-child.ts',
         ...flags,
       ],

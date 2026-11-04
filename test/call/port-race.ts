@@ -29,7 +29,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
@@ -67,12 +67,13 @@ const LEAVE = new Set([
   'tmp',
   '.git',
 ])
-// the clone sits five levels below its root, as the Term tree sits in the repository, with a copy of the line lock at
-// <root>/task/term/line-lock.ts: port-build loads the lock by that path and refuses to run without it (item
-// term-self-host-001-0475), so the clone's builds lock the clone, as port-build-skip.ts's do
+// the clone sits five levels below its root, with a copy of the line lock at <clone>/task/term/line-lock.ts and the
+// package.json beside it that keeps that folder CommonJS: port-build loads the lock by that path and refuses to run
+// without it (item term-self-host-001-0475), so the clone's builds lock the clone, as port-build-skip.ts's do
 const cloneRoot = realpathSync(tempDir('term-port-race-'))
 const copy = join(cloneRoot, 'deck', 'term', 'deck', 'term')
-const LINE_LOCK = join(TERM, '..', '..', '..', '..', 'task', 'term', 'line-lock.ts')
+const LINE_LOCK = join(TERM, 'task', 'term', 'line-lock.ts')
+const LINE_LOCK_PACKAGE = join(TERM, 'task', 'term', 'package.json')
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {
@@ -104,13 +105,14 @@ function clone(): void {
     cpSync(join(TERM, file), join(copy, file))
   }
 
-  mkdirSync(join(cloneRoot, 'task', 'term'), { recursive: true })
-  cpSync(LINE_LOCK, join(cloneRoot, 'task', 'term', 'line-lock.ts'))
+  mkdirSync(join(copy, 'task', 'term'), { recursive: true })
+  cpSync(LINE_LOCK, join(copy, 'task', 'term', 'line-lock.ts'))
+  cpSync(LINE_LOCK_PACKAGE, join(copy, 'task', 'term', 'package.json'))
 
   const tsconfig = readFileSync(
     join(TERM, 'tsconfig.json'),
     'utf8',
-  ).replaceAll('"../../../../', `"${join(TERM, '../../../..')}/`)
+  ).replace(/"((?:\.\.\/)+)/g, (_whole, up: string) => `"${resolve(TERM, up)}/`)
 
   writeFileSync(join(copy, 'tsconfig.json'), tsconfig)
   symlinkSync(join(TERM, 'node_modules'), join(copy, 'node_modules'))

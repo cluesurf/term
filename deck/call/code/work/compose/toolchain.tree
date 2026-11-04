@@ -194,7 +194,7 @@ task have-tool
   save said, node-child/spawn-sync(<which>, args, make(tool-text, bind(encoding, <utf8>)))
   back is-equal(said/status, 0)
 
-# the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
+# the toolchain script that resolves the Compose libraries, shipped in the stdlib's own tree
 task toolchain-script
   like text
 
@@ -202,13 +202,13 @@ task toolchain-script
   save script, <>
   fork test, is-truthy(stdlib)
     hold
-      save script, node-path/join(stdlib, <../../../../../..>, <task/term/native/kotlin.sh>)
+      save script, node-path/join(stdlib, <code/native/toolchain/kotlin.sh>)
   fork test, or(is-equal(script, <>), not(node-fs/exists-sync(script)))
     hold
-      raise-error(<the Compose toolchain script task/term/native/kotlin.sh was not found beside the stdlib>)
+      raise-error(<the Compose toolchain script code/native/toolchain/kotlin.sh was not found in the stdlib>)
   back script
 
-# where compiled Compose runtimes are kept between builds: the native toolchain's cache (task/term/native/common.sh)
+# where compiled Compose runtimes are kept between builds: the native toolchain's cache (native/toolchain/common.sh)
 task runtime-cache
   like text
 

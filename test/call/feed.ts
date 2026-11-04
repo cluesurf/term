@@ -8,15 +8,11 @@
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
+import { borrowed } from '../borrow'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
-
-const HERE =
-  import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const MESH = join(HERE, '../../../../../../mesh')
 
 let pass = 0
 let fail = 0
@@ -101,17 +97,12 @@ async function feed(
     )
 
     let chromium: Chromium | undefined
+    const playwright = borrowed<{ chromium: Chromium }>('@playwright/test')
 
-    try {
-      chromium = (
-        createRequire(join(MESH, 'package.json'))(
-          '@playwright/test',
-        ) as { chromium: Chromium }
-      ).chromium
-    } catch {
-      console.log(
-        'skip  the browser case (no @playwright/test under mesh/)',
-      )
+    if ('value' in playwright) {
+      chromium = playwright.value.chromium
+    } else {
+      console.log(`skip  the browser case (${playwright.reason})`)
     }
 
     const launched = chromium

@@ -1,4 +1,4 @@
-// Write note/project/term/commands.md: every `term` verb, its subcommands, and its options.
+// Write doc/commands.md: every `term` verb, its subcommands, and its options.
 //
 // GENERATED, from two sources, each used for what it is authoritative about:
 //
@@ -37,7 +37,8 @@ import { LINE } from './cli'
 const HERE =
   import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PAGE = join(TERM, '../../../../note/project/term/commands.md')
+// the page lives in the repository it describes, beside the code it is generated from
+const PAGE = join(TERM, 'doc/commands.md')
 const CONSOLE = join(TERM, 'deck/call/code/line/base.tree')
 
 // the console's routes, as `term make` reads the file: its program (the global options) and its commands
@@ -313,11 +314,11 @@ const commit = process.argv.includes('--commit')
 if (commit) {
   writeFileSync(PAGE, page)
   console.log(
-    `wrote note/project/term/commands.md (${verbs.length} verbs)`,
+    `wrote doc/commands.md (${verbs.length} verbs)`,
   )
 } else if (!same) {
   console.log(
-    'note/project/term/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from deck/term/deck/term',
+    'doc/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from the Term root',
   )
 }
 

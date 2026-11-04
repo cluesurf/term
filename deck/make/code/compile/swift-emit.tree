@@ -312,6 +312,9 @@ form swift-state
   # the element types whose lists of lists own their inner lists (backend.ts `ownedElements`)
   link inner-keys, like hash, like text, like boolean
   link inner-rendering, like list, like expression
+  # a match arm's subject, by name, and the case the arm narrowed it to: a field write there rebuilds the case
+  # (decision 115 section 3)
+  link arm-cases, like hash, like text, like text
 
 task new-swift-state
   take needs, like hash, like text, like boolean
@@ -348,6 +351,7 @@ task new-swift-state
       bind emitting-fresh, false
       bind inner-keys, make hash
       bind inner-rendering, make list
+      bind arm-cases, make hash
 
 # ---- small helpers ----
 
@@ -1538,7 +1542,26 @@ task value-raises
       back body-throws(closure-body)
     miss
       save nothing, 0
-  back type-raises(expression-type(value))
+  fork test, type-raises(expression-type(value))
+    hold
+      back true
+  # an asynchronous task type is spelled `async throws` whatever it raises (`swift-type`), so a value held as one, a
+  # field read among them, can throw to Swift: a `rethrows` callee given it needs the `try` (await-mark 6, release 2.9.0)
+  sift expression-type(value)
+    case some
+      link value-known
+      sift value-known
+        case function
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                back true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back false
 
 # a call to a task with a pass-through parameter throws where an argument given there can (decision 089 rule 5). The
 # task is `rethrows`, so an infallible argument's call needs no `try`
@@ -3643,6 +3666,69 @@ task emit-let
     miss
       back <>
 
+# a field of a match subject written in the arm that narrowed it to `label`: the value first, then the case rebuilt over
+# the subject's own fields as they stand, so a second write in the arm keeps the first (decision 115 section 3)
+task arm-write
+  take subject-node, like expression
+  take label, like text
+  take fields, like list, like text
+  take written, like text
+  take value, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save subject-text, emit-expr(subject-node, field-scope, st, facts)
+  save value-text, emit-expr(value, field-scope, st, facts)
+  fork test, facts/field-lists/has(<{label}/{written}>)
+    hold
+      save value-text, owned-value(value, field-scope, st, facts)
+  # a leading-dot case built alone needs its type spelled
+  save value-type, expression-type(value)
+  sift value-type
+    case some
+      save value-text, <: {swift-type(value-type, st, facts)} = {value-text}>
+    case none
+      save value-text, < = {value-text}>
+  save subject-form, named-of(expression-type(subject-node))
+  # a case held by node class: a new node over the old one's fields
+  fork test, facts/node-cases/has(label)
+    hold
+      save held, facts/node-cases/get(label)
+      fork test, is-equal(subject-form, held/form)
+        hold
+          save labelled, make list
+          walk fields
+            take field
+            fork test, is-equal(field, written)
+              hold
+                push(labelled, <{camel(field)}: __arm>)
+              miss
+                push(labelled, <{camel(field)}: __node.{camel(field)}>)
+          back <do \{ let __arm{value-text}; if case let .{camel(label)}(__node) = {subject-text} \{ {subject-text} = .{camel(label)}({held/name}({join-texts(labelled, <, >)})) \} \}>
+  save binds, make list
+  save labelled, make list
+  save bound, false
+  save at, 0
+  walk fields
+    take field
+    fork test, is-equal(field, written)
+      hold
+        push(binds, <_>)
+        push(labelled, <{camel(field)}: __arm>)
+      miss
+        save bound, true
+        push(binds, <__arm{at}>)
+        push(labelled, <{camel(field)}: __arm{at}>)
+    save at, add(at, 1)
+  save pattern, <.{camel(label)}>
+  fork test, bound
+    hold
+      save pattern, <let .{camel(label)}({join-texts(binds, <, >)})>
+  back <do \{ let __arm{value-text}; if case {pattern} = {subject-text} \{ {subject-text} = .{camel(label)}({join-texts(labelled, <, >)}) \} \}>
+
 task emit-assign
   take node, like statement
   take field-scope, like hash, like text, like list, like text
@@ -3686,6 +3772,32 @@ task emit-assign
               fork test, and(is-equal(kind-of-node(assign-target), <string>), empty-text(make(some, assign-value)))
                 hold
                   back <{emit-expr(assign-target, field-scope, st, facts)}.removeAll(keepingCapacity: true)>
+              # `save x, x` changes nothing, and swiftc refuses a variable assigned to itself
+              fork test, is-equal(variable-name-of(assign-value), variable-name-of(assign-target))
+                hold
+                  back <_ = {emit-expr(assign-target, field-scope, st, facts)}>
+            miss
+              save nothing, 0
+      # a field written in an arm of a match over a form's cases: the case is rebuilt with it, its other fields read again
+      # from the subject as it stands, never the arm's own locals (decision 115 section 3)
+      fork test, is-equal(op, <=>)
+        hold
+          sift assign-target
+            case member
+              link arm-target
+              link arm-field
+              link arm-index
+              sift arm-index
+                case none
+                  save arm-root, variable-name-of(arm-target)
+                  fork test, and(and(is-unequal(arm-root, <>), st/arm-cases/has(arm-root)), field-scope/has(arm-root))
+                    hold
+                      save arm-fields, field-scope/get(arm-root)
+                      fork test, has-text(arm-fields, arm-field)
+                        hold
+                          back arm-write(arm-target, st/arm-cases/get(arm-root), arm-fields, arm-field, assign-value, field-scope, st, facts)
+                case some
+                  save nothing, 0
             miss
               save nothing, 0
       # a record written back to the slot it was read from: only its changed fields
@@ -4281,7 +4393,24 @@ task emit-match
           hold
             push(arms, <{pad(inner)}case {arm/label}:\n{arm-block(arm/body, arm-depth, field-scope, st, facts)}>)
           miss
+            # the subject narrowed to this case, which a field write in the arm rebuilds (decision 115 section 3)
+            save had-case, false
+            save was-case, <>
+            fork test, is-unequal(subject-name, <>)
+              hold
+                fork test, st/arm-cases/has(subject-name)
+                  hold
+                    save had-case, true
+                    save was-case, st/arm-cases/get(subject-name)
+                save st/arm-cases/{subject-name}, arm/label
             push(arms, emit-case-arm(arm, match-subject, subject, subject-name, subject-form, consumed, depth, field-scope, st, facts))
+            fork test, is-unequal(subject-name, <>)
+              hold
+                fork test, had-case
+                  hold
+                    save st/arm-cases/{subject-name}, was-case
+                  miss
+                    st/arm-cases/delete(subject-name)
       sift match-otherwise
         case some
           link other

@@ -54,19 +54,22 @@ task order-of-sign
 
 # ---- the shapes ----
 
-# one kind of value as it crosses. `form` names a handle's or a record's form, `from` the module a record is loaded
-# from, `item` a list's element
+# one kind of value as it crosses. A list is its own case, its element a REQUIRED field, so a walk down a list's
+# elements is a structural descent (decision 114 of term/self-host/change/001-finish-self-host, item 0899). Every other
+# kind is plain: `kind` its name, `form` a handle's or a record's form, `from` the module a record is loaded from.
+# Tagged on `shape`, since `form` is a field
 form bridge-kind
-  link kind, like text
-  link form
-    like text
-    need false
-  link from
-    like text
-    need false
-  link item
-    like bridge-kind
-    need false
+  mark tag, name shape
+  case bridge-plain
+    link kind, like text
+    link form
+      like text
+      need false
+    link from
+      like text
+      need false
+  case bridge-list
+    link item, like bridge-kind
 
 # a kind, or why the bridge cannot carry the type: `refuse` is the empty text when it can
 form bridge-kind-answer
@@ -212,7 +215,31 @@ task plain-kind
   take kind, like text
   like bridge-kind
 
-  back make bridge-kind, bind kind, kind
+  back make bridge-plain, bind kind, kind
+
+# the name of a kind: `list` for a list
+task kind-name-of
+  take kind, like bridge-kind
+  like text
+
+  sift kind
+    case bridge-plain
+      link name
+      back name
+    case bridge-list
+      back <list>
+
+# the form a handle or a record kind names, the empty text for a list
+task kind-form-of
+  take kind, like bridge-kind
+  like text
+
+  sift kind
+    case bridge-plain
+      link form
+      back form
+    case bridge-list
+      back <>
 
 task carried-kind
   take kind, like bridge-kind
@@ -237,23 +264,24 @@ task crosses-by-value
   take kind, like bridge-kind
   like boolean
 
-  save name, kind/kind
-  fork test, is-equal(name, <list>)
-    hold
-      back crosses-by-value(kind/item)
-  fork test, is-equal(name, <text>)
-    hold
-      back true
-  fork test, is-equal(name, <boolean>)
-    hold
-      back true
-  fork test, is-equal(name, <number>)
-    hold
-      back true
-  fork test, is-equal(name, <decimal>)
-    hold
-      back true
-  back is-equal(name, <record>)
+  sift kind
+    case bridge-list
+      back crosses-by-value(item)
+    case bridge-plain
+      link name
+      fork test, is-equal(name, <text>)
+        hold
+          back true
+      fork test, is-equal(name, <boolean>)
+        hold
+          back true
+      fork test, is-equal(name, <number>)
+        hold
+          back true
+      fork test, is-equal(name, <decimal>)
+        hold
+          back true
+      back is-equal(name, <record>)
 
 # every record a kind mentions, through lists
 task records-in
@@ -261,16 +289,19 @@ task records-in
   like list, like bridge-record
 
   save found, make list
-  fork test, is-equal(kind/kind, <record>)
-    hold
-      found/push
-        make bridge-record
-          bind form, kind/form
-          bind from, kind/from
-      back found
-  fork test, is-equal(kind/kind, <list>)
-    hold
-      back records-in(kind/item)
+  sift kind
+    case bridge-list
+      back records-in(item)
+    case bridge-plain
+      link name
+      link form
+      link from
+      fork test, is-equal(name, <record>)
+        hold
+          found/push
+            make bridge-record
+              bind form, form
+              bind from, from
   back found
 
 task record-order

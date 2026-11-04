@@ -242,6 +242,16 @@ form kotlin-facts
     like task
       take node, like statement
       like boolean
+  # decision 115: a write whose value holds its root rebuilds the root (2b), a stored variable written after is copied
+  # where it is stored (2c)
+  link is-self-store
+    like task
+      take node, like statement
+      like boolean
+  link is-store-copy
+    like task
+      take node, like expression
+      like boolean
   link is-ascii
     like task
       take node, like expression
@@ -349,6 +359,9 @@ form kotlin-state
   link walk-count, like number
   link spares, like list, like text
   link spare-temps, like number
+  # a `when` arm's subject, by name, and the class of the case the arm narrowed it to: a field write there rebuilds
+  # the case (decision 115 section 3)
+  link narrowed, like hash, like text, like text
 
 task new-kotlin-state
   like kotlin-state
@@ -382,6 +395,7 @@ task new-kotlin-state
       bind walk-count, 0
       bind spares, make list
       bind spare-temps, 0
+      bind narrowed, text-texts()
 
 # ---- small helpers ----
 
@@ -1769,6 +1783,10 @@ task kt-expr
       fork test, has-text(st/builders, variable-name)
         hold
           back <{kotlin-camel(variable-name)}.toString()>
+      # stored into a field or a make, and written after: the store holds its own copy (decision 115 2c)
+      fork test, facts/is-store-copy(node)
+        hold
+          back <{kotlin-camel(variable-name)}.copy()>
       back kotlin-camel(variable-name)
     case hole
       link hole-name
@@ -4232,8 +4250,49 @@ task kt-assign
           back <kotlin.run \{ {join-texts(parts, <; >)} \}>
         case none
           save nothing, 0
+      # a field written in a `when` arm whose subject the arm narrowed to a case: the case is rebuilt with it, since a
+      # case's fields are `val` and its value may be held elsewhere (decision 115 section 3)
+      fork test, is-equal(op-text, <=>)
+        hold
+          sift assign-target
+            case member
+              link arm-target
+              link arm-field
+              sift read(index)
+                case none
+                  fork test, is-variable(arm-target)
+                    hold
+                      save root-text, kt-expr(arm-target, st, facts)
+                      fork test, st/narrowed/has(root-text)
+                        hold
+                          save cls, st/narrowed/get(root-text)
+                          back <{root-text} = ({root-text} as {cls}).copy({kotlin-camel(arm-field)} = {kt-expr(assign-value, st, facts)})>
+                case some
+                  save nothing, 0
+            miss
+              save nothing, 0
       save segments, make list
       save rebuild, and(is-equal(op-text, <=>), path-segments(assign-target, facts, segments))
+      # a value that holds its own root rebuilds the root, so no value holds itself (decision 115 2b)
+      fork test, and(rebuild, facts/is-self-store(node))
+        hold
+          save root-fields, make list
+          save at, subtract(segments/length, 1)
+          walk test
+            hook test, is-minimum(at, 0)
+            hook hold
+              push(root-fields, get(segments, at))
+              save at, subtract(at, 1)
+          save root-base, path-base(assign-target)
+          save root-value, kt-expr(assign-value, st, facts)
+          save k, subtract(root-fields/length, 1)
+          walk test
+            hook test, is-minimum(k, 1)
+            hook hold
+              save root-value, <{path-at(root-base, root-fields, k, st, facts)}.copy({kotlin-camel(get(root-fields, k))} = {root-value})>
+              save k, subtract(k, 1)
+          save root-text, kt-expr(root-base, st, facts)
+          back <{root-text} = {root-text}.copy({kotlin-camel(get(root-fields, 0))} = {root-value})>
       fork test, and(rebuild, is-above(segments/length, 1))
         hold
           # the segments, first field first
@@ -4869,6 +4928,16 @@ task kt-match
         walk added
           take local
           save st/local-names/{local}, true
+        # the subject narrowed to this case, which a field write in the arm rebuilds (decision 115 section 3)
+        save had-narrowed, false
+        save was-narrowed, <>
+        fork test, and(stable, is-above(field-names/length, 0))
+          hold
+            fork test, st/narrowed/has(subject-name)
+              hold
+                save had-narrowed, true
+                save was-narrowed, st/narrowed/get(subject-name)
+            save st/narrowed/{subject-name}, cls
         save body-text, <>
         fork test, is-above(spare/length, 0)
           hold
@@ -4892,6 +4961,13 @@ task kt-match
             save body-text, join-texts(kept-texts(parts), <\n>)
           miss
             save body-text, kt-block(arm/body, add(depth, 2), st, facts)
+        fork test, and(stable, is-above(field-names/length, 0))
+          hold
+            fork test, had-narrowed
+              hold
+                save st/narrowed/{subject-name}, was-narrowed
+              miss
+                st/narrowed/delete(subject-name)
         walk added
           take local
           st/local-names/delete(local)

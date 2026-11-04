@@ -1077,6 +1077,8 @@ task refuse-sole-copies
   take program, like list, like statement
   take copy-params, like hash, like text, like hash, like number, like boolean
   take lets, like list, like statement
+  # the values decision 115 copies where they are stored, and the roots it rebuilds
+  take stores, like list, like expression
   take fail
     like task
       take reason, like text
@@ -1147,6 +1149,15 @@ task refuse-sole-copies
           case none
             save idle, 0
       miss
+        save idle, 0
+  walk stores
+    take stored
+    sift sole-name(expression-type(stored), sole-forms)
+      case some
+        link form
+        fail(<sole-copied: a value of `{form}`, which is `mark sole`, would be copied where it is stored. A sole value is moved, never copied>)
+        back false
+      case none
         save idle, 0
   back true
 
@@ -1492,13 +1503,25 @@ task emit-kotlin
     save guards/{loop-row}, one-guard
     save fast-in/{loop-row}, expression-rows(found/fast)
   # where a record is copied so a write through one name cannot reach another (backend-copies.tree), a sole one refused
-  save copies, record-copies-of(program, make list)
+  save no-context, make list
+  save copies, record-copies-of(program, no-context, false, false)
   save copy-lets, make list
   walk copies/lets
     take one
     push(copy-lets, one/node)
-  refuse-sole-copies(program, copies/params, copy-lets, fail)
+  save sole-stores, make list
+  walk copies/store-copies
+    take one
+    push(sole-stores, one)
+  walk copies/rebuilt
+    take one
+    push(sole-stores, one)
+  refuse-sole-copies(program, copies/params, copy-lets, sole-stores, fail)
   save copy-let-rows, statement-rows(copy-lets)
+  # the stores of decision 115, records only: a write whose value holds its root rebuilds the root, a stored variable
+  # written after is copied where it is stored
+  save self-store-rows, statement-rows(copies/self-stores)
+  save store-copy-rows, expression-rows(copies/store-copies)
   # the text expressions proven ASCII, read by index
   save ascii, expression-rows(ascii-texts(program))
   # the place table and its places' identities: on a stamped program every place is a node of its own
@@ -1903,6 +1926,16 @@ task emit-kotlin
       take node, like statement
       like boolean
       back has-statement-row(copy-let-rows, node)
+  save is-self-store
+    task
+      take node, like statement
+      like boolean
+      back has-statement-row(self-store-rows, node)
+  save is-store-copy
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(store-copy-rows, node)
   save is-reuse-site
     task
       take node, like expression
@@ -2062,6 +2095,8 @@ task emit-kotlin
       bind loop-guard-of, loop-guard-of
       bind is-fast-in, is-fast-in
       bind copy-of-let, copy-of-let
+      bind is-self-store, is-self-store
+      bind is-store-copy, is-store-copy
       bind is-ascii, is-ascii-node
       bind is-reuse-site, is-reuse-site
       bind reuse-kept-of, reuse-kept-of

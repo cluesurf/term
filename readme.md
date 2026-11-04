@@ -248,6 +248,8 @@ reuses the same analysis for diagnostics, hover, and go-to-definition.
 
 ## Developing Term
 
+How to build, test and release Term, step by step, is in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 Working on Term itself takes Node, pnpm, Rust, Swift, a JDK, Kotlin, Maven and, for the mobile suites, the Android
 SDK and the iOS simulator. One command checks them all on macOS, Linux or Windows, and installs what is missing with
 `--commit`:

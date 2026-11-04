@@ -1,0 +1,263 @@
+# Every pair ever written, one per line, run in this order by task/term/pair-sweep.ts.
+#
+#   pair <name> [args]            the generic runner: task/term/pair.ts <name>, spec at <term>/tmp/self-host/pairs/<name>.ts
+#   legacy <tmp/pair-x.ts> [args] a bespoke pair, run from <term>; its last line is read as `N agree, M disagree`
+#                                 (or `M disagree`, or `N differ` in the oldest)
+#   # baseline N                  trailing comment: a known, explained disagreement. The sweep fails when the count
+#                                 RISES above N and reports it when it falls. See verification.md#baselines.
+#
+# <term> is the Term root. A pair's name for `--from` is the file name
+# without `pair-` and `.ts`.
+#
+# Seeded from tmp/run-check-and-pairs.sh (the walk pairs of tmp/run-walk-pairs.sh, then its own list) and
+# tmp/run-pairs-rest.sh (a subset of that list from swift-emit on, so nothing new). Left out on purpose: the
+# whole-toolchain checks tmp/run-full-check.sh runs first (regression, switch CLI, switch tests), which are gates and
+# not pairs, and the second `lint-rules` of the old list, which repeats the walk list's. The old scripts passed no
+# arguments, so no line has any.
+#
+# A trailing `# term-self-host-001-NNNN` names the open item that reads a failing line (item 0810's sweep, 2026-11-02), and a
+# `# dead` line is out with its reason. A line-limit of 20 minutes is too short: resolve took 5,784 s, line-layout 3,615 s,
+# analyze-entry 3,279 s at load 15, all 0 disagree. Run with --jobs 3 --timeout 120 and NODE_OPTIONS=--max-old-space-size=6144.
+#
+# Known notes:
+#   holds      runs round 65 since item 0057 bounds the lift; a round whose lift spends the face's proof budget is
+#              counted `diverged D027-0057`, not compared (D027 row 48, item 0401)
+#   census     hung under the old perl alarm (the alarm killed only the top process); the sweep kills the whole group
+#
+# ---- the node-walk pairs (tmp/run-walk-pairs.sh) ----
+legacy tmp/pair-node-walk.ts
+legacy tmp/pair-tag.ts
+legacy tmp/pair-checks.ts
+legacy tmp/pair-checks-two.ts
+legacy tmp/pair-duplicates.ts
+legacy tmp/pair-used-classes.ts
+legacy tmp/pair-traits.ts
+# retired, decision 112, test/lint/run.tree (item 0867): legacy tmp/pair-lint-rules.ts
+legacy tmp/pair-expr-equal.ts
+legacy tmp/pair-cfg.ts
+legacy tmp/pair-patterns.ts
+legacy tmp/pair-dock-shadow.ts
+legacy tmp/pair-literals.ts
+legacy tmp/pair-returns.ts
+# retired, decision 112, test/check/infer.ts (item 0824): legacy tmp/pair-unused.ts
+legacy tmp/pair-bodiless.ts
+legacy tmp/pair-type-names.ts
+legacy tmp/pair-note-metadata.ts
+legacy tmp/pair-words.ts
+# ---- the rest (tmp/run-check-and-pairs.sh) ----
+# retired, decision 112, test/compile/route-table.ts (item 0825): legacy tmp/pair-route-lower.ts
+legacy tmp/pair-view-tree.ts
+legacy tmp/pair-pending.ts
+legacy tmp/pair-dock-apart.ts
+legacy tmp/pair-dictionary.ts
+legacy tmp/pair-monomorphize.ts
+# retired, decision 112, test/ir/inline-statements.tree (item 0826): legacy tmp/pair-inline-statements.ts
+legacy tmp/pair-view-lower.ts
+legacy tmp/pair-mir-lower.ts
+legacy tmp/pair-claim.ts
+legacy tmp/pair-certificate.ts
+# retired, decision 112, test/compile/async-bind.ts (item 0827): legacy tmp/pair-async-resolve.ts
+legacy tmp/pair-alias.ts
+legacy tmp/pair-mask-defaults.ts
+legacy tmp/pair-mask-defaults-fixture.ts
+legacy tmp/pair-substitution.ts
+legacy tmp/pair-zonk.ts
+legacy tmp/pair-scheme.ts  # baseline 493 (another session's D10 edits, by design)
+legacy tmp/pair-type-seed.ts
+legacy tmp/pair-signature.ts
+legacy tmp/pair-expect.ts  # baseline 6250 (another session's D10 edits, by design)
+# retired, decision 112, test/compile/lean-label-or-call.ts (item 0828): legacy tmp/pair-lean-nest.ts
+legacy tmp/pair-async-slots.ts
+legacy tmp/pair-explain.ts
+legacy tmp/pair-egraph-arith.ts
+legacy tmp/pair-ring.ts
+legacy tmp/pair-hvm.ts
+legacy tmp/pair-wgsl.ts
+# retired, decision 112, test/compile/separate.ts (item 0829): legacy tmp/pair-interface.ts
+legacy tmp/pair-view-compile.ts
+legacy tmp/pair-lock.ts
+legacy tmp/pair-deck-resolve.ts
+legacy tmp/pair-look-css.ts
+legacy tmp/pair-look-table.ts
+legacy tmp/pair-engine-typescript.ts
+legacy tmp/pair-node-reach.ts  # term-self-host-001-0830
+legacy tmp/pair-private.ts
+legacy tmp/pair-prune.ts
+# retired, decision 112, test/check/module-scope.ts (item 0868): legacy tmp/pair-scope.ts
+legacy tmp/pair-extend.ts  # term-self-host-001-0831
+legacy tmp/pair-lost-writes.ts
+legacy tmp/pair-overload.ts
+legacy tmp/pair-effects.ts  # term-self-host-001-0832
+legacy tmp/pair-native-env.ts
+# retired, decision 112, test/check/bind-cases.tree (item 0833): legacy tmp/pair-bind.ts
+legacy tmp/pair-lowered.ts
+legacy tmp/pair-keyword-import.ts
+legacy tmp/pair-tell.ts
+legacy tmp/pair-supervise.ts
+legacy tmp/pair-unit-split.ts
+legacy tmp/pair-mill-check.ts
+legacy tmp/pair-finds.ts
+legacy tmp/pair-seam.ts
+# retired, decision 112, test/check/purity-local.tree (item 0834): legacy tmp/self-host/pairs/facts-hooked-purity.ts
+legacy tmp/pair-refine.ts 20  # slow, 2,000 rounds did not end in 15 minutes, 20 read 60 agree (item 0865)
+legacy tmp/pair-totality.ts  # term-self-host-001-0835
+legacy tmp/pair-twin.ts
+legacy tmp/pair-selection.ts
+legacy tmp/pair-ascii.ts
+legacy tmp/pair-steps.ts
+legacy tmp/pair-guards.ts
+# retired, decision 112, test/site/tell.ts (item 0867): legacy tmp/pair-tell-advice.ts
+legacy tmp/pair-unfold.ts
+legacy tmp/pair-product.ts
+legacy tmp/pair-induct.ts
+# retired, decision 112, test/check/contract.tree (item 0836): legacy tmp/self-host/pairs/facts-hooked-contract.ts
+# retired, decision 112, test/compile/template-holes.ts (item 0837): legacy tmp/pair-template.ts
+# retired, decision 112, test/compile/unresolved-relative-load.ts (item 0838): legacy tmp/pair-load.ts
+legacy tmp/pair-simplify.ts  # term-self-host-001-0839
+legacy tmp/pair-format.ts  # term-self-host-001-0840
+legacy tmp/pair-line-layout.ts
+legacy tmp/pair-host.ts
+legacy tmp/pair-data-grammar.ts
+legacy tmp/pair-view-catalog.ts
+legacy tmp/pair-mill-run.ts
+legacy tmp/pair-mill-load.ts
+# retired, decision 112, test/compile/separate.ts (item 0841): legacy tmp/pair-unit-graph.ts
+legacy tmp/pair-resolve.ts
+legacy tmp/pair-stream.ts
+# retired, decision 112, test/compile/melt-kinds.ts (item 0842): legacy tmp/self-host/pairs/backend-hooked-shapes.ts
+# retired, decision 112, test/compile/backends.ts (item 0843): legacy tmp/self-host/pairs/backend-hooked-names.ts
+legacy tmp/self-host/pairs/backend-hooked-lending.ts
+legacy tmp/self-host/pairs/backend-hooked-copies.ts
+legacy tmp/self-host/pairs/backend-hooked-loops.ts
+legacy tmp/self-host/pairs/backend-hooked-reads.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-ts-names.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-ts-assemble.ts
+# ---- from here tmp/run-pairs-rest.sh runs the same names, each held to 20 minutes ----
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-swift-emit.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-kotlin.ts
+# retired, decision 112, test/check/module-scope.ts (item 0864): legacy tmp/pair-census.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-main-entry.ts
+legacy tmp/self-host/pairs/backend-hooked-intervals.ts
+legacy tmp/pair-fixing.ts
+legacy tmp/pair-banner.ts  # term-self-host-001-0845
+# retired, decision 112, test/compile/prelude-reach.ts (item 0846): legacy tmp/pair-runtime-prelude.ts
+legacy tmp/pair-inspection.ts
+legacy tmp/pair-rolling.ts
+legacy tmp/pair-package-paths.ts
+# retired, decision 112, test/lint/run.tree (item 0847): legacy tmp/pair-lint-lines.ts
+# retired, decision 112, test/compile/meaning-native.ts (item 0848): legacy tmp/pair-meanings.ts
+legacy tmp/pair-installing.ts
+legacy tmp/pair-incremental-parse.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-rust-names.ts
+# dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-rust-helpers.ts
+legacy tmp/pair-node-children.ts  # term-self-host-001-0830
+legacy tmp/pair-modules.ts
+# retired, decision 112, test/compile/feed-mill-build.tree (item 0850): legacy tmp/pair-feed-mill.ts
+legacy tmp/pair-view.ts
+legacy tmp/self-host/pairs/holds-pair-hooked.ts  # item 0356: tmp/pair-holds.ts with the work leg read off productWork (holds-work.ts), the facts face hooked (T-0259)
+pair facts-record  # term-self-host-001-0851
+legacy tmp/pair-call-roll-diff.ts
+legacy tmp/pair-call-path.ts
+legacy tmp/pair-call-draft.ts
+legacy tmp/pair-call-manifest.ts
+legacy tmp/pair-call-kink.ts
+legacy tmp/pair-call-need.ts
+legacy tmp/pair-call-device.ts
+legacy tmp/pair-call-reach.ts
+legacy tmp/pair-call-walk.ts
+legacy tmp/pair-call-unit.ts
+legacy tmp/pair-call-context.ts
+legacy tmp/pair-call-context-parts.ts
+legacy tmp/pair-call-wake.ts
+legacy tmp/pair-call-role.ts
+legacy tmp/pair-call-make.ts
+legacy tmp/pair-call-home.ts
+legacy tmp/pair-call-runtime.ts
+# retired, decision 112, test/call/test-snapshot.ts (item 0872): legacy tmp/pair-call-snapshot.ts
+# dead, stale import @term/deck/code/store, repair item term-self-host-001-0876 (item 0810):legacy tmp/pair-call-cache.ts
+legacy tmp/pair-call-need-load.ts
+legacy tmp/pair-call-self.ts
+legacy tmp/pair-call-compose.ts
+# retired, decision 112, test/call/lifecycle.ts (item 0872): legacy tmp/pair-call-base.ts
+legacy tmp/pair-call-boot.ts
+legacy tmp/pair-call-output.ts
+legacy tmp/pair-call-cask.ts
+# retired, decision 112, test/call/test-slug.ts (item 0872): legacy tmp/pair-call-test.ts
+# retired, decision 112, test/call/hold.ts (item 0852): legacy tmp/pair-call-hold.ts
+legacy tmp/pair-call-host.ts
+# retired, decision 112, test/call/roll.ts (item 0870): legacy tmp/pair-call-roll.ts
+# retired, decision 112, test/lint/run.tree (item 0871): legacy tmp/pair-call-lint.ts
+legacy tmp/pair-call-bind.ts
+legacy tmp/pair-call-test-run.ts
+# retired, decision 112, test/call/lifecycle.ts (item 0872): legacy tmp/pair-call-mind.ts
+legacy tmp/pair-call-uikit.ts
+legacy tmp/pair-call-load.ts
+legacy tmp/self-host/pairs/facts-hooked-judging.ts  # term-self-host-001-0853
+# retired, decision 112, test/compile/place.ts (item 0844): legacy tmp/self-host/pairs/backend-hooked-places.ts
+# ---- the last name only the first script runs ----
+legacy tmp/self-host/pairs/facts-hooked-elaborating.ts  # term-self-host-001-0853
+legacy tmp/pair-program-json.ts
+legacy tmp/pair-bind-modules.ts
+legacy tmp/pair-emit-target.ts
+legacy tmp/pair-incremental-parsing.ts
+legacy tmp/pair-node-json.ts  # term-self-host-001-0849
+pair checker-switches-key
+pair side-files-answer
+# retired, decision 112, test/compile/template.ts (item 0854): pair unit-mill-functions
+pair host-code
+pair analyze-entry --timeout 600000
+pair lint-driver --timeout 600000
+legacy tmp/self-host/pairs/view-handed.ts
+# retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-gate-phase --timeout 600000
+pair minting --timeout 60000  # term-self-host-001-0855
+pair minting-face --timeout 60000  # term-self-host-001-0855
+# retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-types-phase --timeout 600000
+pair kernel-terms
+# retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-proofs-phase --timeout 600000
+# retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-warnings-phase --timeout 600000
+# retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-emit-phase --timeout 600000
+pair program-driver-phase --sample 200 --seed 7 --timeout 600000  # term-self-host-001-0866
+pair backend-rust-face --timeout 600000
+pair backend-kotlin-face --timeout 600000
+# retired, decision 112, test/compile/cache-verify.ts (item 0856): pair cache-compile
+pair inferring --sample 500 --seed 7 --timeout 600000
+pair backend-swift-face --timeout 600000  # term-self-host-001-0857
+pair backend-typescript-face --timeout 600000  # term-self-host-001-0858
+# retired, decision 112, test/compile/backends.ts (item 0869): pair backend-face --timeout 600000
+legacy tmp/self-host/pairs/resolve-face.ts
+pair judge-face --timeout 600000
+pair kinds-apart --timeout 120000
+pair elaborate-face --timeout 600000
+legacy tmp/self-host/pairs/host-data-face.ts
+legacy tmp/self-host/pairs/load-face.ts
+legacy tmp/self-host/pairs/mill-load-face.ts
+legacy tmp/self-host/pairs/mill-run-face.ts
+legacy tmp/self-host/pairs/roll-face.ts
+legacy tmp/self-host/pairs/place-face.ts
+legacy tmp/self-host/pairs/ir-face-simplify.ts
+legacy tmp/self-host/pairs/format-face-collapse.ts
+legacy tmp/self-host/pairs/format-face-data.ts
+# retired, decision 112, test/check/totality.tree (item 0859): legacy tmp/self-host/pairs/check-face-totality.ts
+pair block-split-lines
+pair streaming-list --timeout 600000
+pair feed-mill-loads
+pair walk-index-kernel --timeout 600000
+legacy tmp/self-host/pairs/library-face-show.ts
+# retired, decision 112, test/compile/inspect-native.ts (item 0860): legacy tmp/self-host/pairs/library-face-inspect.ts
+# retired, decision 112, test/check/stub-written-names.tree (item 0861): pair stub-surface --sample 300 --seed 7 --timeout 600000
+pair separate-build --sample 120 --seed 7 --timeout 900000  # term-self-host-001-0862
+pair hide-guard --timeout 600000
+pair missing-wait-refusals --timeout 600000
+pair sole-spending --timeout 900000
+pair sole-holding --timeout 900000
+pair views-lowered --timeout 600000
+pair law-english-sentences --timeout 600000  # term-self-host-001-0863
+pair time-run-output --timeout 600000
+pair time-run-execute --timeout 600000
+pair time-run-runner --timeout 600000
+pair time-profile-cpu --timeout 600000
+pair time-profile-memory --timeout 600000
+pair time-profile-benchmark --timeout 600000
+pair lean-run-face --timeout 600000
+pair lean-export-terms --timeout 600000
+pair lean-export-whole --timeout 600000

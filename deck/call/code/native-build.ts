@@ -275,7 +275,7 @@ export function buildNative(input: {
   }
 }
 
-// the classpath the Kotlin backend's runtime needs (coroutines, ktor), where task/term/native/kotlin.sh `deps` keeps
+// the classpath the Kotlin backend's runtime needs (coroutines, ktor), where native/toolchain/kotlin.sh `deps` keeps
 // it: the same cache the Swift flags are read from. Absent, a program that reaches neither still builds
 function kotlinClasspath(): string | undefined {
   const cache =

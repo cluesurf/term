@@ -1,8 +1,8 @@
 // What `pnpm term:distro` made, installed the way a stranger installs it, in containers that have never seen this
 // machine, over HTTP shaped exactly like term.surf: a server here serves tmp/release/<version>/distro/public/ (the
-// signed indexes --commit puts on the site) as static files, and answers every other path with the Worker's own
-// redirect, mesh/site/term.surf/home/site/tool/release-redirect.ts, pointed at a stand-in for GitHub's release
-// downloads that serves distro/packages/. So the package a container installs went through the redirect, and the
+// signed indexes --commit puts on the site) as static files, and answers every other path with the redirect the
+// indexes are written for (test/distro-redirect.ts, which the site's Worker is held to where it is), pointed at a
+// stand-in for GitHub's release downloads that serves distro/packages/. So the package a container installs went through the redirect, and the
 // test fails if it did not.
 //
 //   the redirect: the two shapes the indexes write, and nothing else
@@ -29,7 +29,7 @@ import {
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join, normalize } from 'node:path'
-import { releaseRedirect } from '../../../../../../mesh/site/term.surf/home/site/tool/release-redirect'
+import { RELEASE_SHAPES, releaseRedirect } from '../distro-redirect'
 import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
@@ -64,33 +64,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // ---- the redirect, on its own ----
 
-const github = 'https://github.com/cluesurf/term/releases/download'
-const shapes: [string, string | null][] = [
-  [
-    '/apt/pool/2.7.2/term_2.7.2_amd64.deb',
-    `${github}/v2.7.2/term_2.7.2_amd64.deb`,
-  ],
-  [
-    '/apt/pool/2.7.2/term_2.7.2_arm64.deb',
-    `${github}/v2.7.2/term_2.7.2_arm64.deb`,
-  ],
-  [
-    '/rpm/2.7.2/term-2.7.2-1.x86_64.rpm',
-    `${github}/v2.7.2/term-2.7.2-1.x86_64.rpm`,
-  ],
-  [
-    '/rpm/2.7.2/term-2.7.2-1.aarch64.rpm',
-    `${github}/v2.7.2/term-2.7.2-1.aarch64.rpm`,
-  ],
-  ['/apt/pool/2.7.0/term_2.7.2_amd64.deb', null],
-  ['/apt/pool/2.7.2/term_2.7.2_i386.deb', null],
-  ['/apt/pool/2.7.2/term-2.7.2-windows-x64.zip', null],
-  ['/apt/pool/2.7.2/../2.7.2/term_2.7.2_amd64.deb', null],
-  ['/rpm/2.7.2/other-2.7.2-1.x86_64.rpm', null],
-  ['/apt/dists/stable/InRelease', null],
-]
-
-for (const [pathname, want] of shapes) {
+for (const [pathname, want] of RELEASE_SHAPES) {
   ok(
     `redirect ${pathname}: ${want ? 'the release asset' : 'nothing'}`,
     releaseRedirect({ pathname }) === want,

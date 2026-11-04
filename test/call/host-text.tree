@@ -34,7 +34,8 @@ bind text-tools
   case node
     text <(process.env.HOST_TEXT_TOOLS ?? "task/term")>
 
-host text-home, <../../../..>
+# the Term root, where task/term and the package's own tsx are
+host text-home, <.>
 
 host fact-suite, <test \<the lookup holds its own title\>\n  want hold, facts-of(\<the lookup holds its own title\>)\n>
 

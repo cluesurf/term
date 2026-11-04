@@ -15,13 +15,13 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { build } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
+import { borrowed } from '../borrow'
 
 let pass = 0
 let fail = 0
@@ -37,7 +37,6 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
-const MESH = join(ROOT, '../../../../mesh')
 
 type Page = {
   setContent: (html: string) => Promise<void>
@@ -264,21 +263,15 @@ window.__said = said
 `
 
 async function main(): Promise<void> {
-  let chromium: Chromium
+  const playwright = borrowed<{ chromium: Chromium }>('@playwright/test')
 
-  try {
-    chromium = (
-      createRequire(join(MESH, 'package.json'))('@playwright/test') as {
-        chromium: Chromium
-      }
-    ).chromium
-  } catch (error) {
-    console.log(
-      `skip  controls-web  (no @playwright/test under mesh/: ${String(error).slice(0, 120)})`,
-    )
+  if (!('value' in playwright)) {
+    console.log(`skip  controls-web  (${playwright.reason})`)
 
     return
   }
+
+  const chromium = playwright.value.chromium
 
   const dir = mkdtempSync(join(tmpdir(), 'term-controls-web-'))
   const entry = join(dir, 'slider.tree')

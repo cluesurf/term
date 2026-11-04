@@ -7,7 +7,7 @@
 
 import type { Source } from '@term/make/code/compile/load'
 import { projectResolver } from '@term/call/code/make'
-import * as loaded from '../../../../../../task/term/find-migrate'
+import * as loaded from '../../task/term/find-migrate'
 
 // a script outside the package loads as CommonJS, whose exports arrive under `default`
 const tool = ((loaded as { default?: typeof loaded }).default ??

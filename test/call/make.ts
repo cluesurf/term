@@ -114,7 +114,7 @@ ok(
 
 // 6. A RELATIVE IMPORT SURVIVES A SYMLINKED PROJECT PATH.
 //
-// A relative import is confined to its own package, so `load ../../../../etc/passwd` cannot read the host
+// A relative import is confined to its own package, so a load that climbs up to /etc/passwd cannot read the host
 // filesystem during a compile of untrusted source. The confinement compares the resolved candidate against the
 // package root, and it used to compare a REAL path against an unresolved one: the package root exists and so was
 // resolved through its symlinks, while the candidate is a bare `.../code` with no extension yet and so was not.

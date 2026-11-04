@@ -4,7 +4,7 @@
 //   current    a program that loads @term/base/process/current and listens for a signal (current.rs called
 //              signal_hook, a crate the stdlib's Cargo.toml never named; it uses libc's signal(2) through extern "C" now)
 // Each program is built with rustc or cargo and run, and its output read.
-// Run: sh /Users/lancepollard/base/crew/cluesurf/tmp/run-term.sh npx tsx test/compile/process-rust-reach.ts
+// Run: npx tsx test/compile/process-rust-reach.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'

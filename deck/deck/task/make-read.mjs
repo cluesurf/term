@@ -10,14 +10,29 @@
 // root from one directory and a package from another, so the path is only
 // ever right by accident. Inlining has no resolution step to get wrong.
 //
-// The output is GENERATED. Never edit it. Run `pnpm run make:read`.
+// The output is GENERATED. Never edit it. Run `pnpm run make:read --out <zone>/code/tool/runtime/mill.ts`.
+//
+// Zone is its own package, outside this repository, so the file is written where `--out` says: a path the person typed
+// resolves against the folder they typed it in (INIT_CWD, which pnpm sets). Without `--out` it is written inside this
+// package, at host/zone/mill.ts, for a look at what zone would get.
 import { build } from 'esbuild'
-import { writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import path from 'path'
 
 const here = path.dirname(new URL('.', import.meta.url).pathname)
-// zone sits at the repository's deck/zone, beside deck/term, since 2026-10-02: five levels up from this package
-const out = path.join(here, '..', '..', '..', '..', '..', 'zone', 'code', 'tool', 'runtime', 'mill.ts')
+const given = process.argv.indexOf('--out')
+
+if (given !== -1 && !process.argv[given + 1]) {
+  console.error('make-read: --out needs a file, the zone package\'s code/tool/runtime/mill.ts')
+  process.exit(2)
+}
+
+const out =
+  given === -1
+    ? path.join(here, 'host', 'zone', 'mill.ts')
+    : path.resolve(process.env.INIT_CWD ?? process.cwd(), process.argv[given + 1] ?? '')
+
+mkdirSync(path.dirname(out), { recursive: true })
 
 const made = await build({
   entryPoints: [path.join(here, 'code', 'read.ts')],

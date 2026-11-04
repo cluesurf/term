@@ -22,12 +22,11 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
+import { borrowedFile } from '../borrow'
 
-// the width every Node terminal library uses, from mesh, where it is installed; the grid's table is generated from it
-const STRING_WIDTH = join(
-  import.meta.dirname,
-  '../../../../../../mesh/node_modules/string-width/index.js',
-)
+// the width every Node terminal library uses, which the grid's table is generated from. Borrowed (test/borrow.ts), as
+// the Term package does not declare it: without it the width checks are skipped and the grids still run
+const STRING_WIDTH = borrowedFile('string-width')
 
 let pass = 0
 let fail = 0
@@ -495,18 +494,28 @@ if (result.ok) {
     existsSync(file) ? readFileSync(file, 'utf8') : undefined
   const file = join(dir, 'cells.ts')
   const calls = CASES.map((_, i) => `case${i}()`).join(', ')
-  // every code point through the grid's cell-width beside string-width's, the disagreements counted and the first eight kept
-  const witness = [
-    `import stringWidth from ${JSON.stringify(STRING_WIDTH)}`,
-    'const disagree = []',
-    'let count = 0',
-    'for (let rune = 0; rune <= 0x10ffff; rune++) {',
-    '  const theirs = rune >= 0xd800 && rune <= 0xdfff ? 0 : stringWidth(String.fromCodePoint(rune))',
-    '  const ours = cellWidth(rune)',
-    '  if (ours !== theirs) { count++; if (disagree.length < 8) disagree.push([rune, ours, theirs]) }',
-    '}',
-    `const clusters = ${JSON.stringify(CLUSTER_SAMPLES)}.map(text => [text, clusterCells(text), stringWidth(text)])`,
-  ].join('\n')
+  // every code point through the grid's cell-width beside string-width's, the disagreements counted and the first eight
+  // kept. Without string-width there is nothing to hold the widths to, so none are compared
+  const measured = 'file' in STRING_WIDTH
+
+  if (!('file' in STRING_WIDTH)) {
+    console.log(`skip  the cell widths against string-width (${STRING_WIDTH.reason})`)
+  }
+
+  const witness = ('file' in STRING_WIDTH
+    ? [
+        `import stringWidth from ${JSON.stringify(STRING_WIDTH.file)}`,
+        'const disagree = []',
+        'let count = 0',
+        'for (let rune = 0; rune <= 0x10ffff; rune++) {',
+        '  const theirs = rune >= 0xd800 && rune <= 0xdfff ? 0 : stringWidth(String.fromCodePoint(rune))',
+        '  const ours = cellWidth(rune)',
+        '  if (ours !== theirs) { count++; if (disagree.length < 8) disagree.push([rune, ours, theirs]) }',
+        '}',
+        `const clusters = ${JSON.stringify(CLUSTER_SAMPLES)}.map(text => [text, clusterCells(text), stringWidth(text)])`,
+      ]
+    : ['const disagree = []', 'const count = 0', 'const clusters = []']
+  ).join('\n')
   writeFileSync(
     file,
     `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree, clusters }))\n`,
@@ -527,11 +536,13 @@ if (result.ok) {
       ([rune, ours, theirs]) =>
         `U+${rune.toString(16).toUpperCase()} ${ours} not ${theirs}`,
     )
-    ok(
-      'cell-width agrees with string-width on all 1,114,112 code points',
-      count === 0,
-      `${count} disagree: ${shown.join(', ')}`,
-    )
+    if (measured) {
+      ok(
+        'cell-width agrees with string-width on all 1,114,112 code points',
+        count === 0,
+        `${count} disagree: ${shown.join(', ')}`,
+      )
+    }
 
     for (const [text, ours, theirs] of clusters) {
       const spelled = [...text]

@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { BEAT_TERM_ROOT } from './shared/beat-term-app'
 import { runToolkits } from './shared/toolkit-run'
 import type { Leg } from './shared/toolkit-run'
 
@@ -27,10 +28,15 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const APP = join(
-  import.meta.dirname,
-  '../../../../../tool/tool/beat-term',
-)
+// the app lives outside this repository, where BEAT_TERM_ROOT names it (test/compile/shared/beat-term-app.ts)
+const APP = BEAT_TERM_ROOT
+
+if (!APP) {
+  console.log('skip  beat-term: BEAT_TERM_ROOT names no beat-term app folder')
+  console.log('\nbeat-term: 0 pass, 0 fail, 1 skipped')
+  process.exit(0)
+}
+
 const RATE = 44_100
 const SHOTS =
   process.env.SHOTS ?? mkdtempSync(join(tmpdir(), 'term-beat-shots-'))

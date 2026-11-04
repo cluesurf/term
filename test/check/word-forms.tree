@@ -88,3 +88,31 @@ test <text under host in a module holding a real form text is refused, as the fo
 test <the same line in a module with no real form text builds>
   host out, alone(<host x, text \<a\>\n>)
   want hold, out/ok
+
+# ---- a value in a module that loads, but does not find, a real form of its word ----
+#
+# @term/base/tone's `host hex-alpha, text <...>` in a browser build, beside bind's DOM `form text, name <Text>`: the
+# fallback for a reference no import reaches gave it the real form, `binding: expected text__in0_0, found text`
+
+host real-text, <form text\n  link data, like native-string\n\ntask data-of\n  take t, like text\n  like native-string\n\n  back t/data\n>
+
+test <text under host beside a loaded module holding a real form text is the language's text>
+  host out, built(real-text, <load ./words\n  find data-of\n\nhost x, text \<a\>\n\ntask probe\n  like text\n\n  back x\n>)
+  want hold, out/ok
+
+test <text under host in a third module, beside a real form text it never names, is the language's text>
+  save files, make list
+  files/push(make(compiling-source, bind(file, <./words>), bind(text, real-text)))
+  files/push(make(compiling-source, bind(file, <./tone>), bind(text, <host alpha, text \<ab\>\n\ntask first\n  like text\n\n  back alpha\n>)))
+  host out, compile-text(<load ./words\n  find data-of\n\nload ./tone\n  find first\n\ntask probe\n  like text\n\n  back first()\n>, make(compile-choice, bind(file, <entry.tree>), bind(lean, true), bind(files, files)))
+  want hold, out/ok
+
+# the same when another form has a case named `text`, so the real form takes the name `text__form` (decision 045): the
+# third module's `text` was bound to it, `binding: expected text__form, found text` (the notes site's client bundle)
+test <text under host in a third module is the language's text when a union also has a case named text>
+  save files, make list
+  files/push(make(compiling-source, bind(file, <./words>), bind(text, real-text)))
+  files/push(make(compiling-source, bind(file, <./piece>), bind(text, <form piece\n  case text\n    link value, like native-string\n  case gap\n>)))
+  files/push(make(compiling-source, bind(file, <./tone>), bind(text, <host alpha, text \<ab\>\n\ntask first\n  like text\n\n  back alpha\n>)))
+  host out, compile-text(<load ./words\n  find data-of\n\nload ./piece\n  find piece\n\nload ./tone\n  find first\n\ntask probe\n  like text\n\n  back first()\n>, make(compile-choice, bind(file, <entry.tree>), bind(lean, true), bind(files, files)))
+  want hold, out/ok

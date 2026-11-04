@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path'
 import { tempDir } from '../temp'
 
 const TERM = resolve(import.meta.dirname, '../..')
-const CHECK = resolve(TERM, '../../../../task/term/take-reach.ts')
+const CHECK = resolve(TERM, 'task/term/take-reach.ts')
 
 let pass = 0
 let fail = 0

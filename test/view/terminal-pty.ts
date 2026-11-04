@@ -30,11 +30,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const ESC = '\u001b'
 
-// the blog's golden grid, kept with the project it proves (terminal-target-0005)
-const BLOG_GOLDEN = join(
-  import.meta.dirname,
-  '../../../../../../note/project/term/archive/terminal-target/blog.golden',
-)
+// the blog's golden grid (terminal-target-0005), held with the suite that reads it
+const BLOG_GOLDEN = join(import.meta.dirname, '../fixture/blog.golden')
 
 // an app run in a terminal: its program, the terminal's size, the keys typed once its screen is up (ctrl-c follows),
 // the screen it must leave, and the backends it runs on

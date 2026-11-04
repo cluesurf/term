@@ -211,10 +211,11 @@ host bad, make two(on, on, on)
 
 expect(
   'a slot given by position and by name is refused',
+  // the form name bare, with the positional value and the bind beside it: `make two(make yes)` with the bind on an
+  // indented line is a value under the name AND a part beside it, refused before the slots are read
+  // (test/check/make-split.tree, item 0818). The .tree twin of this suite writes it the same way
   `${FLAG}${PAIR}
-host bad
-  make two(make yes)
-    bind left, make no
+host bad, make(two, make(yes), bind(left, make(no)))
 `,
   'given twice',
 )

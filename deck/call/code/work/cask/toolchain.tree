@@ -66,8 +66,8 @@ task read-runtime
       back node-fs/read-file-sync(file, <utf8>)
   back nothing()
 
-# The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
-# into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
+# The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by the stdlib's
+# code/native/toolchain/swift.sh into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
 # modules builds without them. The path is the script's own convention, so the two cannot disagree.
 task swift-flags
   like list, like text
@@ -86,7 +86,7 @@ task swift-flags
         flags/push(line)
   back flags
 
-# The flags file as task/term/native/swift.sh `flags` answers it whenever the script is beside the stdlib: it trusts the
+# The flags file as native/toolchain/swift.sh `flags` answers it whenever the stdlib carries the script: it trusts the
 # cache only whole (every module map and folder the flags name, and a stamp written last) and rebuilds it otherwise. A
 # purge of TMPDIR left a flags file naming 111 module maps that were gone, and 7 swift suites failed
 # (term-cli-in-term-0217). A script that fails answers no flags; with no script the file is read as it is
@@ -99,7 +99,7 @@ task checked-flags
   save script, <>
   fork test, is-truthy(stdlib)
     hold
-      save script, node-path/join(stdlib, <../../../../../..>, <task/term/native/swift.sh>)
+      save script, node-path/join(stdlib, <code/native/toolchain/swift.sh>)
   fork test, or(is-equal(script, <>), not(node-fs/exists-sync(script)))
     hold
       # read as utf8 the host answers a text (seam decision 004)

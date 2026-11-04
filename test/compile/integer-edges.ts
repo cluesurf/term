@@ -43,6 +43,16 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const have = (tool: string): boolean =>
   spawnSync('which', [tool]).status === 0
+// a task calling a native shim (`pow` into imath) raises `failure` in every program (compiler decision 014), so on Rust
+// it answers `Result` and on Swift it throws: the main unwraps it as the native mains do, a raise ending the program
+const rustMain = (rust: string, arg: string): string =>
+  /fn edge\([^)]*\) -> std::result::Result/.test(rust)
+    ? `fn main() { match edge(${arg}) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } }`
+    : `fn main() { println!("{}", edge(${arg})); }`
+const swiftMain = (swift: string, arg: string): string =>
+  /func edge\([^)]*\) throws/.test(swift)
+    ? `print(try edge(x: ${arg}))`
+    : `print(edge(x: ${arg}))`
 const base = join(import.meta.dirname, '../../deck/base')
 // the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
 const stdlib = stdlibResolver()!
@@ -220,9 +230,10 @@ for (const [label, body] of Object.entries(EDGES)) {
         )
         command = ['npx', 'tsx', `${stem}.ts`]
       } else if (target === 'rust') {
+        const rust = emitRust(built.program)
         writeFileSync(
           `${stem}.rs`,
-          `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(4611686018427387904)); }\n`,
+          `${prelude}\n${rust}\n${rustMain(rust, '4611686018427387904')}\n`,
         )
         execFileSync(
           'rustc',
@@ -239,9 +250,10 @@ for (const [label, body] of Object.entries(EDGES)) {
         )
         command = [stem]
       } else if (target === 'swift') {
+        const swift = emitSwift(built.program)
         writeFileSync(
           `${stem}.swift`,
-          `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 4611686018427387904))\n`,
+          `${prelude}\n${swift}\n${swiftMain(swift, '4611686018427387904')}\n`,
         )
         execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], {
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -333,9 +345,10 @@ task edge
 
   try {
     if (target === 'rust') {
+      const rust = emitRust(built.program)
       writeFileSync(
         `${stem}.rs`,
-        `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(3)); }\n`,
+        `${prelude}\n${rust}\n${rustMain(rust, '3')}\n`,
       )
       execFileSync(
         'rustc',
@@ -352,9 +365,10 @@ task edge
       )
       got = execFileSync(stem).toString().trim()
     } else if (target === 'swift') {
+      const swift = emitSwift(built.program)
       writeFileSync(
         `${stem}.swift`,
-        `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 3))\n`,
+        `${prelude}\n${swift}\n${swiftMain(swift, '3')}\n`,
       )
       execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], {
         stdio: ['ignore', 'pipe', 'pipe'],

@@ -1,7 +1,7 @@
 // Full-stack loop test: compile the blog API (trie router + Postgres repository), prepend both runtime shims (Postgres
 // + hono), bundle, start it on a port, seed two posts into Postgres, then fetch `/posts` and `/posts/:id` over real HTTP
 // and assert the JSON came back through hono -> trie router -> Postgres. This is the complete backend loop end to end.
-// Run: npx tsx test/site/blog-loop.ts   (set DATABASE_URL to override the connection)
+// Run: DATABASE_URL=<postgres url> npx tsx test/site/blog-loop.ts   (skipped without DATABASE_URL)
 
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
@@ -31,9 +31,14 @@ const SEED = path.resolve(
 
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
-const CONN =
-  process.env.DATABASE_URL ??
-  'postgresql://lancepollard@localhost:5432/postgres'
+// the database is the one DATABASE_URL names, never a default: without it there is nothing to write to
+const CONN = process.env.DATABASE_URL ?? ''
+
+if (!CONN) {
+  console.log('skip  blog-loop: set DATABASE_URL to a Postgres the suite may write')
+  console.log('\nblog-loop: 0 pass, 0 fail, 1 skipped')
+  process.exit(0)
+}
 
 const PORT = 38571
 

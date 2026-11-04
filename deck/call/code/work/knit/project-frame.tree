@@ -269,21 +269,24 @@ form round-answer
 # ---- where things are ----
 
 # the Term package root: this file is deck/call/code/work/knit/project-frame.tree in the source, emitted under
-# deck/call/host/port/code/work/knit/, and bundled into host/
+# deck/call/host/port/code/work/knit/, and bundled into host/. The nearest folder at or above this module's own that
+# holds deck/call/code and test/assurance, so no depth is written down for any of the three
 task package-root
   like text
 
   save here, host-path/dirname(host-url/fileURLToPath(frame-here()))
-  save ups, make list
-  ups/push <..>
-  ups/push <../../..>
-  ups/push <../../../../../../..>
-  walk ups
-    take up
-    save root, host-path/resolve(here, up)
-    fork test, and(host-fs/exists-sync(host-path/join(root, <deck/call/code>)), host-fs/exists-sync(host-path/join(root, <test/assurance>)))
-      hold
-        back root
+  save at, here
+  walk test
+    hook test, true
+    hook hold
+      fork test, and(host-fs/exists-sync(host-path/join(at, <deck/call/code>)), host-fs/exists-sync(host-path/join(at, <test/assurance>)))
+        hold
+          back at
+      save up, host-path/dirname(at)
+      fork test, is-equal(up, at)
+        hold
+          halt
+      save at, up
   back host-path/resolve(here, <..>)
 
 task line-of

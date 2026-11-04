@@ -59,4 +59,4 @@ test <no deck root>
   want hold, is-equal(deck-resolve/find-deck-root(</other/x.tree>, exists), <>)
 
 test <store path>
-  want hold, is-equal(deck-resolve/store-path(</home/me>, <termsurf>, <wolf>, <0.0.1>), </home/me/.base/@term/code/deck/link/termsurf/wolf/0.0.1>)
+  want hold, is-equal(deck-resolve/store-path(</home/p>, <termsurf>, <wolf>, <0.0.1>), </home/p/.base/@term/code/deck/link/termsurf/wolf/0.0.1>)

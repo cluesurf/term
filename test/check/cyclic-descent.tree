@@ -12,6 +12,7 @@ load ../support/compiling
   find compile-text
   find compile-choice
   find refused-as
+  find compiling-holds
 
 load @term/base/list
   find contains
@@ -55,6 +56,23 @@ task stdlib-choice
   like compile-choice
 
   back make(compile-choice, bind(file, <s.tree>), bind(project, <deck/make>), bind(project-env, <node>))
+
+# compiles, and warns that the task `name` may not end
+task looping-named
+  take text, like text
+  take name, like text
+  like boolean
+
+  host out, compile-text(text, choice())
+  fork test, not(and(out/ok, contains(out/warnings, <non-terminating>)))
+    hold
+      back false
+  walk out/warning-messages
+    take message
+    fork test, compiling-holds(message, <"{name}">)
+      hold
+        back true
+  back false
 
 task looping-with-stdlib
   take text, like text
@@ -134,3 +152,44 @@ test <a claim through a shared union's arm field is looping-proof>
 
 test <control: the same claim over a value union is proven>
   want hold, proven(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\nrule shrinks\n  take n, like nat\n  like number\n\ntask shrinks\n  take n\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      send back\n        call shrinks\n          read prior\n>)
+
+# ---- a cycle of tasks is judged on every call it makes (term-foundations-0001, termination.md N-01) ----
+# A task in a cycle with other tasks is judged on the whole group's calls, its own self-calls among them, at one fixed
+# position or in one order of positions. Until then a task whose self-calls descended was terminating on those alone,
+# and two such tasks calling each other with the same argument passed: tmp/audit/bridge-1, a closed proof of `never`
+test <bridge-1: two tasks whose self-calls descend, calling each other unchanged, prove never: looping-proof>
+  want hold, refused(<form never\n  case later\n    link next, like never\n\nrule bad\n  take n, like number\n  like never\n\ntask bad\n  take n\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call helper\n          read n\n  send back\n    call bad\n      call subtract\n        read n\n        code 1\n\ntask helper\n  take n, like number\n  like never\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call bad\n          read n\n  send back\n    call helper\n      call subtract\n        read n\n        code 1\n\nrule absurd\n  like never\n\ntask absurd\n  send back\n    call bad\n      code 0\n>, <looping-proof>)
+
+test <two tasks whose self-calls descend, calling each other unchanged, do not end>
+  want hold, and(looping-named(<task bad\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call helper\n          read n\n  send back\n    call bad\n      call subtract\n        read n\n        code 1\n\ntask helper\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call bad\n          read n\n  send back\n    call helper\n      call subtract\n        read n\n        code 1\n>, <bad>), looping-named(<task bad\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call helper\n          read n\n  send back\n    call bad\n      call subtract\n        read n\n        code 1\n\ntask helper\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call bad\n          read n\n  send back\n    call helper\n      call subtract\n        read n\n        code 1\n>, <helper>))
+
+test <a cycle of three tasks whose self-calls descend, each calling the next unchanged, does not end>
+  want hold, looping-named(<task a\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call b\n          read n\n  send back\n    call a\n      call subtract\n        read n\n        code 1\n\ntask b\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call c\n          read n\n  send back\n    call b\n      call subtract\n        read n\n        code 1\n\ntask c\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call a\n          read n\n  send back\n    call c\n      call subtract\n        read n\n        code 1\n>, <c>)
+
+test <a three-task cycle of never, each self-call descending, is looping-proof>
+  want hold, refused(<form never\n  case later\n    link next, like never\n\nrule a\n  take n, like number\n  like never\n\ntask a\n  take n\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call b\n          read n\n  send back\n    call a\n      call subtract\n        read n\n        code 1\n\ntask b\n  take n, like number\n  like never\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call c\n          read n\n  send back\n    call b\n      call subtract\n        read n\n        code 1\n\ntask c\n  take n, like number\n  like never\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call a\n          read n\n  send back\n    call c\n      call subtract\n        read n\n        code 1\n\nrule absurd\n  like never\n\ntask absurd\n  send back\n    call a\n      code 0\n>, <looping-proof>)
+
+test <a cycle where only the self-call descends, its other edges unchanged, does not end>
+  want hold, looping-named(<task a\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call b\n          read n\n  send back\n    call a\n      call subtract\n        read n\n        code 1\n\ntask b\n  take n, like number\n  like number\n  send back\n    call a\n      read n\n>, <a>)
+
+test <control: a cycle where every call, self and cross, descends at one position ends>
+  want hold, ending(<task a\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call add\n      call a\n        call subtract\n          read n\n          code 1\n      call b\n        call subtract\n          read n\n          code 1\n\ntask b\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call add\n      call b\n        call subtract\n          read n\n          code 1\n      call a\n        call subtract\n          read n\n          code 1\n>)
+
+# no one position falls on every call (`a` passes `m` unchanged to `b` while `n` falls), but the order m, then n does
+test <control: a cycle that descends in an order of positions, not at one, ends>
+  want hold, ending(<task a\n  take m, like number\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read m\n        code 0\n    hook hold\n      send back\n        read n\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        call b\n          call subtract\n            read m\n            code 1\n          code 1\n  send back\n    call b\n      read m\n      call subtract\n        read n\n        code 1\n\ntask b\n  take m, like number\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read m\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call a\n      call subtract\n        read m\n        code 1\n      read n\n>)
+
+# size-change termination: no call need descend, so long as every cycle does once around
+test <control: a cycle that descends once around, one edge falling and one passing it unchanged, ends>
+  want hold, ending(<task a\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call b\n      call subtract\n        read n\n        code 1\n\ntask b\n  take n, like number\n  like number\n  send back\n    call a\n      read n\n>)
+
+# the shape of seed.tree's space/hyperbolic/splitting.tree: `white` hands `black` its own argument rebuilt, `succ` over
+# the `m` its match bound, which is no larger, and `black` hands it back smaller
+test <control: a cycle passing a parameter rebuilt from its own part ends>
+  want hold, ending(<form natural\n  case zero\n  case succ\n    link prior, like natural\n\ntask black\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link m\n      send back\n        call add\n          call white\n            read m\n          call black\n            read m\n\ntask white\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 1\n    case succ\n      link m\n      send back\n        call add\n          call white\n            read m\n          call black\n            make succ\n              bind prior\n                read m\n>)
+
+test <a cycle passing a parameter rebuilt larger than it was does not end>
+  want hold, looping-named(<form natural\n  case zero\n  case succ\n    link prior, like natural\n\ntask a\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link m\n      send back\n        call b\n          make succ\n            bind prior\n              make succ\n                bind prior\n                  read m\n\ntask b\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link m\n      send back\n        call a\n          read m\n>, <a>)
+
+test <a cycle passing a parameter rebuilt around a shared form's field does not end>
+  want hold, looping-named(<form natural\n  mark shared\n  case zero\n  case succ\n    link prior, like natural\n\ntask a\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link m\n      send back\n        call b\n          make succ\n            bind prior\n              read m\n\ntask b\n  take n, like natural\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link m\n      send back\n        call a\n          read m\n>, <a>)

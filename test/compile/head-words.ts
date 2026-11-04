@@ -22,7 +22,7 @@ import {
   readFileSync,
   statSync,
 } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 // relative, because @term/deck is a published package with no path alias in this repo
 import { readTree } from '../../deck/deck/code/package/read'
 import type { Form } from '../../deck/deck/code/package/read'
@@ -31,7 +31,12 @@ const HERE =
   import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const MILL = join(TERM, 'deck/mill/code/tree')
-const TERMS = join(TERM, '../../../../hold/base/terms.json')
+// the vocabulary's word list, terms.json, from the checkout TERM_VOCABULARY names (the parent repository's term:test
+// alias passes its hold/base/terms.json). A path given resolves against the folder it was typed in
+const GIVEN_TERMS = process.env.TERM_VOCABULARY?.trim() ?? ''
+const TERMS = GIVEN_TERMS
+  ? resolve(process.env.INIT_CWD ?? process.cwd(), GIVEN_TERMS)
+  : ''
 
 // heads outside terms.json, with where each lives. Renaming one is a mechanical rewrite checked mill-equivalent.
 const KNOWN = new Set<string>([
@@ -162,12 +167,14 @@ function lineRules(form: Form, into: Set<string>): void {
 }
 
 function main(): void {
-  // The vocabulary is its own checkout, `hold/`, gitignored at the repository root. Without it there is nothing to
-  // hold a head to, and the gate SKIPS, saying why: a gate that cannot evaluate must never read as a pass, and a crash
-  // reading the file read as a defect in the grammars
-  if (!existsSync(TERMS)) {
+  // The vocabulary is its own checkout, outside this repository, and TERM_VOCABULARY names its terms.json. Without it
+  // there is nothing to hold a head to, and the gate SKIPS, saying why: a gate that cannot evaluate must never read as a
+  // pass, and a crash reading the file read as a defect in the grammars
+  if (!TERMS || !existsSync(TERMS)) {
     console.log(
-      `skip  needs ${relative(process.cwd(), TERMS)}, the vocabulary checkout (gitignored at the repository root)`,
+      TERMS
+        ? `skip  needs ${relative(process.cwd(), TERMS)}, the vocabulary's terms.json (TERM_VOCABULARY), which is not there`
+        : 'skip  needs the vocabulary: TERM_VOCABULARY names its terms.json',
     )
     return
   }

@@ -12,7 +12,7 @@
 // the words most often missing.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { lawSentencesOf } from '@term/make/code/check/law-english'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 
@@ -30,15 +30,21 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const BASE = new URL('../../deck/base/', import.meta.url).pathname
-const SEED = new URL('../../../seed.tree/', import.meta.url).pathname
+// seed.tree is a Term project outside this repository. Its targets and its census run when TERM_SEED_TREE names its
+// folder (the parent repository's term:test alias does), and are skipped, saying so, when it does not. A path given
+// resolves against the folder it was typed in
+const GIVEN_SEED = process.env.TERM_SEED_TREE?.trim() ?? ''
+const SEED = GIVEN_SEED
+  ? `${resolve(process.env.INIT_CWD ?? process.cwd(), GIVEN_SEED)}/`
+  : ''
 
-const roleOf = {
+const roleOf: Record<string, ReturnType<typeof projectRoleOf>> = {
   [BASE]: projectRoleOf(BASE),
-  [SEED]: projectRoleOf(SEED),
+  ...(SEED ? { [SEED]: projectRoleOf(SEED) } : {}),
 }
-const leanOf = {
+const leanOf: Record<string, ReturnType<typeof projectLeanOf>> = {
   [BASE]: projectLeanOf(BASE),
-  [SEED]: projectLeanOf(SEED),
+  ...(SEED ? { [SEED]: projectLeanOf(SEED) } : {}),
 }
 
 function lawsOfFile(
@@ -203,8 +209,14 @@ const TARGETS: {
 ]
 
 const cache = new Map<string, ReturnType<typeof lawsOfFile>>()
+let seedSkipped = 0
 
 for (const target of TARGETS) {
+  if (target.root === '') {
+    seedSkipped++
+    continue
+  }
+
   const key = target.root + target.file
 
   if (!cache.has(key)) {
@@ -220,6 +232,12 @@ for (const target of TARGETS) {
     `target ${target.rule}`,
     law?.text === target.english,
     `\n      want: ${target.english}\n      got:  ${law?.text ?? law?.refused ?? (read.ok ? 'no such rule' : read.error)}`,
+  )
+}
+
+if (seedSkipped > 0) {
+  console.log(
+    `skip  ${seedSkipped} targets of seed.tree: TERM_SEED_TREE names no seed.tree folder`,
   )
 }
 
@@ -299,8 +317,12 @@ if (process.argv.includes('--census')) {
   const sections: [string, string][] = [
     [BASE, 'code'],
     [BASE, 'test'],
-    [SEED, 'code'],
-    [SEED, 'test'],
+    ...(SEED
+      ? ([
+          [SEED, 'code'],
+          [SEED, 'test'],
+        ] as [string, string][])
+      : []),
   ]
 
   for (const [root, sub] of sections) {

@@ -1,7 +1,7 @@
 // Live Postgres persistence test: compile the posts repository (which uses only the abstract @cluesurf/site/code/base/postgres),
 // prepend the Postgres runtime shim (what the native-env prelude does), bundle, and run it against the local Postgres.
 // Asserts the schema is created, posts persist, list returns them in order, and get-by-id reads one back.
-// Run: npx tsx test/site/blog-db.ts   (set DATABASE_URL to override the connection)
+// Run: DATABASE_URL=<postgres url> npx tsx test/site/blog-db.ts   (skipped without DATABASE_URL)
 
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
@@ -32,9 +32,14 @@ const SEED = path.resolve(
 
 const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
-const CONN =
-  process.env.DATABASE_URL ??
-  'postgresql://lancepollard@localhost:5432/postgres'
+// the database is the one DATABASE_URL names, never a default: without it there is nothing to write to
+const CONN = process.env.DATABASE_URL ?? ''
+
+if (!CONN) {
+  console.log('skip  blog-db: set DATABASE_URL to a Postgres the suite may write')
+  console.log('\nblog-db: 0 pass, 0 fail, 1 skipped')
+  process.exit(0)
+}
 
 type Post = { id: string; title: string; body: string }
 type Repo = {

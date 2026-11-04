@@ -1,0 +1,4 @@
+{
+  "private": true,
+  "description": "Term tooling. No \"type\" field on purpose: these files run as they did in the parent (CommonJS where they use require), inside a package whose own type is module."
+}

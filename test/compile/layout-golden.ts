@@ -12,13 +12,13 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { build } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
+import { borrowed } from '../borrow'
 import {
   LAYOUT_LABELS,
   LAYOUT_ROWS,
@@ -39,7 +39,6 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
-const MESH = join(ROOT, '../../../../mesh')
 
 type Chromium = {
   launch: (o: { headless: boolean }) => Promise<{
@@ -54,14 +53,9 @@ type Page = {
 }
 
 function chromium(): Chromium | string {
-  try {
-    const require = createRequire(join(MESH, 'package.json'))
+  const playwright = borrowed<{ chromium: Chromium }>('@playwright/test')
 
-    return (require('@playwright/test') as { chromium: Chromium })
-      .chromium
-  } catch (error) {
-    return `no @playwright/test under mesh/ (${String(error).slice(0, 120)})`
-  }
+  return 'value' in playwright ? playwright.value.chromium : playwright.reason
 }
 
 const PROGRAM = `load @term/site/code/dom/dom

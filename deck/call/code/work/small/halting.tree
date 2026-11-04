@@ -498,7 +498,7 @@ task platform-name
   back node-process/platform
 
 # A process's working folder as the kernel holds it, or the empty text where it cannot say. Never `lsof` first: it
-# stats every mount, and a hard network mount that stopped answering (traps: /Volumes/Data) holds it in the kernel,
+# stats every mount, and a hard network mount that stopped answering (a NAS share, once) holds it in the kernel,
 # where no signal reaches it. Linux reads the /proc link. macOS asks proc_pidinfo for the folder's path through the
 # system's perl, the one program on every Mac that can make the call (PROC_PIDVNODEPATHINFO, flavor 9, of the
 # proc_info call, 336: the path sits 152 bytes into the answer, after the folder's vnode_info). `lsof` only where
@@ -756,7 +756,7 @@ task lsof-pids
 
 # The process ids listening on a TCP port, from the kernel's socket table: `netstat -anv` on macOS, `ss` on Linux,
 # neither of which reads a mount. `lsof` stats every mount, and a hard network mount that stopped answering
-# (traps: /Volumes/Data) holds it in the kernel past any signal, so it is only the last resort, on a short leash
+# (a NAS share, once) holds it in the kernel past any signal, so it is only the last resort, on a short leash
 task pids-on-port
   take port, like number
   like list, like number

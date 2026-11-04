@@ -682,7 +682,7 @@ export function projectResolver(
   // the package boundary of a file: the nearest ancestor holding a
   // `deck.tree` manifest, else the project root. A relative import may not
   // escape this boundary - that confinement is what stops a malicious
-  // `load ../../../../etc/passwd` from reading arbitrary files during a
+  // relative load climbing up to /etc/passwd from reading arbitrary files during a
   // compile of untrusted source (path-traversal / info-disclosure).
   const rootReal = safeReal(root)
 
