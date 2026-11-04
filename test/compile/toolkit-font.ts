@@ -4,13 +4,13 @@
 // and says what the PLATFORM reports for each text's face: NSFont/UIFont's own family name on Apple, and on Android the
 // family the host handed the TextView, since a Typeface cannot name itself.
 //
-// The face is CrowMark.otf, ClueSurf's own, at the path TERM_TEST_FACE names (skipped without it). macOS and
+// The face is CrowMark.otf, ClueSurf's own, the fixture at test/fixture/CrowMark.otf. macOS and
 // the simulator read it by path; the emulator cannot, so the APK carries it as an asset and the program reads
 // `asset:CrowMark.otf`. FONT_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-font.ts
 
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { runToolkits } from './shared/toolkit-run'
 import type { Leg } from './shared/toolkit-run'
 
@@ -27,10 +27,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-// the face's file, which this repository does not carry: TERM_TEST_FACE names it (the parent repository's term:test
-// alias passes its copy). Unset, the suite is skipped and says so
-const GIVEN_FACE = process.env.TERM_TEST_FACE?.trim() ?? ''
-const FACE = GIVEN_FACE ? resolve(GIVEN_FACE) : ''
+// the face's file, a fixture this repository carries, found from this file's own location
+const FACE = join(import.meta.dirname, '..', 'fixture', 'CrowMark.otf')
 const MISSING = 'No Such Face'
 
 // where each platform finds the file
@@ -233,9 +231,7 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   )
 }
 
-if (!FACE) {
-  console.log('skip  toolkit-font: TERM_TEST_FACE names no CrowMark.otf to register')
-} else if (!existsSync(FACE)) {
+if (!existsSync(FACE)) {
   ok('the face is on disk', false, FACE)
 } else {
   runToolkits(

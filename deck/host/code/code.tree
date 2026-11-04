@@ -1,6 +1,6 @@
 # tree/code, the encoded form of Term data, in Term, so a Term program encodes and decodes it on every backend. The
-# spec is note/project/term/host/10-code.md. This is the one codec: the compiler's compile/host-code.ts is a face over
-# it (decision 041 of note/project/term/self-host/change/001-finish-self-host), and every name, message and byte
+# This is the one codec: the compiler's compile/host-code.ts is a face over
+# it, and every name, message and byte
 # position below is the one the reference codec gave (tmp/retired/make/host-code.ts), held by the pair
 # tmp/self-host/pairs/host-code.ts and by test/compile/host-code-term.ts.
 #

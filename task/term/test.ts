@@ -478,6 +478,10 @@ async function selfContained(env: Record<string, string> = {}): Promise<Result> 
 
 const SUITES: Suite[] = [
   { name: 'self-contained', run: selfContained, cache: false, slow: 10, timeout: 600 },
+  // the release payload installed into a temporary HOME and run as a person runs it, from a project outside this
+  // checkout: make, test, boot from another folder, a local link, and no machine path in what it writes (zone-0144).
+  // It reads the payload, which no tracked input names, so it runs every time
+  { name: 'release-user', file: 'task/term/release-user.ts', cache: false, slow: 180, timeout: 1800 },
   // the front of the compiler, cheapest first
   { name: 'parser', file: 'test/parser/run.ts' },
   // the fixture files ported from the original tree implementation, which this repo had never carried

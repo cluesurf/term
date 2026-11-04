@@ -66,9 +66,9 @@ export default defineConfig({
       // import the package manager.
       // the package manager is built ON @cluesurf/save: content addressing, the prolly
       // tree, chunk / object / ref stores, commits, sync. It used to reimplement all
-      // of that in code/object/. save lives in mesh/deck/save, outside this repository,
-      // and is resolved from its source here until @term/deck takes it from npm.
-      '@cluesurf/save': path.resolve(__dirname, '../../../../../../mesh/deck/save/code'),
+      // of that in code/object/. save lives beside it in deck/save and is resolved from
+      // its source.
+      '@cluesurf/save': path.resolve(__dirname, '../save/code'),
     },
   },
 })

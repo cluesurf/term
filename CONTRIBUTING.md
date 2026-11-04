@@ -119,7 +119,6 @@ skips, saying so, when it is not set. A relative path resolves against the folde
 | variable | what it names | suites |
 | --- | --- | --- |
 | `TERM_TEST_MODULES` | a project with `@playwright/test` and `string-width` installed, when the Term root has neither | the web suites, the cell grid width table |
-| `TERM_TEST_FACE` | a font file for the face tests | `test/compile/toolkit-font.ts` |
 | `TERM_VOCABULARY` | a `terms.json` word list for the vocabulary | `test/compile/head-words.ts` |
 | `TERM_SEED_TREE` | a checkout of the seed.tree project | `test/check/law-english.ts` |
 | `BEAT_TERM_ROOT` | the beat-term app folder | the beat-term app builds |

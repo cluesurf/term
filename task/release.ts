@@ -3,7 +3,8 @@
 //
 //   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop. windows-x64 is built and
 //                                smoke-run on an EC2 Windows machine (task/release-windows.ts, about $0.02 a run);
-//                                --windows-cross packs it here instead, run nowhere
+//                                --windows-cross packs it here instead, run nowhere. `--platform <name>` builds that
+//                                one platform and asks the registry nothing, `--out <dir>` (new or empty) puts it there
 //   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag, and tell
 //                                the package index, which lists `@term/code` under /packages like any package
 //   pnpm term:release --ping     build nothing: tell the index about every version already released, which is how the
@@ -38,7 +39,10 @@
 //   term/package.json        the name and version `--version` and the build cache key read
 //   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
 //                            first holds alike (note/project/term/term-versions.md, "Disk")
-//   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`)
+//   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`), and its deck.tree,
+//                            which names its units `_term_base_...` in every project (unit-naming.tree `unit-slug`)
+//   term/deck/host/          `@term/host`, the data dialect, and term/deck/call/ the three files of `@term/call` the
+//                            test report is compiled from in a user's project (test-running.tree `reporter-bundle`)
 //   term/deck/mill/          `@term/mill`, every grammar: the format readers (code/text, code/blob, the cursors in
 //                            code/feed.tree) and the tree dialects (code/tree), its deck.tree and code/, reached by
 //                            name beside the stdlib (resolve.ts `siblingResolver`). `@term/feed` until 2026-10-06
@@ -53,7 +57,7 @@
 import { createHash } from 'node:crypto'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
@@ -156,6 +160,24 @@ function readVersion(): string {
   }
 
   return manifest.version
+}
+
+// the word after a flag on the command line, or undefined when the flag is not there. A flag with no word after it is
+// an error, never read as absent
+function flagValue(flag: string): string | undefined {
+  const at = process.argv.indexOf(flag)
+
+  if (at < 0) {
+    return undefined
+  }
+
+  const value = process.argv[at + 1]
+
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`${flag} needs a value`)
+  }
+
+  return value
 }
 
 /**
@@ -424,18 +446,27 @@ function payloadLeaks(stage: string, name: 'oci' | 'npm'): { ok: boolean; lines:
   }
 }
 
-// the stdlib as the npm package ships it: no native build output, no build info, no cache
+// the stdlib as the npm package ships it: no native build output, no build info, no cache. WITH ITS MANIFEST: a
+// separate build names a unit by the deck it belongs to (unit-naming.tree `unit-slug`), so without deck/base/deck.tree
+// every stdlib unit was named by its path from the project, which climbs out of it into this install, a machine path
+// in every user's host/.unit that also differed per project, so a unit stored by one build broke the next (zone-0144)
 function copyStdlib(into: string): void {
   const from = path.join(TERM, 'deck', 'base', 'code')
 
+  cpSync(path.join(TERM, 'deck', 'base', 'deck.tree'), path.join(into, 'deck', 'base', 'deck.tree'))
   cpSync(from, path.join(into, 'deck', 'base', 'code'), { recursive: true, filter: shipped(from) })
 }
 
 // the packages that ship beside the stdlib, each with its manifest so the sibling resolver (resolve.ts
 // `siblingResolver`) reaches it by name from an installed `term`, as it does in this repository. `@term/mill` holds the
 // format readers (JSON, hex, gzip, PDF and OpenType), which were `@term/feed` until 2026-10-06
-// (note/project/term/mill-merge-and-role-scopes.md). Its tests stay here, and a shelved draft builds nothing
-const SHIPPED_PACKAGES = ['mill']
+// (note/project/term/mill-merge-and-role-scopes.md). `@term/host` is the data dialect the test report writes its
+// lines in. Its tests stay here, and a shelved draft builds nothing
+const SHIPPED_PACKAGES = ['mill', 'host']
+
+// the files of `@term/call` that `term test` compiles in a user's project: the report's own program
+// (test-running.tree `reporter-sources`). Only these ship, with the manifest that names the package
+const SHIPPED_CALL = ['code/test-report.tree', 'code/test-report-node.tree', 'code/work/preprocess/failure-reading.tree']
 
 function copyShippedPackages(into: string): void {
   for (const name of SHIPPED_PACKAGES) {
@@ -443,6 +474,14 @@ function copyShippedPackages(into: string): void {
 
     cpSync(path.join(from, 'deck.tree'), path.join(into, 'deck', name, 'deck.tree'))
     cpSync(path.join(from, 'code'), path.join(into, 'deck', name, 'code'), { recursive: true, filter: shipped(path.join(from, 'code')) })
+  }
+
+  const call = path.join(TERM, 'deck', 'call')
+
+  cpSync(path.join(call, 'deck.tree'), path.join(into, 'deck', 'call', 'deck.tree'))
+
+  for (const file of SHIPPED_CALL) {
+    cpSync(path.join(call, file), path.join(into, 'deck', 'call', file))
   }
 }
 
@@ -461,15 +500,29 @@ async function main(): Promise<void> {
     throw new Error('--windows-cross is for a dry run: a release builds windows-x64 on Windows (D8)')
   }
 
+  // `--platform <name>`: a dry run of one platform's payload only, asking the registry nothing (task/term/release-user.ts
+  // installs it as a person does). `--out <dir>` puts the build there instead of tmp/release/<version>
+  const onlyPlatform = flagValue('--platform')
+  const outGiven = flagValue('--out')
+
+  if ((onlyPlatform !== undefined || outGiven !== undefined) && !dry) {
+    throw new Error('--platform and --out are for a dry run')
+  }
+
+  if (onlyPlatform !== undefined && !PLATFORMS.some(platform => platform.name === onlyPlatform)) {
+    throw new Error(`--platform names one of ${PLATFORMS.map(platform => platform.name).join(', ')}`)
+  }
+
   const version = readVersion()
-  const out = path.join(OUT_ROOT, version)
+  const out = outGiven === undefined ? path.join(OUT_ROOT, version) : path.resolve(outGiven)
   const cache = path.join(OUT_ROOT, 'npm')
   const common = path.join(out, 'common')
   const started = Date.now()
 
   // THE REGISTRY FIRST. A release is write-once, so a version already there is refused before anything is built:
   // this asked it last, after a minute of packing six platforms. A dry run builds all the same, and says so at the end
-  const taken = await releasedAlready(version)
+  const taken: Awaited<ReturnType<typeof releasedAlready>> =
+    onlyPlatform === undefined ? await releasedAlready(version) : { form: 'free', at: '', first: false }
 
   if (!dry && taken.form !== 'free') {
     output = await loadOutput()
@@ -491,6 +544,11 @@ async function main(): Promise<void> {
     })
 
     return
+  }
+
+  // a folder `--out` named is never emptied: it must be new or empty
+  if (outGiven !== undefined && existsSync(out) && readdirSync(out).length > 0) {
+    throw new Error(`--out ${out} is not empty`)
   }
 
   rmSync(out, { recursive: true, force: true })
@@ -526,10 +584,12 @@ async function main(): Promise<void> {
 
   const built: Built[] = []
 
-  for (const [at, platform] of PLATFORMS.entries()) {
+  const platforms = PLATFORMS.filter(platform => onlyPlatform === undefined || platform.name === onlyPlatform)
+
+  for (const [at, platform] of platforms.entries()) {
     const packed = Date.now()
     // each platform is a running `pack` step with the platforms done so far, which its own ✓ item below replaces
-    output.progress({ verb: 'pack', subject: platform.name, done: at, total: PLATFORMS.length, noun: 'platforms', one: 'platform' })
+    output.progress({ verb: 'pack', subject: platform.name, done: at, total: platforms.length, noun: 'platforms', one: 'platform' })
     const stage = path.join(out, platform.name)
     const root = path.join(stage, 'term')
 

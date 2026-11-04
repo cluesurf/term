@@ -61,6 +61,12 @@ bind frame-lines
   case node
     text <$text.split(String.fromCharCode(10))>
 
+# the files `TERM_KNIT_CONTEXT` names, split on the platform's path delimiter, empty entries dropped
+bind frame-knit-context
+  like list, like text
+  case node
+    text <(process.env.TERM_KNIT_CONTEXT ?? "").split(process.getBuiltinModule("node:path").delimiter).filter((one) =\> one !== "")>
+
 bind frame-trimmed
   take text, like text
   like text
@@ -316,20 +322,20 @@ task tree-files
     files/push host-path/join(code, name)
   back files
 
-# the fixed context: the syntax, the proof guide, the demo's traps, and the demo as an example. The same bytes every
-# run, so the API serves them from its cache
+# the fixed context: the syntax, any guides the person names, and the demo as an example. The same bytes every run,
+# so the API serves them from its cache. The repository keeps no guides of its own: TERM_KNIT_CONTEXT names more files
+# (the proof guide, the demo's traps), joined with the platform's path delimiter, as knit.ts reads it
 task context-files
   take root, like text
   take example, like boolean
   like list, like context-file
   mark private
 
-  # the repository: the Term package is deck/term/deck/term in it
-  save repo, host-path/resolve(root, <../../../..>)
   save files, make list
-  files/push make(context-file, bind(label, <The Term language: syntax, rules and conventions>), bind(file, host-path/join(repo, <deck/term/CLAUDE.md>)))
-  files/push make(context-file, bind(label, <Laws and proofs in Term: claims, theorems, the kernel>), bind(file, host-path/join(repo, <note/project/term/proof/law-and-proof.md>)))
-  files/push make(context-file, bind(label, <Traps found while proving the notes demo>), bind(file, host-path/join(repo, <note/project/term/assurance/demo/traps.md>)))
+  files/push make(context-file, bind(label, <The Term language: syntax, rules and conventions>), bind(file, host-path/join(root, <AGENTS.md>)))
+  walk frame-knit-context()
+    take named
+    files/push make(context-file, bind(label, <Context the person named: {host-path/basename(named)}>), bind(file, host-path/resolve(named)))
   # the demo whole, every file of its code/, as it stands: law.tree loads the others
   fork test, example
     hold

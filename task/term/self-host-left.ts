@@ -46,7 +46,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileS
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { classOfPath, FLOOR_F1_FILES, stayOf } from './floor'
-import { TERM_ROOT, parentRoot } from './root'
+import { PARENT_ROOT, TERM_ROOT, parentRoot } from './root'
 // the shelf marker, spelled as deck/call/code/draft.ts tests it (an unindented `mark draft` or `note draft` line). Not
 // imported: draft.ts reaches a PORT (draft-mark.tree) through the Term package's tsconfig paths, which a run from the
 // repository root never reads, and the import failed as "Cannot find module @term/call/code/draft"
@@ -346,7 +346,7 @@ function bundleCount(bundle: string, meta: string, only: string | null): BundleC
     const abs = resolve(TERM, input)
     const path = relative(TERM, abs)
     const match = /^deck\/([^/]+)\/(.*)$/.exec(path)
-    // outside the Term decks (mesh/deck/save, the package's own task/): named by its first three folders from the repo
+    // outside the Term decks (the package's own task/): named by its first three folders from the repo
     const deck = match ? match[1]! : relative(REPO, abs).split('/').slice(0, 3).join('/')
 
     if (only !== null && deck !== only) {
@@ -656,10 +656,15 @@ function count(text: string): number {
   return lines
 }
 
+// the parent's owned locks, each a path in the parent. With no parent named there are none, and the rest still runs
 function readLocks(): string[] {
+  if (PARENT_ROOT === undefined) {
+    return []
+  }
+
   const lock = JSON.parse(readFileSync(LOCKS(), 'utf8')).lock as Array<{ path: string; mode: string }>
 
-  return lock.filter(entry => entry.mode === 'owned').map(entry => join(REPO, entry.path))
+  return lock.filter(entry => entry.mode === 'owned').map(entry => join(PARENT_ROOT!, entry.path))
 }
 
 function isOwned(abs: string, locks: string[]): boolean {

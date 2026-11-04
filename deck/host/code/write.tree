@@ -1,5 +1,5 @@
 # Data to text: the canonical long form (`write`) and the compact one-line-per-entry form (`pack`). Both are what
-# the compiler's writer produces for the same value, byte for byte. See note/term/host/02-compact.md.
+# the compiler's writer produces for the same value, byte for byte.
 
 load @term/base/boolean
   find not

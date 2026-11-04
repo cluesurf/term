@@ -358,15 +358,12 @@ task find-suite
         hold
           halt
       save at, up
-  save here, node-path/join(find-install-root(), <host>)
-  save beside, node-path/resolve(here, <../deck/mark>)
+  # the suite beside the CLI is the install's own `deck/mark/`. The original's second guess, `../../mark`, served its
+  # source depth (deck/call/code/): from `<install root>/host` it climbs out of the install, so it is not ported
+  save beside, node-path/join(find-install-root(), <deck>, <mark>)
   fork test, is-suite(beside)
     hold
       back beside
-  save above, node-path/resolve(here, <../../mark>)
-  fork test, is-suite(above)
-    hold
-      back above
   back <>
 
 # The runner's own command line from what followed `term mark`. `list` (or `--list`) lists the programs, anything else

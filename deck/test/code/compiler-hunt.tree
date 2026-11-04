@@ -16,8 +16,8 @@
 #     TypeScript caller passes what it passed before; `files` absent and `files` empty stay two cases
 #   - the oracles are oracle-audit.tree's and the crash signature compiler-fuzzing.tree's, loaded
 #   - from SOURCE the campaign is the sibling of this module as it runs: the original's was fuzz-campaign.ts beside
-#     seed-hunt.ts, this one's is fuzz-entry.ts beside the emitted port (deck/test/host/port/code/), whose tsconfig is
-#     five folders up. Inside a bundle neither sibling exists, and the caller passes `fuzzEntry`, as before
+#     seed-hunt.ts, this one's is fuzz-entry.ts beside the emitted port (deck/test/host/port/code/), with the
+#     tsconfig of the Term root found by walking up to its marker. Inside a bundle neither sibling exists, and the caller passes `fuzzEntry`, as before
 #   - a child's outcome, a report read back and the result's crash entries are read and built in binds, the original's
 #     own expressions, so an absent `from` stays absent
 
@@ -449,14 +449,31 @@ task source-fuzz-entry
       back hunt-nothing(0)
 
   host campaign, hunt-path/join(hunt-text-of(here), <fuzz-entry.ts>)
-  # the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths. The
-  # Term root's tsconfig.json is five folders above this module's emitted port (deck/test/host/port/code/): one step a
-  # segment, so the walk is plain to read and stays inside the root
-  host tsconfig, hunt-path/resolve(hunt-text-of(here), <..>, <..>, <..>, <..>, <..>, <tsconfig.json>)
-  fork test, hunt-fs/exists-sync(campaign)
+  fork test, not(hunt-fs/exists-sync(campaign))
     hold
-      back hunt-tsx-entry(tsconfig, campaign)
-  back hunt-nothing(0)
+      back hunt-nothing(0)
+  # the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths. The
+  # Term root's tsconfig.json is found by walking up to the root's own marker, never by a fixed climb
+  host root, hunt-term-root-above(hunt-text-of(here))
+  fork test, is-equal(root, <>)
+    hold
+      back hunt-nothing(0)
+  back hunt-tsx-entry(hunt-path/join(root, <tsconfig.json>), campaign)
+
+# the nearest of `dir` and the folders above it that is a Term root: it holds `deck/base/code`, the marker the
+# compiler's `stdlibBase` walks to. The empty text when no folder up to the disk's root is one
+task hunt-term-root-above
+  take dir, like text
+  like text
+
+  fork test, hunt-fs/exists-sync(hunt-path/join(dir, <deck>, <base>, <code>))
+    hold
+      back dir
+  host up, hunt-path/dirname(dir)
+  fork test, is-equal(up, dir)
+    hold
+      back <>
+  back hunt-term-root-above(up)
 
 # the hunted files that make good fuzz seeds: small enough that a mutation is still near a real program
 task fuzz-seeds-from

@@ -2033,14 +2033,16 @@ task finish-merge
       bind entries, joined
   save out/{task-at}, task-kind
 
-  # what only a merge reads, gone before anything is written, and each kind sorted by host, name and site
+  # what only a merge reads, gone before anything is written, and each kind sorted by host, name and site. `__file` is
+  # the absolute path of a hook's file: written into host/roll.json it put the machine's path in a project's build
+  # output (zone-0144)
   save finished, make list
   walk out
     take one
     save cleaned, make list
     walk one/entries
       take entry
-      push(cleaned, without-pair(without-pair(without-pair(entry, <__def>), <__ends>), <__files>))
+      push(cleaned, without-pair(without-pair(without-pair(without-pair(entry, <__def>), <__ends>), <__files>), <__file>))
     save done
       make roll-kind
         bind name, one/name

@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES2022",
+    "lib": ["es2022"],
+    "outDir": "./host",
+    "rootDir": "./code",
+    "declaration": true,
+    "moduleResolution": "bundler",
+    "strict": true,
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "composite": true,
+    "types": ["node"],
+    // Sibling packages resolve to source through their `development`
+    // export condition.
+    "customConditions": ["development"],
+    // save names its own modules the way every consumer does,
+    // `@cluesurf/save/<path>`, so a file reads the same inside the
+    // package and out of it. That spelling survives into host/ on
+    // purpose: Node resolves a package's own name through its
+    // `exports`, so the built files need no rewriting. No `baseUrl`:
+    // tsgo refuses it, and a path relative to this file needs none.
+    "paths": {
+      "@/*": ["./code/*"],
+      "@cluesurf/save/*": ["./code/*"]
+    }
+  },
+  "include": ["code/**/*.ts"],
+  "exclude": ["node_modules", "host", "tmp"]
+}

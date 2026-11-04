@@ -1,6 +1,6 @@
 # Text to nodes: one group per top-level line, indented lines as children, `(` ... `)` as children, a comma
 # returning to the line's head. The tokens are a word, a `<text>` with the tree escapes, a number, `(`, `)` and `,`.
-# A `#` starts a comment to the end of the line. See note/term/host/01-grammar.md and 02-compact.md.
+# A `#` starts a comment to the end of the line.
 
 load @term/base/boolean
   find not

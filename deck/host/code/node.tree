@@ -1,6 +1,6 @@
 # The tree a data text parses to, before it is read as data. A line is a group: its head word, then its children
 # (a bare word, a literal, or a nested group). Indentation and parentheses both nest. This is the data dialect's
-# own small parser, so a Term program on any backend reads data without the compiler. See note/term/host/01-grammar.md.
+# own small parser, so a Term program on any backend reads data without the compiler.
 
 form scan-node
   case word

@@ -4,7 +4,7 @@
     "target": "ES2022",
     "lib": ["es2023"],
     "outDir": "host",
-    "rootDir": "../../../..",
+    "rootDir": ".",
     "sourceMap": true,
     "declaration": true,
     "moduleResolution": "bundler",
@@ -22,7 +22,7 @@
     "paths": {
       "@/*": ["./*"],
       "@term/make/*": ["./deck/make/*", "./deck/make/host/port/*"],
-      "@cluesurf/save/*": ["../../../../mesh/deck/save/code/*"],
+      "@cluesurf/save/*": ["./deck/save/code/*"],
       "@term/call/*": ["./deck/call/*", "./deck/call/host/port/*"],
       "@term/scan/*": ["./deck/scan/*", "./deck/scan/host/port/*"],
       "@term/test/*": ["./deck/test/*", "./deck/test/host/port/*"],

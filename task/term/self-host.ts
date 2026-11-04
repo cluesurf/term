@@ -28,14 +28,14 @@ import { parse } from '@term/make/code/parser/tree'
 import type { Node } from '@term/make/code/parser/tree'
 import type { RootNode } from '@term/make/code/parser/narrow'
 import { renderHead } from '@term/make/code/parser/tree'
-import { TERM_ROOT, parentRoot } from './root'
+import { TERM_ROOT } from './root'
 
 // run from the Term root, the way every other term task is
 const TERM = TERM_ROOT
 const DECK = join(TERM, 'deck')
-// the base record system, out of the Term tree since 2026-10-02. Its glob
-// is still held against its Term port, which `term make` builds into its host/.
-const SAVE = (): string => join(parentRoot(), 'mesh/deck/save')
+// the base record system, deck/save. Its glob is still held against its Term
+// port, which `term make` builds into its host/.
+const SAVE = (): string => join(DECK, 'save')
 
 const verbose = process.argv.includes('--verbose')
 const limitArg = process.argv.find(a => a.startsWith('--limit'))

@@ -12,6 +12,7 @@
     "deck/make": 265,
     "deck/mark": 10,
     "deck/mill": 158,
+    "deck/save": 142,
     "deck/scan": 2,
     "deck/site": 53,
     "deck/test": 24,
@@ -23,33 +24,5 @@
     "npm": 368,
     "oci": 531
   },
-  "pending": {
-    "term-self-contained-0004": [
-      {
-        "file": "tsconfig.json",
-        "match": "@cluesurf/save",
-        "reason": "the @cluesurf/save mapping, until its decision lands"
-      },
-      {
-        "file": "tsconfig.json",
-        "match": "\"rootDir\"",
-        "reason": "rootDir reaches up to take in the mapped save sources"
-      },
-      {
-        "file": "deck/deck/tsconfig.json",
-        "match": "@cluesurf/save",
-        "reason": "the @cluesurf/save mapping, until its decision lands"
-      },
-      {
-        "file": "deck/deck/tsconfig.json",
-        "match": "\"rootDir\"",
-        "reason": "rootDir reaches up to take in the mapped save sources"
-      },
-      {
-        "file": "deck/deck/vitest.config.ts",
-        "match": "@cluesurf/save",
-        "reason": "the @cluesurf/save mapping, until its decision lands"
-      }
-    ]
-  }
+  "pending": {}
 }

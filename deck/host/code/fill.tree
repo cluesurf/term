@@ -2,8 +2,7 @@
 # field accessors knowing every key it expects is there and of the kind it expects. `melt`: a host value back to
 # data. The shape is itself data: a map of the keys expected, each naming a kind as text (`<text>`, `<number>`,
 # `<decimal>`, `<flag>`, `<blank>`, `<any>`, `<map>`, `<list>`), a `?` after it for a key that may be absent, a
-# nested map for a nested map, a list holding one item shape for a list. Keys stay as written. See
-# note/term/host/04-model-and-json.md.
+# nested map for a nested map, a list holding one item shape for a list. Keys stay as written.
 
 load @term/base/boolean
   find not

@@ -1,0 +1,597 @@
+{
+  "name": "@cluesurf/save",
+  "version": "0.1.2",
+  "license": "MIT",
+  "description": "Version control for structured knowledge data: the base protocol library.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cluesurf/term.git",
+    "directory": "deck/save"
+  },
+  "type": "module",
+  "main": "./host/index.js",
+  "scripts": {
+    "make": "node ../../node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run make",
+    "check": "node ../../node_modules/typescript/bin/tsc -p tsconfig.check.json",
+    "test": "node ../../node_modules/vitest/vitest.mjs run",
+    "check:base-format": "node ../../node_modules/tsx/dist/cli.mjs task/format-check.ts",
+    "check:base-transfer": "node ../../node_modules/tsx/dist/cli.mjs task/transfer-check.ts",
+    "prepublishOnly": "pnpm run make"
+  },
+  "prettier": "@cluesurf/wash/flow.json",
+  "types": "./host/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./host/index.d.ts",
+      "development": "./code/index.ts",
+      "default": "./host/index.js"
+    },
+    "./access/checkpoint": {
+      "types": "./host/access/checkpoint.d.ts",
+      "development": "./code/access/checkpoint.ts",
+      "default": "./host/access/checkpoint.js"
+    },
+    "./access/directory": {
+      "types": "./host/access/directory.d.ts",
+      "development": "./code/access/directory.ts",
+      "default": "./host/access/directory.js"
+    },
+    "./access/policy": {
+      "types": "./host/access/policy.d.ts",
+      "development": "./code/access/policy.ts",
+      "default": "./host/access/policy.js"
+    },
+    "./access/serve": {
+      "types": "./host/access/serve.d.ts",
+      "development": "./code/access/serve.ts",
+      "default": "./host/access/serve.js"
+    },
+    "./access/sign": {
+      "types": "./host/access/sign.d.ts",
+      "development": "./code/access/sign.ts",
+      "default": "./host/access/sign.js"
+    },
+    "./api/control": {
+      "types": "./host/api/control.d.ts",
+      "development": "./code/api/control.ts",
+      "default": "./host/api/control.js"
+    },
+    "./api/export": {
+      "types": "./host/api/export.d.ts",
+      "development": "./code/api/export.ts",
+      "default": "./host/api/export.js"
+    },
+    "./api/form": {
+      "types": "./host/api/form.d.ts",
+      "development": "./code/api/form.ts",
+      "default": "./host/api/form.js"
+    },
+    "./api/routes": {
+      "types": "./host/api/routes.d.ts",
+      "development": "./code/api/routes.ts",
+      "default": "./host/api/routes.js"
+    },
+    "./api/scope": {
+      "types": "./host/api/scope.d.ts",
+      "development": "./code/api/scope.ts",
+      "default": "./host/api/scope.js"
+    },
+    "./api/serve": {
+      "types": "./host/api/serve.d.ts",
+      "development": "./code/api/serve.ts",
+      "default": "./host/api/serve.js"
+    },
+    "./api/wire": {
+      "types": "./host/api/wire.d.ts",
+      "development": "./code/api/wire.ts",
+      "default": "./host/api/wire.js"
+    },
+    "./api/zip": {
+      "types": "./host/api/zip.d.ts",
+      "development": "./code/api/zip.ts",
+      "default": "./host/api/zip.js"
+    },
+    "./base/address": {
+      "types": "./host/base/address.d.ts",
+      "development": "./code/base/address.ts",
+      "default": "./host/base/address.js"
+    },
+    "./base/equal": {
+      "types": "./host/base/equal.d.ts",
+      "development": "./code/base/equal.ts",
+      "default": "./host/base/equal.js"
+    },
+    "./base/make": {
+      "types": "./host/base/make.d.ts",
+      "development": "./code/base/make.ts",
+      "default": "./host/base/make.js"
+    },
+    "./base/mark": {
+      "types": "./host/base/mark.d.ts",
+      "development": "./code/base/mark.ts",
+      "default": "./host/base/mark.js"
+    },
+    "./base/order": {
+      "types": "./host/base/order.d.ts",
+      "development": "./code/base/order.ts",
+      "default": "./host/base/order.js"
+    },
+    "./base/type": {
+      "types": "./host/base/type.d.ts",
+      "development": "./code/base/type.ts",
+      "default": "./host/base/type.js"
+    },
+    "./bridge/from-data": {
+      "types": "./host/bridge/from-data.d.ts",
+      "development": "./code/bridge/from-data.ts",
+      "default": "./host/bridge/from-data.js"
+    },
+    "./bridge/from-term": {
+      "types": "./host/bridge/from-term.d.ts",
+      "development": "./code/bridge/from-term.ts",
+      "default": "./host/bridge/from-term.js"
+    },
+    "./bridge/json": {
+      "types": "./host/bridge/json.d.ts",
+      "development": "./code/bridge/json.ts",
+      "default": "./host/bridge/json.js"
+    },
+    "./bridge/term-ast": {
+      "types": "./host/bridge/term-ast.d.ts",
+      "development": "./code/bridge/term-ast.ts",
+      "default": "./host/bridge/term-ast.js"
+    },
+    "./canon/canonicalize": {
+      "types": "./host/canon/canonicalize.d.ts",
+      "development": "./code/canon/canonicalize.ts",
+      "default": "./host/canon/canonicalize.js"
+    },
+    "./canon/cbor": {
+      "types": "./host/canon/cbor.d.ts",
+      "development": "./code/canon/cbor.ts",
+      "default": "./host/canon/cbor.js"
+    },
+    "./canon/decode": {
+      "types": "./host/canon/decode.d.ts",
+      "development": "./code/canon/decode.ts",
+      "default": "./host/canon/decode.js"
+    },
+    "./canon/format": {
+      "types": "./host/canon/format.d.ts",
+      "development": "./code/canon/format.ts",
+      "default": "./host/canon/format.js"
+    },
+    "./canon/hash": {
+      "types": "./host/canon/hash.d.ts",
+      "development": "./code/canon/hash.ts",
+      "default": "./host/canon/hash.js"
+    },
+    "./canon/json": {
+      "types": "./host/canon/json.d.ts",
+      "development": "./code/canon/json.ts",
+      "default": "./host/canon/json.js"
+    },
+    "./canon/mark": {
+      "types": "./host/canon/mark.d.ts",
+      "development": "./code/canon/mark.ts",
+      "default": "./host/canon/mark.js"
+    },
+    "./commit/changeset": {
+      "types": "./host/commit/changeset.d.ts",
+      "development": "./code/commit/changeset.ts",
+      "default": "./host/commit/changeset.js"
+    },
+    "./commit/commit": {
+      "types": "./host/commit/commit.d.ts",
+      "development": "./code/commit/commit.ts",
+      "default": "./host/commit/commit.js"
+    },
+    "./diff/change": {
+      "types": "./host/diff/change.d.ts",
+      "development": "./code/diff/change.ts",
+      "default": "./host/diff/change.js"
+    },
+    "./diff/diff": {
+      "types": "./host/diff/diff.d.ts",
+      "development": "./code/diff/diff.ts",
+      "default": "./host/diff/diff.js"
+    },
+    "./diff/semantic": {
+      "types": "./host/diff/semantic.d.ts",
+      "development": "./code/diff/semantic.ts",
+      "default": "./host/diff/semantic.js"
+    },
+    "./diff/value-diff": {
+      "types": "./host/diff/value-diff.d.ts",
+      "development": "./code/diff/value-diff.ts",
+      "default": "./host/diff/value-diff.js"
+    },
+    "./erase/erase": {
+      "types": "./host/erase/erase.d.ts",
+      "development": "./code/erase/erase.ts",
+      "default": "./host/erase/erase.js"
+    },
+    "./erase/revocation": {
+      "types": "./host/erase/revocation.d.ts",
+      "development": "./code/erase/revocation.ts",
+      "default": "./host/erase/revocation.js"
+    },
+    "./file/glob": {
+      "types": "./host/file/glob.d.ts",
+      "development": "./code/file/glob.ts",
+      "default": "./host/file/glob.js"
+    },
+    "./file/model": {
+      "types": "./host/file/model.d.ts",
+      "development": "./code/file/model.ts",
+      "default": "./host/file/model.js"
+    },
+    "./file/policy": {
+      "types": "./host/file/policy.d.ts",
+      "development": "./code/file/policy.ts",
+      "default": "./host/file/policy.js"
+    },
+    "./form/automark": {
+      "types": "./host/form/automark.d.ts",
+      "development": "./code/form/automark.ts",
+      "default": "./host/form/automark.js"
+    },
+    "./form/convert": {
+      "types": "./host/form/convert.d.ts",
+      "development": "./code/form/convert.ts",
+      "default": "./host/form/convert.js"
+    },
+    "./form/form": {
+      "types": "./host/form/form.d.ts",
+      "development": "./code/form/form.ts",
+      "default": "./host/form/form.js"
+    },
+    "./form/references": {
+      "types": "./host/form/references.d.ts",
+      "development": "./code/form/references.ts",
+      "default": "./host/form/references.js"
+    },
+    "./form/validate": {
+      "types": "./host/form/validate.d.ts",
+      "development": "./code/form/validate.ts",
+      "default": "./host/form/validate.js"
+    },
+    "./gc/blobs": {
+      "types": "./host/gc/blobs.d.ts",
+      "development": "./code/gc/blobs.ts",
+      "default": "./host/gc/blobs.js"
+    },
+    "./gc/gc": {
+      "types": "./host/gc/gc.d.ts",
+      "development": "./code/gc/gc.ts",
+      "default": "./host/gc/gc.js"
+    },
+    "./gc/gc-async": {
+      "types": "./host/gc/gc-async.d.ts",
+      "development": "./code/gc/gc-async.ts",
+      "default": "./host/gc/gc-async.js"
+    },
+    "./gc/refcount": {
+      "types": "./host/gc/refcount.d.ts",
+      "development": "./code/gc/refcount.ts",
+      "default": "./host/gc/refcount.js"
+    },
+    "./history/history": {
+      "types": "./host/history/history.d.ts",
+      "development": "./code/history/history.ts",
+      "default": "./host/history/history.js"
+    },
+    "./identity/lifecycle": {
+      "types": "./host/identity/lifecycle.d.ts",
+      "development": "./code/identity/lifecycle.ts",
+      "default": "./host/identity/lifecycle.js"
+    },
+    "./identity/tree": {
+      "types": "./host/identity/tree.d.ts",
+      "development": "./code/identity/tree.ts",
+      "default": "./host/identity/tree.js"
+    },
+    "./live/draft": {
+      "types": "./host/live/draft.d.ts",
+      "development": "./code/live/draft.ts",
+      "default": "./host/live/draft.js"
+    },
+    "./live/presence": {
+      "types": "./host/live/presence.d.ts",
+      "development": "./code/live/presence.ts",
+      "default": "./host/live/presence.js"
+    },
+    "./live/segment": {
+      "types": "./host/live/segment.d.ts",
+      "development": "./code/live/segment.ts",
+      "default": "./host/live/segment.js"
+    },
+    "./lookup/mark-index": {
+      "types": "./host/lookup/mark-index.d.ts",
+      "development": "./code/lookup/mark-index.ts",
+      "default": "./host/lookup/mark-index.js"
+    },
+    "./lookup/reference-index": {
+      "types": "./host/lookup/reference-index.d.ts",
+      "development": "./code/lookup/reference-index.ts",
+      "default": "./host/lookup/reference-index.js"
+    },
+    "./merge/clock": {
+      "types": "./host/merge/clock.d.ts",
+      "development": "./code/merge/clock.ts",
+      "default": "./host/merge/clock.js"
+    },
+    "./merge/merge": {
+      "types": "./host/merge/merge.d.ts",
+      "development": "./code/merge/merge.ts",
+      "default": "./host/merge/merge.js"
+    },
+    "./merge/policy": {
+      "types": "./host/merge/policy.d.ts",
+      "development": "./code/merge/policy.ts",
+      "default": "./host/merge/policy.js"
+    },
+    "./merge/session": {
+      "types": "./host/merge/session.d.ts",
+      "development": "./code/merge/session.ts",
+      "default": "./host/merge/session.js"
+    },
+    "./migrate/migrate": {
+      "types": "./host/migrate/migrate.d.ts",
+      "development": "./code/migrate/migrate.ts",
+      "default": "./host/migrate/migrate.js"
+    },
+    "./offhistory/sensitive": {
+      "types": "./host/offhistory/sensitive.d.ts",
+      "development": "./code/offhistory/sensitive.ts",
+      "default": "./host/offhistory/sensitive.js"
+    },
+    "./offhistory/store": {
+      "types": "./host/offhistory/store.d.ts",
+      "development": "./code/offhistory/store.ts",
+      "default": "./host/offhistory/store.js"
+    },
+    "./patch/patch": {
+      "types": "./host/patch/patch.d.ts",
+      "development": "./code/patch/patch.ts",
+      "default": "./host/patch/patch.js"
+    },
+    "./project/across": {
+      "types": "./host/project/across.d.ts",
+      "development": "./code/project/across.ts",
+      "default": "./host/project/across.js"
+    },
+    "./project/advise": {
+      "types": "./host/project/advise.d.ts",
+      "development": "./code/project/advise.ts",
+      "default": "./host/project/advise.js"
+    },
+    "./project/bootstrap": {
+      "types": "./host/project/bootstrap.d.ts",
+      "development": "./code/project/bootstrap.ts",
+      "default": "./host/project/bootstrap.js"
+    },
+    "./project/conform": {
+      "types": "./host/project/conform.d.ts",
+      "development": "./code/project/conform.ts",
+      "default": "./host/project/conform.js"
+    },
+    "./project/contract": {
+      "types": "./host/project/contract.d.ts",
+      "development": "./code/project/contract.ts",
+      "default": "./host/project/contract.js"
+    },
+    "./project/ddl": {
+      "types": "./host/project/ddl.d.ts",
+      "development": "./code/project/ddl.ts",
+      "default": "./host/project/ddl.js"
+    },
+    "./project/feed": {
+      "types": "./host/project/feed.d.ts",
+      "development": "./code/project/feed.ts",
+      "default": "./host/project/feed.js"
+    },
+    "./project/follow": {
+      "types": "./host/project/follow.d.ts",
+      "development": "./code/project/follow.ts",
+      "default": "./host/project/follow.js"
+    },
+    "./project/infer": {
+      "types": "./host/project/infer.d.ts",
+      "development": "./code/project/infer.ts",
+      "default": "./host/project/infer.js"
+    },
+    "./project/lag": {
+      "types": "./host/project/lag.d.ts",
+      "development": "./code/project/lag.ts",
+      "default": "./host/project/lag.js"
+    },
+    "./project/mapping": {
+      "types": "./host/project/mapping.d.ts",
+      "development": "./code/project/mapping.ts",
+      "default": "./host/project/mapping.js"
+    },
+    "./project/once": {
+      "types": "./host/project/once.d.ts",
+      "development": "./code/project/once.ts",
+      "default": "./host/project/once.js"
+    },
+    "./project/projection": {
+      "types": "./host/project/projection.d.ts",
+      "development": "./code/project/projection.ts",
+      "default": "./host/project/projection.js"
+    },
+    "./project/projector": {
+      "types": "./host/project/projector.d.ts",
+      "development": "./code/project/projector.ts",
+      "default": "./host/project/projector.js"
+    },
+    "./project/query": {
+      "types": "./host/project/query.d.ts",
+      "development": "./code/project/query.ts",
+      "default": "./host/project/query.js"
+    },
+    "./project/resume": {
+      "types": "./host/project/resume.d.ts",
+      "development": "./code/project/resume.ts",
+      "default": "./host/project/resume.js"
+    },
+    "./project/sql": {
+      "types": "./host/project/sql.d.ts",
+      "development": "./code/project/sql.ts",
+      "default": "./host/project/sql.js"
+    },
+    "./project/table": {
+      "types": "./host/project/table.d.ts",
+      "development": "./code/project/table.ts",
+      "default": "./host/project/table.js"
+    },
+    "./project/version": {
+      "types": "./host/project/version.d.ts",
+      "development": "./code/project/version.ts",
+      "default": "./host/project/version.js"
+    },
+    "./project/write": {
+      "types": "./host/project/write.d.ts",
+      "development": "./code/project/write.ts",
+      "default": "./host/project/write.js"
+    },
+    "./query/compare": {
+      "types": "./host/query/compare.d.ts",
+      "development": "./code/query/compare.ts",
+      "default": "./host/query/compare.js"
+    },
+    "./query/ordered-index": {
+      "types": "./host/query/ordered-index.d.ts",
+      "development": "./code/query/ordered-index.ts",
+      "default": "./host/query/ordered-index.js"
+    },
+    "./query/query": {
+      "types": "./host/query/query.d.ts",
+      "development": "./code/query/query.ts",
+      "default": "./host/query/query.js"
+    },
+    "./redact/redact": {
+      "types": "./host/redact/redact.d.ts",
+      "development": "./code/redact/redact.ts",
+      "default": "./host/redact/redact.js"
+    },
+    "./redact/reversible": {
+      "types": "./host/redact/reversible.d.ts",
+      "development": "./code/redact/reversible.ts",
+      "default": "./host/redact/reversible.js"
+    },
+    "./redact/shred": {
+      "types": "./host/redact/shred.d.ts",
+      "development": "./code/redact/shred.ts",
+      "default": "./host/redact/shred.js"
+    },
+    "./reflog/reflog": {
+      "types": "./host/reflog/reflog.d.ts",
+      "development": "./code/reflog/reflog.ts",
+      "default": "./host/reflog/reflog.js"
+    },
+    "./repo/repo": {
+      "types": "./host/repo/repo.d.ts",
+      "development": "./code/repo/repo.ts",
+      "default": "./host/repo/repo.js"
+    },
+    "./store/chunk-store": {
+      "types": "./host/store/chunk-store.d.ts",
+      "development": "./code/store/chunk-store.ts",
+      "default": "./host/store/chunk-store.js"
+    },
+    "./store/mirror": {
+      "types": "./host/store/mirror.d.ts",
+      "development": "./code/store/mirror.ts",
+      "default": "./host/store/mirror.js"
+    },
+    "./store/object-store": {
+      "types": "./host/store/object-store.d.ts",
+      "development": "./code/store/object-store.ts",
+      "default": "./host/store/object-store.js"
+    },
+    "./store/pack": {
+      "types": "./host/store/pack.d.ts",
+      "development": "./code/store/pack.ts",
+      "default": "./host/store/pack.js"
+    },
+    "./store/r2-chunk-store": {
+      "types": "./host/store/r2-chunk-store.d.ts",
+      "development": "./code/store/r2-chunk-store.ts",
+      "default": "./host/store/r2-chunk-store.js"
+    },
+    "./store/ref-store": {
+      "types": "./host/store/ref-store.d.ts",
+      "development": "./code/store/ref-store.ts",
+      "default": "./host/store/ref-store.js"
+    },
+    "./store/sql-ref-store": {
+      "types": "./host/store/sql-ref-store.d.ts",
+      "development": "./code/store/sql-ref-store.ts",
+      "default": "./host/store/sql-ref-store.js"
+    },
+    "./store/tree": {
+      "types": "./host/store/tree.d.ts",
+      "development": "./code/store/tree.ts",
+      "default": "./host/store/tree.js"
+    },
+    "./sync/chunk-sync": {
+      "types": "./host/sync/chunk-sync.d.ts",
+      "development": "./code/sync/chunk-sync.ts",
+      "default": "./host/sync/chunk-sync.js"
+    },
+    "./sync/op-sync": {
+      "types": "./host/sync/op-sync.d.ts",
+      "development": "./code/sync/op-sync.ts",
+      "default": "./host/sync/op-sync.js"
+    },
+    "./sync/partial": {
+      "types": "./host/sync/partial.d.ts",
+      "development": "./code/sync/partial.ts",
+      "default": "./host/sync/partial.js"
+    },
+    "./text/diff": {
+      "types": "./host/text/diff.d.ts",
+      "development": "./code/text/diff.ts",
+      "default": "./host/text/diff.js"
+    },
+    "./text/merge": {
+      "types": "./host/text/merge.d.ts",
+      "development": "./code/text/merge.ts",
+      "default": "./host/text/merge.js"
+    },
+    "./transport/bundle": {
+      "types": "./host/transport/bundle.d.ts",
+      "development": "./code/transport/bundle.ts",
+      "default": "./host/transport/bundle.js"
+    },
+    "./transport/session": {
+      "types": "./host/transport/session.d.ts",
+      "development": "./code/transport/session.ts",
+      "default": "./host/transport/session.js"
+    },
+    "./tree/format": {
+      "types": "./host/tree/format.d.ts",
+      "development": "./code/tree/format.ts",
+      "default": "./host/tree/format.js"
+    },
+    "./tree/parse": {
+      "types": "./host/tree/parse.d.ts",
+      "development": "./code/tree/parse.ts",
+      "default": "./host/tree/parse.js"
+    },
+    "./verify/fsck": {
+      "types": "./host/verify/fsck.d.ts",
+      "development": "./code/verify/fsck.ts",
+      "default": "./host/verify/fsck.js"
+    }
+  },
+  "files": [
+    "host",
+    "code",
+    "vector",
+    "!**/*.tsbuildinfo*"
+  ]
+}

@@ -99,7 +99,8 @@ test <the census counts foreign source and no untracked bundle>
 host floor-young, <2026-11-01T12:00:00>
 host floor-old, <2026-01-01T12:00:00>
 host floor-t, <deck/term/deck/term>
-host floor-baseline, <note/project/term/self-host/floor.json>
+# the baseline lives in the Term repository since the self-contained move (floor.ts BASELINE), the checklist in the parent
+host floor-baseline, <deck/term/deck/term/task/term/floor.json>
 host floor-checklist, <note/project/term/self-host/change/001-finish-self-host/checklist.json>
 
 bind floor-trim
@@ -157,7 +158,7 @@ task floor-bare
 
   save home, temp-folder(<floor-classes->)
   floor-do(home, <git>, <init -q>)
-  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/make/code/dev {floor-t}/deck/call/code {floor-t}/test/call deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
+  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/make/code/dev {floor-t}/deck/call/code {floor-t}/test/call {floor-t}/task/term deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
   floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/deck/make/code/dev/client.ts {floor-t}/test/call/kept.ts>)
   floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
   back home

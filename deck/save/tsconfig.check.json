@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The check covers the tests and tasks as well as the library, so
+    // the root is the package rather than `code/`. Nothing is emitted,
+    // so the wider root never reaches `host/`. The build info lives in
+    // `tmp/`, never beside the build's own, so neither cache is
+    // overwritten by the other.
+    "rootDir": ".",
+    "composite": false,
+    "declaration": false,
+    "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./tmp/check.tsbuildinfo"
+  },
+  "include": ["code/**/*.ts", "test/**/*.ts", "task/**/*.ts"]
+}

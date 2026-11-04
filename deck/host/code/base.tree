@@ -1,6 +1,6 @@
 # Term data. The value every reader produces and every writer takes, the two exceptions the package raises, and the
 # public surface. The forms are named `data`, not `host`, because `form host` already exists in the stdlib and names
-# are package-global. See note/term/host/04-model-and-json.md and 06-package-and-cli.md.
+# are package-global.
 
 load @term/base/exception
   find exception

@@ -4,7 +4,7 @@
     "target": "ES2022",
     "lib": ["es2022", "dom"],
     "outDir": "host",
-    "rootDir": "../../../../../..",
+    "rootDir": "..",
     "sourceMap": true,
     "declaration": true,
     "moduleResolution": "bundler",
@@ -23,7 +23,7 @@
       "@/*": ["./code/*"],
       "@term/deck/*": ["./*", "./host/port/*"],
       "@term/make/*": ["../make/*", "../make/host/port/*"],
-      "@cluesurf/save/*": ["../../../../../../mesh/deck/save/code/*"]
+      "@cluesurf/save/*": ["../save/code/*"]
     }
   },
   "include": ["code/**/*.ts"],

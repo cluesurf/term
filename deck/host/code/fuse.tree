@@ -1,5 +1,5 @@
 # Anchors: expand every `fuse` in a data file against its `tree`s. Later keys win, a cycle is refused, and a tree of
-# entries cannot be fused into a list or the other way round. See note/term/host/03-anchors.md.
+# entries cannot be fused into a list or the other way round.
 
 load @term/base/list
   find push

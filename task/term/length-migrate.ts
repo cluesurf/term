@@ -462,8 +462,6 @@ if (process.argv.includes('--finds')) {
       .map(name => path.join(TERM, 'deck', name))
       .filter(dir => existsSync(path.join(dir, 'deck.tree'))),
     ...parentPaths('deck/zone'),
-    // the one Term project under mesh/ (it calls `contains` of `text`)
-    ...parentPaths('mesh/deck/save'),
   ].filter(dir => existsSync(path.join(dir, 'deck.tree')) && (!only || only.includes(path.basename(dir))))
 
   for (const root of roots) {

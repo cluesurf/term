@@ -1,4 +1,4 @@
-# Nodes to data: the rules of note/term/host/01-grammar.md, each a `data-defect` naming the rule. `read` gives the
+# Nodes to data: the rules of the data grammar, each a `data-defect` naming the rule. `read` gives the
 # expanded value; `read-raw` keeps the anchors (`tree`) and the splices (`fuse`) for a writer that preserves them.
 
 load @term/base/boolean

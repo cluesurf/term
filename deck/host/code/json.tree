@@ -1,5 +1,5 @@
 # Data to JSON and back, through the stdlib json module. Keys are kebab in the file and snake in JSON, converted here
-# and nowhere else; `keep true` leaves them alone. See note/term/host/04-model-and-json.md.
+# and nowhere else; `keep true` leaves them alone.
 
 load @term/base/boolean
   find not

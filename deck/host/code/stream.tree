@@ -1,7 +1,7 @@
 # Streams: one compact form per line. A reader keeps the anchor table and expands each line as it arrives, so
 # memory is one line plus the anchors however long the stream runs. A writer emits a `t(` line the first time a
 # value fuses an anchor, and the compact line for the value. Text channels carry lines, so a reader over a channel
-# hands every received line to `feed`. See note/term/host/07-streaming.md.
+# hands every received line to `feed`.
 
 load @term/base/boolean
   find not

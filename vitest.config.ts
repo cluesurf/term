@@ -7,6 +7,7 @@ export default defineConfig({
     projects: [
       'deck/deck/vitest.config.ts',
       'deck/test/vitest.config.ts',
+      'deck/save/vitest.config.ts',
     ],
   },
 })

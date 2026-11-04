@@ -154,7 +154,9 @@ function listRoots(): Array<{ name: string; dir: string }> {
       .filter(name => lstatSync(join(TERM, 'deck', name)).isDirectory())
       .map(name => ({ name: `@term/${name}`, dir: join(TERM, 'deck', name) })),
     { name: 'test/', dir: join(TERM, 'test') },
-    ...(PARENT_ROOT ? [{ name: '@term/zone', dir: parentPaths('deck/zone')[0]! }] : []),
+    // parentPaths answers relative to the Term root, so it is joined to it: run from any other folder, the bare path
+    // named a folder that is not there and `git -C` threw
+    ...(PARENT_ROOT ? [{ name: '@term/zone', dir: join(TERM, parentPaths('deck/zone')[0]!) }] : []),
   ]
 }
 
@@ -332,8 +334,13 @@ function firstCommitOf(full: string): string | undefined {
   }
 }
 
-// each item of change 001 by id, with its state. No checklist reads as no item
-function readItemStates(): Map<string, string> {
+// each item of change 001 by id, with its state. No checklist reads as no item. With no parent named there is no
+// checklist to read: undefined, and the owed rows go unjudged (a --commit names the parent, so it never writes them so)
+function readItemStates(): Map<string, string> | undefined {
+  if (PARENT_ROOT === undefined && !commit) {
+    return undefined
+  }
+
   if (!existsSync(CHECKLIST())) {
     return new Map()
   }
@@ -544,7 +551,7 @@ function main(): void {
   }
 
   const states = readItemStates()
-  const failures = owedHere.flatMap(row => rowFailure(row, states) ?? [])
+  const failures = states === undefined ? [] : owedHere.flatMap(row => rowFailure(row, states) ?? [])
   const left = baseline.filter(key => !portKeys.has(key))
   const removed = [
     ...left.filter(key => !existsSync(join(HOME, key))),
@@ -645,6 +652,11 @@ function main(): void {
     for (const line of refused) {
       console.log(`    ${line}`)
     }
+  }
+
+  if (states === undefined && owedHere.length > 0) {
+    console.log('')
+    console.log(`  owed rows not judged, ${owedHere.length}: TERM_PARENT_ROOT is unset, so there is no checklist to read`)
   }
 
   if (failures.length > 0) {
