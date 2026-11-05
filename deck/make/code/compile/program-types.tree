@@ -7,11 +7,12 @@
 # Ported from compile/compile.ts's `programTypes`, `stampInspectTypes`, `stampSites` and `relativePath` (item 0265 of
 # term/self-host/change/001, decision 031 part E), which stay as the face. The decisions:
 #   - the passes that are Term are loaded by their `.tree` names (check/claim, check/async-slots, check/async-resolve,
-#     compile/frames, and the gate's `deck-homes`); the ones with no port yet are docks, each named for its module
-#     (decision 031 section 3): check/infer, check/views, check/sole, check/sole-earned, check/hide, check/missing-wait
-#     and compile/roll
+#     compile/frames, the gate's `deck-homes`, the affine and wait checks, and check/views-lowered); two faces stay
+#     docks, each named for its module (decision 031 section 3): check/infer, whose face holds the process's infer
+#     profile, and compile/roll, whose face asks check/effects.ts for the raise sets
 #   - check/views.ts `copyForViews` is a `structuredClone` of the program when this file defines a component, written
-#     here with the same clone (`types-copy-program`), so the docked view check gets the copy the original made
+#     here with the same clone (`types-copy-program`), so the view check gets the copy the original made. The runtime
+#     names it lowers with are the run's, as a hash (`runtime-table`)
 #   - the two stamps walk with compile/node-children.tree and rebuild with compile/node-rebuild.tree (spec.md sections
 #     4.10, 4.11): a node is rebuilt fresh only when it or a node under it is stamped, so the answer is a stamped program
 #     whose stamped places are new nodes, the input never written. The face assigns it. The original's reflective walks
@@ -101,9 +102,11 @@ load ../check/hide-guard
 load ../check/missing-wait-refusals
   find check-missing-waits
 
+load ../check/views-lowered
+  find check-lowered-views
+
 dock load
   load <@term/make/code/check/infer>, name program-types-infer
-  load <@term/make/code/check/views>, name program-types-views
   load <@term/make/code/compile/roll>, name program-types-roll
 
 # what the run holds as `need false` and the types read, filled by the face
@@ -653,6 +656,22 @@ task stamp-sites
 
 # ---- the types ----
 
+# THE RENDER RUNTIME NAMES AS THE GATE BOUND THEM, as the hash check/views-lowered.tree takes. The face read the
+# `runtime` of check/overload.ts's bound, which the driver's keep-bound wrote from this same list right after the gate,
+# a name met twice keeping its first place and its last binding (check/disambiguate.tree `keep-overload-bound`)
+task runtime-table
+  take run, like program-run
+  like hash, like text, like text
+  mark private
+
+  save table, like hash, like text, like text
+    make hash
+  walk run/runtime-names
+    take pair
+    save key, pair/name
+    save table/{key}, pair/bound
+  back table
+
 task program-types
   take run, like program-run
   take given, like types-given
@@ -723,7 +742,7 @@ task program-types
   sift view-copy
     case some
       link copied
-      save view-errors, as-diagnostics(program-types-views/check-lowered-views(copied, file, run/merged))
+      save view-errors, check-lowered-views(copied, file, run/merged, runtime-table(run))
       fork test, is-above(view-errors/length, 0)
         hold
           back types-refusal(view-errors)

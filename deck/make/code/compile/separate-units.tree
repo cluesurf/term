@@ -23,8 +23,9 @@
 #     lookups, a field's presence, the stored entry's JSON with its bigint tag) comes in `separate-given`, filled by the
 #     face. A unit's answer is held as Term (`unit-answer`), and the face writes and reads the stored entry in the
 #     original's shape, key for key, so an entry on disk is the bytes the original wrote (spec.md 4.15)
-#   - docked: compile/cache (the text hash and the field hash, one memo for the process), compile/stub (the facts each
-#     task carries, which hands the TypeScript analyses) and check/twin (the twin refusals)
+#   - the field hash is compile/cache-store.tree's. Docked: compile/cache (the text hash, whose memo for the process the
+#     face holds), compile/stub (the facts each task carries, which hands the TypeScript analyses) and check/twin (the
+#     twin refusals, handed the linear prover whose state check/refine.ts holds)
 #   - a route's calls and a dock statement are copied as the original spread them (`shallow-*`), so a renamed call is
 #     written on a copy and the checked program keeps its own names
 
@@ -111,6 +112,9 @@ load ./build-ledger
   find ledger-read
   find ledger-cover
   find uncovered-reads
+
+load ./cache-store
+  find hash-fields
 
 dock load
   load <@term/make/code/compile/cache>, name separate-cache
@@ -993,7 +997,7 @@ task key-as
   walk state/dep-hashes
     take one
     push(fields, one)
-  back separate-cache/hash-fields(fields)
+  back hash-fields(fields)
 
 # a unit's stub definitions, as the stored answer has them or worked out from its stubs
 task defs-of
@@ -1180,7 +1184,7 @@ task named-key-as
   walk names-reached-indexed(run/name-index, run/unit-defs, sees, used, 1000000)
     take one
     push(fields, one)
-  back separate-cache/hash-fields(fields)
+  back hash-fields(fields)
 
 # the name key, through a pointer kept under the whole-surface key: the same surface always gives the same name key,
 # so a warm build reads the pointer and works out no names
@@ -1300,7 +1304,8 @@ task traced-key
   walk sort(pairs, from-texts)
     take pair
     push(fields, pair)
-  back make(some, separate-cache/hash-fields(fields))
+  save key, hash-fields(fields)
+  back make(some, key)
 
 # the stored answer the pointer leads to, none for a miss
 task stored-by-trace
@@ -1432,7 +1437,7 @@ task inputs-as
       bind compiler, compiler
       bind own, own
       bind read, read
-      bind settings, separate-cache/hash-fields(settings)
+      bind settings, hash-fields(settings)
       bind names, names-printed(defs, used)
       bind carried, make hash
 
@@ -2358,7 +2363,7 @@ task compile-separate
       bind exports, exports/values()
       bind built, built
       bind reused, reused
-      bind closure-key, separate-cache/hash-fields(closure-keys)
+      bind closure-key, hash-fields(closure-keys)
       bind natives, natives
       bind docks, docks
       bind rolls, rolls

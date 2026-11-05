@@ -41,10 +41,14 @@ load @term/call/work/workers/source-faces
 load @term/call/work/cache/compile-store
   find project-cache
 
+# which tasks are pure: check/purity.tree, where check/facts.ts was docked until term-self-host-001-0959. The
+# compiler and its native environment stay docked (decision 031)
+load @term/make/check/purity
+  find purity
+
 dock load
   load <@term/make/code/compile/compile>, name compiling
   load <@term/make/code/compile/native>, name native-env
-  load <@term/make/code/check/facts>, name fact-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:JSON>, name host-json
@@ -254,6 +258,13 @@ bind own-tasks
   like list, like dynamic
   case node
     text <<$program.filter(s => s.form === "function" && !s.claim && !s.stub && s.span.file === $file)>>
+
+# the pure tasks' names as a host Set, as check/facts.ts's `pureFunctions` answered them
+bind pure-set
+  take names, like list, like text
+  like dynamic
+  case node
+    text <new Set($names)>
 
 bind is-pure
   take pure, like dynamic
@@ -484,7 +495,7 @@ task hold-project
     save program, result-program(result)
     fork test, proof-truth(program)
       hold
-        save pure, fact-finding/pure-functions(program)
+        save pure, pure-set(purity(program)/pure)
         walk own-tasks(program, file)
           take task
           save name, ledger-name(rel, task-method-form(task), task-method-name(task), task-name(task))

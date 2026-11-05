@@ -26,13 +26,6 @@ import type { CheckerSwitches } from '@term/make/code/check/checker-switches'
 // the process's switches, read from its environment once, at load, as each module-level switch was
 export const checkerSwitches: CheckerSwitches = switchesFromEnv()
 
-// check/substitution.tree reads the width switch from here (a Term module cannot import a face), when it makes a
-// substitution, so it is written where the instance is made, as check/width-range.ts wrote it whenever this module
-// loaded it, and again by every `setWidthRanges`. It goes when substitution.tree's `width-switch` bind reads the
-// record (item 0248)
-;(globalThis as { termWidthRanges?: boolean }).termWidthRanges =
-  checkerSwitches.widths
-
 export function setAmbiguousRefused(value: boolean): void {
   checkerSwitches.ambiguous = value
 }

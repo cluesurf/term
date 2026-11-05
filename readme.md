@@ -72,9 +72,17 @@ to specialize, monomorphize, and lower aggressively per target, so speed
 comes from the compiler rather than from the author writing awkward
 code.
 
-On the application side, the standard library is written in `.tree` and
-covers the usual primitives, collections, IO, text, time, and
-cryptography, each mapped to its native counterpart. The web stack is
+On the application side, the standard library is written in `.tree`, and
+each part maps to its native counterpart. It covers:
+
+- the usual primitives
+- collections
+- IO
+- text
+- time
+- cryptography
+
+The web stack is
 reactive in the fine-grained style, updating the DOM directly through
 signals rather than diffing a virtual DOM, with server-side rendering,
 client takeover, and hot module reload.
@@ -116,6 +124,8 @@ behavior on every platform it touches.
 
 ## Install
 
+Term installs as one command, `term`, with one line in a shell:
+
 ```sh
 eval "$(curl -fsSL https://term.surf/load | sh)"
 ```
@@ -127,9 +137,16 @@ brew install cluesurf/tool/term
 ```
 
 Both install the same signed release, `@term/code`, from
-`ghcr.io/cluesurf/term/code`, built for `darwin-arm64`, `darwin-x64`,
-`linux-x64`, `linux-arm64`, `windows-x64` and `windows-arm64`. Each
-checks the download's sha256 against the registry's digest, and the
+`ghcr.io/cluesurf/term/code`, built for:
+
+- `darwin-arm64`
+- `darwin-x64`
+- `linux-x64`
+- `linux-arm64`
+- `windows-x64`
+- `windows-arm64`
+
+Each checks the download's sha256 against the registry's digest, and the
 release signature against the `@term` key set, before anything goes on
 your `PATH`. It writes under `~/.base/@term/code/`, and adds one marked
 line to your shell's profile putting its `call/` folder, which holds the
@@ -165,6 +182,8 @@ library, the app framework and everything else are written in `.tree`
 and compiled by the compiler itself.
 
 ## Finding your way around
+
+The repository's folders, and what each one holds:
 
 ```
 .
@@ -230,6 +249,9 @@ the reference below.
 
 ## How It Works
 
+The compiler, `make`, takes `.tree` source through five stages and
+emits one program per target:
+
 ```
 .tree source
     ↓
@@ -243,7 +265,8 @@ make (compiler): parse → mill → resolve → check → emit
 ```
 
 The compiler parses `.tree` files into a surface AST, mills them into a
-typed AST, resolves names, and type-checks through a gradual,
+typed AST (a mill is the grammar that reads one dialect, one vocabulary
+of `.tree` file, into typed values), resolves names, and type-checks through a gradual,
 bidirectional inference pass that elaborates into a dependent kernel for
 soundness. Each backend then emits idiomatic output for its platform.
 Generics, traits, async, and effects lower to the natural construct on
@@ -256,8 +279,18 @@ reuses the same analysis for diagnostics, hover, and go-to-definition.
 
 ## Developing Term
 
-Working on Term itself takes Node, pnpm, Rust, Swift, a JDK, Kotlin, Maven and, for the mobile suites, the Android
-SDK and the iOS simulator. One command checks them all on macOS, Linux or Windows, and installs what is missing with
+Working on Term itself takes these tools:
+
+- Node
+- pnpm
+- Rust
+- Swift
+- a JDK
+- Kotlin
+- Maven
+- the Android SDK and the iOS simulator, for the mobile suites
+
+One command checks them all on macOS, Linux or Windows, and installs what is missing with
 `--commit`:
 
 ```
@@ -269,6 +302,8 @@ powershell -ExecutionPolicy Bypass -File task\dev\bootstrap\start.ps1 check
 The rest of the workflow is under [Building from a clone](#building-from-a-clone).
 
 ## Getting Started
+
+The commands a project uses from its first day, each with what it does:
 
 ```sh
 term wake hello          # a new project in ./hello
@@ -284,6 +319,9 @@ term --help              # every verb, one line each
 ```
 
 ## Example
+
+A task is a function. This one, `double`, takes a number and returns it
+added to itself:
 
 ```tree
 task double
@@ -355,12 +393,15 @@ every file, and three rules shape it:
 
 So `take value, like number` is a `take` with two children, `value` and
 `like number`, and `back add(value, value)` returns the call's result.
-What the words mean comes from the file's dialect (its
-[role](#dialects-mills-and-roles)), and in ordinary code from the table
+What the words mean comes from the file's dialect, the vocabulary its
+[role](#dialects-mills-and-roles) (the kind of file it is) allows, and in ordinary code from the table
 below. Nearly every word is four letters, a deliberate small vocabulary
 shared by the language and its tools.
 
 ### Definitions
+
+The words that define things in ordinary code: tasks, their inputs,
+variables, forms and imports.
 
 | word | meaning |
 | --- | --- |
@@ -383,6 +424,9 @@ shared by the language and its tools.
 
 ### Control
 
+The words that decide which code runs, and how often: branches, matches,
+loops, exceptions and async calls.
+
 | word | meaning |
 | --- | --- |
 | `fork test, c` | an `if`. `hold` holds what runs when `c` is true, `miss` what runs otherwise |
@@ -398,6 +442,9 @@ shared by the language and its tools.
 | `wait f(x)` | awaits a call into native code |
 
 ### Proofs, tests and templates
+
+The words that state and prove laws, write tests, and build code from
+templates at compile time.
 
 | word | meaning |
 | --- | --- |
@@ -507,6 +554,23 @@ by hand. [The lean spelling](https://term.surf/guides/language/syntax/lean),
 
 ## A first program
 
+A program's entry point is a task named `boot` (a task is a function),
+and `log` from the standard library prints a line. The first things a
+newcomer looks for:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| source file | a `.tree` file | `code/boot.tree` |
+| new project, `cargo new` | `term wake` | `term wake hello` |
+| `main` | `task boot` | `task boot` |
+| print | `log` | `log <hello from term>` |
+| run | `term boot` | `term boot` |
+| compile | `term make` | `term make` |
+| REPL | `term walk` | `term walk` |
+| project manifest | `deck.tree` | `deck hello` |
+| package | a deck | |
+| build output | `host/` | |
+
 ```tree
 load @term/base/console
   find log
@@ -564,7 +628,54 @@ line, with the same message the editor shows:
 
 ## The language
 
+Each construct a programmer from TypeScript, Rust or Python looks for,
+and the word Term spells it with. The parts below take them one at a
+time.
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| function | `task` | `task double` |
+| parameter | `take` | `take n, like number` |
+| default value | `fall` | `take step, like number, fall 1` |
+| named argument | `bind` | `bind step, 10` |
+| return | `back` | `back add(n, 1)` |
+| variable | `save` | `save total, 0` |
+| constant | `host` | `host tax, 2` |
+| string interpolation | `{x}` inside text | `<hello, {name}>` |
+| struct, record | `form` with `link` fields | `link name, like text` |
+| create an instance | `make`, with a `bind` per field | `make user` over `bind name, <ada>` |
+| optional field | `need false` | `link age, like number, need false` |
+| enum, sum type | `form` with `case` variants | `case circle` |
+| pattern match | `sift` | `sift s` over `case circle` |
+| if / else | `fork test`, with `hold` and `miss` | `fork test, is-below n, 0` |
+| else if | `hook test` | `hook test, is-minimum score, 80` |
+| for each | `walk` over a list | `walk items` over `take value` |
+| counted loop | `walk size` | `walk size` over `bind base, 1` and `bind head, 5` |
+| while | `walk test` | `walk test` over `hook test, is-above at, 1` |
+| break, continue | `halt`, `turn next` | `turn next` |
+| throw | `halt` | `halt absence, bind thing, <name>` |
+| `throws` clause | `halt` on the signature | `halt excess` |
+| try / catch | a `fork` whose first line is `mark unsafe`, then `halt take` | `halt take` over `take problem` |
+| import | `load`, then `find` | `load @term/base/list` over `find size` |
+| import alias | `find a, name b` | `find get, name list-get` |
+| private | `mark private` | `mark private` |
+| async / await | `mark async`. A call to it is awaited with nothing written | `mark async` |
+| start without awaiting | `tick` | `tick write-log(line)` |
+| function as a value | the task's bare name | `apply-twice(a, double)` |
+| generics | `head` | `head t` |
+| interface, trait | `mask`, and `wear` on a form | `mask scorer` |
+| macro, template | `tree`, filled in by `fuse` | `fuse is-tag, green, 1` |
+| annotation, attribute | `mark` | `mark async` |
+| comment | `#` | `# a full-line comment` |
+| doc comment | a `#` comment directly above a definition, or `note` | `note <Twice the number it is given.>` |
+| foreign function | `load` of a host module | `load <node:path>, name path` |
+| `null` | none: `need false` on a field, or `like maybe` | |
+| infix operators | none: each is a call | `add(a, b)`, `is-equal(a, b)` |
+
 ### Values and literals
+
+A literal is a value written straight into the code: a number, a piece
+of text, a boolean. Text sits between `<` and `>`.
 
 ```tree
 host site, <Term>
@@ -598,6 +709,9 @@ that leaves it raises `excess` or `shortage` rather than wrapping.
 
 ### Arithmetic and comparison
 
+Arithmetic and comparison are ordinary calls, such as `add(a, b)` and
+`is-above(a, 10)`, since Term has no infix operators.
+
 ```tree
 task compare
   take a, like number
@@ -617,9 +731,12 @@ task compare
 A long formula is a nest of calls. A numeric literal is never a method
 receiver: write `subtract(24, a)`. A division by something the build
 cannot show is non-zero is an obligation the [hold gate](#the-hold-gate)
-counts. [Arithmetic and comparison](https://term.surf/guides/language/operators).
+counts (the check that fails on any unproven read, division or loop). [Arithmetic and comparison](https://term.surf/guides/language/operators).
 
 ### Variables
+
+A variable is a name bound to a value with `save`, and a constant is one
+bound with `host`, which never changes.
 
 ```tree
 form account
@@ -655,6 +772,9 @@ path reads into a value: `user/email` a field, `names/0` an item,
 [Variables](https://term.surf/guides/language/variables).
 
 ### Tasks
+
+A task is a function. Its `take` lines are its inputs, a bare `like`
+line is the type it returns, and `back` returns a value.
 
 ```tree
 task step-up
@@ -715,6 +835,10 @@ value`, and `slot` inputs are given only by position. A task is a value:
 
 ### Branching
 
+A `fork test` is an if: the code under `hold` runs when the test is
+true, the code under `miss` runs otherwise, and each `hook test` adds an
+else-if.
+
 ```tree
 task sign-label
   take n, like number
@@ -760,6 +884,10 @@ as in `size-label`. [Branching](https://term.surf/guides/language/branching).
 
 ### Lists, hashes and sets
 
+A list is an ordered run of values, a hash maps keys to values (a
+dictionary), and a set holds each value once. Each comes from its own
+standard library module.
+
 ```tree
 load @term/base/list
   find list
@@ -796,6 +924,11 @@ is an obligation for the hold gate.
 [Lists, hashes and sets](https://term.surf/guides/language/collections).
 
 ### Loops
+
+A loop is a `walk`, in one of three kinds: over a list (`walk xs`),
+counting through a range (`walk size`), or while a test holds
+(`walk test`). `turn next` skips to the next turn, and `halt` ends the
+loop.
 
 ```tree
 task total
@@ -851,6 +984,10 @@ inner loop can reach it. A loop meant to run forever carries
 
 ### Forms
 
+A form is a type you define: a record with named fields (`link`), or a
+sum type with variants (`case`). `make` builds one, with a `bind` per
+field.
+
 ```tree
 form user
   link name, like text
@@ -900,6 +1037,9 @@ construction to its own file, and `mark sole` makes a value usable at
 most once. [Forms](https://term.surf/guides/language/forms).
 
 ### Matching
+
+A `sift` is a match: it looks at which variant of a sum type a value
+holds, and runs the `case` arm written for that variant.
 
 ```tree
 form shape
@@ -963,6 +1103,10 @@ arms must cover every case, or `hook miss` covers the rest.
 
 ### Exceptions
 
+An exception is a form a task raises with `halt` when it cannot go on.
+A guarded block, a `fork` whose first line is `mark unsafe`, catches it
+under `halt take` (a try and its catch).
+
 ```tree
 load @term/base/exception
   find excess
@@ -1005,10 +1149,27 @@ tell @term/base/excess
 ```
 
 The standard library defines seventeen exceptions, each a form
-`like exception` with a `thing` field and fields of its own: `defect`,
-`omission`, `excess`, `shortage`, `mismatch`, `exclusion`, `absence`,
-`conflict`, `refusal`, `anonymity`, `denial`, `overload`, `outage`,
-`timeout`, `overage`, `failure` and `bundle`. A task may list what it
+`like exception` with a `thing` field and fields of its own:
+
+- `defect`
+- `omission`
+- `excess`
+- `shortage`
+- `mismatch`
+- `exclusion`
+- `absence`
+- `conflict`
+- `refusal`
+- `anonymity`
+- `denial`
+- `overload`
+- `outage`
+- `timeout`
+- `overage`
+- `failure`
+- `bundle`
+
+A task may list what it
 raises (a `halt excess` line in its signature), and the build holds it
 to that list. `halt kink` passes a callee's exception on. A `tell`
 says what a person sees for one. A raise is caught the same way on all
@@ -1018,6 +1179,9 @@ where each comes out. [Exceptions](https://term.surf/guides/language/errors),
 [The seventeen exceptions](https://term.surf/guides/library/exceptions).
 
 ### Modules and imports
+
+A module is one `.tree` file. `load` imports a module, and each `find`
+under it takes one name from it.
 
 ```tree
 load @term/base/console
@@ -1042,7 +1206,7 @@ task boot
   log <{length(names)} names, first {first}, {double(2)}>
 ```
 
-A module is a file. `load ./util` reads `util.tree`, then
+`load ./util` reads `util.tree`, then
 `util/base.tree`, then `util/note.tree`. A package path
 `@scope/name/<path>` resolves in the package's code root first, then
 the package root. `find a, name b` renames an import, and `mark private`
@@ -1051,6 +1215,9 @@ others only through `load` and `find`.
 [Modules and imports](https://term.surf/guides/language/modules).
 
 ### Async
+
+An async task is one that can wait, for a file or the network, without
+stopping the rest of the program. It carries `mark async`.
 
 ```tree
 dock load
@@ -1101,6 +1268,10 @@ in the [standard library](#the-standard-library).
 
 ### Templates
 
+A template is a `tree`: a pattern of code with holes, written once. Each
+`fuse` fills its holes and pastes the result in at compile time, the
+role a macro plays elsewhere.
+
 ```tree
 tree is-tag
   take name
@@ -1143,6 +1314,9 @@ and a block passes through `site` and `beam`.
 [Templates](https://term.surf/guides/language/templates).
 
 ### Marks and notes
+
+A mark is metadata on a definition, such as `mark private` or
+`mark async`, and a `note` is a sentence of documentation for it.
 
 ```tree
 task double
@@ -1190,7 +1364,32 @@ definition. [Naming](https://term.surf/guides/language/naming).
 
 ## Types
 
+Every build checks the types of the whole program before it writes
+anything. Each part of a type system, and the word Term spells it with:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| type annotation | `like` | `take ratio, like float` |
+| return type | a bare `like` line under the task | `like number` |
+| list type, `number[]` | `like list`, then the item type | `like list, like number` |
+| map type | `like hash`, then the value type | `like hash, like text` |
+| function type | `like task` | `take body, like task` |
+| generic type parameter | `head` | `head t` |
+| generic type, applied | the form's name, then the argument | `like chain t` |
+| interface, trait, protocol | `mask` | `mask scorer` |
+| implements | `wear` on the form | `wear scorer` |
+| `self` | `take self` | `take self` |
+| trait bound, `T: Scorer` | `need` on the parameter | `head t, need scorer` |
+| union type | a `form` with `case` variants | `case circle` |
+| `unknown` | `like unknown` | `take a, like unknown` |
+| `any` | `like dynamic` | `take value, like dynamic` |
+| type inference | write no `like` | `save count, 3` |
+| dependent types | the kernel, a second checker, and a value in a type | `head n, like nat` |
+
 ### Annotations and generics
+
+An annotation is a `like` line, which gives a type. A generic is a task
+or form with a `head t` line, a type parameter filled in at each use.
 
 ```tree
 form player
@@ -1257,6 +1456,9 @@ it is refused, and a computed value is held to it with
 
 ### Inference
 
+Inference is the build working out a type you did not write, from the
+value or the call it comes from.
+
 ```tree
 load @term/base/list
   find push
@@ -1293,6 +1495,9 @@ and the editor shows each inferred type as an inlay hint.
 
 ### Masks
 
+A mask is a set of tasks a form can supply (a trait or interface), and
+`wear` on a form says it supplies them.
+
 ```tree
 mask scorer
   task score
@@ -1325,7 +1530,7 @@ task demo
   back double-score(ada)
 ```
 
-A mask is a set of tasks a form can supply, the role a trait plays in
+A mask plays the role a trait plays in
 Rust, a protocol in Swift and an interface in Kotlin, and each backend
 emits it as that construct. The arithmetic masks in
 `@term/base/arithmetic` let `add(a, b)` reach a form's own addition, as
@@ -1333,6 +1538,9 @@ the big integer, big decimal, rational and complex forms do.
 [Masks](https://term.surf/guides/types/masks).
 
 ### Unknown and dynamic
+
+`like unknown` is a value of any type, checked where it is used, and
+`like dynamic` is the host language's own `any`, for native code.
 
 ```tree
 load @term/base/list
@@ -1373,6 +1581,10 @@ handle. [Unknown and dynamic](https://term.surf/guides/types/gradual).
 
 ### The kernel
 
+The kernel is a second, dependent type checker behind the ordinary one.
+It checks proofs, such as the law below that `double(n)` equals
+`add(n, n)` for every `n`.
+
 ```tree
 task double
   take n, like number
@@ -1393,9 +1605,16 @@ types. Each task the kernel can represent is elaborated into one term
 and checked there. A task it cannot represent (a loop that saves into a
 name twice, a native call) is declined and checked statement by
 statement, and `term hold` lists every decline with its reason. The
-decision procedures beside it cover linear arithmetic (with Presburger
-arithmetic for the integers), ring identities, congruence closure, sums of squares,
-Sturm sequences and cylindrical algebraic decomposition. Linear
+decision procedures beside it cover:
+
+- linear arithmetic (with Presburger arithmetic for the integers)
+- ring identities
+- congruence closure
+- sums of squares
+- Sturm sequences
+- cylindrical algebraic decomposition
+
+Linear
 refutations and sum-of-squares certificates are replayed by the checker.
 [The kernel](https://term.surf/guides/types/kernel).
 
@@ -1404,6 +1623,40 @@ refutations and sum-of-squares certificates are replayed by the checker.
 A Term program can state what it guarantees and have the build prove
 it. Proofs are opt in, apart from one floor every program meets: tier
 0, below.
+
+Each idea of a proof assistant such as Lean, Coq or Agda, and the word
+Term spells it with. A `rule` is a law (a theorem), and its proof is the
+step lines under its `show`.
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| theorem, lemma | `rule` | `rule add-zero` |
+| universally bound variable, `∀ a : ℕ` | `seat` | `seat a, like nat` |
+| the statement to prove | `show` | `show is-equal add(a, 0), a` |
+| hypothesis | `have`, with a name | `have positive, is-above n, 0` |
+| existential witness | `find` | `find x` over `like integer` and `3` |
+| axiom | `base true` on a rule | `base true` |
+| proof by computation, `rfl` | `calm` or `melt` | `calm hold` |
+| case split | `fold` on a form whose cases do not recur | `fold g` |
+| induction | `fold` | `fold n` |
+| induction hypothesis | given to every case by `fold`, nothing written | |
+| rewrite with a lemma, `rw [h]` | `cite` | `cite unfolds` |
+| rewrite right to left, `rw [← h]` | `turn` | `turn unfolds` |
+| transitivity, `calc` | `link` over two `cite` lines | `link` |
+| apply a proven theorem | `cite` the rule | `cite doubles` |
+| automation, `simp`, `omega` | nothing written: the provers close arithmetic. `seek` searches for an equality | `seek` |
+| a lemma inside a function | a `hold` with a name | `hold unfolds, is-equal(double(n), add(n, n)), melt both` |
+| QED, goal closed | nothing: the build passes. An unproven goal stops it, exit 1 | |
+| `sorry`, `admit` | `mark open` on a claim | `mark open` |
+| proposition as a type, proof as a term | a claim, `rule` with `take` lines, proved by the `task` of the same name | `rule flip` and `task flip` |
+| implicit type argument | `head` | `head a` |
+| propositional equality, `refl` | `equal` from `@term/base/proof/equal`, `make equal/refl` | `back make equal/refl, bind c, c` |
+| precondition, `requires` | `have` in a task | `have is-above n, 0` |
+| postcondition, `ensures` | `must` on `back` | `must is-minimum back, 0` |
+| loop invariant | `must` under a `walk test` | `must is-maximum i, n` |
+| termination measure, `decreases` | `down` | `down subtract(n, i)` |
+| `partial def`, a loop meant to run forever | `mark roam` | `mark roam` |
+| a tactic language | none: a step is one word from a closed list | |
 
 ### The hold gate
 
@@ -1471,6 +1724,10 @@ async, no body), axioms, recursions not shown to end, and tasks marked
 
 ### Contracts
 
+A contract is what a task needs and promises, checked at every call:
+`have` is a precondition, `must` a postcondition or a loop invariant,
+and `down` a number that falls each turn so a loop ends.
+
 ```tree
 task step-down
   take n, like integer
@@ -1497,13 +1754,16 @@ task count-up
   back i
 ```
 
-`have` is what every caller must ensure, `must` what the task promises
-about `back` or what a loop keeps true each turn, and `down` a measure
-that falls each turn. Each call site owes the callee's `have`, and the
+`back` in `must is-minimum back, 0` names the task's result. Each call
+site owes the callee's `have`, and the
 arithmetic provers close it or the build names it.
 [Contracts](https://term.surf/guides/proofs/contracts).
 
 ### Theorems
+
+A theorem is a `rule`: a law that must hold for every value of its
+variables, proven when the file builds. Each `seat` line names a
+variable it holds for, a for-all, and `show` states the goal.
 
 ```tree
 rule add-zero
@@ -1527,13 +1787,41 @@ rule no-root-of-two
   show is-unequal multiply(x, x), 2
 ```
 
-A `rule` with `seat` variables is a theorem over every value of their
-types, and `find` proves one value exists. `base true` takes a law as
+`have` names a hypothesis the law is proven under, and `find` proves
+one value exists. `base true` takes a law as
 an axiom, which the report lists. A false law over small integers is
 refuted with the values that break it.
 [Theorems](https://term.surf/guides/proofs/theorems).
 
 ### Proof steps and induction
+
+A proof step is one line under a `show` that tells the checker how to
+close a goal its provers cannot reach alone. Most goals need none.
+Induction is the step `fold`. The map from a proof assistant's moves:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| theorem, lemma | `rule` | `rule plus-zero` |
+| universally bound variable | `seat` | `seat n, like nat` |
+| the goal | `show` | `show hold, is-equal plus(n, make zero), n` |
+| hypothesis | `have`, with a name | `have positive, is-above n, 0` |
+| inductive type | `form` with `case` variants | `form nat` over `case zero` and `case succ` |
+| proof by computation, `rfl` | `calm` or `melt` | `calm hold` |
+| case split | `fold` on a form whose cases do not recur | `fold g` |
+| `induction n` | `fold` | `fold n` |
+| induction on two variables | `fold` with both names | `fold a b` |
+| induction hypothesis | given to every case by `fold`, nothing written | |
+| a lemma every case may use | `cite` under the `fold`, as its child | `cite plus-zero` |
+| rewrite with a lemma, `rw [h]` | `cite` | `cite unfolds` |
+| rewrite right to left, `rw [← h]` | `turn` | `turn unfolds` |
+| transitivity, `calc` | `link` over two `cite` lines | `link` |
+| `simp`, `omega`, `auto` | nothing written: the provers close arithmetic. `seek` searches for an equality | `seek` |
+| a lemma inside a function | a `hold` with a name | `hold unfolds, is-equal(double(n), add(n, n)), melt both` |
+| QED | nothing: the build passes. An unproven goal stops it, exit 1 | |
+| `sorry` | `mark open` on a claim, a `rule` with no `show` | `mark open` |
+
+Below, `form nat` is a natural number, `zero` or one more than a
+`prior`, and `plus` adds two by matching on the first with `sift`.
 
 ```tree
 form nat
@@ -1591,6 +1879,10 @@ rule plus-commutes
 
 ### Claims and indexed families
 
+A claim is a proposition written as a type, and its proof is a program
+of that type, as in Agda or Coq. The claim is a `rule` with `take` lines
+and a result `like`, and the `task` of the same name proves it.
+
 ```tree
 load @term/base/proof/equal
   find equal
@@ -1620,8 +1912,9 @@ task flip
       back make equal/refl, bind c, c
 ```
 
-A claim states a type once (`rule flip`) and a task of the same name is
-its proof, a program the kernel checks as one term. A form can carry a
+`rule flip` states that equality turns around, and `task flip` proves
+it, a program the kernel (Term's dependent type checker) checks as one
+term. A form can carry a
 value in its type (`head n, like nat`), so a vector's length is part of
 its type and `first` can refuse an empty one at the call. `mark open`
 leaves a claim unproven on purpose, and the gate counts it.
@@ -1640,7 +1933,24 @@ holds, and every law is reported in English from its Term form.
 
 ## Tests, laws, benchmarks and fuzzing
 
+Each kind of check a programmer from Jest, pytest or cargo looks for,
+and how Term spells it:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| unit test | `test` with a name | `test <trim drops the outer spaces>` |
+| assertion | `want hold`, or `want miss` for false | `want hold, is-equal length(parts), 3` |
+| run the tests | `term test` | `term test test/double.tree` |
+| property-based test, sampled | a `test` that starts with `take` lines | `take n, like number` |
+| a property proven for every input | a law, `rule` with `seat` and `show` | `rule double-is-sum` |
+| benchmark | a task named `time-` something, run by `term time` | `task time-split` |
+| fuzzing your own code | none. `term hunt` fuzzes the compiler | `term hunt` |
+| mocks, snapshots, coverage | none | |
+
 ### Tests
+
+A test is a name and a check of what should be true: `test <name>`
+opens it, and `want hold, c` checks that `c` is true.
 
 ```tree
 load @term/base/text
@@ -1665,7 +1975,7 @@ test <split keeps empty fields>
   want hold, is-equal length(parts), 3
 ```
 
-A test is a name and what should be true. `term test` runs every `test`
+`want miss, c` checks that `c` is false. `term test` runs every `test`
 under `code/` and `test/`, here with the file saved as `test/text.tree`:
 
 ```
@@ -1693,6 +2003,11 @@ them, and a failure is shrunk to the smallest input that still fails.
 
 ### Laws
 
+A law is a property that must hold for every input, the claim a
+property-based test samples. Term proves it instead: a `rule` whose
+`seat` lines name its variables and whose `show` states the property,
+checked when the file is tested.
+
 ```tree
 task double
   take n, like integer
@@ -1709,13 +2024,16 @@ rule double-is-sum
   show is-equal double(n), add(n, n)
 ```
 
-A law beside the tests is proven when the file is tested, for every
-input and not a sample. One the provers refute fails with the values
+The test checks `double` at `3`. The law covers every integer, and no
+input is drawn. One the provers refute fails with the values
 that break it, and one they cannot reach is reported as not proven.
 [Laws](https://term.surf/guides/tests/laws),
 [Laws that decide themselves](https://term.surf/guides/proofs/decide).
 
 ### Benchmarks
+
+A benchmark is a task named `time-` something, with no inputs, that
+`term time` runs many times and times.
 
 ```sh
 term time --save main                                   # time the time- tasks, keep a baseline
@@ -1724,11 +2042,17 @@ term time --history time-split                          # one benchmark's histor
 term time --cpu code/bench.tree --top 10               # profile one file's hottest tasks
 ```
 
-A task named `time-<name>` is a benchmark. `term time` runs them on
-Node. `term mark` compares Term's emitted code with hand-written code on
-each backend, using the 16 programs under `mark/` (binary trees,
-fannkuch-redux, fasta, k-nucleotide, mandelbrot, queens,
-spectral-norm and others):
+`term time` runs them on Node. `term mark` compares Term's emitted code
+with hand-written code on each backend, using the 16 programs under
+`mark/`, among them:
+
+- binary trees
+- fannkuch-redux
+- fasta
+- k-nucleotide
+- mandelbrot
+- queens
+- spectral-norm
 
 ```sh
 term mark list
@@ -1742,10 +2066,16 @@ term mark --target node,rust,swift,kotlin --check     # fail on a regression
 ### Fuzzing
 
 `term hunt` looks for compiler bugs, starting from the project's own
-files: oracles (a crash, a hang, a format round trip that changes the
-program, a non-deterministic build, a backend that refuses what the
-checker accepted, a slow compile) and a fuzzer that mutates the files
-and keeps any input that produces a diagnostic not seen before.
+files. It runs a fuzzer that mutates the files and keeps any input that
+produces a diagnostic not seen before, and oracles that each watch for
+one kind of bug:
+
+- a crash
+- a hang
+- a format round trip that changes the program
+- a non-deterministic build
+- a backend that refuses what the checker accepted
+- a slow compile
 
 ```sh
 term hunt                       # 4 seeds of 3000 runs
@@ -1753,12 +2083,21 @@ term hunt --runs 200 --seeds 2
 term hunt --json
 ```
 
-`@term/test` holds the rest of the verification tooling: property
-generators and shrinking, a bounded prover, model checking (bounded,
-IC3, CEGAR, temporal properties), program synthesis and an SMT bridge to
-Z3. [Fuzzing](https://term.surf/guides/tests/fuzzing).
+`@term/test` holds the rest of the verification tooling:
+
+- property generators and shrinking
+- a bounded prover
+- model checking (bounded, IC3, CEGAR, temporal properties)
+- program synthesis
+- an SMT bridge to Z3
+
+[Fuzzing](https://term.surf/guides/tests/fuzzing).
 
 ### One program, every backend
+
+A backend is a language the compiler writes a program out in. Each
+check above runs on TypeScript first, and reaches the other backends as
+follows:
 
 | command | TypeScript | Rust, Swift, Kotlin |
 | --- | --- | --- |
@@ -1771,6 +2110,9 @@ Z3. [Fuzzing](https://term.surf/guides/tests/fuzzing).
 [One program, every backend](https://term.surf/guides/tests/backends).
 
 ## Backends
+
+A backend is a language the compiler writes a program out in. Term has
+four stable backends and two experimental ones:
 
 | backend | state | writes | needs |
 | --- | --- | --- | --- |
@@ -1786,6 +2128,9 @@ loads reaches any backend through `--emit`, every program of a project
 through `--env`, and an application through `--target`.
 
 ### What one program becomes
+
+One program, a sum type and a match over it, as each of the four stable
+backends writes it out:
 
 ```tree
 form shape
@@ -1891,6 +2236,9 @@ fun area(s: Shape): Long {
 
 ### What is the same on all four, and what differs
 
+The four stable backends run a program with one meaning, and each
+writes its parts in its own platform's construct:
+
 | | TypeScript | Rust | Swift | Kotlin |
 | --- | --- | --- | --- | --- |
 | `number` | a JavaScript number held to the safe integers | `i64` | `Int` | `Long` |
@@ -1911,12 +2259,26 @@ its last use and borrows where it can prove it safe, and keeps
 
 ### Environments and targets
 
-`term make` emits TypeScript for one of four environments: `node` (plain
-`term make` and `term boot`), `browser` (`term boot --env browser`),
-`cloudflare` (`term cast`) and `webview` (the page inside a native app).
+An environment is the place the emitted TypeScript runs, and `term make`
+emits it for one of four:
+
+- `node`: plain `term make` and `term boot`
+- `browser`: `term boot --env browser`
+- `cloudflare`: `term cast`
+- `webview`: the page inside a native app
+
 A native module is picked per environment from `native/<platform>/`,
-falling back in a fixed order (`ios` tries `ios`, then `apple`,
-`toolkit`, `swift`, `memory`).
+falling back in a fixed order. `ios`, for one, tries these folders in
+turn:
+
+- `ios`
+- `apple`
+- `toolkit`
+- `swift`
+- `memory`
+
+A target is a native application for one platform, built with
+`term make --target <platform>`:
 
 | `--target` | backend | builds on | proven by |
 | --- | --- | --- | --- |
@@ -1950,12 +2312,43 @@ term make --env kotlin --build                # every program of the project, bu
 
 `@term/base` is written in `.tree`: 985 files, of which 493 are public
 modules across 111 areas and 492 are per-platform implementations under
-`code/native/<platform>/` (`node`, `browser`, `javascript`, `webview`,
-`rust`, `swift`, `kotlin` and `shared`). 106 modules carry `mark stable`
+`code/native/<platform>/`, one folder per platform:
+
+- `node`
+- `browser`
+- `javascript`
+- `webview`
+- `rust`
+- `swift`
+- `kotlin`
+- `shared`
+
+106 modules carry `mark stable`
 (what v1 promises), 190 `mark unstable`, and 65 are shelved with
 `mark draft`. Its own tests are 1,426 `test` blocks in 178 files, run on
 all four backends by the repository gate. Each module's generated
 reference is at `term.surf/@term/base/guides/<module>`.
+
+The everyday library calls, and where Term keeps each. A `load` line
+imports a module and each `find` under it takes one name.
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| print a line | `log`, from `@term/base/console` | `log <hello>` |
+| array, list | `make list` | `save items, make list, 3, 1` |
+| append | `push` | `push items, 2` |
+| map, dictionary | `make hash` | `set ages, <ada>, 36` |
+| read a key with a fallback | `get-or-default` | `get-or-default(ages, <ada>, 0)` |
+| set | `make set` | `insert seen, <red>` |
+| string | `text`, from `@term/base/text` | `split(raw, <,>)` |
+| regular expression | a raw text pattern | `find-matches(<<\b[A-Z]\w*>>, input)` |
+| `Option`, a value that may be missing | `maybe` | `unwrap-or(first(names), <nobody>)` |
+| parse a number | `parse-integer` | `parse-integer(<140>)` |
+| HTTP request | `fetch` | `fetch(<https://example.com/>)` |
+| read a file | `read-text` | `read-text(<notes.txt>)` |
+| run a subprocess | `run` | `run(<echo>, words)` |
+| `Promise.all` | `gather` | `gather(works)` |
+| standard exceptions | seventeen forms, raised with `halt` | `halt absence, bind thing, <name>` |
 
 | area | modules | holds |
 | --- | --- | --- |
@@ -1976,6 +2369,10 @@ reference is at `term.surf/@term/base/guides/<module>`.
 | colors | `color/*` (29 files) | color spaces and conversions |
 
 ### Collections
+
+The collections are lists, hashes (maps that keep insertion order),
+sets, and `maybe` for a value that may be missing. This program counts
+words, sorts them and reads an item with a fallback:
 
 ```tree
 load @term/base/list
@@ -2037,6 +2434,9 @@ task boot
 [Collections](https://term.surf/guides/library/collections).
 
 ### Text and patterns
+
+A `text` is a string, and a pattern is a regular expression, run by an
+engine of Term's own. This program splits, trims and matches text:
 
 ```tree
 load @term/base/text
@@ -2100,6 +2500,10 @@ pattern that does not parse raises `regex-mismatch` with where and why.
 
 ### Numbers
 
+The number modules parse and bound numbers, give fixed widths such as
+32-bit integers that wrap, check or saturate on overflow, and supply
+floats and seeded randomness:
+
 ```tree
 load @term/base/text/number
   find parse-integer
@@ -2145,6 +2549,10 @@ task boot
 [Numbers](https://term.surf/guides/library/numbers).
 
 ### JSON, CSV, URLs and compression
+
+Each data format is a module that reads and writes it. A malformed
+input raises an exception the caller can catch and match on, as
+`name-of` does here:
 
 ```tree
 load @term/base/json
@@ -2211,6 +2619,9 @@ task boot
 
 ### Files, paths, processes and the environment
 
+These modules reach the operating system: read and write files, join
+paths, run another program, and read environment variables.
+
 ```tree
 load @term/base/file
   find read, name read-text
@@ -2255,6 +2666,9 @@ one its `limit` ended raises `command-timeout`.
 
 ### Time and dates
 
+The time modules build and shift calendar dates, format them in a time
+zone, read the clock and sleep:
+
 ```tree
 load @term/base/calendar
   find make-utc
@@ -2292,6 +2706,9 @@ forward, and the zone rules come from each platform's time zone data.
 [Time and dates](https://term.surf/guides/library/time).
 
 ### Network
+
+The network modules make HTTP requests with `fetch` and answer them with
+`serve`, an HTTP server that calls a task for each request:
 
 ```tree
 load @term/base/network/http
@@ -2334,6 +2751,9 @@ A server that cannot be reached raises `outage`, and a request past its
 limit raises `timeout`. [Network](https://term.surf/guides/library/network).
 
 ### Concurrency
+
+Concurrency is running several tasks at once. `gather` waits for a list
+of them, and a channel passes values from one task to another.
 
 ```tree
 load @term/base/task
@@ -2398,6 +2818,9 @@ one and holds its handle, and `wait-within` gives up after a time.
 
 ### Cryptography
 
+The cryptography modules hash data, store and check passwords, encrypt
+and decrypt with AES-256-GCM, and make secure random bytes:
+
 ```tree
 load @term/base/cryptography/digest
   find sha256
@@ -2434,6 +2857,11 @@ task boot
 [Cryptography](https://term.surf/guides/library/cryptography).
 
 ## Native code and docks
+
+Native code is code of the host platform (a Node module, a Rust crate, a
+Swift framework) that a Term program calls. A dock is the binding that
+reaches it: `dock load` imports a host module, and `dock type` names a
+host value Term passes around without reading.
 
 ```tree
 dock load
@@ -2482,16 +2910,30 @@ A public module of the standard library loads
 `.../native/{platform}/<name>`, and the build fills `{platform}` with
 the environment it is building for. A bind's text is spliced as written,
 so its parameters' names must not collide with anything in the text.
-`@term/bind` holds 3,092 binding files across `node`, `browser`,
-`javascript`, `rust`, `swift`, `android`, `ios`, `macos`, `linux`,
-`windows`, `raspberry` and `assembly`: typed handles for each host's
-APIs. [Native code](https://term.surf/guides/language/native).
+`@term/bind` holds 3,092 binding files, typed handles for each host's
+APIs, across these platforms:
+
+- `node`
+- `browser`
+- `javascript`
+- `rust`
+- `swift`
+- `android`
+- `ios`
+- `macos`
+- `linux`
+- `windows`
+- `raspberry`
+- `assembly`
+
+[Native code](https://term.surf/guides/language/native).
 
 ## Dialects, mills and roles
 
 Every `.tree` file is read by the same parser, and what its words mean
-depends on its dialect. A file's dialect comes from its role in
-`role.tree`, or with no role from its content.
+depends on its dialect, the vocabulary that kind of file is written in.
+A file's dialect comes from its role (the kind of file it is, declared
+in `role.tree`), or with no role from its content.
 
 | dialect | written in | read as |
 | --- | --- | --- |
@@ -2506,6 +2948,9 @@ depends on its dialect. A file's dialect comes from its role in
 
 ### Roles
 
+A role names a set of files and the dialect that reads them. Roles are
+declared in a `role.tree`:
+
 ```deck
 role code
   take @/code/**/*.tree
@@ -2514,8 +2959,7 @@ role view
   take @/page/**/*.tree
 ```
 
-A role names a set of files and the dialect that reads them. A role may
-carry `mark lean`. `term view` checks the files in the `view` role.
+A role may carry `mark lean`, which reads its files in the lean spelling with labels. `term view` checks the files in the `view` role.
 [Roles](https://term.surf/guides/language/dsls/roles).
 
 ### Mills
@@ -2524,14 +2968,30 @@ A mill is a dialect's grammar, written in Term itself: `mine.tree`
 matches the parsed tree and names its parts, and `mint.tree` says what
 each match becomes. The code dialect has been read by its own grammar
 since 2026-09-01. The compiler's grammar folder, `deck/mill/code/tree/`,
-holds 11 dialects: `base`, `book`, `code`, `deck`, `host`, `line`,
-`mill`, `operand`, `test`, `view` and `zone`. The `note` grammar under
+holds 11 dialects:
+
+- `base`
+- `book`
+- `code`
+- `deck`
+- `host`
+- `line`
+- `mill`
+- `operand`
+- `test`
+- `view`
+- `zone`
+
+The `note` grammar under
 `deck/mill/code/text/` reads infix arithmetic inside `role note`, and
 lowers it to the same calls as the code dialect.
 [Mills](https://term.surf/guides/language/dsls/mills),
 [Tree assembly](https://term.surf/guides/language/syntax/assembly).
 
 ### Data files
+
+A data file holds values only, no code, the way a JSON or YAML file
+does, and compiles to JSON-shaped values:
 
 ```tree
 tree service-base
@@ -2567,7 +3027,33 @@ term look data/site.tree            # every key
 
 ## Applications
 
+An application is an ordinary Term project whose entry `term boot` or
+`term make --target` knows how to run. Each part a programmer from
+React, Express or a CLI library looks for, and how Term spells it:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| `main`, the entry point | `task boot`, run by `term boot` | `task boot` |
+| CLI command | `hook` | `hook greet` |
+| CLI flag | `take` under the `hook` | `take name, like text` |
+| page, component | `view` | `view panel` |
+| HTML element | `view` with the tag | `view h1, <Shelf>` |
+| prop | `take` on the view, `bind` at the call | `bind title, <To read>` |
+| `children` | `site` | `site` |
+| HTML attribute, event handler | `seed` | `seed click` |
+| state, signal | `make-signal` | `host read-count, make-signal(0)` |
+| effect, memo | `make-effect`, `make-memo` | `make-effect` |
+| HTTP server | `host` called with a route task and a port | `host(route, port)` |
+| CSS class | `face` | `face shelf` |
+| SQL query | `query` | `query(<SELECT title FROM book ORDER BY title>, make list)` |
+| native window | `open-window` | `open-window(<Shelf>, 720, 540)` |
+| cross-compile | `term make --target` | `term make --target macos` |
+
 ### A web application
+
+A web application is a set of views (components that render HTML) and a
+route task that picks what to render for each URL, served by `host` on a
+port:
 
 ```tree
 load @term/site/dom/dom
@@ -2704,14 +3190,29 @@ face title, have font-size, 28px
 
 ### `@term/face`
 
-Headless user interface components written in Term: 74 of them under
-`deck/face/code/component/`, among them `button`, `dialog`,
-`dropdown-menu`, `combobox`, `tabs`, `table`, `toast`, `tooltip`,
-`select`, `slider`, `calendar`, `sidebar` and `command-palette`. They
-are headless: each holds its behavior and leaves its look to the
-stylesheet.
+`@term/face` is a library of headless user interface components written
+in Term. Headless means each holds its behavior and leaves its look to
+the stylesheet. There are 74 of them under `deck/face/code/component/`,
+among them:
+
+- `button`
+- `dialog`
+- `dropdown-menu`
+- `combobox`
+- `tabs`
+- `table`
+- `toast`
+- `tooltip`
+- `select`
+- `slider`
+- `calendar`
+- `sidebar`
+- `command-palette`
 
 ### Command-line applications
+
+A command-line application is a file of `hook`s, one per command, each
+naming the task it runs:
 
 ```tree
 load @term/base/console
@@ -2765,6 +3266,10 @@ term boot code/greet.tree --out host/greet       # a runnable command
 
 ### Native applications: `@term/cask`
 
+A native application is a desktop or phone app. `@term/cask` opens a
+native window around the platform's WebView and shows a Term page in
+it:
+
 ```tree
 load @term/cask/cask
   find open-window
@@ -2809,8 +3314,15 @@ task boot
 
 A cask is a window, the platform's WebView and a bridge between the page
 and the native side, written in Term per platform (WebKitGTK 6 on Linux,
-WebView2 on Windows). `term make --target macos` (or `ios`, `android`,
-`linux`, `windows`) builds the app with the platform's own toolchain.
+WebView2 on Windows). `term make --target <platform>` builds the app
+with the platform's own toolchain, for any of these platforms:
+
+- `macos`
+- `ios`
+- `android`
+- `linux`
+- `windows`
+
 Measured on macOS on 2026-10-05: a 237 KB binary, cold start in 298 ms.
 Device features (the camera, notifications, the file picker, audio
 recording) reach the page through `@term/bind`, behind a permission the
@@ -2834,6 +3346,29 @@ prints the queries it asks a host to answer.
 [Documents](https://term.surf/guides/applications/documents).
 
 ## Parsers
+
+A parser here is a reader for a format a running program is handed,
+such as JSON text or the bytes of a font. It is written by hand on a
+cursor, a position in the input that each read moves forward, or
+generated from a grammar. Each part a programmer from ANTLR, PEG.js or
+nom looks for:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| grammar file | `mine.tree` | `code/version/mine.tree` |
+| grammar rule | `mine` with a name | `mine digits` |
+| reference another rule | `mine form, form` | `mine form, form digits` |
+| literal | `mine char` | `mine char, <.>` |
+| repetition | `mine list` | `mine list` |
+| character class | `mine range`, with `bind base` and `bind head` | `mine range` |
+| capture | `send` under what it names | `send major` |
+| semantic action | `mine value` | `mine value` |
+| parser generator | `term make` | `term make` |
+| hand-written parser, lexer | a cursor | `save cursor, make-text-cursor(input)` |
+| parser combinators | none | |
+| a grammar for a new kind of `.tree` file | a mill: `mine.tree` matches, `mint.tree` builds, under role `mill`. Mills ship inside the compiler | |
+
+The reader below reads a number one digit at a time on a text cursor:
 
 ```tree
 load @term/mill/feed
@@ -2883,10 +3418,28 @@ task boot
 `@term/mill` reads formats at run time. `feed.tree` holds a text cursor
 and a byte cursor with a writer (`read-byte`, `read-bytes`, `seek`,
 `write-int` in either byte order), and the readers are written on them.
-Grammars for text formats live under `deck/mill/code/text/` (JSON, CSV,
-CSS, HTML, XML, SQL, URIs, HTTP, email addresses, dates and others) and
-for binary formats under `deck/mill/code/blob/` (fonts, archives,
-images, documents, executables). A format can also be written as a
+Grammars for text formats live under `deck/mill/code/text/`, among them:
+
+- JSON
+- CSV
+- CSS
+- HTML
+- XML
+- SQL
+- URIs
+- HTTP
+- email addresses
+- dates
+
+Grammars for binary formats live under `deck/mill/code/blob/`:
+
+- fonts
+- archives
+- images
+- documents
+- executables
+
+A format can also be written as a
 `mine` grammar, and the generator writes its reader. Only the formats
 with a working reader are listed in the guide: JSON, the OpenType
 tables `cmap`, `glyf` and `maxp`, and the others it names. Most binary
@@ -2897,7 +3450,32 @@ grammars are drafts. [Parsing text](https://term.surf/guides/parsers/text),
 
 ## Packages and the registry
 
+A package in Term is a deck: a folder with a `deck.tree` manifest, which
+another project names in a `link` line and then loads from. Each part a
+programmer from npm or Cargo looks for:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| package | a deck | `deck @alice/tools` |
+| manifest, `package.json`, `Cargo.toml` | `deck.tree` | `deck.tree` |
+| version | `mark` | `mark <1.4.2>` |
+| description | `head` | `head <Small tools for Alice>` |
+| license | `lock` | `lock mit` |
+| entry point | `boot` | `boot ./code/boot` |
+| dependency | `link` | `link @alice/tools, mark <0.1.x>` |
+| version range | the text after `mark` | `mark <^1.2.0>` |
+| lock file | `lock.tree` | `lock.tree` |
+| install | `term load` | `term load` |
+| add a dependency | `term save` | `term save @alice/tools ^1.2.0` |
+| remove one | `term toss` | `term toss @alice/tools` |
+| a local folder, `npm link` | `term link` | `term link vendor/tools` |
+| bump the version | `term move mark` | `term move mark` |
+| publish | `term host` | `term host --dry` |
+| audit | `term seek --audit` | `term seek --audit` |
+
 ### The manifest
+
+The manifest is the deck's `deck.tree`, one line per field:
 
 ```deck
 deck @alice/tools
@@ -2935,6 +3513,10 @@ warns on a manifest line no tool reads (`L055`).
 
 ### Installing, linking and publishing
 
+Installing fetches every dependency a manifest links, linking uses a
+deck from a folder on this machine instead, and publishing uploads a
+signed release of the deck to its scope's registry:
+
 ```sh
 term load                        # install every link, verified against lock.tree
 term load --offline              # no network
@@ -2970,7 +3552,29 @@ scans your code for dangerous native calls, with JSON and SARIF output.
 opening item naming the verb and the folder, one item per thing that
 happened, and a closing item with the verdict, the time and the counts.
 
+Each command a programmer from npm, Cargo or Go reaches for, and the
+`term` verb that does it:
+
+| standard concept | in Term | example |
+| --- | --- | --- |
+| `cargo new`, `npm init` | `wake` | `term wake demo` |
+| run, dev server | `boot` | `term boot` |
+| build, compile | `make` | `term make` |
+| one file to one backend | `make --emit` | `term make --emit rust code/sum.tree` |
+| test | `test` | `term test` |
+| benchmark | `time` | `term time` |
+| type check and prove | `hold` | `term hold` |
+| format, `prettier`, `gofmt` | `form` | `term form` |
+| lint | `lint` | `term lint` |
+| REPL | `walk` | `term walk` |
+| clean | `wash` | `term wash` |
+| install dependencies | `load` | `term load` |
+| publish | `host` | `term host` |
+| version | `show` | `term show` |
+
 ### Start and run
+
+The verbs that make a project and run its program:
 
 | verb | does |
 | --- | --- |
@@ -2982,6 +3586,8 @@ happened, and a closing item with the verdict, the time and the counts.
 
 ### Build
 
+The verbs that compile a project, or clear what a build left behind:
+
 | verb | does |
 | --- | --- |
 | `make [file]` | compile every `.tree` file to `host/`, the one command that says whether a project compiles. `--emit`, `--env`, `--target`, `--watch`, `--separate` |
@@ -2990,6 +3596,8 @@ happened, and a closing item with the verdict, the time and the counts.
 | `work` | a compiler that stays running and answers over HTTP |
 
 ### Test and measure
+
+The verbs that check a program is right and time how fast it runs:
 
 | verb | does |
 | --- | --- |
@@ -3002,6 +3610,8 @@ happened, and a closing item with the verdict, the time and the counts.
 
 ### Keep code tidy
 
+The verbs that format files and flag likely mistakes:
+
 | verb | does |
 | --- | --- |
 | `form [paths..]` | lay `.tree` files out in the one standard layout. `--check` fails on an unformatted file |
@@ -3009,6 +3619,8 @@ happened, and a closing item with the verdict, the time and the counts.
 | `scan <file>` | check one file without the rest of its project |
 
 ### Ask about the project
+
+The verbs that print what a project holds, without changing it:
 
 | verb | does |
 | --- | --- |
@@ -3020,6 +3632,8 @@ happened, and a closing item with the verdict, the time and the counts.
 | `mind [fact]` | remember a fact about the project, or list and find them |
 
 ### Packages
+
+The verbs that install, add, remove and publish decks (packages):
 
 | verb | does |
 | --- | --- |
@@ -3035,6 +3649,9 @@ happened, and a closing item with the verdict, the time and the counts.
 
 ### Term itself and the rest
 
+The verbs that manage the installed versions of Term, and the few that
+fit no group above:
+
 | verb | does |
 | --- | --- |
 | `self` | the versions of Term on this machine: `list`, `find`, `load`, `pick`, `need`, `show`, `toss`, `wash`, `check`, `update`, `back`, and `skill`, which teaches a coding agent the verbs |
@@ -3044,6 +3661,9 @@ happened, and a closing item with the verdict, the time and the counts.
 | `fill` | print the shell completion script |
 
 ### Flags every verb takes
+
+A flag is an option on the command line, and these mean the same on
+every verb:
 
 | flag | does |
 | --- | --- |
@@ -3072,6 +3692,8 @@ molded file, JSON) to standard output, so a pipe gets the data alone.
 [Commands](https://term.surf/guides/commands).
 
 ## Installing on each platform
+
+Each platform installs the same signed release by its own route:
 
 | platform | command |
 | --- | --- |
@@ -3104,9 +3726,16 @@ script and Homebrew routes write under `~/.base/@term/code/`:
 ~/.base/@term/code/code/2.9.2/install.tree   its version, platform and sha256
 ```
 
-An install is one bundled script, `host/line.js`, holding the compiler,
-the package manager, the test runner, the formatter, the linter and the
-dev server, beside the standard library's `.tree` source and three
+An install is one bundled script, `host/line.js`, holding:
+
+- the compiler
+- the package manager
+- the test runner
+- the formatter
+- the linter
+- the dev server
+
+It sits beside the standard library's `.tree` source and three
 packages that cannot be bundled (`esbuild`, `hono`, `@hono/node-server`).
 Node, the web and Cloudflare need nothing more. The native backends need
 their platform's compiler, which Term does not install, and
@@ -3170,7 +3799,7 @@ pnpm --dir deck/flow bind     # installs it into VS Code
 
 ## Self-hosting
 
-The standard library, the application framework, the grammars and the
+A self-hosted language is one whose own tools are written in it. The standard library, the application framework, the grammars and the
 bindings are Term already. The compiler, the CLI and the package manager
 are being ported from TypeScript to Term one module at a time: each
 ported module is a `.tree` file the build compiles into its deck's

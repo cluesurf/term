@@ -679,13 +679,27 @@ task native-candidates
   take import-path, like text
   like list, like text
 
+  save rungs, make list
+  walk env-chain(env)
+    take rung
+    push(rungs, to-text(rung))
+  back named-candidates(rungs, import-path)
+
+# the same rule over a chain of env NAMES, each put in the slot as written: the one copy of it, which a resolver whose
+# env is a text no `native-env` is called reads with that text alone (decision 122 of
+# term/self-host/change/001-finish-self-host)
+task named-candidates
+  take rungs, like list, like text
+  take import-path, like text
+  like list, like text
+
   save out, make list
   fork test, is-below(index-of(import-path, <\{platform\}>), 0)
     hold
       push(out, import-path)
       back out
-  walk env-chain(env)
+  walk rungs
     take rung
-    push(out, replace-all(import-path, <\{platform\}>, to-text(rung)))
+    push(out, replace-all(import-path, <\{platform\}>, rung))
   push(out, replace-all(import-path, </\{platform\}>, <>))
   back out

@@ -1,0 +1,840 @@
+note <An in-process OCI Distribution registry for the OCI client tests, with the behaviors that make a client get things wrong>
+
+# Ported from oci-server.ts by statement (item 0581). The subset a registry like zot or GHCR serves:
+#
+#   - every /v2 request needs a bearer token, got from /token after a `WWW-Authenticate` challenge. A pull may be
+#     anonymous; a push needs Basic credentials at the token endpoint
+#   - a blob GET answers 307 to a SECOND server, the "storage" host, which records whether an Authorization header
+#     reached it. A client that forwards the registry token across origins is caught there
+#   - uploads: POST, then PATCH chunks with Content-Range, then PUT ?digest, which the server verifies; and
+#     cross-repository mounts
+#   - tags are paged with `n` and `last` and a Link header
+#   - the referrers API, which `referrers` false turns off to exercise the fallback tag
+#
+# A test may also reach in and misbehave: `tamper-blob` overwrites a stored blob, `retag` moves a tag. Every answer
+# is the original's status, headers and body. A header list is node's flat form, name then value.
+
+dock load
+  load <node:http>, name oci-http
+  load <node:crypto>, name oci-crypto
+  load <node:events>, name oci-events
+  load <node:stream/consumers>, name oci-consumers
+
+# what a test holds: the registry's host, the storage host's port, and the stores it may read or misbehave on. A blob
+# GET is redirected to `localhost:<storage-port>`, so a test that serves the registry to another machine through a
+# tunnel forwards this port too
+form oci-server
+  link host, like text
+  link storage-port, like number
+  # digest to bytes
+  link blobs, like dynamic
+  # repository to tag to digest
+  link tags, like dynamic
+  # digest to oci-stored
+  link manifests, like dynamic
+  link requests, like list, like oci-request-line
+  # Authorization headers that reached the storage host. Must stay empty
+  link leaked-auth, like list, like text
+  link registry, like dynamic
+  link storage, like dynamic
+
+form oci-request-line
+  link method, like text
+  link path, like text
+
+form oci-stored
+  link bytes, like dynamic
+  link media-type, like text
+
+form oci-upload
+  link repository, like text
+  link parts, like list, like dynamic
+
+form oci-state
+  mark shared
+  link username, like text
+  link password, like text
+  link referrers, like boolean
+  link page-size, like number
+  link base, like text
+  link storage-base, like text
+  link blobs, like dynamic
+  link tags, like dynamic
+  link manifests, like dynamic
+  # session to oci-upload
+  link uploads, like dynamic
+  # repository to the digests it holds, in the order they arrived
+  link repo-blobs, like dynamic
+  # token to whether it may push
+  link issued, like dynamic
+  link requests, like list, like oci-request-line
+  link leaked-auth, like list, like text
+
+bind oci-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a request header as text, the empty text when absent
+bind oci-header
+  take request, like dynamic
+  take name, like text
+  like text
+  case node
+    text <String($request.headers[$name] ?? "")>
+
+bind oci-address
+  take request, like dynamic
+  take base, like text
+  like dynamic
+  case node
+    text <new URL($request.url ?? "/", $base)>
+
+# the repository and the rest of a /v2 path, or null
+bind oci-route
+  take path, like text
+  like dynamic
+  case node
+    text <</^\/v2\/(.+?)\/(blobs\/uploads\/?.*|blobs\/[^/]+|manifests\/[^/]+|tags\/list|referrers\/[^/]+)$/.exec($path)>>
+
+bind oci-bearer
+  take header, like text
+  like dynamic
+  case node
+    text <</^Bearer (.+)$/.exec($header)?.[1]>>
+
+bind oci-pushes
+  take scope, like text
+  like boolean
+  case node
+    text <</:[^:]*push/.test($scope)>>
+
+bind oci-basic
+  take username, like text
+  take password, like text
+  like text
+  case node
+    text <"Basic " + Buffer.from($username + ":" + $password).toString("base64")>
+
+bind oci-new-token
+  take seed, like number
+  like text
+  case node
+    text <crypto.randomUUID()>
+
+bind oci-joined
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind oci-json-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind oci-layers
+  take parsed, like dynamic
+  like list, like dynamic
+  case node
+    text <($parsed.layers ?? [])>
+
+bind oci-subject-digest
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.subject?.digest>
+
+bind oci-decode
+  take value, like text
+  like text
+  case node
+    text <decodeURIComponent($value)>
+
+bind oci-encode
+  take value, like text
+  like text
+  case node
+    text <encodeURIComponent($value)>
+
+bind oci-number
+  take value, like dynamic
+  take fall, like number
+  like number
+  case node
+    text <Number($value ?? $fall)>
+
+# the keys of a map in code unit order, as Array.prototype.sort orders them
+bind oci-sorted-keys
+  take map, like dynamic
+  like list, like text
+  case node
+    text <[...$map.keys()].sort()>
+
+bind oci-after
+  take value, like text
+  take last, like text
+  like boolean
+  case node
+    text <($value \> $last)>
+
+bind oci-tags-body
+  take name, like text
+  take tags, like list, like text
+  like text
+  case node
+    text <<JSON.stringify({ name: $name, tags: $tags })>>
+
+# a descriptor whose artifactType is left out when the manifest has none, as JSON.stringify leaves it
+bind oci-descriptor
+  take parsed, like dynamic
+  take digest, like text
+  take size, like number
+  like dynamic
+  case node
+    text <<({ mediaType: $parsed.mediaType, digest: $digest, size: $size, artifactType: $parsed.artifactType })>>
+
+bind oci-index-body
+  take found, like list, like dynamic
+  like text
+  case node
+    text <<JSON.stringify({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", manifests: $found })>>
+
+bind oci-answer
+  take response, like dynamic
+  take status, like number
+  take headers, like dynamic
+  take body, like dynamic
+  like void
+  case node
+    text <$response.writeHead($status, $headers).end($body)>
+
+bind oci-port
+  take server, like dynamic
+  like number
+  case node
+    text <$server.address().port>
+
+bind oci-map
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+task oci-sha
+  take bytes, like dynamic
+  like text
+  mark private
+
+  save hasher, oci-crypto/create-hash(<sha256>)
+  hasher/update(bytes)
+  back <sha256:{hasher/digest(<hex>)}>
+
+# the digests a repository holds, made empty on first ask as the original's `holds` makes its set
+task oci-holds
+  take state, like oci-state
+  take repository, like text
+  like dynamic
+  mark private
+
+  fork test, not(state/repo-blobs/has(repository))
+    hold
+      host fresh, make list
+      state/repo-blobs/set(repository, fresh)
+  back state/repo-blobs/get(repository)
+
+task oci-hold
+  take state, like oci-state
+  take repository, like text
+  take digest, like text
+  like void
+  mark private
+
+  host held, oci-holds(state, repository)
+  fork test, not(held/includes(digest))
+    hold
+      held/push(digest)
+
+task oci-held
+  take state, like oci-state
+  take repository, like text
+  take digest, like text
+  like boolean
+  mark private
+
+  host held, oci-holds(state, repository)
+  back held/includes(digest)
+
+task oci-set-tag
+  take tags, like dynamic
+  take repository, like text
+  take tag, like text
+  take digest, like text
+  like void
+  mark private
+
+  fork test, not(tags/has(repository))
+    hold
+      tags/set(repository, oci-map(0))
+  host repo-tags, tags/get(repository)
+  repo-tags/set(tag, digest)
+
+# the digest a repository's tag names, the empty text when none
+task oci-tag-of
+  take state, like oci-state
+  take repository, like text
+  take tag, like text
+  like text
+  mark private
+
+  fork test, not(state/tags/has(repository))
+    hold
+      back <>
+  host repo-tags, state/tags/get(repository)
+  fork test, not(repo-tags/has(tag))
+    hold
+      back <>
+  back repo-tags/get(tag)
+
+task oci-fail
+  take response, like dynamic
+  take status, like number
+  take code, like text
+  like void
+  mark private
+
+  host headers, make list(<content-type>, <application/json>)
+  host lower, code/to-lower-case()
+  oci-answer(response, status, headers, <\{"errors":[\{"code":"{code}","message":"{lower}"\}]\}>)
+
+task oci-challenge
+  take state, like oci-state
+  take response, like dynamic
+  take scope, like text
+  like void
+  mark private
+
+  host realm, <Bearer realm="{state/base}/token",service="test-registry",scope="{scope}">
+  host headers, make list(<www-authenticate>, realm, <content-type>, <application/json>)
+  oci-answer(response, 401, headers, <\{"errors":[\{"code":"UNAUTHORIZED","message":"authentication required"\}]\}>)
+
+task oci-drain
+  take request, like dynamic
+  like void
+  mark async
+  mark private
+
+  save drained, wait oci-consumers/buffer(request)
+
+task oci-size
+  take parts, like list, like dynamic
+  like number
+  mark private
+
+  save total, 0
+  walk parts
+    take part, like dynamic
+    save total, add(total, part/length)
+  back total
+
+# the storage host: whatever Authorization reached it is recorded, and a blob is served by its digest
+task oci-answer-storage
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  like void
+  mark private
+
+  host auth, oci-header(request, <authorization>)
+  fork test, is-unequal(auth, <>)
+    hold
+      state/leaked-auth/push(auth)
+  host digest, oci-decode(request/url/slice(1))
+  fork test, not(state/blobs/has(digest))
+    hold
+      host none, make list
+      oci-answer(response, 404, none, <>)
+      back
+  host bytes, state/blobs/get(digest)
+  host headers, make list(<content-length>, <{bytes/length}>, <content-type>, <application/octet-stream>)
+  oci-answer(response, 200, headers, bytes)
+
+# /token: a pull may be anonymous, a push needs the Basic credentials, and wrong credentials are refused outright
+task oci-answer-token
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  take url, like dynamic
+  like void
+  mark private
+
+  save wants-push, false
+  walk url/search-params/get-all(<scope>)
+    take scope, like text
+    fork test, oci-pushes(scope)
+      hold
+        save wants-push, true
+  host auth, oci-header(request, <authorization>)
+  host good, is-equal(auth, oci-basic(state/username, state/password))
+  fork test, and(is-unequal(auth, <>), not(good))
+    hold
+      oci-fail(response, 401, <UNAUTHORIZED>)
+      back
+  fork test, and(wants-push, not(good))
+    hold
+      oci-fail(response, 401, <DENIED>)
+      back
+  host token, oci-new-token(0)
+  state/issued/set(token, good)
+  host headers, make list(<content-type>, <application/json>)
+  oci-answer(response, 200, headers, <\{"token":"{token}","expires_in":300\}>)
+
+# whether a POST may mount `mount` from the repository `from`
+task oci-mountable
+  take state, like oci-state
+  take mount, like dynamic
+  take from, like dynamic
+  like boolean
+  mark private
+
+  fork test, or(not(oci-truthy(mount)), not(oci-truthy(from)))
+    hold
+      back false
+  fork test, not(state/repo-blobs/has(from))
+    hold
+      back false
+  host held, state/repo-blobs/get(from)
+  back held/includes(mount)
+
+# whether the upload session is one this repository opened
+task oci-upload-known
+  take state, like oci-state
+  take id, like text
+  take repository, like text
+  like boolean
+  mark private
+
+  fork test, not(state/uploads/has(id))
+    hold
+      back false
+  back is-equal(state/uploads/get(id)/repository, repository)
+
+# blob uploads: a POST opens a session or mounts, a PATCH appends a chunk at its offset, a PUT closes it against its
+# digest. False when the method is none of these, so the blob routes answer it
+task oci-answer-upload
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  take url, like dynamic
+  take repository, like text
+  take rest, like text
+  like boolean
+  mark async
+  mark private
+
+  host id, rest/substring(14)
+  host method, oci-header-method(request)
+  fork test, is-equal(method, <POST>)
+    hold
+      oci-drain(request)
+      host mount, url/search-params/get(<mount>)
+      host from, url/search-params/get(<from>)
+      fork test, oci-mountable(state, mount, from)
+        hold
+          oci-hold(state, repository, mount)
+          host mounted, make list(<location>, </v2/{repository}/blobs/{mount}>, <docker-content-digest>, mount)
+          oci-answer(response, 201, mounted, <>)
+          back true
+      host session, oci-new-token(0)
+      host parts, make list
+      state/uploads/set(session, make(oci-upload, bind(repository, repository), bind(parts, parts)))
+      host opened, make list(<location>, </v2/{repository}/blobs/uploads/{session}>, <range>, <0-0>)
+      oci-answer(response, 202, opened, <>)
+      back true
+  fork test, not(oci-upload-known(state, id, repository))
+    hold
+      oci-drain(request)
+      oci-fail(response, 404, <BLOB_UPLOAD_UNKNOWN>)
+      back true
+  host upload, state/uploads/get(id)
+  fork test, is-equal(method, <PATCH>)
+    hold
+      host part, wait oci-consumers/buffer(request)
+      host range, oci-header(request, <content-range>)
+      host offset, oci-size(upload/parts)
+      host end, subtract(add(offset, part/length), 1)
+      fork test, and(is-unequal(range, <>), is-unequal(range, <{offset}-{end}>))
+        hold
+          oci-fail(response, 416, <RANGE_INVALID>)
+          back true
+      upload/parts/push(part)
+      host moved, make list(<location>, </v2/{repository}/blobs/uploads/{id}>, <range>, <0-{end}>)
+      oci-answer(response, 202, moved, <>)
+      back true
+  fork test, is-equal(method, <PUT>)
+    hold
+      host last, wait oci-consumers/buffer(request)
+      upload/parts/push(last)
+      host bytes, oci-joined(upload/parts)
+      host digest, url/search-params/get(<digest>)
+      state/uploads/delete(id)
+      fork test, is-unequal(digest, oci-sha(bytes))
+        hold
+          oci-fail(response, 400, <DIGEST_INVALID>)
+          back true
+      state/blobs/set(digest, bytes)
+      oci-hold(state, repository, digest)
+      host stored, make list(<location>, </v2/{repository}/blobs/{digest}>, <docker-content-digest>, digest)
+      oci-answer(response, 201, stored, <>)
+      back true
+  back false
+
+bind oci-header-method
+  take request, like dynamic
+  like text
+  case node
+    text <($request.method ?? "")>
+
+# a blob: HEAD answers its length here, GET redirects to the storage host
+task oci-answer-blob
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  take repository, like text
+  take rest, like text
+  like void
+  mark private
+
+  host digest, rest/substring(6)
+  fork test, or(not(oci-held(state, repository, digest)), not(state/blobs/has(digest)))
+    hold
+      oci-fail(response, 404, <BLOB_UNKNOWN>)
+      back
+  fork test, is-equal(oci-header-method(request), <HEAD>)
+    hold
+      host bytes, state/blobs/get(digest)
+      host sized, make list(<content-length>, <{bytes/length}>, <docker-content-digest>, digest)
+      oci-answer(response, 200, sized, <>)
+      back
+  host moved, make list(<location>, <{state/storage-base}/{oci-encode(digest)}>)
+  oci-answer(response, 307, moved, <>)
+
+# whether every blob a manifest names (its config and layers) is held in this repository
+task oci-blobs-held
+  take state, like oci-state
+  take repository, like text
+  take parsed, like dynamic
+  like boolean
+  mark private
+
+  host named, make list
+  fork test, oci-truthy(parsed/config)
+    hold
+      named/push(parsed/config)
+  walk oci-layers(parsed)
+    take layer, like dynamic
+    fork test, oci-truthy(layer)
+      hold
+        named/push(layer)
+  save all-held, true
+  walk named
+    take one, like dynamic
+    fork test, not(oci-held(state, repository, one/digest))
+      hold
+        save all-held, false
+  back all-held
+
+task oci-put-manifest
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  take repository, like text
+  take reference, like text
+  like void
+  mark async
+  mark private
+
+  host bytes, wait oci-consumers/buffer(request)
+  host digest, oci-sha(bytes)
+  host parsed, oci-json-of(bytes)
+  # a registry refuses a manifest whose blobs it does not hold in this repository
+  fork test, not(oci-blobs-held(state, repository, parsed))
+    hold
+      oci-fail(response, 400, <MANIFEST_BLOB_UNKNOWN>)
+      back
+  host by-digest, reference/starts-with(<sha256:>)
+  fork test, and(by-digest, is-unequal(reference, digest))
+    hold
+      oci-fail(response, 400, <DIGEST_INVALID>)
+      back
+  state/manifests/set(digest, make(oci-stored, bind(bytes, bytes), bind(media-type, oci-header(request, <content-type>))))
+  oci-hold(state, repository, digest)
+  fork test, not(by-digest)
+    hold
+      oci-set-tag(state/tags, repository, reference, digest)
+  host headers, make list(<location>, </v2/{repository}/manifests/{digest}>, <docker-content-digest>, digest)
+  fork test, and(oci-truthy(parsed/subject), state/referrers)
+    hold
+      headers/push(<oci-subject>)
+      headers/push(oci-subject-digest(parsed))
+  oci-answer(response, 201, headers, <>)
+
+task oci-answer-manifest
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  take repository, like text
+  take rest, like text
+  like void
+  mark async
+  mark private
+
+  host reference, rest/substring(10)
+  host method, oci-header-method(request)
+  fork test, is-equal(method, <PUT>)
+    hold
+      oci-put-manifest(state, request, response, repository, reference)
+      back
+  save digest, reference
+  fork test, not(reference/starts-with(<sha256:>))
+    hold
+      save digest, oci-tag-of(state, repository, reference)
+  save known, false
+  fork test, is-unequal(digest, <>)
+    hold
+      fork test, oci-held(state, repository, digest)
+        hold
+          save known, state/manifests/has(digest)
+  fork test, not(known)
+    hold
+      oci-fail(response, 404, <MANIFEST_UNKNOWN>)
+      back
+  host stored, state/manifests/get(digest)
+  host headers, make list(<content-type>, stored/media-type, <docker-content-digest>, digest, <content-length>, <{stored/bytes/length}>)
+  fork test, is-equal(method, <HEAD>)
+    hold
+      oci-answer(response, 200, headers, <>)
+      back
+  oci-answer(response, 200, headers, stored/bytes)
+
+# tags, paged by `n` (held to the page size) and `last`, with a Link header to the next page
+task oci-answer-tags
+  take state, like oci-state
+  take response, like dynamic
+  take url, like dynamic
+  take repository, like text
+  like void
+  mark private
+
+  save all, make list
+  fork test, state/tags/has(repository)
+    hold
+      save all, oci-sorted-keys(state/tags/get(repository))
+  fork test, and(is-equal(all/length, 0), not(state/repo-blobs/has(repository)))
+    hold
+      oci-fail(response, 404, <NAME_UNKNOWN>)
+      back
+  save n, oci-number(url/search-params/get(<n>), 1000)
+  fork test, is-above(n, state/page-size)
+    hold
+      save n, state/page-size
+  host last, url/search-params/get(<last>)
+  host after, make list
+  walk all
+    take tag, like text
+    fork test, or(not(oci-truthy(last)), oci-after(tag, last))
+      hold
+        after/push(tag)
+  host page, make list
+  save final, <>
+  walk after
+    take tag, like text
+    fork test, is-below(page/length, n)
+      hold
+        page/push(tag)
+        save final, tag
+  host headers, make list(<content-type>, <application/json>)
+  fork test, is-above(after/length, n)
+    hold
+      headers/push(<link>)
+      headers/push(<\</v2/{repository}/tags/list?n={n}&last={oci-encode(final)}\>; rel="next">)
+  oci-answer(response, 200, headers, oci-tags-body(repository, page))
+
+# the referrers of a subject, filtered by artifactType when asked, unless `referrers` is false
+task oci-answer-referrers
+  take state, like oci-state
+  take response, like dynamic
+  take url, like dynamic
+  take repository, like text
+  take rest, like text
+  like void
+  mark private
+
+  fork test, not(state/referrers)
+    hold
+      oci-fail(response, 404, <NAME_UNKNOWN>)
+      back
+  host subject, rest/substring(10)
+  host wanted, url/search-params/get(<artifactType>)
+  host found, make list
+  walk oci-holds(state, repository)
+    take digest, like text
+    fork test, state/manifests/has(digest)
+      hold
+        host stored, state/manifests/get(digest)
+        host parsed, oci-json-of(stored/bytes)
+        fork test, and(is-equal(oci-subject-digest(parsed), subject), or(not(oci-truthy(wanted)), is-equal(parsed/artifact-type, wanted)))
+          hold
+            found/push(oci-descriptor(parsed, digest, stored/bytes/length))
+  host headers, make list(<content-type>, <application/vnd.oci.image.index.v1+json>)
+  oci-answer(response, 200, headers, oci-index-body(found))
+
+# one registry request: /token, else a /v2 route, each behind a bearer token that may pull (and push, to write)
+task oci-answer-registry
+  take state, like oci-state
+  take request, like dynamic
+  take response, like dynamic
+  like void
+  mark async
+  mark private
+
+  host url, oci-address(request, state/base)
+  host method, oci-header-method(request)
+  state/requests/push(make(oci-request-line, bind(method, method), bind(path, <{url/pathname}{url/search}>)))
+  fork test, is-equal(url/pathname, </token>)
+    hold
+      oci-answer-token(state, request, response, url)
+      back
+  host match, oci-route(url/pathname)
+  fork test, not(oci-truthy(match))
+    hold
+      oci-fail(response, 404, <NAME_UNKNOWN>)
+      back
+  host repository, oci-decode-none(match/1)
+  host rest, oci-decode-none(match/2)
+  host writing, or(is-equal(method, <POST>), or(is-equal(method, <PUT>), is-equal(method, <PATCH>)))
+  save scope, <repository:{repository}:pull>
+  fork test, writing
+    hold
+      save scope, <repository:{repository}:pull,push>
+  host bearer, oci-bearer(oci-header(request, <authorization>))
+  save granted, false
+  fork test, oci-truthy(bearer)
+    hold
+      fork test, state/issued/has(bearer)
+        hold
+          save granted, or(not(writing), state/issued/get(bearer))
+  fork test, not(granted)
+    hold
+      oci-drain(request)
+      oci-challenge(state, response, scope)
+      back
+  fork test, rest/starts-with(<blobs/uploads>)
+    hold
+      host answered, oci-answer-upload(state, request, response, url, repository, rest)
+      fork test, answered
+        hold
+          back
+  fork test, rest/starts-with(<blobs/>)
+    hold
+      oci-answer-blob(state, request, response, repository, rest)
+      back
+  fork test, rest/starts-with(<manifests/>)
+    hold
+      oci-answer-manifest(state, request, response, repository, rest)
+      back
+  fork test, is-equal(rest, <tags/list>)
+    hold
+      oci-answer-tags(state, response, url, repository)
+      back
+  fork test, rest/starts-with(<referrers/>)
+    hold
+      oci-answer-referrers(state, response, url, repository, rest)
+      back
+  oci-fail(response, 405, <UNSUPPORTED>)
+
+# a matched part of a path as text
+bind oci-decode-none
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# a server listening on 127.0.0.1 at a free port
+task oci-listen
+  take server, like dynamic
+  like number
+  mark async
+  mark private
+
+  server/listen(0, <127.0.0.1>)
+  save heard, wait oci-events/once(server, <listening>)
+  back oci-port(server)
+
+# a registry and its storage host, both listening. A username and password are what a push must present at /token
+task start-oci-server
+  take username, like text, fall <tester>
+  take password, like text, fall <secret>
+  take referrers, like boolean, fall true
+  take page-size, like number, fall 1000
+  like oci-server
+  mark async
+
+  host requests, make list
+  host leaked-auth, make list
+  host state, make(oci-state, bind(username, username), bind(password, password), bind(referrers, referrers), bind(page-size, page-size), bind(base, <>), bind(storage-base, <>), bind(blobs, oci-map(0)), bind(tags, oci-map(0)), bind(manifests, oci-map(0)), bind(uploads, oci-map(0)), bind(repo-blobs, oci-map(0)), bind(issued, oci-map(0)), bind(requests, requests), bind(leaked-auth, leaked-auth))
+  save storage
+    oci-http/create-server
+      task
+        take request, like dynamic
+        take response, like dynamic
+        like void
+        oci-answer-storage(state, request, response)
+  host storage-port, oci-listen(storage)
+  # `localhost` rather than 127.0.0.1, so storage is a different origin from the registry
+  save state/storage-base, <http://localhost:{storage-port}>
+  save registry
+    oci-http/create-server
+      task
+        take request, like dynamic
+        take response, like dynamic
+        like void
+        mark async
+        oci-answer-registry(state, request, response)
+  host port, oci-listen(registry)
+  save state/base, <http://127.0.0.1:{port}>
+  back make(oci-server, bind(host, <127.0.0.1:{port}>), bind(storage-port, storage-port), bind(blobs, state/blobs), bind(tags, state/tags), bind(manifests, state/manifests), bind(requests, state/requests), bind(leaked-auth, state/leaked-auth), bind(registry, registry), bind(storage, storage))
+
+# overwrite a stored blob, so a client that trusts what it reads is caught
+task tamper-blob
+  take server, like oci-server
+  take digest, like text
+  take bytes, like dynamic
+  like void
+
+  server/blobs/set(digest, bytes)
+
+# point a tag at another digest
+task retag
+  take server, like oci-server
+  take repository, like text
+  take tag, like text
+  take digest, like text
+  like void
+
+  oci-set-tag(server/tags, repository, tag, digest)
+
+# both hosts closed, every open connection dropped first
+task close-oci-server
+  take server, like oci-server
+  like void
+  mark async
+
+  server/registry/close-all-connections()
+  server/storage/close-all-connections()
+  server/registry/close()
+  save registry-closed, wait oci-events/once(server/registry, <close>)
+  server/storage/close()
+  save storage-closed, wait oci-events/once(server/storage, <close>)

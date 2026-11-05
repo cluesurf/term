@@ -29,8 +29,6 @@ load @term/make/parser/token
   find tokenize
   find token-source
 
-dock load
-  load <@term/make/code/parser/narrow>, name narrowing-module
 
 # a line of a condition, with the source line (counted from zero) it was written on
 form source-row
@@ -163,6 +161,25 @@ bind parsed-top-nodes
   case node
     text <$parsed.tree.nodes>
 
+bind no-node
+  like dynamic
+  case node
+    text <undefined>
+
+# the first group among a parse tree's nodes, undefined for none: `groupsOf(nodes)[0]` of parser/narrow.ts, written
+# here when term-self-host-001-0959 took its dock away
+task first-group
+  take nodes, like dynamic
+  like dynamic
+  mark private
+
+  walk nodes
+    take one
+    fork test, is-equal(kind-of-node(one), <group>)
+      hold
+        back one
+  back no-node()
+
 bind tokens-of
   take read, like dynamic
   like list, like dynamic
@@ -265,7 +282,7 @@ task read-condition
   fork test, not(is-equal(host-length(top), 1))
     hold
       back no-condition()
-  save group, host-item(narrowing-module/groups-of(top), 0)
+  save group, first-group(top)
   fork test, is-undefined-value(group)
     hold
       back no-condition()
@@ -588,7 +605,7 @@ task reads-as
   fork test, is-above(diagnostic-count(parsed), 0)
     hold
       back false
-  save group, host-item(narrowing-module/groups-of(parsed-top-nodes(parsed)), 0)
+  save group, first-group(parsed-top-nodes(parsed))
   fork test, is-undefined-value(group)
     hold
       back false

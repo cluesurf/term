@@ -6,9 +6,12 @@
 # Ported from compile/compile.ts's `graphTemplates`, `entryWarnings` and `millUnit` (item 0263 of
 # term/self-host/change/001, decision 031 part C), which stay as the face. `milledModule` stays in the face too, as
 # the `cache.milledUnit` wrapper, until cache.ts is Term (decision 031 section 6). The decisions:
-#   - compile/template.ts, compile/view.ts and compile/mill.ts have no port, so each is a dock named for its module
-#     (decision 031 section 3). A template is a host value this module holds by name and never reads. What a view
-#     check and a mill answer is read through the forms below, which name the fields the face reads
+#   - the view gate and the view's lowering are compile/view-catalog-handed.tree's and compile/view-document.tree's,
+#     docks of compile/view.ts until item 0951, handed the check record and read back as the face did. compile/template.ts
+#     (a template held as the face's `Template`, the problems as `fuse-problem`s) and compile/mill.ts (an answer with no
+#     twins when there are none, the bytes the mill cache stores) stay docks named for their modules (decision 031
+#     section 3). A template is a host value this module holds by name and never reads. What a view check and a mill
+#     answer is read through the forms below, which name the fields the face reads
 #   - the build's parse memo is handed in as a task, as the face's closure is
 #   - `(^|\n)tree\s` and `\bfuse\b` are written out by character (traps.md T024): `\s` is JavaScript's whitespace,
 #     Unicode spaces among it, and a word character is an ASCII letter, a digit or `_`
@@ -56,9 +59,16 @@ load ../check/keyword-import
   find keyword-candidates
   find defines-task
 
+load ./view-document
+  find lower-view
+
+load ./view-catalog-handed
+  find handed-check
+  find handed-result
+  find check-handed-view
+
 dock load
   load <@term/make/code/compile/template>, name unit-mill-template
-  load <@term/make/code/compile/view>, name unit-mill-view
   load <@term/make/code/compile/mill>, name unit-mill-milling
 
 # a problem `expandTemplates` meets at a `fuse`, as compile/template.ts writes it
@@ -117,6 +127,24 @@ task no-problems
   mark private
 
   back make list
+
+# ---- the view gate's record, as compile/view.ts's `checkView` handed it on ----
+
+# the check as compile/view.ts handed it to compile/view-catalog-handed.tree's `check-handed-view`: the record itself
+task as-handed-check
+  take value, like dynamic
+  like handed-check
+  mark private
+
+  back value
+
+# and its answer, read through the fields the face reads
+task as-view-read
+  take value, like dynamic
+  like view-read
+  mark private
+
+  back value
 
 # ---- the text tests ----
 
@@ -349,7 +377,7 @@ task view-milled
   fork test, not(viewed/ok)
     hold
       back refused-unit(viewed/diagnostics)
-  save lowered, unit-mill-view/lower-view(viewed/file)
+  save lowered, lower-view(viewed/file)
   back
     make unit-milled
       bind ok, true
@@ -380,7 +408,7 @@ task mill-unit
           bind tree, read/tree
           bind templates, templates
           bind lean, lean
-      back view-milled(unit-mill-view/check-view(unit, asked))
+      back view-milled(as-view-read(check-handed-view(unit, as-handed-check(asked))))
   # a fuse that does not fit its template is refused at the fuse. An empty site is a warning, which the entry's build
   # reports (`entry-warnings`) and never stops the mill
   save problems, no-problems()

@@ -1,0 +1,314 @@
+note <A toolchain release over OCI: an image index with one signed manifest per platform, read back per platform, refused when anything an installer acts on is swapped, and write-once>
+
+# Ported from oci-release.test.ts by statement (item 0581). code/oci/release.ts, code/oci/transport.ts and
+# code/object/sign.ts are the subjects, docked; the platform table is toolchain-release.tree's own. The original
+# published once in a beforeAll and read in every test: here each test that reads the registry starts its own
+# (oci-server.tree), publishes 1.0.0, gathers what it asserts, and closes the registry before its first want.
+
+load @term/base/list
+  find get
+
+load ./oci-server
+  find start-oci-server
+  find close-oci-server
+  find oci-server
+
+load ../code/oci/toolchain-release
+  find release-platforms
+
+dock load
+  load <@term/deck/code/oci/release>, name release-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <@term/deck/code/object/sign>, name sign-face
+
+host package-name, <@term/code>
+host repository-name, <cluesurf/term/code>
+
+# host value: a Buffer of a text's UTF-8 bytes
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+# host native: Buffer.compare of two byte buffers, 0 when equal
+bind bytes-compare
+  take left, like dynamic
+  take right, like dynamic
+  like number
+  case node
+    text <Buffer.compare($left, $right)>
+
+bind json-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the message of what a call raised
+bind cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+form basic-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form release-payload
+  link platform, like text
+  link bytes, like dynamic
+
+form release-publish
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link version, like text
+  link payloads, like list, like release-payload
+  link keypair, like dynamic
+
+form release-read
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link version, like text
+  link platform, like text
+
+form manifest-ask
+  link repository, like text
+  link reference, like text
+
+form blob-ask
+  link repository, like text
+  link digest, like text
+  link limit, like number
+
+form release-fixture
+  link server, like oci-server
+  link transport, like dynamic
+  link keypair, like dynamic
+  link payloads, like list, like release-payload
+
+form read-back
+  link layer, like boolean
+  link key, like boolean
+  link bytes, like boolean
+
+form release-unsigned
+  link package, like text
+  link version, like text
+  link platform, like text
+  link layer, like text
+
+form release-config
+  link v, like number
+  link package, like text
+  link version, like text
+  link platform, like text
+  link layer, like text
+  link key, like text
+  link sig, like text
+
+form release-verify
+  link config, like release-config
+  link package, like text
+  link version, like text
+  link platform, like text
+  link layer, like text
+
+form sign-ask
+  link id, like text
+  link private-key, like text
+
+task tester-credentials
+  like basic-credential
+  mark async
+
+  back make(basic-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+task release-payloads
+  like list, like release-payload
+
+  back make list(make(release-payload, bind(platform, <darwin-arm64>), bind(bytes, bytes-of(<a darwin arm64 payload>))), make(release-payload, bind(platform, <linux-x64>), bind(bytes, bytes-of(<a linux x64 payload>))))
+
+task publish-ask
+  take transport, like dynamic
+  take keypair, like dynamic
+  take payloads, like list, like release-payload
+  like release-publish
+
+  back make(release-publish, bind(transport, transport), bind(repository, repository-name), bind(package, package-name), bind(version, <1.0.0>), bind(payloads, payloads), bind(keypair, keypair))
+
+# a registry with 1.0.0 published for both payloads, as the original's beforeAll left it
+task open-release
+  like release-fixture
+  mark async
+
+  host server, start-oci-server()
+  host transport, transport-face/http-transport(make(transport-ask, bind(host, server/host), bind(credentials, tester-credentials), bind(retries, 0)))
+  host keypair, sign-face/generate-keypair()
+  host payloads, release-payloads()
+  host published, wait release-face/publish-release(publish-ask(transport, keypair, payloads))
+  back make(release-fixture, bind(server, server), bind(transport, transport), bind(keypair, keypair), bind(payloads, payloads))
+
+task read-ask
+  take fixture, like release-fixture
+  take version, like text
+  take platform, like text
+  like release-read
+
+  back make(release-read, bind(transport, fixture/transport), bind(repository, repository-name), bind(package, package-name), bind(version, version), bind(platform, platform))
+
+# one platform read back: its layer is the payload's sha256, its config names the signer, and the blob is the payload
+task read-back-of
+  take fixture, like release-fixture
+  take payload, like release-payload
+  like read-back
+  mark async
+
+  host read, wait release-face/read-release(read-ask(fixture, <1.0.0>, payload/platform))
+  host blob, wait fixture/transport/get-blob(make(blob-ask, bind(repository, repository-name), bind(digest, read/layer), bind(limit, 1024)))
+  host layer, is-equal(read/layer, transport-face/sha256-digest(payload/bytes))
+  host key, is-equal(read/config/key, fixture/keypair/public-key)
+  back make(read-back, bind(layer, layer), bind(key, key), bind(bytes, is-equal(bytes-compare(blob, payload/bytes), 0)))
+
+# what reading a release raised, the empty text when it read
+task read-refusal
+  take fixture, like release-fixture
+  take version, like text
+  take platform, like text
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    save read, wait release-face/read-release(read-ask(fixture, version, platform))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+# what publishing 1.0.0 again raised, the empty text when it published
+task republish-refusal
+  take fixture, like release-fixture
+  like text
+  mark async
+
+  save message, <>
+  fork
+    mark unsafe
+    save published, wait release-face/publish-release(publish-ask(fixture/transport, fixture/keypair, fixture/payloads))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+# what verifying a config against the fields raised, the empty text when it verified
+task verify-refusal
+  take config, like release-config
+  take against, like release-unsigned
+  like text
+
+  save message, <>
+  fork
+    mark unsafe
+    release-face/verify-release-config(make(release-verify, bind(config, config), bind(package, against/package), bind(version, against/version), bind(platform, against/platform), bind(layer, against/layer)))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+task unsigned-with
+  take platform, like text
+  take version, like text
+  take layer, like text
+  like release-unsigned
+
+  back make(release-unsigned, bind(package, package-name), bind(version, version), bind(platform, platform), bind(layer, layer))
+
+task config-with
+  take signed, like release-config
+  take platform, like text
+  take version, like text
+  take key, like text
+  like release-config
+
+  back make(release-config, bind(v, 1), bind(package, signed/package), bind(version, version), bind(platform, platform), bind(layer, signed/layer), bind(key, key), bind(sig, signed/sig))
+
+test <toolchain release: tags the version with an image index, one entry per platform, in OCI platform terms>
+  host fixture, open-release()
+  host index, wait fixture/transport/get-manifest(make(manifest-ask, bind(repository, repository-name), bind(reference, <1.0.0>)))
+  close-oci-server(fixture/server)
+  host body, json-of(index/bytes)
+  host platforms, make list
+  walk body/manifests
+    take one, like dynamic
+    platforms/push(one/platform)
+  host table, release-platforms()
+  host darwin, <darwin-arm64>
+  host linux, <linux-x64>
+  host expected, make list(table/{darwin}, table/{linux})
+  want hold, is-equal(body/media-type, <application/vnd.oci.image.index.v1+json>)
+  want hold, is-equal(json-text(platforms), json-text(expected))
+  want hold, is-equal(json-text(table/{linux}), <\{"os":"linux","architecture":"amd64"\}>)
+
+test <toolchain release: reads each platform back, the layer digest being the payload sha256 and the signature verifying>
+  host fixture, open-release()
+  host darwin, read-back-of(fixture, get(fixture/payloads, 0))
+  host linux, read-back-of(fixture, get(fixture/payloads, 1))
+  close-oci-server(fixture/server)
+  want hold, darwin/layer
+  want hold, darwin/key
+  want hold, darwin/bytes
+  want hold, linux/layer
+  want hold, linux/key
+  want hold, linux/bytes
+
+test <toolchain release: refuses a platform the release does not carry, and a version never released>
+  host fixture, open-release()
+  host platform, read-refusal(fixture, <1.0.0>, <darwin-x64>)
+  host version, read-refusal(fixture, <9.9.9>, <linux-x64>)
+  close-oci-server(fixture/server)
+  want hold, platform/includes(<no release for darwin-x64>)
+  want hold, version/includes(<not released>)
+
+test <toolchain release: is write-once>
+  host fixture, open-release()
+  host again, republish-refusal(fixture)
+  close-oci-server(fixture/server)
+  want hold, again/includes(<write-once>)
+
+test <toolchain release: refuses a config whose signed fields were swapped: the platform, the version, the layer, or the signer>
+  host keypair, sign-face/generate-keypair()
+  host layer, transport-face/sha256-digest(bytes-of(<bytes>))
+  host unsigned, unsigned-with(<linux-x64>, <1.0.0>, layer)
+  host statement, release-face/release-statement(unsigned)
+  host signed, make(release-config, bind(v, 1), bind(package, package-name), bind(version, <1.0.0>), bind(platform, <linux-x64>), bind(layer, layer), bind(key, keypair/public-key), bind(sig, sign-face/sign-id(make(sign-ask, bind(id, statement), bind(private-key, keypair/private-key)))))
+  host stranger, sign-face/generate-keypair()
+  host other-layer, transport-face/sha256-digest(bytes-of(<other>))
+  want hold, is-equal(verify-refusal(signed, unsigned), <>)
+  # a linux payload relabelled for a mac: the fields no longer match the signature
+  host relabelled, verify-refusal(config-with(signed, <darwin-arm64>, <1.0.0>, signed/key), unsigned-with(<darwin-arm64>, <1.0.0>, layer))
+  want hold, relabelled/includes(<does not verify>)
+  host versioned, verify-refusal(config-with(signed, <linux-x64>, <2.0.0>, signed/key), unsigned-with(<linux-x64>, <2.0.0>, layer))
+  want hold, versioned/includes(<does not verify>)
+  # the manifest carries different bytes than the config signed
+  host swapped, verify-refusal(signed, unsigned-with(<linux-x64>, <1.0.0>, other-layer))
+  want hold, swapped/includes(<signs layer>)
+  # a stranger's key over the same statement
+  host foreign, verify-refusal(config-with(signed, <linux-x64>, <1.0.0>, stranger/public-key), unsigned)
+  want hold, foreign/includes(<does not verify>)

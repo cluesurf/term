@@ -34,8 +34,26 @@ load @term/call/work/build/host-faces
   find face-role-reader
   find face-lean-reader
 
+# the parser, the template expander and the law reading: the compiler's ports, where check/law-english.ts's
+# `lawSentencesOf` was docked until term-self-host-001-0959
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/templates
+  find expand-templates
+  find tree-template
+  find template-problem
+
+load @term/make/check/law-english-reading
+  find law-sentences
+
+# the mill stays docked until Diagnose 0981: compile/minting.tree in knit/prove-loop's closure fails its build with
+# `span__form needs start, end`
 dock load
-  load <@term/make/code/check/law-english>, name law-reading
+  load <@term/make/code/compile/mill>, name milling
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:url>, name host-url
@@ -135,6 +153,36 @@ bind role-or-undefined
   like dynamic
   case node
     text <($role ?? undefined)>
+
+# the first diagnostic's message, `failed` for none
+bind frame-first-message
+  take diagnostics, like dynamic
+  like text
+  case node
+    text <($diagnostics[0]?.message ?? "failed")>
+
+# the function statements of a milled program, each a copy: the law reading fills a need-false list it reads with its
+# empty value, so it is handed copies, as check/law-english.ts's `lawSentences` handed them
+bind frame-function-copies
+  take program, like dynamic
+  like dynamic
+  case node
+    text <<$program.filter(statement_ => statement_.form === "function").map(statement_ => structuredClone(statement_))>>
+
+# `lawSentencesOf`'s answer for a file that did not read
+bind sentences-failed
+  take error, like text
+  like dynamic
+  case node
+    text <(\{ ok: false, error: $error, rules: 0 \})>
+
+# `lawSentencesOf`'s answer for a file that read: each law as check/law-english.ts shaped it, `text` with no `refused`
+# or `refused` with no `text` and no words
+bind sentences-read
+  take laws, like dynamic
+  like dynamic
+  case node
+    text <<({ ok: true, laws: $laws.map(law_ => law_.refused === "" ? { name: law_.name, kind: law_.kind, text: law_.text, words: law_.words } : { name: law_.name, kind: law_.kind, refused: law_.refused, words: [] }) })>>
 
 # `term hold` on a project, as a child: the run's answer as spawnSync gives it
 bind spawn-hold
@@ -466,7 +514,7 @@ task laws-of
   walk tree-files(project)
     take file
     save text, host-fs/read-file-sync(file, <utf8>)
-    save read, law-reading/law-sentences-of(make-sentences-ask(file, text, role-or-undefined(call-role(role-of, file)), call-lean(lean-of, file)))
+    save read, sentences-of-file(file, text, role-or-undefined(call-role(role-of, file)), call-lean(lean-of, file))
     fork test, sentences-ok(read)
       hold
         walk sentences-laws(read)
@@ -476,14 +524,52 @@ task laws-of
         errors/push <{host-path/relative(project, file)}: {sentences-error(read)}>
   back make(laws-read, bind(laws, laws), bind(errors, errors))
 
-bind make-sentences-ask
+# the expansion's tables as compile/template.ts's `expandTemplates(tree)` left them: no template or enumeration from
+# another module, and the problems it meets kept by nobody
+task frame-no-templates
+  like hash, like text, like tree-template
+  mark private
+
+  back make hash
+
+task frame-no-enumerations
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task frame-no-problems
+  like list, like template-problem
+  mark private
+
+  back make list
+
+task frame-held
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  back value
+
+# one file's rules in words, read as check/law-english.ts's `lawSentencesOf` read them: parsed, its templates expanded
+# and milled the way the build mills it. A file that does not parse or mill answers the first diagnostic
+task sentences-of-file
   take file, like text
   take text, like text
   take role, like dynamic
-  take lean, like boolean
+  take lean, like dynamic
   like dynamic
-  case node
-    text <(\{ file: $file, text: $text, role: $role, lean: $lean \})>
+  mark private
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back sentences-failed(<parse: {frame-first-message(parsed/diagnostics)}>)
+  save built, frame-held(milling/mill(expand-templates(parsed/tree, frame-no-templates(), frame-no-enumerations(), frame-no-problems()), file, role, lean))
+  fork test, not(frame-truth(built/ok))
+    hold
+      back sentences-failed(<mill: {frame-first-message(built/diagnostics)}>)
+  back sentences-read(law-sentences(frame-function-copies(frame-held(built/program))))
 
 bind call-role
   take reader, like dynamic

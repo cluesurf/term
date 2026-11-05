@@ -6,8 +6,9 @@
 //
 // THE DRIVER IS TERM, compile/program-driver.tree (item term-self-host-001-0269, decision 031 part I): the load, the
 // cache key, the build and the five phases of `compileProgram` over one run. This face keeps what decision 031 section
-// 6 leaves here: the exports and their TypeScript shapes, the lazy `typescript` getter, the closures of
-// compile/cache.ts (`cache.output` around the build, `cache.milledUnit` around each module's mill), and the positional
+// 6 leaves here: the exports and their TypeScript shapes, the lazy `typescript` getter, the closures compile/cache.ts
+// takes (`cache.output` around the build, `cache.milledUnit` around each module's mill), each holding one job the port
+// runs (`graph-job` and `mill-job`, item term-self-host-001-0950), and the positional
 // `compileProgram` compile/separate.ts calls. It reads the options into the port's `compile-reading` and hands it the
 // host values a phase takes as they are (`driver-given`)
 
@@ -16,7 +17,6 @@ import type { Template } from '@term/make/code/compile/template'
 import {
   entryWarnings as entryWarningsPort,
   graphTemplates as graphTemplatesPort,
-  millUnit as millUnitPort,
 } from '@term/make/code/compile/unit-mill'
 import {
   checkMillSource as checkMillPort,
@@ -33,10 +33,11 @@ import {
 } from '@term/make/code/compile/program-emit'
 import type { PendingEmit } from '@term/make/code/compile/program-emit'
 import {
-  buildGraph as buildGraphPort,
   graphKey as graphKeyPort,
   loadGraph as loadGraphPort,
   rollOnlyKey as rollOnlyKeyPort,
+  runGraphJob as runGraphJobPort,
+  runMillJob as runMillJobPort,
   runProgram as runProgramPort,
 } from '@term/make/code/compile/program-driver'
 import type {
@@ -311,17 +312,16 @@ export function compile(
     checkerSwitches,
   )
 
+  // what the build captures, one `graph-job` (decision 031 section 6): the closure the cache runs on a miss holds it
+  const job = {
+    source,
+    reading,
+    graph: loaded.graph,
+    given: givenOf(options?.deckOf, options?.modules, undefined),
+  }
+
   const build = (): CompileResult =>
-    builtResult(
-      buildGraphPort(
-        source,
-        reading,
-        loaded.graph,
-        givenOf(options?.deckOf, options?.modules, undefined),
-      ),
-      options?.env,
-      options?.library,
-    )
+    builtResult(runGraphJobPort(job), options?.env, options?.library)
 
   // THE ROLL ALONE, for a caller that reads nothing else (`term make`'s roll pass, call/code/roll.ts): its own small
   // cache entry, beside the full one
@@ -352,7 +352,7 @@ export function compile(
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`, so per-module mode skips
   // the output level (and still gets mill-level reuse). The cache is Term (compile/cache-store.tree, item 0107), and
-  // the build is handed to it as a task until 0248 makes it a case of a form
+  // the build is the `graph-job` above, handed to it as the task that runs the job
   return cache && !options?.modules
     ? (cachedOutput(
         cache.state,
@@ -536,12 +536,11 @@ export function milledModule(
   // both. A pass that later writes such a key put it in the key's milled place on a fresh mill and at the end on a
   // stored one, so a unit's stored bytes hung on whether its process milled the module or read another's mill
   // (item term-self-host-001-0432, a pool build under TERM_CACHE_VERIFY=hits)
+  // what the mill captures, one `mill-job` (decision 031 section 6), run on a miss
+  const job = { unit, parsed, templates, role, lean }
   const mill = () =>
     JSON.parse(
-      JSON.stringify(
-        millUnitPort(unit, parsed, templates, role, lean),
-        storeBigint,
-      ),
+      JSON.stringify(runMillJobPort(job), storeBigint),
       reviveBigint,
     ) as
       | { ok: true; program: Program; twins?: Twin[] }

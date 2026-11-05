@@ -12,13 +12,9 @@
 import { checkerSwitches } from '@term/make/code/check/strict'
 import { widthLimits } from '@term/make/code/check/checker-switches'
 
-// check/substitution.tree reads the switch through `globalThis.termWidthRanges` (a Term module cannot import this
-// one), which check/strict.ts writes when it makes the instance and this writes on every set. It goes when
-// substitution.tree's `width-switch` bind reads the record (item 0248)
+// the checker reads the switch off the record it is handed (check/inferring-state.tree, when it makes its substitution)
 export function setWidthRanges(ranges: boolean): void {
   checkerSwitches.widths = ranges
-  ;(globalThis as { termWidthRanges?: boolean }).termWidthRanges =
-    ranges
 }
 
 export function widthRanges(): boolean {

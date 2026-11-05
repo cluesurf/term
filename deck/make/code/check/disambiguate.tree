@@ -2489,6 +2489,16 @@ task import-bound
   fork test, and(group/elsewhere, is-equal(imported/length, 0))
     hold
       back <>
+  # a call whose file imported none of the group's tasks, of a name a form's method takes at its arity: the method of
+  # its first argument, as the same call reads where no file defines the name. Left as written once every definition
+  # was renamed apart, it reaches only the method. Refused, it broke a file that builds alone the moment a program
+  # merged two unimported tasks of the name (term-self-host-001-0945: affected.tree's contains(affected, node) beside
+  # base/code/text.tree and text/string.tree)
+  fork test, and(is-equal(imported/length, 0), and(is-minimum(arity, 1), not(has-text(group/renamed, name))))
+    hold
+      fork test, method-takes(state, name, arity)
+        hold
+          back <>
   save candidates, imported
   fork test, is-equal(imported/length, 0)
     hold
@@ -2569,6 +2579,36 @@ task method-meant
     hold
       back get(found, 0)
   back <>
+
+# whether a method of any form is named `name` and takes `arity` arguments, its receiver counted. Inside the arm below a
+# function's fields are locals by their own names (its `name` the method's own), so the asked name and count are kept
+# apart first, as method-meant does: compared with `name` there, the test asked whether a method was named for itself
+task method-takes
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  like boolean
+  mark private
+
+  save wanted, name
+  save count, arity
+  walk state/program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            fork test, is-equal(owner/name, wanted)
+              hold
+                fork test, and(is-minimum(count, required-count(one)), is-maximum(count, most-count(one)))
+                  hold
+                    back true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
 
 task typed-apart
   take state, like walk-state

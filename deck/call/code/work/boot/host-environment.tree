@@ -2,15 +2,17 @@
 # values (`database-url <...>`). Each kebab key becomes a SCREAMING_SNAKE variable (`toConstant`). File values are
 # defaults: anything already in the environment wins, so a shell override applies. Ported from call/code/boot.ts
 # (`loadHostEnv`), part 1 of that file, term-cli-in-term-0022. The settings are read by boot-plan.tree, the constant
-# name by the compiler's TypeScript emitter, docked.
+# name by the compiler's compile/ts-names.tree, where compile/typescript.ts was docked until term-self-host-001-0956.
 
 load @term/call/boot-plan
   find host-settings
 
+load @term/make/compile/ts-names
+  find to-constant
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <@term/make/code/compile/typescript>, name typescript-emitter
 
 # whether the process's environment has the variable, `process.env[name] !== undefined`
 bind boot-variable-set
@@ -37,7 +39,7 @@ task load-host-env
     hold
       walk host-settings(node-file/read-file-sync(file, <utf8>), file)
         take setting
-        save name, typescript-emitter/toConstant(setting/key)
+        save name, to-constant(setting/key)
         fork test, not(boot-variable-set(name))
           hold
             boot-set-variable(name, setting/value)

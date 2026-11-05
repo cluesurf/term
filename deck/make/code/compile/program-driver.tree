@@ -13,11 +13,15 @@
 #     comes in `compile-reading`. Both are filled by the face
 #   - the modules with no port yet are docks, each named for its module (decision 031 section 3): compile/load (the
 #     import walk, the platform refusals, the scope list), compile/cache (the memoized text hash), check/twin (the twin
-#     refusals) and check/refine (the certificate checker's refusal count)
+#     refusals) and check/refine (the certificate checker's refusal count). The last three read state of the process
+#     their face holds (item 0972 decides how it reaches here), and compile/loading.tree loaded here makes a `from-text`
+#     call of this closure ambiguous (item 0973)
 #   - check/overload.ts's two tables are module state the checker reads after the gate: the face's `keep-bound` writes
 #     them from what the binding made, right after the gate, as the gate's face did
-#   - the two closures of compile/cache.ts stay in the face (decision 031 section 6): `milled` hands a module milled
-#     through the mill cache, and the face wraps `build-graph` in `cache.output`
+#   - what the two caches build on a miss is a case of a form now compile/cache-store.tree is Term (decision 031 section
+#     6, item 0950): `graph-job`, run by `run-graph-job`, and `mill-job`, run by `run-mill-job`. The face's closures
+#     hold one job each and hand the cache the task, since the cache takes a build as a task: `milled` hands a module
+#     milled through the mill cache, and the face wraps `run-graph-job` in `cache.output`
 #   - the twins in the graph key are written as JSON here (`choice-json`), field for field as the original's
 #     `JSON.stringify` of the caller's record (decision 034 section 6: an options object, not a node), and a mutant's key
 #     takes `@term/base/random`'s number where the original took `Math.random()` (decision 031 section 7).
@@ -72,6 +76,8 @@ load ./program-run
 load ./unit-mill
   find graph-templates
   find entry-warnings
+  find mill-unit
+  find unit-milled
 
 load ./program-gate
   find program-gate
@@ -1003,3 +1009,38 @@ task build-graph
       bind answer, make(some, answer)
       bind warnings, spelled
       bind twins, make(some, twins)
+
+# ---- what the caches build on a miss ----
+
+# THE BUILD `cache.output` RUNS ON A MISS, as a case of a form (decision 031 section 6, spec.md section 4.9): what the
+# face's closure captured, run by `run-graph-job`. The face's closure turns the answer into the result
+form graph-job
+  link source, like token-source
+  link reading, like compile-reading
+  link graph, like compile-graph
+  link given, like driver-given
+
+task run-graph-job
+  take job, like graph-job
+  like graph-built
+
+  back build-graph(job/source, job/reading, job/graph, job/given)
+
+# THE MILL `cache.milledUnit` RUNS ON A MISS: one module, the build's parse memo, the graph's templates, and the role
+# and lean the build reads the module with, absent included, run by `run-mill-job`. The face's closure stores the answer
+# as the store writes it
+form mill-job
+  link unit, like token-source
+  link parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  link templates, like hash, like text, like dynamic
+  link role, like dynamic
+  link lean, like dynamic
+
+task run-mill-job
+  take job, like mill-job
+  like unit-milled
+
+  back mill-unit(job/unit, job/parsed, job/templates, job/role, job/lean)

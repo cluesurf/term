@@ -5,8 +5,10 @@
 # marked private, `tier` 0 every tier-0 obligation). A claim the manifest does not name is a lemma, and is not a row.
 #
 # THE ENGLISH COMES FROM THE TERM FORM, never from the manifest. A law holds when what it names exists as named and
-# nothing the gate refused falls inside it. The parser, the mill, the data reader and the law sentences are docked;
-# milled statements and the gate's `found` are host values.
+# nothing the gate refused falls inside it. The parser, the template expander, the mill, its head reader and the law
+# sentences are the compiler's ports, loaded (term-self-host-001-0948 and 0959, where parser/tree, parser/narrow,
+# compile/template, compile/mill, compile/mill-run and check/law-english were docked). The data reader is docked.
+# Milled statements and the gate's `found` are host values.
 
 load @term/base/maybe
   find maybe
@@ -35,14 +37,28 @@ load @term/call/work/small/home-folder
 load @term/deck/package/tree-reading
   find read-tree
 
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/templates
+  find expand-templates
+  find tree-template
+  find template-problem
+
+load @term/make/compile/mill-running
+  find head-word
+
+load @term/make/check/law-english-reading
+  find law-sentences
+
+# the mill stays docked here until Diagnose 0981: compile/minting.tree in this closure (with item/event's, through
+# lean-check) fails the build with `span__form needs start, end`
 dock load
-  load <@term/make/code/parser/tree>, name tree-parsing
-  load <@term/make/code/parser/narrow>, name narrowing
-  load <@term/make/code/compile/mill-run>, name mill-running
-  load <@term/make/code/compile/template>, name templating
   load <@term/make/code/compile/mill>, name milling
   load <@term/make/code/compile/host>, name data-reading
-  load <@term/make/code/check/law-english>, name law-wording
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:child_process>, name host-child
@@ -84,16 +100,6 @@ bind proof-name
   case node
     text <$proof.name>
 
-# `have`, `must` and `down` written on a file's tasks: its contracts
-bind contracts-of
-  take parsing, like dynamic
-  take narrow, like dynamic
-  take running, like dynamic
-  take file, like text
-  take text, like text
-  like number
-  case node
-    text <<((parsed) => { if (!parsed.ok) return 0; const count = node => node.kind === "group" ? (["have", "must", "down"].includes($running.headWord(node) ?? "") ? 1 : 0) + node.nodes.reduce((sum, child) => sum + count(child), 0) : 0; return $narrow.groupsOf(parsed.tree.nodes).filter(group => $running.headWord(group) === "task").reduce((sum, group) => sum + group.nodes.reduce((inner, child) => inner + count(child), 0), 0) })($parsing.parse({ file: $file, text: $text }))>>
 
 # the `deck` line's first term of a project's deck.tree as the tree reader read it, the empty text for none
 bind deck-name
@@ -110,23 +116,43 @@ bind commit-at
   case node
     text <<((head) => head.status !== 0 ? "no commit" : `${head.stdout.trim()}${$child.spawnSync("git", ["-C", $root, "status", "--porcelain", "--", "."], { encoding: "utf8" }).stdout?.trim() ? ", with uncommitted changes" : ""}`)($child.spawnSync("git", ["-C", $root, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }))>>
 
-# every top-level definition of a file, milled the way the build mills it, added to `definitions` (a host Map, name to
-# its list), and every rule in words added to `sentences` (a host Map, name to sentence)
-bind gather-file
-  take parsing, like dynamic
-  take templates, like dynamic
-  take mill, like dynamic
-  take wording, like dynamic
+# every top-level definition of a milled program added to `definitions` (a host Map, name to its list)
+bind add-definitions
   take definitions, like dynamic
-  take sentences, like dynamic
   take file, like text
-  take text, like text
-  take role, like dynamic
-  take lean, like boolean
+  take program, like dynamic
   like void
   case node
-    text <<(() => { const parsed = $parsing.parse({ file: $file, text: $text }); if (!parsed.ok) return; const built = $mill.mill($templates.expandTemplates(parsed.tree), $file, $role ?? undefined, $lean); if (!built.ok) return; for (const statement of built.program) { const name = statement.name; const span = statement.span; if (typeof name === "string" && span) { const list = $definitions.get(name) ?? []; list.push({ name, file: $file, start: span.start.line, end: span.end.line, statement }); $definitions.set(name, list) } } for (const sentence of $wording.lawSentences(built.program)) $sentences.set(sentence.name, sentence) })()>>
+    text <<(() => { for (const statement of $program) { const name = statement.name; const span = statement.span; if (typeof name === "string" && span) { const list = $definitions.get(name) ?? []; list.push({ name, file: $file, start: span.start.line, end: span.end.line, statement }); $definitions.set(name, list) } } })()>>
 
+# the function statements of a milled program, each a copy: the law reading fills a need-false list it reads with its
+# empty value, so it is handed copies, and the program is never changed, as check/law-english.ts's `lawSentences` kept it
+bind function-copies
+  take program, like dynamic
+  like dynamic
+  case node
+    text <<$program.filter(statement_ => statement_.form === "function").map(statement_ => structuredClone(statement_))>>
+
+bind put-sentence
+  take sentences, like dynamic
+  take sentence, like dynamic
+  like void
+  case node
+    text <$sentences.set($sentence.name, $sentence)>
+
+bind report-node-is
+  take one, like dynamic
+  take kind, like text
+  like boolean
+  case node
+    text <($one?.kind === $kind)>
+
+# the role the mill is handed: the role reader's answer, undefined for none
+bind role-or-undefined
+  take role, like dynamic
+  like dynamic
+  case node
+    text <($role ?? undefined)>
 bind report-new-map
   like dynamic
   case node
@@ -217,7 +243,7 @@ bind sentence-shown
   take sentence, like dynamic
   like text
   case node
-    text <($sentence.text ?? `(not rendered: $\{$sentence.refused\})`)>
+    text <($sentence.refused === "" ? $sentence.text : `(not rendered: $\{$sentence.refused\})`)>
 
 bind sentence-kind
   take sentence, like dynamic
@@ -389,6 +415,116 @@ form row-ask
 # ---- the report ----
 
 host tier-zero, <every list read is inside its list, every division is by something other than zero, and every `walk test` ends>
+
+# ---- the parse and the mill ----
+
+# the expansion's tables as compile/template.ts's `expandTemplates(tree)` left them: no template or enumeration from
+# another module, and the problems it meets kept by nobody
+task no-templates
+  like hash, like text, like tree-template
+  mark private
+
+  back make hash
+
+task no-enumerations
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task no-problems
+  like list, like template-problem
+  mark private
+
+  back make list
+
+# the parser's tree or the mill's program, held as host values, as they were when docked
+task held
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  back value
+
+# a node's head word as compile/mill-run.ts's `headWord` answered it, the empty text for none
+task report-head
+  take one, like dynamic
+  like text
+  mark private
+
+  sift head-word(one)
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+# `have`, `must` and `down` under a node, itself included, at any depth
+task contracts-under
+  take one, like dynamic
+  like number
+  mark private
+
+  fork test, not(report-node-is(one, <group>))
+    hold
+      back 0
+  save total, 0
+  save head, report-head(one)
+  fork test, or(or(is-equal(head, <have>), is-equal(head, <must>)), is-equal(head, <down>))
+    hold
+      save total, 1
+  walk one/nodes
+    take child
+    save total, add(total, contracts-under(child))
+  back total
+
+# `have`, `must` and `down` written on a file's tasks: its contracts
+task contracts-of
+  take file, like text
+  take text, like text
+  like number
+  mark private
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back 0
+  save tree, held(parsed/tree)
+  save total, 0
+  walk tree/nodes
+    take group
+    fork test, and(report-node-is(group, <group>), is-equal(report-head(group), <task>))
+      hold
+        walk group/nodes
+          take child
+          save total, add(total, contracts-under(child))
+  back total
+
+# every top-level definition of a file, milled the way the build mills it, added to `definitions` (a host Map, name to
+# its list), and every rule in words added to `sentences` (a host Map, name to sentence)
+task gather-file
+  take definitions, like dynamic
+  take sentences, like dynamic
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  take lean, like dynamic
+  like void
+  mark private
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back
+  save built, held(milling/mill(expand-templates(parsed/tree, no-templates(), no-enumerations(), no-problems()), file, role-or-undefined(role), lean))
+  fork test, not(law-row-truth(built/ok))
+    hold
+      back
+  save program, held(built/program)
+  add-definitions(definitions, file, program)
+  walk law-sentences(function-copies(program))
+    take sentence
+    put-sentence(sentences, sentence)
 
 task plural
   take amount, like number
@@ -565,7 +701,7 @@ task hold-report
   save sentences, report-new-map()
   walk input/files
     take file
-    gather-file(tree-parsing, templating, milling, law-wording, definitions, sentences, file, host-fs/read-file-sync(file, <utf8>), call-file(role-of, file), call-file(lean-of, file))
+    gather-file(definitions, sentences, file, host-fs/read-file-sync(file, <utf8>), call-file(role-of, file), call-file(lean-of, file))
 
   save refusals, refusals-of(input/found, definitions, host-path, root)
   save ledger, summary/ledger
@@ -604,7 +740,7 @@ task hold-report
   save contracts, 0
   walk input/files
     take file
-    save contracts, add(contracts, contracts-of(tree-parsing, narrowing, mill-running, file, host-fs/read-file-sync(file, <utf8>)))
+    save contracts, add(contracts, contracts-of(file,host-fs/read-file-sync(file, <utf8>)))
   save not-proven, not-proven-count(summary/fresh)
   save lean, make none
   sift input/lean

@@ -204,6 +204,19 @@ task env-chain
     push(out, one)
   back out
 
+# THE ONE PLACE A TEXT BECOMES A `native-env` (decision 122 of term/self-host/change/001-finish-self-host): the env
+# whose text is `name`, or none when no env is called that
+task native-env-of
+  take name, like text
+  like maybe, like native-env
+
+  walk native-envs()
+    take env
+    fork test, is-equal(to-text(env), name)
+      hold
+        back make(some, env)
+  back make none
+
 # ---- native runtime preludes ----
 # Some compiled targets reach a capability through a small `<global:X>` runtime shim (a namespace of total functions
 # wrapping the platform library: `io`, `math`, `crypto`, `text`). That shim source is NOT in the compiler. It lives in

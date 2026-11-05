@@ -1,1 +1,96 @@
-mark draft
+note <A call no import names, of a name two files define and a method takes, means the method>
+
+# Item term-self-host-001-0945. `contains(xs, 2)` in a file that imports no `contains` means list's own method, as it
+# does where no file defines the name. Once the merged program held two top-level `contains` the file did not import
+# (base/code/text.tree and text/string.tree), the binding by import refused the call as duplicate-definition, so
+# compile/affected.tree built alone and was refused inside build/separate-build.tree. A name no method has is still
+# refused, and a file that imports one of the tasks still reaches it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find refused-as
+
+load @term/base/text
+  find starts-with
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/walking
+  find kind-of
+  find nodes-of
+
+# every call a task makes, by name, read off the checked program
+task callees-in
+  take program, like dynamic
+  take name, like text
+  like list, like text
+
+  host out, make list
+  fork test, is-unequal(kind-of(program), <list>)
+    hold
+      back out
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        walk nodes-of(statement, <call>)
+          take call, like dynamic
+          host callee, read-field(call, <callee>)
+          fork test, and(is-equal(read-field(callee, <form>), <variable>), truth(read-field(callee, <name>)))
+            hold
+              out/push(read-field(callee, <name>))
+        back out
+  back out
+
+# whether a call names a `contains` renamed apart by file
+task some-apart
+  take names, like list, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, starts-with(one, <contains__in>)
+      hold
+        back true
+  back false
+
+# two modules, each with its own top-level `contains` and `alike` of two texts, and one task the entry imports
+host one, make(compiling-source, bind(file, <@app/one>), bind(text, <task contains\n  take a, like text\n  take b, like text\n  like boolean\n  send back, true\n\ntask alike\n  take a, like text\n  take b, like text\n  like boolean\n  send back, true\n\ntask one\n  like number\n  send back, code 1\n>), bind(answer, <one.tree>))
+host two, make(compiling-source, bind(file, <@app/two>), bind(text, <task contains\n  take a, like text\n  take b, like text\n  like boolean\n  send back, false\n\ntask alike\n  take a, like text\n  take b, like text\n  like boolean\n  send back, false\n\ntask two\n  like number\n  send back, code 2\n>), bind(answer, <two.tree>))
+
+host loads, <load @app/one\n  find one\n\nload @app/two\n  find two\n\n>
+
+task build
+  take main, like text
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(project, <.>), bind(project-env, <node>), bind(optimize, false), bind(files, make list(one, two))))
+
+# the method is list.tree's, so the file loads it, as compile/affected.tree does: with no list.tree in the program there
+# is no method `contains`, and the name is unknown with or without the two tasks
+host method-call, <load @term/base/list\n  find list\n\n{loads}task run\n  like boolean\n  save xs\n    make list\n      code 1\n      code 2\n  send back\n    call contains\n      read xs\n      code 2\n>
+
+test <a call of list's method beside two unimported tasks of its name builds>
+  host result, build(method-call)
+  want hold, result/ok
+  want hold, not(refused-as(result, <duplicate-definition>))
+
+test <the call stays list's method, never a task renamed apart>
+  want hold, not(some-apart(callees-in(build(method-call)/program, <run>)))
+
+# no form has a method `alike`: the two tasks are the only readings, and a file that imports neither is refused
+test <a name no method has is still refused as a duplicate>
+  host result, build(<{loads}task run\n  like boolean\n  send back, call alike(<a>, <b>)\n>)
+  want hold, not(result/ok)
+  want hold, refused-as(result, <duplicate-definition>)
+
+# a file that imports one of them reaches that one by its name apart
+test <a file that imports one of them still reaches it>
+  host result, build(<load @app/one\n  find one\n  find contains\n\nload @app/two\n  find two\n\ntask run\n  like boolean\n  send back, call contains(<a>, <b>)\n>)
+  want hold, result/ok
+  want hold, some-apart(callees-in(result/program, <run>))

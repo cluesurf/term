@@ -66,6 +66,12 @@ load @term/make/compile/schedule
 load @term/call/work/workers/heap-limit
   find heap-diagnostic
 
+# the cut into units, where compile/separate.ts `units` was docked until term-self-host-001-0956. Its `provedHeads` and
+# `compileSeparate` stay docked: the one asks separate-units.tree's states-rule, the separate driver itself, and the
+# other is that driver with the held entries the face keeps for the process
+load @term/make/compile/unit-graph
+  find units
+
 dock load
   load <node:fs>, name node-file
   load <node:worker_threads>, name worker-threads
@@ -478,7 +484,7 @@ task compile-units-parallel
         hold
           kept/push(edge)
     save edges/{module}, kept
-  save cut, separate-module/units(modules, edges)
+  save cut, units(modules, edges)
   save spent, make(units-spent, bind(walking, subtract(host-date/now(), walked-at)), bind(building, 0), bind(rolling, 0))
   save unit-of, make hash
   walk cut

@@ -10,8 +10,9 @@
 #                       project's fill: both are milled the way the build mills them and compared node for node
 #                       (positions set aside)
 #
-# The parser, the mill, the templates and the law sentences are the compiler's own, docked; their parse trees and
-# milled statements are host values, read as the original read them.
+# The parser, the templates, the head reader and the law sentences are the compiler's ports, loaded
+# (term-self-host-001-0959, where parser/narrow, compile/mill-run, compile/template and check/law-english were docked).
+# The mill is docked. Parse trees and milled statements are held as host values, read as the original read them.
 
 load @term/base/maybe
   find maybe
@@ -34,12 +35,22 @@ load @term/make/parser/tree
 load @term/make/parser/token
   find token-source
 
+load @term/make/compile/templates
+  find collect-templates
+  find expand-templates
+  find tree-template
+  find template-problem
+
+load @term/make/compile/mill-running
+  find head-word
+
+load @term/make/check/law-english-reading
+  find law-sentences
+
+# the mill stays docked until Diagnose 0981: compile/minting.tree in knit/prove-loop's closure fails its build with
+# `span__form needs start, end`
 dock load
-  load <@term/make/code/parser/narrow>, name narrowing
-  load <@term/make/code/compile/mill-run>, name mill-running
-  load <@term/make/code/compile/template>, name templating
   load <@term/make/code/compile/mill>, name milling
-  load <@term/make/code/check/law-english>, name law-wording
   load <node:fs>, name host-fs
   load <node:path>, name host-path
 
@@ -250,11 +261,13 @@ bind sentence-text
   case node
     text <$sentences[0]?.text>
 
+# the statement alone, as the reading takes it: a function only, and a copy, since the reading fills a need-false list
+# it reads with its empty value and a statement's shape is compared after (as check/law-english.ts's `lawSentences`)
 bind one-statement
   take statement, like dynamic
-  like list, like dynamic
+  like dynamic
   case node
-    text <[$statement]>
+    text <<[$statement].filter(statement_ => statement_?.form === "function").map(statement_ => structuredClone(statement_))>>
 
 # a role the caller answered, `undefined` for null as well
 bind role-or-nothing
@@ -400,7 +413,7 @@ task library-law
     hold
       back make none
   save template, <{name}-law>
-  save found, template-named(templating/collect-templates(tree), template)
+  save found, template-named(collect-templates(tree), template)
   fork test, not(law-truth(found))
     hold
       back make none
@@ -444,15 +457,34 @@ task word-of
   fork test, not(is-word-group(node))
     hold
       back <>
-  back law-text-or-empty(mill-running/head-word(node))
+  back head-of(node)
 
-# the head word of a group, the empty text when it has none
+# the head word of a group, the empty text when it has none, as compile/mill-run.ts's `headWord` answered it
 task head-of
   take group, like dynamic
   like text
   mark private
 
-  back law-text-or-empty(mill-running/head-word(group))
+  sift head-word(group)
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+# the groups among a parse tree's nodes, as parser/narrow.ts's `groupsOf` kept them: every node whose kind is a group
+task groups-in
+  take nodes, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  save groups, make list
+  walk nodes
+    take one
+    fork test, is-group(one)
+      hold
+        groups/push one
+  back groups
 
 # every top-level `fuse` of a parse tree, and its fill as `bind <hole>, <name>` lines
 task fuses-of
@@ -460,7 +492,7 @@ task fuses-of
   like list, like fused-law
 
   save out, make list
-  walk narrowing/groups-of(tree-nodes(tree))
+  walk groups-in(tree-nodes(tree))
     take group
     fork test, is-unequal(head-of(group), <fuse>)
       hold
@@ -493,7 +525,7 @@ task rules-of
   like list, like text
 
   save names, make list
-  walk narrowing/groups-of(tree-nodes(tree))
+  walk groups-in(tree-nodes(tree))
     take group
     fork test, is-equal(head-of(group), <rule>)
       hold
@@ -587,6 +619,34 @@ task seal
 
 # ---- the instance check ----
 
+# the expansion's tables as compile/template.ts's `expandTemplates(tree)` left them: no template or enumeration from
+# another module, and the problems it meets kept by nobody
+task no-templates
+  like hash, like text, like tree-template
+  mark private
+
+  back make hash
+
+task no-enumerations
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task no-problems
+  like list, like template-problem
+  mark private
+
+  back make list
+
+# the mill's answer, held as host values, as compile/mill.ts's answer was read
+task held-value
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  back value
+
 task milled
   take file, like text
   take text, like text
@@ -598,7 +658,7 @@ task milled
   fork test, not(is-ok(parsed))
     hold
       back make(milled-answer, bind(ok, false), bind(program, make list), bind(error, <it does not parse: {law-first-message(parsed)}>))
-  save built, milling/mill(templating/expand-templates(parsed-tree(parsed)), file, role-or-nothing(role), lean)
+  save built, held-value(milling/mill(expand-templates(parsed/tree, no-templates(), no-enumerations(), no-problems()), file, role-or-nothing(role), lean))
   fork test, not(is-ok(built))
     hold
       back make(milled-answer, bind(ok, false), bind(program, make list), bind(error, <it does not mill: {law-first-message(built)}>))
@@ -611,7 +671,7 @@ task sentence-of
 
   sift statement
     case some
-      save said, sentence-text(law-wording/law-sentences(one-statement(value)))
+      save said, sentence-text(law-sentences(one-statement(value)))
       fork test, law-truth(said)
         hold
           save sentence, law-text-or-empty(said)
@@ -779,7 +839,7 @@ task check-law
     take one
     fork test, law-truth(one/tree)
       hold
-        fork test, has-template(templating/collect-templates(one/tree), law/template)
+        fork test, has-template(collect-templates(one/tree),law/template)
           hold
             own-template/push one
   fork test, is-above(own-template/length, 0)

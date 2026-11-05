@@ -3153,7 +3153,10 @@ task renamed-in
 # the name a reference to `group` in the rewritten statement's file binds to. A reference written through an alias
 # reaches the files ITS find named, and a bare one the plain finds only, each falling back to every find of the name.
 # Exactly one reached is that one; none is the last definer by file name; several the last of them by file name, never
-# the order the walk merged them in, which a unit's key cannot see (decision 091)
+# the order the walk merged them in, which a unit's key cannot see (decision 091). A find names the form as WRITTEN, and
+# the group's name may be `<name>__form` by now (a case of its name in the closure): looked up by that, item/event.tree's
+# find of item/layout.tree's `span` matched nothing once compile/feed-compile.tree was loaded, and its `make span` took
+# the last definer, parser/diagnostic.tree's (term-self-host-001-0975, as T-0079 for shared cases)
 task bind-group
   take binding, like form-binding
   take group, like form-group
@@ -3161,6 +3164,7 @@ task bind-group
   like text
   mark private
 
+  save found-as, written-form(group/name)
   save file, binding/file
   save aliased, false
   save alias-text, <>
@@ -3194,13 +3198,13 @@ task bind-group
               walk read(own/plain)
                 take one-find
                 push(finds-read, one-find)
-              save chosen, targets-of(finds-read, group/name)
+              save chosen, targets-of(finds-read, found-as)
           sift chosen
             case some
               link these
               save targets, these
             case none
-              sift targets-of(own/finds, group/name)
+              sift targets-of(own/finds, found-as)
                 case some
                   link these
                   save targets, these

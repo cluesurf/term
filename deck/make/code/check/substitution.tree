@@ -30,27 +30,14 @@ form substitution
   link next, like number
   # where a variable was solved, for hover and "expected/found" diagnostics
   link origin, like hash, like number, like solved
-  # whether a list's element width is invariant (TERM_WIDTH_RANGES, check/width-range.ts), read once when the checker
-  # makes its substitution
+  # whether a list's element width is invariant: the `widths` field of the checker's switches (check/checker-switches.tree,
+  # TERM_WIDTH_RANGES), written once by check/inferring-state.tree when it makes its substitution, and off until then
   link widths, like boolean
   # the variables that stand for a signature's own `head` generics, which are settled types inside its body: a list of t
   # is not a list of unknown (decision 011 of term/compiler)
   link rigid, like hash, like number, like boolean
 
-# the width switch (check/width-range.ts publishes it as `globalThis.termWidthRanges`, which a Term module cannot import)
-bind width-switch
-  like boolean
-  case node
-    text <((globalThis as any).termWidthRanges === true)>
-  case browser
-    text <((globalThis as any).termWidthRanges === true)>
-  case rust
-    text <false>
-  case swift
-    text <false>
-  case kotlin
-    text <false>
-
+# a fresh substitution, its width switch off. The checker sets it from the switch record it is handed
 task new-substitution
   like substitution
 
@@ -59,7 +46,7 @@ task new-substitution
       bind bindings, make hash
       bind next, 0
       bind origin, make hash
-      bind widths, width-switch()
+      bind widths, false
       bind rigid, make hash
 
 # a brand-new, unbound type variable

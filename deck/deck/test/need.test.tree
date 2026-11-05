@@ -1,0 +1,331 @@
+note <A project's toolchain request: need in deck.tree, its pin in lock.tree, read alike by the mill and the hand reader, written back unchanged, and resolved against a registry the way term load resolves it>
+
+# Ported from need.test.ts by statement (item 0581). code/code.ts, code/package/manifest.ts, code/package/lock.ts,
+# code/oci/need.ts, code/oci/release.ts, code/oci/transport.ts and code/object/sign.ts are the subjects, docked. The
+# original's `pinning a need` published three releases in a beforeAll and pointed TERM_RELEASE_REGISTRY and the
+# TERM_OCI_* variables at the registry: here each of those tests starts its own registry (oci-server.tree), publishes
+# the three, sets the variables, gathers what it asserts, then restores the variables and closes the registry before
+# its first want. A toEqual over records is a compare of their JSON, as toEqual leaves undefined fields out too.
+
+load ./oci-server
+  find start-oci-server
+  find close-oci-server
+  find oci-server
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+dock load
+  load <@term/deck/code/code>, name code-face
+  load <@term/deck/code/package/manifest>, name manifest-face
+  load <@term/deck/code/package/lock>, name lock-face
+  load <@term/deck/code/oci/need>, name need-face
+  load <@term/deck/code/oci/release>, name release-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <@term/deck/code/object/sign>, name sign-face
+
+# host value: a text of `count` copies of `letter`
+bind repeated
+  take letter, like text
+  take count, like number
+  like text
+  case node
+    text <$letter.repeat($count)>
+
+# host value: a Buffer of a text's UTF-8 bytes
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# host reflect: a code hold whose `form` field is a word Term reserves
+bind wild-mark
+  take major, like number
+  like dynamic
+  case node
+    text <<({ form: "wild", major: $major })>>
+
+host manifest-text, <deck @alice/app\n  mark \<1.0.0\>\n  need @term/code, mark \<2.6.x\>\n>
+host later-text, <deck @alice/app\n  mark \<1.0.0\>\n  need @term/code, mark \<3.x.x\>\n>
+host a-hash, <sha256:{repeated(<a>, 64)}>
+host lock-text, <lock \<1\>\n\nneed @term/code\n  code \<2.6.4\>\n  hash \<{a-hash}\>\n>
+host repository-name, <cluesurf/term/code>
+host variable-names, make list(<TERM_RELEASE_REGISTRY>, <TERM_OCI_HOST>, <TERM_OCI_USERNAME>, <TERM_OCI_TOKEN>)
+
+form text-input
+  link text, like text
+
+form manifest-write
+  link manifest, like dynamic
+
+form lock-write
+  link lockfile, like dynamic
+
+form basic-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form release-payload
+  link platform, like text
+  link bytes, like dynamic
+
+form release-publish
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link version, like text
+  link payloads, like list, like release-payload
+  link keypair, like dynamic
+
+form versions-ask
+  link transport, like dynamic
+  link repository, like text
+
+form newest-ask
+  link versions, like dynamic
+  link hold, like dynamic
+
+form manifest-ask
+  link repository, like text
+  link reference, like text
+
+form need-pin
+  link name, like text
+  link code, like dynamic
+  link hash, like text
+
+form need-ask
+  link name, like text
+  link mark, like dynamic
+
+form satisfies-ask
+  link need, like dynamic
+  link pin, like need-pin
+
+form pin-ask
+  link need, like dynamic
+
+form pin-again
+  link need, like dynamic
+  link previous, like need-pin
+
+form pin-offline
+  link need, like dynamic
+  link offline, like boolean
+
+form kept-variable
+  link name, like text
+  link held, like boolean
+  link value, like text
+
+form pinning
+  link server, like oci-server
+  link transport, like dynamic
+  link kept, like list, like kept-variable
+
+task read-manifest
+  take text, like text
+  like dynamic
+
+  back manifest-face/parse-manifest(make(text-input, bind(text, text)))
+
+task read-lock
+  take text, like text
+  like dynamic
+
+  back lock-face/parse-lockfile(make(text-input, bind(text, text)))
+
+task the-need
+  like dynamic
+
+  host manifest, read-manifest(manifest-text)
+  back manifest/need
+
+task tester-credentials
+  like basic-credential
+  mark async
+
+  back make(basic-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+task publish-version
+  take transport, like dynamic
+  take version, like text
+  like void
+  mark async
+
+  host payloads, make list(make(release-payload, bind(platform, <linux-x64>), bind(bytes, bytes-of(<payload {version}>))))
+  host keypair, sign-face/generate-keypair()
+  host published, wait release-face/publish-release(make(release-publish, bind(transport, transport), bind(repository, repository-name), bind(package, <@term/code>), bind(version, version), bind(payloads, payloads), bind(keypair, keypair)))
+
+# a registry holding 2.6.2, 2.6.4 and 2.7.0 of @term/code, and the variables term load reads pointed at it, as the
+# original's beforeAll left them
+task open-pinning
+  like pinning
+  mark async
+
+  host server, start-oci-server()
+  host transport, transport-face/http-transport(make(transport-ask, bind(host, server/host), bind(credentials, tester-credentials), bind(retries, 0)))
+  publish-version(transport, <2.6.2>)
+  publish-version(transport, <2.6.4>)
+  publish-version(transport, <2.7.0>)
+  host kept, make list
+  walk variable-names
+    take name, like text
+    kept/push(make(kept-variable, bind(name, name), bind(held, has-variable(name)), bind(value, variable-of(name))))
+  set-variable(<TERM_RELEASE_REGISTRY>, <oci://{server/host}/cluesurf/term>)
+  set-variable(<TERM_OCI_HOST>, server/host)
+  set-variable(<TERM_OCI_USERNAME>, <tester>)
+  set-variable(<TERM_OCI_TOKEN>, <secret>)
+  back make(pinning, bind(server, server), bind(transport, transport), bind(kept, kept))
+
+# the variables as they were, and the registry closed, as the original's afterAll
+task close-pinning
+  take open, like pinning
+  like void
+  mark async
+
+  walk open/kept
+    take one, like kept-variable
+    fork test, one/held
+      hold
+        set-variable(one/name, one/value)
+      miss
+        remove-variable(one/name)
+  close-oci-server(open/server)
+
+task pin-of
+  take need, like dynamic
+  like dynamic
+  mark async
+
+  back wait need-face/pin-need(make(pin-ask, bind(need, need)))
+
+task pin-after
+  take need, like dynamic
+  take previous, like need-pin
+  like dynamic
+  mark async
+
+  back wait need-face/pin-need(make(pin-again, bind(need, need), bind(previous, previous)))
+
+task code-text
+  take code, like dynamic
+  like text
+
+  back code-face/show-code(code)
+
+test <need in deck.tree: reads through the mill and the hand reader alike>
+  host input, make(text-input, bind(text, manifest-text))
+  host mill, manifest-face/parse-manifest(input)
+  host hand, manifest-face/parse-manifest-by-hand(input)
+  want hold, is-equal(mill/need/name, <@term/code>)
+  want hold, code-face/code-match(code-face/parse-code(<2.6.4>), mill/need/mark)
+  want hold, not(code-face/code-match(code-face/parse-code(<2.7.0>), mill/need/mark))
+  want hold, is-equal(hand/need/name, <@term/code>)
+  want hold, code-face/code-match(code-face/parse-code(<2.6.4>), hand/need/mark)
+  want hold, not(code-face/code-match(code-face/parse-code(<2.7.0>), hand/need/mark))
+
+test <need in deck.tree: is absent when the manifest names none>
+  host manifest, read-manifest(<deck @alice/app\n  mark \<1.0.0\>\n>)
+  want hold, is-absent(manifest/need)
+
+test <need in deck.tree: survives a write and a read, so no dependency verb deletes it>
+  host written, manifest-face/write-manifest(make(manifest-write, bind(manifest, read-manifest(manifest-text))))
+  want hold, written/includes(<need @term/code, mark \<2.6.x\>>)
+  host again, read-manifest(written)
+  host first, read-manifest(manifest-text)
+  want hold, is-equal(json-text(again/need), json-text(first/need))
+
+test <need in lock.tree: reads through the mill and the hand reader alike>
+  host input, make(text-input, bind(text, lock-text))
+  host mill, lock-face/parse-lockfile(input)
+  host hand, lock-face/parse-lockfile-by-hand(input)
+  want hold, is-equal(mill/need/name, <@term/code>)
+  want hold, is-equal(code-text(mill/need/code), <2.6.4>)
+  want hold, is-equal(mill/need/hash, a-hash)
+  want hold, is-equal(hand/need/name, <@term/code>)
+  want hold, is-equal(code-text(hand/need/code), <2.6.4>)
+  want hold, is-equal(hand/need/hash, a-hash)
+
+test <need in lock.tree: survives a write and a read>
+  host lock, read-lock(lock-text)
+  host again, read-lock(lock-face/write-lockfile(make(lock-write, bind(lockfile, lock))))
+  want hold, is-equal(json-text(again), json-text(lock))
+
+test <need in lock.tree: is absent from a lockfile that pins no toolchain>
+  host lock, read-lock(<lock \<1\>\n>)
+  want hold, is-absent(lock/need)
+
+test <pinning a need: lists the released versions newest first, and picks the newest in a range>
+  host open, open-pinning()
+  host versions, wait need-face/released-versions(make(versions-ask, bind(transport, open/transport), bind(repository, repository-name)))
+  close-pinning(open)
+  host need, the-need()
+  host newest, need-face/newest-matching(make(newest-ask, bind(versions, versions), bind(hold, need/mark)))
+  want hold, is-equal(json-text(versions), <["2.7.0","2.6.4","2.6.2"]>)
+  want hold, is-equal(newest, <2.6.4>)
+
+test <pinning a need: pins the newest release in range, with its index digest>
+  host open, open-pinning()
+  host need, the-need()
+  host pinned, pin-of(need)
+  host index, wait open/transport/get-manifest(make(manifest-ask, bind(repository, repository-name), bind(reference, <2.6.4>)))
+  close-pinning(open)
+  want hold, is-equal(pinned/kept, false)
+  want hold, is-equal(code-text(pinned/pin/code), <2.6.4>)
+  want hold, is-equal(pinned/pin/hash, index/digest)
+
+test <pinning a need: keeps a pin that still satisfies the request, and replaces one that does not>
+  host open, open-pinning()
+  host need, the-need()
+  host older, make(need-pin, bind(name, <@term/code>), bind(code, code-face/parse-code(<2.6.2>)), bind(hash, <sha256:{repeated(<b>, 64)}>))
+  host outside, make(need-pin, bind(name, <@term/code>), bind(code, code-face/parse-code(<2.7.0>)), bind(hash, <sha256:{repeated(<c>, 64)}>))
+  host satisfies, need-face/pin-satisfies(make(satisfies-ask, bind(need, need), bind(pin, older)))
+  host kept, pin-after(need, older)
+  host replaced, pin-after(need, outside)
+  close-pinning(open)
+  want hold, satisfies
+  # toEqual({ pin: older, kept: true })
+  want hold, is-equal(json-text(kept/pin), json-text(older))
+  want hold, is-equal(kept/kept, true)
+  want hold, is-absent(kept/reason)
+  want hold, is-equal(code-text(replaced/pin/code), <2.6.4>)
+
+test <pinning a need: says why when nothing is released in the range, or the need names another package>
+  host open, open-pinning()
+  host later, read-manifest(later-text)
+  host none, pin-of(make(need-ask, bind(name, <@term/code>), bind(mark, later/need/mark)))
+  host other, pin-of(make(need-ask, bind(name, <@alice/tool>), bind(mark, wild-mark(1))))
+  close-pinning(open)
+  want hold, is-absent(none/pin)
+  want hold, none/reason/includes(<no release in the requested range. The newest is 2.7.0>)
+  want hold, other/reason/includes(<only @term/code can be needed>)
+
+test <pinning a need: offline, keeps a satisfying pin and pins nothing new>
+  host open, open-pinning()
+  host need, the-need()
+  host pinned, wait need-face/pin-need(make(pin-offline, bind(need, need), bind(offline, true)))
+  close-pinning(open)
+  want hold, is-absent(pinned/pin)

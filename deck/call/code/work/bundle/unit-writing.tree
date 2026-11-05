@@ -6,7 +6,8 @@
 # the native prelude as a module of its own. THE PRELUDE IS A MODULE, AND EACH MODULE IMPORTS THE SHIMS IT DOCKS: the
 # reading of the emitted modules is call/code/unit-shim.tree, this writes the files.
 #
-# Docked: compile/typescript.ts (`toCamel`). The entry shim is the build lane's port (work/build/unit-naming.tree
+# The TypeScript name of a task is compile/ts-names.tree's `to-camel`, where compile/typescript.ts was docked until
+# term-self-host-001-0956. The entry shim is the build lane's port (work/build/unit-naming.tree
 # `entry-shim`, term-cli-in-term-0214).
 
 load @term/call/unit-shim
@@ -21,10 +22,12 @@ load ../build/unit-naming
   find entry-shim
   find shim-export
 
+load @term/make/compile/ts-names
+  find to-camel
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <@term/make/code/compile/typescript>, name typescript-module
 
 # `writeUnitBundle`'s one input record: the folder, the module the program starts from, every module of its closure as
 # [file, emit] with the name its siblings import it by (`slug`), the closure's exports, the shims the program docks
@@ -128,7 +131,7 @@ task runtime-exports
     task
       take name, like text
       like text
-      back typescript-module/toCamel(name)
+      back to-camel(name)
   save flags, kept-by-place(entry, entry-code, names, keep, camel)
   save out, make list
   save at, 0

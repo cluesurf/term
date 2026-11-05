@@ -7,8 +7,8 @@
 # writes stay on the main thread (workers only compile and post the emitted text back).
 #
 # The worker entry is the Term port work/workers/file-worker.tree, which make:line bundles as host/build-worker.mjs
-# (decision 003, term-cli-in-term-0066). Docked: compile/resolve.ts (stdlibBase), check/holds.ts (addOwed) and node's
-# worker_threads. The file walk and the compiler versions are the build and cache lanes' ports (term-cli-in-term-0214).
+# (decision 003, term-cli-in-term-0066). Docked: compile/resolve.ts (stdlibBase) and node's worker_threads. The tier-0
+# tally is check/holding.tree's (term-self-host-001-0956). The file walk and the compiler versions are the build and cache lanes' ports (term-cli-in-term-0214).
 
 load ./heap-limit
   find worker-heap-mb
@@ -27,12 +27,16 @@ load ../cache/compile-store
 load @term/call/work/workers/heap-limit
   find heap-diagnostic
 
+# the tier-0 tally, where check/holds.ts (`addOwed`) was docked until term-self-host-001-0956
+load @term/make/check/holding
+  find owed
+  find add-owed
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:worker_threads>, name worker-threads
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/make/code/check/holds>, name holds-module
 
 # ---- the worker bundle ----
 
@@ -231,6 +235,13 @@ bind pool-reply-member
   case node
     text <$reply[$key]>
 
+# whether a reply carried a tier-0 tally
+bind pool-has-owed
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
 # a Set's members, sorted as `[...set].sort()` sorts
 bind pool-sorted
   take set, like dynamic
@@ -274,10 +285,6 @@ bind pool-error-text
   case node
     text <String($error)>
 
-form owed-count
-  link total, like number
-  link proven, like number
-
 form build-problem
   link diagnostic, like dynamic
   link text, like dynamic
@@ -311,7 +318,7 @@ form pool-answer
   link problems, like list, like build-problem
   link faults, like list, like text
   link open, like list, like text
-  link obligations, like owed-count
+  link obligations, like owed
 
 # one pool run: the files, the workers and what each holds, and what the replies added up to
 form file-run
@@ -330,7 +337,7 @@ form file-run
   link problems, like list, like build-problem
   link faults, like list, like text
   link open, like dynamic
-  link obligations, like owed-count
+  link obligations, like owed
   link next, like number
   link done, like number
   link finish, like dynamic
@@ -363,7 +370,11 @@ task write-reply
   fork test, and(not(ok), pool-has-no-problems(reply))
     hold
       run/faults/push(pool-reply-error(reply))
-  holds-module/addOwed(run/obligations, pool-reply-member(reply, <obligations>))
+  # a reply with no tally adds nothing (the face asked the host whether it was there)
+  save owed-reply, pool-reply-member(reply, <obligations>)
+  fork test, pool-has-owed(owed-reply)
+    hold
+      add-owed(run/obligations, owed-reply)
   fork test, ok
     hold
       save out-path, pool-out-path(run/root, reply)
@@ -470,7 +481,7 @@ task compile-project-parallel
   # compiler the parent runs. Each worker's heap is limited, so one that runs out of memory
   # ends alone: its file is reported as `out-of-memory` and a new worker takes its place (heap-limit.tree)
   save heap, worker-heap-mb(size)
-  save run, make(file-run, bind(root, root), bind(env, pool-env-of(options)), bind(files, files), bind(bundle, bundle), bind(heap, heap), bind(workers, make list), bind(holding, pool-new-map()), bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, pool-new-set()), bind(obligations, make(owed-count, bind(total, 0), bind(proven, 0))), bind(next, 0), bind(done, 0), bind(finish, pool-nothing()))
+  save run, make(file-run, bind(root, root), bind(env, pool-env-of(options)), bind(files, files), bind(bundle, bundle), bind(heap, heap), bind(workers, make list), bind(holding, pool-new-map()), bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, pool-new-set()), bind(obligations, make(owed, bind(total, 0), bind(proven, 0))), bind(next, 0), bind(done, 0), bind(finish, pool-nothing()))
   save count, 0
   walk test
     hook test, is-below(count, size)
@@ -503,7 +514,7 @@ task pool-zero-answer
   like void
   mark private
 
-  save none, make(pool-answer, bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, make list), bind(obligations, make(owed-count, bind(total, 0), bind(proven, 0))))
+  save none, make(pool-answer, bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, make list), bind(obligations, make(owed, bind(total, 0), bind(proven, 0))))
   pool-hand(finish, none)
 
 bind pool-hand

@@ -348,6 +348,8 @@ task make-infer-state
   like infer-state
 
   save sub, new-substitution()
+  # the width switch is the record's, read once here (spec.md 4.8)
+  save sub/widths, switches/widths
   save aliases, transparent-aliases(program)
   save seeding
     make seeder

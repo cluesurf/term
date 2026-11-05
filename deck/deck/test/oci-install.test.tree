@@ -1,0 +1,317 @@
+note <term load end to end over OCI: a project whose deck.tree routes a third-party scope to its own registry, installed as the CLI runs it, then again offline from the store alone>
+
+# Ported from oci-install.test.ts by statement (item 0581). code/package/install.ts, code/package/lock.ts,
+# code/package/manifest.ts, code/oci/client.ts, code/oci/publish.ts, code/oci/layout.ts, code/oci/transport.ts and
+# code/object/sign.ts are the subjects, docked. The original published @alice/demo once in a beforeAll and its second
+# test installed offline from the store the first test filled: here each test that reaches the registry starts its own
+# (oci-server.tree), in a temporary folder of its own with TERM_STORE and TERM_TRUST_DIR pointed into it, and the
+# offline test installs online first, as the first test did, before it installs offline. Each gathers what it asserts,
+# then restores the variables, closes the registry and removes the folder before its first want.
+
+load ./oci-server
+  find start-oci-server
+  find close-oci-server
+  find oci-server
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+dock load
+  load <node:fs>, name install-file
+  load <node:os>, name install-os
+  load <node:path>, name install-path
+  load <@term/deck/code/package/install>, name install-face
+  load <@term/deck/code/package/lock>, name lock-face
+  load <@term/deck/code/package/manifest>, name manifest-face
+  load <@term/deck/code/oci/client>, name client-face
+  load <@term/deck/code/oci/layout>, name layout-face
+  load <@term/deck/code/oci/publish>, name publish-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <@term/deck/code/object/sign>, name sign-face
+
+bind folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind is-base64
+  take value, like text
+  like boolean
+  case node
+    text <</^[A-Za-z0-9+/]+=*$/.test($value)>>
+
+# the message of what a call raised
+bind cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+host demo-text, <export const demo = 1\n>
+host variable-names, make list(<TERM_STORE>, <TERM_TRUST_DIR>)
+
+form basic-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form version-target
+  link kind, like text
+  link version, like text
+
+form oci-repository
+  link host, like text
+  link namespace, like text
+  link name, like text
+
+form layout-ask
+  link dir, like text
+
+form publish-ask
+  link dir, like text
+  link package, like text
+  link version, like text
+  link target, like version-target
+  link link, like list, like text
+  link transport, like dynamic
+  link repository, like oci-repository
+  link scope, like text
+  link keys-repository, like text
+  link local, like dynamic
+  link keypair, like dynamic
+  link author, like text
+  link time, like text
+
+form install-ask
+  link root, like text
+
+form offline-ask
+  link root, like text
+  link offline, like boolean
+
+form lock-ask
+  link dir, like text
+
+form text-input
+  link text, like text
+
+form manifest-write
+  link manifest, like dynamic
+
+form manifest-input
+  link manifest, like dynamic
+
+form route-config
+  link registry, like text
+  link scope-registries, like dynamic
+
+form route-ask
+  link name, like text
+  link config, like route-config
+
+form kept-variable
+  link name, like text
+  link held, like boolean
+  link value, like text
+
+form install-fixture
+  link server, like oci-server
+  link work, like text
+  link kept, like list, like kept-variable
+
+task tester-credentials
+  like basic-credential
+  mark async
+
+  back make(basic-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+# a registry holding @alice/demo 1.0.2, published from a folder of one file, the store and trust folders in a
+# temporary folder of the test's own, as the original's beforeAll left them
+task open-install
+  like install-fixture
+  mark async
+
+  host server, start-oci-server()
+  host work, install-file/mkdtemp-sync(install-path/join(install-os/tmpdir(), <term-oci-load->))
+  host kept, make list
+  walk variable-names
+    take name, like text
+    kept/push(make(kept-variable, bind(name, name), bind(held, has-variable(name)), bind(value, variable-of(name))))
+  set-variable(<TERM_STORE>, install-path/join(work, <store>))
+  set-variable(<TERM_TRUST_DIR>, install-path/join(work, <trust>))
+  host source, install-path/join(work, <demo>)
+  install-file/mkdir-sync(install-path/join(source, <code>), folder-options(0))
+  install-file/write-file-sync(install-path/join(source, <code>, <demo.ts>), demo-text)
+  host transport, transport-face/http-transport(make(transport-ask, bind(host, server/host), bind(credentials, tester-credentials), bind(retries, 0)))
+  host local, layout-face/layout-object-store(make(layout-ask, bind(dir, install-path/join(work, <publisher>))))
+  host target, make(version-target, bind(kind, <version>), bind(version, <1.0.2>))
+  host repository, make(oci-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
+  host links, make list
+  host asked, make(publish-ask, bind(dir, source), bind(package, <@alice/demo>), bind(version, <1.0.2>), bind(target, target), bind(link, links), bind(transport, transport), bind(repository, repository), bind(scope, <@alice>), bind(keys-repository, <alice/name>), bind(local, local), bind(keypair, sign-face/generate-keypair()), bind(author, <alice>), bind(time, <2026-01-01T00:00:00.000Z>))
+  host published, wait publish-face/publish-to-oci(asked)
+  back make(install-fixture, bind(server, server), bind(work, work), bind(kept, kept))
+
+# the variables as they were, the registry closed and the folder removed
+task close-install
+  take open, like install-fixture
+  like void
+  mark async
+
+  walk open/kept
+    take one, like kept-variable
+    fork test, one/held
+      hold
+        set-variable(one/name, one/value)
+      miss
+        remove-variable(one/name)
+  close-oci-server(open/server)
+  install-file/rm-sync(open/work, folder-options(0))
+
+# the app project: its deck.tree routes the alice scope to this registry with a base line
+task project
+  take open, like install-fixture
+  like text
+
+  host dir, install-path/join(open/work, <app>)
+  install-file/mkdir-sync(dir, folder-options(0))
+  install-file/write-file-sync(install-path/join(dir, <deck.tree>), <deck @alice/app\n  code \<1.0.0\>\n  base alice, \<{open/server/host}/alice\>\n  link @alice/demo, code \<1.0.x\>\n>)
+  back dir
+
+task installed-text
+  take dir, like text
+  like text
+
+  back install-file/read-file-sync(install-path/join(dir, <link>, <@alice>, <demo>, <code>, <demo.ts>), <utf8>)
+
+# the lock entry of a deck, else void
+task deck-entry
+  take lock, like dynamic
+  take name, like text
+  like dynamic
+
+  walk lock/decks
+    take one, like dynamic
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  back void
+
+task read-manifest
+  take text, like text
+  like dynamic
+
+  back manifest-face/parse-manifest(make(text-input, bind(text, text)))
+
+task route-of
+  take name, like text
+  take config, like route-config
+  like dynamic
+
+  back client-face/oci-route-of(make(route-ask, bind(name, name), bind(config, config)))
+
+# what routing a name raised, the empty text when it routed
+task route-refusal
+  take name, like text
+  take config, like route-config
+  like text
+
+  save message, <>
+  fork
+    mark unsafe
+    save routed, route-of(name, config)
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+# what reading the scopes' registries raised, the empty text when it read
+task scopes-refusal
+  take manifest, like dynamic
+  like text
+
+  save message, <>
+  fork
+    mark unsafe
+    save read, install-face/host-scope-registries(make(manifest-input, bind(manifest, manifest)))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+test <term load over OCI: routes a base line, installs, and pins the digest and the key in lock.tree>
+  host open, open-install()
+  host dir, project(open)
+  host done, wait install-face/install(make(install-ask, bind(root, dir)))
+  host installed, installed-text(dir)
+  host lock, wait lock-face/load-lockfile(make(lock-ask, bind(dir, dir)))
+  host entry, deck-entry(lock, <@alice/demo>)
+  host host-name, open/server/host
+  close-install(open)
+  want hold, is-equal(installed, demo-text)
+  want hold, is-equal(entry/site, <oci://{host-name}/alice/demo@{entry/hash}>)
+  want hold, is-base64(entry/key)
+
+test <term load over OCI: installs again offline, from the store alone>
+  host open, open-install()
+  host dir, project(open)
+  host first, wait install-face/install(make(install-ask, bind(root, dir)))
+  install-file/rm-sync(install-path/join(dir, <link>), folder-options(0))
+  host before, open/server/requests/length
+  host again, wait install-face/install(make(offline-ask, bind(root, dir), bind(offline, true)))
+  host installed, installed-text(dir)
+  host after, open/server/requests/length
+  close-install(open)
+  want hold, is-equal(installed, demo-text)
+  want hold, is-equal(after, before)
+
+test <term load over OCI: reads, routes and writes back a base line, and defaults a scope without one to ghcr.io>
+  host manifest, read-manifest(<deck @term/foo\n  code \<1.0.0\>\n  base alice, \<ghcr.io/alice-gh/term\>\n  base @bob, \<ghcr.io/bobs-place/something\>\n  link @alice/foo, code \<1.0.x\>\n  link @bob/foo, code \<1.0.x\>\n  link @carol/foo, code \<1.0.x\>\n>)
+  host bases, manifest/base
+  want hold, is-equal(bases/length, 2)
+  want hold, is-equal(bases/0/scope, <@alice>)
+  want hold, is-equal(bases/0/registry, <ghcr.io/alice-gh/term>)
+  want hold, is-equal(bases/1/scope, <@bob>)
+  want hold, is-equal(bases/1/registry, <ghcr.io/bobs-place/something>)
+  host again, read-manifest(manifest-face/write-manifest(make(manifest-write, bind(manifest, manifest))))
+  want hold, is-equal(json-text(again/base), json-text(bases))
+  host config, make(route-config, bind(registry, <https://registry.npmjs.org>), bind(scope-registries, install-face/host-scope-registries(make(manifest-input, bind(manifest, manifest)))))
+  host alice, route-of(<@alice/foo>, config)
+  want hold, is-equal(alice/repository/name, <alice-gh/term/foo>)
+  host bob, route-of(<@bob/foo>, config)
+  want hold, is-equal(bob/repository/name, <bobs-place/something/foo>)
+  host carol, route-of(<@carol/foo>, config)
+  want hold, is-equal(carol/registry/host, <ghcr.io>)
+  want hold, is-equal(carol/registry/namespace, <carol>)
+  want hold, is-equal(carol/repository/name, <carol/foo>)
+  want hold, is-equal(carol/keys-repository, <carol/name>)
+  want hold, is-absent(route-of(<left-pad>, config))
+  want hold, route-refusal(<@carol/name>, config)/includes(<reserved>)
+  # `keys` is an ordinary package name again since the key set moved to `name`
+  host keys, route-of(<@carol/keys>, config)
+  want hold, is-equal(keys/repository/name, <carol/keys>)
+
+test <term load over OCI: refuses one scope routed to two registries>
+  host manifest, read-manifest(<deck @me/app\n  code \<1.0.0\>\n  host \<oci://a.example/x\>\n    link @alice/one, code \<1.0.x\>\n  host \<oci://b.example/y\>\n    link @alice/two, code \<1.0.x\>\n>)
+  host refusal, scopes-refusal(manifest)
+  want hold, refusal/includes(<two registries>)
