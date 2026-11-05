@@ -44,13 +44,15 @@ load ../build/role-reading
   find role-of
   find lean-of
 
+load @term/make/parser/diagnostic
+  find render-kink
+
 dock load
   load <@term/make/code/compile/compile>, name compiling-module
   load <@term/make/code/compile/load>, name loading-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/emit-target>, name target-module
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/make/code/parser/diagnostic>, name diagnostic-module
   load <@term/call/code/work/browser/snapshot-disk>, name snapshot-disk
 
 # ---- the host values Term has no word for ----
@@ -434,8 +436,8 @@ task issue-of
 
   fork test, is-equal(diagnostic/file, entry-file())
     hold
-      back worker-issue-own(diagnostic, diagnostic-module/render-kink(diagnostic, lines, false))
-  back worker-issue-other(diagnostic, diagnostic-module/render-kink(diagnostic, lines-of(diagnostic/file), false))
+      back worker-issue-own(diagnostic, render-kink(diagnostic, lines, false))
+  back worker-issue-other(diagnostic, render-kink(diagnostic, lines-of(diagnostic/file), false))
 
 # exported so a test can drive the worker under Node, with the snapshot mounted by `mount-files` instead of fetched
 # a deck finder as `(file) => { name, root } | undefined`, as build/host-faces.tree faces it

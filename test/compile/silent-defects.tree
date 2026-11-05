@@ -1,0 +1,401 @@
+note <Eight programs that compiled with NO message and emitted WRONG code>
+
+# Ported from silent-defects.ts by statement (item 0575). Found writing the guides lean on 2026-10-02
+# (note/project/term/guides/draft/readme.md, "Code samples are lean"). Each is held here two ways: the output it must emit
+# now, and the wrong output it emitted before, which must be gone. Where the answer is a refusal, the message is held.
+#
+#   1. a bare call over `bind` lines dropped the names and passed the values in written order
+#   2. a bare `term` / `text` / `code` was the empty literal even with a parameter of that name in scope
+#   3. a bare path with a braced segment, `back names/{at}`, emitted `return names.`
+#   4. a bare `hold` under `walk test` was dropped, and the loop ran with no body
+#   5. `wait f(x)` as a statement in a task body vanished
+#   6. `host(route, port)`, a call to a task named `host`, was read as the constant keyword
+#   7. a bare call under a view's `seed click` bound an attribute instead of attaching a handler
+#   8. a grammar's `mine char, <.>` lost its character check
+#
+# The parser, the mill and compile/feed-mill are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of, name text-index-of
+  find substring, name text-substring
+  find starts-with, name text-starts-with
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/feed-mill>, name feed-mill
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# the emitted TypeScript, or the diagnostics as one text when it did not build
+task emit
+  take text, like text
+  take lean, like boolean, fall false
+  like text
+
+  host out, compile-text(text, make(compile-choice, bind(file, <gate/code/silent.tree>), bind(lean, lean)))
+  fork test, out/ok
+    hold
+      back out/emitted
+  back <DIAGNOSTICS: {join(out/messages, < | >)}>
+
+# the one exported function's body, from `export function <name>(` to its closing brace
+task body
+  take ts, like text
+  take name, like text
+  like text
+
+  save at, text-index-of(ts, <export function {name}(>)
+  fork test, is-below(at, 0)
+    hold
+      save at, text-index-of(ts, <export async function {name}(>)
+  fork test, is-below(at, 0)
+    hold
+      back <(no function {name})>
+  host end, text-index-of(ts, <\n\}\n>, at)
+  fork test, is-below(end, 0)
+    hold
+      back text-substring(ts, at)
+  back text-substring(ts, at, add(end, 2))
+
+# ---- 1. a bare call over `bind` lines keeps the names ----
+
+host gap, <\ntask gap\n  take width, like number\n  take height, like number\n  like number\n  send back\n    call subtract\n      read width\n      read height\n>
+host bare-gap, emit(<{gap}\ntask use-gap\n  like number\n  send back\n    gap\n      bind height, code 3\n      bind width, code 4\n>)
+host long-gap, emit(<{gap}\ntask use-gap\n  like number\n  send back\n    call gap\n      bind height, code 3\n      bind width, code 4\n>)
+host returns-one, make pattern, <<return 1\b>>
+host returns-minus-one, make pattern, <<return -1\b>>
+
+test <1. a bare call over bind lines emits what `call` emits>
+  want hold, is-equal(bare-gap, long-gap)
+
+test <1. ...and passes width 4, height 3 (returns 1)>
+  want hold, matches(returns-one, body(bare-gap, <useGap>))
+
+test <1. ...and not the values in written order (returns -1)>
+  want hold, text-contains(bare-gap, <useGap>)
+  want hold, is-equal(matches(returns-minus-one, bare-gap), false)
+
+test <1. a bind naming no parameter is refused, as under `call`>
+  host unknown, emit(<{gap}\ntask use-gap\n  like number\n  send back\n    gap\n      bind depth, code 3\n      bind width, code 4\n>)
+  want hold, text-starts-with(unknown, <DIAGNOSTICS>)
+  want hold, text-contains(unknown, <depth>)
+
+# ---- 2. a bare value word is the local of that name ----
+
+task echo-of
+  take word, like text
+  take type, like text
+  like text
+
+  back body(emit(<\ntask echo\n  take {word}, like {type}\n  like {type}\n  send back\n    {word}\n>), <echo>)
+
+task returns-word
+  take word, like text
+  take type, like text
+  like boolean
+
+  back matches(make(pattern, <return {word}\\b>), echo-of(word, type))
+
+test <2. a bare `term` with a parameter `term` returns the parameter>
+  want hold, returns-word(<term>, <text>)
+
+test <2. ...and not the literal "" for term>
+  want hold, is-equal(text-contains(echo-of(<term>, <text>), <return "">), false)
+
+test <2. a bare `text` with a parameter `text` returns the parameter>
+  want hold, returns-word(<text>, <text>)
+
+test <2. ...and not the literal "" for text>
+  want hold, is-equal(text-contains(echo-of(<text>, <text>), <return "">), false)
+
+test <2. a bare `code` with a parameter `code` returns the parameter>
+  want hold, returns-word(<code>, <number>)
+
+test <2. ...and not the literal 0 for code>
+  want hold, is-equal(text-contains(echo-of(<code>, <number>), <return 0>), false)
+
+# the optimizer folds the local into the return, so the value is what shows
+host local-return, make pattern, <<return (term|"hi")(\n|$)>>
+
+test <2. a bare `term` with a local `term` returns the local>
+  host local, emit(<\ntask echo\n  like text\n  save term, text \<hi\>\n  send back\n    term\n>)
+  want hold, matches(local-return, body(local, <echo>))
+
+host found-text, make pattern, <<found = text\b>>
+
+test <2. a bare `text` naming a walk item reads the item>
+  host item, emit(<\ntask first\n  take words, like list, like text\n  like text\n  save found, text \<\>\n  walk list, read words\n    hook next\n      take site, name text\n      save found, text\n  send back, read found\n>)
+  want hold, matches(found-text, body(item, <first>))
+
+test <2. a bare `term` with no local of that name is refused, naming `read term`>
+  host none, emit(<\ntask echo\n  like text\n  send back\n    term\n>)
+  want hold, text-starts-with(none, <DIAGNOSTICS>)
+  want hold, text-contains(none, <a bare `term` is not a value>)
+  want hold, text-contains(none, <`read term`>)
+
+# ---- 3. a path with a braced segment ----
+
+host lean-pick, emit(<\ntask pick\n  take names, like list, like text\n  take at, like number\n  like text\n  back names/\{at\}\n>)
+host long-pick, emit(<\ntask pick\n  take names, like list, like text\n  take at, like number\n  like text\n  send back, read names/\{at\}\n>)
+host names-dot, make pattern, <<return names\.\s*(\n|$)>>
+
+test <3. `back names/{at}` emits what `read names/{at}` emits>
+  want hold, is-equal(lean-pick, long-pick)
+
+test <3. ...a bounds-checked read>
+  want hold, text-contains(body(lean-pick, <pick>), <names[at]>)
+
+test <3. ...and not `return names.`>
+  want hold, text-contains(lean-pick, <pick>)
+  want hold, is-equal(matches(names-dot, lean-pick), false)
+
+# ---- 4. a bare `hold` under `walk test` is the body ----
+
+task count-up
+  take arm, like text
+  like text
+
+  back emit(<\ntask count-up\n  take n, like number\n  like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    {arm}\n      save i\n        call add\n          read i\n          code 1\n  send back, read i\n>)
+
+host bare-count, count-up(<hold>)
+host hooked-count, count-up(<hook hold>)
+host loop-body, make pattern, <<while \(i < n\) \{\s*i = i \+ 1>>
+host empty-loop, make pattern, <<while \([^)]*\) \{\}>>
+
+test <4. a bare `hold` under `walk test` emits what `hook hold` emits>
+  want hold, is-equal(bare-count, hooked-count)
+
+test <4. ...with the body in the loop>
+  want hold, matches(loop-body, body(bare-count, <countUp>))
+
+test <4. ...and not an empty loop>
+  want hold, text-contains(bare-count, <countUp>)
+  want hold, is-equal(matches(empty-loop, bare-count), false)
+
+test <4. a statement directly under `walk test` is refused, naming `hold`>
+  host stray, emit(<\ntask spin\n  take n, like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    save i\n      call add\n        read i\n        code 1\n>)
+  want hold, text-starts-with(stray, <DIAGNOSTICS>)
+  want hold, text-contains(stray, <directly under a `walk test`>)
+  want hold, text-contains(stray, <under `hold`>)
+
+test <4. a `hook hold` and a bare `hold` together are two bodies, refused>
+  host two, emit(<\ntask spin\n  take n, like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i, code 1\n    hold\n      save i, code 2\n>)
+  want hold, text-contains(two, <has two bodies>)
+
+# ---- 5. `wait f(x)` as a statement ----
+
+host wait-prelude, <\ntask append\n  note async\n  take target, like text\n  take line, like text\n  like text\n  send back, read line\n>
+host lean-log, emit(<{wait-prelude}\ntask log\n  note async\n  take target, like text\n  take line, like text\n  like text\n  save x, read line\n  wait append(target, text \<\{\{line\}\}!\>)\n  send back, read x\n>)
+host long-log, emit(<{wait-prelude}\ntask log\n  note async\n  take target, like text\n  take line, like text\n  like text\n  save x, read line\n  call append\n    read target\n    text \<\{\{line\}\}!\>\n    wait true\n  send back, read x\n>)
+host awaited-before-return, make pattern, <<await append\(target, `\$\{line\}!`\)\n\s*return >>
+host closure-in-order, make pattern, <<await append\(target, "a"\)\s*\n\s*await append\(target, "b"\)>>
+
+test <5. `wait f(x)` as a statement emits what `call f / wait true` emits>
+  want hold, is-equal(lean-log, long-log)
+
+test <5. ...the awaited call, before the return>
+  want hold, matches(awaited-before-return, body(lean-log, <log>))
+
+test <5. ...and in a closure body, both lines, in order>
+  host closure, emit(<{wait-prelude}\ntask run\n  note async\n  take target, like text\n  save go\n    task\n      note async\n      wait append(target, text \<a\>)\n      wait append(target, text \<b\>)\n  wait go()\n>)
+  want hold, matches(closure-in-order, closure)
+
+test <5. a `wait <call>` under a call is refused, not dropped>
+  host marker, emit(<{wait-prelude}\ntask log\n  note async\n  take target, like text\n  call append\n    read target\n    text \<a\>\n    wait append(target, text \<b\>)\n>)
+  want hold, text-contains(marker, <a `wait` under a call marks the call itself>)
+
+# ---- 6. a task named `host` ----
+
+# `host` pushes onto a list, so the optimizer cannot fold the call away and the call is what shows
+host host-task, <\ntask host\n  take routes, like list, like text\n  take route, like text\n  call routes/push\n    read route\n>
+host paren-boot, emit(<{host-task}\ntask boot\n  take routes, like list, like text\n  take url, like text\n  host(routes, url)\n>)
+host long-boot, emit(<{host-task}\ntask boot\n  take routes, like list, like text\n  take url, like text\n  call host(routes, url)\n>)
+host the-call, make pattern, <<host\(routes, url\)|routes\.push\(url\)>>
+host empty-boot, make pattern, <<export function boot\([^)]*\): [a-z]+ \{\}>>
+
+test <6. `host(routes, url)` as a statement emits what `call host` emits>
+  want hold, is-equal(paren-boot, long-boot)
+
+test <6. ...the call>
+  want hold, matches(the-call, body(paren-boot, <boot>))
+
+test <6. ...and the body is not empty>
+  want hold, text-contains(paren-boot, <boot>)
+  want hold, is-equal(matches(empty-boot, paren-boot), false)
+
+test <6. a stacked `host` over a parameter is refused, naming `host(url, ...)` and `call host`>
+  host stacked, emit(<{host-task}\ntask boot\n  take routes, like list, like text\n  take url, like text\n  host\n    url\n    routes\n>)
+  want hold, text-contains(stacked, <`host url` declares a constant named `url`, and `url` is already bound here>)
+  want hold, text-contains(stacked, <`call host`>)
+
+test <6. a constant in a body, in a file with a task named `host`, is refused as two readings>
+  host constant, emit(<{host-task}\ntask boot\n  take url, like text\n  host limit, code 10\n>)
+  want hold, text-contains(constant, <this file has a task named `host`, so `host limit` reads both as a constant and as a call>)
+
+host returns-hundred, make pattern, <<return 100\b>>
+
+# folded by the optimizer to the product, which is the constant having been read
+test <6. a `host` constant in a body still builds where no task is named `host`>
+  host plain, emit(<\ntask area\n  like number\n  host side, code 10\n  send back\n    call multiply\n      read side\n      read side\n>)
+  want hold, matches(returns-hundred, body(plain, <area>))
+
+# ---- 7. a bare call under a view's `seed click` is an event handler ----
+
+host view-source, <\ntask submit-email\n  take a, like text\n  take b, like text\n\nview stacked\n  view button\n    seed click\n      submit-email\n        text \<x\>\n        text \<y\>\n    text \<Subscribe\>\n\nview inline\n  view button\n    seed click\n      submit-email(text(\<x\>), text \<y\>)\n    text \<Subscribe\>\n\nview called\n  view button\n    seed click\n      call submit-email\n        text \<x\>\n        text \<y\>\n    text \<Subscribe\>\n\nview value\n  view button\n    seed title\n      text \<Subscribe\>\n>
+
+host view-file, <gate/code/view.tree>
+host view-parsed, parser-tree/parse(source-of(view-file, view-source))
+
+task views-of
+  like list, like dynamic
+
+  host found, make list
+  fork test, view-parsed/ok
+    miss
+      back found
+  host milled, mill-module/mill(view-parsed/tree, view-file)
+  fork test, milled/ok
+    miss
+      back found
+  walk milled/program
+    take statement, like dynamic
+    fork test, is-equal(statement/form, <view>)
+      hold
+        found/push(statement)
+  back found
+
+host views, views-of()
+
+# the `event` of the named attribute of the view's first element: <true>, <false>, or <none>
+task event-of
+  take name, like text
+  take attribute, like text
+  like text
+
+  walk views
+    take view, like dynamic
+    fork test, is-equal(view/name, name)
+      hold
+        host element, view/body/0
+        fork test, is-unequal(element/form, <element>)
+          hold
+            back <none>
+        walk element/attributes
+          take one, like dynamic
+          fork test, is-equal(one/name, attribute)
+            hold
+              fork test, is-equal(one/event, true)
+                hold
+                  back <true>
+              fork test, is-equal(one/event, false)
+                hold
+                  back <false>
+              back <none>
+        back <none>
+  back <none>
+
+test <7. `call submit-email` under `seed click` is a handler>
+  want hold, is-equal(event-of(<called>, <click>), <true>)
+
+test <7. a stacked bare `submit-email` is a handler too>
+  want hold, is-equal(event-of(<stacked>, <click>), <true>)
+
+test <7. `submit-email(x, y)` is a handler too>
+  want hold, is-equal(event-of(<inline>, <click>), <true>)
+
+test <7. a literal attribute is still not a handler>
+  want hold, is-equal(event-of(<value>, <title>), <false>)
+
+host view-ts, emit(view-source)
+host click-attribute, make pattern, <<bindAttribute\([^,]+, "click">>
+
+test <7. the bare call emits `attachEvent`, as `call` does>
+  want hold, is-equal(text-split(view-ts, <attachEvent(>)/length, 4)
+
+test <7. ...and binds no click attribute>
+  want hold, is-equal(text-starts-with(view-ts, <DIAGNOSTICS>), false)
+  want hold, is-equal(matches(click-attribute, view-ts), false)
+
+# ---- 8. a grammar's `mine char, <.>` keeps its check ----
+
+task grammar
+  take char, like text
+  like text
+
+  back <\nmine version\n  mine form, form digits\n    send major\n  {char}\n  mine form, form digits\n    send minor\n\nmine digits\n  mine list\n    mine range\n      bind base, \<0\>\n      bind head, \<9\>\n>
+
+host mine-file, <gate/code/mine.tree>
+
+task reader
+  take char, like text
+  like text
+
+  host parsed, parser-tree/parse(source-of(mine-file, grammar(char)))
+  fork test, parsed/ok
+    miss
+      back <PARSE FAILED>
+  back feed-mill/compile-feed-mine(feed-mill/read-feed-mine-grammar(parsed/tree), <text>, <@term/mill/feed>)
+
+task faults
+  take char, like text
+  like list, like text
+
+  host parsed, parser-tree/parse(source-of(mine-file, grammar(char)))
+  fork test, parsed/ok
+    miss
+      back make(list, <PARSE FAILED>)
+  back feed-mill/feed-mine-faults(parsed/tree)
+
+host long-reader, reader(<mine char, text \<.\>>)
+
+task checks-46
+  take short, like text
+  like boolean
+
+  back and(text-contains(short, <code 46)>), text-contains(short, <expected "." at position>))
+
+test <8. `mine char, <.>` generates the reader `mine char, text <.>` does>
+  want hold, is-equal(reader(<mine char, \<.\>>), long-reader)
+
+test <8. ...which checks for character 46, for `mine char, <.>`>
+  want hold, checks-46(reader(<mine char, \<.\>>))
+
+test <8. `mine char, code 46` generates the reader `mine char, text <.>` does>
+  want hold, is-equal(reader(<mine char, code 46>), long-reader)
+
+test <8. ...which checks for character 46, for `mine char, code 46`>
+  want hold, checks-46(reader(<mine char, code 46>))
+
+test <8. `mine char, 46` generates the reader `mine char, text <.>` does>
+  want hold, is-equal(reader(<mine char, 46>), long-reader)
+
+test <8. ...which checks for character 46, for `mine char, 46`>
+  want hold, checks-46(reader(<mine char, 46>))
+
+test <8. a char with its literal has no fault>
+  want hold, is-equal(faults(<mine char, \<.\>>)/length, 0)
+
+test <8. a `mine char` naming no character is a fault, with the line and the spelling to write>
+  host empty, faults(<mine char>)
+  want hold, is-equal(empty/length, 1)
+  want hold, text-contains(empty/0, <at line 5>)
+  want hold, text-contains(empty/0, <`mine char, \<.\>`>)

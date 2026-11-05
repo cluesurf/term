@@ -73,6 +73,11 @@ load @term/call/work/item/event
   find item-field
   find tally
 
+load @term/make/parser/diagnostic
+  find diagnose
+  find diagnostic-input
+  find diagnostic-name
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -83,7 +88,6 @@ dock load
   load <@term/make/code/check/binds>, name binds-module
   load <@term/make/code/compile/hvm>, name hvm-module
   load <@term/make/code/compile/wgsl>, name wgsl-module
-  load <@term/make/code/parser/diagnostic>, name diagnostic-module
 
 # ---- the host values Term has no word for ----
 
@@ -586,12 +590,12 @@ task emit-fragment
         turn next
     save seen/{key}, true
     save asked
-      make fragment-ask
+      make diagnostic-input
         bind file, value-or(span-file(gap), file)
         bind span, value-or(gap/span, no-span())
-        bind message, <{gap/form} is outside what {name} lowers: {holds}>
-        bind hint, <keep the part that runs on {name} to that fragment, or emit this program for node, rust, swift or kotlin>
-    push(refusals, diagnostic-module/diagnose(<not-implemented>, asked))
+        bind message, make(some, <{gap/form} is outside what {name} lowers: {holds}>)
+        bind hint, make(some, <keep the part that runs on {name} to that fragment, or emit this program for node, rust, swift or kotlin>)
+    push(refusals, diagnose(make(not-implemented), asked))
   back refused(refusals, file, text)
 
 # ---- the command ----

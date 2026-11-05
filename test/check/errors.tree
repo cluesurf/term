@@ -1,0 +1,135 @@
+note <Error experience: every diagnostic renders with a readable name, a place, carets and a hint, and a batch reports with a summary>
+
+# Ported from errors.ts by statement (item 0556). parser/diagnostic is the subject, docked (decision 106), and it reads
+# the driver's own diagnostic records, which compile-outcome passes through as diagnostics and warning-diagnostics (item
+# 0961).
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/reading
+  find lines-of
+
+dock load
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+
+host bad, <task wrong\n  take n\n  send back\n    call add\n      read n\n      text \<oops\>\n>
+
+host typo-text, <task t\n  take items\n  back\n    read itemz\n>
+
+host warned-text, <task f\n  take n\n  save unused, code 1\n  back n\n>
+
+host blame-text, <task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  back n\n>
+
+host bad-place, make pattern, <<bad\.tree:\d+:\d+>>
+
+host hint-line, make pattern, <<hint:>>
+
+host site-frame, make pattern, <<site <bad\.tree:\d+:\d+[>]>>
+
+# the first diagnostic of the refused fixture, the record the renderer reads
+task first-bad
+  like dynamic
+
+  host out, compile-text(bad, make(compile-choice, bind(file, <bad.tree>)))
+  fork test, out/ok
+    hold
+      halt <expected an error>
+  back out/diagnostics/0
+
+task rendered
+  like text
+
+  back diagnostic-module/render(first-bad(), lines-of(bad), false)
+
+task kink
+  like text
+
+  back diagnostic-module/render-kink(first-bad(), lines-of(bad), false)
+
+# whether one diagnostic offers a correction for the typo: a did-you-mean, the typed name, or unknown-name itself
+bind suggests
+  take diagnostic, like dynamic
+  like boolean
+  case node
+    text <(($diagnostic.hint ?? "").includes("did you mean") || ($diagnostic.hint ?? "").includes("itemz") || $diagnostic.name === "unknown-name")>
+
+# `!!d.hint`: a hint that is there and not empty
+bind has-hint
+  take diagnostic, like dynamic
+  like boolean
+  case node
+    text <!!$diagnostic.hint>
+
+task any-suggests
+  take diagnostics, like dynamic
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, suggests(one)
+      hold
+        back true
+  back false
+
+test <every diagnostic has a fix hint>
+  host first, first-bad()
+  want hold, has-hint(first)
+
+test <shows the readable name>
+  want hold, text-contains(rendered(), <type-mismatch>)
+
+test <shows the source location>
+  want hold, matches(bad-place, rendered())
+
+test <shows a caret underline>
+  want hold, text-contains(rendered(), <^>)
+
+test <shows a hint line>
+  want hold, matches(hint-line, rendered())
+
+test <unknown name suggests a correction>
+  host typo, compile-text(typo-text, make(compile-choice, bind(file, <bad.tree>)))
+  want hold, not(typo/ok)
+  want hold, any-suggests(typo/diagnostics)
+
+test <report summarizes warnings>
+  host warned, compile-text(warned-text, make(compile-choice, bind(file, <w.tree>)))
+  want hold, warned/ok
+  host summary, diagnostic-module/report(warned/warning-diagnostics, lines-of(<task f\n  take n\n  save unused, code 1\n  back n>), false)
+  want hold, text-contains(summary, <1 warning>)
+
+test <kink: titled error>
+  want hold, text-contains(kink(), <kink \<>)
+
+test <kink: shows code>
+  want hold, text-contains(kink(), <code \<0007\>>)
+
+test <kink: shows name>
+  want hold, text-contains(kink(), <name \<type-mismatch\>>)
+
+test <kink: shows site frame>
+  want hold, matches(site-frame, kink())
+
+test <kink: shows inline caret>
+  want hold, text-contains(kink(), <^>)
+
+test <kink: shows note>
+  want hold, text-contains(kink(), <note \<>)
+
+test <kink: multi-span shows a call frame>
+  host blame, compile-text(blame-text, make(compile-choice, bind(file, <b.tree>)))
+  want hold, not(blame/ok)
+  host framed, diagnostic-module/render-kink(blame/diagnostics/0, lines-of(<task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  back n>), false)
+  want hold, text-contains(framed, <call \<>)

@@ -1,0 +1,21 @@
+note <Existential goals>
+
+# Ported from existential.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Existential goals: `find x, like T` plus a witness expression proves "there exists x such that P x" by checking P at
+# the witness. The witness is bound as a `let`, which now records `x == witness` as a path assumption, so the goal
+# discharges through the hypothesis congruence closure. No new surface syntax (the `find` binder already existed); the
+# fix is purely the let-binding carrying its value. The soundness control is essential: a wrong witness must NOT prove.
+# Run: npx tsx test/check/existential.ts
+host prelude, <form thing\n  case a\n  case b\n>
+
+# 1. A correct witness discharges the existential: there exists x with x = a, witnessed by a.
+test <existential with a correct witness discharges>
+  want hold, compile-text(<{prelude}\nrule exists-equal-a\n  find x, like thing\n    make a\n  show hold\n    call is-equal\n      read x\n      make a\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: witness b cannot prove x = a (a and b are distinct). Must be rejected.
+test <existential with a wrong witness is rejected>
+  want hold, not(compile-text(<{prelude}\nrule exists-equal-a-wrong\n  find x, like thing\n    make b\n  show hold\n    call is-equal\n      read x\n      make a\n  calm hold\n>)/ok)

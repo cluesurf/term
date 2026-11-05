@@ -1,0 +1,390 @@
+note <A package path resolves inside the package's CODE ROOT first, then its package root>
+
+# Ported from code-root.ts by statement (item 0570). `base <dir>` under a load forces the package root
+# (note/project/term/manifest/manifest-mark-and-code-root.md). This holds the plan's resolution table as fixtures, `base`
+# with a match and a mismatch, the `ambiguous-load` warning, `{platform}` slots in both roots, relative loads, a bare
+# package path, and the manifest's `mark` and `code`, old spelling included. Every assertion goes through the functions the
+# build calls: `resolve-package-path` (the rule), `project-resolver` (the build's resolver), `with-native-env`, the
+# compile, and the lint and manifest readers, each the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/judging
+  find make-record
+  find read-field
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find contains, name text-contains
+  find substring
+  find char-count
+
+dock load
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/call/code/make>, name project-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/call/code/lint>, name lint-module
+  load <@term/deck/code/package/manifest>, name manifest-module
+  load <node:fs>, name root-file
+  load <node:path>, name root-path
+
+bind call-resolver
+  take resolve, like dynamic
+  take path, like text
+  take from, like text
+  like dynamic
+  case node
+    text <$resolve($path, $from)>
+
+bind call-resolver-with
+  take resolve, like dynamic
+  take path, like text
+  take from, like text
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$resolve($path, $from, $options)>
+
+bind file-of
+  take hit, like dynamic
+  like text
+  case node
+    text <($hit?.file ?? "")>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+task write
+  take root, like text
+  take rel, like text
+  take text, like text
+  like void
+
+  host full, root-path/join(root, rel)
+  root-file/mkdir-sync(root-path/dirname(full), make-record(make(list, <recursive>, true)))
+  root-file/write-file-sync(full, text)
+
+task task-text
+  take name, like text
+  take said, like text
+  like text
+
+  back <task {name}\n  like text\n\n  send back, text \<{said}\>\n>
+
+task fresh-root
+  take prefix, like text
+  like text
+
+  back root-file/realpath-sync(temp-folder(prefix))
+
+# the plan's layout, twice: A has `code/code/foo.tree` and `code/view/x.tree`, B has neither
+task make-package
+  take with-shadow, like boolean
+  like text
+
+  host root, fresh-root(<term-code-root->)
+  write(root, <deck.tree>, <deck @fixture/site\n  mark \<0.0.2\>\n>)
+  write(root, <code/make/bar.tree>, task-text(<bar>, <code root>))
+  write(root, <code/task/bar.tree>, task-text(<bar>, <code root task>))
+  write(root, <make/bar.tree>, task-text(<bar>, <package root>))
+  write(root, <task/bar.tree>, task-text(<bar>, <package root task>))
+  write(root, <view/x.tree>, task-text(<x>, <package view>))
+  write(root, <code/base.tree>, task-text(<entry>, <entry>))
+  fork test, with-shadow
+    hold
+      write(root, <code/code/foo.tree>, task-text(<foo>, <code code>))
+      write(root, <code/view/x.tree>, task-text(<x>, <code view>))
+    miss
+      write(root, <code/foo.tree>, task-text(<foo>, <code>))
+  back root
+
+host a, make-package(true)
+host b, make-package(false)
+
+# a found file under its root, or <nothing>
+task rel
+  take root, like text
+  take hit, like dynamic
+  like text
+
+  host file, file-of(hit)
+  fork test, is-equal(file, <>)
+    hold
+      back <nothing>
+  back substring(file, add(char-count(root), 1))
+
+task package-hit
+  take dir, like text
+  take rest, like text
+  like dynamic
+
+  back resolve-module/resolve-package-path(make-record(make(list, <dir>, dir, <rest>, rest)))
+
+task package-hit-at
+  take dir, like text
+  take rest, like text
+  take base, like text
+  like dynamic
+
+  back resolve-module/resolve-package-path(make-record(make(list, <dir>, dir, <rest>, rest, <base>, base)))
+
+# ---- 1. the table ----
+
+test <@fixture/site/code/foo -> ./code/code/foo.tree (the code root holds a `code/` folder)>
+  want hold, is-equal(rel(a, package-hit(a, <code/foo>)), <code/code/foo.tree>)
+
+test <@fixture/site/code/foo -> ./code/foo.tree (else the package root)>
+  want hold, is-equal(rel(b, package-hit(b, <code/foo>)), <code/foo.tree>)
+
+test <@fixture/site/make/bar -> ./code/make/bar.tree (the code root first)>
+  want hold, is-equal(rel(a, package-hit(a, <make/bar>)), <code/make/bar.tree>)
+
+test <@fixture/site/task/bar -> ./code/task/bar.tree (the code root first)>
+  want hold, is-equal(rel(a, package-hit(a, <task/bar>)), <code/task/bar.tree>)
+
+test <@fixture/site/view/x -> ./code/view/x.tree (the code root when it holds the path)>
+  want hold, is-equal(rel(a, package-hit(a, <view/x>)), <code/view/x.tree>)
+
+test <@fixture/site/view/x -> ./view/x.tree (else the package root)>
+  want hold, is-equal(rel(b, package-hit(b, <view/x>)), <view/x.tree>)
+
+# the build's own resolver agrees, from a file inside the package (its own name, no `link/`)
+host a-resolve, project-module/project-resolver(a)
+host a-from, root-path/join(a, <code>, <main.tree>)
+
+task a-found
+  take path, like text
+  like text
+
+  back rel(a, call-resolver(a-resolve, path, a-from))
+
+test <projectResolver: @fixture/site/code/foo -> ./code/code/foo.tree>
+  want hold, is-equal(a-found(<@fixture/site/code/foo>), <code/code/foo.tree>)
+
+test <projectResolver: @fixture/site/make/bar -> ./code/make/bar.tree>
+  want hold, is-equal(a-found(<@fixture/site/make/bar>), <code/make/bar.tree>)
+
+test <projectResolver: @fixture/site/task/bar -> ./code/task/bar.tree>
+  want hold, is-equal(a-found(<@fixture/site/task/bar>), <code/task/bar.tree>)
+
+test <projectResolver: @fixture/site/view/x -> ./code/view/x.tree>
+  want hold, is-equal(a-found(<@fixture/site/view/x>), <code/view/x.tree>)
+
+test <a bare package path names its entry, the code root's base.tree>
+  want hold, is-equal(a-found(<@fixture/site>), <code/base.tree>)
+
+test <`@/make/bar` (this package) follows the same rule>
+  want hold, is-equal(a-found(<@/make/bar>), <code/make/bar.tree>)
+
+# ---- 2. `base <dir>` ----
+
+test <`base make` resolves from the package root>
+  want hold, is-equal(rel(a, package-hit-at(a, <make/bar>, <make>)), <make/bar.tree>)
+
+test <a `base` that is not the first segment is refused, naming both>
+  host wrong, package-hit-at(a, <make/bar>, <task>)
+  host refused, <{read-field(wrong, <refused>)}>
+  want hold, is-absent(read-field(wrong, <file>))
+  want hold, text-contains(refused, <base task>)
+  want hold, text-contains(refused, <`make`>)
+
+test <projectResolver honors `base`>
+  host via-build, call-resolver-with(a-resolve, <@fixture/site/make/bar>, a-from, make-record(make(list, <base>, <make>)))
+  want hold, is-equal(rel(a, via-build), <make/bar.tree>)
+
+# end to end, through the mill: `base` is a child of the load beside `find`, and it imports nothing
+host main-text, <load @fixture/site/make/bar\n  base make\n  find bar\n\ntask main\n  like text\n\n  send back, call bar\n>
+
+task written-main
+  like text
+
+  write(a, <code/main.tree>, main-text)
+  back main-text
+
+host main, written-main()
+
+task loaded-files
+  like list, like text
+
+  host modules, load-module/collect-modules(make-record(make(list, <file>, a-from, <text>, main)), a-resolve)
+  host out, make list
+  walk read-field(modules, <sources>)
+    take source, like dynamic
+    out/push(rel(a, source))
+  back out
+
+test <the build loads the package root's file under `base make`>
+  host files, loaded-files()
+  want hold, list-contains(files, <make/bar.tree>)
+  want hold, not(list-contains(files, <code/make/bar.tree>))
+
+test <a load with `base` compiles>
+  host built, compile-text(main, make(compile-choice, bind(file, a-from), bind(project, a)))
+  want hold, built/ok
+
+test <a mismatched `base` fails the build at the load, naming both>
+  host refused, compile-text(<load @fixture/site/make/bar\n  base task\n  find bar\n>, make(compile-choice, bind(file, a-from), bind(project, a)))
+  host said, <{refused/messages}>
+  want hold, not(refused/ok)
+  want hold, text-contains(said, <base task>)
+  want hold, text-contains(said, <`make`>)
+
+# ---- 3. the ambiguity warning ----
+
+test <`ambiguous-load` warns on a path both roots hold, naming both files>
+  host found, lint-module/ambiguous-loads(<load @fixture/site/make/bar\n  find bar\n>, a-from, a-resolve)
+  want hold, is-equal(found/length, 1)
+  host one, read-field(found, <0>)
+  host message, <{read-field(one, <message>)}>
+  want hold, is-equal(<{read-field(one, <code>)}>, <L052>)
+  want hold, is-equal(<{read-field(one, <severity>)}>, <warning>)
+  want hold, text-contains(message, root-path/join(a, <code/make/bar.tree>))
+  want hold, text-contains(message, root-path/join(a, <make/bar.tree>))
+
+test <`base` silences it>
+  host found, lint-module/ambiguous-loads(<load @fixture/site/make/bar\n  base make\n  find bar\n>, a-from, a-resolve)
+  want hold, is-equal(found/length, 0)
+
+test <one root only: no warning>
+  host found, lint-module/ambiguous-loads(<load @fixture/site/code/foo\n  find foo\n>, root-path/join(b, <code>, <main.tree>), project-module/project-resolver(b))
+  want hold, is-equal(found/length, 0)
+
+# ---- 4. `{platform}` and the abstract fallback, in both roots, in the old order ----
+
+task native-root
+  like text
+
+  host root, fresh-root(<term-code-root-native->)
+  write(root, <deck.tree>, <deck @fixture/native\n  mark \<0.0.2\>\n>)
+  write(root, <code/native/node/thing.tree>, task-text(<thing>, <code node>))
+  write(root, <native/browser/thing.tree>, task-text(<thing>, <package browser>))
+  write(root, <code/native/thing.tree>, task-text(<thing>, <code abstract>))
+  back root
+
+host native, native-root()
+host native-from, root-path/join(native, <code>, <main.tree>)
+host platform-path, <@fixture/native/native/\{platform\}/thing>
+
+test <\{platform\}: the env's own module, in the code root>
+  host found, call-resolver(native-module/with-native-env(<node>, project-module/project-resolver(native, <node>)), platform-path, native-from)
+  want hold, is-equal(rel(native, found), <code/native/node/thing.tree>)
+
+test <\{platform\}: the borrowed env (cloudflare -> browser), in the package root>
+  host found, call-resolver(project-module/project-resolver(native, <cloudflare>), platform-path, native-from)
+  want hold, is-equal(rel(native, found), <native/browser/thing.tree>)
+
+test <\{platform\}: no env has one, so the abstract module beside the env dirs>
+  host found, call-resolver(project-module/project-resolver(native, <rust>), platform-path, native-from)
+  want hold, is-equal(rel(native, found), <code/native/thing.tree>)
+
+# ---- 5. relative loads are unchanged ----
+
+test <a relative load resolves beside its file>
+  write(b, <code/near.tree>, task-text(<near>, <near>))
+  host found, call-resolver(project-module/project-resolver(b), <./near>, root-path/join(b, <code>, <main.tree>))
+  want hold, is-equal(rel(b, found), <code/near.tree>)
+
+test <`../x` resolves against the file, never the code root>
+  host found, call-resolver(project-module/project-resolver(b), <../make/bar>, root-path/join(b, <code>, <main.tree>))
+  want hold, is-equal(rel(b, found), <make/bar.tree>)
+
+# ---- 6. the manifest: `mark`, `code ./src`, and the old spelling ----
+
+host old, <deck @fixture/old\n  code \<1.4.2\>\n  link @fixture/site, code \<0.0.x\>\n>
+
+task manifest-of
+  take text, like text
+  like dynamic
+
+  back manifest-module/parse-manifest(make-record(make(list, <text>, text)))
+
+task mark-part
+  take manifest, like dynamic
+  take part, like text
+  like text
+
+  back <{read-field(read-field(manifest, <mark>), part)}>
+
+test <`code \<1.4.2\>` still reads as the version>
+  host read, manifest-of(old)
+  want hold, is-equal(mark-part(read, <major>), <1>)
+  want hold, is-equal(mark-part(read, <minor>), <4>)
+  want hold, is-equal(mark-part(read, <patch>), <2>)
+
+task each-fixable
+  take findings, like dynamic
+  like boolean
+
+  walk findings
+    take one, like dynamic
+    fork test, is-unequal(<{read-field(one, <rule>)}>, <manifest-code-version>)
+      hold
+        back false
+    fork test, is-unequal(<{read-field(one, <severity>)}>, <warning>)
+      hold
+        back false
+    fork test, is-unequal(<{read-field(read-field(one, <fix>), <text>)}>, <mark>)
+      hold
+        back false
+  back true
+
+test <`code \<version\>` warns (`manifest-code-version`), once per old spelling, each with a fix>
+  host warned, lint-module/manifest-findings(old, <deck.tree>)
+  want hold, is-equal(warned/length, 2)
+  want hold, each-fixable(warned)
+
+host src-manifest, <deck @fixture/src\n  mark \<1.4.2\>\n  code ./src\n>
+
+task src-root
+  like text
+
+  host root, fresh-root(<term-code-root-src->)
+  write(root, <deck.tree>, src-manifest)
+  write(root, <src/foo.tree>, task-text(<foo>, <src>))
+  write(root, <code/foo.tree>, task-text(<foo>, <not the code root>))
+  back root
+
+host src, src-root()
+
+test <`mark \<1.4.2\>` is the version and `code ./src` the code root>
+  host parsed, manifest-of(src-manifest)
+  want hold, is-equal(mark-part(parsed, <patch>), <2>)
+  want hold, is-equal(<{read-field(parsed, <code>)}>, <./src>)
+
+test <`code ./src` reads as the code root>
+  want hold, is-equal(resolve-module/code-root-of(src), <src>)
+
+test <a manifest with `mark` and `code` raises no warning>
+  host found, lint-module/manifest-findings(src-manifest, <deck.tree>)
+  want hold, is-equal(found/length, 0)
+
+test <a package path resolves in `./src`, never the default `./code`>
+  want hold, is-equal(rel(src, package-hit(src, <foo>)), <src/foo.tree>)
+
+task manifest-root
+  take prefix, like text
+  take manifest, like text
+  like text
+
+  host root, fresh-root(prefix)
+  write(root, <deck.tree>, manifest)
+  back root
+
+test <`bear ./lib`, the old spelling, still names the code root>
+  host bear, manifest-root(<term-code-root-bear->, <deck @fixture/bear\n  code \<0.0.2\>\n  bear ./lib\n>)
+  want hold, is-equal(resolve-module/code-root-of(bear), <lib>)
+
+test <a version written `code \<0.0.2\>` is never taken for a folder>
+  host versioned, manifest-root(<term-code-root-version->, <deck @fixture/versioned\n  code \<0.0.2\>\n>)
+  want hold, is-equal(resolve-module/code-root-of(versioned), <code>)

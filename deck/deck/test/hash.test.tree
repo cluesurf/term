@@ -1,0 +1,43 @@
+note <The SHA-512 of bytes or a text, and a check of bytes against one>
+
+# Ported from hash.test.ts by statement (item 0580). The original held code/package/hash.ts, a face whose logic is
+# code/package/content-hash.tree: this holds that module itself.
+
+load ../code/package/content-hash
+  find hash-buffer
+  find hash-text
+  find verify-hash
+
+# host value: a Buffer of a text's UTF-8 bytes
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value)>
+
+test <hashBuffer: hashes a buffer consistently>
+  host data, bytes-of(<hello world>)
+  host first, hash-buffer(data)
+  host second, hash-buffer(data)
+  want hold, is-equal(first, second)
+  # SHA-512 hex is 128 characters
+  want hold, is-equal(first/length, 128)
+
+test <hashBuffer: produces different hashes for different data>
+  host first, hash-buffer(bytes-of(<hello>))
+  host second, hash-buffer(bytes-of(<world>))
+  want hold, is-unequal(first, second)
+
+test <hashText: hashes text consistently>
+  host first, hash-text(<hello>)
+  host second, hash-text(<hello>)
+  want hold, is-equal(first, second)
+
+test <verifyHash: returns true for matching hash>
+  host data, bytes-of(<test data>)
+  host hash, hash-buffer(data)
+  want hold, is-equal(verify-hash(data, hash), true)
+
+test <verifyHash: returns false for non-matching hash>
+  host data, bytes-of(<test data>)
+  want hold, is-equal(verify-hash(data, <badhash>), false)

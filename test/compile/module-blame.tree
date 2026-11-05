@@ -1,0 +1,79 @@
+note <A diagnostic names the file the error is in, when the error is in an imported module>
+
+# Ported from module-blame.ts by statement (item 0573). The driver receives ONE flat program merged from every reachable
+# unit, and the entry file is the only file it is handed, so without per-statement provenance every diagnostic in every
+# dependency is reported against the entry, and a person reading the error opens a file that does not contain the
+# mistake. That provenance used to be a map from statement to file threaded through nine files. Term has no weak
+# reference, so self-hosting-0002 moved it onto the span's file and deleted the map. This suite exists because nothing
+# asserted the behaviour the map was for: a misattributed file is not a crash and not a failing test, it is a person
+# looking in the wrong place.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find compile-outcome
+
+load @term/base/list
+  find contains, name list-contains
+
+# ---- an error two modules deep ----
+#
+# `deep.tree` declares a task returning text and returns a number. It is imported by `middle.tree`, which the entry
+# imports, so the statement carrying the mistake is three files from the one the compiler was given.
+
+host deep, <task deep-task\n  like text\n  send back\n    code 3\n>
+
+host middle, <load @app/deep\n  find deep-task\n\ntask middle-task\n  like text\n  send back\n    call deep-task\n>
+
+host entry, <load @app/middle\n  find middle-task\n\ntask run\n  like text\n  send back\n    call middle-task\n>
+
+host modules, make(list, make(compiling-source, bind(file, <@app/deep>), bind(text, deep), bind(answer, <deep.tree>)), make(compiling-source, bind(file, <@app/middle>), bind(text, middle), bind(answer, <middle.tree>)))
+
+host result, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, modules)))
+
+# the files the diagnostics of an outcome name
+task blamed-of
+  take out, like compile-outcome
+  like list, like text
+
+  host files, make list
+  walk out/notes
+    take one
+    files/push(one/file)
+  back files
+
+host blamed, blamed-of(result)
+
+# whether every file named is this one, the original's set of one
+task all-are
+  take files, like list, like text
+  take file, like text
+  like boolean
+
+  walk files
+    take one, like text
+    fork test, is-unequal(one, file)
+      hold
+        back false
+  back true
+
+test <the type mismatch is reported at all>
+  want hold, is-equal(result/ok, false)
+  want hold, is-above(result/notes/length, 0)
+
+test <the diagnostic names the file the mistake is in, not the entry>
+  want hold, list-contains(blamed, <deep.tree>)
+
+test <the entry file is not blamed for a dependency mistake>
+  want hold, is-equal(list-contains(blamed, <entry.tree>), false)
+
+# ---- a clean single-module program still reports against itself ----
+#
+# The merged path and the single-file path share one function, and the single-file path has no per-statement file to
+# read. It must fall back to the file it was given rather than to nothing.
+
+test <a single-module program blames its own file>
+  host alone, blamed-of(compile-text(<task solo\n  like text\n  send back\n    code 3\n>, make(compile-choice, bind(file, <alone.tree>))))
+  want hold, list-contains(alone, <alone.tree>)
+  want hold, all-are(alone, <alone.tree>)

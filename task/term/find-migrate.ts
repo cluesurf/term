@@ -68,7 +68,7 @@ import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import type { Unimported } from '@term/make/code/check/scope-census'
 import { DECKS, REPO, TERM, packageCensus } from './scope-census'
-import { parentRoot } from './root'
+import { PARENT_ROOT, parentRoot } from './root'
 
 const argv = process.argv.slice(2)
 const commit = argv.includes('--commit')
@@ -83,19 +83,26 @@ const BEFORE = path.join(TERM, 'tmp/scope/bind-before')
 
 // ---- locks ----
 
-const LOCKED: string[] = (() => {
-  const table = path.join(parentRoot(), 'note/project/workflow/locks.json')
+// read on the first ask, never at import, so importing this module needs no parent. A --commit run needs the parent's
+// lock table (it must not write a file another session owns) and exits 2 without it. A report run without the parent
+// reads no locks
+let locked: string[] | undefined
 
-  if (!existsSync(table)) {
-    return []
+function lockedPaths(): string[] {
+  if (locked === undefined) {
+    const parent = commit ? parentRoot() : PARENT_ROOT
+    const table = parent === undefined ? undefined : path.join(parent, 'note/project/workflow/locks.json')
+    const locks = table !== undefined && existsSync(table)
+      ? ((JSON.parse(readFileSync(table, 'utf8')) as { lock?: { path: string; mode?: string }[] }).lock ?? [])
+      : []
+
+    locked = locks.filter(lock => lock.mode === 'owned').map(lock => lock.path)
   }
 
-  const locks = (JSON.parse(readFileSync(table, 'utf8')) as { lock?: { path: string; mode?: string }[] }).lock ?? []
+  return locked
+}
 
-  return locks.filter(lock => lock.mode === 'owned').map(lock => lock.path)
-})()
-
-const isLocked = (where: string): boolean => LOCKED.some(prefix => where === prefix || where.startsWith(prefix))
+const isLocked = (where: string): boolean => lockedPaths().some(prefix => where === prefix || where.startsWith(prefix))
 
 // ---- compiling ----
 
@@ -942,6 +949,11 @@ function prove(file: string): number {
 // ---- the run ----
 
 function run(): void {
+  // a --commit run reads the lock table before any work, so a missing parent stops it at once
+  if (commit) {
+    lockedPaths()
+  }
+
   const packages = readdirSync(DECKS)
     .filter(name => existsSync(path.join(DECKS, name, 'deck.tree')) && existsSync(path.join(DECKS, name, 'code')))
     .filter(name => !only || only.includes(name))

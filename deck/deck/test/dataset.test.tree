@@ -1,0 +1,178 @@
+note <A package version as a dataset of file records>
+
+# Ported from dataset.test.ts by statement (item 0580). The original held code/object/dataset.ts, a face whose logic is
+# code/object/file-dataset.tree: this holds that module itself. The prolly tree, the chunk store and the mark check are
+# @cluesurf/save's, docked as the original imported them.
+
+load ../code/object/file-dataset
+  find file-type
+  find mark-of-path
+  find file-record
+  find file-of-record
+  find dataset-of-files
+  find files-of-dataset
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find pad-left
+
+dock load
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/store/chunk-store>, name save-chunks
+  load <@cluesurf/save/base/mark>, name save-base-mark
+
+form package-file
+  link path, like text
+  link mode, like text
+  link size, like number
+  link chunks, like list, like text
+
+bind new-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+# host native: a value written as JSON, to compare two records field for field
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: the record with another form name, every other field kept
+bind with-type
+  take record, like dynamic
+  take type, like text
+  like dynamic
+  case node
+    text <(\{ ...$record, type: $type \})>
+
+# host value: the members of a set, in its order
+bind members-of
+  take set, like dynamic
+  like list, like text
+  case node
+    text <Array.from($set)>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+task chunk-of
+  take n, like number
+  like text
+
+  back <sha256:{pad-left(<{n}>, 64, <0>)}>
+
+# the files from `i` to `count` pushed onto `out`, code/mod-<i>.ts, the one at `edit` with another chunk
+task files-into
+  take out, like list, like package-file
+  take i, like number
+  take count, like number
+  take edit, like number
+  like list, like package-file
+
+  fork test, is-equal(i, count)
+    hold
+      back out
+  host chunks, make list
+  fork test, is-equal(i, edit)
+    hold
+      chunks/push(chunk-of(9999))
+    miss
+      chunks/push(chunk-of(i))
+  out/push(make(package-file, bind(path, <code/mod-{i}.ts>), bind(mode, <file>), bind(size, add(100, i)), bind(chunks, chunks)))
+  back files-into(out, add(i, 1), count, edit)
+
+task made-files
+  take count, like number
+  take edit, like number
+  like list, like package-file
+
+  host out, make list
+  back files-into(out, 0, count, edit)
+
+task by-path
+  take left, like package-file
+  take right, like package-file
+  like ordering
+
+  fork test, is-below(left/path, right/path)
+    hold
+      back make less
+  fork test, is-above(left/path, right/path)
+    hold
+      back make greater
+  back make equal
+
+task written
+  take files, like list, like package-file
+  take store, like dynamic
+  like text
+
+  back save-tree/write-dataset(dataset-of-files(files), store)
+
+test <markOfPath: is derived, so the same path is the same record across versions>
+  want hold, is-equal(mark-of-path(<code/x.ts>), mark-of-path(<code/x.ts>))
+
+test <markOfPath: separates different paths>
+  want hold, is-unequal(mark-of-path(<code/x.ts>), mark-of-path(<code/y.ts>))
+
+test <markOfPath: produces a well-formed mark>
+  want hold, is-equal(save-base-mark/is-mark(mark-of-path(<code/x.ts>)), true)
+
+test <fileRecord: round-trips every field, chunks included>
+  host chunks, make list
+  chunks/push(<sha256:{pad-left(<>, 64, <a>)}>)
+  chunks/push(<sha256:{pad-left(<>, 64, <b>)}>)
+  host file, make(package-file, bind(path, <code/a.ts>), bind(mode, <exec>), bind(size, 42), bind(chunks, chunks))
+  want hold, is-equal(json-of(file-of-record(file-record(file))), json-of(file))
+
+test <fileRecord: carries the file form name>
+  want hold, is-equal(file-record(made-files(1, -1)/0)/type, file-type())
+
+test <fileRecord: ignores a record of another form>
+  host record, file-record(made-files(1, -1)/0)
+  want hold, is-void(file-of-record(with-type(record, <other>)))
+
+# `files-of-dataset` answers path order, which is deterministic and what a checkout wants. The fixture is made in
+# numeric order, so it is sorted to compare
+test <a package version as a dataset: round-trips through the prolly tree>
+  host store, new-store(save-chunks)
+  host root, written(made-files(500, -1), store)
+  host back, files-of-dataset(save-tree/read-dataset(root, store))
+  want hold, is-equal(back/length, 500)
+  want hold, is-equal(json-of(back), json-of(sort(made-files(500, -1), by-path)))
+
+test <a package version as a dataset: reports exactly the file that changed>
+  host store, new-store(save-chunks)
+  host before, written(made-files(500, -1), store)
+  host after, written(made-files(500, 250), store)
+  host changed, members-of(save-tree/diff-roots(before, after, store))
+  want hold, is-equal(changed/length, 1)
+  want hold, is-equal(changed/0, mark-of-path(<code/mod-250.ts>))
+
+test <a package version as a dataset: reports an added file and nothing else>
+  host store, new-store(save-chunks)
+  host before, written(made-files(100, -1), store)
+  host more, made-files(100, -1)
+  more/push(make(package-file, bind(path, <code/new.ts>), bind(mode, <file>), bind(size, 1), bind(chunks, make list)))
+  host after, written(more, store)
+  host changed, members-of(save-tree/diff-roots(before, after, store))
+  want hold, is-equal(changed/length, 1)
+  want hold, is-equal(changed/0, mark-of-path(<code/new.ts>))
+
+test <a package version as a dataset: an identical version has an identical root and reads nothing>
+  host store, new-store(save-chunks)
+  host a, written(made-files(100, -1), store)
+  host b, written(made-files(100, -1), store)
+  want hold, is-equal(a, b)
+  want hold, is-equal(save-tree/diff-roots(a, b, store)/size, 0)

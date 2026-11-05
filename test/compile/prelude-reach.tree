@@ -1,0 +1,78 @@
+note <The native prelude takes a shim that another shim calls>
+
+# Ported from prelude-reach.ts by statement (item 0574). device-layer-0016: the prelude took a dock only when the emitted
+# code named it, so a shim reached only through another shim was dropped: the Swift location runtime reads its grant
+# through `nativePermission`, and an app that read its position and called no permission task failed swiftc with
+# `cannot find 'nativePermission' in scope`. Every watcher fans out through `nativeWatch`, which no program names. Three
+# docks here: `native-a`, which the program calls, `native-b`, which only a's shim calls, and `native-c`, which nothing
+# calls and which must stay out. Needs no toolchain. compile/native is the subject (decision 106).
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+dock load
+  load <@term/make/code/compile/native>, name native-module
+
+# host value: the answer a reader gives for a path it does not hold
+bind not-held
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+form native-dock
+  link form, like text
+  link module, like text
+  link alias, like text
+  link file, like text
+
+task dock-of
+  take name, like text
+  like native-dock
+
+  back make(native-dock, bind(form, <native>), bind(module, <global:{name}>), bind(alias, name), bind(file, </app/code/view/thing.tree>))
+
+host program, make(list, dock-of(<native-a>), dock-of(<native-b>), dock-of(<native-c>))
+
+form shim
+  link path, like text
+  link text, like text
+
+host shims, make(list, make(shim, bind(path, </app/code/view/runtime/native-a.swift>), bind(text, <enum nativeA \{ static func run() \{ nativeB.help() \} \}>)), make(shim, bind(path, </app/code/view/runtime/native-b.swift>), bind(text, <enum nativeB \{ static func help() \{\} \}>)), make(shim, bind(path, </app/code/view/runtime/native-c.swift>), bind(text, <enum nativeC \{ static func idle() \{\} \}>)))
+
+task read-shim
+  take path, like text
+  like dynamic
+
+  walk shims
+    take one, like shim
+    fork test, is-equal(one/path, path)
+      hold
+        back one/text
+  back not-held(0)
+
+host reached, native-module/native-prelude(program, <swift>, read-shim, <nativeA.run()>)
+
+test <the shim the program calls is taken>
+  want hold, text-contains(reached, <enum nativeA>)
+
+test <and the shim only that shim calls is taken with it>
+  want hold, text-contains(reached, <enum nativeB>)
+
+test <and the shim nothing calls stays out>
+  want hold, is-equal(text-contains(reached, <enum nativeC>), false)
+
+test <a program that calls none of them takes none>
+  want hold, is-equal(native-module/native-prelude(program, <swift>, read-shim, <print(1)>), <>)
+
+test <without the emitted code every dock is taken, as before>
+  host all, native-module/native-prelude(program, <swift>, read-shim)
+  want hold, text-contains(all, <enum nativeA>)
+  want hold, text-contains(all, <enum nativeB>)
+  want hold, text-contains(all, <enum nativeC>)
+
+test <a shim two docks reach is taken once>
+  host twice, make(list, dock-of(<native-a>), dock-of(<native-b>), dock-of(<native-c>), dock-of(<native-b>))
+  host once, native-module/native-prelude(twice, <swift>, read-shim, <nativeA.run() nativeB.help()>)
+  want hold, is-equal(text-split(once, <enum nativeB>)/length, 2)

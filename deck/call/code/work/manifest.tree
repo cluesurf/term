@@ -16,8 +16,14 @@
 load @term/base/file
   find read, name read-file
 
+load @term/make/parser/tree
+  find parse
+  find render-head
+
+load @term/make/parser/token
+  find token-source
+
 dock load
-  load <@term/make/code/parser/tree>, name parser
   load <global:console>, name console
 
 form parse-ask
@@ -36,7 +42,7 @@ task head-name
   fork test
     is-equal read(first/kind), <name>
     hold
-      back call parser/renderHead, first
+      back call render-head, first
   back <>
 
 # the first ARGUMENT of a group: `deck @term/site` gives `@term/site`
@@ -81,13 +87,16 @@ task manifest-value
   like text
 
   save parsed
-    parser/parse
-      make parse-ask, bind(file, file), bind text, read text
+    parse
+      make token-source, bind(file, file), bind text, read text
   fork test
     read parsed/ok
     miss
       back <>
-  save groups, groups-of read parsed/tree/nodes
+  # the parser's tree, read as this file reads every node: a host value
+  save tree, like dynamic
+    read parsed/tree
+  save groups, groups-of read tree/nodes
   save nested, make list
 
   walk groups

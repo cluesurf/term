@@ -1,0 +1,56 @@
+note <A list literal of a union's cases names its element on Swift and Kotlin>
+
+# Ported from union-list-native.ts by statement (item 0577). Swift wrote `SeedList([.int, .int])`, and a case written
+# `.int` needs its enum ("reference to member 'int' cannot be resolved without a contextual type"). Kotlin wrote
+# `mutableListOf(ShapeInt, ShapeInt)`, a `MutableList<ShapeInt>` the invariant `MutableList<Shape>` parameter refuses.
+# Found by deck/test/test/property-check.tree on the base gate, 2026-10-05.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/reading
+  find lines-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host union-list, <load @term/base/list\n  find list\n\nform shape\n  case int\n  case wave\n  case tuple\n    link items, like list, like shape\n\ntask count-of\n  take value, like shape\n  like number\n  fork case, read value\n    case tuple\n      send back, read items/length\n    hook miss\n      send back, code 0\n\ntask run\n  like number\n  save parts\n    make list\n      make int\n      make wave\n  send back\n    call count-of\n      make tuple\n        bind items, read parts\n>
+
+host list-line, make pattern, <<SeedList|mutableListOf>>
+host case-word, make pattern, <<(Int|int)>>
+host declaration, make pattern, <<^\s*(func|fun|final|class|@)>>
+host swift-element, make pattern, <<SeedList<Shape>\(\[>>
+host kotlin-element, make pattern, <<mutableListOf<Shape>\(>>
+
+# the first line of the source that builds a list holding a case, empty when none does
+task case-list-line
+  take source, like text
+  like text
+
+  walk lines-of(source)
+    take line, like text
+    fork test, and(and(matches(list-line, line), matches(case-word, line)), is-equal(matches(declaration, line), false))
+      hold
+        back line
+  back <>
+
+# the program built for the env, its emitted text, and whether its list of cases matches the wanted element
+task names-element
+  take env, like text
+  take wanted, like pattern
+  like boolean
+
+  host built, compile-text(union-list, make(compile-choice, bind(file, <union-list.tree>), bind(stdlib, env), bind(env, env), bind(entry, <run>)))
+  fork test, is-unequal(built/ok, true)
+    hold
+      back false
+  back matches(wanted, case-list-line(emit-text(built, env)))
+
+test <swift: the list of cases names its element>
+  want hold, names-element(<swift>, swift-element)
+
+test <kotlin: the list of cases names its element>
+  want hold, names-element(<kotlin>, kotlin-element)

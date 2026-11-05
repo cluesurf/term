@@ -38,8 +38,10 @@ load @term/call/work/cask/command
 load @term/call/work/small/worker-start
   find call-work
 
+load @term/make/parser/diagnostic
+  find render-kink
+
 dock load
-  load <@term/make/code/parser/diagnostic>, name diagnostic-module
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
 # argv.<x>). The argument is always a local, so the text may read it twice. Named for this file: a bind of one name
@@ -138,6 +140,6 @@ task render-diagnostic
   like text
 
   back
-    call diagnostic-module/renderKink
+    call render-kink
       diagnostic
       source-lines read(diagnostic/file)

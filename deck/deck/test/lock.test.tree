@@ -1,0 +1,67 @@
+note <A lockfile is read, and written back so it reads the same>
+
+# Ported from lock.test.ts by statement (item 0580). code/package/lock.ts is the subject, docked: it hands the grammars
+# to code/package/lockfile-reading.tree and converts the shapes, so the test holds what a TypeScript caller is given.
+
+dock load
+  load <@term/deck/code/package/lock>, name lock-face
+
+form lock-text
+  link text, like text
+
+form lock-code
+  link major, like number
+  link minor, like number
+  link patch, like number
+
+form lock-link
+  link name, like text
+  link code, like text
+
+form lock-deck
+  link name, like text
+  link code, like lock-code
+  link hash, like text
+  link site, like text
+  link link, like list, like lock-link
+
+form lock-book
+  link version, like number
+  link decks, like list, like lock-deck
+
+form lock-write
+  link lockfile, like lock-book
+
+host lock-source, <\nlock \<1\>\n\ndeck @cluesurf/base\n  code \<1.2.3\>\n  hash \<sha512-a1b2c3\>\n  site \<https://registry.npmjs.org/@cluesurf/base.tree/-/seed.tree-1.2.3.tgz\>\n  link @cluesurf/base, code \<1.0.0\>\n\ndeck @cluesurf/base\n  code \<1.0.0\>\n  hash \<sha512-f7e8d9\>\n  site \<https://registry.npmjs.org/@cluesurf/base.tree/-/base.tree-1.0.0.tgz\>\n>
+
+test <parseLockfile: parses a lockfile>
+  host lockfile, lock-face/parse-lockfile(make(lock-text, bind(text, lock-source)))
+  want hold, is-equal(lockfile/version, 1)
+  want hold, is-equal(lockfile/decks/length, 2)
+  host first, lockfile/decks/0
+  want hold, is-equal(first/name, <@cluesurf/base>)
+  want hold, is-equal(first/code/major, 1)
+  want hold, is-equal(first/code/minor, 2)
+  want hold, is-equal(first/code/patch, 3)
+  want hold, is-equal(first/hash, <sha512-a1b2c3>)
+  want hold, is-equal(first/link/length, 1)
+  want hold, is-equal(first/link/0/name, <@cluesurf/base>)
+  want hold, is-equal(first/link/0/code, <1.0.0>)
+  want hold, is-equal(lockfile/decks/1/name, <@cluesurf/base>)
+
+test <writeLockfile: writes and re-parses consistently>
+  host no-links, make list
+  host first, make(lock-deck, bind(name, <@cluesurf/base>), bind(code, make(lock-code, bind(major, 1), bind(minor, 0), bind(patch, 0))), bind(hash, <sha512-abc123>), bind(site, <https://registry.npmjs.org/@cluesurf/base.tree/-/base.tree-1.0.0.tgz>), bind(link, no-links))
+  host links, make list
+  links/push(make(lock-link, bind(name, <@cluesurf/base>), bind(code, <1.0.0>)))
+  host second, make(lock-deck, bind(name, <@cluesurf/base>), bind(code, make(lock-code, bind(major, 1), bind(minor, 2), bind(patch, 3))), bind(hash, <sha512-def456>), bind(site, <https://registry.npmjs.org/@cluesurf/base.tree/-/seed.tree-1.2.3.tgz>), bind(link, links))
+  host decks, make list
+  decks/push(first)
+  decks/push(second)
+  host text, lock-face/write-lockfile(make(lock-write, bind(lockfile, make(lock-book, bind(version, 1), bind(decks, decks)))))
+  host reparsed, lock-face/parse-lockfile(make(lock-text, bind(text, text)))
+  want hold, is-equal(reparsed/version, 1)
+  want hold, is-equal(reparsed/decks/length, 2)
+  # sorted by name
+  want hold, is-equal(reparsed/decks/0/name, <@cluesurf/base>)
+  want hold, is-equal(reparsed/decks/1/name, <@cluesurf/base>)

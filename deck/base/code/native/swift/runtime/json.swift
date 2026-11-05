@@ -52,14 +52,14 @@ enum json {
     }
     // an object is written in its own key order, as on TypeScript and Kotlin. Through a Swift Dictionary the order was
     // the hash's, which differs from one run to the next (`{"y":2,"x":"a"}` one run in two); each scalar and key is still
-    // spelled by JSONSerialization
+    // spelled by JSONSerialization, with a slash left plain as JSON.stringify writes it (`"a/b"`, never `"a\/b"`, item 0939)
     static func written(_ value: Any) -> String {
         if let object = value as? JsonObject {
             let parts = object.order.map { key in "\(written(key)):\(written(object.fields[key]!))" }
             return "{\(parts.joined(separator: ","))}"
         }
         if let array = value as? JsonArray { return "[\(array.items.map(written).joined(separator: ","))]" }
-        guard let data = try? JSONSerialization.data(withJSONObject: plain(value), options: [.fragmentsAllowed]) else { return "" }
+        guard let data = try? JSONSerialization.data(withJSONObject: plain(value), options: [.fragmentsAllowed, .withoutEscapingSlashes]) else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
     }
     static func getField(_ value: Any, _ key: String) -> Any { return (value as? JsonObject)?.fields[key] ?? NSNull() }

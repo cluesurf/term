@@ -1,0 +1,91 @@
+note <The text cursor fact, held both ways>
+
+# Ported from cursor.ts by statement (item 0570). The text cursor fact (compile/backend `text-cursors`): the texts it must
+# give a cursor, so a loop's reads step from the last one, and for every rule a text it must NOT, because a cursor kept
+# across a change to its text reads the wrong code point. compile/backend and ir/facts/text are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/judging
+  find read-field
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/backend>, name backend-module
+  load <@term/make/code/ir/facts/text>, name text-facts
+
+bind names-of
+  take cursors, like dynamic
+  like list, like text
+  case node
+    text <$cursors.names>
+
+host head, <load @term/base/text\n  find char-at\n  find char-code-at\n  find char-count\n\n>
+
+# the names task `name` reads through a cursor, in a program compiled for node
+task cursors-in
+  take text, like text
+  take name, like text
+  like list, like text
+
+  host out, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>)))
+  fork test, not(out/ok)
+    hold
+      host why, join(out/messages, < | >)
+      halt <{why}>
+  walk out/program
+    take one, like dynamic
+    fork test, and(is-equal(<{read-field(one, <form>)}>, <function>), is-equal(<{read-field(one, <name>)}>, name))
+      hold
+        back names-of(backend-module/text-cursors(one, text-facts/ascii-texts(out/program)))
+  halt <no task of this name>
+
+# the names task `scan` reads through a cursor, with `use` calling it with a text that is not ASCII
+task cursors
+  take body, like text
+  like list, like text
+
+  back cursors-in(<{head}{body}\n\ntask use\n  like number\n  send back\n    call scan\n      text \<aé€\>\n>, <scan>)
+
+# a counted loop over `s`, its body `read`
+task loop
+  take read, like text
+  like text
+
+  back <  host n\n    call char-count\n      read s\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n{read}\n  send back, read total>
+
+host sum, <      save total\n        call add\n          read total\n          call char-code-at\n            read s\n            read i>
+
+# 1. a parameter read in a loop: a cursor
+test <a parameter read by position in a loop takes a cursor>
+  host param, cursors(<task scan\n  take s, like text\n  like number\n{loop(sum)}>)
+  want hold, is-equal(join(param, <,>), <s>)
+
+# 2. a parameter written in the task: none, the text changes under the cursor
+test <a text written in the task takes none>
+  host written, cursors(<task scan\n  take s, like text\n  like number\n  save s, text \<\{s\}x\>\n{loop(sum)}>)
+  want hold, is-equal(written/length, 0)
+
+# 3. read only outside a loop: none, nothing to step from
+test <a text read once, outside a loop, takes none>
+  host once, cursors(<task scan\n  take s, like text\n  like number\n  send back\n    call char-code-at\n      read s\n      code 1>)
+  want hold, is-equal(once/length, 0)
+
+# 4. a local declared inside the loop: none, a new text every turn
+test <a local declared inside the loop takes none>
+  host inner, cursors(<task scan\n  take s, like text\n  like number\n  host n\n    call char-count\n      read s\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      host t, text \<\{s\}x\>\n      save total\n        call add\n          read total\n          call char-code-at\n            read t\n            read i\n  send back, read total>)
+  want hold, is-equal(inner/length, 0)
+
+# 5. a local at the top of the task, never written: a cursor
+test <a local at the top of the task, never written, takes a cursor>
+  host local, cursors(<task scan\n  take r, like text\n  like number\n  host s, text \<\{r\}y\>\n{loop(sum)}>)
+  want hold, is-equal(join(local, <,>), <s>)
+
+# 6. an ASCII text: none, every read is a direct index already
+test <an ASCII text takes none>
+  host ascii, cursors-in(<{head}task scan\n  take s, like text\n  like number\n{loop(sum)}\n\ntask use\n  like number\n  send back\n    call scan\n      text \<abc\>\n>, <scan>)
+  want hold, is-equal(ascii/length, 0)

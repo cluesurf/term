@@ -1,0 +1,267 @@
+note <The lean equivalence gate>
+
+# Ported from lean.ts by statement (item 0573), its fixtures written out by tmp/self-host/0573/lean-fixtures.mjs from the
+# original's literal arrays. Lean is a SURFACE: a file whose role carries `mark lean` reads a bare head as a call and a
+# property head as a named argument, and nothing else changes. So the whole bug class the feature can have is the two
+# spellings building different programs. Every fixture here is written twice, lean and long, milled with the flag on and
+# off respectively, and compared after the checker has resolved the labels, which is where the two spellings are meant
+# to converge. A difference is a failure. note/project/term/mill/lean.md.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/text/util
+  find join
+
+# the definitions every fixture shares: a form, a task with a list parameter, a default and a flag
+host prelude, <\nform point\n  link a, like number\n  link b, like number\n\nform bundle\n  link key, like text\n  link states, like list, like text\n\ntask dimension\n  take key, like text\n  take states, like list, like text\n  take max-count, like number, fall 1\n  take strict, like boolean, fall false\n  like text\n  send back, read key\n\ntask later\n  note async\n  take n, like number\n  like number\n  send back, read n\n>
+
+test <a call with property heads, stacked>
+  want hold, same-build(<\ntask go\n  like text\n  save r\n    dimension\n      key \<tense\>\n      states \<present\>, \<imperfect\>\n      max-count 1\n  send back, read r\n>, <\ntask go\n  like text\n  save r\n    call dimension\n      bind key, text \<tense\>\n      bind states\n        make list\n          text \<present\>\n          text \<imperfect\>\n      bind max-count, code 1\n  send back, read r\n>)
+
+test <a call with single-valued properties on one line and the list stacked>
+  want hold, same-build(<\ntask go\n  like text\n  save r\n    dimension key(\<tense\>), max-count 1\n      states \<present\>, \<imperfect\>\n  send back, read r\n>, <\ntask go\n  like text\n  save r\n    call dimension\n      bind key, text \<tense\>\n      bind max-count, code 1\n      bind states\n        make list\n          text \<present\>\n          text \<imperfect\>\n  send back, read r\n>)
+
+test <a bare word names a boolean parameter, so it is that flag set to true>
+  want hold, same-build(<\ntask go\n  like text\n  save r\n    dimension key(\<tense\>), strict\n      states \<present\>\n  send back, read r\n>, <\ntask go\n  like text\n  save r\n    call dimension\n      bind key, text \<tense\>\n      bind strict, true\n      bind states\n        make list\n          text \<present\>\n  send back, read r\n>)
+
+test <an explicit bind inside a lean call is the long-form escape and keeps its name>
+  want hold, same-build(<\ntask go\n  like text\n  save r\n    dimension\n      bind key, text \<tense\>\n      states \<present\>\n  send back, read r\n>, <\ntask go\n  like text\n  save r\n    call dimension\n      bind key, text \<tense\>\n      bind states\n        make list\n          text \<present\>\n  send back, read r\n>)
+
+test <make with property heads fills the fields>
+  want hold, same-build(<\ntask shape\n  like point\n  save p, make point, a(10), b 20\n  send back, read p\n>, <\ntask shape\n  like point\n  save p\n    make point\n      bind a, code 10\n      bind b, code 20\n  send back, read p\n>)
+
+test <a bare head that names a form is a construction of that form>
+  want hold, same-build(<\ntask shape\n  like point\n  save p\n    point\n      a 10\n      b 20\n  send back, read p\n>, <\ntask shape\n  like point\n  save p\n    make point\n      bind a, code 10\n      bind b, code 20\n  send back, read p\n>)
+
+test <a property whose value is a read heads its own line>
+  want hold, same-build(<\ntask shape\n  like point\n  save p, make point, a(10), b 20\n  save q\n    point\n      a, read p/b\n      b, read p/a\n  send back, read q\n>, <\ntask shape\n  like point\n  save p\n    make point\n      bind a, code 10\n      bind b, code 20\n  save q\n    make point\n      bind a, read p/b\n      bind b, read p/a\n  send back, read q\n>)
+
+test <a bare head that names a variant is a construction of that case>
+  want hold, same-build(<\nform pattern\n  case feature\n    link feature, like text\n    link value, like text\n  case reference\n    link element, like text\n\nform construct\n  link key, like text\n  link pattern, like pattern\n\ntask shape\n  like construct\n  send back\n    construct key \<noun\>\n      pattern\n        feature feature(\<part_of_speech\>), value \<noun\>\n>, <\nform pattern\n  case feature\n    link feature, like text\n    link value, like text\n  case reference\n    link element, like text\n\nform construct\n  link key, like text\n  link pattern, like pattern\n\ntask shape\n  like construct\n  send back\n    make construct\n      bind key, text \<noun\>\n      bind pattern\n        make feature\n          bind feature, text \<part_of_speech\>\n          bind value, text \<noun\>\n>)
+
+test <an explicit bind on a receiver method is untouched under lean>
+  want hold, same-build(<\nform box\n  link items, like list\n\n  task push\n    take self\n    take item, like number\n    like number\n    send back\n      call self/items/push\n        read item\n\ntask count\n  like number\n  save b\n    make box\n      bind items\n        make list\n  call push\n    bind self, read b\n    bind item, code 1\n  send back, read b/items/length\n>, <\nform box\n  link items, like list\n\n  task push\n    take self\n    take item, like number\n    like number\n    send back\n      call self/items/push\n        read item\n\ntask count\n  like number\n  save b\n    make box\n      bind items\n        make list\n  call push\n    bind self, read b\n    bind item, code 1\n  send back, read b/items/length\n>)
+
+test <an anonymous task keeps its parameter>
+  want hold, same-build(<\ntask first\n  take xs, like list, like number\n  like number\n  save found\n    call xs/find\n      task\n        take one, like number\n        like boolean\n        back is-above one, 1\n  back found\n>, <\ntask first\n  take xs, like list, like number\n  like number\n  save found\n    call xs/find\n      task\n        take one, like number\n        like boolean\n        send back\n          call is-above\n            read one\n            code 1\n  send back, read found\n>)
+
+test <a builtin written as a bare head folds to its operator>
+  want hold, same-build(<\ntask both\n  take a, like boolean\n  take b, like boolean\n  like boolean\n  back and a, b\n>, <\ntask both\n  take a, like boolean\n  take b, like boolean\n  like boolean\n  send back\n    call and\n      read a\n      read b\n>)
+
+test <a list parameter accumulates across repeated property heads>
+  want hold, same-build(<\ntask go\n  like text\n  send back\n    dimension\n      key \<tense\>\n      states \<present\>\n      states \<imperfect\>\n      max-count 1\n>, <\ntask go\n  like text\n  send back\n    call dimension\n      bind key\n        text \<tense\>\n      bind states\n        make list\n          text \<present\>\n          text \<imperfect\>\n      bind max-count\n        code 1\n>)
+
+test <a nested object by label, with no make>
+  want hold, same-build(<\nform shape\n  link name, like text\n  link at, like point\n\ntask go\n  like shape\n  send back\n    shape\n      name \<corner\>\n      at\n        a 10\n        b 20\n>, <\nform shape\n  link name, like text\n  link at, like point\n\ntask go\n  like shape\n  send back\n    make shape\n      bind name, text \<corner\>\n      bind at\n        make point\n          bind a, code 10\n          bind b, code 20\n>)
+
+test <a walk binds its index with a second take>
+  want hold, same-build(<\ntask label\n  take xs, like list, like text\n  like text\n  save out, text \<\>\n  walk read(xs)\n    take one\n    take at\n    save out\n      text \<\{\{out\}\}\{\{at\}\}\{\{one\}\}\>\n  send back, read out\n>, <\ntask label\n  take xs, like list, like text\n  like text\n  save out, text \<\>\n  walk list, read(xs)\n    take at\n    hook next\n      take site, name one\n      save out\n        text \<\{\{out\}\}\{\{at\}\}\{\{one\}\}\>\n  send back, read out\n>)
+
+test <a bare-head call takes the same wait and link modifiers `call` does>
+  want hold, same-build(<\ntask go\n  note async\n  take n, like number\n  like number\n  send back\n    later n\n      wait true\n>, <\ntask go\n  note async\n  take n, like number\n  like number\n  send back\n    call later\n      read n\n      wait true\n>)
+
+test <a fork whose arms drop their hook>
+  want hold, same-build(<\ntask pick\n  take n, like number\n  like text\n  fork test, is-above(n, 1)\n    hold\n      send back\n        text \<big\>\n    miss\n      send back\n        text \<small\>\n>, <\ntask pick\n  take n, like number\n  like text\n  fork test\n    hook test\n      call is-above\n        read n\n        code 1\n    hook hold\n      send back\n        text \<big\>\n    hook miss\n      send back\n        text \<small\>\n>)
+
+test <a walk with no mode word and no hook next>
+  want hold, same-build(<\ntask total\n  take xs, like list, like number\n  like number\n  save sum, code 0\n  walk read(xs)\n    take one\n    save sum\n      add\n        read sum\n        read one\n  send back, read sum\n>, <\ntask total\n  take xs, like list, like number\n  like number\n  save sum, code 0\n  walk list, read(xs)\n    hook next\n      take site, name one\n      save sum\n        call add\n          read sum\n          read one\n  send back, read sum\n>)
+
+test <wait is a prefix over a call, and the child marker still means the same>
+  want hold, same-build(<\ntask go\n  note async\n  take n, like number\n  like number\n  send back\n    wait later(n)\n>, <\ntask go\n  note async\n  take n, like number\n  like number\n  send back\n    call later\n      read n\n      wait true\n>)
+
+test <a builtin nests another builtin, stacked, as a positional argument>
+  want hold, same-build(<\ntask span\n  take a, like number\n  take b, like number\n  take c, like number\n  like number\n  back\n    divide\n      subtract\n        read a\n        read b\n      read c\n>, <\ntask span\n  take a, like number\n  take b, like number\n  take c, like number\n  like number\n  send back\n    call divide\n      call subtract\n        read a\n        read b\n      read c\n>)
+
+test <a macro argument binds by its head, and `bind` is the long form of it>
+  want hold, same-build(<\ntree sound-row\n  take symbol\n  take gloss\n\n  hook fuse\n    task describe-\{symbol\}\n      like text\n      send back\n        text \<\{gloss\}\>\n\nfuse sound-row\n  symbol a\n  gloss open\n\ntask go\n  like text\n  send back\n    call describe-a\n>, <\ntree sound-row\n  take symbol\n  take gloss\n\n  hook fuse\n    task describe-\{symbol\}\n      like text\n      send back\n        text \<\{gloss\}\>\n\nfuse sound-row\n  bind symbol, a\n  bind gloss, open\n\ntask go\n  like text\n  send back\n    call describe-a\n>)
+
+test <a host whose declared type is a list builds one however many entries it holds>
+  want hold, same-build(<\nhost one\n  like list\n    like number\n  code 7\n\ntask go\n  like number\n  send back\n    read one/0\n>, <\nhost one\n  like list\n    like number\n  make list\n    code 7\n\ntask go\n  like number\n  send back\n    read one/0\n>)
+
+test <a list field accumulates across repeated property heads>
+  want hold, same-build(<\ntask go\n  like bundle\n  send back\n    bundle\n      key \<tense\>\n      states \<present\>\n      states \<imperfect\>\n      states \<aorist\>\n>, <\ntask go\n  like bundle\n  send back\n    make bundle\n      bind key\n        text \<tense\>\n      bind states\n        make list\n          text \<present\>\n          text \<imperfect\>\n          text \<aorist\>\n>)
+
+test <a nested task call under a task call is positional, not a label>
+  want hold, same-build(<\ntask shout\n  take text, like text\n  like text\n  send back, text \<\{\{text\}\}!\>\n\ntask go\n  like text\n  send back\n    shout\n      shout \<a\>\n>, <\ntask shout\n  take text, like text\n  like text\n  send back, text \<\{\{text\}\}!\>\n\ntask go\n  like text\n  send back\n    call shout\n      call shout\n        text \<a\>\n>)
+
+test <a nested call under a method call is a call, never a dropped label>
+  want hold, same-build(<\ntask shout\n  take text, like text\n  like text\n  send back, text \<\{\{text\}\}!\>\n\ntask go\n  like list\n    like text\n  save xs, make list\n  xs/push\n    shout \<a\>\n  send back, read xs\n>, <\ntask shout\n  take text, like text\n  like text\n  send back, text \<\{\{text\}\}!\>\n\ntask go\n  like list\n    like text\n  save xs, make list\n  call xs/push\n    call shout\n      text \<a\>\n  send back, read xs\n>)
+
+test <a nested builtin under a task call folds to its operator>
+  want hold, same-build(<\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask go\n  like number\n  send back\n    twice\n      subtract 3, 1\n>, <\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask go\n  like number\n  send back\n    call twice\n      call subtract\n        code 3\n        code 1\n>)
+
+test <a property head that waits is an awaited call, not a label>
+  want hold, same-build(<\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask go\n  note async\n  like number\n  send back\n    twice\n      later 2, wait true\n>, <\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask go\n  note async\n  like number\n  send back\n    call twice\n      call later\n        code 2\n        wait true\n>)
+
+test <a variable named like a boolean parameter is passed by value>
+  want hold, same-build(<\ntask pick-flag\n  take n, like number\n  take loud, like boolean, fall false\n  like number\n  send back, read n\n\ntask go\n  take loud, like boolean\n  like number\n  send back\n    pick-flag\n      2\n      loud\n>, <\ntask pick-flag\n  take n, like number\n  take loud, like boolean, fall false\n  like number\n  send back, read n\n\ntask go\n  take loud, like boolean\n  like number\n  send back\n    call pick-flag\n      code 2\n      read loud\n>)
+
+test <a property head with bind children is a call with those arguments>
+  want hold, same-build(<\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask pick\n  take n, like number\n  take m, like number, fall 0\n  like number\n  send back, add(n, m)\n\ntask go\n  like number\n  send back\n    twice\n      pick\n        bind n, 2\n        bind m, 3\n>, <\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n\ntask pick\n  take n, like number\n  take m, like number, fall 0\n  like number\n  send back, add(n, m)\n\ntask go\n  like number\n  send back\n    call twice\n      call pick\n        bind n, code 2\n        bind m, code 3\n>)
+
+# and the things lean must REFUSE, each with the reason a reader gets
+
+test <refuses: a label on a member call that names nothing callable>
+  want hold, refuses(<\ntask go\n  like list\n    like text\n  save xs, make list\n  xs/push\n    nowhere \<a\>\n  send back, read xs\n>, <has no parameters on record>)
+
+test <refuses: a label the callee does not have>
+  want hold, refuses(<\ntask go\n  like text\n  send back\n    dimension key(\<tense\>), kee \<x\>\n      states \<present\>\n>, <has no parameter "kee">)
+
+test <refuses: two values into a scalar parameter>
+  want hold, refuses(<\ntask go\n  like text\n  send back\n    dimension\n      key \<tense\>, \<mood\>\n      states \<present\>\n>, <takes one value, and this gives 2>)
+
+test <refuses: a value after a property closed by its parentheses is a positional, and given twice>
+  want hold, refuses(<\ntask go\n  like text\n  send back\n    dimension key(\<tense\>), states(\<present\>), \<imperfect\>, max-count 1\n>, <given twice>)
+
+test <refuses: a bare word that is neither in scope nor a boolean parameter>
+  want hold, refuses(<\ntask go\n  like text\n  send back\n    dimension key(\<tense\>), loose\n      states \<present\>\n>, <is not defined>)
+
+test <refuses: a stray positional in a form construction>
+  want hold, refuses(<\ntask shape\n  like point\n  save p, make point, a(10), b 20\n  send back\n    point a, read p/b\n>, <needs a field name as its head>)
+
+test <refuses: values after a label stay with the label, and a scalar label refuses the extra>
+  want hold, refuses(<\ntask shape\n  like number\n  back dimension key \<tense\>, 0, 1\n>, <takes one value, and this gives 3>)
+
+test <refuses: a statement head left holding an extra argument (send back)>
+  want hold, refuses(<\ntask shape\n  like number\n  back dimension(key \<tense\>), 1\n>, <`back` is a statement>)
+
+test <refuses: a hook under a call, which is not a callback spelling>
+  want hold, refuses(<\ntask go\n  take letters, like list, like text\n  like list\n    like text\n  send back\n    call letters/flat-map\n      hook next\n        take one, like text\n        like list\n          like text\n        send back\n          make list\n            read one\n>, <is not read as an argument>)
+
+test <refuses: a scalar parameter given twice on a call>
+  want hold, refuses(<\ntask go\n  like text\n  send back\n    dimension\n      key \<tense\>\n      states \<present\>\n      key \<mood\>\n>, <given twice>)
+
+test <refuses: a property that names no field of the form>
+  want hold, refuses(<\ntask shape\n  like point\n  send back\n    point a(10), b(20), c 30\n>, <has no field "c">)
+
+test <refuses: values after a literal stay in the property they follow>
+  want hold, refuses(<\ntask shape\n  like point\n  send back\n    point a 10, b 20, c 30\n>, <takes one value, and this gives 2>)
+
+test <refuses: a scalar property head given twice on a construction>
+  want hold, refuses(<\ntask shape\n  like point\n  send back\n    point\n      a 10\n      b 20\n      a 30\n>, <is given twice>)
+
+test <refuses: a statement inside an arm of a value-position fork>
+  want hold, refuses(<\ntask pick\n  take n, like number\n  like text\n  save word\n    fork test\n      hook test\n        is-above n, code 1\n      hook hold\n        save big, text \<big\>\n        read big\n      hook miss\n        text \<small\>\n  send back, read word\n>, <one value per arm>)
+
+test <refuses: turn next outside a loop>
+  want hold, refuses(<\ntask shape\n  take n, like number\n  like number\n  fork test, is-above n, code 1\n    hook hold\n      turn next\n  send back, read n\n>, <`turn next` is only valid inside a loop>)
+
+# and the long form under the lean flag is unchanged: a file may be written entirely long and mean the same
+test <the long form means the same with the flag on>
+  host body, <\ntask go\n  like text\n  save r\n    call dimension\n      bind key, text \<tense\>\n      bind states\n        make list\n          text \<present\>\n          text \<imperfect\>\n      bind max-count, code 1\n  send back, read r\n>
+  want hold, is-equal(emit(body, true), emit(body, false))
+
+# ---- the host role: a data file ----
+
+test <host: scalars by their own head>
+  want hold, same-role-build(<host>, <key \<tense\>\nmax-count 1\nstrict true\n>, <host key, \<tense\>\nhost max-count, 1\nhost strict, true\n>)
+
+test <host: a map by its own head, with entries by theirs>
+  want hold, same-role-build(<host>, <point\n  a 10\n  b 20\n>, <host point\n  host a, 10\n  host b, 20\n>)
+
+test <host: a list still says list, and lean entries sit beside it>
+  want hold, same-role-build(<host>, <name \<tense\>\nlist states\n  \<present\>, \<imperfect\>\n>, <host name, \<tense\>\nlist states\n  \<present\>, \<imperfect\>\n>)
+
+test <host: the long form is unchanged under the mark>
+  want hold, same-role-build(<host>, <host key, \<tense\>\nlist states\n  \<a\>, \<b\>\n>, <host key, \<tense\>\nlist states\n  \<a\>, \<b\>\n>)
+
+# ---- the view role: a document ----
+
+test <view: a placement takes its inputs by their own heads>
+  want hold, same-role-build(<view>, <view page\n  view text/term\n    label \<alpha\>\n    size 2\n>, <view page\n  view text/term\n    bind label, \<alpha\>\n    bind size, 2\n>)
+
+test <view: an input under a nested placement>
+  want hold, same-role-build(<view>, <view page\n  view data/row\n    view text/term\n      label \<alpha\>\n>, <view page\n  view data/row\n    view text/term\n      bind label, \<alpha\>\n>)
+
+test <view: the long form is unchanged under the mark>
+  want hold, same-role-build(<view>, <view page\n  view text/term\n    bind label, \<alpha\>\n>, <view page\n  view text/term\n    bind label, \<alpha\>\n>)
+
+test <view: `text` is a body head, so a bare `text \<x\>` is a text node under the mark too>
+  want hold, same-role-build(<view>, <view page\n  view text/term\n    text \<alpha\>\n>, <view page\n  view text/term\n    text \<alpha\>\n>)
+
+
+# the emitted TypeScript, or the diagnostics as one text when it did not build, for a file of this role (`code` for none)
+task emit-as
+  take role, like text
+  take text, like text
+  take lean, like boolean
+  like text
+
+  host folder, role
+  fork test, is-equal(role, <>)
+    hold
+      host out, compile-text(text, make(compile-choice, bind(file, <gate/code/lean.tree>), bind(lean, lean)))
+      fork test, out/ok
+        hold
+          back out/emitted
+      back <DIAGNOSTICS: {join(out/messages, < | >)}>
+  host out, compile-text(text, make(compile-choice, bind(file, <gate/{folder}/lean.tree>), bind(lean, lean), bind(role, role)))
+  fork test, out/ok
+    hold
+      back out/emitted
+  back <DIAGNOSTICS: {join(out/messages, < | >)}>
+
+task emit
+  take body, like text
+  take lean, like boolean
+  like text
+
+  back emit-as(<>, <{prelude}{body}>, lean)
+
+# the lean spelling under the flag and the long one without it build, and build one program
+task same-build
+  take lean-text, like text
+  take long-text, like text
+  like boolean
+
+  host lean, emit(lean-text, true)
+  host long, emit(long-text, false)
+  back and(is-equal(lean, long), is-equal(starts-with(lean, <DIAGNOSTICS>), false))
+
+task same-role-build
+  take role, like text
+  take lean-text, like text
+  take long-text, like text
+  like boolean
+
+  host lean, emit-as(role, lean-text, true)
+  host long, emit-as(role, long-text, false)
+  back and(is-equal(lean, long), is-equal(starts-with(lean, <DIAGNOSTICS>), false))
+
+# refused under the flag, with the reason a reader gets
+task refuses-as
+  take role, like text
+  take text, like text
+  take lean, like boolean
+  take expect, like text
+  like boolean
+
+  host out, emit-as(role, text, lean)
+  back and(starts-with(out, <DIAGNOSTICS>), text-contains(out, expect))
+
+task refuses
+  take body, like text
+  take expect, like text
+  like boolean
+
+  host out, emit(body, true)
+  back and(starts-with(out, <DIAGNOSTICS>), text-contains(out, expect))
+
+
+# two values under a bare head is not a list: the reader says to write `list`, as it does for `host`
+test <host refuses: two values under a bare head, and says to write list>
+  want hold, refuses-as(<host>, <states \<a\>, \<b\>\n>, true, <A list is written "list states">)
+
+# and without the mark, a bare head is not data at all
+test <host refuses: a bare head without the mark is not data>
+  want hold, refuses-as(<host>, <key \<tense\>\n>, false, <is not data>)
+
+# a component input takes one value
+test <view refuses: two values into one input>
+  want hold, refuses-as(<view>, <view page\n  view text/term\n    label \<a\>, \<b\>\n>, true, <takes one>)

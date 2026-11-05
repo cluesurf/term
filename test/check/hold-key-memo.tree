@@ -1,6 +1,6 @@
 note <A definition's hold key text, kept>
 
-# Ported from hold-key-memo.ts by hand (item 0557). Decision 102, check/hold-key-memo, the subject (decision 106). The memo's key must tell
+# Ported from hold-key-memo.ts by hand (item 0557). Decision 102, check/hold-key-text.tree, the subject (decision 106). The memo's key must tell
 # apart every two statements whose node-json differs, and may leave out only `span`. The fixtures are host values Term has no literal for
 # (NaN, -0, a bigint, an absent list value, a Map, a Set, a cycle, a function, a Date), so they sit in one table. The original's whole check
 # with the memo full and empty compares raw warnings without their spans: this compares the same through compile-outcome, with places,
@@ -18,7 +18,7 @@ load ../support/judging
 
 dock load
   load <@term/make/code/check/holds>, name holds-module
-  load <@term/make/code/check/hold-key-memo>, name key-memo
+  load <@term/make/code/check/hold-key-text>, name key-text
 
 # host value: the values no Term literal holds, each one expression
 bind value-nan
@@ -160,13 +160,13 @@ bind key-with
   take value, like dynamic
   like text
   case node
-    text <$module.holdKeyMemo.key($value)>
+    text <$module.memoKey($module.freshKeyMemo(), $value)>
 
 task key
   take name, like text
   like text
 
-  back key-with(key-memo, fixture(name))
+  back key-with(key-text, fixture(name))
 
 form memo-run
   link size-met, like number
@@ -188,10 +188,10 @@ task run-memo
 
   call holds-module/clear-hold-memo
   host empty, compile-memo()
-  host size-met, key-memo/hold-key-memo-size()
+  host size-met, holds-module/hold-key-memo-size()
   host full, compile-memo()
   call holds-module/clear-hold-memo
-  host size-cleared, key-memo/hold-key-memo-size()
+  host size-cleared, holds-module/hold-key-memo-size()
   host again, compile-memo()
   back make(memo-run, bind(size-met, size-met), bind(size-cleared, size-cleared), bind(empty, empty), bind(full, full), bind(again, again))
 

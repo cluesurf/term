@@ -1,0 +1,122 @@
+note <A feed mill compile starts from its own counters (item term-self-host-001-0058, decided by 0009, spec.md section 4.8)>
+
+# Ported from feed-state-fresh.ts by statement (item 0570). The original kept `inRepetition` and `inSpan` in module
+# variables, so a compile that threw inside a list or a span left them raised, and every compile after it in the process
+# wrote a repetition's bare `halt` where a rule outside any repetition reports what it expected.
+# compile/feed-compile.tree `compile-feed-mine` now makes a fresh `feed-state` at its start, so a compile that throws,
+# then a second compile, gives what the second gives alone. Diverges from the original (decision 027): after a throw the
+# original's next compile carried the raised counters. The steps run in order in one process, so each is a top-level
+# `host` that takes the step before it. parser/tree and compile/feed-mill are the subject (decision 106).
+
+load ../support/judging
+  find make-record
+  find set-field
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-module
+  load <@term/make/code/compile/feed-mill>, name feed-module
+
+bind parse-probe
+  take module, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <$module.parse(\{ file: "probe.tree", text: $text \})>
+
+# host value: the JSON null a rule call's argument holds when it holds no node
+bind null-value
+  take seed, like number
+  like dynamic
+  case node
+    text <null>
+
+bind grammar-of-rule
+  take rule, like dynamic
+  like dynamic
+  case node
+    text <new Map([["broken", [$rule]]])>
+
+# a rule outside every repetition and span: its miss reports what it expected, which inside a repetition is a bare
+# `halt`, and its `maybe`'s payload is what the maybe sends, which inside a span is the text the maybe consumed
+task grammar-of
+  take text, like text
+  like dynamic
+
+  host parsed, parse-probe(tree-module, text)
+  fork test, not(parsed/ok)
+    hold
+      halt <the probe grammar did not parse>
+  back feed-module/read-feed-mine-grammar(parsed/tree)
+
+host plain, grammar-of(<mine pair\n  mine char, \<a\>, send first\n  mine maybe\n    mine char, \<b\>, send second\n  mine text, \<bc\>\n>)
+
+task alone
+  take after, like dynamic
+  like text
+
+  back feed-module/compile-feed-mine(plain, <text>, <@term/mill/feed>)
+
+# a grammar whose compile throws INSIDE a repetition, and one that throws inside a span: a rule call whose argument holds
+# no node, read only when the call is written, after the counter is raised (an empty child throws earlier, in the
+# capture scan, before any counter moves)
+task throwing
+  take kind, like text
+  like dynamic
+
+  host argument, make-record(make(list, <name>, <a>, <value>, null-value(0)))
+  host bad-call, make-record(make(list, <kind>, <form>, <name>, <other>, <args>, make(list, argument)))
+  host rule, make-record(make(list, <kind>, kind, <children>, make(list, bad-call)))
+  fork test, is-equal(kind, <span>)
+    hold
+      set-field(rule, <send>, <value>)
+  back grammar-of-rule(rule)
+
+# whether compiling the throwing grammar of this kind, in this mode, throws
+task throws-in
+  take kind, like text
+  take mode, like text
+  take after, like dynamic
+  like boolean
+
+  fork
+    mark unsafe
+    feed-module/compile-feed-mine(throwing(kind), mode, <@term/mill/feed>)
+    back false
+  halt take
+    take cause
+    back true
+
+host first, alone(0)
+
+# the span first, so a counter the list's throw raised cannot stand in for the span's
+host span-threw, throws-in(<span>, <text>, first)
+host span-after, alone(span-threw)
+# twice over, so a counter raised by one throw and another would show too
+host span-again, alone(throws-in(<span>, <byte>, span-after))
+host list-threw, throws-in(<list>, <text>, span-again)
+host list-after, alone(list-threw)
+host list-again, alone(throws-in(<list>, <byte>, list-after))
+
+test <the plain grammar reports what it expected>
+  want hold, text-contains(first, <expected>)
+
+test <a compile throwing inside a span throws>
+  want hold, span-threw
+
+test <after a throw inside a span, a compile gives what it gives alone>
+  want hold, is-equal(span-after, first)
+
+test <after two throws inside a span, still the same>
+  want hold, is-equal(span-again, first)
+
+test <a compile throwing inside a list throws>
+  want hold, list-threw
+
+test <after a throw inside a list, a compile gives what it gives alone>
+  want hold, is-equal(list-after, first)
+
+test <after two throws inside a list, still the same>
+  want hold, is-equal(list-again, first)

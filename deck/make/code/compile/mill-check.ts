@@ -213,10 +213,11 @@ function formReferencesOf(
 
 // The rule names one role's grammar defines, its load closure merged (compile/mill-load.ts loadRoleGrammar): what a
 // `mine form, like R` and a `case X, mint Y` must name (decision 003 rule 3). A caller passes the closure of every role
-// whose grammar holds the file, intersected, since a rule another role lacks dangles there
+// whose grammar holds the file, intersected, since a rule another role lacks dangles there. The names are lists, as the
+// twin compile/mill-check.tree takes them
 export type MillClosure = {
-  mine: ReadonlySet<string>
-  mint: ReadonlySet<string>
+  mine: readonly string[]
+  mint: readonly string[]
 }
 
 // what a gate knows beyond the file: the definers of a form, by the name the diagnostic shows (a name no module defines
@@ -285,7 +286,7 @@ function ruleProblemsOf(
           what: 'matches "mine form" with no "like <rule>"',
           span: spanOfWhole(group),
         })
-      } else if (!closure.mine.has(rule)) {
+      } else if (!closure.mine.includes(rule)) {
         problems.push({
           what: `matches "mine form, like ${rule}", which its grammar defines no mine rule for`,
           span: spanOfWhole(group),
@@ -326,7 +327,7 @@ function ruleProblemsOf(
 
         const rule = mint ? wordOf(mint.nodes[1]) : ''
 
-        if (rule && !closure.mint.has(rule)) {
+        if (rule && !closure.mint.includes(rule)) {
           problems.push({
             what: `mints a case through "mint ${rule}", which its grammar defines no mint rule for`,
             span: spanOfWhole(mint!),

@@ -100,12 +100,14 @@ load @term/call/work/item/event
   find item-field
   find tally
 
+load @term/make/compile/reach
+  find stale-entries
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   # an inherited method (once) is reached only through the global (traps.md)
   load <global:process>, name host-process
-  load <@term/make/code/compile/reach>, name reach-module
 
 # ---- what the output library is handed ----
 
@@ -1048,7 +1050,7 @@ task watch-round
       fork test, and(not(context/merged), is-equal(context/native, <>))
         hold
           save graph, walked-edges(context/session/walked)
-          save reached, reach-module/stale-entries(graph, files, moved)
+          save reached, stale-entries(graph, files, moved)
     case none
       save nothing, 0
   fork test, is-equal(reached/length, 0)

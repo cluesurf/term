@@ -1,0 +1,44 @@
+note <Move-on-last-use in the Rust backend>
+
+# Ported from rust-move.ts by statement (item 0575). The linearity / Perceus insight: a variable read EXACTLY ONCE in a
+# function, not inside a loop or closure, is MOVED at that use instead of cloned, saving a deep `String` copy or an `Rc`
+# refcount bump. A variable read more than once, or read inside a loop, is still cloned (the always-correct fallback).
+# This checks the EMITTED Rust: a single-use argument has no `.clone()`, a multi-use one keeps it. The roundtrip suite
+# proves rustc accepts the moves. The program is the front end's (decision 119), and compile/rust is the subject.
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/rust>, name rust-module
+
+# `take-one` consumes a text; `join-two` consumes two. Used as the call targets below.
+host prelude, <task take-one\n  take s, like text\n  like text\n  send back\n    read s\n\ntask join-two\n  take a, like text\n  take b, like text\n  like text\n  send back\n    call add\n      read a\n      read b\n>
+
+task rust-of
+  take text, like text
+  like text
+
+  back rust-module/emit-rust(front-end(<{prelude}{text}>, make(compile-choice, bind(file, <b.tree>)))/program)
+
+# 1. a SINGLE-use variable argument is MOVED (no clone): `x` is read once, so `take-one(x)`, not `take-one(x.clone())`.
+test <single-use argument is moved (no clone)>
+  host single, rust-of(<\ntask pass-through\n  take x, like text\n  like text\n  send back\n    call take-one\n      read x\n>)
+  want hold, text-contains(single, <take_one(x)>)
+  want hold, is-equal(text-contains(single, <take_one(x.clone())>), false)
+
+# 2. a TWICE-used variable argument keeps the clone (it must survive to the second use): `join-two(x.clone(), x.clone())`
+# (or at least the first must clone; the analysis declines the whole variable when its read count is above one).
+test <twice-used argument keeps the clone>
+  host twice, rust-of(<\ntask duplicate\n  take x, like text\n  like text\n  send back\n    call join-two\n      read x\n      read x\n>)
+  want hold, text-contains(twice, <x.clone()>)
+
+# 3. a variable used once but INSIDE A LOOP keeps the clone (the use re-executes each iteration, so a move would fail on
+# the second iteration). `x` is read once textually, but inside a `walk` loop body.
+test <single use inside a loop keeps the clone>
+  host loop, rust-of(<\ntask in-loop\n  take x, like text\n  like text\n  save out, text \<\>\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 3\n    hook hold\n      save out\n        call take-one\n          read x\n      save i\n        call add\n          read i\n          code 1\n  send back\n    read out\n>)
+  want hold, text-contains(loop, <take_one(x.clone())>)

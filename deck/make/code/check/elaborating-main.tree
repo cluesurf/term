@@ -35,6 +35,8 @@ load ../compile/node
   find span
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
   find kernel-term
   find kernel-value
@@ -175,6 +177,7 @@ task kernel-accepts
   mark private
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     check(st, ctx, term, expected)
@@ -182,6 +185,7 @@ task kernel-accepts
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back false
   back false
 

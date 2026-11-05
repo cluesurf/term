@@ -21,6 +21,11 @@ dock load
   load <@term/call/code/make>, name compiling-project
   load <@term/call/code/role-of>, name compiling-role
   load <@term/call/code/deck-of>, name compiling-deck
+  load <@term/make/code/parser/tree>, name compiling-parser
+  load <@term/make/code/compile/template>, name compiling-template
+  load <@term/make/code/compile/mill>, name compiling-mill
+  load <@term/make/code/check/resolve>, name compiling-resolver
+  load <@term/make/code/check/infer>, name compiling-infer
   load <node:path>, name compiling-path
 
 # `file` is the exact path a load asks for. `answer` is the file it comes back as, <> that same path, for a suite whose
@@ -118,12 +123,16 @@ form compile-statement
 # warnings, `warning-messages` their messages in the same order, and `warning-notes` the same with their places.
 # `program` is the checked program, for a helper that emits or runs it, and is void on a refusal. `emitted` is the
 # TypeScript of a program that compiled, else empty. `ms` is the time around the driver's compile only. `roll`, `wake`,
-# `twins`, `cover`, `css` and `modules` are the driver's answers of those names, void where it gave none.
+# `twins`, `cover`, `css` and `modules` are the driver's answers of those names, void where it gave none. `diagnostics` and
+# `warning-diagnostics` are the driver's own records of the errors and the warnings, passed through unchanged, empty where
+# it gave none, for a suite whose subject reads them (the diagnostic renderer).
 form compile-outcome
   link ok, like boolean
   link names, like list, like text
   link messages, like list, like text
   link notes, like list, like compile-note
+  link diagnostics, like dynamic
+  link warning-diagnostics, like dynamic
   link warnings, like list, like text
   link warning-messages, like list, like text
   link warning-notes, like list, like compile-note
@@ -138,6 +147,16 @@ form compile-outcome
   link cover, like dynamic
   link css, like dynamic
   link modules, like dynamic
+
+# What the front end alone came to (decision 119): parse, expand-templates, mill, resolve and the infer check, no emit.
+# `program` is the checked program, there also when resolve or infer refuse it, for a suite whose subject reads a refused
+# program (the kernel, totality). `ok`, `names` and `messages` are the errors resolve and infer gave, as compile-outcome
+# gives them for a refusal, warnings left out.
+form front-end-outcome
+  link ok, like boolean
+  link names, like list, like text
+  link messages, like list, like text
+  link program, like dynamic
 
 # the driver's options for a choice, each left out when empty: the compiler tells an env given from none (T-0495)
 bind compiling-options
@@ -279,6 +298,18 @@ bind compiling-warning-notes
   case node
     text <($result.warnings ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", file: d.file ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, hint: d.hint ?? "", severity: d.severity ?? "", code: d.code ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
 
+bind compiling-diagnostics
+  take result, like dynamic
+  like dynamic
+  case node
+    text <($result.diagnostics ?? [])>
+
+bind compiling-warning-diagnostics
+  take result, like dynamic
+  like dynamic
+  case node
+    text <($result.warnings ?? [])>
+
 bind compiling-kinds
   take result, like dynamic
   like dynamic
@@ -390,7 +421,62 @@ task compile-text
   host warnings, compiling-warnings(result)
   host open-claims, compiling-open(result)
   host tally, make(obligation-tally, bind(total, compiling-total(result)), bind(proven, compiling-proven(result)), bind(failed, compiling-failed(result)), bind(kinds, compiling-kinds(result)))
-  back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(warnings, warnings), bind(warning-messages, compiling-warning-messages(result)), bind(warning-notes, compiling-warning-notes(result)), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)), bind(roll, compiling-field(result, <roll>)), bind(wake, compiling-field(result, <wake>)), bind(twins, compiling-field(result, <twins>)), bind(cover, compiling-field(result, <cover>)), bind(css, compiling-field(result, <css>)), bind(modules, compiling-field(result, <modules>)))
+  back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(diagnostics, compiling-diagnostics(result)), bind(warning-diagnostics, compiling-warning-diagnostics(result)), bind(warnings, warnings), bind(warning-messages, compiling-warning-messages(result)), bind(warning-notes, compiling-warning-notes(result)), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)), bind(roll, compiling-field(result, <roll>)), bind(wake, compiling-field(result, <wake>)), bind(twins, compiling-field(result, <twins>)), bind(cover, compiling-field(result, <cover>)), bind(css, compiling-field(result, <css>)), bind(modules, compiling-field(result, <modules>)))
+
+# the errors of the two checks, in order, warnings left out, as one result compiling-names and compiling-messages read
+bind compiling-errors
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <(\{ diagnostics: [...($first ?? []), ...($second ?? [])].filter(d =\> (d.severity?.form ?? d.severity) !== "warning") \})>
+
+# the messages of a parse or a mill that failed, joined, for the raise
+task compiling-failure
+  take step, like text
+  take result, like dynamic
+  like text
+
+  save out, <{step} failed:>
+  save first, true
+  walk compiling-messages(result)
+    take message, like text
+    fork test, first
+      hold
+        save out, <{out} {message}>
+        save first, false
+      miss
+        save out, <{out}; {message}>
+  back out
+
+# the front end alone over a program read longhand under the name `suite.tree`
+task front-end
+  take source, like text
+  like front-end-outcome
+
+  back front-end(source, make compile-choice)
+
+# the front end alone, the diagnostics under `choice/file`, the only field of the choice it reads: it resolves no load. A
+# parse or a mill that fails raises its messages, as the suites that ran these steps themselves did
+task front-end
+  take source, like text
+  take choice, like compile-choice
+  like front-end-outcome
+
+  host parsed, compiling-parser/parse(make(compiling-source, bind(file, choice/file), bind(text, source)))
+  fork test, not(compiling-ok(parsed))
+    hold
+      halt <{compiling-failure(<parse>, parsed)}>
+  host built, compiling-mill/mill(compiling-template/expand-templates(compiling-field(parsed, <tree>)), choice/file)
+  fork test, not(compiling-ok(built))
+    hold
+      halt <{compiling-failure(<mill>, built)}>
+  host program, compiling-program(built)
+  host resolved, compiling-resolver/resolve(program, choice/file)
+  host inferred, compiling-infer/check(program, choice/file)
+  host errors, compiling-errors(resolved, inferred)
+  host names, compiling-names(errors)
+  back make(front-end-outcome, bind(ok, is-equal(names/length, 0)), bind(names, names), bind(messages, compiling-messages(errors)), bind(program, program))
 
 # a path under a root, as an absolute path from where the test runs
 task project-path

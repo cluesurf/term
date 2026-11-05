@@ -365,6 +365,35 @@ task maybe-field-prelude
   push(lines, <\}>)
   back join(lines, <\n>)
 
+# the read of a caught value's link by a key, `problem/link/{key}` (compiler decision 015). The key is the prop's
+# written name, and the raise stored the prop as ts-names.tree `to-member` spells it, so the key is spelled the same
+# way here: split at every `-` and `_`, each later part capitalized, or upper case when it is one of `acronyms`. A key
+# holding a capital is no written name. Only an own property is a prop, so `constructor` reads absent, and an absent
+# prop reads null, as the natives read the loose empty value and `set-field` writes it
+task link-key-prelude
+  take acronyms, like list, like text
+  like text
+
+  save quoted, make list
+  walk acronyms
+    take one
+    push(quoted, <"{one}">)
+  save lines, make list
+  push(lines, <const __termLinkAcronyms = new Set([{join(quoted, <, >)}])>)
+  push(lines, <function __termLinkKey(link: any, key: string): any \{>)
+  push(lines, <  if (link == null || typeof key !== "string" || /[A-Z]/.test(key)) return null>)
+  push(lines, <  const parts = key.split(/[-_]/)>)
+  push(lines, <  let name = parts[0]>)
+  push(lines, <  for (let at = 1; at \< parts.length; at++) \{>)
+  push(lines, <    const part = parts[at]>)
+  push(lines, <    name += __termLinkAcronyms.has(part) ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1)>)
+  push(lines, <  \}>)
+  push(lines, <  if (!Object.prototype.hasOwnProperty.call(link, name)) return null>)
+  push(lines, <  const value = link[name]>)
+  push(lines, <  return value === undefined ? null : value>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
 # structural equality and key interning
 task equal-prelude
   like text

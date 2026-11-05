@@ -61,6 +61,12 @@ load @term/call/work/output/printer
 load @term/call/work/item/event
   find item-field
 
+load @term/make/parser/tree
+  find parse-tolerant
+
+load @term/make/parser/token
+  find token-source
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -72,7 +78,6 @@ dock load
   load <@term/make/code/compile/mill-run>, name mill-run-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/parser/narrow>, name narrow-module
-  load <@term/make/code/parser/tree>, name tree-module
   load <@term/make/code/resolve>, name resolve-module
 
 # ---- the host values Term has no word for ----
@@ -314,12 +319,15 @@ task doc-at
   mark private
 
   save source
-    make mill-source
+    make token-source
       bind file, one/file
       bind text, one/text
-  save parsed, tree-module/parse-tolerant(source)
+  save parsed, parse-tolerant(source)
+  # the parser's tree, read as the docked narrow module reads it: a host value
+  save tree, like dynamic
+    read parsed/tree
   save comments, make list
-  walk narrow-module/groups-of(parsed/tree/nodes)
+  walk narrow-module/groups-of(tree/nodes)
     take group
     save span, mill-run-module/span-of-node(group)
     fork test, and(is-truthy(span), is-same(span/start/line, line))

@@ -1,0 +1,114 @@
+note <One unit cache for the machine>
+
+# Ported from unit-shared.ts by statement (item 0577). note/project/term/incremental-best-in-class.md, step 1: a unit's
+# key is its content and the surfaces it reaches, never which project asked, so the standard library's units one project
+# builds answer every other project's first build. Two projects here, each with its own local cache and one shared store
+# between them, as `projectCache` lays them out. compile/separate, compile/cache and call/cache-store are the subject
+# (decision 106).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name unit-file
+  load <node:path>, name unit-path
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+form project
+  link root, like text
+  link file, like text
+  link text, like text
+
+form build
+  link result, like dynamic
+  link cache, like dynamic
+
+host shared, temp-folder(<unit-shared->)
+
+# a project of one file loading the standard library's list and text modules
+task project-of
+  take name, like text
+  like project
+
+  host root, temp-folder(<unit-{name}->)
+  unit-file/mkdir-sync(unit-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  unit-file/write-file-sync(unit-path/join(root, <deck.tree>), <deck @probe/{name}\n  mark \<0.0.1\>\n>)
+  host text, <load @term/base/list\n  find sort\n\nload @term/base/text\n  find trim\n\ntask {name}\n  like text\n  back trim(\< {name} \>)\n>
+  host file, unit-path/join(root, <code>, <base.tree>)
+  unit-file/write-file-sync(file, text)
+  back make(project, bind(root, root), bind(file, file), bind(text, text))
+
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}>
+
+task build-of
+  take one, like project
+  like build
+
+  host cache, new-cache(cache-module, cache-store/shared-cache-store(unit-path/join(one/root, <.base/cache>), shared, <probe>), <probe>)
+  host options, make-record(make(list, <resolve>, project-module/project-resolver(one/root), <cache>, cache, <modules>, module-of))
+  host result, separate-module/compile-separate(make-record(make(list, <file>, one/file, <text>, one/text)), options)
+  back make(build, bind(result, result), bind(cache, cache))
+
+# the labels of the standard library's units
+task stdlib-of
+  take labels, like list, like text
+  like list, like text
+
+  host found, make list
+  walk labels
+    take label, like text
+    fork test, text-contains(label, </deck/base/>)
+      hold
+        found/push(label)
+  back found
+
+host first, build-of(project-of(<first>))
+host second, build-of(project-of(<second>))
+host built-first, stdlib-of(first/result/built)
+host built-second, stdlib-of(second/result/built)
+host reused-second, stdlib-of(second/result/reused)
+
+test <the first project builds>
+  want hold, is-equal(first/result/ok, true)
+
+test <the second project builds>
+  want hold, is-equal(second/result/ok, true)
+
+test <the first project built the standard library units it reaches>
+  want hold, is-above(built-first/length, 0)
+
+test <the second project built none of them>
+  want hold, is-above(built-first/length, 0)
+  want hold, is-equal(built-second/length, 0)
+
+test <it read every one from the shared store>
+  want hold, is-above(built-first/length, 0)
+  want hold, is-equal(reused-second/length, built-first/length)
+
+test <from disk, not from memory>
+  want hold, is-above(built-first/length, 0)
+  want hold, is-minimum(second/cache/disk-hits, built-first/length)
+
+test <and built only its own module>
+  want hold, is-equal(second/result/built/length, 1)

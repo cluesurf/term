@@ -1,0 +1,108 @@
+note <The page contract, split from the dom (native-dom-0003)>
+
+# Ported from page-contract.ts by task/term/suite-port.ts, finished by hand (item 0574). The document shell, route
+# path, title, meta, proxy and navigation live in `@term/site/code/dom/page`, and the dom is the node contract alone.
+# Each env reaches its own page: the browser sets the live document, node and cloudflare stash into the SSR shell
+# (cloudflare would otherwise borrow the browser's, which reads a document a Worker does not have), and an env with no
+# page of its own gets the no-op fallback beside the env dirs. The dom no longer answers for a page task, so a host that
+# only builds nodes (the toolkit views, the in-memory tree) implements nothing it cannot honor.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of, name text-index-of
+  find substring, name text-substring
+  find starts-with, name text-starts-with
+
+host page, <load @term/site/code/dom/page\n  find set-title\n  find set-meta\n  find page-path\n  find proxy-target\n\ntask visit\n  like text\n  call set-title\n    text \<Home\>\n  call set-meta\n    text \<description\>\n    text \<The home page\>\n  call proxy-target\n  send back\n    call page-path\n>
+
+task build
+  take env, like text
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, project-path(<.>, <test/compile/page-contract.tree>)), bind(project, <.>), bind(project-env, env)))
+
+# the body of the emitted `setTitle`, which is what tells one env's page from another's
+task body-of
+  take built, like compile-outcome
+  take name, like text
+  like text
+
+  fork test, built/ok
+    miss
+      back <>
+  host typescript, built/emitted
+  host at, text-index-of(typescript, <function {name}(>)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  host end, text-index-of(typescript, <\n\}>, at)
+  fork test, is-below(end, 0)
+    hold
+      back text-substring(typescript, at)
+  back text-substring(typescript, at, end)
+
+host browser, build(<browser>, page)
+
+test <the page compiles for the browser>
+  want hold, browser/ok
+
+test <the browser sets the live document title>
+  want hold, text-contains(body-of(browser, <setTitle>), <title.set(>)
+
+host node, build(<node>, page)
+
+test <the page compiles for node>
+  want hold, node/ok
+
+test <node stashes the title for the SSR shell>
+  want hold, text-contains(body-of(node, <setTitle>), <doc.setTitle(>)
+
+host cloudflare, build(<cloudflare>, page)
+
+test <the page compiles for cloudflare>
+  want hold, cloudflare/ok
+
+test <cloudflare stashes like node, not the browser's live document>
+  want hold, text-contains(body-of(cloudflare, <setTitle>), <doc.setTitle(>)
+  want hold, cloudflare/ok
+  want hold, is-equal(text-contains(cloudflare/emitted, <title.set(>), false)
+
+# `javascript` has no page of its own and no fallback env: it reaches the abstract module, whose tasks are no-ops
+host bare, build(<javascript>, page)
+
+test <the page compiles for an env with no page of its own>
+  want hold, bare/ok
+
+test <that env gets the no-op fallback, touching neither a document nor a shell>
+  host body, body-of(bare, <setTitle>)
+  want hold, text-starts-with(body, <function setTitle(>)
+  want hold, is-equal(text-contains(body, <doc.>), false)
+  want hold, is-equal(text-contains(body, <title.set>), false)
+
+# the dom is the node contract now: a page task is not one of its names
+host from-dom-source, <load @term/site/code/dom/dom\n  find set-title\n\ntask visit\n  call set-title\n    text \<Home\>\n>
+
+test <the dom no longer answers for set-title on browser>
+  host from-dom, build(<browser>, from-dom-source)
+  want hold, is-equal(from-dom/ok, false)
+  want hold, any-holding(from-dom/messages, <set-title>)
+
+test <the dom no longer answers for set-title on node>
+  host from-dom, build(<node>, from-dom-source)
+  want hold, is-equal(from-dom/ok, false)
+  want hold, any-holding(from-dom/messages, <set-title>)
+
+# what stays in the dom: the root to mount into and a listener on it, which every host implements
+test <page-body and listen-document stay in the dom>
+  host node2, build(<node>, <load @term/site/code/dom/dom\n  find view\n  find page-body\n  find listen-document\n\ntask mount\n  like view\n  send back\n    call page-body\n>)
+  want hold, node2/ok

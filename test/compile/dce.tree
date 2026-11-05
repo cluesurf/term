@@ -1,0 +1,42 @@
+note <Application dead-code elimination>
+
+# Ported from dce.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+
+# Application dead-code elimination: with a declared entry point, a public function that nothing reaches from the entry
+# is dropped from the output -- even the entry module's own public surface. Without an entry point (the library
+# default), every top-level function is kept (its public API). Run: npx tsx test/compile/dce.ts
+# `main` calls `used`; `dead` is public but unreachable from `main`.
+host src, <task main\n  like number\n  send back\n    call used\n\ntask used\n  like number\n  save x, code 0\n  walk size\n    bind base, code 0\n    bind head, code 3\n    hook next\n      take site, name i\n      save x\n        call add\n          read x\n          read i\n  send back, read x\n\ntask dead\n  like number\n  send back\n    code 2\n>
+
+# 1. with no entry point (library build), every public function is kept -- including `dead`.
+test <library build keeps the whole public surface>
+  host lib, compile-text(src)
+  want hold, lib/ok
+
+test <library build keeps an unreferenced public function>
+  host lib, compile-text(src)
+  want hold, lib/ok
+  want hold, text-contains(lib/emitted, <dead>)
+
+# 2. with `main` as the entry point, `dead` is pruned but `main` and the reachable `used` remain.
+test <application build compiles>
+  host app, compile-text(src, make(compile-choice, bind(file, <p.tree>), bind(entry, <main>)))
+  want hold, app/ok
+
+test <application build keeps the entry point and what it reaches>
+  host app, compile-text(src, make(compile-choice, bind(file, <p.tree>), bind(entry, <main>)))
+  want hold, app/ok
+  want hold, text-contains(app/emitted, <main>)
+  want hold, text-contains(app/emitted, <used>)
+
+test <application build DROPS the unreachable public function>
+  host app, compile-text(src, make(compile-choice, bind(file, <p.tree>), bind(entry, <main>)))
+  want hold, app/ok
+  want hold, not(text-contains(app/emitted, <dead>))

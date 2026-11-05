@@ -2829,6 +2829,35 @@ task refuse-split-make
     case none
       save nothing, 0
 
+# A part a construction has no place for, refused where it was dropped (item 0819). `make hash` keeps only its `save`
+# lines, so a value under or beside its name (`make hash(<a>)`, `make hash, <a>`) has no key and built an empty map. Any
+# other `make` reads no `save` line, so `make list` with one built an empty list and `make pair` with one left it out. On
+# every backend, with a clean build. A `bind` under `make list` is held by check/type-names.tree, beside `make hash`'s
+task refuse-dropped-parts
+  take state, like mint-state
+  take value, like minted
+  take name, like text
+  take positional, like list, like expression
+  mark private
+
+  save held, make(some, value)
+  fork test, and(is-equal(name, <hash>), is-above(positional/length, 0))
+    hold
+      save hint, <write each entry as a `save \<key\>, \<value\>` line under `make hash`. To copy another hash, build it and set each entry>
+      push-problem(state, span-of(held), <`make hash` takes its entries as `save` lines, so a value under or beside the name has no key and would be dropped>, make(some, hint))
+  # `make find` is refused on its own as the older spelling of `make hash`
+  fork test, and(is-unequal(name, <hash>), is-unequal(name, <find>))
+    hold
+      walk forms-at(held, <save>)
+        take line
+        fork test, is-equal(name, <list>)
+          hold
+            save hint, <give the items under or beside the name, `make list(a, b)` or `make list, a, b`. For entries by key write `make hash`>
+            push-problem(state, span-of(make(some, line)), <a `save` line under `make list` is not an item, so it would be dropped>, make(some, hint))
+          miss
+            save hint, <give a field with `bind \<field\>, \<value\>`. For entries by key write `make hash`>
+            push-problem(state, span-of(make(some, line)), <a `save` line under `make {name}` is not a field, so it would be dropped>, make(some, hint))
+
 # `make <form>` with `bind` children is a record construction; `make list` and `make hash` are the native collections
 task record-of
   take state, like mint-state
@@ -2932,6 +2961,7 @@ task record-of
               save nothing, 0
         case none
           save nothing, 0
+  refuse-dropped-parts(state, value, name, positional)
 
   fork test, and(is-equal(name, <list>), is-equal(fields/length, 0))
     hold

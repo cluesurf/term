@@ -1,0 +1,66 @@
+note <A JSON value is written one way on every backend>
+
+# Item 0939. `stringify` of a body built by `set-field` answered differently on each native: Rust sorted the keys
+# (serde_json without preserve_order), Swift escaped a slash (JSONSerialization's default), and Kotlin wrote an absent
+# caught prop as the text `kotlin.Unit` (Kotlin's loose empty value went to the writer as a string). The one meaning is
+# TypeScript's JSON.stringify: keys in the order they were set, a slash plain, and an absent value as null (compiler
+# decision 015 rule 3). Run with `--env rust`, `--env swift` and `--env kotlin` as well.
+
+load @term/base/exception
+  find exception
+
+load @term/base/json
+  find make-object
+  find set-field
+  find stringify
+  find from-text
+  find object-keys
+
+form lost-thing
+  like exception
+    bind note, <lost>
+    link where-from, like text
+
+task lose
+  like number
+
+  halt lost-thing
+    bind where-from, <a/b>
+
+task body-of
+  take keys, like list, like text
+  like text
+
+  save answer, <none>
+  fork
+    mark unsafe
+    save got, lose()
+  halt take
+    take problem
+    save body, make-object()
+    walk keys
+      take prop
+      save body, set-field(body, prop, problem/link/{prop})
+    save answer, stringify(body)
+  back answer
+
+task built
+  like dynamic
+
+  save body, make-object()
+  save body, set-field(body, <zebra>, from-text(<z>))
+  save body, set-field(body, <apple>, from-text(<a>))
+  save body, set-field(body, <mango>, from-text(<m>))
+  back body
+
+test <keys are written in the order they were set>
+  want hold, is-equal stringify(built()), <\{"zebra":"z","apple":"a","mango":"m"\}>
+
+test <keys are listed in the order they were set>
+  want hold, is-equal object-keys(built()), make list(<zebra>, <apple>, <mango>)
+
+test <a slash is written plain>
+  want hold, is-equal stringify(from-text(<a/b>)), <"a/b">
+
+test <a caught body keeps its keys in order, the slash plain, an absent prop null>
+  want hold, is-equal body-of(make list(<where-from>, <nowhere>, <constructor>)), <\{"where-from":"a/b","nowhere":null,"constructor":null\}>

@@ -1,0 +1,228 @@
+note <The JSON grammar through feed-mill: no rule silently dropped, and the value dispatch is real>
+
+# Ported from feed-mill-json.ts by statement (item 0570). Not the full round-trip suite: what this holds is everything
+# that IS true, and it is the guard the work needed.
+#
+#   NO RULE LOSES A PIECE. Every `mine <name>` reads to an exact, pinned NUMBER of rule objects. The failure mode is not a
+#   crash: `read-feed-mine-rule` answers nothing for a shape it does not know and that rule VANISHES from the sequence. A
+#   `range` bound written as a code point rather than a character did exactly that to JSON's `safe-char`.
+#   COUNTING IS NOT ENOUGH ON ITS OWN, so the numbers are pinned rather than merely non-zero.
+#   THE GENERATED SOURCE PARSES AND MILLS, so what comes out is Term rather than something that only looks like it.
+#   THE VALUE DISPATCH IS REAL. `value-helper-0` peeks one character and branches to all seven json-value variants by
+#   code point.
+#
+# parser/tree, compile/mill and compile/feed-mill are the subject (decision 106).
+
+load ../support/compiling
+  find file-text
+
+load ../support/reading
+  find lines-of
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find starts-with
+  find substring
+  find trim
+  find index-of
+  find char-count
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-module
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/feed-mill>, name feed-module
+
+bind parse-file
+  take module, like dynamic
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <$module.parse(\{ file: $file, text: $text \})>
+
+bind rule-count
+  take grammar, like dynamic
+  take name, like text
+  like number
+  case node
+    text <($grammar.get($name) ?? []).length>
+
+host grammar-path, <deck/mill/code/text/json/mine.tree>
+
+# Rules that do NOT read yet, each with the reason. A BASELINE, not permission: this fails if a rule outside the list
+# stops reading, and fails if one on it starts. EMPTY, and it should stay that way: `number` was the last entry.
+host known-dropped, make list
+
+# Rules that read to FEWER parts than the grammar gives them, with the reason. EMPTY, and it should stay that way.
+host known-partial, make list
+
+form rule-parts
+  link name, like text
+  link parts, like number
+
+task parts-of
+  take name, like text
+  take parts, like number
+  like rule-parts
+
+  back make(rule-parts, bind(name, name), bind(parts, parts))
+
+# how many rule objects each declared rule reads to, on 2026-08-30. A number that changes is a rule that gained or lost a
+# piece. `number` is one SPAN over four children of its own, `pair` 6 since `bind key` and `bind value` read
+host rule-counts, make(list, parts-of(<value>, 1), parts-of(<string>, 3), parts-of(<safe-char>, 2), parts-of(<escape>, 2), parts-of(<unicode-escape>, 2), parts-of(<hex-digit>, 1), parts-of(<number>, 1), parts-of(<digits>, 1), parts-of(<object>, 5), parts-of(<pair>, 6), parts-of(<array>, 5), parts-of(<true>, 1), parts-of(<false>, 1), parts-of(<null>, 1), parts-of(<whitespace>, 1))
+
+host grammar-text, file-text(grammar-path)
+host parsed, parse-file(tree-module, grammar-path, grammar-text)
+host grammar, feed-module/read-feed-mine-grammar(parsed/tree)
+
+# every `mine <name>` at column 0 is a rule the grammar declares
+task declared
+  like list, like text
+
+  host out, make list
+  walk lines-of(grammar-text)
+    take line, like text
+    fork test, starts-with(line, <mine >)
+      hold
+        out/push(trim(substring(line, 5)))
+  back out
+
+task dropped
+  like list, like text
+
+  host out, make list
+  walk declared()
+    take name, like text
+    fork test, is-equal(rule-count(grammar, name), 0)
+      hold
+        out/push(name)
+  back out
+
+# whether every declared rule with a pinned count reads to that count
+task counts-hold
+  take rules, like list, like rule-parts
+  like boolean
+
+  walk declared()
+    take name, like text
+    walk rules
+      take pinned, like rule-parts
+      fork test, and(is-equal(pinned/name, name), is-unequal(rule-count(grammar, name), pinned/parts))
+        hold
+          back false
+  back true
+
+host source, feed-module/compile-feed-mine(grammar, <text>, <@term/mill/feed>)
+host generated, parse-file(tree-module, <json-generated.tree>, source)
+
+# the dispatch: one peek, then a branch per variant, up to the next task
+task dispatch
+  like text
+
+  host helper, substring(source, index-of(source, <task value-helper-0>))
+  host end, index-of(helper, <\ntask >, 1)
+  fork test, is-below(end, 0)
+    hold
+      back helper
+  back substring(helper, 0, end)
+
+# whether some `code <code>)` in the dispatch is followed, within 240 characters, by the call of `read-<variant>`. The
+# window is generous because a branch's test can be a chain of ors (`number` is a sign OR a digit range)
+task dispatches
+  take code, like number
+  take variant, like text
+  like boolean
+
+  host body, dispatch()
+  host mark, <code {code})>
+  host call, <call read-{variant}(>
+  save at, index-of(body, mark)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      host after, add(at, char-count(mark))
+      fork test, text-contains(substring(body, after, add(after, add(240, char-count(call)))), call)
+        hold
+          back true
+      save at, index-of(body, mark, add(at, 1))
+  back false
+
+test <the JSON grammar parses>
+  want hold, parsed/ok
+
+task each-within
+  take names, like list, like text
+  take within, like list, like text
+  like boolean
+
+  walk names
+    take name, like text
+    fork test, not(list-contains(within, name))
+      hold
+        back false
+  back true
+
+task partial-all-read
+  take partial, like list, like text
+  like boolean
+
+  walk partial
+    take name, like text
+    fork test, is-equal(rule-count(grammar, name), 0)
+      hold
+        back false
+  back true
+
+test <every declared rule reads>
+  want hold, each-within(dropped(), known-dropped)
+
+test <the known-dropped list has not rotted>
+  want hold, each-within(known-dropped, dropped())
+
+test <every rule reads to the number of parts it did>
+  want hold, counts-hold(rule-counts)
+
+test <no rule reads only part of what the grammar gives it, unless named with a reason>
+  want hold, partial-all-read(known-partial)
+
+test <the generated reader parses>
+  want hold, generated/ok
+
+test <the generated reader mills>
+  want hold, generated/ok
+  host milled, mill-module/mill(generated/tree, <json-generated.tree>)
+  want hold, milled/ok
+
+test <`value` dispatches code 34 to read-string>
+  want hold, dispatches(34, <string>)
+
+test <`value` dispatches code 123 to read-object>
+  want hold, dispatches(123, <object>)
+
+test <`value` dispatches code 91 to read-array>
+  want hold, dispatches(91, <array>)
+
+test <`value` dispatches code 116 to read-true>
+  want hold, dispatches(116, <true>)
+
+test <`value` dispatches code 102 to read-false>
+  want hold, dispatches(102, <false>)
+
+test <`value` dispatches code 110 to read-null>
+  want hold, dispatches(110, <null>)
+
+test <`value` dispatches code 45 to read-number>
+  want hold, dispatches(45, <number>)
+
+# the `halt` is the FALLBACK, and it belongs there: a helper that matched nothing has to refuse. What would be wrong is the
+# halt being all there is, which is what it was before the dispatch existed
+test <`value` refuses only AFTER trying every branch>
+  host body, dispatch()
+  host halted, index-of(body, <halt \<expected a match for value-helper-0 at position>)
+  host branched, index-of(body, <call read-string(>)
+  want hold, is-above(halted, 0)
+  want hold, is-above(branched, 0)
+  want hold, is-below(branched, halted)

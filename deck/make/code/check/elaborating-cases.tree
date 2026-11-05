@@ -32,6 +32,8 @@ load ../compile/node
   find span
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
   find kernel-term
   find kernel-value
@@ -109,6 +111,7 @@ task attempt
   like maybe, like unknown
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save value, step()
@@ -116,6 +119,7 @@ task attempt
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back make none
   back make none
 
@@ -128,6 +132,7 @@ task attempt-term
   like maybe, like kernel-term
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save value, step()
@@ -135,6 +140,7 @@ task attempt-term
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back make none
   back make none
 
@@ -146,12 +152,14 @@ task attempt-boolean
   like boolean
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     back step()
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back false
   back false
 

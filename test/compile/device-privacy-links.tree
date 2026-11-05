@@ -1,0 +1,242 @@
+note <An app links a privacy framework only when it links the capability that needs it (device-layer-0012)>
+
+# Ported from device-privacy-links.ts by statement (item 0570). App Store processing refuses a binary that references a
+# privacy API without the Info.plist usage string for it (ITMS-90683). The permission runtime is linked into every app that
+# asks for any grant, and it used to read every grant itself, so an app that only posted notifications referenced
+# CoreLocation and AVFoundation with neither usage string. Now each capability registers its own grant
+# (native-permission.swift), and this holds it: one program per capability, compiled for iOS with its real prelude, must
+# import exactly that capability's privacy frameworks, and the declarations the build writes for it (device-declare
+# `apple-usage`) must name a usage string for each one that needs one. Needs no toolchain. call/device-declare is the
+# subject (decision 106). Each capability is compiled once, by a top-level `host`, and the two walked tests read it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/cli
+  find term-root
+
+load ../support/reading
+  find lines-of
+
+load @term/base/list
+  find push
+  find contains, name list-contains
+
+load @term/base/text
+  find starts-with
+  find substring
+  find char-at
+  find char-count
+  find contains, name text-contains
+
+dock load
+  load <@term/call/code/device-declare>, name declare-module
+
+bind has-key
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <($key in $record)>
+
+# a framework App Store processing reads as a privacy API, with the usage string that must stand beside it (<> none: the
+# framework needs a grant, but no string)
+form privacy
+  link framework, like text
+  link usage, like text
+
+host privacy-table, make(list, make(privacy, bind(framework, <AVFoundation>), bind(usage, <>)), make(privacy, bind(framework, <CoreLocation>), bind(usage, <NSLocationWhenInUseUsageDescription>)), make(privacy, bind(framework, <Contacts>), bind(usage, <NSContactsUsageDescription>)), make(privacy, bind(framework, <EventKit>), bind(usage, <NSCalendarsFullAccessUsageDescription>)), make(privacy, bind(framework, <Photos>), bind(usage, <NSPhotoLibraryUsageDescription>)), make(privacy, bind(framework, <UserNotifications>), bind(usage, <>)), make(privacy, bind(framework, <LocalAuthentication>), bind(usage, <NSFaceIDUsageDescription>)), make(privacy, bind(framework, <Speech>), bind(usage, <NSSpeechRecognitionUsageDescription>)))
+
+# one capability, the task it calls, its arguments as written, the privacy frameworks it may import, and the usage strings
+# it must be declared with (AVFoundation's string depends on what is captured, so it is named per capability)
+form capability
+  link module, like text
+  link task, like text
+  link args, like list, like text
+  link frameworks, like list, like text
+  link usage, like list, like text
+
+task capability-of
+  take module, like text
+  take name, like text
+  take args, like list, like text
+  take frameworks, like list, like text
+  take usage, like list, like text
+  like capability
+
+  back make(capability, bind(module, module), bind(task, name), bind(args, args), bind(frameworks, frameworks), bind(usage, usage))
+
+task none
+  like list, like text
+
+  back make list
+
+host capabilities, make(list, capability-of(<permission>, <permission-status>, make(list, <text \<camera\>>), none(), none()), capability-of(<notification>, <show-notification>, make(list, <text \<a\>>, <text \<b\>>), make(list, <UserNotifications>), none()), capability-of(<camera>, <take-photo>, none(), make(list, <AVFoundation>), make(list, <NSCameraUsageDescription>)), capability-of(<torch>, <torch-state>, none(), make(list, <AVFoundation>), make(list, <NSCameraUsageDescription>)), capability-of(<microphone>, <record-audio>, make(list, <code 1>), make(list, <AVFoundation>), make(list, <NSMicrophoneUsageDescription>)), capability-of(<audio>, <audio-length>, make(list, <text \<a\>>), make(list, <AVFoundation>), make(list, <NSMicrophoneUsageDescription>)), capability-of(<location>, <current-position>, none(), make(list, <CoreLocation>), make(list, <NSLocationWhenInUseUsageDescription>)), capability-of(<contacts>, <find-contacts>, make(list, <text \<a\>>), make(list, <Contacts>), make(list, <NSContactsUsageDescription>)), capability-of(<calendar>, <find-events>, make(list, <text \<a\>>, <text \<b\>>), make(list, <EventKit>), make(list, <NSCalendarsFullAccessUsageDescription>)), capability-of(<photos>, <find-photos>, make(list, <code 1>), make(list, <Photos>), make(list, <NSPhotoLibraryUsageDescription>)), capability-of(<biometric>, <biometric-kind>, none(), make(list, <LocalAuthentication>), make(list, <NSFaceIDUsageDescription>)), capability-of(<clipboard>, <read-clipboard>, none(), none(), none()), capability-of(<battery>, <battery-status>, none(), none(), none()), capability-of(<network>, <network-status>, none(), none(), none()), capability-of(<vibration>, <vibrate>, make(list, <text \<light\>>), none(), none()), capability-of(<secret>, <read-secret>, make(list, <text \<a\>>), none(), none()))
+
+# every program also asks the permission module, so a grant it reads is one the capability registered or none
+task program-of
+  take one, like capability
+  like text
+
+  save text, <load @term/site/code/view/{one/module}\n  find {one/task}\n\nload @term/site/code/view/permission\n  find permission-status\n\ntask main\n  mark async\n  save asked\n    call permission-status\n      text \<camera\>\n  save said\n    call {one/task}\n>
+  walk one/args
+    take arg, like text
+    save text, <{text}      {arg}\n>
+  back text
+
+# the leading word of a line `import X`, <> for any other line
+task imported-word
+  take line, like text
+  like text
+
+  fork test, not(starts-with(line, <import >))
+    hold
+      back <>
+  host word-chars, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+  save word, <>
+  save at, 7
+  walk test
+    hook test, and(is-below(at, char-count(line)), text-contains(word-chars, char-at(line, at)))
+    hook hold
+      save word, <{word}{char-at(line, at)}>
+      save at, add(at, 1)
+  back word
+
+task is-privacy
+  take name, like text
+  like boolean
+
+  walk privacy-table
+    take one, like privacy
+    fork test, is-equal(one/framework, name)
+      hold
+        back true
+  back false
+
+task usage-of
+  take name, like text
+  like text
+
+  walk privacy-table
+    take one, like privacy
+    fork test, is-equal(one/framework, name)
+      hold
+        back one/usage
+  back <>
+
+# the privacy frameworks a prelude imports, each once
+task imported-of
+  take prelude, like text
+  like list, like text
+
+  host out, make list
+  walk lines-of(prelude)
+    take line, like text
+    host word, imported-word(line)
+    fork test, and(is-privacy(word), not(list-contains(out, word)))
+      hold
+        push(out, word)
+  back out
+
+# the same frameworks, in any order
+task same-set
+  take one, like list, like text
+  take two, like list, like text
+  like boolean
+
+  fork test, is-unequal(one/length, two/length)
+    hold
+      back false
+  walk one
+    take name, like text
+    fork test, not(list-contains(two, name))
+      hold
+        back false
+  back true
+
+form privacy-reading
+  link module, like text
+  link compiled, like boolean
+  link links-right, like boolean
+  link declared-right, like boolean
+
+task reading-of
+  take one, like capability
+  like privacy-reading
+
+  host root, term-root()
+  host out, compile-text(program-of(one), make(compile-choice, bind(file, <{root}/tmp/privacy-{one/module}.tree>), bind(project, root), bind(project-env, <ios>), bind(env, <ios>)))
+  fork test, not(out/ok)
+    hold
+      back make(privacy-reading, bind(module, one/module), bind(compiled, false), bind(links-right, false), bind(declared-right, false))
+  host prelude, prelude-text(out, <ios>, emit-text(out, <swift>))
+  host imported, imported-of(prelude)
+  host declared, declare-module/apple-usage(prelude)
+  host owed, make list
+  walk one/usage
+    take key, like text
+    fork test, not(list-contains(owed, key))
+      hold
+        push(owed, key)
+  walk imported
+    take name, like text
+    host key, usage-of(name)
+    fork test, and(is-unequal(key, <>), not(list-contains(owed, key)))
+      hold
+        push(owed, key)
+  save all-declared, true
+  walk owed
+    take key, like text
+    fork test, not(has-key(declared, key))
+      hold
+        save all-declared, false
+  back make(privacy-reading, bind(module, one/module), bind(compiled, true), bind(links-right, same-set(imported, one/frameworks)), bind(declared-right, all-declared))
+
+task read-all
+  like list, like privacy-reading
+
+  host out, make list
+  walk capabilities
+    take one, like capability
+    push(out, reading-of(one))
+  back out
+
+host readings, read-all()
+
+task reading-for
+  take module, like text
+  like privacy-reading
+
+  walk readings
+    take one, like privacy-reading
+    fork test, is-equal(one/module, module)
+      hold
+        back one
+  halt <no capability of this name>
+
+task modules
+  like list, like text
+
+  host out, make list
+  walk capabilities
+    take one, like capability
+    push(out, one/module)
+  back out
+
+test <links exactly its own privacy frameworks, compiled for iOS>
+  take module, like text
+    walk modules()
+  host one, reading-for(module)
+  want hold, one/compiled
+  want hold, one/links-right
+
+test <and is declared with a usage string for each framework that needs one>
+  take module, like text
+    walk modules()
+  host one, reading-for(module)
+  want hold, one/compiled
+  want hold, one/declared-right

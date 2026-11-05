@@ -1,0 +1,50 @@
+note <A rule that does not hold says what it was asked, and that it is FALSE where small values break it>
+
+# Ported from explain.ts by statement (item 0556). A rule that does not hold says what it was asked, and, when small values
+# of its marks satisfy its hypotheses and break its goal, that it is FALSE there (check/explain.ts). The search only
+# evaluates, so it can never prove anything: these cases hold it to saying FALSE only where the values really do break the
+# rule, and to staying silent otherwise.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/reading
+  find any-holding
+
+# the messages of a refused compile under the name x.tree, empty when it compiled
+task said
+  take source, like text
+  like list, like text
+
+  back compile-text(source, make(compile-choice, bind(file, <x.tree>)))/messages
+
+test <a false law names the values that break it, and its goal>
+  host out, said(<rule doubling-is-adding-one\n  seat n, like integer\n  show hold, is-equal multiply(2, n), add(n, 1)\n>)
+  want hold, or(any-holding(out, <This rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)>), any-holding(out, <this rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)>))
+
+test <and its hypotheses, which hold at those values>
+  host out, said(<rule square-at-least-double\n  seat n, like integer\n  have n-is-at-least-one, is-minimum n, 1\n  show hold, is-minimum multiply(n, n), multiply(2, n)\n>)
+  want hold, any-holding(out, <FALSE: at n = 1 every hypothesis holds and the goal does not (goal: n * n \>= 2 * n, given: n \>= 1)>)
+
+test <control: a true law is proven, and nothing is said>
+  host out, said(<rule square-at-least-double\n  seat n, like integer\n  have n-is-at-least-two, is-minimum n, 2\n  show hold, is-minimum multiply(n, n), multiply(2, n)\n>)
+  want hold, is-equal(out/length, 0)
+
+# false, but only past the values searched: no FALSE, the ordinary message, with the goal and hypothesis printed
+test <a law false only past the values searched is not called false, and is still refused>
+  host out, said(<rule bounded-square\n  seat n, like integer\n  have n-is-at-least-ten, is-minimum n, 10\n  show hold, is-maximum multiply(n, n), 100\n>)
+  want hold, is-above(out/length, 0)
+  want hold, not(any-holding(out, <FALSE>))
+  want hold, any-holding(out, <(goal: n * n \<= 100, given: n \>= 10)>)
+
+# a goal that calls a task whose body is one `back <expression>` is run with that task
+test <a goal that calls a one-expression task runs it: double(n) == n + 1 is false at n = 0>
+  host out, said(<task double\n  take n, like integer\n\n  like integer\n\n  back multiply(n, 2)\n\nrule double-is-one-more\n  seat n, like integer\n  show is-equal double(n), add(n, 1)\n>)
+  want hold, any-holding(out, <FALSE: at n = 0 the goal does not hold (goal: double(n) == n + 1)>)
+
+# a mark that is a FUNCTION has no small values to try: described, never called false
+test <a rule over a function mark is described, never called false>
+  host out, said(<rule function-mark\n  seat x\n    like task\n      take n, like integer\n      like integer\n  seat n, like integer\n  show hold, is-minimum x(n), 0\n>)
+  want hold, is-above(out/length, 0)
+  want hold, not(any-holding(out, <FALSE>))

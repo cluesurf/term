@@ -48,6 +48,7 @@ form judge-state
   mark shared
   link meta-type, like hash, like number, like kernel-value
   link meta-solution, like hash, like number, like kernel-value
+  link meta-trail, like list, like number
   link next-meta, like number
   link definition, like hash, like text, like kernel-value
   link unfold-fuel, like number
@@ -61,6 +62,7 @@ task new-state
     make judge-state
       bind meta-type, make hash
       bind meta-solution, make hash
+      bind meta-trail, make list
       bind next-meta, 0
       bind definition, make hash
       bind unfold-fuel, 0
@@ -105,7 +107,28 @@ task reset-metas
 
   save st/meta-type, make hash
   save st/meta-solution, make hash
+  save st/meta-trail, make list
   save st/next-meta, 0
+
+# A REFUSED CHECK LEAVES NO SOLUTION (term-self-host-001-0786). Every solution is pushed on the trail, so a caller that
+# tries a kernel step marks the trail first and, when the step raises or answers false, takes back every solution made
+# since. Without it a refused check could solve ?f := \_. a, and a later check accept ?f b = a, which no accepted step
+# ever decided
+task meta-mark
+  take st, like judge-state
+  like number
+
+  back st/meta-trail/length
+
+task meta-undo
+  take st, like judge-state
+  take mark, like number
+
+  walk test
+    hook test, is-above(st/meta-trail/length, mark)
+    hook hold
+      save id, st/meta-trail/pop()
+      st/meta-solution/delete(id)
 
 task unfold-fuel-of
   take st, like judge-state
@@ -154,6 +177,7 @@ task kernel-call
   like kernel-answer
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save value, step()
@@ -163,6 +187,7 @@ task kernel-call
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     sift problem
       case failure
         link note
@@ -1125,6 +1150,7 @@ task solve-meta
               save i, add(i, 1)
           save empty, make list
           st/meta-solution/set(id, evaluate(st, empty, solution))
+          push(st/meta-trail, id)
           back true
 
 task rename-or-none
@@ -2398,7 +2424,13 @@ task are-convertible
   take b, like kernel-value
   like boolean
 
-  back convert(st, lv, a, b)
+  # a conversion answered false takes back what it solved, as a refused check does
+  save metas, meta-mark(st)
+  save answer, convert(st, lv, a, b)
+  fork test, is-equal(answer, false)
+    hold
+      meta-undo(st, metas)
+  back answer
 
 # ---- conversion modulo hypotheses ----
 
@@ -2764,7 +2796,12 @@ task convertible-modulo
   take hyps, like list, like list, like kernel-value
   like boolean
 
-  back convert-mod(st, lv, a, b, hyps)
+  save metas, meta-mark(st)
+  save answer, convert-mod(st, lv, a, b, hyps)
+  fork test, is-equal(answer, false)
+    hold
+      meta-undo(st, metas)
+  back answer
 
 # subtyping with universe cumulativity
 task subtype

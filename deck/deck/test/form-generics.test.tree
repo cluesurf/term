@@ -1,0 +1,48 @@
+note <A form's type parameters reach the emitted TypeScript>
+
+# Ported from form-generics.test.ts by statement (item 0580). `form maybe / head t` declares a parameter. The emitter used
+# to drop it and write `export type Maybe = | \{ form: "some"; value: T \}`, where `T` is never declared. Nothing caught
+# it, because `term boot` strips types rather than checking them, so a head could never constrain anything. The compiler
+# is docked, as deck/test/test/diagnostic-gap.tree docks it.
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+
+dock load
+  load <@term/make/code/compile/compile>, name heads-compiling
+
+form heads-source
+  link file, like text
+  link text, like text
+
+host maybe, <form maybe\n  head t\n  case some\n    link value, like t\n  case none\n>
+host box, <form box\n  head t\n  link item, like t\n>
+
+# the TypeScript a source emits, empty when it does not compile
+task emitted
+  take text, like text
+  like text
+
+  host result, heads-compiling/compile(make(heads-source, bind(file, <form.tree>), bind(text, text)))
+  fork test, is-equal(result/ok, true)
+    hold
+      back result/typescript
+  back <>
+
+test <a form's heads: are declared on the union it emits>
+  want hold, text-contains(emitted(maybe), <type Maybe\<T>)
+
+test <a form's heads: are declared on the interface it emits>
+  want hold, text-contains(emitted(box), <interface Box\<T>)
+
+test <a form's heads: carry a default, so a reference with no arguments still compiles>
+  want hold, text-contains(emitted(maybe), <= any>)
+
+# the body uses T, so the head must be there to bind it
+test <a form's heads: never leave the parameter used but undeclared>
+  host out, emitted(maybe)
+  host alias, substring(out, index-of(out, <type Maybe>))
+  want hold, text-contains(alias, <value: T>)
+  want hold, text-contains(substring(alias, 0, index-of(alias, <=>)), <T>)

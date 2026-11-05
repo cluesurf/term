@@ -1,0 +1,239 @@
+note <extendForms shares no pin and no field default>
+
+# Ported from pins-unshared.ts by statement (item 0574). Item term-self-host-001-0196, D011 rule 8: a form's resolved
+# `pins` and its inherited `fields` hold their own records and expressions, so the checked program holds no object at
+# two places. The census is task/term/shared-nodes.ts, docked by its package path (decision 121), over the program
+# `compile(..., { optimize: false })` answers, built the way the census builds a corpus file: with the resolver, role and
+# lean rules of the deck its file stands in. A unit is a virtual file of deck/make's `code/` (nothing is written there),
+# a lean deck. The original read its first unit from tmp/self-host/probe-0037/extend-pin.tree and moved each `bind`
+# under its `like`: that text is held here as it read after the move.
+
+load ../support/compiling
+  find project-path
+
+load ../support/walking
+  find kind-of
+
+dock load
+  load <@term/term/task/term/shared-nodes>, name shared-nodes
+
+bind unit-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# host reflect: whether two host values are one object
+bind same-object
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <$left === $right>
+
+bind map-size
+  take map, like dynamic
+  like number
+  case node
+    text <$map.size>
+
+form unit
+  link name, like text
+  link file, like text
+  link text, like text
+
+# a form that extends a pinned form with a defaulted field, a pin that overrides an inherited one, and a third level
+host chained, <load @term/base/exception\n  find exception\n\nform shape\n  link side\n    like number\n    fall 4\n  link color, like text\n\nform square\n  like shape\n    bind color, \<red\>\n\nform big-square\n  like square\n    bind color, \<blue\>\n\nform tall-square\n  like big-square\n    bind side, 9\n\nform upload-excess\n  like exception\n    bind note, \<Too large\>\n\nform upload-huge\n  like upload-excess\n    bind note, \<Huge\>\n>
+
+# probe-0037's minimal input: an exception form pins `note`, the pin under the `like` it pins
+host probe, <# minimal input: an exception form pins `note`, and the pin is one field-value object at two places (extend pins and the record's pins)\nload @term/base/exception\n  find exception\n\nform invalid\n  like exception\n    bind note, \<Invalid\>\n>
+
+host probe-unit, make(unit, bind(name, <the probe: an exception pins its note>), bind(file, project-path(<.>, <deck/make/code/pins-unshared-probe.tree>)), bind(text, probe))
+host chain-unit, make(unit, bind(name, <a pinned form extended, with a defaulted field>), bind(file, project-path(<.>, <deck/make/code/pins-unshared-chain.tree>)), bind(text, chained))
+
+# the checked program of a unit, unoptimized, empty when it did not compile
+task program-of
+  take one, like unit
+  like list, like dynamic
+
+  host built, shared-nodes/build(unit-of(one/file, one/text), false)
+  fork test, is-equal(kind-of(built/program), <list>)
+    hold
+      back built/program
+  back make list
+
+task list-at
+  take value, like dynamic
+  like list, like dynamic
+
+  fork test, is-equal(kind-of(value), <list>)
+    hold
+      back value
+  back make list
+
+task forms-of
+  take program, like list, like dynamic
+  like list, like dynamic
+
+  host found, make list
+  walk program
+    take statement, like dynamic
+    fork test, is-equal(statement/form, <record-type>)
+      hold
+        found/push(statement)
+  back found
+
+task pinned-of
+  take forms, like list, like dynamic
+  like list, like dynamic
+
+  host found, make list
+  walk forms
+    take form, like dynamic
+    fork test, is-above(list-at(form/pins)/length, 0)
+      hold
+        found/push(form)
+  back found
+
+# true when the pin or its value is one of the pins, or one of their values
+task pin-among
+  take pin, like dynamic
+  take pins, like list, like dynamic
+  like boolean
+
+  walk pins
+    take p, like dynamic
+    fork test, or(or(same-object(pin, p), same-object(pin, p/value)), or(same-object(pin/value, p), same-object(pin/value, p/value)))
+      hold
+        back true
+  back false
+
+# the pins of the form's extend, none when it has no extend
+task extend-pins
+  take form, like dynamic
+  like list, like dynamic
+
+  fork test, is-unequal(kind-of(form/extend), <object>)
+    hold
+      back make list
+  back list-at(form/extend/pins)
+
+# the pins of the form's base form, none when it has none among the forms
+task base-pins
+  take form, like dynamic
+  take forms, like list, like dynamic
+  like list, like dynamic
+
+  fork test, is-unequal(kind-of(form/extend), <object>)
+    hold
+      back make list
+  fork test, is-unequal(kind-of(form/extend/base), <object>)
+    hold
+      back make list
+  walk forms
+    take other, like dynamic
+    fork test, is-equal(other/name, form/extend/base/name)
+      hold
+        back list-at(other/pins)
+  back make list
+
+# how many resolved pins are their extend's or their base's
+task held-count
+  take forms, like list, like dynamic
+  like number
+
+  save count, 0
+  walk pinned-of(forms)
+    take form, like dynamic
+    host own, extend-pins(form)
+    host theirs, base-pins(form, forms)
+    walk form/pins
+      take pin, like dynamic
+      fork test, pin-among(pin, own)
+        hold
+          save count, add(count, 1)
+      fork test, pin-among(pin, theirs)
+        hold
+          save count, add(count, 1)
+  back count
+
+host probe-program, program-of(probe-unit)
+host probe-census, shared-nodes/census(probe-program, false)
+
+test <the probe: an exception pins its note: has places>
+  want hold, is-above(probe-program/length, 0)
+  want hold, is-above(probe-census/places, 0)
+
+test <the probe: an exception pins its note: 0 shared>
+  want hold, is-above(probe-program/length, 0)
+  want hold, is-equal(map-size(probe-census/shared), 0)
+
+# the resolved forms really do carry the pins and the inherited default, so a zero is not an empty program
+test <the probe: an exception pins its note: a form holds a resolved pin>
+  want hold, is-above(pinned-of(forms-of(probe-program))/length, 0)
+
+# a form's resolved pin is not the record of its `extend`, nor of its base form, nor is its value
+test <the probe: an exception pins its note: no resolved pin is its extend's or its base's>
+  want hold, is-above(probe-program/length, 0)
+  want hold, is-equal(held-count(forms-of(probe-program)), 0)
+
+host chain-program, program-of(chain-unit)
+host chain-census, shared-nodes/census(chain-program, false)
+
+test <a pinned form extended, with a defaulted field: has places>
+  want hold, is-above(chain-program/length, 0)
+  want hold, is-above(chain-census/places, 0)
+
+test <a pinned form extended, with a defaulted field: 0 shared>
+  want hold, is-above(chain-program/length, 0)
+  want hold, is-equal(map-size(chain-census/shared), 0)
+
+test <a pinned form extended, with a defaulted field: a form holds a resolved pin>
+  want hold, is-above(pinned-of(forms-of(chain-program))/length, 0)
+
+test <a pinned form extended, with a defaulted field: no resolved pin is its extend's or its base's>
+  want hold, is-above(chain-program/length, 0)
+  want hold, is-equal(held-count(forms-of(chain-program)), 0)
+
+# the inherited default stands at its own place in each derived form
+task side-fallbacks
+  take forms, like list, like dynamic
+  like list, like dynamic
+
+  host found, make list
+  walk forms
+    take form, like dynamic
+    walk list-at(form/fields)
+      take field, like dynamic
+      fork test, and(is-equal(field/name, <side>), is-equal(kind-of(field/fallback), <object>))
+        hold
+          found/push(field/fallback)
+  back found
+
+host fallbacks, side-fallbacks(forms-of(chain-program))
+
+test <the defaulted field is inherited by four forms>
+  want hold, is-above(fallbacks/length, 3)
+
+# how many pairs of the list are one object
+task same-pairs
+  take values, like list, like dynamic
+  like number
+
+  save count, 0
+  save at, 0
+  walk values
+    take left, like dynamic
+    save other, 0
+    walk values
+      take right, like dynamic
+      fork test, and(is-below(at, other), same-object(left, right))
+        hold
+          save count, add(count, 1)
+      save other, add(other, 1)
+    save at, add(at, 1)
+  back count
+
+test <no two forms hold one default>
+  want hold, is-equal(same-pairs(fallbacks), 0)

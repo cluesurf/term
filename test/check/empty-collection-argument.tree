@@ -1,0 +1,73 @@
+note <An empty collection stored into a native collection takes the slot's type>
+
+# Ported from empty-collection-argument.ts by statement (item 0556). An empty collection stored into a native collection
+# takes the slot's type, known then or only later. `pin` in check/infer.ts linked an argument to the slot only when the
+# argument was ground, so `host none, make list` then `graph/set(<log>, none)` left `none` a list of anything once
+# `back graph` settled the hash, and Swift emitted `SeedList<Any>` where a `SeedList<String>` goes
+# (deck/make/test/affected.tree on the base gate, 2026-10-04). Rust and TypeScript never spell the element there, which
+# hid it. Held on the checked type and on Swift.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/walking
+  find json-without
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask into-hash\n  like hash\n    like text\n    like list, like text\n  host graph, make hash\n  host none, make list\n  call graph/set\n    text \<log\>\n    read none\n  send back, read graph\n\ntask into-hash-saved\n  like hash\n    like text\n    like list, like text\n  host graph, make hash\n  save none, make list\n  call graph/set\n    text \<log\>\n    read none\n  send back, read graph\n\ntask into-list\n  like list\n    like list, like number\n  host outer, make list\n  host none, make list\n  call outer/push\n    read none\n  send back, read outer\n\ntask empty-hash-into-list\n  like list\n    like hash\n      like text\n      like boolean\n  host outer, make list\n  host none, make hash\n  call outer/push\n    read none\n  send back, read outer\n>
+
+host spelled-any, make pattern, <<SeedList<Any>|\[Any\]|SeedMap<String, Any>>>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <empty-argument.tree>), bind(stdlib, <swift>), bind(env, <swift>), bind(entries, make list(<into-hash>, <into-hash-saved>, <into-list>, <empty-hash-into-list>))))
+
+# the checked type of the let `none` in the body of the task of this name, as JSON, <> when there is none
+task none-type
+  take out, like compile-outcome
+  take name, like text
+  like text
+
+  walk out/program
+    take one, like dynamic
+    fork test, is-equal(<{one/name}>, name)
+      hold
+        walk one/body
+          take step, like dynamic
+          fork test, and(is-equal(<{step/form}>, <let>), is-equal(<{step/name}>, <none>))
+            hold
+              back json-without(step/type, make list)
+  back <>
+
+# the original's one FAIL when the program does not build stands in each test, as each needs the built program
+test <into-hash: the empty collection takes the slot's type>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(none-type(out, <into-hash>), <\{"kind":"array","element":\{"kind":"string"\}\}>)
+
+test <into-hash-saved: the empty collection takes the slot's type>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(none-type(out, <into-hash-saved>), <\{"kind":"array","element":\{"kind":"string"\}\}>)
+
+test <into-list: the empty collection takes the slot's type>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(none-type(out, <into-list>), <\{"kind":"array","element":\{"kind":"number"\}\}>)
+
+test <empty-hash-into-list: the empty collection takes the slot's type>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(none-type(out, <empty-hash-into-list>), <\{"kind":"map","key":\{"kind":"string"\},"value":\{"kind":"boolean"\}\}>)
+
+test <Swift spells no element as Any>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(spelled-any, emit-text(out, <swift>)))

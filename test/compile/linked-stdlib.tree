@@ -1,0 +1,189 @@
+note <A stdlib reached through a symlinked folder is one module per file>
+
+# Ported from linked-stdlib.ts by statement (item 0573). term-compiler-0067: with TERM_STDLIB=<link>/base, where <link>
+# links the real deck folder, the stdlib and sibling resolvers answered a package path by its LEXICAL path under the link,
+# while the project resolver answered a relative load by its REAL path. So @term/host/scan was <link>/host/code/scan.tree
+# and its ./node was <real>/host/code/node.tree: one deck under two roots. The separate build writes each deck's root as
+# a token in a unit's answer and reads it back as ONE root per deck, so node.tree came back under the other spelling, and
+# a name two files define lost its binding. Only with a deck table (deckOf, as `term boot` passes) and a link path longer
+# than the real one. Every resolver now canonicalizes through realpath (make/code/resolve.ts). The resolvers, the
+# separate build and the deck and role readers are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/make>, name project-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/role-of>, name role-module
+  load <node:fs>, name linked-file
+  load <node:path>, name linked-path
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# host value: a resolver handed by the host, called
+bind resolved-by
+  take resolve, like dynamic
+  take path, like text
+  take from, like text
+  like dynamic
+  case node
+    text <$resolve($path, $from)>
+
+task same-file
+  take file, like text
+  like text
+
+  back file
+
+task folder
+  take path, like text
+  like text
+
+  linked-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+task write-text
+  take file, like text
+  take text, like text
+  like void
+
+  linked-file/write-file-sync(file, text)
+
+host top, temp-folder(<term-linked-stdlib->)
+host real, linked-path/join(top, <real>)
+host base-code, folder(linked-path/join(real, <base>, <code>))
+host host-code, folder(linked-path/join(real, <host>, <code>))
+
+task set-up
+  take seed, like number
+  like text
+
+  write-text(linked-path/join(real, <base>, <deck.tree>), <deck @term/base\n>)
+  # a package beside the stdlib, which the sibling resolver finds by name
+  write-text(linked-path/join(real, <host>, <deck.tree>), <deck @term/host\n>)
+  # two files define `parse-integer`, and scan.tree means node.tree's
+  write-text(linked-path/join(base-code, <num.tree>), <load ./digit\n  find digit-count\n\ntask parse-integer\n  take text, like text\n  like number\n  send back, 1\n\ntask count-digits\n  take text, like text\n  like number\n  send back, digit-count(text)\n\ntask twice\n  take n, like number\n  like number\n  send back, add(n, n)\n>)
+  write-text(linked-path/join(host-code, <node.tree>), <task parse-integer\n  take text, like text\n  like number\n  send back, 2\n>)
+  write-text(linked-path/join(host-code, <scan.tree>), <load ./node\n  find parse-integer\n\nload @term/base/num\n  find twice\n\ntask scan-number\n  take text, like text\n  like number\n  send back, twice(parse-integer(text))\n>)
+  # a stdlib file reached only by a relative load inside the stdlib, so the stdlib's deck is met under both spellings too
+  write-text(linked-path/join(base-code, <digit.tree>), <task parse-integer\n  take text, like text\n  like number\n  send back, 3\n\ntask digit-count\n  take text, like text\n  like number\n  send back, parse-integer(text)\n>)
+  # and a file that reaches scan.tree by a relative load, so the build meets it under both spellings
+  write-text(linked-path/join(host-code, <read.tree>), <load ./scan\n  find scan-number\n\ntask read-number\n  take text, like text\n  like number\n  send back, scan-number(text)\n>)
+  # the deck folder reached through a link, as verb-pair stages it: a longer path than the real one, as verb-pair's is
+  host link, linked-path/join(folder(linked-path/join(top, <staged>)), <linked-deck>)
+  linked-file/symlink-sync(real, link, <dir>)
+  back link
+
+host link, set-up(0)
+
+# a project of its own, which loads the stdlib by package path
+host project, linked-path/join(top, <project>)
+host entry-file, linked-path/join(folder(linked-path/join(project, <code>)), <main.tree>)
+host entry, <load @term/host/scan\n  find scan-number\n\nload @term/host/read\n  find read-number\n\ntask run\n  like number\n  send back, add(scan-number(\<7\>), read-number(\<8\>))\n>
+
+task write-project
+  take seed, like number
+  like number
+
+  write-text(linked-path/join(project, <deck.tree>), <deck @test/linked\n>)
+  write-text(entry-file, entry)
+  back seed
+
+host written, write-project(0)
+
+form built
+  link ok, like boolean
+  link said, like text
+
+# the build of the entry with TERM_STDLIB at this folder, merged or separate, the variable put back after
+task build
+  take stdlib, like text
+  take how, like text
+  like built
+
+  host pinned, has-variable(<TERM_STDLIB>)
+  host before, variable(<TERM_STDLIB>)
+  set-variable(<TERM_STDLIB>, stdlib)
+  save ok, false
+  save said, <>
+  fork test, is-equal(how, <merged>)
+    hold
+      host out, compile-text(entry, make(compile-choice, bind(file, entry-file), bind(project, project), bind(cache, new-cache(cache-module))))
+      save ok, out/ok
+      save said, join(out/messages, < | >)
+    miss
+      # the readers `term boot` builds with, each keyed by the file's path
+      host options, make-record(make(list, <resolve>, project-module/project-resolver(project), <cache>, new-cache(cache-module), <modules>, same-file, <env>, <node>, <deckOf>, deck-module/project-deck-of(), <roleOf>, role-module/project-role-of(project), <leanOf>, role-module/project-lean-of(project)))
+      host result, separate-module/compile-separate(make-record(make(list, <file>, entry-file, <text>, entry)), options)
+      save ok, result/ok
+  fork test, pinned
+    hold
+      set-variable(<TERM_STDLIB>, before)
+    miss
+      remove-variable(<TERM_STDLIB>)
+  back make(built, bind(ok, ok), bind(said, said))
+
+test <merged: the stdlib by its real path builds>
+  want hold, build(linked-path/join(real, <base>), <merged>)/ok
+
+test <merged: the stdlib through a linked folder builds>
+  want hold, build(linked-path/join(link, <base>), <merged>)/ok
+
+test <separate: the stdlib by its real path builds>
+  want hold, build(linked-path/join(real, <base>), <separate>)/ok
+
+test <separate: the stdlib through a linked folder builds>
+  want hold, build(linked-path/join(link, <base>), <separate>)/ok
+
+# each answer names the file by its real path, whichever spelling reached it
+form answered
+  link stdlib, like text
+  link sibling, like text
+
+task answers
+  take seed, like number
+  like answered
+
+  host pinned, has-variable(<TERM_STDLIB>)
+  host before, variable(<TERM_STDLIB>)
+  set-variable(<TERM_STDLIB>, linked-path/join(link, <base>))
+  host resolve, project-module/project-resolver(project)
+  host stdlib, resolved-by(resolve, <@term/base/num>, entry-file)
+  host sibling, resolved-by(resolve, <@term/host/scan>, entry-file)
+  fork test, pinned
+    hold
+      set-variable(<TERM_STDLIB>, before)
+    miss
+      remove-variable(<TERM_STDLIB>)
+  back make(answered, bind(stdlib, stdlib/file), bind(sibling, sibling/file))
+
+host answer, answers(0)
+
+test <the stdlib resolver answers the real path>
+  want hold, is-equal(answer/stdlib, linked-file/realpath-sync(linked-path/join(base-code, <num.tree>)))
+
+test <the sibling resolver answers the real path>
+  want hold, is-equal(answer/sibling, linked-file/realpath-sync(linked-path/join(host-code, <scan.tree>)))

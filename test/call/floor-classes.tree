@@ -88,7 +88,7 @@ test <the census counts foreign source and no untracked bundle>
   save census, run-tool(<self-host-left.ts>, <--json>)
   want hold, floor-has(census, <"path": "deck/base/code/native/rust/runtime/tcp.rs",>)
   want hold, floor-has(census, <"path": "mark/fasta/idiom.ts",\n      "deck": "pkg/mark",\n      "bucket": "floor-f6">)
-  want hold, floor-has(census, <"path": "test/check/universal.ts",\n      "deck": "pkg/test",\n      "bucket": "unported">)
+  want hold, floor-has(census, <"deck": "pkg/test",>)
   want hold, floor-has(census, <"apart": \{>)
   want hold, not(floor-has(census, <deck/flow/make/server.js>))
 
@@ -308,6 +308,31 @@ test <a reclassified file is not called progress>
   want hold, floor-has(gate, <exit 0\n>)
   want hold, floor-has(gate, <1 reclassified>)
   want hold, not(floor-has(gate, <progress>))
+
+# The census's own bucket rule, on a fixture Term root and no parent, so no port landing on the live tree moves it (items
+# term-self-host-001-0965 and 0968: the live case named test/check/universal.ts unported and failed once its .tree
+# landed): a .ts alone is unported, a .ts with a .tree beside it is a twin, and a shelved .tree (mark draft) is no port.
+task census-run
+  take home, like text
+  like text
+
+  save here, run(<pwd>, floor-words(<-L>), floor-home)
+  save repo, floor-trim(here/output)
+  save line, <-u TERM_PARENT_ROOT TERM_ROOT={home}/{floor-t} node {repo}/node_modules/tsx/dist/cli.mjs {repo}/{floor-tools(0)}/self-host-left.ts --json>
+  save done, run(<env>, floor-words(line), home)
+  back done/output
+
+test <the census buckets a test file by the .tree beside it>
+  save home, temp-folder(<floor-census->)
+  floor-do(home, <git>, <init -q>)
+  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code {floor-t}/task/term {floor-t}/test/check>)
+  floor-do(home, <touch>, <{floor-t}/test/check/alone.ts {floor-t}/test/check/paired.ts {floor-t}/test/check/paired.tree {floor-t}/test/check/shelved.ts>)
+  floor-write(<{home}/{floor-t}/test/check/shelved.tree>, <mark draft\n>)
+  save census, census-run(home)
+  want hold, floor-has(census, <"path": "test/check/alone.ts",\n      "deck": "pkg/test",\n      "bucket": "unported">)
+  want hold, floor-has(census, <"path": "test/check/paired.ts",\n      "deck": "pkg/test",\n      "bucket": "twin">)
+  want hold, floor-has(census, <"path": "test/check/shelved.ts",\n      "deck": "pkg/test",\n      "bucket": "unported">)
+  want hold, not(floor-has(census, <test/check/paired.tree>))
 
 test <a removed file is progress, and not reclassified>
   save home, floor-fixture(<open>)

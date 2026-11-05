@@ -25,6 +25,10 @@ load ../context/app-scope
   find check-scope
 
 
+load @term/call/work/build/build-graph
+  find build-request
+  find entry-ask
+
 dock load
   load <node:fs>, name node-fs
   load <node:os>, name node-os
@@ -36,7 +40,6 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   # the build's own engine (decision 099): the reload loop's one graph, asked for the entry as one program. Docked as
   # its port, so each compose port does not carry a copy of the engine
-  load <@term/call/code/work/build/build-graph>, name graph-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/make/code/compile/native-main>, name native-main
   load <@term/make/code/resolve>, name resolve-module
@@ -69,7 +72,7 @@ task compile-whole
 
   fork test, is-truthy(graph)
     hold
-      back whole-result(graph-module/buildRequest(graph, graph-module/entryAsk(entry, text, env, false, resolve, true), store))
+      back whole-result(build-request(graph, entry-ask(entry, text, env, false, resolve, true), store))
   back compile-module/compile(make(whole-source, bind(file, entry), bind(text, text)), make(whole-options, bind(resolve, resolve), bind(env, env), bind(cache, cache)))
 
 # the compiler's answer of a whole ask, or a grammar's refusal as a failed compile with its faults

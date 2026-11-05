@@ -58,6 +58,9 @@ load @term/call/work/output/printer
   find open-run
   find report
 
+load @term/call/work/build/build-graph
+  find make-build-graph
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -66,7 +69,6 @@ dock load
   load <global:process>, name host-process
   # THE BUILD'S OWN ENGINE (decision 099): one build graph and the machine store for the loop's life, docked as their
   # ports so the loop's port does not carry a copy of the engine
-  load <@term/call/code/work/build/build-graph>, name graph-module
   load <@term/call/code/cache-store>, name store-module
 
 # what the loop is started with: the app folder, the target, the entry `--entry` names, what the desktop app's
@@ -762,7 +764,7 @@ task start-compose-work
   # and one build graph over the machine store (decision 099): each rebuild asks it for the entry as one program, its
   # parse and walk memos and the store's mill entries kept, its session turned once a build (one turn per edit), and
   # the scope check walks the same parses
-  save graph, graph-module/makeBuildGraph(root)
+  save graph, make-build-graph(root)
   save store, store-module/projectCache(root)
 
   # a session starts at the app's first screen: the history of an earlier session is not this one's

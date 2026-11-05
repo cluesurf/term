@@ -1,0 +1,129 @@
+note <term:find-migrate's proof for a host description>
+
+# Ported from find-migrate-host.ts by statement (items 0556 and 0964). task/term/find-migrate is the subject, docked by its
+# @term/term package path (decision 121). A host description (@term/bind, decision 002 of note/project/term/module-scope)
+# binds an unimported type to nothing and erases it, so a right `find` changes the emitted type: a find is accepted when
+# the file builds after, its own diagnostics fall by exactly the `unknown-name` warnings of the found names with nothing
+# new, and its TypeScript with types stripped is identical. Each build answers the two modules `@app/shapes` and
+# `@app/other` from text, then the project at the working directory on node, as the original's resolver did.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-source
+  find compiling-options-of
+
+load ../support/judging
+  find make-record
+  find set-field
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <@term/term/task/term/find-migrate>, name migrate-tool
+
+host shapes-text, <form shape\n  link size, like number\n>
+host other-text, <form other\n  link mass, like number\n>
+
+# a signature with no body, as every bind task is (a stub): `like shape` is the type as written
+host measure-text, <task measure\n  take s, like shape\n  like number\n>
+host found-text, <load @app/shapes\n  find shape\n\ntask measure\n  take s, like shape\n  like number\n>
+host stale-text, <load @app/other\n  find shape\n\ntask measure\n  take s, like shape\n  like number\n>
+host lost-text, <load ./no-such-module\n  find shape\n\ntask measure\n  take s, like shape\n  like number\n>
+
+# the original's `emit` context: a host description built from text under the deck named, its loads answered as above
+task context-of
+  take deck, like text
+  like dynamic
+
+  save files, make list(make(compiling-source, bind(file, <@app/shapes>), bind(text, shapes-text), bind(answer, <shapes.tree>)), make(compiling-source, bind(file, <@app/other>), bind(text, other-text), bind(answer, <other.tree>)))
+  save options, compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(files, files)))
+  set-field
+    options
+    <deckOf>
+    task
+      like dynamic
+      back make-record(make list(<name>, deck, <root>, </>))
+  back make-record(make list(<host>, true, <options>, options))
+
+task build
+  take text, like text
+  take deck, like text
+  like dynamic
+
+  back migrate-tool/emit(<main.tree>, text, context-of(deck))
+
+# the type with no find: a warning in a host description, and the parameter's type erased
+host before, build(measure-text, <@term/bind>)
+# the found form: the type changes, nothing that runs does
+host found, build(found-text, <@term/bind>)
+# a find that makes a new error: its relative load reaches no file, which fails the build at the load. (A form found
+# with the wrong number of type arguments, or found twice, builds today, so neither can stand for an error here)
+host weight-before, build(measure-text, <@term/bind>)
+host weight-after, build(lost-text, <@term/bind>)
+# a find through a module that does not define the name: a new diagnostic
+host stale, build(stale-text, <@term/bind>)
+
+test <a host description builds an unknown type with a warning>
+  want hold, and(before/ok, any-holding(before/notes, <"shape">))
+
+test <the same file outside one is refused>
+  host outside, build(measure-text, <@term/base>)
+  want hold, not(outside/ok)
+
+test <the compiler names @term/bind a host description>
+  want hold, migrate-tool/describes-host(<@term/bind>)
+
+test <and not @term/base>
+  want hold, not(migrate-tool/describes-host(<@term/base>))
+
+test <the find builds>
+  want hold, found/ok
+
+test <and changes the emitted type>
+  want hold, and(before/ok, and(found/ok, is-unequal(before/ts, found/ts)))
+
+test <a find of the form is a type-only change>
+  want hold, is-equal(migrate-tool/type-only(before, found, make list(<shape>)), void)
+
+test <but not one that answers a name not found>
+  want hold, is-unequal(migrate-tool/type-only(before, found, make list(<other>)), void)
+
+test <a find that adds an error is refused>
+  host why, migrate-tool/type-only(weight-before, weight-after, make list(<shape>))
+  want hold, and(weight-before/ok, and(is-unequal(why, void), starts-with(why, <does not build after>)))
+
+test <a find from a module that lacks the name is refused>
+  want hold, is-unequal(migrate-tool/type-only(before, stale, make list(<shape>)), void)
+
+# rule 2: the file's own platform tree, then shared/, then outside the package
+host bind-code, </x/bind/code>
+
+task pick
+  take file, like text
+  take definers, like list, like text
+  like text
+
+  save choice, migrate-tool/choose-definer(bind-code, file, definers)
+  fork test, is-equal(choice/definer, void)
+    hold
+      back <by hand>
+  back choice/definer
+
+test <one definer is that one>
+  want hold, is-equal(pick(<{bind-code}/node/a.tree>, make list(<{bind-code}/rust/r.tree>)), <{bind-code}/rust/r.tree>)
+
+test <the own tree first>
+  want hold, is-equal(pick(<{bind-code}/rust/a.tree>, make list(<{bind-code}/shared/m.tree>, <{bind-code}/rust/std/r.tree>, </x/base/code/r.tree>)), <{bind-code}/rust/std/r.tree>)
+
+test <then shared>
+  want hold, is-equal(pick(<{bind-code}/node/a.tree>, make list(<{bind-code}/shared/m.tree>, </x/base/code/m.tree>)), <{bind-code}/shared/m.tree>)
+
+test <then outside the package>
+  want hold, is-equal(pick(<{bind-code}/node/a.tree>, make list(<{bind-code}/rust/m.tree>, </x/base/code/m.tree>)), </x/base/code/m.tree>)
+
+test <two in one tree are by hand>
+  want hold, is-equal(pick(<{bind-code}/node/a.tree>, make list(<{bind-code}/node/m.tree>, <{bind-code}/node/n.tree>)), <by hand>)

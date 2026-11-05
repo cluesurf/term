@@ -1,0 +1,88 @@
+note <Integer exactness in the provers>
+
+# Ported from exact.ts by statement (item 0556). JavaScript numbers are exact integers only up to 2^53 - 1. Before
+# 2026-10-02 a literal past that was read with Number() in the mill, and coefficients were combined in doubles, so
+# `x * 9007199254740993 == x * 9007199254740992` was PROVEN.
+#
+# Every layer is held here: the ring normalizer declines a coefficient past the safe range, the linear certificate
+# checker refuses a step whose numbers rounded, and true identities inside the range still prove. check/ring,
+# check/certificate and check/refine are the subjects, docked (decision 106).
+
+load ../support/judging
+  find make-record
+  find big-number
+
+dock load
+  load <@term/make/code/check/ring>, name ring-module
+  load <@term/make/code/check/certificate>, name certificate-module
+  load <@term/make/code/check/refine>, name refine-module
+
+# host value: 2^53 as a host number, the one value the original rounds through a double, which a Term literal past the
+# safe range reads as an exact bigint instead, and Term arithmetic past it stops (T-0044)
+bind power-of-two
+  take sign, like number
+  take exponent, like number
+  like dynamic
+  case node
+    text <$sign * 2 ** $exponent>
+
+task place
+  like dynamic
+
+  host at, make-record(make(list, <line>, 0, <column>, 0))
+  back make-record(make(list, <start>, at, <end>, at))
+
+task variable-x
+  like dynamic
+
+  back make-record(make(list, <form>, <variable>, <name>, <x>, <span>, place()))
+
+# an integer node, its value a number or, past the range, an exact bigint as the mill now delivers it
+task int
+  take value, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <integer>, <value>, value, <span>, place()))
+
+task times
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <form>, <binary>, <op>, <*>, <left>, left, <right>, right, <span>, place()))
+
+# the probe that was proven: 2^53 + 1 against 2^53, as the mill now delivers them (an exact bigint past the range)
+test <2^53 + 1 is not 2^53>
+  want hold, not(ring-module/ring-equal(times(variable-x(), int(big-number(<9007199254740993>))), times(variable-x(), int(big-number(<9007199254740992>)))))
+
+# a product that leaves the range: (2^27 + 1)^2 = 2^54 + 2^28 + 1, not 2^54 + 2^28
+test <a product past 2^53 is declined, not rounded>
+  want hold, not(ring-module/ring-equal(times(times(variable-x(), int(134217729)), int(134217729)), times(variable-x(), int(big-number(<18014398777917440>)))))
+
+# and the TRUE version is declined too, which is the price of exactness until coefficients are BigInt: declining is
+# sound, accepting a rounded identity is not
+test <the true identity past 2^53 is declined, not proven by rounding>
+  want hold, not(ring-module/ring-equal(times(times(variable-x(), int(134217729)), int(134217729)), times(variable-x(), int(big-number(<18014398777917441>)))))
+
+# inside the range, identities still prove
+test <(2^20 + 1)^2 x == (2^40 + 2^21 + 1) x>
+  want hold, ring-module/ring-equal(times(times(variable-x(), int(1048577)), int(1048577)), times(variable-x(), int(1099513724929)))
+
+test <modulo hypotheses still declines past the range>
+  host hypothesis, make-record(make(list, <left>, variable-x(), <right>, int(1)))
+  want hold, not(ring-module/ring-equal-modulo(times(variable-x(), int(big-number(<9007199254740993>))), times(variable-x(), int(big-number(<9007199254740992>))), make(list, hypothesis)))
+
+test <non-negativity declines past the range>
+  want hold, not(ring-module/non-negative-difference(times(times(variable-x(), variable-x()), int(big-number(<9007199254740993>))), int(0)))
+
+test <non-negativity still proves inside it>
+  want hold, ring-module/non-negative-difference(times(times(variable-x(), variable-x()), int(9007199254740991)), int(0))
+
+# the linear certificate checker refuses a derivation whose numbers rounded
+test <a refutation over a non-safe input does not replay>
+  host below, make-record(make(list, <linear>, refine-module/linear(make-record(make(list, <x>, power-of-two(1, 53))), 1), <strict>, false))
+  host above, make-record(make(list, <linear>, refine-module/linear(make-record(make(list, <x>, power-of-two(-1, 53))), 0), <strict>, false))
+  host first, make-record(make(list, <by>, <input>, <at>, 0))
+  host second, make-record(make(list, <by>, <input>, <at>, 1))
+  host step, make-record(make(list, <by>, <sum>, <first>, first, <second>, second, <a>, 1, <b>, 1))
+  want hold, not(certificate-module/check-refutation(make(list, below, above), step))

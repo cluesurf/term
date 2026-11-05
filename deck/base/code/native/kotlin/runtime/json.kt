@@ -16,9 +16,11 @@ object json {
 
     // a bare number spells the way JSON does everywhere else: a whole one without a point, the rest the shortest
     // digits that read back to the same value
+    // Unit is Kotlin's loose empty value (an absent prop read by its name, `problem/link/{key}`), so it writes as null,
+    // as compiler decision 015 rule 3 has it on all four. It wrote its toString, the text `kotlin.Unit` (item 0939)
     private fun write(value: Any?, out: StringBuilder) {
         when (value) {
-            null, JsonNull -> out.append("null")
+            null, JsonNull, Unit -> out.append("null")
             is Boolean -> out.append(if (value) "true" else "false")
             is Double -> out.append(if (value == Math.rint(value) && Math.abs(value) < 1e15) value.toLong().toString() else value.toString())
             is Number -> out.append(value.toString())
@@ -74,10 +76,12 @@ object json {
     fun isNull(value: Any): Boolean = value === JsonNull
     fun makeObject(): Any = LinkedHashMap<String, Any>()
     @Suppress("UNCHECKED_CAST")
-    fun setField(value: Any, key: String, field: Any): Any { if (value is MutableMap<*, *>) (value as MutableMap<String, Any>)[key] = field; return value }
+    fun setField(value: Any, key: String, field: Any): Any { if (value is MutableMap<*, *>) (value as MutableMap<String, Any>)[key] = held(field); return value }
     fun makeArray(): Any = kotlin.collections.mutableListOf<Any>()
     @Suppress("UNCHECKED_CAST")
-    fun pushItem(value: Any, item: Any): Any { if (value is MutableList<*>) (value as MutableList<Any>).add(item); return value }
+    fun pushItem(value: Any, item: Any): Any { if (value is MutableList<*>) (value as MutableList<Any>).add(held(item)); return value }
+    // the loose empty value goes into an object or array as JSON's null, so a read of it back answers is-null
+    private fun held(value: Any): Any = if (value === Unit) JsonNull else value
     fun fromText(value: String): Any = value
     fun fromNumber(value: Double): Any = value
     fun fromBoolean(value: Boolean): Any = value

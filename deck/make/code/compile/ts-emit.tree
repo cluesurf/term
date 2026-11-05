@@ -306,6 +306,8 @@ form emit-state
   link equal-used, like boolean
   link text-used, like boolean
   link list-used, like boolean
+  # a caught value's link was read by a key, `problem/link/{key}` (compiler decision 015)
+  link link-key-used, like boolean
   # a raise or a frame was written: the module carries the exception class and its frame helpers
   link flow-used, like boolean
   # the task or closure being written keeps `__site`, the frame of the call it is making (term/hive decision 001)
@@ -361,6 +363,7 @@ task new-emit-state
       bind equal-used, false
       bind text-used, false
       bind list-used, false
+      bind link-key-used, false
       bind flow-used, false
       bind site-local, false
       bind awaiting-call, false
@@ -2489,6 +2492,20 @@ task emit-record
 
 # ---- members ----
 
+# is this the `link` of a caught value: `problem/link`, when `problem` is an `exception`
+task is-caught-link
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      back and(is-equal(member-name, <link>), is-equal(named-of(expression-type(member-target)), <exception>))
+    miss
+      back false
+
 task emit-member
   take node, like expression
   take st, like emit-state
@@ -2559,6 +2576,13 @@ task emit-member
             hold
               save st/list-used, true
               back read-at-node(member-target, index-node, st, facts)
+          # A PROP OF A CAUGHT VALUE'S LINK BY ITS NAME (`problem/link/{key}`): the key is the written name, and the
+          # raise stored the prop camel-cased, so the prelude's `__termLinkKey` spells it the same way, reads an own
+          # property only, and answers null for an absent one, as the natives do (compiler decision 015)
+          fork test, and(is-caught-link(member-target), not(writing))
+            hold
+              save st/link-key-used, true
+              back <__termLinkKey({emit-member-target(member-target, st, facts)}, {emit-expression(index-node, 0, st, facts)})>
           save target, emit-member-target(member-target, st, facts)
           back <{target}[{emit-expression(index-node, 0, st, facts)}]>
         case none

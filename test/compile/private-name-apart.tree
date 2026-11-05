@@ -1,0 +1,166 @@
+note <ONE NAME, TWO MODULES, ONE OF THEM PRIVATE>
+
+# Ported from private-name-apart.ts by task/term/suite-port.ts, finished by hand (item 0574). `priv.tree` has a private
+# task `is-given`, `pub.tree` a public `is-given` of its own, and the entry finds `pub`'s through its import. The entry
+# means `pub`'s, in the merged build and the separate one alike, and nothing is refused as `private-name`
+# (term-compiler-0068).
+#
+# The separate build refused it when `pub`'s was a native binding (`bind is-given`). Its own unit renamed the binding
+# apart from the task its closure reached (`is-given__native0`, check/disambiguate.tree `bind-natives-apart`), and the
+# stub carried that name, so in the entry's unit `pub` defined no `is-given` (`unknown-name`), or, where the entry's
+# closure held `priv`'s task too, the reference bound to that private task (`private-name`: flow's code-actions.tree
+# and navigation.tree against @term/make's templates.tree). A stub now carries a binding under its written name
+# (compile/stub.ts), as it does a `host` value. compile/separate and compile/cache are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find compiling-options-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find char-count
+  find substring
+  find ends-with
+  find index-of
+  find split
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind ok-of
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+# the private one, and a public task of the same file that uses it
+host priv, <task is-given\n  mark private\n  take value, like text\n  like boolean\n  send back, true\n\ntask other\n  take x, like text\n  like boolean\n  send back\n    call is-given\n      read x\n>
+
+host word-chars,<abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+
+# the module path of a file: its name without .tree, every character outside a word one written _
+task slug-path
+  take file, like text
+  like text
+
+  save stem, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stem, substring(file, 0, subtract(char-count(file), 5))
+  save out, <>
+  walk split(stem, <>)
+    take one, like text
+    fork test, is-above(index-of(word-chars, one), -1)
+      hold
+        save out, <{out}{one}>
+      miss
+        save out, <{out}_>
+  back <./{out}.mjs>
+
+# the two modules a load reaches, `./priv` and `./pub`, each answering as its own name and nothing else
+task files-of
+  take pub, like text
+  like list, like compiling-source
+
+  back make(list, make(compiling-source, bind(file, <./priv>), bind(text, priv), bind(answer, <priv.tree>)), make(compiling-source, bind(file, <./pub>), bind(text, pub), bind(answer, <pub.tree>)))
+
+task merged
+  take pub, like text
+  take entry, like text
+  like compile-outcome
+
+  back compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files-of(pub)), bind(cache, new-cache(cache-module))))
+
+task separate
+  take pub, like text
+  take entry, like text
+  like boolean
+
+  host options, compiling-options-of(make(compile-choice, bind(files, files-of(pub))))
+  back ok-of(separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), slug-path)))
+
+# the public one as a native binding, in a file whose closure reaches the private task
+host pub-bind, <load ./priv\n  find other\n\nbind is-given\n  take value, like dynamic\n  like boolean\n  case node\n    text \<($value !== undefined && $value !== null)\>\n\ntask also\n  take x, like text\n  like boolean\n  send back, other(x)\n>
+
+# the public one as a task
+host pub-task, <load ./priv\n  find other\n\ntask is-given\n  take value, like text\n  like boolean\n  send back, false\n\ntask also\n  take x, like text\n  like boolean\n  send back, other(x)\n>
+
+host call-text, <task run\n  take x, like text\n  like boolean\n  send back\n    call is-given\n      read x\n>
+
+# the entry finds the public one, and reaches the private one only through `pub`
+host through, <load ./pub\n  find is-given\n  find also\n\n{call-text}>
+
+# the entry also loads the private one's file itself, for another name
+host beside, <load ./pub\n  find is-given\n\nload ./priv\n  find other\n\n{call-text}>
+
+# the entry's call is the binding's inline text, never a call of the private task
+host binding-inline, make pattern, <<!== undefined && .* !== null>>
+
+host binding-through, merged(pub-bind, through)
+
+test <binding, through pub: the merged build finds the public is-given>
+  want hold, binding-through/ok
+
+test <binding, through pub: the separate build finds the public is-given>
+  want hold, separate(pub-bind, through)
+
+test <binding, through pub: the merged entry calls the binding>
+  want hold, binding-through/ok
+  want hold, matches(binding-inline, binding-through/emitted)
+
+host binding-beside, merged(pub-bind, beside)
+
+test <binding, beside priv: the merged build finds the public is-given>
+  want hold, binding-beside/ok
+
+test <binding, beside priv: the separate build finds the public is-given>
+  want hold, separate(pub-bind, beside)
+
+test <binding, beside priv: the merged entry calls the binding>
+  want hold, binding-beside/ok
+  want hold, matches(binding-inline, binding-beside/emitted)
+
+test <task, through pub: the merged build finds the public is-given>
+  want hold, merged(pub-task, through)/ok
+
+test <task, through pub: the separate build finds the public is-given>
+  want hold, separate(pub-task, through)
+
+test <task, beside priv: the merged build finds the public is-given>
+  want hold, merged(pub-task, beside)/ok
+
+test <task, beside priv: the separate build finds the public is-given>
+  want hold, separate(pub-task, beside)

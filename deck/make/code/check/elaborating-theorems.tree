@@ -34,6 +34,8 @@ load ./unfolding
   find substitute
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
   find kernel-term
   find kernel-value
@@ -500,6 +502,7 @@ task inferred-guide
 
   save st, ts/st
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save found, infer(st, ctx, term)/type
@@ -507,6 +510,7 @@ task inferred-guide
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back make none
   back make none
 
@@ -555,12 +559,14 @@ task numeric-term
 
   save st, ts/st
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     back are-convertible(st, ctx/level, infer(st, ctx, term)/type, evaluate(st, no-values(), constant(<Number>)))
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back true
   back true
 
@@ -849,6 +855,7 @@ task universal-instances
     save term-type, make none
     save term-key, <>
     save fuel, st/unfold-fuel
+    save metas, meta-mark(st)
     fork
       mark unsafe
       sift expr(ts, expression, scope, ctx, no-value())
@@ -869,6 +876,7 @@ task universal-instances
     halt take
       take problem
       save st/unfold-fuel, fuel
+      meta-undo(st, metas)
   walk hypotheses
     take u
     sift universal-sides(u)
@@ -917,6 +925,7 @@ task universal-instances
             save left, substitute(sides/left, binding)
             save right, substitute(sides/right, binding)
             save fuel, st/unfold-fuel
+            save metas, meta-mark(st)
             fork
               mark unsafe
               sift expr(ts, left, scope, ctx, no-value())
@@ -939,6 +948,7 @@ task universal-instances
             halt take
               take problem
               save st/unfold-fuel, fuel
+              meta-undo(st, metas)
             save n, add(n, 1)
       case none
         turn next

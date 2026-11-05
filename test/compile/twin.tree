@@ -1,0 +1,189 @@
+note <`twin \<task\>, name \<label\>` reaches the compiler whole, and reaches no backend (optimize-0005)>
+
+# Ported from twin.ts by statement (item 0577). A twin is another implementation of a named task
+# (note/project/term/optimize/words.md). The mill returns it BESIDE the program and never in it, so every pass and backend
+# that does not choose between implementations emits the reference, which is always correct. This holds the grammar's two
+# halves, the fields the twin carries, the refusals, and that the program is unchanged by the twins in the file. The
+# parser, the mill and the grammar's mill are the suite's subject and docked (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+
+load ../support/reading
+  find first-with
+
+load ../support/walking
+  find kind-of
+  find json-without
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/mint-bridge>, name mint-bridge
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+host reference, <task count-each\n  take values, like list, like number\n  take queries, like list, like number\n  like list, like number\n  save counts\n    make list\n  walk list, read queries\n    hook next\n      take site, name query\n      save count, code 0\n      walk list, read values\n        hook next\n          take site, name value\n          fork test\n            hook test\n              call is-equal\n                read value\n                read query\n            hook hold\n              save count\n                call add\n                  read count\n                  code 1\n      call push\n        bind list, read counts\n        bind item, read count\n  send back, read counts\n>
+
+host twins, <twin count-each, name tally\n  take values\n  take queries\n  cost\n    call add\n      call size\n        read values\n      call size\n        read queries\n  host tally\n    call tally\n      read values\n  save counts\n    make list\n  walk list, read queries\n    hook next\n      take site, name query\n      call push\n        bind list, read counts\n        bind item\n          call tally/get-or-default\n            read query\n            code 0\n  send back, read counts\n\ntwin count-each, name dense\n  take values\n  take queries\n  have\n    call is-sorted\n      read values\n  hook test\n    call is-every-within\n      bind list, read values\n      bind base, code 0\n      bind head, code 65536\n  ease float-order\n  mark width, like number\n  mark platform, name rust\n  mark trust\n  send back\n    make list\n>
+
+# the parsed tree of a text, as main.tree
+task parsed-tree
+  take text, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(make(file-and-text, bind(file, <main.tree>), bind(text, text)))
+  back parsed/tree
+
+task by-grammar
+  take text, like text
+  like dynamic
+
+  back mint-bridge/mill-by-grammar(parsed-tree(text), <main.tree>)
+
+task by-mill
+  take text, like text
+  like dynamic
+
+  back mill-module/mill(parsed-tree(text), <main.tree>)
+
+# the reference alone, and the reference with two twins beside it
+host alone, by-grammar(reference)
+host both, by-grammar(<{reference}\n{twins}>)
+
+test <the reference mills>
+  want hold, is-equal(alone/ok, true)
+
+test <the reference with twins beside it mills>
+  want hold, is-equal(both/ok, true)
+
+test <the twins add no statement: the program is the reference program>
+  want hold, is-equal(json-without(alone/program, make list(<span>)), json-without(both/program, make list(<span>)))
+
+host twin-list, both/twins
+host tally, first-with(twin-list, <name>, <tally>)
+host dense, first-with(twin-list, <name>, <dense>)
+
+test <both twins are returned beside the program>
+  want hold, is-equal(twin-list/length, 2)
+
+test <a twin names the task it twins>
+  want hold, is-equal(tally/of, <count-each>)
+  want hold, is-equal(dense/of, <count-each>)
+
+test <its parameters are names, in order>
+  want hold, is-equal(json-without(tally/params, make list(<span>)), <["values","queries"]>)
+
+test <its body is read as an ordinary body>
+  want hold, is-equal(tally/body/length, 4)
+
+# `call add` lowers to the builtin `+`, as it does anywhere else
+test <`cost` is read as one expression>
+  want hold, is-equal(tally/cost/form, <binary>)
+  want hold, is-equal(tally/cost/op, <+>)
+
+test <a twin with no cost has none>
+  want hold, is-equal(kind-of(dense/cost), <undefined>)
+
+test <`have` is read>
+  want hold, is-equal(dense/have/length, 1)
+  want hold, is-equal(dense/have/0/form, <call>)
+
+test <`hook test` is read>
+  want hold, is-equal(dense/test/length, 1)
+  want hold, is-equal(dense/test/0/form, <call>)
+
+test <`ease` names a relaxation>
+  want hold, is-equal(json-without(dense/ease, make list(<span>)), <["float-order"]>)
+
+test <`mark` declares a knob with its type>
+  want hold, is-equal(dense/knobs/0/name, <width>)
+  want hold, is-equal(dense/knobs/0/type/kind, <number>)
+
+test <`mark platform, name rust` names the target>
+  want hold, is-equal(json-without(dense/platform, make list(<span>)), <["rust"]>)
+
+test <`mark trust` is read>
+  want hold, is-equal(dense/trust, true)
+  want hold, is-equal(tally/trust, false)
+
+test <a twin with nothing said is eligible everywhere and trusts nothing>
+  want hold, is-equal(json-without(tally/platform, make list(<span>)), <[]>)
+  want hold, is-equal(tally/ease/length, 0)
+
+# the compiler's own entry point keeps the twins too, so nothing between the mill and a later pass loses them
+test <mill() carries the twins through>
+  host via-mill, by-mill(<{reference}\n{twins}>)
+  want hold, is-equal(via-mill/ok, true)
+  want hold, is-equal(via-mill/twins/length, 2)
+
+# refusals: a typed parameter (the type is the task's), and a twin with no label
+test <a twin's parameter with a type is refused, saying where the type comes from>
+  host typed, by-grammar(<{reference}\ntwin count-each, name typed\n  take values, like list\n  take queries\n  send back\n    make list\n>)
+  want hold, is-equal(typed/ok, false)
+  want hold, text-contains(json-without(typed/diagnostics, make list(<span>)), <take their types from>)
+
+test <a twin with no label is refused>
+  host unlabelled, by-grammar(<{reference}\ntwin count-each\n  take values\n  take queries\n  send back\n    make list\n>)
+  want hold, is-equal(unlabelled/ok, false)
+  want hold, text-contains(json-without(unlabelled/diagnostics, make list(<span>)), <name \<label\>>)
+
+# what the compiler refuses about a twin without running anything (check/twin.ts, optimize-0006)
+host pure, <task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+
+host impure, <dock load\n  load \<global:Date\>, name date\n\ntask stamp\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      call date/now\n>
+
+task built-of
+  take text, like text
+  like dynamic
+
+  back compile-text(text, make(compile-choice, bind(file, <main.tree>)))
+
+# the build compiles and carries exactly one twin
+task carries-one
+  take text, like text
+  like boolean
+
+  host built, built-of(text)
+  fork test, is-unequal(built/ok, true)
+    hold
+      back false
+  back is-equal(built/twins/length, 1)
+
+test <a pure twin of a pure task compiles, and the build carries it>
+  want hold, carries-one(<{pure}\ntwin double, name shift\n  take n\n  send back\n    call multiply\n      read n\n      code 2\n>)
+
+test <a twin of no task is refused as `twin-unknown`>
+  want hold, refused-as(built-of(<{pure}\ntwin triple, name x\n  take n\n  send back, read n\n>), <twin-unknown>)
+
+test <a twin of an impure task is refused as `twin-of-impure`>
+  want hold, refused-as(built-of(<{impure}\ntwin stamp, name x\n  take n\n  send back, read n\n>), <twin-of-impure>)
+
+test <a twin with other parameters is refused as `twin-signature`>
+  want hold, refused-as(built-of(<{pure}\ntwin double, name x\n  take m\n  send back, read m\n>), <twin-signature>)
+
+test <an impure twin is refused as `twin-impure`>
+  want hold, refused-as(built-of(<{impure}\n{pure}\ntwin double, name x\n  take n\n  send back\n    call stamp\n      read n\n>), <twin-impure>)
+
+test <a twin that never ends is refused as `twin-loops`>
+  want hold, refused-as(built-of(<{pure}\ntask spin\n  take n, like number\n  like number\n  send back\n    call spin\n      read n\n\ntwin double, name x\n  take n\n  send back\n    call spin\n      read n\n>), <twin-loops>)
+
+test <an impure run-time check is refused as `guard-impure`>
+  want hold, refused-as(built-of(<{impure}\n{pure}\ntwin double, name x\n  take n\n  hook test\n    call is-above\n      call stamp\n        read n\n      code 0\n  send back\n    call multiply\n      read n\n      code 2\n>), <guard-impure>)
+
+test <an undefined relaxation is refused as `ease-unknown`>
+  want hold, refused-as(built-of(<{pure}\ntwin double, name x\n  take n\n  ease anything-goes\n  send back\n    call multiply\n      read n\n      code 2\n>), <ease-unknown>)
+
+test <two twins that call each other is refused as `twin-cycle`>
+  want hold, refused-as(built-of(<{pure}\ntask halve\n  take n, like number\n  like number\n  send back\n    call divide\n      read n\n      code 2\n\ntwin double, name x\n  take n\n  send back\n    call halve\n      read n\n\ntwin halve, name y\n  take n\n  send back\n    call double\n      read n\n>), <twin-cycle>)
+
+# `mark trust` admits an impure twin: trust excuses a proof, never the check that it is admitted as trusted
+test <an impure twin that says `mark trust` compiles>
+  want hold, carries-one(<{impure}\n{pure}\ntwin double, name x\n  take n\n  mark trust\n  send back\n    call stamp\n      read n\n>)

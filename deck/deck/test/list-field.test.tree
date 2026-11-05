@@ -1,0 +1,47 @@
+note <A form's list field emits an array of its element>
+
+# Ported from list-field.test.ts by statement (item 0580). `link need, list need` is the field shorthand for a list: the
+# element type follows `list` directly, rather than inside an inner `like` the way `like list / like t` does. Only the
+# second spelling was handled, so the first left the field's type unknown and it emitted as `number`, the fallback for an
+# unresolved type. The runtime was always right: the emitted TypeScript lied. The compiler is docked, as
+# deck/test/test/diagnostic-gap.tree docks it: the project's tsconfig maps the dock to its source.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/compile>, name list-compiling
+
+form list-source
+  link file, like text
+  link text, like text
+
+host source, <form need\n  link name, like text\n\nform spot\n  link name, like text\n  link need, list need\n  link cast, list text\n  link deep, list spot\n>
+
+# the TypeScript a source emits, empty when it does not compile
+task emitted
+  take text, like text
+  like text
+
+  host result, list-compiling/compile(make(list-source, bind(file, <form.tree>), bind(text, text)))
+  fork test, is-equal(result/ok, true)
+    hold
+      back result/typescript
+  back <>
+
+host out, emitted(source)
+
+test <a list field: emits an array of the named form>
+  want hold, text-contains(out, <need: Need[]>)
+
+test <a list field: emits an array of a primitive element>
+  want hold, text-contains(out, <cast: string[]>)
+
+test <a list field: handles a list of the form being declared>
+  want hold, text-contains(out, <deep: Spot[]>)
+
+test <a list field: never falls back to number>
+  want hold, is-unequal(out, <>)
+  want hold, is-equal(text-contains(out, <need: number>), false)
+  want hold, is-equal(text-contains(out, <cast: number>), false)
+  want hold, is-equal(text-contains(out, <deep: number>), false)

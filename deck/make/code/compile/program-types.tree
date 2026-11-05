@@ -87,13 +87,23 @@ load ../check/async-slots
 load ../check/async-resolve
   find resolve-async
 
+load ../check/sole-spending
+  find check-sole-generics
+  find check-sole-uses
+
+load ../check/sole-holding
+  find check-sole-earned
+
+load ../check/hide-guard
+  find check-hidden-makes
+  find hide-home
+
+load ../check/missing-wait-refusals
+  find check-missing-waits
+
 dock load
   load <@term/make/code/check/infer>, name program-types-infer
   load <@term/make/code/check/views>, name program-types-views
-  load <@term/make/code/check/sole>, name program-types-sole
-  load <@term/make/code/check/sole-earned>, name program-types-earned
-  load <@term/make/code/check/hide>, name program-types-hide
-  load <@term/make/code/check/missing-wait>, name program-types-waits
   load <@term/make/code/compile/roll>, name program-types-roll
 
 # what the run holds as `need false` and the types read, filled by the face
@@ -696,11 +706,16 @@ task program-types
   # before any backend: a form holding a sole value is sole itself, only the declaring file makes a hidden form, and a
   # sole value is used at most once
   save affine, make list
-  push-all(affine, as-diagnostics(program-types-earned/check-sole-earned(run/program, file)))
+  push-all(affine, as-diagnostics(check-sole-earned(run/program, file)))
   save homes, deck-homes(run/program, given/scopes, file, given/deck-of)
-  push-all(affine, as-diagnostics(program-types-hide/check-hidden-makes(run/program, file, homes)))
-  push-all(affine, as-diagnostics(program-types-sole/check-sole-generics(run/program, file)))
-  push-all(affine, as-diagnostics(program-types-sole/check-sole-uses(run/program, file)))
+  # the homes as the hide check reads them, field for field (the face handed the same records over)
+  save hide-homes, make list
+  walk homes
+    take home
+    push(hide-homes, make(hide-home, bind(file, home/file), bind(root, home/root)))
+  push-all(affine, as-diagnostics(check-hidden-makes(run/program, file, hide-homes)))
+  push-all(affine, as-diagnostics(check-sole-generics(run/program, file)))
+  push-all(affine, as-diagnostics(check-sole-uses(run/program, file)))
   fork test, is-above(affine/length, 0)
     hold
       back types-refusal(affine)
@@ -721,7 +736,7 @@ task program-types
   save run/program, resolve-async(run/program)
 
   # a call into a host module that answers promises, awaited by nothing
-  save missing-waits, as-diagnostics(program-types-waits/check-missing-waits(run/program, file))
+  save missing-waits, as-diagnostics(check-missing-waits(run/program, file))
   fork test, is-above(missing-waits/length, 0)
     hold
       back types-refusal(missing-waits)

@@ -5,8 +5,8 @@ note <Strict positivity across forms: a strongly connected component, an alias, 
 # the nested-inductive rule of Coq and Lean. The first case is tmp/audit/kernel-1, which proved `empty` and `yes = no`
 # through `term hold` with no axiom. A form held through a parameter used only strictly positively, as a rose tree's
 # list of itself, is accepted. A refusal holds where a rule, claim or proof reaches the form (each case here adds an open
-# claim over it), and the same cycle no proof reaches is a warning (term-foundations-0047). The front end runs here as
-# it does in test/check/totality.tree.
+# claim over it), and the same cycle no proof reaches is a warning (term-foundations-0047). The checked program
+# comes from test/support/compiling's front-end (decision 119), as in test/check/totality.tree.
 
 load ../support/reading
   find any-with
@@ -14,18 +14,12 @@ load ../support/reading
 load ../support/judging
   find read-field
 
-dock load
-  load <@term/make/code/parser/tree>, name parser-tree
-  load <@term/make/code/compile/mill>, name mill-module
-  load <@term/make/code/check/resolve>, name resolve-module
-  load <@term/make/code/check/infer>, name infer-module
-  load <@term/make/code/check/totality>, name totality-module
+load ../support/compiling
+  find front-end
+  find compile-choice
 
-bind source-of
-  take text, like text
-  like dynamic
-  case node
-    text <(\{ file: "t.tree", text: $text \})>
+dock load
+  load <@term/make/code/check/totality>, name totality-module
 
 bind errors-size
   take report, like dynamic
@@ -33,27 +27,11 @@ bind errors-size
   case node
     text <$report.errors.length>
 
-task front-end
-  take text, like text
-  like dynamic
-
-  host parsed, parser-tree/parse(source-of(text))
-  fork test, not(parsed/ok)
-    hold
-      halt <parse failed>
-  host built, mill-module/mill(parsed/tree, <t.tree>)
-  fork test, not(built/ok)
-    hold
-      halt <mill failed>
-  resolve-module/resolve(built/program, <t.tree>)
-  infer-module/check(built/program, <t.tree>)
-  back built/program
-
 task report-of
   take text, like text
   like dynamic
 
-  back totality-module/check-totality(front-end(text), <t.tree>)
+  back totality-module/check-totality(front-end(text, make(compile-choice, bind(file, <t.tree>)))/program, <t.tree>)
 
 # the text with a claim over the form `reached`, left open, so the kernel elaborates that form and all it reaches
 task under-claim

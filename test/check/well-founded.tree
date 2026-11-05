@@ -1,0 +1,24 @@
+note <General well-founded recursion>
+
+# Ported from well-founded.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# General well-founded recursion. The structural / numeric / lexicographic descent checks handle the common measures;
+# for an ARBITRARY well-founded recursion (gcd, mergesort -- where the recursive argument is not a syntactic subterm),
+# the sound, working technique is FUEL: any well-founded recursion is structural recursion on an upper bound of its
+# depth. `gcd-fuel` recurses structurally on `fuel` while reducing `a` by `sub a b`, so it is accepted by the existing
+# termination checker AND computes the right value. The `Acc` accessibility predicate that removes the manual fuel
+# argument runs in test/check/wfrec.ts, and seed.tree's relation/well-founded.tree proves every natural accessible and
+# well-founded induction with it (2026-10-05). Soundness control: a wrong gcd value is rejected.
+# Run: npx tsx test/check/well-founded.ts
+host prelude, <form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask sub\n  take a, like nat\n  take b, like nat\n  like nat\n  fork case, read b\n    case zero\n      send back\n        read a\n    case succ\n      link bp\n      fork case, read a\n        case zero\n          send back\n            make zero\n        case succ\n          link ap\n          send back\n            call sub\n              read ap\n              read bp\n\ntask gcd-fuel\n  take fuel, like nat\n  take a, like nat\n  take b, like nat\n  like nat\n  fork case, read fuel\n    case zero\n      send back\n        read a\n    case succ\n      link f\n      fork case, read b\n        case zero\n          send back\n            read a\n        case succ\n          link bp\n          send back\n            call gcd-fuel\n              read f\n              read b\n              call sub\n                read a\n                read b\n>
+
+# 1. fuel-bounded well-founded recursion is accepted by the checker AND computes: gcd-fuel 2 1 1 = 1.
+test <fuel-bounded gcd is well-typed and computes (gcd 1 1 = 1)>
+  want hold, compile-text(<{prelude}\nrule gcd-ok\n  show hold\n    call is-equal\n      call gcd-fuel\n        make succ\n          bind prior\n            make succ\n              bind prior\n                make zero\n        make succ\n          bind prior\n            make zero\n        make succ\n          bind prior\n            make zero\n      make succ\n        bind prior\n          make zero\n  calm hold\n>)/ok
+
+# 2. SOUNDNESS CONTROL: gcd 1 1 is 1, not 0. Must be rejected.
+test <wrong gcd value is rejected (gcd 1 1 != 0)>
+  want hold, not(compile-text(<{prelude}\nrule gcd-wrong\n  show hold\n    call is-equal\n      call gcd-fuel\n        make succ\n          bind prior\n            make succ\n              bind prior\n                make zero\n        make succ\n          bind prior\n            make zero\n        make succ\n          bind prior\n            make zero\n      make zero\n  calm hold\n>)/ok)

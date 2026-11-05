@@ -38,6 +38,8 @@
 #   - `switches`: the checker's switches the program being checked was handed (check/checker-switches.tree), whose
 #     `widths` decides whether width-typed values are facts. `holds-replayed`: how many tasks' walks were answered from
 #     the memo, which test/check/hold-memo.ts reads. Both moved here from check/holds.ts by item 0071 (decision 057)
+#   - `key-texts`: each definition's hold key text, kept by its own native text for the process (decision 102,
+#     check/hold-key-text.tree), emptied with `memo`. It was check/hold-key-memo.ts's module variable until item 0748
 
 load @term/base/list
   find list
@@ -45,6 +47,11 @@ load @term/base/list
 load ./checker-switches
   find checker-switches
   find switches-from-env
+
+load ./hold-key-text
+  find key-memo
+  find fresh-key-memo
+  find clear-key-memo
 
 load ../compile/node
   find expression
@@ -231,6 +238,7 @@ form hold-state
   link memo, like hash, like text, like hold-delta
   link switches, like checker-switches
   link holds-replayed, like number
+  link key-texts, like key-memo
 
 # what a kept walk added to the tally: replayed when the same task is asked the same question
 form hold-delta
@@ -305,6 +313,7 @@ task fresh-hold-state
       bind memo, memo-table()
       bind switches, switches-from-env()
       bind holds-replayed, 0
+      bind key-texts, fresh-key-memo()
 
 # THE RULES THIS PASS HAS PROVEN SO FAR, and how: the measurement behind "every certificate holds over any ordered
 # field", which is true of a rule marked `field` and not known of one marked `integer`. Not the rules the kernel proved,
@@ -340,11 +349,12 @@ task reset-hold-program
   save state/integer-tasks, flag-table()
   save state/integer-names, flag-table()
 
-# forget every kept walk, so a test can ask the provers afresh
+# forget every kept walk and every kept key text, so a test can ask the provers afresh
 task clear-hold-memo
   take state, like hold-state
 
   save state/memo, memo-table()
+  clear-key-memo(state/key-texts)
 
 task statements
   like list, like statement

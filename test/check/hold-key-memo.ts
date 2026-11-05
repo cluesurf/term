@@ -1,4 +1,4 @@
-// A definition's hold key text, kept (decision 102 of term/self-host/change/001-finish-self-host, check/hold-key-memo.ts).
+// A definition's hold key text, kept (decision 102 of term/self-host/change/001-finish-self-host, check/hold-key-text.tree).
 // The memo's key must tell apart every two statements whose node-json differs, and may leave out only `span`: here
 // pairs that differ in one place a plain JSON text would merge (a number JSON cannot write, -0, an absent value in a
 // list, a Map's or a Set's entries, a bigint) each get two keys, a statement moved in its file keeps its key, a value
@@ -6,8 +6,8 @@
 // empty. Run: npx tsx test/check/hold-key-memo.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import { clearHoldMemo } from '@term/make/code/check/holds'
-import { holdKeyMemo, holdKeyMemoSize } from '@term/make/code/check/hold-key-memo'
+import { clearHoldMemo, holdKeyMemoSize } from '@term/make/code/check/holds'
+import { freshKeyMemo, memoKey } from '@term/make/code/check/hold-key-text'
 
 let pass = 0
 let fail = 0
@@ -22,7 +22,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const key = holdKeyMemo.key
+const memo = freshKeyMemo()
+const key = (statement: unknown): string => memoKey(memo, statement)
 const at = (line: number) => ({ start: { line, column: 1, offset: 0 }, end: { line, column: 9, offset: 8 } })
 const literal = (value: unknown, line = 1) => ({ form: 'return', value: { form: 'some', value: { form: 'number', value, span: at(line) } }, span: at(line) })
 

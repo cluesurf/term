@@ -1,0 +1,341 @@
+note <The look style table>
+
+# Ported from look-table.ts by statement (item 0573). native-dom-0008: a `look` sheet compiled for a host with no CSS
+# engine. Every `face` class becomes typed rows with its tokens resolved at build time, its state variants become rows
+# keyed on an attribute, and whatever cannot lower is NAMED with its reason, never dropped. The face theme is the real
+# input: its table must hold every class it declares, and the only things it names must be the four it really cannot
+# lower. compile/look-table is the subject (decision 106).
+
+load ../support/compiling
+  find file-text
+
+load ../support/reading
+  find lines-of
+
+load ../support/walking
+  find json-of
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find split
+  find substring
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/look-table>, name look-module
+
+form token-source
+  link file, like text
+  link text, like text
+
+host theme-file, <deck/face/code/style/theme.tree>
+host theme, make(token-source, bind(file, theme-file), bind(text, file-text(theme-file)))
+
+host light, look-module/compile-look-table(theme)
+host dark, look-module/compile-look-table(theme, <dark>)
+
+task class-names
+  take table, like dynamic
+  like list, like text
+
+  host names, make list
+  walk table/classes
+    take one, like dynamic
+    names/push(one/name)
+  back names
+
+# every `face` the sheet declares, in order
+host face-line, make pattern, <<^face [a-z-]+$>>
+
+task declared-faces
+  take text, like text
+  like list, like text
+
+  host names, make list
+  walk lines-of(text)
+    take line, like text
+    fork test, matches(face-line, line)
+      hold
+        names/push(substring(line, 5))
+  back names
+
+test <every class face declares is in the table>
+  want hold, is-equal(class-names(light), declared-faces(theme/text))
+
+# the class of this name, void when the table has none
+task class-named
+  take table, like dynamic
+  take name, like text
+  like dynamic
+
+  walk table/classes
+    take one, like dynamic
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  back void
+
+task declarations
+  take rows, like dynamic
+  like list, like text
+
+  host out, make list
+  walk rows
+    take row, like dynamic
+    out/push(look-module/declaration-of(row))
+  back out
+
+# the rows of a class as declarations joined by `; `, empty when the table has no such class
+task rows-of
+  take table, like dynamic
+  take name, like text
+  like text
+
+  host found, class-named(table, name)
+  fork test, is-equal(found, void)
+    hold
+      back <>
+  back join(declarations(found/rows), <; >)
+
+# tokens resolve through two levels (`surface` is `var(--color-zinc-50)`), rem becomes points, padding expands
+test <the panel resolves its tokens, light>
+  want hold, is-equal(rows-of(light, <panel>), <background: #fafafa; color: #18181b; border: 1px solid #e4e4e7; border-radius: 8px; padding: 16px 16px 16px 16px>)
+
+test <the dark scheme lays `tone dark` over the base tokens>
+  want hold, is-equal(rows-of(dark, <panel>), <background: #09090b; color: #f4f4f5; border: 1px solid #27272a; border-radius: 8px; padding: 16px 16px 16px 16px>)
+
+test <a token the dark tone leaves alone keeps its base value>
+  want hold, starts-with(rows-of(dark, <kbd>), <background: #f4f4f5>)
+
+# a class's states as JSON, each [attribute, value, declarations], as the original compared them
+task states-json
+  take table, like dynamic
+  take name, like text
+  like text
+
+  host found, class-named(table, name)
+  host out, make list
+  walk found/states
+    take state, like dynamic
+    out/push(make(list, state/attribute, state/value, declarations(state/rows)))
+  back json-of(out)
+
+# state variants are rows keyed on the attribute the component sets
+test <data-state variants become attribute rows>
+  want hold, is-equal(states-json(light, <overlay>), <[["data-state","open",["opacity: 1"]],["data-state","closed",["opacity: 0"]]]>)
+
+test <`disabled` becomes a row on the disabled attribute>
+  want hold, is-equal(states-json(light, <control>), <[["disabled",null,["opacity: 0.5"]]]>)
+
+# each thing a table could not lower, as `<at> <what>`
+task named-of
+  take table, like dynamic
+  like list, like text
+
+  host out, make list
+  walk table/unlowered
+    take miss, like dynamic
+    out/push(<{miss/at} {miss/what}>)
+  back out
+
+task reasons-long
+  take table, like dynamic
+  like boolean
+
+  walk table/unlowered
+    take miss, like dynamic
+    host why, miss/why
+    fork test, is-above(why/length, 20)
+      miss
+        back false
+  back true
+
+# the four things face's theme cannot lower, named with a reason, and nothing else
+test <face's theme names exactly what a native host cannot honor>
+  want hold, is-equal(named-of(light), make(list, <overlay transition: opacity 150ms ease>, <focusable outline: none>, <focusable case focus-visible>, <control case focus-visible>))
+
+test <every name carries its reason>
+  want hold, reasons-long(light)
+
+# the host text: one line, rows by `;`, fields by `|`, no separator inside any value
+host table-text, look-module/style-table-text(light)
+host table-rows, split(table-text, <;>)
+
+task three-fields
+  take rows, like list, like text
+  like boolean
+
+  walk rows
+    take row, like text
+    fork test, is-unequal(split(row, <|>)/length, 3)
+      hold
+        back false
+  back true
+
+test <the host text is one line>
+  want hold, is-equal(text-contains(table-text, <\n>), false)
+
+test <the host text carries a state row as class|attribute=value|declaration>
+  want hold, list-contains(table-rows, <overlay|data-state=open|opacity: 1>)
+  want hold, list-contains(table-rows, <control|disabled|opacity: 0.5>)
+
+test <every host row has exactly three fields>
+  want hold, three-fields(table-rows)
+
+# a sheet that reaches every reason a row cannot lower
+host odd, look-module/compile-look-table(make(token-source, bind(file, <odd.tree>), bind(text, <tone\n  have gap-1, text \<0.25rem\>\n\nbase style\n  find body\n  have margin, text \<0\>\n\nface odd\n  have padding, text \<1em\>\n  have color, text \<rgb(1, 2, 3)\>\n  have gap, text \<var(--gap-9)\>\n  have width, text \<50%\>\n  have margin, text \<4px\>\n  have height, text \<var(--gap-1)\>\n  case hover\n    have opacity, text \<0.8\>\n  case md\n    have width, text \<320px\>\n  case group-open\n    have opacity, text \<1\>\n>)))
+
+# whether the reason given for `<at> <what>` holds these words
+task has
+  take key, like text
+  take words, like text
+  like boolean
+
+  walk odd/unlowered
+    take miss, like dynamic
+    fork test, is-equal(<{miss/at} {miss/what}>, key)
+      hold
+        back text-contains(miss/why, words)
+  back false
+
+test <a `base style` rule is named: a host applies classes only>
+  want hold, has(<base style a selector rule or at-rule>, <classes only>)
+
+test <an em length is named>
+  want hold, has(<odd padding: 1em>, <px or rem>)
+
+test <an rgb() color is named>
+  want hold, has(<odd color: rgb(1, 2, 3)>, <hex color>)
+
+test <a token the sheet does not define is named>
+  want hold, has(<odd gap: var(--gap-9)>, <no token `gap-9`>)
+
+test <a percentage is named>
+  want hold, has(<odd width: 50%>, <px or rem>)
+
+test <a property the host does not lower is named>
+  want hold, has(<odd margin: 4px>, <does not lower>)
+
+test <a pseudo-class is named>
+  want hold, has(<odd case hover>, <pseudo-class>)
+
+test <a breakpoint is named>
+  want hold, has(<odd case md>, <breakpoint>)
+
+test <a group variant is named>
+  want hold, has(<odd case group-open>, <another node>)
+
+test <what does lower still lowers beside them>
+  want hold, is-equal(rows-of(odd, <odd>), <height: 4px>)
+
+# face's tailwind sheet, all of it: nothing is dropped in silence. Every class either lowers to a row or a state, or has
+# something named against it, and the variant is its own field because tailwind's class names hold colons
+host tailwind-file, <deck/face/code/style/tailwind.tree>
+host tailwind-source, make(token-source, bind(file, tailwind-file), bind(text, file-text(tailwind-file)))
+host tailwind, look-module/compile-look-table(tailwind-source)
+host tailwind-dark, look-module/compile-look-table(tailwind-source, <dark>)
+
+task named-at-of
+  take seed, like number
+  like list, like text
+
+  host out, make list
+  walk tailwind/unlowered
+    take miss, like dynamic
+    out/push(miss/at)
+  walk tailwind-dark/unlowered
+    take miss, like dynamic
+    out/push(miss/at)
+  back out
+
+host named-at, named-at-of(0)
+
+# a `dark:` class holds only a `case dark`, so it is empty in the light table by design and must hold rows in the dark
+task dark-rows-of
+  take seed, like number
+  like list, like text
+
+  host out, make list
+  walk tailwind-dark/classes
+    take one, like dynamic
+    host rows, one/rows
+    fork test, is-above(rows/length, 0)
+      hold
+        out/push(one/name)
+  back out
+
+host dark-rows, dark-rows-of(0)
+
+task silent-count
+  take seed, like number
+  like number
+
+  save count, 0
+  walk tailwind/classes
+    take one, like dynamic
+    host rows, one/rows
+    host states, one/states
+    fork test, and(and(is-equal(rows/length, 0), is-equal(states/length, 0)), and(is-equal(list-contains(named-at, one/name), false), is-equal(list-contains(dark-rows, one/name), false)))
+      hold
+        save count, add(count, 1)
+  back count
+
+test <no tailwind class is dropped in silence>
+  host classes, tailwind/classes
+  want hold, is-above(classes/length, 0)
+  want hold, is-equal(silent-count(0), 0)
+
+form dark-tally
+  link total, like number
+  link wrong, like number
+
+task dark-only
+  take seed, like number
+  like dark-tally
+
+  save total, 0
+  save wrong, 0
+  walk tailwind/classes
+    take one, like dynamic
+    host name, one/name
+    fork test, starts-with(name, <dark:>)
+      hold
+        save total, add(total, 1)
+        host rows, one/rows
+        fork test, or(is-above(rows/length, 0), is-equal(or(list-contains(dark-rows, name), list-contains(named-at, name)), false))
+          hold
+            save wrong, add(wrong, 1)
+  back make(dark-tally, bind(total, total), bind(wrong, wrong))
+
+test <every dark: class is empty in light and drawn in dark>
+  host tally, dark-only(0)
+  want hold, is-above(tally/total, 0)
+  want hold, is-equal(tally/wrong, 0)
+
+task miss-at
+  take table, like dynamic
+  take at, like text
+  like dynamic
+
+  walk table/unlowered
+    take miss, like dynamic
+    fork test, is-equal(miss/at, at)
+      hold
+        back miss
+  back void
+
+test <a class name holding a colon is named whole, its variant apart>
+  host breakpoint, miss-at(tailwind, <sm:p-0>)
+  want hold, is-unequal(breakpoint, void)
+  want hold, is-equal(breakpoint/variant, <sm>)
+  want hold, is-equal(breakpoint/what, <case sm>)

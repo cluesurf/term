@@ -1,0 +1,166 @@
+note <the recursive Fibonacci compiles to Swift, Kotlin, WGSL and HVM with the expected shape>
+
+# Ported from backends.ts by statement (item 0569). Each emitter is the subject (decision 106), run over the front end of
+# test/support (decision 119) under the name b.tree, as the original read it.
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/swift>, name swift-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/make/code/compile/wgsl>, name wgsl-module
+  load <@term/make/code/compile/hvm>, name hvm-module
+
+host fib, <task fibonacci\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          call fibonacci\n            call subtract\n              read n\n              code 1\n          call fibonacci\n            call subtract\n              read n\n              code 2\n>
+
+# Richer forms: an algebraic data type with a field, a `match`, field access, record construction, and a throw. The
+# general-purpose targets (Swift, Kotlin) must lower every form; the restricted target (WGSL) must emit an explicit
+# SEED-UNSUPPORTED marker for forms outside its fragment, never silently drop them
+host rich, <form box\n  head t\n  case full\n    link value, like t\n  case empty\n\n  task get-or\n    take self\n    take other, like t\n    like t\n    fork case, read self\n      case full\n        send back, read self/value\n      case empty\n        send back, read other\n\ntask danger\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      halt \<oops\>\n    hook miss\n      send back, read n\n>
+
+# a multi-argument arithmetic function becomes curried auto-dup lambdas with a native operator body
+host adder, <task add-two\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call add\n      read a\n      read b\n>
+
+host hvm-add, make pattern, <<@fibonacci\(\(n - 1\)\) \+ @fibonacci\(\(n - 2\)\)>>
+
+task program-of
+  take source, like text
+  like dynamic
+
+  back front-end(source, make(compile-choice, bind(file, <b.tree>)))/program
+
+task swift-of
+  take source, like text
+  like text
+
+  back <{swift-module/emit-swift(program-of(source))}>
+
+task kotlin-of
+  take source, like text
+  like text
+
+  back <{kotlin-module/emit-kotlin(program-of(source))}>
+
+task wgsl-of
+  take source, like text
+  like text
+
+  back <{wgsl-module/emit-wgsl(program-of(source))}>
+
+task hvm-of
+  take source, like text
+  like text
+
+  back <{hvm-module/emit-hvm(program-of(source))}>
+
+# a task's inputs are labeled by name on Swift, and every call passes the label (compile/swift.ts `label`). An unproven
+# Int `-` stops on overflow through the prelude's termSubtract (term-stdlib-parity-0014)
+test <swift: function signature>
+  host swift, swift-of(fib)
+  want hold, text-contains(swift, <func fibonacci(n: Int) -\> Int>)
+  want hold, text-contains(swift, <fibonacci(n: (termSubtract(n, 1)))>)
+
+test <swift: control flow + recursion>
+  host swift, swift-of(fib)
+  want hold, text-contains(swift, <if >)
+  want hold, text-contains(swift, <return n>)
+  want hold, text-contains(swift, <fibonacci(>)
+
+test <kotlin: function signature>
+  want hold, text-contains(kotlin-of(fib), <fun fibonacci(n: Long): Long>)
+
+test <kotlin: control flow + recursion>
+  host kotlin, kotlin-of(fib)
+  want hold, text-contains(kotlin, <if (>)
+  want hold, text-contains(kotlin, <return n>)
+  want hold, text-contains(kotlin, <fibonacci(>)
+
+test <wgsl: function signature>
+  want hold, text-contains(wgsl-of(fib), <fn fibonacci(n: i32) -\> i32>)
+
+test <wgsl: control flow + recursion>
+  host wgsl, wgsl-of(fib)
+  want hold, text-contains(wgsl, <if (>)
+  want hold, text-contains(wgsl, <return n;>)
+  want hold, text-contains(wgsl, <fibonacci(>)
+
+test <swift: ADT native generic enum>
+  host swift, swift-of(rich)
+  want hold, text-contains(swift, <enum Box\<T\>>)
+  want hold, text-contains(swift, <case full(value: T)>)
+  want hold, text-contains(swift, <case empty>)
+
+test <swift: match is a native switch with field binding>
+  host swift, swift-of(rich)
+  want hold, text-contains(swift, <switch>)
+  want hold, text-contains(swift, <case let .full(value):>)
+
+test <swift: variant field access uses the bound local>
+  want hold, text-contains(swift-of(rich), <return value>)
+
+test <swift: a text raises failure through the TermException carrier>
+  host swift, swift-of(rich)
+  want hold, text-contains(swift, <TermException(host: "", form: "failure", note: "oops">)
+  want hold, text-contains(swift, <struct TermException: Error>)
+
+test <kotlin: ADT sealed-class hierarchy>
+  host kotlin, kotlin-of(rich)
+  want hold, text-contains(kotlin, <sealed class Box\<out T\>>)
+  want hold, text-contains(kotlin, <data class BoxFull>)
+  want hold, text-contains(kotlin, <object BoxEmpty>)
+
+# `when (self) \{ is BoxFull -> \}`, or with a field-less case `when \{ self is BoxFull -> ... self === BoxEmpty \}`, which
+# compares that case's one object by identity (kotlin.ts, `byIdentity`). Either way `is` smart-casts
+test <kotlin: match is an exhaustive when with smart-cast>
+  host kotlin, kotlin-of(rich)
+  host by-subject, and(text-contains(kotlin, <when (self)>), text-contains(kotlin, <is BoxFull -\>>))
+  host by-identity, and(text-contains(kotlin, <self is BoxFull -\>>), text-contains(kotlin, <self === BoxEmpty -\>>))
+  want hold, or(by-subject, by-identity)
+  want hold, text-contains(kotlin, <self.value>)
+
+test <kotlin: a text raises failure through the TermException carrier>
+  host kotlin, kotlin-of(rich)
+  want hold, text-contains(kotlin, <throw TermException("", "failure", "oops">)
+  want hold, text-contains(kotlin, <class TermException(>)
+
+# restricted target: explicit markers, no silent drop, while still emitting the numeric functions it can
+test <wgsl: marks forms outside its fragment>
+  want hold, text-contains(wgsl-of(rich), <SEED-UNSUPPORTED>)
+
+test <wgsl: still emits the numeric function>
+  want hold, text-contains(wgsl-of(rich), <fn danger>)
+
+# HVM: the recursive numeric fragment lowers to interaction-combinator definitions. Recursion is a self-reference to
+# `@fibonacci`, the `fork test` becomes a numeric match `(λ\{0: else; _: λ&c. then\})(cond)`, and arithmetic and comparison
+# map to HVM's native operators, the canonical HVM fib idiom (deck/fork-HVM4/test/fib_small.hvm)
+test <hvm: emits an @fibonacci definition with an auto-dup parameter>
+  want hold, text-contains(hvm-of(fib), <@fibonacci = λ&n.>)
+
+test <hvm: recursion is a self-reference applied to a subtraction>
+  host hvm, hvm-of(fib)
+  want hold, text-contains(hvm, <@fibonacci((n - 1))>)
+  want hold, text-contains(hvm, <@fibonacci((n - 2))>)
+
+test <hvm: the branch lowers to a numeric match on the comparison>
+  host hvm, hvm-of(fib)
+  want hold, text-contains(hvm, <λ\{0:>)
+  want hold, text-contains(hvm, <\})((n \< 2))>)
+
+test <hvm: addition lowers to the native operator>
+  want hold, matches(hvm-add, hvm-of(fib))
+
+test <hvm: marked experimental in the emitted banner>
+  want hold, starts-with(hvm-of(fib), <// EXPERIMENTAL backend: HVM>)
+
+test <hvm: a two-argument function curries auto-dup lambdas>
+  want hold, text-contains(hvm-of(adder), <@add_two = λ&a. λ&b. (a + b)>)

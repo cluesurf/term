@@ -9,49 +9,22 @@ load @term/base/text
   find starts-with
 
 load ../support/judging
-  find make-record
   find read-field
-  find truth
 
 load ../support/reading
   find any-with
   find first-with
-  find joined-names
 
 load ../support/walking
   find kind-of
 
+load ../support/compiling
+  find front-end
+  find compile-choice
+
 dock load
-  load <@term/make/code/parser/tree>, name lowering-parser
-  load <@term/make/code/compile/template>, name lowering-template
-  load <@term/make/code/compile/mill>, name lowering-mill
-  load <@term/make/code/check/resolve>, name lowering-resolve
-  load <@term/make/code/check/infer>, name lowering-infer
   load <@term/make/code/check/elaborate>, name lowering-elaborate
   load <@term/make/code/check/judge>, name lowering-judge
-
-task report-with
-  take parser, like dynamic
-  take expander, like dynamic
-  take miller, like dynamic
-  take resolver, like dynamic
-  take inferrer, like dynamic
-  take elaborator, like dynamic
-  take text, like text
-  like dynamic
-
-  host parsed, parser/parse(make-record(make(list, <file>, <t.tree>, <text>, text)))
-  fork test, is-equal(truth(read-field(parsed, <ok>)), false)
-    hold
-      halt <{joined-names(read-field(parsed, <diagnostics>), <message>, <; >)}>
-  host built, miller/mill(expander/expand-templates(read-field(parsed, <tree>)), <t.tree>)
-  fork test, is-equal(truth(read-field(built, <ok>)), false)
-    hold
-      halt <{joined-names(read-field(built, <diagnostics>), <message>, <; >)}>
-  host program, read-field(built, <program>)
-  resolver/resolve(program, <t.tree>)
-  inferrer/check(program, <t.tree>)
-  back elaborator/elaborate-report(program, <t.tree>)
 
 bind is-proven
   take r, like dynamic
@@ -118,11 +91,12 @@ bind is-defined
   case node
     text <$judge.judgeState().definition.has($name)>
 
+# the kernel's report on the checked program, from test/support/compiling's front-end (decision 119)
 task report
   take source, like text
   like dynamic
 
-  back report-with(lowering-parser, lowering-template, lowering-mill, lowering-resolve, lowering-infer, lowering-elaborate, source)
+  back lowering-elaborate/elaborate-report(front-end(source, make(compile-choice, bind(file, <t.tree>)))/program, <t.tree>)
 
 
 # The pure lowering (proof-by-default-0009): an imperative body whose names are saved again, or saved in the arms of a

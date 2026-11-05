@@ -1,0 +1,123 @@
+note <The roll from the units>
+
+# Ported from roll-cache.ts by statement (item 0575). note/project/term/incremental-best-in-class.md, steps 5 and 8:
+# `term make` writes host/roll.json from every unit's own roll of the build, each typed once in the unit's build and kept
+# with it, so a roll pass reads what the build already made. It must be the same roll the pass makes on its own (`term
+# roll`, which builds from units writing nothing), and it must move when a file does. call/code/make, cache-store and
+# roll are the subject (decision 106).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/walking
+  find json-without
+
+load ../support/reading
+  find first-with
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/roll>, name roll-module
+  load <node:fs>, name roll-file
+  load <node:path>, name roll-path
+
+bind no-rolls
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind rolls-size
+  take rolls, like dynamic
+  like number
+  case node
+    text <$rolls.size>
+
+task set-up
+  like text
+
+  host made, temp-folder(<roll-cache->)
+  host root, roll-file/realpath-sync(made)
+  roll-file/mkdir-sync(roll-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  roll-file/write-file-sync(roll-path/join(root, <deck.tree>), <deck @probe/roll\n  mark \<0.0.1\>\n>)
+  back root
+
+host root, set-up()
+
+# fresh text, so no earlier run's units answer for these (unit keys are the same in every clone)
+host fresh, <# run {roll-path/basename(root)}\n>
+host helper, roll-path/join(root, <code>, <helper.tree>)
+host helper-text, <{fresh}load @term/base/exception\n  find absence\n\ntask find-one\n  take key, like text\n  like text\n  halt absence\n    bind thing, \<a key\>\n>
+
+# answers the helper's path, never a boolean: `term test` runs every zero-argument task that answers a boolean as a test,
+# and a second run of this one wrote the helper back to its first text after the edit below (item 0978)
+task write-first
+  like text
+
+  roll-file/write-file-sync(helper, helper-text)
+  roll-file/write-file-sync(roll-path/join(root, <code>, <base.tree>), <{fresh}load ./helper\n  find find-one\n\ntask main\n  like text\n  back find-one(\<k\>)\n>)
+  back helper
+
+host written, write-first()
+host session, make-module/build-session(root)
+host built, make-module/compile-project-separate(root, cache-store/project-cache(root), <node>, session)
+
+# the roll as JSON writes it, from the build's units or made on its own
+task roll-text
+  take rolls, like dynamic
+  like text
+
+  back json-without(roll-module/project-roll(root, rolls)/roll, make list)
+
+test <the project builds>
+  want hold, is-equal(written, helper)
+  want hold, is-equal(built/failed, 0)
+
+test <the build hands over a roll for each unit it reached>
+  want hold, is-above(rolls-size(built/rolls), 1)
+
+host plain, roll-text(no-rolls(0))
+host from-build, roll-text(built/rolls)
+
+test <the roll from the build is the roll made on its own>
+  want hold, is-equal(from-build, plain)
+
+test <and names the task and what it raises>
+  want hold, text-contains(from-build, <find-one>)
+  want hold, text-contains(from-build, <absence>)
+
+test <and shows no field a merge reads and drops>
+  want hold, is-equal(text-contains(from-build, <__def>), false)
+  want hold, is-equal(text-contains(from-build, <__ends>), false)
+  want hold, is-equal(text-contains(from-build, <__files>), false)
+
+# the hive's path from `main` to the raise crosses a unit: `main` calls the helper's task, which raises
+test <a raise path that crosses a unit is joined>
+  host main, first-with(roll-module/project-roll(root, built/rolls)/roll/task, <name>, <main>)
+  want hold, is-unequal(main, void)
+  want hold, is-equal(json-without(main/path/absence, make list), <["find-one"]>)
+
+task edit-helper
+  like dynamic
+
+  roll-file/write-file-sync(helper, <{roll-file/read-file-sync(helper, <utf8>)}\ntask find-two\n  like number\n  back 2\n>)
+  back make-module/compile-project-separate(root, cache-store/project-cache(root), <node>, session)
+
+host rebuilt, edit-helper()
+host moved, roll-text(rebuilt/rolls)
+
+test <after an edit the roll holds the new task>
+  want hold, text-contains(moved, <find-two>)
+
+test <as the roll made on its own does>
+  want hold, is-equal(moved, roll-text(no-rolls(0)))

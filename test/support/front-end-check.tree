@@ -1,0 +1,82 @@
+note <the front end alone: the checked program, kept on a refusal, and a raise on a parse or a mill failure>
+
+# Tests of front-end in test/support/compiling.tree (decision 119), beside it as the other -check files are (T-0878).
+
+load ./compiling
+  find front-end
+  find compile-choice
+
+load @term/base/list
+  find contains
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+host plain, <task double\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      read x\n>
+
+# a text returned where a number is owed: infer refuses it
+host wrong-result, <task bad\n  take x, like number\n  like number\n  send back, text \<oops\>\n>
+
+# a first line indented under nothing: the parser refuses it. No fixture is held for a mill failure: the mill reads
+# every shape tried here (a bare task, a form, a link, an unknown head) and leaves the refusal to the checks after it
+host misindented, <  task f\n>
+
+# the names of the top-level statements of a checked program
+task program-names
+  take program, like dynamic
+  like list, like text
+
+  save out, make list
+  walk program
+    take one, like dynamic
+    push(out, <{one/name}>)
+  back out
+
+# the message a call raised, <> when it raised nothing
+task raised-by
+  take source, like text
+  like text
+
+  fork
+    mark unsafe
+    front-end(source)
+    back <>
+  halt take
+    take problem
+    back <{problem/note}>
+
+test <a program that checks is ok, with no names and no messages>
+  host out, front-end(plain)
+  want hold, out/ok
+  want hold, is-equal(out/names/length, 0)
+  want hold, is-equal(out/messages/length, 0)
+
+test <the checked program holds its statements>
+  want hold, contains(program-names(front-end(plain)/program), <double>)
+
+test <a refused program is not ok, and names why>
+  host out, front-end(wrong-result)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <type-mismatch>)
+
+test <each name has its message, in the same order>
+  host out, front-end(wrong-result)
+  want hold, is-above(out/messages/length, 0)
+  want hold, is-equal(out/messages/length, out/names/length)
+
+test <a refused program is still handed back, checked>
+  want hold, contains(program-names(front-end(wrong-result)/program), <bad>)
+
+test <the choice names the file the front end reads under>
+  host out, front-end(plain, make(compile-choice, bind(file, <t.tree>)))
+  want hold, out/ok
+  want hold, contains(program-names(out/program), <double>)
+
+test <a parse failure raises, naming the step and why>
+  host said, raised-by(misindented)
+  want hold, text-contains(said, <parse failed:>)
+  want hold, is-above(said/length, 14)
+
+test <a program that checks raises nothing>
+  want hold, is-equal(raised-by(plain), <>)

@@ -155,7 +155,7 @@ task reusable-set
   save reuse, make list
   walk keys(graph)
     take node
-    fork test, is-equal(contains(affected, node), false)
+    fork test, is-equal(affected/contains(node), false)
       hold
         push(reuse, node)
   back reuse

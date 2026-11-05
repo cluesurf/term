@@ -1,0 +1,120 @@
+note <Two modules defining one name (native-dom-0031)>
+
+# Ported from ambiguous-name.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find refused-as
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# Two modules defining one name (native-dom-0031). Names are package-global, so a call bound in silence to whichever
+# definition was merged last: `run` below imports `pick` from a, and before this it compiled to b's, inlined to "b".
+# Now each call binds by its own file's import, and a call whose file imports the name from neither definer, or from
+# both, is refused naming the files. What must still compile: an abstract signature overridden by its implementation
+# (the env chain), an arity overload, and a parameter-type overload.
+host pick-a, <task pick\n  take x, like text\n  like text\n  send back, text \<a\>\n>
+
+host pick-b, <task pick\n  take x, like text\n  like text\n  send back, text \<b\>\n>
+
+# c uses b's pick inside, so b's pick arrives in a program that imports only c's own task
+host c, <load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      text \<y\>\n>
+
+# a lean (nested) call to a name two files define, under a call to that same name: the import binding renames every
+# `pick` apart before the resolver runs, so the nested one has to be a call by then or it is a label naming nothing
+# (`"pick__from0_0" has no parameter "pick"`, deck/site/code/http/http.tree, 2026-10-02). Only main.tree is lean
+task main-lean
+  take file, like text
+  like boolean
+
+  back is-equal(file, <main.tree>)
+
+host run-reaches-a, make pattern, <<function run\(\)[^}]*("a"|pickIn\d+_0\()>>
+host helper-reaches-b, make pattern, <<function (helper|runHelper)\(\)[^}]*("b"|pickIn\d+_1\()>>
+
+host main, <load @app/a\n  find pick\n\nload @app/c\n  find helper\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n\ntask run-helper\n  like text\n  send back, call helper\n>
+
+test <two bodied definitions in two files compile when each caller imported one>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, result/ok
+
+# each file's definitions are renamed `pick__in<group>_<file index>`, files in sorted order: a.tree is 0, b.tree is 1.
+# A body is `function <name>()` up to its first `}`, so a pattern that reaches the answer through `[^}]*` reads one body
+test <main's call reaches a's pick, the one main imported>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, result/ok
+  want hold, matches(run-reaches-a, result/emitted)
+
+# `helper` may be inlined into `run-helper`, so the answer is read from whichever of the two holds it
+test <c's call reaches b's pick, the one c imported>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, result/ok
+  want hold, matches(helper-reaches-b, result/emitted)
+
+test <a call whose file imports the name from neither is refused>
+  host result, compile-text(<load @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, <{pick-a}\ntask other\n  like text\n  send back, text \<o\>\n>), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, not(result/ok)
+
+test <the refusal names both files>
+  host result, compile-text(<load @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, <{pick-a}\ntask other\n  like text\n  send back, text \<o\>\n>), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  host message, join(result/messages, < | >)
+  want hold, text-contains(message, <a.tree>)
+  want hold, text-contains(message, <b.tree>)
+
+test <it is a duplicate-definition>
+  host result, compile-text(<load @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, <{pick-a}\ntask other\n  like text\n  send back, text \<o\>\n>), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, refused-as(result, <duplicate-definition>)
+
+test <a call importing a third definition of the name, typed apart, is left to it>
+  host result, compile-text(<load @app/d\n  find pick\n\nload @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      code 3\n\ntask run-helper\n  like text\n  send back, call helper\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, <{pick-a}\ntask other\n  like text\n  send back, text \<o\>\n>), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>)), make(compiling-source, bind(file, <@app/d>), bind(text, <task pick\n  take x, like number\n  like text\n  send back, text \<d\>\n>), bind(answer, <d.tree>))))))
+  want hold, result/ok
+  want hold, text-contains(result/emitted, <"d">)
+
+test <a call whose file imports the name from both is refused>
+  host result, compile-text(<load @app/a\n  find pick\n\nload @app/b\n  find pick\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>))))))
+  host message, join(result/messages, < | >)
+  want hold, not(result/ok)
+  want hold, text-contains(message, <more than one>)
+
+test <a signature with no body is still overridden>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, <task pick\n  take x, like text\n  like text\n>), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, result/ok
+
+test <an arity overload across files compiles>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, <task pick\n  take x, like text\n  take y, like text\n  like text\n  send back, text \<b\>\n>), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, <load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      text \<y\>\n      text \<z\>\n>), bind(answer, <c.tree>))))))
+  want hold, result/ok
+
+test <and each call reaches its own>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, <task pick\n  take x, like text\n  take y, like text\n  like text\n  send back, text \<b\>\n>), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, <load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      text \<y\>\n      text \<z\>\n>), bind(answer, <c.tree>))))))
+  want hold, result/ok
+  want hold, text-contains(result/emitted, <"a">)
+  want hold, text-contains(result/emitted, <"b">)
+
+test <a parameter-type overload across files compiles>
+  host result, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, <task pick\n  take x, like number\n  like text\n  send back, text \<b\>\n>), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, <load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      code 3\n>), bind(answer, <c.tree>))))))
+  want hold, result/ok
+
+test <a method's bare call to a sibling reaches the sibling, not a top-level task of the name>
+  host result, compile-text(<load @app/box\n  find box\n  find empty\n\nload @app/dom\n  find drop\n\ntask run\n  like number\n  save b\n    make box\n      bind items\n        make list\n  call empty\n    read b\n  call drop\n    code 3\n  send back, code 1\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, <form box\n  link items, like list, like text\n\n  task drop\n    take self\n    take key, like text\n    like boolean\n    send back, true\n\n  task empty\n    take self\n    like box\n    walk list, read self/items\n      hook next\n        take site, name key\n        call drop\n          read self\n          read key\n    send back, read self\n>), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/dom>), bind(text, <task drop\n  take node, like number\n  like void\n  save skip, code 0\n>), bind(answer, <dom.tree>))))))
+  want hold, result/ok
+
+test <a call to a parameter that shares a name two files define is the parameter>
+  host result, compile-text(<load @app/keep\n  find keep\n\nload @app/a\n  find other\n\nload @app/b\n  find test\n\ntask run\n  like boolean\n  send back\n    call keep\n      task\n        take x, like text\n        like boolean\n        send back, true\n      text \<x\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/keep>), bind(text, <task keep\n  take test, like task\n    take x, like text\n    like boolean\n  take x, like text\n  like boolean\n  send back\n    call test\n      read x\n>), bind(answer, <keep.tree>)), make(compiling-source, bind(file, <@app/a>), bind(text, <task test\n  take x, like text\n  like boolean\n  send back, true\n\ntask other\n  like text\n  send back, text \<o\>\n>), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, <task test\n  take x, like text\n  like boolean\n  send back, false\n>), bind(answer, <b.tree>))))))
+  want hold, not(and(not(result/ok), contains(result/names, <duplicate-definition>)))
+
+test <a lean nested call to an ambiguous name is bound like any other call>
+  host result, compile-text(<load @app/a\n  find pick\n\nload @app/c\n  find helper\n\ntask run\n  like text\n  back pick(pick(\<x\>))\n>, make(compile-choice, bind(file, <main.tree>), bind(lean-of, main-lean), bind(files, make list(make(compiling-source, bind(file, <@app/a>), bind(text, pick-a), bind(answer, <a.tree>)), make(compiling-source, bind(file, <@app/b>), bind(text, pick-b), bind(answer, <b.tree>)), make(compiling-source, bind(file, <@app/c>), bind(text, c), bind(answer, <c.tree>))))))
+  want hold, result/ok

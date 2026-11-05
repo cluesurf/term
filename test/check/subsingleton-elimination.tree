@@ -1,0 +1,68 @@
+note <Subsingleton elimination: a match on a mark prop form returns only a proposition>
+
+# term-foundations-0003, decision 003. `mark prop` makes the kernel ignore a truncation constructor's fields in
+# conversion, so a match that returns data lets the kernel prove `unwrap (wrap yes) == unwrap (wrap no)`, which the
+# running program refutes. A match on a truncation is accepted only when it returns a mark prop form, `equal` or an
+# empty form. Every refused case names the rule in its message, so it cannot pass by failing for another reason.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+task compiles
+  take source, like text
+  like boolean
+
+  back compile-text(source, make(compile-choice, bind(file, <p.tree>)))/ok
+
+bind holds-text
+  take whole, like text
+  take word, like text
+  like boolean
+  case node
+    text <$whole.includes($word)>
+
+# refused, and for this rule
+task refused-as-prop
+  take source, like text
+  like boolean
+
+  host out, compile-text(source, make(compile-choice, bind(file, <p.tree>)))
+  save found, false
+  walk out/messages
+    take message, like text
+    fork test, holds-text(message, <is mark prop>)
+      hold
+        save found, true
+  back and(not(out/ok), found)
+
+host prelude, <form flag\n  case yes\n  case no\n\nform squash\n  mark prop\n  case wrap\n    link v, like flag\n>
+
+host unwrap, <\ntask unwrap\n  take s, like squash\n  like flag\n  fork case, read s\n    case wrap\n      link v\n      send back\n        read v\n>
+
+host agrees, <\nrule unwrap-agrees\n  show hold\n    call is-equal\n      call unwrap\n        make wrap\n          bind v\n            make yes\n      call unwrap\n        make wrap\n          bind v\n            make no\n  calm hold\n>
+
+# 1. the hole (tmp/audit/kernel-7): a match that reads the field back as data is refused
+test <a match on a truncation that returns its field is refused>
+  want hold, refused-as-prop(<{prelude}{unwrap}{agrees}>)
+
+# 2. the rule is on the result, not on whether the field is read: a constant of data is refused as well
+test <a match on a truncation that returns a constant of data is refused>
+  want hold, refused-as-prop(<{prelude}\ntask out\n  take s, like squash\n  like flag\n  fork case, read s\n    case wrap\n      send back\n        make yes\n\nrule out-agrees\n  show hold\n    call is-equal\n      call out\n        make wrap\n          bind v\n            make yes\n      make yes\n  calm hold\n>)
+
+# 3. into another mark prop form: accepted, and the map respects the collapse
+test <a match on a truncation into another mark prop form is accepted>
+  want hold, compiles(<{prelude}\nform answer\n  mark prop\n  case given\n    link from, like flag\n\ntask to-answer\n  take s, like squash\n  like answer\n  fork case, read s\n    case wrap\n      link v\n      send back\n        make given\n          bind from\n            read v\n\nrule to-answer-agrees\n  show hold\n    call is-equal\n      call to-answer\n        make wrap\n          bind v\n            make yes\n      call to-answer\n        make wrap\n          bind v\n            make no\n  calm hold\n>)
+
+# 4. into an empty form: accepted
+test <a match on a truncation into an empty form is accepted>
+  want hold, compiles(<{prelude}\nform nothing\n  case later\n    link next, like nothing\n\ntask stuck\n  take s, like squash\n  take n, like nothing\n  like nothing\n  fork case, read s\n    case wrap\n      send back\n        read n\n>)
+
+# 5. a task that takes a truncation without matching on it is accepted
+test <a task that ignores its truncation argument is accepted>
+  want hold, compiles(<{prelude}\ntask ignore\n  take s, like squash\n  like flag\n  send back\n    make yes\n>)
+
+# 6. CONTROL: the same match on an ordinary form still returns data, and the false claim is refused by the kernel
+test <an ordinary form still eliminates into data>
+  want hold, compiles(<form flag\n  case yes\n  case no\n\nform box\n  case wrap\n    link v, like flag\n\ntask unwrap\n  take s, like box\n  like flag\n  fork case, read s\n    case wrap\n      link v\n      send back\n        read v\n>)

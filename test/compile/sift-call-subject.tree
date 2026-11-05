@@ -1,0 +1,355 @@
+note <A `sift` on a CALL'S RESULT binds exactly as a `sift` on a saved local>
+
+# Ported from sift-call-subject.ts by statement (item 0575). term-self-host-001-0510, self-host traps T-0006:
+# check/judging.tree's reduce-array sifted `get(sp, 2)` directly, and once a second union with a case of the same name
+# (`app`, tagged on another field) joined the program, the arm tested and read the OTHER union's tag and fields: the small
+# task `get` was inlined (ir/simplifying.tree) and its value kept the callee's own type `t`, so the emitters found no form
+# for the subject and took the case by NAME from whichever union declares it. An inlined call now carries the call's
+# type. Each case name two unions share is held on TypeScript and Rust, through the stdlib's `get` and through a generic
+# task of the file's own. One test per case name and assertion, in the original's order. compile/rust is the subject
+# (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of, name text-index-of
+  find substring, name text-substring
+
+# two unions sharing the case `name`: `elim` tagged on `e` with an `arg` field, `other` tagged on `k` with `fun`. The
+# sifts are over elim's case, so every arm must test `e` and read `arg`, never `k` and `fun`
+task program
+  take name, like text
+  like text
+
+  back <load @term/base/list\n  find get\n\nform elim\n  mark tag, name e\n  case {name}\n    link arg, like number\n  case proj\n    link at, like number\n\nform other\n  mark tag, name k\n  case {name}\n    link fun, like text\n  case lam\n    link body, like text\n\ntask first\n  head t\n  take xs, like list, like t\n  like t\n  back get(xs, 0)\n\ntask pick-get\n  take sp, like list, like elim\n  like number\n  sift get(sp, 0)\n    case {name}\n      link arg\n      back arg\n    miss\n      back 0\n\ntask pick-own\n  take sp, like list, like elim\n  like number\n  sift first(sp)\n    case {name}\n      link arg\n      back arg\n    miss\n      back 0\n\ntask pick-saved\n  take sp, like list, like elim\n  like number\n  save one, get(sp, 0)\n  sift one\n    case {name}\n      link arg\n      back arg\n    miss\n      back 0\n\ntask use-other\n  take o, like other\n  like text\n  sift o\n    case {name}\n      back fun\n    miss\n      back \<\>\n>
+
+# the program built lean against deck/make's project, as the original's resolver reads it
+task build
+  take name, like text
+  like compile-outcome
+
+  back compile-text(program(name), make(compile-choice, bind(file, <main.tree>), bind(lean, true), bind(project, <deck/make>), bind(project-env, <node>)))
+
+# the text of one emitted function, TypeScript or Rust, <> when it is not there
+task slice
+  take text, like text
+  take head, like text
+  like text
+
+  host at, text-index-of(text, head)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  back text-substring(text, at, text-index-of(text, <\n\}\n>, at))
+
+host elim-tag, make pattern, <<\.e === ">>
+host other-tag, make pattern, <<\.k === ">>
+host elim-field, make pattern, <<\.arg\b>>
+host other-field, make pattern, <<\.fun\b>>
+
+task typescript-of
+  take built, like compile-outcome
+  take function, like text
+  like text
+
+  back slice(built/emitted, <function {function}(>)
+
+task rust-of
+  take built, like compile-outcome
+  take function, like text
+  like text
+
+  back slice(emit-text(built, <rust>), <fn {function}(>)
+
+# the arm tests elim's tag, never the other union's
+task tests-elim-tag
+  take built, like compile-outcome
+  take function, like text
+  like boolean
+
+  host body, typescript-of(built, function)
+  back and(matches(elim-tag, body), not(matches(other-tag, body)))
+
+task reads-elim-field
+  take built, like compile-outcome
+  take function, like text
+  like boolean
+
+  host body, typescript-of(built, function)
+  back and(matches(elim-field, body), not(matches(other-field, body)))
+
+# the Rust arm matches elim's variant, never the other union's
+task matches-elim
+  take built, like compile-outcome
+  take function, like text
+  take variant, like text
+  like boolean
+
+  host native, rust-of(built, function)
+  back and(is-unequal(native, <>), and(text-contains(native, <Elim::{variant}>), not(text-contains(native, <Other::{variant}>))))
+
+task other-keeps-tag
+  take built, like compile-outcome
+  like boolean
+
+  host body, typescript-of(built, <useOther>)
+  back and(matches(other-tag, body), matches(other-field, body))
+
+host built-app, build(<app>)
+
+test <case app: builds>
+  want hold, built-app/ok
+
+test <case app: pickGet tests elim's tag on TypeScript>
+  want hold, built-app/ok
+  want hold, tests-elim-tag(built-app, <pickGet>)
+
+test <case app: pickGet reads elim's field on TypeScript>
+  want hold, built-app/ok
+  want hold, reads-elim-field(built-app, <pickGet>)
+
+test <case app: pickGet matches Elim::App on Rust>
+  want hold, built-app/ok
+  want hold, matches-elim(built-app, <pick_get>, <App>)
+
+test <case app: pickOwn tests elim's tag on TypeScript>
+  want hold, built-app/ok
+  want hold, tests-elim-tag(built-app, <pickOwn>)
+
+test <case app: pickOwn reads elim's field on TypeScript>
+  want hold, built-app/ok
+  want hold, reads-elim-field(built-app, <pickOwn>)
+
+test <case app: pickOwn matches Elim::App on Rust>
+  want hold, built-app/ok
+  want hold, matches-elim(built-app, <pick_own>, <App>)
+
+test <case app: pickSaved tests elim's tag on TypeScript>
+  want hold, built-app/ok
+  want hold, tests-elim-tag(built-app, <pickSaved>)
+
+test <case app: pickSaved reads elim's field on TypeScript>
+  want hold, built-app/ok
+  want hold, reads-elim-field(built-app, <pickSaved>)
+
+test <case app: pickSaved matches Elim::App on Rust>
+  want hold, built-app/ok
+  want hold, matches-elim(built-app, <pick_saved>, <App>)
+
+# the other union keeps its own tag where it is sifted
+test <case app: the other union still tests its own tag>
+  want hold, built-app/ok
+  want hold, other-keeps-tag(built-app)
+
+test <case app: Rust emits pick_get>
+  want hold, built-app/ok
+  want hold, is-unequal(rust-of(built-app, <pick_get>), <>)
+
+host built-call, build(<call>)
+
+test <case call: builds>
+  want hold, built-call/ok
+
+test <case call: pickGet tests elim's tag on TypeScript>
+  want hold, built-call/ok
+  want hold, tests-elim-tag(built-call, <pickGet>)
+
+test <case call: pickGet reads elim's field on TypeScript>
+  want hold, built-call/ok
+  want hold, reads-elim-field(built-call, <pickGet>)
+
+test <case call: pickGet matches Elim::Call on Rust>
+  want hold, built-call/ok
+  want hold, matches-elim(built-call, <pick_get>, <Call>)
+
+test <case call: pickOwn tests elim's tag on TypeScript>
+  want hold, built-call/ok
+  want hold, tests-elim-tag(built-call, <pickOwn>)
+
+test <case call: pickOwn reads elim's field on TypeScript>
+  want hold, built-call/ok
+  want hold, reads-elim-field(built-call, <pickOwn>)
+
+test <case call: pickOwn matches Elim::Call on Rust>
+  want hold, built-call/ok
+  want hold, matches-elim(built-call, <pick_own>, <Call>)
+
+test <case call: pickSaved tests elim's tag on TypeScript>
+  want hold, built-call/ok
+  want hold, tests-elim-tag(built-call, <pickSaved>)
+
+test <case call: pickSaved reads elim's field on TypeScript>
+  want hold, built-call/ok
+  want hold, reads-elim-field(built-call, <pickSaved>)
+
+test <case call: pickSaved matches Elim::Call on Rust>
+  want hold, built-call/ok
+  want hold, matches-elim(built-call, <pick_saved>, <Call>)
+
+# the other union keeps its own tag where it is sifted
+test <case call: the other union still tests its own tag>
+  want hold, built-call/ok
+  want hold, other-keeps-tag(built-call)
+
+test <case call: Rust emits pick_get>
+  want hold, built-call/ok
+  want hold, is-unequal(rust-of(built-call, <pick_get>), <>)
+
+host built-some, build(<some>)
+
+test <case some: builds>
+  want hold, built-some/ok
+
+test <case some: pickGet tests elim's tag on TypeScript>
+  want hold, built-some/ok
+  want hold, tests-elim-tag(built-some, <pickGet>)
+
+test <case some: pickGet reads elim's field on TypeScript>
+  want hold, built-some/ok
+  want hold, reads-elim-field(built-some, <pickGet>)
+
+test <case some: pickGet matches Elim::Some on Rust>
+  want hold, built-some/ok
+  want hold, matches-elim(built-some, <pick_get>, <Some>)
+
+test <case some: pickOwn tests elim's tag on TypeScript>
+  want hold, built-some/ok
+  want hold, tests-elim-tag(built-some, <pickOwn>)
+
+test <case some: pickOwn reads elim's field on TypeScript>
+  want hold, built-some/ok
+  want hold, reads-elim-field(built-some, <pickOwn>)
+
+test <case some: pickOwn matches Elim::Some on Rust>
+  want hold, built-some/ok
+  want hold, matches-elim(built-some, <pick_own>, <Some>)
+
+test <case some: pickSaved tests elim's tag on TypeScript>
+  want hold, built-some/ok
+  want hold, tests-elim-tag(built-some, <pickSaved>)
+
+test <case some: pickSaved reads elim's field on TypeScript>
+  want hold, built-some/ok
+  want hold, reads-elim-field(built-some, <pickSaved>)
+
+test <case some: pickSaved matches Elim::Some on Rust>
+  want hold, built-some/ok
+  want hold, matches-elim(built-some, <pick_saved>, <Some>)
+
+# the other union keeps its own tag where it is sifted
+test <case some: the other union still tests its own tag>
+  want hold, built-some/ok
+  want hold, other-keeps-tag(built-some)
+
+test <case some: Rust emits pick_get>
+  want hold, built-some/ok
+  want hold, is-unequal(rust-of(built-some, <pick_get>), <>)
+
+host built-value, build(<value>)
+
+test <case value: builds>
+  want hold, built-value/ok
+
+test <case value: pickGet tests elim's tag on TypeScript>
+  want hold, built-value/ok
+  want hold, tests-elim-tag(built-value, <pickGet>)
+
+test <case value: pickGet reads elim's field on TypeScript>
+  want hold, built-value/ok
+  want hold, reads-elim-field(built-value, <pickGet>)
+
+test <case value: pickGet matches Elim::Value on Rust>
+  want hold, built-value/ok
+  want hold, matches-elim(built-value, <pick_get>, <Value>)
+
+test <case value: pickOwn tests elim's tag on TypeScript>
+  want hold, built-value/ok
+  want hold, tests-elim-tag(built-value, <pickOwn>)
+
+test <case value: pickOwn reads elim's field on TypeScript>
+  want hold, built-value/ok
+  want hold, reads-elim-field(built-value, <pickOwn>)
+
+test <case value: pickOwn matches Elim::Value on Rust>
+  want hold, built-value/ok
+  want hold, matches-elim(built-value, <pick_own>, <Value>)
+
+test <case value: pickSaved tests elim's tag on TypeScript>
+  want hold, built-value/ok
+  want hold, tests-elim-tag(built-value, <pickSaved>)
+
+test <case value: pickSaved reads elim's field on TypeScript>
+  want hold, built-value/ok
+  want hold, reads-elim-field(built-value, <pickSaved>)
+
+test <case value: pickSaved matches Elim::Value on Rust>
+  want hold, built-value/ok
+  want hold, matches-elim(built-value, <pick_saved>, <Value>)
+
+# the other union keeps its own tag where it is sifted
+test <case value: the other union still tests its own tag>
+  want hold, built-value/ok
+  want hold, other-keeps-tag(built-value)
+
+test <case value: Rust emits pick_get>
+  want hold, built-value/ok
+  want hold, is-unequal(rust-of(built-value, <pick_get>), <>)
+
+host built-variable, build(<variable>)
+
+test <case variable: builds>
+  want hold, built-variable/ok
+
+test <case variable: pickGet tests elim's tag on TypeScript>
+  want hold, built-variable/ok
+  want hold, tests-elim-tag(built-variable, <pickGet>)
+
+test <case variable: pickGet reads elim's field on TypeScript>
+  want hold, built-variable/ok
+  want hold, reads-elim-field(built-variable, <pickGet>)
+
+test <case variable: pickGet matches Elim::Variable on Rust>
+  want hold, built-variable/ok
+  want hold, matches-elim(built-variable, <pick_get>, <Variable>)
+
+test <case variable: pickOwn tests elim's tag on TypeScript>
+  want hold, built-variable/ok
+  want hold, tests-elim-tag(built-variable, <pickOwn>)
+
+test <case variable: pickOwn reads elim's field on TypeScript>
+  want hold, built-variable/ok
+  want hold, reads-elim-field(built-variable, <pickOwn>)
+
+test <case variable: pickOwn matches Elim::Variable on Rust>
+  want hold, built-variable/ok
+  want hold, matches-elim(built-variable, <pick_own>, <Variable>)
+
+test <case variable: pickSaved tests elim's tag on TypeScript>
+  want hold, built-variable/ok
+  want hold, tests-elim-tag(built-variable, <pickSaved>)
+
+test <case variable: pickSaved reads elim's field on TypeScript>
+  want hold, built-variable/ok
+  want hold, reads-elim-field(built-variable, <pickSaved>)
+
+test <case variable: pickSaved matches Elim::Variable on Rust>
+  want hold, built-variable/ok
+  want hold, matches-elim(built-variable, <pick_saved>, <Variable>)
+
+# the other union keeps its own tag where it is sifted
+test <case variable: the other union still tests its own tag>
+  want hold, built-variable/ok
+  want hold, other-keeps-tag(built-variable)
+
+test <case variable: Rust emits pick_get>
+  want hold, built-variable/ok
+  want hold, is-unequal(rust-of(built-variable, <pick_get>), <>)

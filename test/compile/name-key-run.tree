@@ -1,0 +1,378 @@
+note <A unit's name key is its own, never the run's>
+
+# Ported from name-key-run.ts by statement (item 0573). A unit's name-level store key is a function of the unit's own
+# preimage, never of the run that worked it out (item term-self-host-001-0452). A unit built first in its own run must be
+# served, once its surface key moves, by the name key a later run that reaches it as an import works out, as long as no
+# name it reaches changed. x.tree loads a.tree then b.tree (independent of each other). y.tree loads b.tree, then x.tree.
+# A build of x stores x's unit; a task nobody names is added to a.tree (x's surface key moves, its name key must not); a
+# build of y must then build a.tree and y.tree only, never x.tree. Each build is a fresh run (no unit memo) against one
+# cache, as successive `term make` runs are, so each is a top-level `host` that takes the build before it. compile/separate
+# and compile/cache are the subject (decision 106).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find ends-with
+  find starts-with
+  find split
+  find substring
+  find index-of
+  find last-index-of
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name key-file
+  load <node:path>, name key-path
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# host value: the entries of the Map of emitted modules, each a pair of its name and its module
+bind module-entries
+  take modules, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$modules.entries()]>
+
+# host value: a resolver handed by the host, called
+bind resolved-by
+  take resolve, like dynamic
+  take path, like dynamic
+  take from, like dynamic
+  take how, like dynamic
+  like dynamic
+  case node
+    text <$resolve($path, $from, $how)>
+
+# host value: the answer a deck reader gives for a file under no deck
+bind no-deck
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}>
+
+# a temp folder by its real path, so the entry's own file and the resolver's answer for it are one text (macOS's /var is
+# /private/var), holding a deck of this name with a code folder
+task deck-folder
+  take prefix, like text
+  take name, like text
+  like text
+
+  host top, key-file/realpath-sync(temp-folder(prefix))
+  key-file/mkdir-sync(key-path/join(top, <code>), make-record(make(list, <recursive>, true)))
+  key-file/write-file-sync(key-path/join(top, <deck.tree>), <deck {name}\n  mark \<0.0.1\>\n>)
+  back top
+
+task write-text
+  take file, like text
+  take text, like text
+  like void
+
+  key-file/write-file-sync(file, text)
+
+# a built label by the file's own name: the part after its last /code/
+task after-code
+  take one, like text
+  like text
+
+  host at, last-index-of(one, </code/>)
+  fork test, is-below(at, 0)
+    hold
+      back one
+  back substring(one, add(at, 6))
+
+task label-names
+  take label, like text
+  like text
+
+  host parts, make list
+  walk split(label, <+>)
+    take one, like text
+    parts/push(after-code(one))
+  back join(parts, <+>)
+
+task messages-of
+  take result, like dynamic
+  like text
+
+  host said, make list
+  walk result/diagnostics
+    take one, like dynamic
+    said/push(one/message)
+  back join(said, < | >)
+
+# ---- a unit's name key across runs ----
+
+host root, deck-folder(<name-key-run->, <@probe/name-key-run>)
+
+task at-code
+  take name, like text
+  like text
+
+  back key-path/join(root, <code>, <{name}.tree>)
+
+host a-text, <task alpha\n  take n, like number\n  like number\n  back n\n>
+host b-text, <task beta\n  take n, like number\n  like number\n  back n\n>
+host x-text, <load ./a\n  find alpha\n\nload ./b\n  find beta\n\ntask both\n  take n, like number\n  like number\n  back alpha(beta(n))\n>
+host y-text, <load ./b\n  find beta\n\nload ./x\n  find both\n\ntask main\n  like number\n  back beta(both(1))\n>
+
+task set-up
+  take seed, like number
+  like number
+
+  write-text(at-code(<a>), a-text)
+  write-text(at-code(<b>), b-text)
+  write-text(at-code(<x>), x-text)
+  write-text(at-code(<y>), y-text)
+  back seed
+
+host written, set-up(0)
+host cache, new-cache(cache-module)
+
+form told
+  link ok, like boolean
+  link why, like text
+  link built, like list, like text
+
+task build
+  take entry, like text
+  take text, like text
+  take after, like dynamic
+  like told
+
+  host options, make-record(make(list, <resolve>, project-module/project-resolver(root), <cache>, cache, <modules>, module-of))
+  host result, separate-module/compile-separate(make-record(make(list, <file>, at-code(entry), <text>, text)), options)
+  host built, make list
+  fork test, result/ok
+    miss
+      back make(told, bind(ok, false), bind(why, messages-of(result)), bind(built, built))
+  walk result/built
+    take label, like text
+    built/push(label-names(label))
+  back make(told, bind(ok, true), bind(why, <>), bind(built, built))
+
+task add-unused
+  take after, like told
+  like told
+
+  write-text(at-code(<a>), <{a-text}\ntask unused\n  like number\n  back 7\n>)
+  back after
+
+host first, build(<x>, x-text, written)
+host importer, build(<y>, y-text, add-unused(first))
+host again, build(<y>, y-text, importer)
+
+test <x builds as its own entry>
+  want hold, first/ok
+
+test <and builds a, b and x>
+  want hold, first/ok
+  want hold, is-equal(first/built/length, 3)
+
+test <y builds after a task nobody names is added to a.tree>
+  want hold, importer/ok
+
+test <and rebuilds a.tree>
+  want hold, list-contains(importer/built, <a.tree>)
+
+test <and serves x.tree from the answer x's own run stored (its name key is the run's own)>
+  want hold, is-equal(list-contains(importer/built, <x.tree>), false)
+
+test <an unchanged build of y builds nothing>
+  want hold, again/ok
+  want hold, is-equal(again/built/length, 0)
+
+# ---- a form two files define, reached by no import or by several ----
+#
+# Decision 091 of term/self-host/change/001-finish-self-host, item term-self-host-001-0469. u loads d, d loads a then b,
+# and a and b each define form x (b's with a field m, fall 5). u makes x, imported by neither (`unimported`), or found
+# from d whose `bear` chain re-exports both (`several`). The binding is the last definer by file name, b's: never the one
+# the walk merged last, which moved when d's two loads were swapped while neither of u's keys did, so the incremental
+# build served a's x where a clean build bound b's. Each build is a fresh run on one cache; the swapped build must equal a
+# clean build on an empty cache.
+
+# the emitted text of u's own module from its `export function main` on
+form emitted-main
+  link ok, like boolean
+  link why, like text
+  link main, like text
+
+task main-of
+  take result, like dynamic
+  like emitted-main
+
+  fork test, result/ok
+    miss
+      back make(emitted-main, bind(ok, false), bind(why, messages-of(result)), bind(main, <>))
+  host codes, make list
+  save code, <>
+  save found, false
+  walk module-entries(result/modules)
+    take pair, like dynamic
+    host name, pair/0
+    codes/push(pair/1/code)
+    fork test, and(is-equal(found, false), or(ends-with(name, </u.tree>), text-contains(name, <_u>)))
+      hold
+        save code, pair/1/code
+        save found, true
+  fork test, is-equal(found, false)
+    hold
+      save code, join(codes, <\n>)
+  back make(emitted-main, bind(ok, true), bind(why, <>), bind(main, substring(code, index-of(code, <export function main>))))
+
+form order-check
+  link both-build, like boolean
+  link binds-b, like boolean
+  link swapped-clean, like boolean
+
+task d-text
+  take head, like text
+  take first, like text
+  take second, like text
+  like text
+
+  back <{head} ./{first}\n\n{head} ./{second}\n\ntask dee\n  like number\n  back 0\n>
+
+task merge-order
+  take shape, like text
+  like order-check
+
+  host top, deck-folder(<name-key-order-{shape}->, <@probe/name-key-order>)
+  host bears, is-equal(shape, <several>)
+  save head, <load>
+  save find-x, <>
+  fork test, bears
+    hold
+      save head, <bear>
+      save find-x, <  find x\n>
+  host u-text, <load ./d\n  find dee\n{find-x}\ntask main\n  like number\n  save v\n    make x\n      bind n, 1\n  back add(v/n, dee())\n>
+  host code, key-path/join(top, <code>)
+  write-text(key-path/join(code, <a.tree>), <form x\n  link n, like number\n>)
+  write-text(key-path/join(code, <b.tree>), <form x\n  link n, like number\n  link m, like number, fall 5\n>)
+  write-text(key-path/join(code, <u.tree>), u-text)
+  host d-file, key-path/join(code, <d.tree>)
+  host u-file, key-path/join(code, <u.tree>)
+  host resolve, project-module/project-resolver(top)
+  host source, make-record(make(list, <file>, u-file, <text>, u-text))
+
+  write-text(d-file, d-text(head, <a>, <b>))
+  host clean-ab, main-of(separate-module/compile-separate(source, make-record(make(list, <resolve>, resolve, <cache>, new-cache(cache-module), <modules>, module-of))))
+  write-text(d-file, d-text(head, <b>, <a>))
+  host clean-ba, main-of(separate-module/compile-separate(source, make-record(make(list, <resolve>, resolve, <cache>, new-cache(cache-module), <modules>, module-of))))
+
+  host kept, new-cache(cache-module)
+  write-text(d-file, d-text(head, <a>, <b>))
+  host kept-first, main-of(separate-module/compile-separate(source, make-record(make(list, <resolve>, resolve, <cache>, kept, <modules>, module-of))))
+  write-text(d-file, d-text(head, <b>, <a>))
+  host swapped, main-of(separate-module/compile-separate(source, make-record(make(list, <resolve>, resolve, <cache>, kept, <modules>, module-of))))
+
+  back make(order-check, bind(both-build, and(clean-ab/ok, clean-ba/ok)), bind(binds-b, and(text-contains(clean-ab/main, <m: 5>), is-equal(clean-ab/main, clean-ba/main))), bind(swapped-clean, and(swapped/ok, is-equal(swapped/main, clean-ba/main))))
+
+host unimported, merge-order(<unimported>)
+
+test <unimported: both load orders build>
+  want hold, unimported/both-build
+
+test <unimported: both load orders bind b.tree's x, the last by file name>
+  want hold, unimported/binds-b
+
+test <unimported: d's loads swapped, the next build equals a clean one>
+  want hold, unimported/swapped-clean
+
+host several, merge-order(<several>)
+
+test <several: both load orders build>
+  want hold, several/both-build
+
+test <several: both load orders bind b.tree's x, the last by file name>
+  want hold, several/binds-b
+
+test <several: d's loads swapped, the next build equals a clean one>
+  want hold, several/swapped-clean
+
+# ---- the order is the portable names', not the absolute paths' ----
+#
+# Item term-self-host-001-0484, decision 091 section 3. The two definers of form x sit under two deck roots, the project
+# @probe/app's (b.tree, with a field m, fall 5) and a linked package @probe/lib's (a.tree). u makes x, imported by
+# neither, so it binds the last definer in `group.files` order. Sorted by absolute path that order is the roots' directory
+# names, which another clone lays out otherwise: here the layout is built twice with the two directory names swapped
+# (`aa-lib` beside `zz-app`, then `aa-app` beside `zz-lib`), which flips the absolute order and leaves every portable name
+# the same. Both builds must bind the same x, @probe/lib's (`@probe/app` sorts first by portable name), and emit the same
+# main.
+
+task lay
+  take app-dir, like text
+  take lib-dir, like text
+  like emitted-main
+
+  host top, key-file/realpath-sync(temp-folder(<name-key-roots->))
+  host app, key-path/join(top, app-dir)
+  host lib, key-path/join(top, lib-dir)
+  key-file/mkdir-sync(key-path/join(app, <code>), make-record(make(list, <recursive>, true)))
+  key-file/mkdir-sync(key-path/join(lib, <code>), make-record(make(list, <recursive>, true)))
+  write-text(key-path/join(app, <deck.tree>), <deck @probe/app\n  mark \<0.0.1\>\n>)
+  write-text(key-path/join(lib, <deck.tree>), <deck @probe/lib\n  mark \<0.0.1\>\n>)
+  write-text(key-path/join(lib, <code>, <a.tree>), <form x\n  link n, like number\n>)
+  write-text(key-path/join(app, <code>, <b.tree>), <form x\n  link n, like number\n  link m, like number, fall 5\n>)
+  write-text(key-path/join(app, <code>, <d.tree>), <load @probe/lib/a\n\nload ./b\n\ntask dee\n  like number\n  back 0\n>)
+  host u-text, <load ./d\n  find dee\n\ntask main\n  like number\n  save v\n    make x\n      bind n, 1\n  back add(v/n, dee())\n>
+  host u-file, key-path/join(app, <code>, <u.tree>)
+  write-text(u-file, u-text)
+  host project, project-module/project-resolver(app)
+  host resolve
+    task
+      take import-path, like text
+      take from-file, like dynamic
+      take how, like dynamic
+      like dynamic
+      fork test, starts-with(import-path, <@probe/lib/>)
+        hold
+          host file, key-path/join(lib, <code>, <{substring(import-path, 11)}.tree>)
+          back make-record(make(list, <file>, file, <text>, key-file/read-file-sync(file, <utf8>)))
+      back resolved-by(project, import-path, from-file, how)
+  host deck-of
+    task
+      take file, like text
+      like dynamic
+      fork test, starts-with(file, <{app}/>)
+        hold
+          back make-record(make(list, <name>, <@probe/app>, <root>, app))
+      fork test, starts-with(file, <{lib}/>)
+        hold
+          back make-record(make(list, <name>, <@probe/lib>, <root>, lib))
+      back no-deck(0)
+  host options, make-record(make(list, <resolve>, resolve, <cache>, new-cache(cache-module), <modules>, module-of, <deckOf>, deck-of))
+  back main-of(separate-module/compile-separate(make-record(make(list, <file>, u-file, <text>, u-text)), options))
+
+host lib-first, lay(<zz-app>, <aa-lib>)
+host app-first, lay(<aa-app>, <zz-lib>)
+
+test <two roots: both layouts build>
+  want hold, lib-first/ok
+  want hold, app-first/ok
+
+test <two roots: both layouts bind @probe/lib's x, the last by portable name, and emit one main>
+  want hold, is-equal(text-contains(lib-first/main, <m: 5>), false)
+  want hold, is-equal(lib-first/main, app-first/main)

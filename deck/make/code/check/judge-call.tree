@@ -21,6 +21,8 @@ load @term/base/text
   find starts-with
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
 
 form judge-outcome
@@ -40,6 +42,7 @@ task run-in-kernel
   like judge-outcome
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save value, step()
@@ -49,6 +52,7 @@ task run-in-kernel
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     sift problem
       case failure
         link note

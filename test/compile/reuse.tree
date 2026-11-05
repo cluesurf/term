@@ -1,0 +1,104 @@
+note <Record reuse, held both ways>
+
+# Ported from reuse.ts by statement (item 0575). compile/place.ts `recordReuse`: the sites where a task may build its
+# result in the object it is given, and for every rule a program where it must NOT, because a wrong one changes a value
+# another name still holds. The answers themselves are held on all four toolchains by
+# test/compile/meaning-native/reuse.tree. compile/place is the subject (decision 106). A program the original could not
+# compile threw, so every test here also holds that it compiled.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/list
+  find contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/place>, name place-module
+
+bind map-keys
+  take map, like dynamic
+  like list, like text
+  case node
+    text <[...$map.keys()]>
+
+form reused
+  link ok, like boolean
+  link tasks, like list, like text
+  link ts, like text
+
+# the tasks that reuse, and the TypeScript, of a program built from the base and `use`
+task reuse
+  take use, like text
+  take extra, like text, fall <>
+  like reused
+
+  host text, <load @term/base/list\n  find list\n  find push\n\nform dot\n  link x, like number\n  link v, like number\n\nform step\n  link dot, like dot\n  link hit, like boolean\n\n# a dot moved once: a new dot from the old one's fields\ntask move\n  take d, like dot\n  like dot\n  send back\n    make dot\n      bind x\n        call add\n          read d/x\n          read d/v\n      bind v, read d/v\n\n# the same, and whether it passed 10\ntask stride\n  take d, like dot\n  like step\n  host x\n    call add\n      read d/x\n      read d/v\n  send back\n    make step\n      bind dot\n        make dot\n          bind x, read x\n          bind v, read d/v\n      bind hit\n        call is-above\n          read x\n          code 10\n{extra}\ntask use\n  like number\n  save dots\n    make list\n  call push\n    bind list, read dots\n    bind item\n      make dot\n        bind x, code 1\n        bind v, code 4\n{use}\n  send back, read dots/0/x\n>
+  host built, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <use>)))
+  fork test, built/ok
+    miss
+      host none, make list
+      back make(reused, bind(ok, false), bind(tasks, none), bind(ts, <>))
+  back make(reused, bind(ok, true), bind(tasks, map-keys(place-module/record-reuse(built/program)/tasks)), bind(ts, built/emitted))
+
+# 1. the slot written with the task's result in the same statement
+host direct, reuse(<  save dots/0\n    call move\n      read dots/0>)
+
+test <a slot written with the result of a call given that slot reuses>
+  want hold, direct/ok
+  want hold, is-equal(join(direct/tasks, <,>), <move>)
+
+host move-reuse-call, make pattern, <<moveReuse\(>>
+host field-on-object, make pattern, <<d\.x = __reuse>>
+
+test <TypeScript assigns the fields on the object and answers it>
+  want hold, direct/ok
+  want hold, matches(move-reuse-call, direct/ts)
+  want hold, matches(field-on-object, direct/ts)
+
+# 2. through a carrier, written back at once, the carrier read after only for its other field
+host flag-alone, make pattern, <<function strideReuse\(d: Dot\): boolean>>
+
+test <a carrier written back at once reuses, and the flag is answered alone>
+  host carried, reuse(<  host s\n    call stride\n      read dots/0\n  save dots/0, read s/dot\n  fork test\n    hook test\n      read s/hit\n    hook hold\n      save dots/0\n        call move\n          read dots/0>)
+  want hold, carried/ok
+  want hold, contains(carried/tasks, <stride>)
+  want hold, matches(flag-alone, carried/ts)
+
+# 3. a local read from the slot, alive across the call: the old value must stay
+test <a local holding the slot's object refuses reuse of its form>
+  host kept, reuse(<  save before, read dots/0\n  save dots/0\n    call move\n      read dots/0\n  save dots/0\n    make dot\n      bind x\n        call add\n          read dots/0/x\n          read before/x\n      bind v, code 0>)
+  want hold, kept/ok
+  want hold, is-equal(kept/tasks/length, 0)
+
+# 4. a walk over the list: its item is a second name for each object
+test <a walk over a list of the form refuses reuse>
+  host walked, reuse(<  walk list, read dots\n    hook next\n      take site, name d\n      save dots/0\n        call move\n          read dots/0>)
+  want hold, walked/ok
+  want hold, is-equal(walked/tasks/length, 0)
+
+# 5. the result written to ANOTHER slot: the old object stays where it was
+test <a result written to another slot is not a reuse site>
+  host other, reuse(<  call push\n    bind list, read dots\n    bind item\n      make dot\n        bind x, code 2\n        bind v, code 0\n  save dots/1\n    call move\n      read dots/0>)
+  want hold, other/ok
+  want hold, is-equal(other/tasks/length, 0)
+
+# 6. a task that passes its record on, rather than only reading its fields
+test <a task that passes its record on does not reuse it>
+  host passes, reuse(<  save dots/0\n    call relay\n      read dots/0>, <task relay\n  take d, like dot\n  like dot\n  send back\n    call move\n      read d\n>)
+  want hold, passes/ok
+  want hold, is-equal(contains(passes/tasks, <relay>), false)
+
+# 7. the carrier read after for the record it carries: that would be the reused object again
+test <a carrier read again for its record is not a reuse site>
+  host reread, reuse(<  host s\n    call stride\n      read dots/0\n  save dots/0, read s/dot\n  save dots/0\n    make dot\n      bind x, read s/dot/x\n      bind v, code 0>)
+  want hold, reread/ok
+  want hold, is-equal(reread/tasks/length, 0)

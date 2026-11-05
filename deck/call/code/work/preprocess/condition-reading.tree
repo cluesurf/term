@@ -21,10 +21,16 @@ load @term/base/list
 load @term/base/text
   find trim
 
+load @term/make/parser/tree
+  find parse-tolerant
+  find render-head
+
+load @term/make/parser/token
+  find tokenize
+  find token-source
+
 dock load
-  load <@term/make/code/parser/tree>, name parsing-module
   load <@term/make/code/parser/narrow>, name narrowing-module
-  load <@term/make/code/parser/token>, name tokenizing-module
 
 # a line of a condition, with the source line (counted from zero) it was written on
 form source-row
@@ -251,7 +257,7 @@ task read-condition
     flat/push(make(source-row, bind(text, text), bind(from, row/from)))
     texts/push(text)
   save source, lines-joined(texts)
-  save parsed, parsing-module/parse-tolerant(make(parse-ask, bind(file, <want.tree>), bind(text, source)))
+  save parsed, parse-tolerant(make(token-source,bind(file, <want.tree>), bind(text, source)))
   fork test, is-above(diagnostic-count(parsed), 0)
     hold
       back no-condition()
@@ -268,7 +274,7 @@ task read-condition
   save first, <>
   fork test, is-equal(kind-of-node(head), <name>)
     hold
-      save first, parsing-module/render-head(head)
+      save first, render-head(head)
   save word, first
   save skip, 1
   fork test, is-equal(first, <call>)
@@ -283,7 +289,7 @@ task read-condition
             hold
               fork test, is-equal(kind-of-node(host-item(inside, 0)), <name>)
                 hold
-                  save word, parsing-module/render-head(host-item(inside, 0))
+                  save word, render-head(host-item(inside, 0))
   back make(condition-cut, bind(found, true), bind(first, first), bind(word, word), bind(values, host-items-from(nodes, skip)), bind(flat, flat), bind(source, source))
 
 # The pieces of a condition after its word: cut at the top-level commas of its one line (inside its own parentheses
@@ -467,7 +473,7 @@ task top-level-pieces
   take text, like text
   like list, like text
 
-  save read, tokenizing-module/tokenize(make(parse-ask, bind(file, <want.tree>), bind(text, text)))
+  save read, tokenize(make(token-source,bind(file, <want.tree>), bind(text, text)))
   fork test, is-above(diagnostic-count(read), 0)
     hold
       back make list
@@ -495,7 +501,7 @@ task inline-arguments
   take line, like text
   like list, like text
 
-  save read, tokenizing-module/tokenize(make(parse-ask, bind(file, <want.tree>), bind(text, line)))
+  save read, tokenize(make(token-source,bind(file, <want.tree>), bind(text, line)))
   fork test, is-above(diagnostic-count(read), 0)
     hold
       back make list
@@ -578,7 +584,7 @@ task reads-as
         written/push(<  {row/text}>)
     miss
       written/push(<save x, {piece/0/text}>)
-  save parsed, parsing-module/parse-tolerant(make(parse-ask, bind(file, <want.tree>), bind(text, lines-joined(written))))
+  save parsed, parse-tolerant(make(token-source,bind(file, <want.tree>), bind(text, lines-joined(written))))
   fork test, is-above(diagnostic-count(parsed), 0)
     hold
       back false
@@ -605,4 +611,4 @@ task shape-of
         take child, like dynamic
         shapes/push(shape-of(child))
       back <({texts-joined-by-space(shapes)})>
-  back <{kind}:{parsing-module/render-head(node)}>
+  back <{kind}:{render-head(node)}>

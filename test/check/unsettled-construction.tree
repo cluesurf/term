@@ -1,0 +1,235 @@
+note <An overloaded construction no position types is refused by the checker, naming its owners>
+
+# Ported from unsettled-construction.ts by statement (item 0567). One test per `ok` of the original, in its order. Where
+# the original read an emitted text only after the build held, the test wants the build first.
+#
+# An OVERLOADED CONSTRUCTION NO POSITION TYPES is refused by the checker, naming its owners (term-self-host-001-0514,
+# found by 0393). `make none` in a program whose file imports both the stdlib maybe and a `mark text` form with a case
+# `none` is left open by infer-construction for its position to decide. Where nothing decides (pushed onto a list nothing
+# reads, a local never read, handed to an `unknown`), TypeScript wrote `const xs: number[]` with `xs.push("none")` and
+# Rust `vec![Primitive::None]`: each backend its own arbitrary owner. Decision 101: the owner is a fact of the FILE. A
+# file whose own forms and finds reach exactly one owner builds that one (check/scope.ts and compile/node-rewrite.tree
+# `owner-for`), whatever else the program holds, and one that 0 or 2+ owners reach and no position types is refused at
+# the final zonk by check/inferring-holes.tree, under the ambiguous-call switch (D10), so no backend sees it. A position
+# that types it, or the qualified spelling, still builds, read on TypeScript and Rust.
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find char-count
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find emit-text
+
+# a module defining a text form with a case `none` (and loading maybe), so both owners are in every program that loads it
+host kinds, <load @term/base/maybe\n  find maybe\n\nform primitive\n  mark text\n  case word\n  case none\n\ntask hold-kind\n  take k, like maybe, like primitive\n  like boolean\n  back true\n>
+
+host head, <load @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find push\n\nform primitive\n  mark text\n  case word\n  case none\n\ntask keep\n  take v, like unknown\n  like boolean\n  back true\n>
+
+host unread, <task build\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make none)\n  save m, make none\n  back n\n>
+
+host list-load, <load @term/base/list\n  find push\n>
+
+host two-forms, make pattern, <<`make none` names a case of 2 forms>>
+
+host maybe-none, make pattern, <<Maybe::(<[^>]*>::)?None>>
+
+# the TypeScript and Rust of a build, each cut to its `build` function, or the messages of a refusal joined
+form built-program
+  link ok, like boolean
+  link ts, like text
+  link rs, like text
+  link said, like text
+
+# `text.slice(at, text.indexOf('\n}\n', at))` from the index of `head`, as the original cut it, -1 read as JavaScript reads it
+task cut-function
+  take text, like text
+  take head, like text
+  like text
+
+  save at, index-of(text, head)
+  fork test, is-below(at, 0)
+    hold
+      save at, char-count(text)
+      fork test, is-above(at, 0)
+        hold
+          save at, subtract(at, 1)
+  save end, index-of(text, <\n}\n>, at)
+  fork test, is-below(end, 0)
+    hold
+      save end, subtract(char-count(text), 1)
+  fork test, is-below(end, at)
+    hold
+      back <>
+  back substring(text, at, end)
+
+# the original's `build`: main.tree read lean, @app/kinds answered as kinds.tree, every other load from the deck/make project
+task built
+  take main, like text
+  like built-program
+
+  host app, make(compiling-source, bind(file, <@app/kinds>), bind(text, kinds), bind(answer, <kinds.tree>))
+  host out, compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(lean, true), bind(project, <deck/make>), bind(project-env, <node>), bind(files, make list(app))))
+  fork test, not(out/ok)
+    hold
+      back make(built-program, bind(ok, false), bind(ts, <>), bind(rs, <>), bind(said, join(out/messages, < | >)))
+  back make(built-program, bind(ok, true), bind(ts, cut-function(out/emitted, <function build(>)), bind(rs, cut-function(emit-text(out, <rust>), <fn build(>)), bind(said, <>))
+
+task emitted
+  take body, like text
+  like built-program
+
+  back built(<{head}\n{body}>)
+
+# nothing types the construction: refused, naming both owners, on every backend alike (no backend is reached)
+task refused
+  take out, like built-program
+  like boolean
+
+  back and(not(out/ok), and(matches(two-forms, out/said), and(text-contains(out/said, <maybe>), text-contains(out/said, <primitive>))))
+
+host typed-list, <task build\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make none)\n  back count(xs)\n\ntask count\n  take xs, like list, like maybe, like text\n  like number\n  back xs/length\n>
+
+host maybe-result, <task build\n  take n, like number\n  like maybe, like text\n  back make none\n>
+
+host primitive-result, <task build\n  take n, like number\n  like primitive\n  back make none\n>
+
+host qualified-primitive, <task build\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make primitive/none)\n  back n\n>
+
+host qualified-maybe, <task build\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make maybe/none)\n  back n\n>
+
+test <pushed onto a list nothing reads: refused, naming maybe and primitive>
+  want hold, refused(emitted(<task build\n  take n, like number\n  like number\n  save xs, make list\n  push(xs, make none)\n  back n\n>))
+
+test <a local never read: refused, naming maybe and primitive>
+  want hold, refused(emitted(<task build\n  take n, like number\n  like number\n  save m, make none\n  back n\n>))
+
+test <handed to an unknown: refused, naming maybe and primitive>
+  want hold, refused(emitted(<task build\n  take n, like number\n  like boolean\n  back keep(make none)\n>))
+
+# a position that types it builds as that owner
+
+test <a list typed maybe: builds>
+  want hold, emitted(typed-list)/ok
+
+test <a list typed maybe: TypeScript holds no text "none">
+  host out, emitted(typed-list)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+
+test <a list typed maybe: Rust builds Maybe::None>
+  host out, emitted(typed-list)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Maybe::None>)
+  want hold, not(text-contains(out/rs, <Primitive::None>))
+
+test <a maybe result: builds>
+  want hold, emitted(maybe-result)/ok
+
+test <a maybe result: TypeScript holds no text "none">
+  host out, emitted(maybe-result)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+
+test <a maybe result: Rust builds Maybe::None>
+  host out, emitted(maybe-result)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Maybe::None>)
+  want hold, not(text-contains(out/rs, <Primitive::None>))
+
+test <a primitive result: builds>
+  want hold, emitted(primitive-result)/ok
+
+test <a primitive result: TypeScript returns "none">
+  host out, emitted(primitive-result)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <return "none">)
+
+test <a primitive result: Rust builds Primitive::None>
+  host out, emitted(primitive-result)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Primitive::None>)
+
+# the qualified spelling is the way out the refusal names
+
+test <make primitive/none onto an unread list: builds>
+  want hold, emitted(qualified-primitive)/ok
+
+test <make primitive/none: TypeScript pushes "none" onto a primitive list>
+  host out, emitted(qualified-primitive)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <"none">)
+  want hold, not(text-contains(out/ts, <number[]>))
+
+test <make primitive/none: Rust builds Primitive::None>
+  host out, emitted(qualified-primitive)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Primitive::None>)
+
+test <make maybe/none onto an unread list: builds>
+  want hold, emitted(qualified-maybe)/ok
+
+test <make maybe/none: TypeScript holds no text "none">
+  host out, emitted(qualified-maybe)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+
+test <make maybe/none: Rust builds Maybe::None>
+  host out, emitted(qualified-maybe)
+  want hold, out/ok
+  want hold, matches(maybe-none, out/rs)
+  want hold, not(text-contains(out/rs, <Primitive::None>))
+
+# DECISION 101: the file's own reach decides, whatever else the program holds. The text form is another module's here
+# (kinds.tree), so the program holds both owners while main.tree's own forms and finds reach one, or none
+
+# finds maybe and not primitive: maybe's none, the places.tree shape that 0514's first landing refused in merged only
+host finds-maybe, <load @term/base/maybe\n  find maybe\n\nload @app/kinds\n  find hold-kind\n\n{list-load}\n{unread}>
+
+# finds primitive and not maybe: primitive's none
+host finds-primitive, <load @app/kinds\n  find primitive\n  find hold-kind\n\n{list-load}\n{unread}>
+
+# finds neither: no owner reaches the file, nothing types it, refused naming both
+host finds-neither, <load @app/kinds\n  find hold-kind\n\n{list-load}\n{unread}>
+
+test <101: the one owner the file finds (maybe) settles it: builds>
+  want hold, built(finds-maybe)/ok
+
+test <101: maybe found: TypeScript holds no text "none">
+  host out, built(finds-maybe)
+  want hold, out/ok
+  want hold, not(text-contains(out/ts, <"none">))
+
+test <101: maybe found: Rust builds Maybe::None, never Primitive::None>
+  host out, built(finds-maybe)
+  want hold, out/ok
+  want hold, matches(maybe-none, out/rs)
+  want hold, not(text-contains(out/rs, <Primitive::None>))
+
+test <101: the one owner the file finds (primitive) settles it: builds>
+  want hold, built(finds-primitive)/ok
+
+test <101: primitive found: TypeScript pushes "none">
+  host out, built(finds-primitive)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <"none">)
+  want hold, not(text-contains(out/ts, <number[]>))
+
+test <101: primitive found: Rust builds Primitive::None>
+  host out, built(finds-primitive)
+  want hold, out/ok
+  want hold, text-contains(out/rs, <Primitive::None>)
+
+test <101: no owner reaches the file: refused, naming maybe and primitive>
+  want hold, refused(built(finds-neither))

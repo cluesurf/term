@@ -1,0 +1,944 @@
+note <A stub's carried shape is a dependency only of the units that consult it>
+
+# Ported from carried-trace.ts by statement (item 0569). Decision 103 of term/self-host/change/001-finish-self-host, items
+# term-self-host-001-0415 and 0526. `bump.tree` holds a one-statement task, which its stub carries as `stubShape` to every
+# importer. `sure.tree` states a hold over a call to it, which the ring prover proves by unfolding it (a consult),
+# `plain.tree` only calls it. Each unit built tells the trace sink the carried shapes and bodies its program holds and
+# those its trace holds. A stored answer then holds what its unit consulted and nothing it only named: a miss is a wrong
+# answer, so each kind of consult has its own case over one kept store, where an edit to the carried shape or body must
+# turn the importer's verdict, and the advisory `trace:` pointer is gone, overwritten, damaged or reverted without a wrong
+# answer. compile/separate and compile/cache are the subject (decision 106). The original is one sequence over the
+# process's trace hooks and its environment, so each part is a task that sets them and puts them back, run by a top-level
+# `host` that takes the part before it, and its tests read what the part saw.
+
+load ../support/judging
+  find make-record
+  find read-field
+  find set-field
+
+load @term/base/list
+  find push
+  find contains, name list-contains
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+  find replace
+  find char-at
+  find char-count
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind cache-over
+  take module, like dynamic
+  take store, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache($store)>
+
+bind store-of
+  take load, like dynamic
+  take save, like dynamic
+  like dynamic
+  case node
+    text <(\{ load: $load, save: $save \})>
+
+bind file-record
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# host native: the compiler's trace hooks, read and written on the global object
+bind set-sink
+  take sink, like dynamic
+  like dynamic
+  case node
+    text <(globalThis.termTraceSink = $sink)>
+
+bind carried-recorder
+  take seed, like number
+  like dynamic
+  case node
+    text <globalThis.termCarriedTrace>
+
+bind set-recorder
+  take recorder, like dynamic
+  like dynamic
+  case node
+    text <(globalThis.termCarriedTrace = $recorder)>
+
+bind set-variable
+  take name, like text
+  take value, like text
+  like dynamic
+  case node
+    text <(process.env[$name] = $value)>
+
+bind drop-variable
+  take name, like text
+  like dynamic
+  case node
+    text <delete process.env[$name]>
+
+bind listed
+  take value, like dynamic
+  take field, like text
+  like list, like text
+  case node
+    text <($value?.[$field] ?? [])>
+
+bind answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+# host reflect: a raise's words, as the original's String(error)
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause)>
+
+bind new-map
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+bind map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind map-set
+  take map, like dynamic
+  take key, like text
+  take value, like text
+  like dynamic
+  case node
+    text <$map.set($key, $value)>
+
+bind map-delete
+  take map, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$map.delete($key)>
+
+bind map-has
+  take map, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$map.has($key)>
+
+bind map-keys
+  take map, like dynamic
+  like list, like text
+  case node
+    text <[...$map.keys()]>
+
+# ---- the trace sink, and a build that reads it ----
+
+form trace-state
+  mark shared
+  link units, like list, like dynamic
+
+host now, make(trace-state, bind(units, make list))
+
+host recorder, carried-recorder(0)
+
+host word-chars, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+
+host pointer-mark, <"portable":"trace:>
+
+task collect
+  take unit, like dynamic
+  like void
+
+  push(now/units, unit)
+
+# the recorder told nothing: every consult goes unrecorded
+task silent
+  take seed, like dynamic
+  like boolean
+
+  back true
+
+task lean-of
+  take seed, like dynamic
+  like boolean
+
+  back true
+
+# the module a unit is written to: `./<file without .tree, every non-word character an underscore>.mjs`
+task slug
+  take file, like text
+  like text
+
+  host stem, replace(file, <.tree>, <>)
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(stem))
+    hook hold
+      host one, char-at(stem, at)
+      fork test, text-contains(word-chars, one)
+        hold
+          save out, <{out}{one}>
+        miss
+          save out, <{out}_>
+      save at, add(at, 1)
+  back <./{out}.mjs>
+
+# the unit the sink was told of whose files hold this file, or nothing
+task unit-for
+  take file, like text
+  like dynamic
+
+  walk now/units
+    take one, like dynamic
+    walk listed(one, <files>)
+      take name, like text
+      fork test, ends-with(name, file)
+        hold
+          back one
+  back nothing(0)
+
+# whether a unit's carried or traced list holds a locator ending so
+task has-locator
+  take unit, like dynamic
+  take field, like text
+  take ending, like text
+  like boolean
+
+  walk listed(unit, field)
+    take locator, like text
+    fork test, ends-with(locator, ending)
+      hold
+        back true
+  back false
+
+task traced-none
+  take unit, like dynamic
+  like boolean
+
+  fork test, not(is-present(unit))
+    hold
+      back false
+  host traced, listed(unit, <traced>)
+  back is-equal(traced/length, 0)
+
+task options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take lean, like boolean
+  like dynamic
+
+  host options, make-record(make(list, <resolve>, resolve, <cache>, cache, <modules>, slug))
+  fork test, lean
+    hold
+      set-field(options, <leanOf>, lean-of)
+  back options
+
+host bump, <task bump\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+
+host sure, <load ./bump\n  find bump\n\ntask sure\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  send back, read n\n>
+
+host plain, <load ./bump\n  find bump\n\ntask plain\n  take n, like number\n  like number\n  send back\n    call bump\n      read n\n>
+
+host sure-unrecorded, <load ./bump\n  find bump\n\ntask sure-unrecorded\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  send back, read n\n\n>
+
+host two-tasks, <load ./bump\n  find bump\n\ntask first\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  send back, read n\n\ntask second\n  take m, like number\n  like number\n  hold is-equal(bump(m), add(m, 1))\n  send back, read m\n>
+
+host second-task, <load ./bump\n  find bump\n\ntask second\n  take m, like number\n  like number\n  hold is-equal(bump(m), add(m, 1))\n  send back, read m\n>
+
+task bump-resolve
+  take path, like text
+  like dynamic
+
+  fork test, is-equal(path, <./bump>)
+    hold
+      back file-record(<bump.tree>, bump)
+  back nothing(0)
+
+# one unit built from an empty store, the sink emptied first. Answers the build's answer
+task build
+  take file, like text
+  take text, like text
+  like dynamic
+
+  save now/units, make list
+  back separate-module/compile-separate(file-record(file, text), options-of(bump-resolve, new-cache(cache-module), false))
+
+# the words a build raised, <> when it raised nothing. A build's own verdict, when it ends, is `ok`
+form checked
+  link ok, like boolean
+  link raised, like text
+
+task check-build
+  take file, like text
+  take text, like text
+  like checked
+
+  fork
+    mark unsafe
+    host answer, build(file, text)
+    back make(checked, bind(ok, answer-ok(answer)), bind(raised, <>))
+  halt take
+    take cause
+    back make(checked, bind(ok, false), bind(raised, raised-words(cause)))
+
+# ---- part one: what a unit's trace holds ----
+
+form first-part
+  link sure-ok, like boolean
+  link sure-carried, like boolean
+  link sure-traced, like boolean
+  link plain-ok, like boolean
+  link plain-carried, like boolean
+  link plain-traced-none, like boolean
+  link again-traced, like boolean
+  link two-ok, like boolean
+  link second-traced, like boolean
+  link sure-checked, like checked
+  link plain-checked, like checked
+  link untraced, like text
+
+task part-one
+  take sink, like dynamic
+  like first-part
+
+  host sure-answer, build(<sure.tree>, sure)
+  host sure-unit, unit-for(<sure.tree>)
+  host plain-answer, build(<plain.tree>, plain)
+  host plain-unit, unit-for(<plain.tree>)
+  # the same unit again in this process: the hold memo answers the walk, and tells what the walk consulted
+  build(<sure.tree>, sure)
+  host again-unit, unit-for(<sure.tree>)
+  # A MEMO ENTRY KEEPS WHAT ITS OWN WALK ASKED, even of a name an earlier task of the unit asked first. `second`'s walk is
+  # kept, then answered from the memo in a unit of its own, whose trace must hold what `second` consults
+  host two-answer, build(<two.tree>, two-tasks)
+  build(<second.tree>, second-task)
+  host second-unit, unit-for(<second.tree>)
+  set-variable(<TERM_CACHE_VERIFY>, <trace>)
+  host sure-checked, check-build(<sure.tree>, sure)
+  host plain-checked, check-build(<plain.tree>, plain)
+  # FAIL FIRST: a recorder told nothing leaves the consult out of the trace, and the check must name it
+  set-recorder(silent)
+  host untraced, check-build(<sure.tree>, sure-unrecorded)
+  set-recorder(recorder)
+  drop-variable(<TERM_CACHE_VERIFY>)
+  back make(first-part, bind(sure-ok, answer-ok(sure-answer)), bind(sure-carried, has-locator(sure-unit, <carried>, <#bump#shape>)), bind(sure-traced, has-locator(sure-unit, <traced>, <#bump#shape>)), bind(plain-ok, answer-ok(plain-answer)), bind(plain-carried, has-locator(plain-unit, <carried>, <#bump#shape>)), bind(plain-traced-none, traced-none(plain-unit)), bind(again-traced, has-locator(again-unit, <traced>, <#bump#shape>)), bind(two-ok, answer-ok(two-answer)), bind(second-traced, has-locator(second-unit, <traced>, <#bump#shape>)), bind(sure-checked, sure-checked), bind(plain-checked, plain-checked), bind(untraced, untraced/raised))
+
+# ---- part two: a carried body, the kernel's consult ----
+
+host theory, <form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n\n  like flag\n\n  sift a\n    case yes\n      back b\n    case no\n      back make no\n\ntask flip\n  take a, like flag\n\n  like flag\n\n  sift a\n    case yes\n      back make no\n    case no\n      back make yes\n\nrule flip-twice\n  seat a, like flag\n  show hold, is-equal flip(flip(a)), a\n  fold a\n>
+
+host use, <load ./theory\n  find flag\n  find both\n  find flip\n  find flip-twice\n\nrule computes-across-files\n  seat a, like flag\n  show hold\n    is-equal\n      both\n        make yes\n        a\n      a\n\nrule cites-across-files\n  seat a, like flag\n  seat b, like flag\n  show hold, is-equal both(flip(flip(a)), b), both(a, b)\n  cite flip-twice\n>
+
+task theory-resolve
+  take path, like text
+  like dynamic
+
+  fork test, is-equal(path, <./theory>)
+    hold
+      back file-record(<theory.tree>, theory)
+  back nothing(0)
+
+task build-use
+  like dynamic
+
+  save now/units, make list
+  back separate-module/compile-separate(file-record(<use.tree>, use), options-of(theory-resolve, new-cache(cache-module), true))
+
+task check-use
+  like text
+
+  fork
+    mark unsafe
+    build-use()
+    back <>
+  halt take
+    take cause
+    back raised-words(cause)
+
+form body-part
+  link ok, like boolean
+  link carried-both, like boolean
+  link traced-both, like boolean
+  link traced-cited, like boolean
+  link checked, like text
+  link silenced, like text
+
+task part-two
+  take after, like first-part
+  like body-part
+
+  host answer, build-use()
+  host unit, unit-for(<use.tree>)
+  set-variable(<TERM_CACHE_VERIFY>, <trace>)
+  host checked, check-use()
+  set-recorder(silent)
+  host silenced, check-use()
+  set-recorder(recorder)
+  drop-variable(<TERM_CACHE_VERIFY>)
+  back make(body-part, bind(ok, answer-ok(answer)), bind(carried-both, has-locator(unit, <carried>, <#both#body>)), bind(traced-both, has-locator(unit, <traced>, <#both#body>)), bind(traced-cited, has-locator(unit, <traced>, <#flip-twice#body>)), bind(checked, checked), bind(silenced, silenced))
+
+# ---- part three: a stored answer holds what its unit consulted, and nothing it only named ----
+
+# one store, kept across caches, as the disk is across processes: each build is a FRESH cache over it (what a new
+# process sees)
+task store-over
+  take kept, like dynamic
+  like dynamic
+
+  save load
+    task
+      take kind, like text
+      take key, like text
+      like dynamic
+      back map-get(kept, <{kind}/{key}>)
+  save save
+    task
+      take kind, like text
+      take key, like text
+      take text, like text
+      like void
+      map-set(kept, <{kind}/{key}>, text)
+  back store-of(load, save)
+
+# the separate build of `entry.tree` over one `dep.tree`, at `root` (<> for none)
+task build-at
+  take kept, like dynamic
+  take root, like text
+  take dep, like text
+  take entry, like text
+  take lean, like boolean
+  like dynamic
+
+  save prefix, <>
+  fork test, is-unequal(root, <>)
+    hold
+      save prefix, <{root}/>
+  save resolve
+    task
+      take path, like text
+      like dynamic
+      fork test, is-equal(path, <./dep>)
+        hold
+          back file-record(<{prefix}dep.tree>, dep)
+      back nothing(0)
+  back separate-module/compile-separate(file-record(<{prefix}entry.tree>, entry), options-of(resolve, cache-over(cache-module, store-over(kept)), lean))
+
+task build-over
+  take kept, like dynamic
+  take dep, like text
+  take entry, like text
+  like dynamic
+
+  back build-at(kept, <>, dep, entry, false)
+
+task built-of
+  take answer, like dynamic
+  like list, like text
+
+  back listed(answer, <built>)
+
+# ok, and the build built nothing (an answer with no built list counts as built)
+task none-built
+  take answer, like dynamic
+  like boolean
+
+  fork test, not(answer-ok(answer))
+    hold
+      back false
+  fork test, not(is-present(read-field(answer, <built>)))
+    hold
+      back false
+  host built, built-of(answer)
+  back is-equal(built/length, 0)
+
+task built-count
+  take answer, like dynamic
+  like number
+
+  host built, built-of(answer)
+  back built/length
+
+# the keys of the store whose text is a trace pointer
+task pointer-keys
+  take kept, like dynamic
+  like list, like text
+
+  host out, make list
+  walk map-keys(kept)
+    take key, like text
+    fork test, text-contains(<{map-get(kept, key)}>, pointer-mark)
+      hold
+        push(out, key)
+  back out
+
+task pointer-texts
+  take kept, like dynamic
+  like list, like text
+
+  host out, make list
+  walk pointer-keys(kept)
+    take key, like text
+    push(out, <{map-get(kept, key)}>)
+  back out
+
+task any-pointer-holds
+  take kept, like dynamic
+  take one, like text
+  take two, like text
+  like boolean
+
+  walk pointer-texts(kept)
+    take text, like text
+    fork test, and(text-contains(text, one), text-contains(text, two))
+      hold
+        back true
+  back false
+
+form trace-case
+  link dep, like text
+  link edited, like text
+  link consults, like text
+  # only calls the task, and must be cut off from the edit
+  link calls, like text
+  # the edit also moves what the name's own print holds (a push or a pop), so a unit that only calls it is built too
+  link facts-move, like boolean
+
+form case-reading
+  link consulted, like boolean
+  link pointer-names-shape, like boolean
+  link same-none, like boolean
+  link edit-refused, like boolean
+  link revert-hit, like boolean
+  link plain-ok, like boolean
+  link cut-right, like boolean
+
+task run-case
+  take one, like trace-case
+  take after, like dynamic
+  like case-reading
+
+  host kept, new-map(0)
+  host consulted, build-over(kept, one/dep, one/consults)
+  host names-shape, any-pointer-holds(kept, <dep.tree#>, <#shape>)
+  host same, build-over(kept, one/dep, one/consults)
+  host edited, build-over(kept, one/edited, one/consults)
+  host back-again, build-over(kept, one/dep, one/consults)
+  host plain-kept, new-map(0)
+  host plain, build-over(plain-kept, one/dep, one/calls)
+  host cut, build-over(plain-kept, one/edited, one/calls)
+  save want, <dep.tree>
+  fork test, one/facts-move
+    hold
+      save want, <dep.tree,entry.tree>
+  back make(case-reading, bind(consulted, answer-ok(consulted)), bind(pointer-names-shape, names-shape), bind(same-none, none-built(same)), bind(edit-refused, not(answer-ok(edited))), bind(revert-hit, none-built(back-again)), bind(plain-ok, answer-ok(plain)), bind(cut-right, and(answer-ok(cut), is-equal(join(built-of(cut), <,>), want))))
+
+host unfolding, make(trace-case, bind(dep, bump), bind(edited, <task bump\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 2\n>), bind(consults, <load ./dep\n  find bump\n\ntask sure\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  send back, read n\n>), bind(calls, <load ./dep\n  find bump\n\ntask plain\n  take n, like number\n  like number\n  send back\n    call bump\n      read n\n>), bind(facts-move, false))
+
+host pushing, make(trace-case, bind(dep, <load @term/base/list\n  find list\n  find push\n\ntask grow\n  take xs, like list, like number\n  take x, like number\n  send back\n    call xs/push\n      read x\n>), bind(edited, <load @term/base/list\n  find list\n  find push\n\ntask grow\n  take xs, like list, like number\n  take x, like number\n  send back\n    call xs/slice\n      read x\n>), bind(consults, <load @term/base/list\n  find list\n\nload ./dep\n  find grow\n\ntask sure\n  take xs, like list, like number\n  like number\n  call grow\n    read xs\n    code 1\n  hold is-above(xs/length, 0)\n  send back, read xs/length\n>), bind(calls, <load @term/base/list\n  find list\n\nload ./dep\n  find grow\n\ntask plain\n  take xs, like list, like number\n  like number\n  call grow\n    read xs\n    code 1\n  send back, read xs/length\n>), bind(facts-move, true))
+
+host popping, make(trace-case, bind(dep, <load @term/base/list\n  find list\n  find pop\n\ntask drop-last\n  take xs, like list, like number\n  send back\n    call xs/slice\n>), bind(edited, <load @term/base/list\n  find list\n  find pop\n\ntask drop-last\n  take xs, like list, like number\n  send back\n    call xs/pop\n>), bind(consults, <load @term/base/list\n  find list\n  find push\n\nload ./dep\n  find drop-last\n\ntask sure\n  take xs, like list, like number\n  like number\n  call xs/push\n    code 1\n  call drop-last\n    read xs\n  hold is-above(xs/length, 0)\n  send back, read xs/length\n>), bind(calls, <load @term/base/list\n  find list\n\nload ./dep\n  find drop-last\n\ntask plain\n  take xs, like list, like number\n  like number\n  call drop-last\n    read xs\n  send back, read xs/length\n>), bind(facts-move, true))
+
+host extremum, make(trace-case, bind(dep, <dock load\n  load \<global:Math\>, name math\n\ntask top\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call math/max\n      read a\n      read b\n>), bind(edited, <dock load\n  load \<global:Math\>, name math\n\ntask top\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call math/min\n      read a\n      read b\n>), bind(consults, <load ./dep\n  find top\n\ntask sure\n  take a, like number\n  take b, like number\n  like number\n  save m, top(a, b)\n  hold is-minimum(m, a)\n  send back, read m\n>), bind(calls, <load ./dep\n  find top\n\ntask plain\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call top\n      read a\n      read b\n>), bind(facts-move, false))
+
+# THE KERNEL'S BODY, under the key with bodies (decision 093): a computed rule turns false. Lean, as the rule grammar is
+# written
+task theory-of
+  take yes, like text
+  like text
+
+  back <form flag\n  case yes\n  case no\n\ntask both\n  take a, like flag\n  take b, like flag\n\n  like flag\n\n  sift a\n    case yes\n      {yes}\n    case no\n      back make no\n>
+
+host use-dep, <load ./dep\n  find flag\n  find both\n\nrule computes-across-files\n  seat a, like flag\n  show hold\n    is-equal\n      both\n        make yes\n        a\n      a\n>
+
+form body-reading
+  link first-ok, like boolean
+  link same-none, like boolean
+  link edit-refuted, like boolean
+
+task carried-body
+  take after, like dynamic
+  like body-reading
+
+  host kept, new-map(0)
+  host first, build-at(kept, <>, theory-of(<back b>), use-dep, true)
+  host same, build-at(kept, <>, theory-of(<back b>), use-dep, true)
+  host edited, build-at(kept, <>, theory-of(<back make no>), use-dep, true)
+  back make(body-reading, bind(first-ok, answer-ok(first)), bind(same-none, none-built(same)), bind(edit-refuted, not(answer-ok(edited))))
+
+# THE POINTER IS ADVISORY: gone, damaged or overwritten costs a build or a right hit
+form pointer-reading
+  link stored-two, like boolean
+  link gone-both, like boolean
+  link written-back, like boolean
+  link damaged-both, like boolean
+  link healed-hit, like boolean
+
+task built-both
+  take answer, like dynamic
+  like boolean
+
+  back and(answer-ok(answer), is-equal(built-count(answer), 2))
+
+task pointer-advisory
+  take after, like dynamic
+  like pointer-reading
+
+  host kept, new-map(0)
+  build-over(kept, unfolding/dep, unfolding/consults)
+  host pointers, pointer-keys(kept)
+  host stored-two, is-equal(pointers/length, 2)
+  walk pointers
+    take key, like text
+    map-delete(kept, key)
+  host gone, build-over(kept, unfolding/dep, unfolding/consults)
+  host back-again, pointer-keys(kept)
+  host written-back, is-equal(back-again/length, 2)
+  walk back-again
+    take key, like text
+    map-set(kept, key, <\{"portable":"trace:nowhere#nothing#shape"\}>)
+  host damaged, build-over(kept, unfolding/dep, unfolding/consults)
+  host healed, build-over(kept, unfolding/dep, unfolding/consults)
+  back make(pointer-reading, bind(stored-two, stored-two), bind(gone-both, built-both(gone)), bind(written-back, written-back), bind(damaged-both, built-both(damaged)), bind(healed-hit, none-built(healed)))
+
+# a carried shape that is no longer carried: the locator no longer resolves, and the unit that consulted it is built
+form lost-reading
+  link lost-refused, like boolean
+  link plain-ok, like boolean
+
+task shape-lost
+  take after, like dynamic
+  like lost-reading
+
+  host kept, new-map(0)
+  host entry, <load ./dep\n  find bump\n\ntask sure\n  take n, like number\n  like number\n  save m, bump(n)\n  send back, read m\n>
+  host two-statements, <task bump\n  take n, like number\n  like number\n  save m\n    call add\n      read n\n      code 1\n  send back, read m\n>
+  build-over(kept, unfolding/dep, unfolding/consults)
+  host lost, build-over(kept, two-statements, unfolding/consults)
+  host plain, build-over(kept, unfolding/dep, entry)
+  back make(lost-reading, bind(lost-refused, not(answer-ok(lost))), bind(plain-ok, answer-ok(plain)))
+
+# TWO TRACES UNDER ONE NAME KEY: the same text of a unit consults differently when a name key cannot see why
+task back-and-forth
+  take after, like dynamic
+  like boolean
+
+  host kept, new-map(0)
+  host a, build-over(kept, unfolding/dep, unfolding/consults)
+  host b, build-over(kept, unfolding/edited, unfolding/consults)
+  host c, build-over(kept, unfolding/dep, unfolding/consults)
+  host d, build-over(kept, unfolding/edited, unfolding/consults)
+  back and(and(answer-ok(a), not(answer-ok(b))), and(answer-ok(c), not(answer-ok(d))))
+
+# a stored key stays one answer: the keys of a body edit differ, the name key's entry never holds an answer itself
+task body-edit-adds
+  take after, like dynamic
+  like boolean
+
+  host kept, new-map(0)
+  build-over(kept, unfolding/dep, unfolding/calls)
+  host before, map-keys(kept)
+  build-over(kept, unfolding/edited, unfolding/calls)
+  save added, 0
+  walk map-keys(kept)
+    take key, like text
+    fork test, not(list-contains(before, key))
+      hold
+        save added, add(added, 1)
+  save all-kept, true
+  walk before
+    take key, like text
+    fork test, not(map-has(kept, key))
+      hold
+        save all-kept, false
+  back and(is-above(added, 0), all-kept)
+
+# TWO COPIES OF A PROJECT IN ONE PROCESS: the hold memo's key leaves places out, so a hit in the second copy must not tell
+# the first copy's locator
+form copies-reading
+  link again-hit, like boolean
+  link own-file, like boolean
+
+task two-copies
+  take after, like dynamic
+  like copies-reading
+
+  host one, new-map(0)
+  host two, new-map(0)
+  build-at(one, </copy-one>, unfolding/dep, unfolding/consults, false)
+  build-at(two, </copy-two>, unfolding/dep, unfolding/consults, false)
+  host again, build-at(two, </copy-two>, unfolding/dep, unfolding/consults, false)
+  save own, false
+  save other, false
+  walk pointer-texts(two)
+    take text, like text
+    fork test, text-contains(text, </copy-two/dep.tree#>)
+      hold
+        save own, true
+    fork test, text-contains(text, </copy-one/>)
+      hold
+        save other, true
+  back make(copies-reading, bind(again-hit, none-built(again)), bind(own-file, and(own, not(other))))
+
+# A CONSULT THE POINTER LACKS IS A KEY THAT MISSED A DEPENDENCY, and `hits` says so: the answer stored with the recorder
+# silenced has an empty list, and the hit, built again with the recorder on, consults the shape
+task missed-consult
+  take after, like dynamic
+  like text
+
+  host kept, new-map(0)
+  host text, replace(unfolding/consults, <task sure>, <task sure-unrecorded>)
+  set-recorder(silent)
+  build-over(kept, unfolding/dep, text)
+  set-recorder(recorder)
+  set-variable(<TERM_CACHE_VERIFY>, <hits>)
+  save raised, <>
+  fork
+    mark unsafe
+    build-over(kept, unfolding/dep, text)
+  halt take
+    take cause
+    save raised, raised-words(cause)
+  drop-variable(<TERM_CACHE_VERIFY>)
+  back raised
+
+# the sink is set before any build, and each part runs after the one before it
+host sink-set, set-sink(collect)
+host first, part-one(sink-set)
+host body, part-two(first)
+host unfolding-read, run-case(unfolding, body)
+host pushing-read, run-case(pushing, unfolding-read)
+host popping-read, run-case(popping, pushing-read)
+host extremum-read, run-case(extremum, popping-read)
+host body-read, carried-body(extremum-read)
+host pointer-read, pointer-advisory(body-read)
+host lost-read, shape-lost(pointer-read)
+host forth, back-and-forth(lost-read)
+host adds, body-edit-adds(forth)
+host copies, two-copies(adds)
+host missed, missed-consult(copies)
+
+test <the consulting unit builds>
+  want hold, first/sure-ok
+
+test <the consulting unit carries bump's shape>
+  want hold, first/sure-carried
+
+test <the consulting unit's trace holds bump's shape>
+  want hold, first/sure-traced
+
+test <the calling unit builds>
+  want hold, first/plain-ok
+
+test <the calling unit carries bump's shape>
+  want hold, first/plain-carried
+
+test <the calling unit's trace holds nothing>
+  want hold, first/plain-traced-none
+
+test <a memo hit keeps the walk's trace>
+  want hold, first/again-traced
+
+test <two consulting tasks build>
+  want hold, first/two-ok
+
+test <a memo hit on the later task keeps its trace>
+  want hold, first/second-traced
+
+test <sure.tree under the trace check builds>
+  want hold, first/sure-checked/ok
+
+test <sure.tree passes the trace check>
+  want hold, is-equal(first/sure-checked/raised, <>)
+
+test <plain.tree under the trace check builds>
+  want hold, first/plain-checked/ok
+
+test <plain.tree passes the trace check>
+  want hold, is-equal(first/plain-checked/raised, <>)
+
+test <an untraced consult fails the trace check>
+  want hold, text-contains(first/untraced, <TERM_CACHE_VERIFY trace>)
+  want hold, text-contains(first/untraced, <#bump#shape>)
+
+test <the rule-stating unit builds>
+  want hold, body/ok
+
+test <it carries both's body>
+  want hold, body/carried-both
+
+test <its trace holds both's body>
+  want hold, body/traced-both
+
+test <its trace holds the cited rule's body>
+  want hold, body/traced-cited
+
+test <the rule-stating unit passes the trace check>
+  want hold, is-equal(body/checked, <>)
+
+test <a body the kernel reads, untraced, fails the trace check>
+  want hold, text-contains(body/silenced, <TERM_CACHE_VERIFY trace>)
+
+test <the one-line unfolding: the consulting unit builds>
+  want hold, unfolding-read/consulted
+
+test <the one-line unfolding: its pointer names the shape it consulted>
+  want hold, unfolding-read/pointer-names-shape
+
+test <the one-line unfolding: nothing changed, nothing built>
+  want hold, unfolding-read/same-none
+
+test <the one-line unfolding: the edit turns the verdict (a stale answer reads ok)>
+  want hold, unfolding-read/edit-refused
+
+test <the one-line unfolding: the revert is a hit>
+  want hold, unfolding-read/revert-hit
+
+test <the one-line unfolding: the calling unit builds>
+  want hold, unfolding-read/plain-ok
+
+test <the one-line unfolding: the calling unit is cut off, only the edited unit built>
+  want hold, unfolding-read/cut-right
+
+test <a task that is a list push: the consulting unit builds>
+  want hold, pushing-read/consulted
+
+test <a task that is a list push: its pointer names the shape it consulted>
+  want hold, pushing-read/pointer-names-shape
+
+test <a task that is a list push: nothing changed, nothing built>
+  want hold, pushing-read/same-none
+
+test <a task that is a list push: the edit turns the verdict (a stale answer reads ok)>
+  want hold, pushing-read/edit-refused
+
+test <a task that is a list push: the revert is a hit>
+  want hold, pushing-read/revert-hit
+
+test <a task that is a list push: the calling unit builds>
+  want hold, pushing-read/plain-ok
+
+test <a task that is a list push: the calling unit is built, the edit moved the name's facts>
+  want hold, pushing-read/cut-right
+
+test <a task that is a list pop: the consulting unit builds>
+  want hold, popping-read/consulted
+
+test <a task that is a list pop: its pointer names the shape it consulted>
+  want hold, popping-read/pointer-names-shape
+
+test <a task that is a list pop: nothing changed, nothing built>
+  want hold, popping-read/same-none
+
+test <a task that is a list pop: the edit turns the verdict (a stale answer reads ok)>
+  want hold, popping-read/edit-refused
+
+test <a task that is a list pop: the revert is a hit>
+  want hold, popping-read/revert-hit
+
+test <a task that is a list pop: the calling unit builds>
+  want hold, popping-read/plain-ok
+
+test <a task that is a list pop: the calling unit is built, the edit moved the name's facts>
+  want hold, popping-read/cut-right
+
+test <a task that is an extremum: the consulting unit builds>
+  want hold, extremum-read/consulted
+
+test <a task that is an extremum: its pointer names the shape it consulted>
+  want hold, extremum-read/pointer-names-shape
+
+test <a task that is an extremum: nothing changed, nothing built>
+  want hold, extremum-read/same-none
+
+test <a task that is an extremum: the edit turns the verdict (a stale answer reads ok)>
+  want hold, extremum-read/edit-refused
+
+test <a task that is an extremum: the revert is a hit>
+  want hold, extremum-read/revert-hit
+
+test <a task that is an extremum: the calling unit builds>
+  want hold, extremum-read/plain-ok
+
+test <a task that is an extremum: the calling unit is cut off, only the edited unit built>
+  want hold, extremum-read/cut-right
+
+test <a carried body: the rule builds>
+  want hold, body-read/first-ok
+
+test <a carried body: nothing changed, nothing built>
+  want hold, body-read/same-none
+
+test <a carried body: the edit refutes the rule (a stale answer reads ok)>
+  want hold, body-read/edit-refuted
+
+test <a pointer per unit is stored>
+  want hold, pointer-read/stored-two
+
+test <a pointer gone: both units built again, the answer the same>
+  want hold, pointer-read/gone-both
+
+test <and the build writes it back>
+  want hold, pointer-read/written-back
+
+test <a pointer naming what no unit holds: a miss, the answer the same>
+  want hold, pointer-read/damaged-both
+
+test <and the next build is a hit>
+  want hold, pointer-read/healed-hit
+
+test <a consulted shape no longer carried: the consulting unit is asked again and refuses>
+  want hold, lost-read/lost-refused
+
+test <another unit of the same dep builds>
+  want hold, lost-read/plain-ok
+
+test <going back and forth answers each side its own verdict>
+  want hold, forth
+
+test <a body edit stores a new answer for the edited unit only, with no overwrite of an answer>
+  want hold, adds
+
+test <a second copy in one process: its no-op builds nothing>
+  want hold, copies/again-hit
+
+test <and its pointer names its own file>
+  want hold, copies/own-file
+
+test <a hit that consults what its pointer lacks fails hits>
+  want hold, text-contains(missed, <hits trace>)

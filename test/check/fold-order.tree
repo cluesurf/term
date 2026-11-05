@@ -1,0 +1,58 @@
+note <fold on ORDER goals: Peano induction over comparisons about a base-at-zero recursive function>
+
+# Ported from fold-order.ts by statement (item 0556). `fold` on ORDER goals: Peano induction over comparisons (and
+# conjunctions of them) about a base-at-zero recursive function, each case closed by the product prover (check/induct.ts
+# checkFoldOrder).
+#
+# Every refusal sits beside a statement that must still be proven, so a checker that refused everything fails here.
+# The cases are the doubling sequence of space/hyperbolic/archimedes.tree, cosh 2^k a.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+host doubled-cosh, <task doubled-cosh\n  take p, like integer\n  take k, like integer\n  like integer\n  send back\n    fork test\n      hook test\n        call is-equal\n          read k\n          code 0\n      hook hold\n        read p\n      hook miss\n        call subtract\n          call multiply\n            code 2\n            call multiply\n              call doubled-cosh\n                read p\n                call subtract\n                  read k\n                  code 1\n              call doubled-cosh\n                read p\n                call subtract\n                  read k\n                  code 1\n          code 1\n>
+
+host grows, <\nrule doubling-grows-at-least-linearly\n  seat p, like integer\n  seat k, like integer\n  have p-is-a-cosh\n    call is-minimum\n      read p\n      code 1\n  have k-is-a-count\n    call is-minimum\n      read k\n      code 0\n  show hold\n    meet and\n      call is-minimum\n        call subtract\n          call doubled-cosh\n            read p\n            read k\n          code 1\n        call multiply\n          call add\n            read k\n            code 1\n          call subtract\n            read p\n            code 1\n      call is-minimum\n        call doubled-cosh\n          read p\n          read k\n        code 1\n  fold k\n>
+
+host passes, <\nrule doubling-passes-every-bound\n  seat p, like integer\n  seat m, like integer\n  have p-is-at-least-two\n    call is-minimum\n      read p\n      code 2\n  have m-is-a-count\n    call is-minimum\n      read m\n      code 0\n  show hold\n    call is-minimum\n      call doubled-cosh\n        read p\n        read m\n      call add\n        read m\n        code 2\n  fold m\n>
+
+host step-fails, <\nrule control-a-step-that-fails\n  seat p, like integer\n  seat k, like integer\n  have p-is-a-cosh\n    call is-minimum\n      read p\n      code 1\n  have k-is-a-count\n    call is-minimum\n      read k\n      code 0\n  show hold\n    call is-maximum\n      call doubled-cosh\n        read p\n        read k\n      read p\n  fold k\n>
+
+host base-fails, <\nrule control-a-base-that-fails\n  seat p, like integer\n  seat k, like integer\n  have p-is-a-cosh\n    call is-minimum\n      read p\n      code 1\n  have k-is-a-count\n    call is-minimum\n      read k\n      code 0\n  show hold\n    call is-minimum\n      call subtract\n        call doubled-cosh\n          read p\n          read k\n        code 1\n      call multiply\n        code 2\n        call multiply\n          call add\n            read k\n            code 1\n          call subtract\n            read p\n            code 1\n  fold k\n>
+
+host without-cosh, <\nrule control-growth-without-a-cosh\n  seat p, like integer\n  seat k, like integer\n  have k-is-a-count\n    call is-minimum\n      read k\n      code 0\n  show hold\n    meet and\n      call is-minimum\n        call subtract\n          call doubled-cosh\n            read p\n            read k\n          code 1\n        call multiply\n          call add\n            read k\n            code 1\n          call subtract\n            read p\n            code 1\n      call is-minimum\n        call doubled-cosh\n          read p\n          read k\n        code 1\n  fold k\n>
+
+host one-more, <\nrule control-passing-one-more\n  seat p, like integer\n  seat m, like integer\n  have p-is-at-least-two\n    call is-minimum\n      read p\n      code 2\n  have m-is-a-count\n    call is-minimum\n      read m\n      code 0\n  show hold\n    call is-minimum\n      call doubled-cosh\n        read p\n        read m\n      call add\n        read m\n        code 3\n  fold m\n>
+
+host about-counter, <\nrule control-a-hypothesis-about-the-counter\n  seat p, like integer\n  seat k, like integer\n  have p-is-a-cosh\n    call is-minimum\n      read p\n      code 1\n  have k-is-a-count\n    call is-minimum\n      read k\n      code 0\n  have k-is-small\n    call is-maximum\n      read k\n      code 5\n  show hold\n    call is-minimum\n      call doubled-cosh\n        read p\n        read k\n      code 1\n  fold k\n>
+
+# the task and a rule over it, compiled under the name s.tree
+task judged
+  take rule, like text
+  like compile-outcome
+
+  back compile-text(<{doubled-cosh}{rule}>, make(compile-choice, bind(file, <s.tree>)))
+
+test <the growth of the doubling sequence is proven>
+  want hold, judged(grows)/ok
+
+test <a bound passed by an explicit witness is proven>
+  want hold, judged(passes)/ok
+
+test <a step that fails is refused>
+  want hold, refused-as(judged(step-fails), <invalid-proof>)
+
+test <a base that fails is refused>
+  want hold, refused-as(judged(base-fails), <invalid-proof>)
+
+test <a conjunction missing a hypothesis is refused>
+  want hold, refused-as(judged(without-cosh), <invalid-proof>)
+
+test <one past the witness is refused>
+  want hold, refused-as(judged(one-more), <invalid-proof>)
+
+test <a hypothesis about the counter is refused>
+  want hold, refused-as(judged(about-counter), <invalid-proof>)

@@ -84,10 +84,10 @@ legacy tmp/pair-node-reach.ts  # term-self-host-001-0830
 legacy tmp/pair-private.ts
 legacy tmp/pair-prune.ts
 # retired, decision 112, test/check/module-scope.ts (item 0868): legacy tmp/pair-scope.ts
-legacy tmp/pair-extend.ts  # term-self-host-001-0831
+# retired, decision 112, test/compile/pins-unshared.ts (item 0831): legacy tmp/pair-extend.ts
 legacy tmp/pair-lost-writes.ts
 legacy tmp/pair-overload.ts
-legacy tmp/pair-effects.ts  # term-self-host-001-0832
+# retired, decision 112, test/check/effects.ts (item 0832): legacy tmp/pair-effects.ts
 legacy tmp/pair-native-env.ts
 # retired, decision 112, test/check/bind-cases.tree (item 0833): legacy tmp/pair-bind.ts
 legacy tmp/pair-lowered.ts
@@ -113,8 +113,8 @@ legacy tmp/pair-induct.ts
 # retired, decision 112, test/check/contract.tree (item 0836): legacy tmp/self-host/pairs/facts-hooked-contract.ts
 # retired, decision 112, test/compile/template-holes.ts (item 0837): legacy tmp/pair-template.ts
 # retired, decision 112, test/compile/unresolved-relative-load.ts (item 0838): legacy tmp/pair-load.ts
-legacy tmp/pair-simplify.ts  # term-self-host-001-0839
-legacy tmp/pair-format.ts  # term-self-host-001-0840
+legacy tmp/pair-simplify.ts
+legacy tmp/pair-format.ts
 legacy tmp/pair-line-layout.ts
 legacy tmp/pair-host.ts
 legacy tmp/pair-data-grammar.ts
@@ -209,14 +209,14 @@ pair analyze-entry --timeout 600000
 pair lint-driver --timeout 600000
 legacy tmp/self-host/pairs/view-handed.ts
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-gate-phase --timeout 600000
-pair minting --timeout 60000  # term-self-host-001-0855
-pair minting-face --timeout 60000  # term-self-host-001-0855
+# retired, decision 112, test/compile/slot-raise.ts, test/check/make-split.tree and test/check/word-forms.tree, 76 read as decision 027 rows 56 and 69 (item 0855): pair minting --timeout 60000
+# retired, decision 112, test/compile/slot-raise.ts, test/check/make-split.tree and test/check/word-forms.tree, 76 read as decision 027 rows 56 and 69 (item 0855): pair minting-face --timeout 60000
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-types-phase --timeout 600000
 pair kernel-terms
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-proofs-phase --timeout 600000
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-warnings-phase --timeout 600000
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-emit-phase --timeout 600000
-pair program-driver-phase --sample 200 --seed 7 --timeout 600000  # term-self-host-001-0866
+# retired, decision 112, test/compile/cache.ts, test/site/tell.ts and the board's compile suites, 26 of 200 read: the pair's duck cache, decision 058 and 034 (item 0866): pair program-driver-phase --sample 200 --seed 7 --timeout 600000
 pair backend-rust-face --timeout 600000
 pair backend-kotlin-face --timeout 600000
 # retired, decision 112, test/compile/cache-verify.ts (item 0856): pair cache-compile
@@ -261,3 +261,4 @@ pair time-profile-benchmark --timeout 600000
 pair lean-run-face --timeout 600000
 pair lean-export-terms --timeout 600000
 pair lean-export-whole --timeout 600000
+legacy tmp/pair-mill-check-scope.ts

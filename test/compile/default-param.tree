@@ -1,0 +1,42 @@
+note <A parameter's `fall` default is spelled in the emitted TypeScript signature (self-hosting-0033), so TypeScript that calls an emitted module directly gets the default the checker fills at Term call sites>
+
+# Ported from default-param.ts by task/term/suite-port.ts, finished by hand (item 0570). Found porting `check/arm`, whose
+# twelve TypeScript callers had to pass `binds ?? []` because the default reached only Term callers.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host text-text, <task count-binds\n  take binds\n    like list\n      like text\n    fall make list\n  like number\n  send back, read binds/length\n\ntask scale\n  take n, like number\n  take by, like number, fall 2\n  like number\n  send back, multiply(n, by)\n\ntask use\n  like number\n  save a, call count-binds\n  save b, call scale, code 3\n  send back, add(a, b)\n>
+
+host out, compile-text(text-text, make(compile-choice, bind(file, </gate/code/default.tree>), bind(lean, false)))
+
+# the emitted TypeScript, <> for a refused compile
+task ts
+  like text
+
+  fork test, out/ok
+    hold
+      back out/emitted
+  back <>
+
+test <it compiles>
+  want hold, out/ok
+
+test <a list default is in the signature>
+  host list-default, make pattern, <<function countBinds\(binds: string\[\] = \[\]\)>>
+  want hold, matches(list-default, ts())
+
+test <a number default is in the signature>
+  host number-default, make pattern, <<function scale\(n: number, by: number = 2\)>>
+  want hold, matches(number-default, ts())
+
+# `scale(3)` is folded to 6 by the optimizer, `count-binds` is small enough to inline, so the default reaches it either as
+# the argument or as the inlined read of it
+test <a Term call site still passes the default itself, so its output is unchanged>
+  host passed, make pattern, <<countBinds\(\[\]( as string\[\])?\)|\(\[\] as string\[\]\)\.length>>
+  want hold, matches(passed, ts())

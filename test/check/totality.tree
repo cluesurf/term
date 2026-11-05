@@ -1,7 +1,7 @@
 note <Totality tests: strict positivity (hard error) and termination (warning)>
 
-# Ported from totality.ts (item 0566). check/totality is the subject, and its front end is docked with it, parse, mill, resolve and
-# check, as the suite runs the steps itself (decision 106).
+# Ported from totality.ts (item 0566). check/totality is the subject, docked (decision 106), and the checked program it reads
+# comes from test/support/compiling's front-end (decision 119).
 
 load ../support/judging
   find make-record
@@ -11,18 +11,12 @@ load ../support/judging
 load ../support/reading
   find any-with
 
-dock load
-  load <@term/make/code/parser/tree>, name parser-tree
-  load <@term/make/code/compile/mill>, name mill-module
-  load <@term/make/code/check/resolve>, name resolve-module
-  load <@term/make/code/check/infer>, name infer-module
-  load <@term/make/code/check/totality>, name totality-module
+load ../support/compiling
+  find front-end
+  find compile-choice
 
-bind source-of
-  take text, like text
-  like dynamic
-  case node
-    text <(\{ file: "t.tree", text: $text \})>
+dock load
+  load <@term/make/code/check/totality>, name totality-module
 
 # a record type of one field, written as the program node the checker reads
 task record
@@ -81,27 +75,11 @@ bind warnings-size
   case node
     text <$report.warnings.length>
 
-task front-end
-  take text, like text
-  like dynamic
-
-  host parsed, parser-tree/parse(source-of(text))
-  fork test, not(parsed/ok)
-    hold
-      halt <parse failed>
-  host built, mill-module/mill(parsed/tree, <t.tree>)
-  fork test, not(built/ok)
-    hold
-      halt <mill failed>
-  resolve-module/resolve(built/program, <t.tree>)
-  infer-module/check(built/program, <t.tree>)
-  back built/program
-
 task report-of
   take text, like text
   like dynamic
 
-  back totality-module/check-totality(front-end(text), <t.tree>)
+  back totality-module/check-totality(front-end(text, make(compile-choice, bind(file, <t.tree>)))/program, <t.tree>)
 
 # fib decreases its argument on both recursive calls
 host fib-text, <task fib\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          call fib\n            call subtract\n              read n\n              code 1\n          call fib\n            call subtract\n              read n\n              code 2\n>

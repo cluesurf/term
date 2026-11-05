@@ -1,0 +1,102 @@
+note <which cask answers a device module natively, and which defers to its WebView>
+
+# Ported from cask-device-host.ts by statement (item 0569), device-layer-0013 and -0014. A cask built for macos, ios or
+# android resolves `@term/site/view/hosted` to the toolkit's answer, true; one built for rust (Linux and Windows) to the
+# fallback's, false. The device app's generated bridge then carries the rule both ways: the dispatcher answers `unhosted`
+# where there is no host, and the page's shim asks its WebView only on `unhosted`, never on a host's own `unavailable`.
+# Needs no toolchain and no machine. compile/load's collect-modules is the subject (decision 106), over the project at the
+# working directory, the Term root, as the original's projectResolver(process.cwd(), env) was.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+  find compiling-source
+  find file-text
+  find project-path
+
+load ../support/judging
+  find read-field
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/load>, name load-module
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind sources-of
+  take collected, like dynamic
+  like dynamic
+  case node
+    text <$collected.sources>
+
+host program, <load @term/site/view/hosted\n  find has-device-host\n\ntask main\n  call has-device-host\n>
+
+host any-hosted, make pattern, <<\/view\/native\/(?:[a-z-]+\/)?hosted\.tree$>>
+host toolkit-hosted, make pattern, <<\/native\/toolkit\/hosted\.tree$>>
+host fallback-hosted, make pattern, <<\/native\/hosted\.tree$>>
+
+# the hosted module an env's resolution reached, by its folder: toolkit, fallback, or none
+task hosted-for
+  take env, like text
+  like text
+
+  host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, env))))
+  host entry, make(compiling-source, bind(file, project-path(<.>, <tmp/cask-device-host.tree>)), bind(text, program))
+  save found, <>
+  walk sources-of(load-module/collect-modules(entry, resolve))
+    take one, like dynamic
+    host file, <{read-field(one, <file>)}>
+    fork test, and(is-equal(found, <>), matches(any-hosted, file))
+      hold
+        save found, file
+  fork test, matches(toolkit-hosted, found)
+    hold
+      back <toolkit>
+  fork test, matches(fallback-hosted, found)
+    hold
+      back <fallback>
+  back <none ({found})>
+
+test <a cask built for macos has the device hosts>
+  want hold, is-equal(hosted-for(<macos>), <toolkit>)
+
+test <a cask built for ios has the device hosts>
+  want hold, is-equal(hosted-for(<ios>), <toolkit>)
+
+test <a cask built for android has the device hosts>
+  want hold, is-equal(hosted-for(<android>), <toolkit>)
+
+test <a cask built for rust has none, so its page asks the WebView>
+  want hold, is-equal(hosted-for(<rust>), <fallback>)
+
+test <the device dispatcher answers unhosted where there is no host>
+  host dispatch, file-text(project-path(<.>, <deck/cask/test/device/dispatch.tree>))
+  want hold, text-contains(dispatch, <task device-answer>)
+  want hold, text-contains(dispatch, <text \<unhosted\>>)
+  want hold, text-contains(dispatch, <call has-device-host>)
+
+task shim-asks-on-unhosted
+  take shim, like text
+  like boolean
+
+  host text, file-text(project-path(<.>, <deck/site/code/view/native/webview/{shim}.tree>))
+  back and(text-contains(text, <text \<unhosted\>>), not(text-contains(text, <text \<unavailable\>>)))
+
+test <the battery shim asks its WebView on unhosted, and never on unavailable>
+  want hold, shim-asks-on-unhosted(<battery>)
+
+test <the clipboard shim asks its WebView on unhosted, and never on unavailable>
+  want hold, shim-asks-on-unhosted(<clipboard>)
+
+test <the vibration shim asks its WebView on unhosted, and never on unavailable>
+  want hold, shim-asks-on-unhosted(<vibration>)

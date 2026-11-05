@@ -1,0 +1,105 @@
+note <The x86 instruction table reads through its mill, every instruction, no exceptions>
+
+# Ported from operand-mill.ts by statement (item 0574). `deck/bind/code/linux/operand.tree` is 11,489 lines describing
+# 1,270 x86 instructions in its own dialect (`force adc` / `start 1, share al` / `write 0x14`). A custom `.tree` dialect
+# is integrated by defining a MILL, never by teaching the compiler its heads, so `deck/mill/code/tree/operand/mine.tree`
+# is that grammar and this is what holds it to the data. Whole-file and per-instruction, both: the whole-file run proves
+# the grammar describes the document, the per-instruction run names the line that stopped. The parser and the mill
+# runner are the subject (decision 106).
+
+load ../support/compiling
+  find file-text
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill-run>, name mill-run
+
+host grammar-path, <deck/mill/code/tree/operand/mine.tree>
+host table-path, <deck/bind/code/linux/operand.tree>
+
+# the table on 2026-08-30. A count that changes is a table that changed, which is worth noticing either way.
+host instructions, 1270
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# host value: a root node holding one group, the shape the runner reads
+bind root-of
+  take group, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "root", nodes: [$group] \})>
+
+# the head word of a group, <> when its first node is not a name
+task head-of
+  take group, like dynamic
+  like text
+
+  fork test, is-equal(group/nodes/length, 0)
+    hold
+      back <>
+  host first, group/nodes/0
+  fork test, is-unequal(first/kind, <name>)
+    hold
+      back <>
+  save out, <>
+  walk first/parts
+    take part, like dynamic
+    fork test, is-equal(part/kind, <chunk>)
+      hold
+        save out, <{out}{part/text}>
+  back out
+
+host grammar-parsed, parser-tree/parse(source-of(grammar-path, file-text(grammar-path)))
+host parsed, parser-tree/parse(source-of(table-path, file-text(table-path)))
+
+test <the operand grammar parses>
+  want hold, grammar-parsed/ok
+
+test <the instruction table parses>
+  want hold, parsed/ok
+
+# how many `force` groups read through the grammar's `force` rule, and how many it refused
+form tally
+  link read, like number
+  link refused, like number
+
+task read-each
+  take grammar, like dynamic
+  like tally
+
+  save read, 0
+  save refused, 0
+  walk parsed/tree/nodes
+    take group, like dynamic
+    fork test, is-equal(head-of(group), <force>)
+      hold
+        fork test, mill-run/run-mine(grammar, <force>, root-of(group))/ok
+          hold
+            save read, add(read, 1)
+          miss
+            save refused, add(refused, 1)
+  back make(tally, bind(read, read), bind(refused, refused))
+
+test <the whole table reads through the grammar>
+  want hold, grammar-parsed/ok
+  want hold, parsed/ok
+  host grammar, mill-run/read-mine-grammar(grammar-parsed/tree)
+  want hold, mill-run/run-mine(grammar, <operand>, parsed/tree)/ok
+
+# per instruction, so a refusal is counted by itself
+test <every instruction reads>
+  want hold, grammar-parsed/ok
+  want hold, parsed/ok
+  host counted, read-each(mill-run/read-mine-grammar(grammar-parsed/tree))
+  want hold, is-equal(counted/refused, 0)
+
+test <the table still holds 1270 instructions>
+  want hold, grammar-parsed/ok
+  want hold, parsed/ok
+  host counted, read-each(mill-run/read-mine-grammar(grammar-parsed/tree))
+  want hold, is-equal(add(counted/read, counted/refused), instructions)

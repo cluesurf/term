@@ -1,0 +1,103 @@
+note <The spellings this language has RETIRED, and the messages it retires them with>
+
+# Ported from retired.ts by statement (item 0575). Retired syntax was documented and enforced in the mill, and nothing
+# held the two together, so neither side could be trusted. This is the join. `mark <annotation>` IS NOT RETIRED:
+# metadata IS `mark` (`mark async`, `mark unsafe`, ...), and `note <word>` is the old spelling, still read and warned as
+# `note-metadata` (note/project/term/await-by-default-and-mark-metadata.md). A RETIREMENT NAMES ITS REPLACEMENT. The
+# parser and the mill are the subject (decision 106).
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "x.tree", text: $text \})>
+
+bind first-message
+  take result, like dynamic
+  like text
+  case node
+    text <($result.diagnostics[0]?.message ?? "")>
+
+# what a snippet that mills clean answers
+host clean, <clean>
+
+# mill a snippet, answering its first diagnostic message, or `clean` when it mills clean
+task refusal
+  take text, like text
+  like text
+
+  host parsed, parser-tree/parse(source-of(text))
+  fork test, parsed/ok
+    miss
+      back first-message(parsed)
+  host built, mill-module/mill(parsed/tree, <x.tree>)
+  fork test, built/ok
+    hold
+      back clean
+  back first-message(built)
+
+# each retired spelling, and the word its message must name so a reader learns the replacement
+host bust, refusal(<task t\n  like void\n  bust \<nope\>\n>)
+
+test <`bust` is refused>
+  want hold, is-unequal(bust, clean)
+
+test <and the message names `halt`>
+  want hold, text-contains(bust, <halt>)
+
+host send-kink, refusal(<task t\n  like void\n  send kink, text \<nope\>\n>)
+
+test <`send kink` is refused>
+  want hold, is-unequal(send-kink, clean)
+
+test <and the message names `halt` for send kink>
+  want hold, text-contains(send-kink, <halt>)
+
+host find-as, refusal(<load @term/base/code/list\n  find get as list-get\n>)
+
+test <`find X as Y` is refused>
+  want hold, is-unequal(find-as, clean)
+
+test <and the message names `name`>
+  want hold, text-contains(find-as, <name>)
+
+# retired 2026-08-31: one word meant both the native FFI binding and a URL route
+host dock-path, refusal(<view page\n  view text, text \<hi\>\n\ndock /\n  view page\n>)
+
+test <`dock </path>` is refused>
+  want hold, is-unequal(dock-path, clean)
+
+test <and the message names `hook </path>`>
+  want hold, text-contains(dock-path, <hook \</path\>>)
+
+# `mark` as metadata is LIVE, both spellings, asserted in both directions so the docs and the compiler cannot drift
+# apart again without a test moving. `mark` is also a record's durable identity: a uuid is a text node rather than a
+# group, and a variable's name is the variable, not an annotation word.
+test <`mark async` still marks a task async, the same as `note async`>
+  want hold, is-equal(refusal(<task t\n  mark async\n  like void\n  send back\n>), clean)
+
+test <`link <field>, mark private` still mills, which is most of the real uses>
+  want hold, is-equal(refusal(<form thing\n  link dock, mark private\n  link name, like text\n>), clean)
+
+test <`mark <uuid>` still mills>
+  want hold, is-equal(refusal(<form thing\n  mark \<0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19\>\n  link name, like text\n>), clean)
+
+# and the FFI forms are what `dock` means now
+test <`dock load` and `dock type` still mill>
+  want hold, is-equal(refusal(<dock load\n  load \<global:console\>, name console\n\ndock type\n  load \<any\>, name handle\n>), clean)
+
+# These two DO fail the build, so nothing wrong compiles. They fail at name resolution ("the name `wave` is not
+# defined") rather than with a retirement message, so a reader is told what broke and not what to write. Recorded as the
+# current behaviour, and a fair thing to improve: once the mill refuses one, give it a message and move this case up.
+test <`wave true` mills, and is caught later by name resolution rather than here>
+  want hold, is-equal(refusal(<task t\n  like boolean\n  send back, wave true\n>), clean)
+
+test <`mark 42` mills, and is caught later by name resolution rather than here>
+  want hold, is-equal(refusal(<task t\n  like number\n  send back, mark 42\n>), clean)

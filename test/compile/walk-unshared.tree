@@ -1,0 +1,57 @@
+note <The counted walk shares nothing (item term-self-host-001-0195, D011 rule 8, traps T049)>
+
+# Ported from walk-unshared.ts by statement (item 0577). compile/mint-bridge lowers `walk size` to a `while`, and it once
+# built the counter, the bound, the step and zero as one node each and stood that node at every place it wrote, so an
+# analysis keyed by node identity saw a different program per backend. Each program below is checked unoptimized (the
+# stage before the simplifier, which shares on purpose) and its places counted by `census` of task/term/shared-nodes,
+# docked by its package path (decision 121): none may stand twice, and a census of ten places or fewer counts nothing.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+dock load
+  load <@term/term/task/term/shared-nodes>, name shared-nodes
+
+bind map-size
+  take map, like dynamic
+  like number
+  case node
+    text <$map.size>
+
+host literal-step, <task evens\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    bind step, code 2\n    hook next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n>
+
+host negative-step, <task down\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, read n\n    bind head, code 0\n    bind step, code -1\n    hook next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n>
+
+host variable-step, <task by\n  take n, like number\n  take s, like number\n  like number\n  save count, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    bind step, read s\n    hook next\n      save count\n        call add\n          read count\n          code 1\n  send back, read count\n>
+
+host computed-step, <task by-sum\n  take n, like number\n  take s, like number\n  like number\n  save count, code 0\n  walk size\n    bind base, code 0\n    bind head\n      call add\n        read n\n        code 1\n    bind step\n      call add\n        read s\n        code 0\n    hook next\n      save count\n        call add\n          read count\n          code 1\n  send back, read count\n>
+
+host nested-turn, <task skip-odd\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    take i\n    bind base, code 0\n    bind head, read n\n    hook next\n      fork test\n        hook test\n          call is-equal\n            call modulo\n              read i\n              code 2\n            code 1\n        hook hold\n          turn next\n      fork test\n        hook test\n          call is-equal\n            read i\n            code 4\n        hook hold\n          turn next\n      save total\n        call add\n          read total\n          read i\n  send back, read total\n>
+
+# true when the program builds unoptimized and its census counts more than ten places, none of them shared
+task unshared
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, make(compile-choice, bind(file, <gate/code/walk.tree>), bind(optimize, false)))
+  fork test, is-unequal(out/ok, true)
+    hold
+      back false
+  host counted, shared-nodes/census(out/program, false)
+  back and(is-above(counted/places, 10), is-equal(map-size(counted/shared), 0))
+
+test <a literal step: places, none shared>
+  want hold, unshared(literal-step)
+
+test <a negative literal step: places, none shared>
+  want hold, unshared(negative-step)
+
+test <a variable step: places, none shared>
+  want hold, unshared(variable-step)
+
+test <a computed head and step: places, none shared>
+  want hold, unshared(computed-step)
+
+test <turn next in a nested fork: places, none shared>
+  want hold, unshared(nested-turn)

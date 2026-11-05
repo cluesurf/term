@@ -673,13 +673,16 @@ ${decodes(
 // ---- 4. proof irrelevance holds for a truncation's constructor at its own arity, and nowhere past it ----
 // `mark prop` makes any two `wrap x` equal. The eliminator's computing rule applies `wrap x` to a motive and branches,
 // and then the LAST argument is a branch: `out1 (wrap true)` (branch \v. true) and `out2 (wrap true)` (branch \v. false)
-// were convertible until 2026-10-05, though in every model of the eliminator they are true and false.
+// were convertible until 2026-10-05, though in every model of the eliminator they are true and false. Since decision 003
+// (subsingleton elimination) a match on a truncation returns only a proposition, so `out1` and `out2` are refused.
 const TRUNCATION = `${TYPES}
 form trunc
   mark prop
   case wrap
     link v, like bool
+`
 
+const OUTS = `
 task out1
   take t, like trunc
   like bool
@@ -721,7 +724,7 @@ ${wrapped('false')}
 }
 
 {
-  const result = compiles(`${TRUNCATION}
+  const result = compiles(`${TRUNCATION}${OUTS}
 rule past-the-arity
   show hold
     call is-equal
@@ -733,11 +736,8 @@ ${wrapped('true', 8)}
 `)
 
   ok(
-    'and only at its arity: out1 (wrap true) == out2 (wrap true) is refused',
-    !result.ok &&
-      result.codes.includes(
-        'invalid-proof: this proof does not establish the equality',
-      ),
+    'out1 and out2 read a truncation into bool, so they are refused (decision 003)',
+    !result.ok && result.codes.includes('is mark prop'),
     result.codes,
   )
 }

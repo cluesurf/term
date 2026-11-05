@@ -1,0 +1,749 @@
+note <A find lowers in a Term pass over the minted form>
+
+# Ported from find-desugar.ts by statement (item 0570). compile/find-lower.tree `lower-finds` rewrites each minted
+# `find-query` into the base forms the bridge lowers: a `call` of `find-one`, `find-all` or `find-some` over
+# `bind query, make find-query ...` and `bind body, task ...` (spec section 6.2). The parser, the mill and the lowering are
+# the subject (decision 106). Held here: the lowered tree is, field for field, what the code grammar mints for the program
+# written out by hand, spans and nodes aside; the shorthand and the explicit spelling lower to one tree; a find in a real
+# file compiles to the TypeScript of the hand-written program; a value with no find comes back as the same object; what the
+# pass cannot lower is a problem with the span of the find. The original's failure texts (its `pretty` and
+# `firstDifference`) and its PRINT output only explain a failure, and are not ported.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/judging
+  find make-record
+  find truth
+
+load ../support/walking
+  find fields-of
+  find field-of
+  find json-of
+  find is-written
+
+load @term/base/list
+  find sort
+  find contains, name list-contains
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find split
+  find pad-left
+
+load @term/base/text/util
+  find join
+  find count-occurrences
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+dock load
+  load <@term/make/code/parser/tree>, name find-parser
+  load <@term/make/code/compile/mill-load>, name mill-load
+  load <@term/make/code/compile/mill-run>, name mill-run
+  load <@term/make/code/compile/find-lower>, name lowering
+  load <node:path>, name find-path
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+# host value: the groups of a mill match, a Map of capture lists
+bind match-groups
+  take match, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$match.values()]>
+
+# host value: a minted value's own text, a word, a number or a bigint
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# host value: a minted form's fields as the Map the lowering takes
+bind one-field
+  take name, like text
+  take items, like list, like dynamic
+  like dynamic
+  case node
+    text <new Map([[$name, $items]])>
+
+# host reflect: whether two values are one object
+bind same-object
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left === $right)>
+
+host grammar, mill-load/load-role-grammar(<deck/mill/code/tree>, <code>)
+
+test <the code grammar loads clean>
+  want hold, is-equal(grammar/problems/length, 0)
+  want hold, is-equal(grammar/collisions/length, 0)
+
+# ---- reading a statement both ways ----
+
+# a source minted through `flow`, as a task body's statements, lowered (`run-code-mint`) or not (`run-mint`). `ok` is
+# false where the original answered undefined: the parse or the mine failed
+form reading
+  link ok, like boolean
+  link values, like list, like dynamic
+  link problems, like list, like dynamic
+
+task unread
+  like reading
+
+  host values, make list
+  host problems, make list
+  back make(reading, bind(ok, false), bind(values, values), bind(problems, problems))
+
+task mint-source
+  take source, like text
+  take lowered, like boolean
+  like reading
+
+  host parsed, find-parser/parse(make(file-and-text, bind(file, <find.tree>), bind(text, source)))
+  fork test, truth(parsed/ok)
+    miss
+      back unread()
+  host values, make list
+  host problems, make list
+  walk parsed/tree/nodes
+    take group, like dynamic
+    host mined, mill-run/run-mine(grammar/mine, <flow>, make-record(make(list, <kind>, <root>, <nodes>, make(list, group))))
+    fork test, truth(mined/ok)
+      miss
+        back unread()
+    walk match-groups(mined/match)
+      take captures, like dynamic
+      walk captures
+        take capture, like dynamic
+        fork test, is-equal(capture/kind, <match>)
+          hold
+            fork test, lowered
+              hold
+                host result, mill-run/run-code-mint(grammar/mint, capture/rule, capture/match, capture/node)
+                walk result/values
+                  take value, like dynamic
+                  values/push(value)
+                walk result/problems
+                  take problem, like dynamic
+                  problems/push(problem)
+              miss
+                walk mill-run/run-mint(grammar/mint, capture/rule, capture/match, capture/node)
+                  take value, like dynamic
+                  values/push(value)
+  back make(reading, bind(ok, true), bind(values, values), bind(problems, problems))
+
+# a minted value as a text with no span, no node and no empty field, fields in name order
+task canon
+  take value, like dynamic
+  like text
+
+  host kind, text-of(value/kind)
+  fork test, is-equal(kind, <word>)
+    hold
+      back <w:{text-of(value/value)}>
+  fork test, is-equal(kind, <text>)
+    hold
+      back <t:{json-of(value/value)}>
+  fork test, is-equal(kind, <number>)
+    hold
+      fork test, truth(value/decimal)
+        hold
+          back <n:{text-of(value/value)}.>
+      back <n:{text-of(value/value)}>
+  host parts, make list
+  walk sort(fields-of(value/fields), from-texts)
+    take key, like text
+    host items, field-of(value/fields, key)
+    fork test, is-above(items/length, 0)
+      hold
+        host inner, make list
+        walk items
+          take item, like dynamic
+          inner/push(canon(item))
+        parts/push(<{key}=[{join(inner, < >)}]>)
+  back <{text-of(value/form)}({join(parts, < >)})>
+
+# every value of a reading in canon form, one per line
+task canon-all
+  take values, like list, like dynamic
+  like text
+
+  host out, make list
+  walk values
+    take value, like dynamic
+    out/push(canon(value))
+  back join(out, <\n>)
+
+# the first value of a reading in canon form, empty when there is none
+task first-canon
+  take read-back, like reading
+  like text
+
+  fork test, and(read-back/ok, is-above(read-back/values/length, 0))
+    hold
+      back canon(read-back/values/0)
+  back <>
+
+# ---- the hand-written targets ----
+#
+# Written out the way spec section 6.2 shows them, with every field of `find-query` (the empty parts as `make list`,
+# `code 0` for no limit, `from-seconds` of 0 for no wait), each at indent 0 and shifted into place.
+
+task shifted
+  take text, like text
+  take by, like number
+  like text
+
+  host pad, pad-left(<>, by, < >)
+  host out, make list
+  walk split(text, <\n>)
+    take line, like text
+    fork test, is-equal(line, <>)
+      hold
+        out/push(line)
+      miss
+        out/push(<{pad}{line}>)
+  back join(out, <\n>)
+
+task shifted-all
+  take items, like list, like text
+  take by, like number
+  like text
+
+  host out, make list
+  walk items
+    take item, like text
+    out/push(shifted(item, by))
+  back join(out, <>)
+
+task no-texts
+  like list, like text
+
+  back make list
+
+task have-test
+  take mode, like text
+  take name, like text
+  take value, like text
+  like text
+
+  back <make {mode}\n  bind name, text \<{name}\>\n  bind value\n    make text\n      bind value, \<{value}\>\n>
+
+task hand-step
+  take kind, like text
+  take relation, like text
+  take tests, like list, like text
+  like text
+
+  back <make find-step\n  bind kind, text \<{kind}\>\n  bind like, text \<{relation}\>\n  bind turn, text \<\>\n  bind depth, text \<\>\n  bind test\n    make list\n{shifted-all(tests, 6)}>
+
+form query-parts
+  link path, like list, like text
+  link sift, like list, like text
+  link size, like text
+  link head, like text
+  link wait, like text
+
+task path-parts
+  take path, like list, like text
+  like query-parts
+
+  back make(query-parts, bind(path, path), bind(sift, no-texts()), bind(size, <code 0>), bind(head, <code 0>), bind(wait, <call from-seconds\n  code 0\n>))
+
+task plain-parts
+  like query-parts
+
+  back path-parts(no-texts())
+
+task hand-query
+  take count, like text
+  take base, like text
+  take line, like text
+  take parts, like query-parts
+  like text
+
+  back <bind query\n  make find-query\n    bind count\n      make {count}\n    bind base\n{shifted(base, 6)}    bind path\n      make list\n{shifted-all(parts/path, 8)}    bind union\n      make list\n    bind back\n      make list\n    bind sort\n      make list\n    bind size, {parts/size}\n    bind head, {parts/head}\n    bind sift\n      make list\n{shifted-all(parts/sift, 8)}    bind wait\n{shifted(parts/wait, 6)}    bind line, text \<{line}\>\n>
+
+task hand-body
+  take param, like text
+  take kind, like text
+  take statements, like text
+  like text
+
+  back <bind body\n  task\n    take {param}, like {kind}\n{shifted(statements, 4)}>
+
+task hand-call
+  take name, like text
+  take query-text, like text
+  take body-text, like text
+  like text
+
+  back <call {name}\n{shifted(query-text, 2)}{shifted(body-text, 2)}>
+
+host run-line, <read it\n  link run, \<npm dev\>\n>
+host server-pane, hand-step(<pane>, <>, make(list, have-test(<have>, <title>, <server>)))
+host spec-hand, hand-call(<find-one>, hand-query(<one>, server-pane, <find one pane>, plain-parts()), hand-body(<it>, <pane>, run-line))
+
+# what one fixture says: both read as one value, the two trees are one, nothing was left unlowered
+form fixture-check
+  link reads, like boolean
+  link hand-reads, like boolean
+  link same, like boolean
+  link clean, like boolean
+
+task checked
+  take find-text, like text
+  take hand-text, like text
+  like fixture-check
+
+  host lowered, mint-source(find-text, true)
+  host hand, mint-source(hand-text, false)
+  host same, and(and(lowered/ok, hand/ok), is-equal(canon-all(lowered/values), canon-all(hand/values)))
+  back make(fixture-check, bind(reads, and(lowered/ok, is-equal(lowered/values/length, 1))), bind(hand-reads, and(hand/ok, is-equal(hand/values/length, 1))), bind(same, same), bind(clean, and(lowered/ok, is-equal(lowered/problems/length, 0))))
+
+host spec-example, checked(<find pane\n  have title, \<server\>\n  run \<npm dev\>>, spec-hand)
+
+test <the example of spec 6.2: find pane / have title, run: the find reads>
+  want hold, spec-example/reads
+
+test <the example of spec 6.2: find pane / have title, run: the hand-written program reads>
+  want hold, spec-example/hand-reads
+
+test <the example of spec 6.2: find pane / have title, run: the lowered tree is the hand-written tree>
+  want hold, spec-example/same
+
+test <the example of spec 6.2: find pane / have title, run: nothing was left unlowered>
+  want hold, spec-example/clean
+
+host explicit-example, checked(<find one\n  base pane\n    have title, \<server\>\n\n  run \<npm dev\>>, spec-hand)
+
+test <its explicit spelling: find one / base pane: the find reads>
+  want hold, explicit-example/reads
+
+test <its explicit spelling: find one / base pane: the hand-written program reads>
+  want hold, explicit-example/hand-reads
+
+test <its explicit spelling: find one / base pane: the lowered tree is the hand-written tree>
+  want hold, explicit-example/same
+
+test <its explicit spelling: find one / base pane: nothing was left unlowered>
+  want hold, explicit-example/clean
+
+host all-example, checked(<find all\n  base pane\n\n  clear>, hand-call(<find-all>, hand-query(<all>, hand-step(<pane>, <>, no-texts()), <find all pane>, plain-parts()), hand-body(<it>, <pane>, <read it\n  link clear\n>)))
+
+test <find all: a base with no test, the body once per hit: the find reads>
+  want hold, all-example/reads
+
+test <find all: a base with no test, the body once per hit: the hand-written program reads>
+  want hold, all-example/hand-reads
+
+test <find all: a base with no test, the body once per hit: the lowered tree is the hand-written tree>
+  want hold, all-example/same
+
+test <find all: a base with no test, the body once per hit: nothing was left unlowered>
+  want hold, all-example/clean
+
+host some-example, checked(<find some\n  base pane\n    have title, \<server\>>, hand-call(<find-some>, hand-query(<some>, server-pane, <find some pane>, plain-parts()), <>))
+
+test <find some: no body, a yes or no: the find reads>
+  want hold, some-example/reads
+
+test <find some: no body, a yes or no: the hand-written program reads>
+  want hold, some-example/hand-reads
+
+test <find some: no body, a yes or no: the lowered tree is the hand-written tree>
+  want hold, some-example/same
+
+test <find some: no body, a yes or no: nothing was left unlowered>
+  want hold, some-example/clean
+
+host lack-example, checked(<find pane, name server\n  lack title, \<shell\>\n  focus>, hand-call(<find-one>, hand-query(<one>, hand-step(<pane>, <>, make(list, have-test(<lack>, <title>, <shell>))), <find one pane>, plain-parts()), hand-body(<server>, <pane>, <read server\n  link focus\n>)))
+
+test <a lack, and the result named by `, name`: the find reads>
+  want hold, lack-example/reads
+
+test <a lack, and the result named by `, name`: the hand-written program reads>
+  want hold, lack-example/hand-reads
+
+test <a lack, and the result named by `, name`: the lowered tree is the hand-written tree>
+  want hold, lack-example/same
+
+test <a lack, and the result named by `, name`: nothing was left unlowered>
+  want hold, lack-example/clean
+
+host window-step, hand-step(<window>, <>, make(list, have-test(<have>, <title>, <Term>)))
+host path-steps, make(list, hand-step(<tab>, <>, no-texts()), hand-step(<pane>, <>, make(list, have-test(<have>, <title>, <server>))))
+host path-example, checked(<find one\n  base window\n    have title, \<Term\>\n\n  link tab\n\n  link pane\n    have title, \<server\>\n\n  run \<npm dev\>>, hand-call(<find-one>, hand-query(<one>, window-step, <find one window tab pane>, path-parts(path-steps)), hand-body(<it>, <pane>, run-line)))
+
+test <a path: the type of the body is the LAST kind: the find reads>
+  want hold, path-example/reads
+
+test <a path: the type of the body is the LAST kind: the hand-written program reads>
+  want hold, path-example/hand-reads
+
+test <a path: the type of the body is the LAST kind: the lowered tree is the hand-written tree>
+  want hold, path-example/same
+
+test <a path: the type of the body is the LAST kind: nothing was left unlowered>
+  want hold, path-example/clean
+
+host relation-steps, make(list, hand-step(<person>, <follows>, no-texts()))
+host relation-example, checked(<find one\n  base person\n\n  link person, like follows\n\n  click>, hand-call(<find-one>, hand-query(<one>, hand-step(<person>, <>, no-texts()), <find one person person>, path-parts(relation-steps)), hand-body(<it>, <person>, <read it\n  link click\n>)))
+
+test <a link with its relation: the find reads>
+  want hold, relation-example/reads
+
+test <a link with its relation: the hand-written program reads>
+  want hold, relation-example/hand-reads
+
+test <a link with its relation: the lowered tree is the hand-written tree>
+  want hold, relation-example/same
+
+test <a link with its relation: nothing was left unlowered>
+  want hold, relation-example/clean
+
+host limited-parts, make(query-parts, bind(path, no-texts()), bind(sift, make(list, <text \<path\>\n>)), bind(size, <50>), bind(head, <3>), bind(wait, <call from-seconds\n  code 10\n>))
+host limited-example, checked(<find all\n  base file\n\n  sift path\n  size 50\n  head 3\n  wait \<10s\>>, hand-call(<find-all>, hand-query(<all>, hand-step(<file>, <>, no-texts()), <find all file>, limited-parts), hand-body(<it>, <file>, <>)))
+
+test <a size, a head, a sift, a wait of seconds: the find reads>
+  want hold, limited-example/reads
+
+test <a size, a head, a sift, a wait of seconds: the hand-written program reads>
+  want hold, limited-example/hand-reads
+
+test <a size, a head, a sift, a wait of seconds: the lowered tree is the hand-written tree>
+  want hold, limited-example/same
+
+test <a size, a head, a sift, a wait of seconds: nothing was left unlowered>
+  want hold, limited-example/clean
+
+# ---- the shorthand and the explicit spelling are one tree ----
+
+test <shorthand and explicit lower to one tree>
+  host short, mint-source(<find pane\n  have title, \<server\>\n  run \<npm dev\>>, true)
+  host explicit, mint-source(<find one\n  base pane\n    have title, \<server\>\n\n  run \<npm dev\>>, true)
+  want hold, short/ok
+  want hold, explicit/ok
+  want hold, is-equal(canon-all(short/values), canon-all(explicit/values))
+
+# ---- the body ----
+
+host pipe, mint-source(<find pane\n  run \<npm dev\>\n  click\n  call own\n  save line, \<x\>>, true)
+host pipe-text, first-canon(pipe)
+
+test <a body with a bare head, a bare word, a call and a keyword lowers>
+  want hold, pipe/ok
+  want hold, is-equal(pipe/problems/length, 0)
+
+test <a bare head with arguments is a pipe from the result>
+  want hold, text-contains(pipe-text, <seed-read(link=[call-link(name=[w:run] seed=[t:"npm dev"])] path=[w:it])>)
+
+test <a bare word is a pipe from the result>
+  want hold, text-contains(pipe-text, <seed-read(link=[call-link(name=[w:click])] path=[w:it])>)
+
+test <`call x` stays a call>
+  want hold, text-contains(pipe-text, <call(name=[w:own])>)
+
+test <a keyword form keeps its meaning>
+  want hold, text-contains(pipe-text, <save(name=[w:line]>)
+
+# `wait true`, `take z` and a lone `tick` mint as a call or a word for lack of a form of their own: still keywords
+test <a keyword head that mints as a call or a word is not piped>
+  host kept, mint-source(<find pane\n  wait true\n  take z\n  tick\n  halt>, true)
+  host kept-text, first-canon(kept)
+  want hold, kept/ok
+  want hold, text-contains(kept-text, <seed-call-open(name=[w:wait]>)
+  want hold, text-contains(kept-text, <seed-call-open(name=[w:take]>)
+  want hold, text-contains(kept-text, <w:tick>)
+  want hold, is-equal(text-contains(kept-text, <call-link(name=[w:wait]>), false)
+  want hold, is-equal(text-contains(kept-text, <call-link(name=[w:tick]>), false)
+
+# ---- the query parts ----
+
+host parts, mint-source(<find all, name rows\n  base user\n    have status, \<active\>\n    hold is-minimum\n      bind a, read self/age\n      bind b, code 18\n\n  link friend, like follows\n\n  back name\n  back given, read self/first-name\n  sort fall, name size\n  sift name\n  size 50\n  head 3\n  wait \<10s\>>, true)
+host parts-text, first-canon(parts)
+
+test <every query part lowers>
+  want hold, parts/ok
+  want hold, is-equal(parts/problems/length, 0)
+
+test <the base holds its haves, then its holds>
+  want hold, text-contains(parts-text, <make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])>)
+  want hold, is-below(index-of(parts-text, <seed-text(value=[t:"status"])>), index-of(parts-text, <seed-text(value=[t:"is-minimum"])>))
+
+test <a hold names its predicate and reads its operands from the component or from a value>
+  want hold, text-contains(parts-text, <bind(name=[w:a] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"age"])])] name=[w:self])])>)
+  want hold, text-contains(parts-text, <bind(name=[w:b] seed=[make(bind=[bind(name=[w:value] seed=[make(bind=[bind(name=[w:value] seed=[seed-code(value=[n:18])])] name=[w:number])])] name=[w:value])])>)
+
+test <a link is a step with its relation>
+  want hold, text-contains(parts-text, <bind(name=[w:like] seed=[seed-text(value=[t:"follows"])])>)
+
+test <a back reads the property of that name, or the one after it>
+  want hold, text-contains(parts-text, <make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])]) bind(name=[w:from] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])])] name=[w:self])])] name=[w:find-back])>)
+  want hold, text-contains(parts-text, <bind(name=[w:name] seed=[seed-text(value=[t:"first-name"])])>)
+
+test <a sort says fall as a flag>
+  want hold, text-contains(parts-text, <bind(name=[w:fall] seed=[w:true])>)
+
+test <size and head are the expressions written>
+  want hold, text-contains(parts-text, <bind(name=[w:size] seed=[n:50])>)
+  want hold, text-contains(parts-text, <bind(name=[w:head] seed=[n:3])>)
+
+test <a wait of 10s is from-seconds of 10>
+  want hold, text-contains(parts-text, <call(name=[w:from-seconds] seed=[seed-code(value=[n:10])])>)
+
+test <with back lines the body takes the record, named by `, name`>
+  want hold, text-contains(parts-text, <take(like=[like(name=[w:unknown])] name=[w:rows])>)
+
+host meet, mint-source(<find all\n  base user\n    meet lack\n      have status, \<banned\>\n\n  back id>, true)
+
+test <a meet lowers to a test with its members>
+  want hold, meet/ok
+  want hold, is-equal(meet/problems/length, 0)
+
+test <the meet carries its kind and its tests>
+  want hold, text-contains(first-canon(meet), <make(bind=[bind(name=[w:kind] seed=[seed-text(value=[t:"lack"])]) bind(name=[w:test] seed=[make(name=[w:list] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])>)
+
+test <a wait in milliseconds is from-milliseconds>
+  host waits, mint-source(<find pane\n  wait \<500ms\>>, true)
+  want hold, text-contains(first-canon(waits), <call(name=[w:from-milliseconds] seed=[seed-code(value=[n:500])])>)
+
+test <a wait in minutes is from-minutes>
+  host minutes, mint-source(<find pane\n  wait \<2m\>>, true)
+  want hold, minutes/ok
+  want hold, text-contains(first-canon(minutes), <w:from-minutes>)
+
+# ---- a find as a value and nested ----
+
+host as-value, mint-source(<save known\n  find some\n    base person\n      have name, \<Alice\>>, true)
+host as-value-text, first-canon(as-value)
+
+test <a find in value position lowers to the call>
+  want hold, as-value/ok
+  want hold, text-contains(as-value-text, <call(>)
+  want hold, text-contains(as-value-text, <name=[w:find-some]>)
+
+test <and no find-query form is left>
+  want hold, is-equal(text-contains(as-value-text, <find-query(>), false)
+
+host nested, mint-source(<find window\n  have title, \<Term\>\n  find button\n    have text, \<Save\>\n    click>, true)
+host nested-text, first-canon(nested)
+
+test <a nested find lowers inside the outer body>
+  want hold, nested/ok
+  want hold, is-equal(nested/problems/length, 0)
+
+test <both finds are calls and no find-query form is left>
+  want hold, is-equal(count-occurrences(nested-text, <name=[w:find-one]>), 2)
+  want hold, is-equal(text-contains(nested-text, <find-query(>), false)
+
+# ---- no change for a program with no find ----
+
+# the plain mint and the lowered mint of a source with no find are one tree, with no problem
+task unchanged
+  take source, like text
+  like boolean
+
+  host plain, mint-source(source, false)
+  host lowered, mint-source(source, true)
+  fork test, and(plain/ok, lowered/ok)
+    miss
+      back false
+  back and(and(is-equal(lowered/problems/length, 0), is-above(plain/values/length, 0)), is-equal(canon-all(plain/values), canon-all(lowered/values)))
+
+test <no find, no change: "save x, \<a\>\\ncall own\\n  bind y,">
+  want hold, unchanged(<save x, \<a\>\ncall own\n  bind y, code 2>)
+
+test <no find, no change: "fork test, is-equal(a, b)\\n  ho">
+  want hold, unchanged(<fork test, is-equal(a, b)\n  hold\n    send back, true>)
+
+test <no find, no change: "call find-one\\n  bind query, re">
+  want hold, unchanged(<call find-one\n  bind query, read q>)
+
+# the same object back: the pass is handed a list and a form and returns them, not copies of them
+host word, make-record(make(list, <kind>, <word>, <value>, <x>))
+host inner, make-record(make(list, <kind>, <form>, <form>, <call>, <fields>, one-field(<name>, make(list, word))))
+host handed, make(list, inner, word)
+host lowered-back, lowering/lower-finds(handed)
+
+test <no find: the list comes back as the same object>
+  want hold, same-object(lowered-back/values, handed)
+
+test <no find: no problems>
+  want hold, is-equal(lowered-back/problems/length, 0)
+
+test <no find: the form inside is the same object>
+  want hold, same-object(lowered-back/values/0, inner)
+
+# ---- what is not lowered is said, with the span of the find ----
+
+# whether a problem of this code is raised, and whether every problem carries a span
+form problem-check
+  link raised, like boolean
+  link spanned, like boolean
+
+task problems-of
+  take source, like text
+  take code, like text
+  like problem-check
+
+  host result, mint-source(source, true)
+  host codes, make list
+  save spanned, is-above(result/problems/length, 0)
+  walk result/problems
+    take problem, like dynamic
+    codes/push(text-of(problem/code))
+    fork test, is-written(problem/span)
+      miss
+        save spanned, false
+  back make(problem-check, bind(raised, list-contains(codes, code)), bind(spanned, spanned))
+
+host find-read, problems-of(<find read tool\n  find pane\n    run \<x\>>, <find-read>)
+
+test <find read \<value\>: a problem is raised>
+  want hold, find-read/raised
+
+test <find read \<value\>: it carries the span of the find>
+  want hold, find-read/spanned
+
+host named-take, problems-of(<find all, name rows\n  take role, like text\n\n  base user>, <find-take>)
+
+test <take on a named find: a problem is raised>
+  want hold, named-take/raised
+
+test <take on a named find: it carries the span of the find>
+  want hold, named-take/spanned
+
+host test-place, problems-of(<find one\n  have title, \<x\>\n\n  base pane>, <find-test-place>)
+
+test <a test under the find itself: a problem is raised>
+  want hold, test-place/raised
+
+test <a test under the find itself: it carries the span of the find>
+  want hold, test-place/spanned
+
+host no-base, problems-of(<find all\n  link tab>, <find-no-base>)
+
+test <no base: a problem is raised>
+  want hold, no-base/raised
+
+test <no base: it carries the span of the find>
+  want hold, no-base/spanned
+
+host two-bases, problems-of(<find one\n  base pane\n\n  base window>, <find-two-bases>)
+
+test <two bases: a problem is raised>
+  want hold, two-bases/raised
+
+test <two bases: it carries the span of the find>
+  want hold, two-bases/spanned
+
+host body-on-some, problems-of(<find some\n  base pane\n\n  click>, <find-body-on-some>)
+
+test <a body under find some: a problem is raised>
+  want hold, body-on-some/raised
+
+test <a body under find some: it carries the span of the find>
+  want hold, body-on-some/spanned
+
+host wait-unit, problems-of(<find pane\n  wait \<soon\>>, <find-wait-unit>)
+
+test <a wait that is no whole unit: a problem is raised>
+  want hold, wait-unit/raised
+
+test <a wait that is no whole unit: it carries the span of the find>
+  want hold, wait-unit/spanned
+
+# ---- a file with a find compiles, to the TypeScript of the hand-written program ----
+
+# what a file that uses a find loads: the lowered code names the call, the IR forms and their cases, a duration and the
+# kinds its body uses. The load is the file's own (`find` under a `load` is the import and untouched, spec section 3.1),
+# and a name it lacks is an `unknown-name` at the find
+host loads, <load @term/base/find\n  find find-one\n\nload @term/base/find/query\n  find find-query\n  find find-step\n  find find-test\n  find find-value\n  find find-count\n\nload @term/base/find/kind\n  find pane\n  find run\n\nload @term/base/duration\n  find from-seconds\n\n>
+
+# a compile's emitted TypeScript, or its diagnostics as `name: message` joined
+form typed
+  link ok, like boolean
+  link text, like text
+
+task typescript-of
+  take file, like text
+  take source, like text
+  like typed
+
+  host out, compile-text(source, make(compile-choice, bind(file, find-path/resolve(<tmp>, file)), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  fork test, out/ok
+    hold
+      back make(typed, bind(ok, true), bind(text, out/emitted))
+  host said, make list
+  walk out/notes
+    take one
+    said/push(<{one/name}: {one/message}>)
+  back make(typed, bind(ok, false), bind(text, join(said, < | >)))
+
+task in-task
+  take text, like text
+  like text
+
+  back <{loads}task go\n{shifted(text, 2)}>
+
+# a raising call carries its Term frame, `<task> <file>:<line>` (term/hive decision 001): the three programs are three
+# files of different lengths, so the frame texts are set aside and the rest must be the same
+host frame, make pattern, <<"[^"\n]* find-(hand|short|explicit)\.tree:\d+">>
+
+task framed
+  take text, like text
+  like text
+
+  back replace-matches(frame, text, <"\<frame\>">)
+
+host hand-typed, typescript-of(<find-hand.tree>, in-task(spec-hand))
+host short-typed, typescript-of(<find-short.tree>, in-task(<find pane\n  have title, \<server\>\n  run \<npm dev\>\n>))
+host explicit-typed, typescript-of(<find-explicit.tree>, in-task(<find one\n  base pane\n    have title, \<server\>\n\n  run \<npm dev\>\n>))
+
+test <the hand-written program compiles>
+  want hold, hand-typed/ok
+
+test <the shorthand find compiles>
+  want hold, short-typed/ok
+
+test <the explicit find compiles>
+  want hold, explicit-typed/ok
+
+test <the shorthand emits the TypeScript of the hand-written program>
+  want hold, and(hand-typed/ok, short-typed/ok)
+  want hold, is-equal(framed(short-typed/text), framed(hand-typed/text))
+
+test <the explicit spelling emits it too>
+  want hold, and(hand-typed/ok, explicit-typed/ok)
+  want hold, is-equal(framed(explicit-typed/text), framed(hand-typed/text))
+
+test <the emitted program calls find-one with the query and a body>
+  want hold, short-typed/ok
+  want hold, text-contains(short-typed/text, <findOne(>)
+
+# a find with a refusal in it fails the build, naming the find
+test <a find the pass cannot lower fails the build>
+  host bad, typescript-of(<find-bad.tree>, in-task(<find all\n  link tab\n>))
+  want hold, is-equal(bad/ok, false)
+  want hold, text-contains(bad/text, <a path starts with base>)
+
+# a file that does not load what the lowered code names says so, at the find
+test <a file without the loads fails the build, by name>
+  host bare, typescript-of(<find-bare.tree>, <task go\n  find pane\n    run \<npm dev\>\n>)
+  want hold, is-equal(bare/ok, false)
+  want hold, text-contains(bare/text, <find-query>)

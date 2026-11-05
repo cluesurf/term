@@ -1,0 +1,178 @@
+note <`walk xs, mark parallel` mints a parallel for-each>
+
+# Ported from parallel-mark.ts by statement (item 0574). Decision 021 section 1 of
+# note/project/term/self-host/change/001-finish-self-host: the walk grammar's `mark` part, whose one word is `parallel`,
+# mints a `for-each` with `parallel` set, in lean and in longhand, beside `name outer`. An unmarked walk mints no
+# `parallel` key. `mark parallel` on `walk size` or `walk test`, and any other word in a walk's `mark`, is refused as
+# `parallel-walk-mode`. Nothing runs in parallel yet: a marked walk emits the same TypeScript and Rust as the unmarked
+# one. Item term-self-host-001-0231. The parser and the mill are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/walking
+  find nodes-of
+  find fields-of
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <node:path>, name parallel-path
+
+bind source-of
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# host value: the role the mill is given, none
+bind no-role
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+form said-one
+  link name, like text
+  link message, like text
+
+# every for-each the mill builds of a source, and what it said
+form walks-found
+  link parsed, like boolean
+  link loops, like list, like dynamic
+  link said, like list, like said-one
+
+host walks-file, <gate/code/walks.tree>
+
+# every for-each the mill builds of a source, read in lean or in longhand
+task walks
+  take text, like text
+  take lean, like boolean
+  like walks-found
+
+  host parsed, parser-tree/parse(source-of(walks-file, text))
+  fork test, parsed/ok
+    miss
+      host none, make list
+      back make(walks-found, bind(parsed, false), bind(loops, none), bind(said, make(list, make(said-one, bind(name, <parse>), bind(message, <did not parse>)))))
+  host built, mill-module/mill(parsed/tree, walks-file, no-role(0), lean)
+  save program, make list
+  fork test, is-unequal(built/program, void)
+    hold
+      save program, built/program
+  host said, make list
+  fork test, is-unequal(built/diagnostics, void)
+    hold
+      walk built/diagnostics
+        take one, like dynamic
+        said/push(make(said-one, bind(name, <{one/name}>), bind(message, <{one/message}>)))
+  back make(walks-found, bind(parsed, true), bind(loops, nodes-of(program, <for-each>)), bind(said, said))
+
+# a diagnostic with the name whose message holds the word
+task said-holding
+  take found, like walks-found
+  take name, like text
+  take word, like text
+  like boolean
+
+  walk found/said
+    take one, like said-one
+    fork test, and(is-equal(one/name, name), text-contains(one/message, word))
+      hold
+        back true
+  back false
+
+# each turn writes only its own slot of an outer list (decision 078 section 6): an outer `sum` written in the turn is
+# refused as parallel-write since item 0232
+host lean-marked, <task doubled\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, mark parallel\n    take x\n    take at\n    save out/\{at\}, add(x, x)\n  back out\n>
+
+host lean-named, <task doubled\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs, name outer\n    mark parallel\n    take x\n    take at\n    save out/\{at\}, add(x, x)\n  back out\n>
+
+host long-marked, <task doubled\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk list, read xs\n    mark parallel\n    take x\n    take at\n    save out/\{at\}\n      call add\n        read x\n        read x\n  send back, read out\n>
+
+host unmarked, text-replace(lean-marked, <, mark parallel>, <>)
+
+test <lean: `walk xs, mark parallel` mints a for-each with parallel true>
+  host lean, walks(lean-marked, true)
+  want hold, is-equal(lean/loops/length, 1)
+  want hold, is-equal(lean/loops/0/parallel, true)
+  want hold, is-equal(lean/said/length, 0)
+
+test <lean: `mark parallel, name outer` composes: parallel, its label and its index>
+  host named, walks(lean-named, true)
+  want hold, is-equal(named/loops/length, 1)
+  want hold, is-equal(named/loops/0/parallel, true)
+  want hold, is-equal(named/loops/0/label, <outer>)
+  want hold, is-equal(named/loops/0/index, <at>)
+  want hold, is-equal(named/said/length, 0)
+
+test <longhand: `walk list, read xs` with `mark parallel` as a child line mints parallel true>
+  host long, walks(long-marked, false)
+  want hold, is-equal(long/loops/length, 1)
+  want hold, is-equal(long/loops/0/parallel, true)
+  want hold, is-equal(long/said/length, 0)
+
+test <an unmarked walk mints no parallel key>
+  host plain, walks(unmarked, true)
+  want hold, is-equal(plain/loops/length, 1)
+  want hold, is-equal(contains(fields-of(plain/loops/0), <parallel>), false)
+  want hold, is-equal(plain/said/length, 0)
+
+test <`mark parallel` on `walk size` is refused as parallel-walk-mode>
+  host counted, walks(<task total\n  take n, like number\n  like number\n  save sum, 0\n  walk size, mark parallel\n    bind head, n\n    take i\n    save sum, add(sum, i)\n  back sum\n>, true)
+  want hold, said-holding(counted, <parallel-walk-mode>, <a parallel walk walks a list>)
+
+test <`mark parallel` on `walk test` is refused as parallel-walk-mode>
+  host tested, walks(<task count\n  take n, like number\n  like number\n  save i, 0\n  walk test, mark parallel\n    hook test, is-below(i, n)\n    hold\n      save i, add(i, 1)\n  back i\n>, true)
+  want hold, said-holding(tested, <parallel-walk-mode>, <a parallel walk walks a list>)
+
+test <another word in a walk's mark is refused by name>
+  host other, walks(text-replace(lean-marked, <mark parallel>, <mark quick>), true)
+  want hold, said-holding(other, <parallel-walk-mode>, <`mark quick`>)
+
+# every emitter ignores the field: the marked walk emits what the unmarked one does
+host emit-folder, temp-folder(<term-parallel-mark->)
+
+task program
+  take mark, like text
+  like text
+
+  back <load @term/base/list\n  find list\n\ntask doubled\n  take xs, like list, like number\n  like list, like number\n  save out, make list\n  walk xs{mark}\n    take x\n    take at\n    save out/\{at\}, add(x, x)\n  back out\n>
+
+# what one env emits of the program, `refused` when it did not build
+task emitted
+  take env, like text
+  take mark, like text
+  like text
+
+  host out, compile-text(program(mark), make(compile-choice, bind(file, parallel-path/join(emit-folder, <doubled.tree>)), bind(project, <.>), bind(project-env, env), bind(env, env)))
+  fork test, out/ok
+    miss
+      back <refused>
+  fork test, is-equal(env, <rust>)
+    hold
+      back emit-text(out, <rust>)
+  back out/emitted
+
+test <TypeScript: a marked walk emits what the unmarked one does>
+  host before, emitted(<node>, <>)
+  want hold, is-unequal(before, <refused>)
+  want hold, is-equal(before, emitted(<node>, <, mark parallel>))
+
+test <Rust: a marked walk emits what the unmarked one does>
+  host before, emitted(<rust>, <>)
+  want hold, is-unequal(before, <refused>)
+  want hold, is-equal(before, emitted(<rust>, <, mark parallel>))

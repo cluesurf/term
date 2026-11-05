@@ -90,6 +90,8 @@ load ./alias
   find transparent-aliases
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
   find kernel-term
   find kernel-value
@@ -842,6 +844,7 @@ task checked-hold
 
   save st, hs/is/ts/st
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   save message, <>
   fork
     mark unsafe
@@ -850,6 +853,7 @@ task checked-hold
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     sift problem
       case failure
         link note
@@ -1221,6 +1225,7 @@ task define-encoding
   mark private
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save inferred, infer(st, base-context, encoding/term)
@@ -1234,6 +1239,7 @@ task define-encoding
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back false
   back false
 
@@ -1245,6 +1251,7 @@ task define-term
   mark private
 
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save no-env, make list
@@ -1253,5 +1260,6 @@ task define-term
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back false
   back false

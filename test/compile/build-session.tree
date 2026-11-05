@@ -1,0 +1,252 @@
+note <A build graph kept across rebuilds: what a session keeps, what an edit rebuilds, what it replays>
+
+# Ported from build-session.ts by statement (item 0569). A watch keeps one `build-session`: each module's walk, each
+# load's answer, each module's parse, each unit's answer and each entry's outcome. What it must never do is answer an
+# edited file with the text it had before, which a kept resolver and a kept walk both could, since an answer to a load is
+# a file AND its text. And an entry no edit reaches must be replayed rather than built, with the problems it had.
+#
+# One project, two entries: `base` loads `helper`, `other` loads neither. It is built through one session as it is, after
+# an edit to `helper`, unchanged, and after a file is added. The original is one sequence, each `ok` reading what the
+# builds before it left, so each build is a top-level `host` that takes the one before it, and reads what its tests need
+# before the next build moves it. call/make and call/cache-store are the subject (decision 106).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/call/code/make>, name session-make
+  load <@term/call/code/cache-store>, name session-store
+  load <node:fs>, name session-file
+  load <node:path>, name session-path
+
+# host value: a fresh id, so every unit this run builds is new to the machine-wide unit cache
+bind run-id
+  take seed, like number
+  like text
+  case node
+    text <globalThis.crypto.randomUUID()>
+
+bind walked-of
+  take session, like dynamic
+  like dynamic
+  case node
+    text <$session.walked>
+
+bind copy-map
+  take map, like dynamic
+  like dynamic
+  case node
+    text <new Map($map)>
+
+bind map-keys
+  take map, like dynamic
+  like list, like text
+  case node
+    text <[...$map.keys()]>
+
+# host value: whether two maps hold the very same walk for a file, by identity
+bind same-entry
+  take one, like dynamic
+  take two, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <Object.is($one.get($key), $two.get($key))>
+
+bind warnings-of
+  take result, like dynamic
+  like list, like text
+  case node
+    text <$result.warnings>
+
+host unreached-mark, <// not rebuilt\n>
+
+# a unit's answer is stored machine-wide, keyed by its text with the deck's root written as a token, so the temporary
+# folder is not in the key: without a text of this run's own, a second run finds both helpers already built and builds
+# nothing. The run's own comment makes every unit it builds new to the cache
+host run, run-id(0)
+
+task helper-text
+  take word, like text
+  like text
+
+  back <# run {run}\nload @term/base/text\n  find trim\n\ntask greet\n  like text\n  back trim(\< {word} \>)\n>
+
+task write-file
+  take root, like text
+  take name, like text
+  take text, like text
+  like void
+
+  session-file/write-file-sync(session-path/join(root, name), text)
+
+# by its real path, as `term make` runs from one: the temporary folder is `/var` behind a link to `/private/var`, and a
+# module the walk reaches by both names is two modules
+task set-up
+  like text
+
+  host root, session-file/realpath-sync(temp-folder(<build-session->))
+  session-file/mkdir-sync(session-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  write-file(root, <deck.tree>, <deck @probe/session\n  mark \<0.0.1\>\n>)
+  write-file(root, <code/helper.tree>, helper-text(<first>))
+  write-file(root, <code/base.tree>, <load ./helper\n  find greet\n\ntask main\n  like text\n  back greet()\n>)
+  # an entry the edit cannot reach, with a warning of its own: a local nothing reads
+  write-file(root, <code/other.tree>, <task other\n  like number\n  save unused, 2\n  back 1\n>)
+  back root
+
+host root, set-up()
+host helper, session-path/join(root, <code>, <helper.tree>)
+host other-shim, session-path/join(root, <host>, <code>, <other.ts>)
+host session, session-make/build-session(root)
+# the graph's memos, by identity (decision 094: the session is build-graph.tree's)
+host walked, walked-of(session-make/session-face(session))
+host cache, session-store/project-cache(root)
+
+task unit-text
+  like text
+
+  back session-file/read-file-sync(session-path/join(root, <host>, <.unit>, <{session-make/unit-slug(root, helper)}.ts>), <utf8>)
+
+task shim-text
+  like text
+
+  back session-file/read-file-sync(other-shim, <utf8>)
+
+task build
+  like dynamic
+
+  back session-make/compile-project-separate(root, cache, <node>, session)
+
+form first-reading
+  link result, like dynamic
+  link unit, like text
+  link walked-before, like dynamic
+
+form second-reading
+  link result, like dynamic
+  link unit, like text
+  link helper-walked-again, like boolean
+  link stdlib, like number
+  link kept, like number
+  link shim, like text
+
+form fourth-reading
+  link result, like dynamic
+  link shim, like text
+
+task first-build
+  take made, like text
+  like first-reading
+
+  host result, build()
+  back make(first-reading, bind(result, result), bind(unit, unit-text()), bind(walked-before, copy-map(walked)))
+
+# a different length, so the edit moves the file's size as well as its time. The unreached entry's artifact is marked,
+# so a rebuild of it would show: a build writes it back, a replay leaves it
+task second-build
+  take first, like first-reading
+  like second-reading
+
+  write-file(root, <code/helper.tree>, helper-text(<second edition>))
+  session-file/write-file-sync(other-shim, unreached-mark)
+  host result, build()
+  save stdlib, 0
+  save kept, 0
+  walk map-keys(first/walked-before)
+    take file, like text
+    fork test, text-contains(file, </deck/base/>)
+      hold
+        save stdlib, add(stdlib, 1)
+        fork test, same-entry(walked, first/walked-before, file)
+          hold
+            save kept, add(kept, 1)
+  host again, not(same-entry(walked, first/walked-before, helper))
+  back make(second-reading, bind(result, result), bind(unit, unit-text()), bind(helper-walked-again, again), bind(stdlib, stdlib), bind(kept, kept), bind(shim, shim-text()))
+
+task third-build
+  take second, like second-reading
+  like dynamic
+
+  back build()
+
+# a new file may be what a load that found nothing now finds, so the session starts over and every entry builds
+task fourth-build
+  take third, like dynamic
+  like fourth-reading
+
+  write-file(root, <code/added.tree>, <task added\n  like number\n  back 3\n>)
+  host result, build()
+  back make(fourth-reading, bind(result, result), bind(shim, shim-text()))
+
+host one, first-build(root)
+host two, second-build(one)
+host three, third-build(two)
+host four, fourth-build(three)
+
+test <the first build builds>
+  want hold, is-equal(one/result/failed, 0)
+
+test <and emits the helper as written>
+  want hold, text-contains(one/unit, <first>)
+
+test <the unreached entry has its warning>
+  want hold, any-holding(warnings-of(one/result), <unused>)
+
+test <the rebuild after an edit builds>
+  want hold, is-equal(two/result/failed, 0)
+
+test <and emits the helper as it is now, not as the session first read it>
+  want hold, text-contains(two/unit, <second edition>)
+
+test <the edited module was walked again>
+  want hold, two/helper-walked-again
+
+test <every standard library module kept its walk>
+  want hold, is-above(two/stdlib, 0)
+  want hold, is-equal(two/kept, two/stdlib)
+
+test <only the edited unit and the units above it were built>
+  want hold, is-above(two/result/built, 0)
+  want hold, is-maximum(two/result/built, 2)
+
+test <the entry the edit cannot reach was replayed, not built>
+  want hold, is-equal(two/shim, unreached-mark)
+
+test <with its warning>
+  host now, warnings-of(two/result)
+  host before, warnings-of(one/result)
+  want hold, is-equal(now/length, before/length)
+
+test <and every entry counted>
+  want hold, is-equal(two/result/compiled, one/result/compiled)
+
+test <an unchanged rebuild builds nothing>
+  want hold, is-equal(three/failed, 0)
+  want hold, is-equal(three/built, 0)
+
+test <and wrote nothing>
+  want hold, is-equal(three/written, 0)
+
+test <and reports what it reported before>
+  want hold, is-equal(join(warnings-of(three), <\n>), join(warnings-of(two/result), <\n>))
+
+test <a build after a file is added builds>
+  want hold, is-equal(four/result/failed, 0)
+
+test <and builds every entry again>
+  want hold, is-unequal(four/shim, unreached-mark)
+
+test <the added file among them>
+  want hold, is-equal(four/result/compiled, add(one/result/compiled, 1))

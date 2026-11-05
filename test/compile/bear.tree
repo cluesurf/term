@@ -1,0 +1,45 @@
+note <`bear @path` pulls a module into the program and re-exports its definitions>
+
+# Ported from bear.ts by statement (item 0569). Anything that imports the bearing module sees what it bears. This is how
+# the native bindings (bind.tree) surface a platform's types: each wrapper leads with a run of `bear @...` lines. Each
+# module answers under its own path, as the original's resolver did.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load @term/base/text
+  find contains, name text-contains
+
+# the definition lives in `b`, `a` re-exports it with `bear` (and defines nothing of its own), `c` bears from `a`
+task modules
+  like list, like compiling-source
+
+  host b, make(compiling-source, bind(file, <@app/b>), bind(text, <form widget\n  link size, like number\n>))
+  host a, make(compiling-source, bind(file, <@app/a>), bind(text, <bear @app/b\n>))
+  host c, make(compiling-source, bind(file, <@app/c>), bind(text, <bear @app/a\n>))
+  back make(list, b, a, c)
+
+task built
+  take text, like text
+  like dynamic
+
+  back compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(files, modules()), bind(closed, true)))
+
+# importing the bearing module exposes the beared definition
+host direct, <load @app/a\n  find widget\n\ntask one\n  like number\n  save w\n    make widget\n      bind size, code 5\n  send back, read w/size\n>
+
+# re-export is transitive
+host transitive, <load @app/c\n  find widget\n\ntask two\n  like number\n  save w\n    make widget\n      bind size, code 9\n  send back, read w/size\n>
+
+test <a re-exports widget from b>
+  want hold, built(direct)/ok
+
+test <the re-exported form is usable (field read type-checks)>
+  host out, built(direct)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <size>)
+
+test <bear is transitive (c -> a -> b)>
+  want hold, built(transitive)/ok

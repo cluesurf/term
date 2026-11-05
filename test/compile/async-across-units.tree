@@ -1,0 +1,105 @@
+note <An inferred async task called from another file, in the separate (per-unit) build>
+
+# Ported from async-across-units.ts by statement (item 0569), term-self-host-001-0454. `mid` is never marked async: it is
+# async because it calls `leaf`, which is. The stub a dependent checks against carries the `async` resolve-async gave `mid`
+# in its own unit, and the dependent awaits the call. The port of the types step (compile/program-types.tree) stamps the
+# call sites by building each statement afresh, so resolve-async, run after the stamps, marked the fresh copy and the
+# unit's stub (built from the statements as milled) said `mid` was not async: the caller read a pending promise as the
+# number. A task marked `mark async` was never affected: its mark is written in the source. compile/separate and
+# compile/cache are the subject (decision 106).
+
+load ../support/compiling
+  find compiling-source
+  find compile-choice
+  find compiling-options-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+bind module-code
+  take answer, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($answer.modules?.get($file)?.code ?? "")>
+
+# the module a unit is written to: what the test reads is each file's code, never its imports
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}.mjs>
+
+host leaf, <task leaf\n  take n, like number\n  like number\n  mark async\n  send back, add(n, 1)\n>
+
+# async by inference alone
+host mid, <load ./leaf\n  find leaf\n\ntask mid\n  take n, like number\n  like number\n  host found, leaf(n)\n  send back, add(found, 1)\n>
+
+# a file that calls the inferred async task, and so is async itself
+host entry, <load ./mid\n  find mid\n\ntask top\n  take n, like number\n  like number\n  host found, mid(n)\n  send back, add(found, 1)\n>
+
+host leaf-async, make pattern, <<async function leaf\(>>
+host mid-async, make pattern, <<async function mid\(>>
+host awaits-leaf, make pattern, <<await leaf\(>>
+host awaits-mid, make pattern, <<await mid\(>>
+host top-async, make pattern, <<async function top\(>>
+
+task built
+  like dynamic
+
+  host files, make list(make(compiling-source, bind(file, <./leaf>), bind(text, leaf), bind(answer, <leaf.tree>)), make(compiling-source, bind(file, <./mid>), bind(text, mid), bind(answer, <mid.tree>)))
+  host options, compiling-options-of(make(compile-choice, bind(files, files), bind(closed, true)))
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), module-of))
+
+test <the three files build>
+  want hold, answer-ok(built())
+
+test <the marked task is async in its own unit>
+  want hold, matches(leaf-async, module-code(built(), <leaf.tree>))
+
+test <the inferred task is async in its own unit, and awaits the marked one>
+  host code, module-code(built(), <mid.tree>)
+  want hold, matches(mid-async, code)
+  want hold, matches(awaits-leaf, code)
+
+test <a caller in another unit awaits the inferred async task>
+  host code, module-code(built(), <entry.tree>)
+  want hold, matches(awaits-mid, code)
+  want hold, matches(top-async, code)

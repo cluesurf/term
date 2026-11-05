@@ -1,0 +1,145 @@
+note <A line delta of a text against a base the receiver holds>
+
+# Ported from delta.test.ts by statement (item 0580). The original held code/object/delta.ts, a face whose logic is
+# code/object/text-delta.tree, and code/object/hash.ts, whose blob id is code/object/object-address.tree's: this holds
+# those modules themselves.
+
+load ../code/object/text-delta
+  find text-version
+  find make-text-delta
+  find apply-text-delta
+  find apply-verified-text-delta
+  find delta-is-worthwhile
+
+load ../code/object/object-address
+  find hash-object-text
+
+load @term/base/text
+  find replace
+  find contains, name text-contains
+
+# host native: the UTF-8 byte length of a text
+bind byte-length
+  take value, like text
+  like number
+  case node
+    text <Buffer.byteLength($value)>
+
+# host native: the UTF-8 byte length of a value written as JSON
+bind json-byte-length
+  take value, like dynamic
+  like number
+  case node
+    text <Buffer.byteLength(JSON.stringify($value))>
+
+# host reflect: a raise's message
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+task id-of
+  take text, like text
+  like text
+
+  back hash-object-text(<blob>, text)
+
+# `line 0` to `line <count - 1>`, each ending in a line break, from `from` on
+task lines-from
+  take from, like number
+  take count, like number
+  take word, like text
+  like text
+
+  fork test, is-equal(from, count)
+    hold
+      back <>
+  back <{word} {from}\n{lines-from(add(from, 1), count, word)}>
+
+task lines
+  take count, like number
+  like text
+
+  back lines-from(0, count, <line>)
+
+task delta-of
+  take base, like text
+  take next, like text
+  like dynamic
+
+  back make-text-delta(make(text-version, bind(id, id-of(base)), bind(text, base)), make(text-version, bind(id, id-of(next)), bind(text, next)))
+
+# the message the verified apply raises, empty when it does not raise
+task verify-refusal
+  take base, like text
+  take given, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    apply-verified-text-delta(base, given)
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+host base-400, lines(400)
+host one-edit, replace(base-400, <line 200>, <line 200 CHANGED>)
+
+test <makeTextDelta: reduces a one-line edit to one hunk>
+  want hold, is-equal(delta-of(base-400, one-edit)/hunks/length, 1)
+
+test <makeTextDelta: is far smaller than the file it replaces>
+  want hold, is-below(json-byte-length(delta-of(base-400, one-edit)/hunks), divide(byte-length(one-edit), 10))
+
+test <makeTextDelta: names the base it was built against>
+  host base, lines(10)
+  host next, replace(base, <line 5>, <line 5 x>)
+  want hold, is-equal(delta-of(base, next)/base, id-of(base))
+
+test <applyTextDelta: reconstructs the text exactly>
+  want hold, is-equal(apply-text-delta(base-400, delta-of(base-400, one-edit)), one-edit)
+
+test <applyTextDelta: handles several separated edits>
+  host next, replace(replace(replace(base-400, <line 10>, <line 10 a>), <line 200>, <line 200 b>), <line 390>, <line 390 c>)
+  want hold, is-equal(apply-text-delta(base-400, delta-of(base-400, next)), next)
+
+test <applyTextDelta: handles an insertion, which shifts every later line>
+  host base, lines(50)
+  host next, replace(base, <line 10\n>, <line 10\nline 10 and a half\n>)
+  want hold, is-equal(apply-text-delta(base, delta-of(base, next)), next)
+
+test <applyTextDelta: handles a deletion>
+  host base, lines(50)
+  host next, replace(base, <line 25\n>, <>)
+  want hold, is-equal(apply-text-delta(base, delta-of(base, next)), next)
+
+test <applyTextDelta: handles appending to the end>
+  host base, lines(20)
+  host next, <{base}line 20\n>
+  want hold, is-equal(apply-text-delta(base, delta-of(base, next)), next)
+
+test <applyVerifiedTextDelta: returns the text when it reconstructs correctly>
+  host base, lines(100)
+  host next, replace(base, <line 50>, <line 50 x>)
+  want hold, is-equal(apply-verified-text-delta(base, delta-of(base, next)), next)
+
+test <applyVerifiedTextDelta: rejects a delta applied to the wrong base>
+  host base, lines(100)
+  host next, replace(base, <line 50>, <line 50 x>)
+  host wrong, replace(base, <line 0>, <line 0 different>)
+  want hold, text-contains(verify-refusal(wrong, delta-of(base, next)), <did not reconstruct>)
+
+test <deltaIsWorthwhile: accepts a small edit to a large file>
+  want hold, is-equal(delta-is-worthwhile(delta-of(base-400, one-edit), byte-length(one-edit)), true)
+
+test <deltaIsWorthwhile: refuses a tiny file, where the delta costs more than the content>
+  host base, <a\nb\n>
+  host next, <a\nc\n>
+  want hold, is-equal(delta-is-worthwhile(delta-of(base, next), byte-length(next)), false)
+
+test <deltaIsWorthwhile: refuses a rewrite, where the delta is the whole file again>
+  host base, lines(200)
+  host next, lines-from(0, 200, <entirely different>)
+  want hold, is-equal(delta-is-worthwhile(delta-of(base, next), byte-length(next)), false)

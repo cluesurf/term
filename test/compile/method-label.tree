@@ -1,0 +1,116 @@
+note <A LABELLED CALL TO A FORM METHOD THAT A TOP-LEVEL TASK SHADOWS>
+
+# Ported from method-label.ts by task/term/suite-port.ts, finished by hand (item 0573). The original's resolver over a
+# map of paths is the choice's `files`, each answering as `<name>.tree`. Its `show` only printed a failure.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load @term/base/text
+  find contains, name text-contains
+  find split
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# A LABELLED CALL TO A FORM METHOD THAT A TOP-LEVEL TASK SHADOWS. `call get / bind self, read xs / bind index,
+# code 0` was checked against a top-level `get`'s parameters whenever any module in the program defined one (the
+# stdlib's http client did, as `get(url, header)`), and refused as `type-mismatch` or as a name the task does not
+# take, while the positional `call get / read xs / code 0` dispatched on its first argument and compiled. Six such
+# calls in @term/site were rewritten positionally to get around it (note/project/term/guides/term-surf-guides.md). Now a call whose
+# labels include `self`, or that the top-level task's parameters cannot take and a method's can, binds to the method
+# of its receiver's form (check/infer.ts, bindLabelledMethod).
+# Run: npx tsx test/compile/method-label.ts
+# a form with a `get` method, and a module with a top-level `get` of the same arity and other parameters
+host box, <form box\n  link items, like list, like text\n\n  task get\n    take self\n    take index, like number\n    like text\n    send back, text \<from-box\>\n>
+
+host net, <task get\n  take url, like text\n  take header, like text\n  like text\n  send back, text \<from-net\>\n>
+
+host loads, <load @app/box\n  find box\n\nload @app/net\n  find get\n\n>
+
+host make-text, <  save b\n    make box\n      bind items\n        make list\n>
+
+test <positional: a method call dispatches on its receiver>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      read b\n      code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  host pattern-2, make pattern, <<from-box|box_get|boxGet>>
+  want hold, result/ok
+  want hold, matches(pattern-2, result/emitted)
+
+test <labelled `bind self`: binds to the method, not the top-level task>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      bind self, read b\n      bind index, code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  want hold, result/ok
+
+test <and the emitted call is the method>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      bind self, read b\n      bind index, code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  host pattern-2, make pattern, <<\bget\(b, 0\)>>
+  # the original's /box/i, its case spelled out
+  host any-box, make pattern, <<[Bb][Oo][Xx]>>
+  want hold, result/ok
+  want hold, not(matches(pattern-2, result/emitted))
+  want hold, matches(any-box, result/emitted)
+
+test <labels out of order: placed by the method's parameters>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      bind index, code 0\n      bind self, read b\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  want hold, result/ok
+
+test <and it is the method, receiver first>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      bind index, code 0\n      bind self, read b\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  want hold, result/ok
+  want hold, text-contains(result/emitted, <from-box>)
+
+test <the top-level task with its own labels is still the top-level task>
+  host result, compile-text(<{loads}task run\n  like text\n  send back\n    call get\n      bind url, text \<u\>\n      bind header, text \<h\>\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  # the original's /box_get|boxGet/i over the text after `function run`, its case spelled out
+  host box-method, make pattern, <<[Bb][Oo][Xx]_[Gg][Ee][Tt]|[Bb][Oo][Xx][Gg][Ee][Tt]>>
+  host pieces, split(result/emitted, <function run>)
+  want hold, result/ok
+  want hold, is-above(pieces/length, 1)
+  want hold, not(matches(box-method, pieces/1))
+
+test <a label the method lacks is still refused>
+  host result, compile-text(<{loads}task run\n  like text\n{make-text}  send back\n    call get\n      bind self, read b\n      bind nothing, code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  want hold, not(result/ok)
+
+test <a `self` whose type owns no such method is not bound to an unrelated method>
+  host result, compile-text(<{loads}task run\n  like text\n  send back\n    call get\n      bind self, text \<t\>\n      bind index, code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>))))))
+  want hold, not(result/ok)
+
+test <`find get` of a method name, top-level get loaded elsewhere: the labelled call is the method>
+  host result, compile-text(<load @app/box\n  find box\n  find get\n\nload @app/other\n  find other\n\ntask run\n  like text\n{make-text}  send back\n    call get\n      bind self, read b\n      bind index, code 0\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/box>), bind(text, box), bind(answer, <box.tree>)), make(compiling-source, bind(file, <@app/net>), bind(text, net), bind(answer, <net.tree>)), make(compiling-source, bind(file, <@app/other>), bind(text, <load @app/net\n  find get\n\ntask other\n  like text\n  send back\n    call get\n      text \<u\>\n      text \<h\>\n>), bind(answer, <other.tree>))))))
+  want hold, result/ok
+
+# A MEMBER CALL ONTO A FORM'S OWN METHOD: `call b/bump / code 2` where `bump` takes `self` first. It was typed as the
+# whole method and called with `b` as a JavaScript `this`, refused one argument short; passing `b` by hand compiled to
+# `b.bump(b, 2)` on a plain record (bindMemberMethod)
+host counter, <form counter\n  link count, like number\n\n  task bump\n    take self, like counter\n    take by, like number\n    like number\n    send back\n      call add\n        read self/count\n        read by\n\n  task reset\n    take self, like counter\n    like number\n    send back, code 0\n>
+
+test <`call c/bump / code 2` on a form calls the method with c as self>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back\n    call c/bump\n      code 2\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  want hold, result/ok
+
+test <and it is not emitted as a member call on the record>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back\n    call c/bump\n      code 2\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  host pattern-2, make pattern, <<c\.bump\(>>
+  want hold, result/ok
+  want hold, not(matches(pattern-2, result/emitted))
+
+test <a member call with no arguments passes the receiver alone>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back, call c/reset\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  host pattern-2, make pattern, <<c\.reset\(>>
+  want hold, result/ok
+  want hold, not(matches(pattern-2, result/emitted))
+
+test <a labelled member call onto a method>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back\n    call c/bump\n      bind by, code 2\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  want hold, result/ok
+
+test <a member method call missing an argument is refused>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back, call c/bump\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  want hold, not(result/ok)
+
+test <a field read is untouched>
+  host result, compile-text(<load @app/counter\n  find counter\n\ntask run\n  like number\n  save c\n    make counter\n      bind count, code 1\n  send back, read c/count\n>, make(compile-choice, bind(file, <main.tree>), bind(files, make list(make(compiling-source, bind(file, <@app/counter>), bind(text, counter), bind(answer, <counter.tree>))))))
+  want hold, result/ok

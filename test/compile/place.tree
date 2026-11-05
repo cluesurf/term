@@ -1,0 +1,220 @@
+note <The in-place record write, held both ways>
+
+# Ported from place.ts by statement (item 0574). compile/place.ts: the writes it must make in place, and for every rule a
+# program it must NOT, because a wrong one changes a value somebody else still holds. The answers themselves are held on
+# all four toolchains by test/compile/meaning-native/place.tree. compile/place and compile/backend are the subject
+# (decision 106). A program the original could not compile threw, so every test here also holds that it compiled.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find file-text
+
+load ../support/walking
+  find kind-of
+
+load @term/base/list
+  find sort
+  find push
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/place>, name place-module
+  load <@term/make/code/compile/backend>, name backend-module
+
+bind set-of
+  take values, like list, like dynamic
+  like dynamic
+  case node
+    text <new Set($values)>
+
+bind set-has
+  take set, like dynamic
+  take value, like text
+  like boolean
+  case node
+    text <$set.has($value)>
+
+bind map-values
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$map.values()]>
+
+bind map-keys
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$map.keys()]>
+
+form place-facts
+  link ok, like boolean
+  link forms, like dynamic
+  link writes, like list, like text
+  link program, like dynamic
+  link outcome, like compile-outcome
+
+task build
+  take text, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(stdlib, env), bind(env, env)))
+
+# the slot-private forms of a program and the writes made in place, each `local:field,field`
+task facts
+  take text, like text
+  like place-facts
+
+  host out, build(text, <node>)
+  host no-methods, make list
+  host no-writes, make list
+  fork test, out/ok
+    miss
+      back make(place-facts, bind(ok, false), bind(forms, set-of(no-methods)), bind(writes, no-writes), bind(program, no-methods), bind(outcome, out))
+  host program, out/program
+  host methods, make list
+  walk program
+    take one, like dynamic
+    fork test, is-equal(one/form, <mask>)
+      hold
+        walk one/methods
+          take method, like dynamic
+          methods/push(method)
+  host listed, backend-module/list-facts(program, backend-module/gated-tasks(program, set-of(methods)))
+  host forms, place-module/private-forms(program, listed/lend, listed/fresh)
+  host writes, make list
+  walk map-values(place-module/place-writes(program, forms))
+    take write, like dynamic
+    host names, make list
+    walk write/fields
+      take field, like dynamic
+      names/push(field/name)
+    writes/push(<{write/local}:{join(names, <,>)}>)
+  back make(place-facts, bind(ok, true), bind(forms, forms), bind(writes, writes), bind(program, program), bind(outcome, out))
+
+task has-form
+  take found, like place-facts
+  take name, like text
+  like boolean
+
+  back set-has(found/forms, name)
+
+host fixture-text, file-text(<test/compile/meaning-native/place.tree>)
+host nbody-text, file-text(<deck/mark/kernels/n-body/term.tree>)
+
+# 1. the meaning fixture: the pair loop in place, the three hazards not
+host fixture, facts(fixture-text)
+
+test <point is slot-private, pin is not>
+  want hold, fixture/ok
+  want hold, has-form(fixture, <point>)
+  want hold, is-equal(has-form(fixture, <pin>), false)
+
+test <only the pair loop is written in place, both of its writes>
+  want hold, fixture/ok
+  want hold, is-equal(fixture/writes, make(list, <p:a>, <q:b>))
+
+# 2. n-body: the four writes, and the TypeScript it drives
+host nbody, facts(nbody-text)
+
+test <n-body writes all four in place>
+  want hold, nbody/ok
+  want hold, is-equal(nbody/writes/length, 4)
+
+host ts-changed, make pattern, <<bi\.vx = bi\.vx - dx \* mj>>
+
+test <TypeScript assigns the changed fields and allocates nothing>
+  want hold, nbody/ok
+  host ts, emit-text(nbody/outcome, <typescript>)
+  want hold, matches(ts-changed, ts)
+  want hold, is-equal(text-contains(ts, <__termPut(bodies>), false)
+
+host base, <load @term/base/list\n  find list\n  find push\n  find get\n\nform spot\n  link a, like number\n\ntask spots\n  like list, like spot\n  save out\n    make list\n  call push\n    read out\n    make spot\n      bind a, code 1\n  call push\n    read out\n    make spot\n      bind a, code 2\n  send back, read out\n\ntask bump\n  take xs, like list, like spot\n  save s\n    call get\n      read xs\n      code 0\n  save xs/0\n    make spot\n      bind a\n        call add\n          read s/a\n          code 1\n>
+
+# 3-7. what must NOT be private, each beside the same program without the hazard
+test <the plain program is private and written in place>
+  host found, facts(<{base}\ntask compute\n  like number\n  save xs\n    call spots\n  call bump\n    read xs\n  save s\n    call get\n      read xs\n      code 0\n  send back, read s/a\n>)
+  want hold, found/ok
+  want hold, is-equal(found/writes/length, 1)
+
+# a second name for the list is the same list (lists are references on all four backends today; D1's list values
+# arrive with self-hosting-0026), so a write through it is a write to the same slot. A COPY is the hazard: it holds
+# the same objects in a second list
+test <a list copied by slice is NOT private (the copy shares its elements)>
+  host found, facts(<{base}\ntask compute\n  like number\n  save xs\n    call spots\n  save ys\n    call xs/slice\n      code 0\n  call bump\n    read xs\n  save s\n    call get\n      read ys\n      code 0\n  send back, read s/a\n>)
+  want hold, found/ok
+  want hold, is-equal(has-form(found, <spot>), false)
+
+test <an element passed whole to a task is NOT private>
+  host found, facts(<{base}\ntask keep\n  take s, like spot\n  like number\n  send back, read s/a\n\ntask compute\n  like number\n  save xs\n    call spots\n  call bump\n    read xs\n  send back\n    call keep\n      call get\n        read xs\n        code 1\n>)
+  want hold, found/ok
+  want hold, is-equal(has-form(found, <spot>), false)
+
+test <one slot copied into another is NOT private (two slots, one object)>
+  host found, facts(<{base}\ntask compute\n  like number\n  save xs\n    call spots\n  save xs/1\n    call get\n      read xs\n      code 0\n  call bump\n    read xs\n  send back, code 0\n>)
+  want hold, found/ok
+  want hold, is-equal(has-form(found, <spot>), false)
+
+test <a list handed to a generic task other than get and push is NOT private>
+  host found, facts(<{base}\nload @term/base/list\n  find first\n\ntask compute\n  like number\n  save xs\n    call spots\n  call bump\n    read xs\n  call first\n    read xs\n  send back, code 0\n>)
+  want hold, found/ok
+  want hold, is-equal(has-form(found, <spot>), false)
+
+# 8. private, but a write whose local is read again for the changed field stays a make (`bump`'s, from the shared
+# program, is the one write in place)
+test <a changed field read after the write keeps the write a make>
+  host found, facts(<{base}\ntask again\n  take xs, like list, like spot\n  like number\n  save s\n    call get\n      read xs\n      code 0\n  save xs/0\n    make spot\n      bind a\n        call add\n          read s/a\n          code 1\n  send back, read s/a\n\ntask compute\n  like number\n  save xs\n    call spots\n  send back\n    call again\n      read xs\n>)
+  want hold, found/ok
+  want hold, is-equal(found/writes/length, 1)
+
+# 9-11. Swift, where a record is a value: the slot locals read through their slot, and the hazards kept as copies
+form swift-facts
+  link ok, like boolean
+  link locals, like list, like text
+  link swift, like text
+
+task swift-facts-of
+  take text, like text
+  like swift-facts
+
+  host out, build(text, <swift>)
+  host locals, make list
+  fork test, out/ok
+    miss
+      back make(swift-facts, bind(ok, false), bind(locals, locals), bind(swift, <>))
+  walk map-keys(place-module/value-places(out/program)/locals)
+    take statement, like dynamic
+    fork test, is-equal(kind-of(statement/name), <string>)
+      hold
+        locals/push(statement/name)
+      miss
+        locals/push(<>)
+  back make(swift-facts, bind(ok, true), bind(locals, locals), bind(swift, emit-text(out, <swift>)))
+
+host swift-slot-write, make pattern, <<bodies\[i\]\.vx = \(bodies\[i\]\.vx - \(dx \* mj\)\)>>
+
+test <Swift reads n-body's bodies through their slots and writes only the changed fields>
+  host swift-body, swift-facts-of(nbody-text)
+  want hold, swift-body/ok
+  want hold, matches(swift-slot-write, swift-body/swift)
+  want hold, is-equal(text-contains(swift-body/swift, <let bi = >), false)
+
+test <in the fixture, the pair loop's locals and the plain reads are read through the slot, and no hazard's local is>
+  host swift-fixture, swift-facts-of(fixture-text)
+  want hold, swift-fixture/ok
+  want hold, is-equal(sort(swift-fixture/locals, from-texts), make(list, <first>, <p>, <p0>, <p1>, <p2>, <q>))

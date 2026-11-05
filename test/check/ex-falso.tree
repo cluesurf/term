@@ -1,0 +1,24 @@
+note <Ex falso from an INTEGER-INCONSISTENT assumption -- the integer (omega) dual of the disequality gcd test, applied to the assumptions rather than the goal>
+
+# Ported from ex-falso.ts by task/term/suite-port.ts.
+
+load ../support/compiling
+  find compile-text
+
+# Ex falso from an INTEGER-INCONSISTENT assumption -- the integer (omega) dual of the disequality gcd test, applied to
+# the assumptions rather than the goal. A branch condition `2 a == 3` records the equation `2 a == 3`, which by Bezout
+# has NO integer solution (gcd(2) = 2 does not divide 3). That branch is therefore unreachable, so EVERY hold inside it
+# is vacuously true. The rational Fourier-Motzkin prover alone cannot see this (it reads `2 a == 3` as satisfiable at
+# a = 3/2). Sound because Seed's binary +/-/* are integer-only, so a coefficient |c| > 1 -- the only case the gcd test
+# fires -- guarantees integer variables. Soundness control: under a CONSISTENT assumption (`2 a == 4`, solvable at
+# a = 2) the same non-tautological hold is NOT vacuously proven. Run: npx tsx test/check/ex-falso.ts
+# the dead branch: its condition `2 a == 3` has no integer solution, so the hold `a == 999` inside it is vacuous.
+# `nat` is declared: it was named and never defined, which built while an unknown type name was read as a hole
+# 1. EX FALSO: the branch assuming `2 a == 3` (no integer solution) proves an otherwise-false hold vacuously.
+test <integer-inconsistent assumption (2a == 3) makes the branch vacuous>
+  want hold, compile-text(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask branch\n  take a, like integer\n  like nat\n  fork test\n    hook test\n      call is-equal\n        call multiply\n          code 2\n          read a\n        code 3\n    hook hold\n      hold\n        call is-equal\n          read a\n          code 999\n      send back\n        make zero\n    hook miss\n      send back\n        make zero\n>)/ok
+
+# 2. SOUNDNESS CONTROL: the branch assuming `2 a == 4` (solvable at a = 2) is LIVE, so the non-tautological hold
+# `a == 999` is NOT proven and the function is rejected.
+test <consistent assumption (2a == 4) does NOT prove the false hold>
+  want hold, not(compile-text(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask branch\n  take a, like integer\n  like nat\n  fork test\n    hook test\n      call is-equal\n        call multiply\n          code 2\n          read a\n        code 4\n    hook hold\n      hold\n        call is-equal\n          read a\n          code 999\n      send back\n        make zero\n    hook miss\n      send back\n        make zero\n>)/ok)

@@ -166,6 +166,14 @@ load @term/base/environment
 load @term/base/text/number
   find host-parse-float
 
+load ./hold-key-text
+  find key-found
+  find key-memo
+  find memo-key
+  find is-kept
+  find kept-found
+  find keep-found
+
 load ./hold-state
   find hold-state
   find hold-delta
@@ -340,10 +348,6 @@ form told
   link false-at, like maybe, like text
   link hint, like maybe, like text
 
-form key-found
-  link text, like text
-  link names, like list, like text
-
 # ---- the host's reads ----
 
 # a hold's name, `\u0001` for one with none (no rule is named that)
@@ -493,69 +497,6 @@ bind json-strings
   case kotlin
     text <kotlin.TODO()>
 
-# A DEFINITION'S KEY TEXT, KEPT (decision 102 of term/self-host/change/001-finish-self-host): `key-text` builds a
-# statement's node-json for every task's memo key and every definition the key reaches, again on every check. The host
-# keeps each answer by the statement's own whole native text, places left out as `key-skip` leaves them out
-# (check/hold-key-memo.ts), so an unchanged definition's text is never built twice; the kept text is the same text,
-# since node-json reads nothing the native text does not hold. `<>` is a statement the host cannot write exactly, which
-# is never kept
-bind kept-key
-  take s, like statement
-  like text
-  case node
-    text <((globalThis as any).__termHoldKeyMemo?.key($s) ?? '')>
-  case browser
-    text <((globalThis as any).__termHoldKeyMemo?.key($s) ?? '')>
-  case rust
-    text <String::new()>
-  case swift
-    text <"">
-  case kotlin
-    text <"">
-
-bind is-key-kept
-  take key, like text
-  like boolean
-  case node
-    text <Boolean((globalThis as any).__termHoldKeyMemo?.has($key))>
-  case browser
-    text <Boolean((globalThis as any).__termHoldKeyMemo?.has($key))>
-  case rust
-    text <false>
-  case swift
-    text <false>
-  case kotlin
-    text <false>
-
-bind key-kept
-  take key, like text
-  like key-found
-  case node
-    text <((globalThis as any).__termHoldKeyMemo.get($key))>
-  case browser
-    text <((globalThis as any).__termHoldKeyMemo.get($key))>
-  case rust
-    text <unimplemented!()>
-  case swift
-    text <fatalError()>
-  case kotlin
-    text <kotlin.TODO()>
-
-bind keep-key
-  take key, like text
-  take found, like key-found
-  like boolean
-  case node
-    text <Boolean((globalThis as any).__termHoldKeyMemo?.keep($key, $found))>
-  case browser
-    text <Boolean((globalThis as any).__termHoldKeyMemo?.keep($key, $found))>
-  case rust
-    text <false>
-  case swift
-    text <false>
-  case kotlin
-    text <false>
-
 # what a memo key leaves out of a statement at every depth: its places
 task key-skip
   like list, like text
@@ -565,24 +506,29 @@ task key-skip
   push(out, <span>)
   back out
 
-# a task as checked without its places, as node-json's text, and every text in it
+# a task as checked without its places, as node-json's text, and every text in it. KEPT (decision 102 of
+# term/self-host/change/001-finish-self-host): the answer is kept by the statement's own whole native text, places left
+# out as `key-skip` leaves them out (check/hold-key-text.tree), so an unchanged definition's text is never built twice,
+# and the kept text is the same text, since node-json reads nothing the native text does not hold. `<>` is a statement
+# the host cannot write exactly, which is never kept
 task key-text
+  take memo, like key-memo
   take statement, like statement
   like key-found
   mark private
 
-  save memo-key, kept-key(statement)
-  fork test, and(is-unequal(memo-key, <>), is-key-kept(memo-key))
+  save held, memo-key(memo, statement)
+  fork test, and(is-unequal(held, <>), is-kept(memo, held))
     hold
-      back key-kept(memo-key)
+      back kept-found(memo, held)
   save json, statement-json(key-skip(), statement)
   save found
     make key-found
       bind text, json
       bind names, json-strings(json)
-  fork test, is-unequal(memo-key, <>)
+  fork test, is-unequal(held, <>)
     hold
-      keep-key(memo-key, found)
+      keep-found(memo, held, found)
   back found
 
 # a cited rule without its places, as node-json's text
@@ -3311,9 +3257,11 @@ form definition-memo
   mark shared
   link statements, like hash, like text, like list, like statement
   link written, like hash, like text, like key-found
+  link key-texts, like key-memo
 
 task definition-memo-of
   take program, like list, like statement
+  take key-texts, like key-memo
   like definition-memo
   mark private
 
@@ -3343,6 +3291,7 @@ task definition-memo-of
     make definition-memo
       bind statements, by-name
       bind written, key-found-table()
+      bind key-texts, key-texts
   back memo
 
 task statement-lists
@@ -3371,7 +3320,7 @@ task definition-found
   save names, texts()
   walk defs/statements/get(name)
     take s
-    save one, key-text(s)
+    save one, key-text(defs/key-texts, s)
     push(parts, one/text)
     walk one/names
       take n
@@ -3465,7 +3414,7 @@ task hold-key
   take defs, like definition-memo
   like text
 
-  save found, key-text(statement)
+  save found, key-text(state/key-texts, statement)
   save names, found/names
   save parts, texts()
   push(parts, json-text(found/text))
@@ -3969,7 +3918,7 @@ task check-program-holds
         save nothing, 0
   save state/cased-forms, cased
   save state/small-tasks, small-tasks-of(program)
-  save defs, definition-memo-of(program)
+  save defs, definition-memo-of(program, state/key-texts)
   # the pass limited to the file's own tasks keeps what the unlimited pass before it proved
   fork test, not(given/limited)
     hold

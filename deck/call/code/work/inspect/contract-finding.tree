@@ -8,8 +8,13 @@
 # Ported from call/code/face-contract.ts (term-cli-in-term-0056). The parser, the template expander and the mill are
 # docked until their own ports land; the program they answer is host values, `dynamic` here.
 
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
 dock load
-  load <@term/make/code/parser/tree>, name contract-parser
   load <@term/make/code/compile/mill>, name contract-mill
   load <@term/make/code/compile/template>, name contract-template
   load <node:fs>, name contract-fs
@@ -119,7 +124,7 @@ task props-of
   take name, like text
   like dynamic
 
-  save parsed, contract-parser/parse(make(contract-source, bind(file, file), bind(text, text)))
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
   fork test, not(contract-truthy(parsed/ok))
     hold
       back contract-nothing()

@@ -106,6 +106,22 @@ test <the notes of a refusal carry their place, severity and code>
   want hold, is-above(note/code, 0)
   want hold, is-equal(note/message, out/messages/0)
 
+test <diagnostics are the driver's own records, a span end and the markers of a blame read through>
+  host out, compile-text(<task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  back n\n>, make(compile-choice, bind(file, <b.tree>)))
+  want hold, not(out/ok)
+  want hold, is-equal(out/diagnostics/length, out/names/length)
+  want hold, is-equal(out/diagnostics/0/name, out/names/0)
+  want hold, is-minimum(out/diagnostics/0/span/end/line, out/notes/0/line)
+  want hold, is-above(out/diagnostics/0/markers/length, 0)
+  want hold, is-equal(out/diagnostics/0/markers/0/span/start/line, out/notes/0/markers/0/line)
+
+test <warning-diagnostics are the driver's own warning records>
+  host out, compile-text(lost-write, make(compile-choice, bind(file, </gate/code/w.tree>), bind(lean, true)))
+  want hold, out/ok
+  want hold, is-equal(out/warning-diagnostics/length, out/warnings/length)
+  want hold, is-equal(out/warning-diagnostics/0/message, out/warning-messages/0)
+  want hold, is-equal(out/diagnostics/length, 0)
+
 test <warning-messages stand beside the warning names, and warning-notes hold the same with a place>
   host out, compile-text(lost-write, make(compile-choice, bind(file, </gate/code/w.tree>), bind(lean, true)))
   want hold, out/ok

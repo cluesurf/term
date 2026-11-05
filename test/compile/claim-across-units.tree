@@ -1,0 +1,186 @@
+note <a claim whose type calls a task of another file, in the separate (per-unit) build>
+
+# Ported from claim-across-units.ts by statement (item 0569), term-proof-0011. The kernel proves such a claim by running
+# the task's body (term-proof-0004), and in a unit build the task is a stub: before the fix the stub carried no body, so
+# `term make` refused the claim (`unverified-proof`, the type it states never computed) where `term hold` and
+# `term make --merged` proved it. test/assurance/notes was the case: 17 claims of law.tree over model.tree's tasks. A unit
+# some proving unit reaches now carries the bodies of its pure tasks shown to end (compile/separate.ts `underProof`,
+# compile/stub.ts `stubProgram`), and only such a unit gives up the early cutoff. compile/separate and compile/cache are
+# the subject (decision 106).
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+  find compiling-source
+
+load ../support/judging
+  find read-field
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/list
+  find contains
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+bind answer-diagnostics
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <($answer.diagnostics ?? [])>
+
+bind answer-built
+  take answer, like dynamic
+  like list, like text
+  case node
+    text <($answer.built ?? [])>
+
+bind answer-reused
+  take answer, like dynamic
+  like list, like text
+  case node
+    text <($answer.reused ?? [])>
+
+# the module a unit is written to: what the test reads is each build's verdict, never its imports
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}.mjs>
+
+# the separate build of an entry over one model file, answered as `./model`, through a cache the caller keeps
+task build
+  take entry, like text
+  take model, like text
+  take cache, like dynamic
+  like dynamic
+
+  host files, make list(make(compiling-source, bind(file, <./model>), bind(text, model), bind(answer, <model.tree>)))
+  host options, compiling-options-of(make(compile-choice, bind(files, files), bind(closed, true)))
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), cache, module-of))
+
+task fresh-build
+  take entry, like text
+  take model, like text
+  like dynamic
+
+  back build(entry, model, new-cache(cache-module))
+
+# whether a refused build holds a diagnostic of the name whose message holds the words (<> for any message)
+task refused-with
+  take answer, like dynamic
+  take name, like text
+  take words, like text
+  like boolean
+
+  fork test, answer-ok(answer)
+    hold
+      back false
+  walk answer-diagnostics(answer)
+    take one, like dynamic
+    fork test, and(is-equal(<{read-field(one, <name>)}>, name), text-contains(<{read-field(one, <message>)}>, words))
+      hold
+        back true
+  back false
+
+# the model: a form, and a pure task over it shown to end (two statements, so its body is no shape a stub keeps)
+host model, <form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  save h, read g\n  sift h\n    case yes\n      send back, make no\n    case no\n      send back, make yes\n>
+
+# the same task, its body written another way and meaning the same
+host model-edit, <form flag\n  case yes\n  case no\n\ntask flip\n  take g, like flag\n  like flag\n  save k, read g\n  save h, read k\n  sift h\n    case yes\n      send back, make no\n    case no\n      send back, make yes\n>
+
+host equal, <form equal\n  head a\n  head x, like a\n  head y, like a\n  case refl\n    link c, like a\n    head\n      read c\n    head\n      read c\n>
+
+# the law, in another file, over the claim's left side: `flip(flip(g))` is the flag you started with, proven by computing
+# `flip`, and its false twin `flip(g)`
+task law
+  take left, like text
+  like text
+
+  back <load ./model\n  find flag\n  find flip\n\n{equal}\nrule flip-twice\n  take g, like flag\n  like equal flag\n    head\n      {left}\n    head\n      read g\n\ntask flip-twice\n  take g\n  sift g\n    case yes\n      send back\n        make refl\n          bind c, make yes\n    case no\n      send back\n        make refl\n          bind c, make no\n>
+
+# a file that only calls the task, with no rule anywhere: its build keeps the early cutoff
+host user, <load ./model\n  find flag\n  find flip\n\ntask use\n  take g, like flag\n  like flag\n  send back, flip(g)\n>
+
+test <a claim over a task of another file is proven in the unit build>
+  want hold, answer-ok(fresh-build(law(<flip(flip(g))>), model))
+
+test <its false twin is refused by the kernel, not for want of the body>
+  want hold, refused-with(fresh-build(law(<flip(g)>), model), <unverified-proof>, <does not check against its claim>)
+
+# under a proof a body edit reaches the proof, which ran the old body: the law is checked again
+test <under a proof, a body edit rebuilds the proving unit>
+  host cache, new-cache(cache-module)
+  host first, build(law(<flip(flip(g))>), model, cache)
+  host edited, build(law(<flip(flip(g))>), model-edit, cache)
+  want hold, answer-ok(edited)
+  want hold, contains(answer-built(edited), <entry.tree>)
+
+test <a caller with no rule builds>
+  want hold, answer-ok(fresh-build(user, model))
+
+# under no proof the early cutoff holds as before: the body edit rebuilds the model alone
+test <under no proof, a body edit is cut off at the stub>
+  host cache, new-cache(cache-module)
+  host first, build(user, model, cache)
+  host edited, build(user, model-edit, cache)
+  want hold, answer-ok(edited)
+  want hold, is-equal(join(answer-built(edited), <,>), <model.tree>)
+  want hold, is-equal(join(answer-reused(edited), <,>), <entry.tree>)
+
+# A PROOF WHOSE BODY CALLS A TASK OF ANOTHER FILE rests on that task's verdict, read off its stub (item
+# term-self-host-001-0527). `twice` holds calls, so the checker's call stamps rebuild it (compile/node-rebuild.tree) and the
+# verdict is written on the rebuilt statement, not on the one the stub is taken from. test/assurance/notes was the case:
+# 24 proofs refused as `unverified-proof` by `term make`, none by `term make --merged`
+host calling-model, <form natural\n  case zero\n  case succ\n    link prior, like natural\n\ntask twice\n  take n, like natural\n  like natural\n  sift n\n    case zero\n      send back, make zero\n    case succ\n      link p\n      send back\n        make succ\n          bind prior\n            make succ\n              bind prior, twice(p)\n\ntask spin\n  take n, like natural\n  like natural\n  send back, spin(n)\n>
+
+task calling-law
+  take callee, like text
+  like text
+
+  back <load ./model\n  find natural\n  find {callee}\n\n{equal}\nrule stays\n  take n, like natural\n  like equal natural\n    head\n      {callee}(n)\n    head\n      {callee}(n)\n\ntask stays\n  take n\n  send back\n    make refl\n      bind c, {callee}(n)\n>
+
+test <a proof calling a grounded task of another file, a task with calls of its own, is proven>
+  want hold, answer-ok(fresh-build(calling-law(<twice>), calling-model))
+
+# the wall stays up: a task the kernel cannot ground (it never ends) still refuses what rests on it, over the same stub
+test <a proof calling a task that never ends is still refused>
+  want hold, refused-with(fresh-build(calling-law(<spin>), calling-model), <unverified-proof>, <>)

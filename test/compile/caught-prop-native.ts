@@ -89,6 +89,35 @@ task keyed
   back answer
 `
 
+// a form the program declares, whose prop has two words: TypeScript stores it camel-cased (`whereFrom`) and reads the
+// key by its written name, `where-from`, through `__termLinkKey` (compiler decision 015, item 0788)
+const LOST = `load @term/base/exception
+  find exception
+
+form lost-thing
+  like exception
+    bind note, <lost>
+    link where-from, like text
+
+${SEEN}
+task lose
+  like number
+  halt lost-thing
+    bind where-from, <a.b>
+
+task keyed
+  take key, like text
+  like text
+  save answer, <none>
+  fork
+    mark unsafe
+    save got, lose()
+  halt take
+    take problem
+    save answer, seen(problem/link/{key})
+  back answer
+`
+
 // the read in the module it was found in: every native emitter writes http/tell.tree. No toolchain builds it here, since
 // its closure's host bindings do not build alone
 const TELL = 'deck/site/code/http/tell.tree'
@@ -216,24 +245,40 @@ task run
   {
     name: 'by-key-kebab',
     says: 'a prop whose name is two words, of a form the program declares',
-    want: 't:a/b',
-    gap: { typescript: '0788: the raise stores whereFrom and the read asks for where-from' },
-    program: `load @term/base/exception
-  find exception
+    want: 't:a.b',
+    program: `${LOST}
+task run
+  like text
+  back keyed(<where-from>)
+`,
+  },
+  {
+    // compiler decision 015 rules 1 and 2: only the written name hits. The stored spelling, an inherited name and a
+    // name no form has read absent on all four (item 0788)
+    name: 'by-key-written-only',
+    says: 'a key that is the stored spelling, an inherited name, or no prop at all, reads absent',
+    want: 'other other other other t:a.b',
+    program: `${LOST}
+task run
+  like text
+  back <{keyed(<whereFrom>)} {keyed(<constructor>)} {keyed(<toString>)} {keyed(<nowhere>)} {keyed(<where-from>)}>
+`,
+  },
+  {
+    // compiler decision 015 rule 3: an absent prop goes into set-field as null on all four (item 0788)
+    // one body, so the keys stay in the order they were set on all four (item 0939: Rust sorted them, Kotlin wrote an
+    // absent prop as the text kotlin.Unit)
+    name: 'by-key-kebab-into-json',
+    says: 'a two-word prop, a missing one and an inherited one, by name into a JSON body',
+    want: '{"where-from":"a.b","nowhere":null,"constructor":null}',
+    program: `load @term/base/json
+  find make-object
+  find set-field
+  find stringify
 
-form lost-thing
-  like exception
-    bind note, <lost>
-    link where-from, like text
-
-${SEEN}
-task lose
-  like number
-  halt lost-thing
-    bind where-from, <a/b>
-
-task keyed
-  take key, like text
+${LOST}
+task body-of
+  take keys, like list, like text
   like text
   save answer, <none>
   fork
@@ -241,12 +286,16 @@ task keyed
     save got, lose()
   halt take
     take problem
-    save answer, seen(problem/link/{key})
+    save body, make-object()
+    walk keys
+      take prop
+      save body, set-field(body, prop, problem/link/{prop})
+    save answer, stringify(body)
   back answer
 
 task run
   like text
-  back keyed(<where-from>)
+  back body-of(make list(<where-from>, <nowhere>, <constructor>))
 `,
   },
   {

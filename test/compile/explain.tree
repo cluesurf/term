@@ -1,0 +1,249 @@
+note <Every rebuild explained>
+
+# Ported from explain.ts by statement (item 0570). `term make --explain` (note/project/term/incremental-best-in-class.md,
+# step 6): a unit that is built says why: its own text, a name it reaches and which, its settings, the compiler, or
+# nothing recorded. The reasons are compile/explain.tree comparing the inputs a unit was last built from with the ones it
+# has now. The builds run in order over one project and one record of inputs, so each is a top-level `host` that takes
+# the build before it. compile/separate and compile/cache are the subject (decision 106).
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+  find set-field
+
+load @term/base/list
+  find contains, name list-contains
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name explain-file
+  load <node:path>, name explain-path
+
+bind cache-named
+  take module, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache(undefined, $name)>
+
+bind explain-of
+  take recall, like dynamic
+  take remember, like dynamic
+  like dynamic
+  case node
+    text <(\{ reasons: new Map(), recall: $recall, remember: $remember \})>
+
+bind reason-labels
+  take explain, like dynamic
+  like list, like text
+  case node
+    text <[...$explain.reasons.keys()]>
+
+bind reasons-at
+  take explain, like dynamic
+  take label, like text
+  like list, like text
+  case node
+    text <$explain.reasons.get($label)>
+
+bind new-map
+  take seed, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+bind map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind map-set
+  take map, like dynamic
+  take key, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$map.set($key, $value)>
+
+task set-up
+  like text
+
+  host root, temp-folder(<explain->)
+  explain-file/mkdir-sync(explain-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  explain-file/write-file-sync(explain-path/join(root, <deck.tree>), <deck @probe/explain\n  mark \<0.0.1\>\n>)
+  back root
+
+host root, set-up()
+host helper, explain-path/join(root, <code>, <helper.tree>)
+host entry, explain-path/join(root, <code>, <base.tree>)
+host entry-text, <load ./helper\n  find greet\n\ntask main\n  like text\n  back greet(\<you\>)\n>
+
+# the records, kept the way the CLI keeps them, across builds
+host kept, new-map(0)
+
+task recall
+  take id, like text
+  like dynamic
+
+  back map-get(kept, id)
+
+task remember
+  take id, like text
+  take inputs, like dynamic
+  like dynamic
+
+  back map-set(kept, id, inputs)
+
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}>
+
+task lean-of
+  take file, like dynamic
+  like boolean
+
+  back true
+
+# what one build said: whether it built, and the reasons of the helper and of the entry
+form told
+  link ok, like boolean
+  link helper, like list, like text
+  link entry, like list, like text
+
+task reasons-of
+  take explain, like dynamic
+  take name, like text
+  like list, like text
+
+  walk reason-labels(explain)
+    take label, like text
+    fork test, ends-with(label, </code/{name}.tree>)
+      hold
+        back reasons-at(explain, label)
+  back make list
+
+task build-with
+  take helper-text, like text
+  take entry-body, like text
+  take cache, like dynamic
+  take lean, like boolean
+  like told
+
+  explain-file/write-file-sync(helper, helper-text)
+  explain-file/write-file-sync(entry, entry-body)
+  host explain, explain-of(recall, remember)
+  host options, make-record(make(list, <resolve>, project-module/project-resolver(root), <cache>, cache, <modules>, module-of, <explain>, explain))
+  fork test, lean
+    hold
+      set-field(options, <leanOf>, lean-of)
+  host result, separate-module/compile-separate(make-record(make(list, <file>, entry, <text>, entry-body)), options)
+  back make(told, bind(ok, result/ok), bind(helper, reasons-of(explain, <helper>)), bind(entry, reasons-of(explain, <base>)))
+
+task build
+  take helper-text, like text
+  take cache, like dynamic
+  take after, like dynamic
+  like told
+
+  back build-with(helper-text, entry-text, cache, false)
+
+task greet
+  take params, like text
+  like text
+
+  back <task greet\n{params}  like text\n  save said, \<hello\>\n  back said\n>
+
+task any-starting-ending
+  take reasons, like list, like text
+  take start, like text
+  take end, like text
+  like boolean
+
+  walk reasons
+    take reason, like text
+    fork test, and(starts-with(reason, start), ends-with(reason, end))
+      hold
+        back true
+  back false
+
+host cache, cache-named(cache-module, <one>)
+host two-params, greet(<  take who, like text\n  take how, like text, fall \<!\>\n>)
+
+host first, build(greet(<  take who, like text\n>), cache, root)
+host body, build(<task greet\n  take who, like text\n  like text\n  save said, \<hello there\>\n  back said\n>, cache, first)
+host signature, build(two-params, cache, body)
+host compiler, build(two-params, cache-named(cache-module, <two>), signature)
+host again, build(two-params, cache-named(cache-module, <two>), compiler)
+
+# a unit built because what it consulted moved (decision 103 item 4) says so, and a unit that only names it is not built
+host consult-entry, <load ./helper\n  find bump\n\ntask main\n  take n, like number\n  like number\n  hold is-equal(bump(n), add(n, 1))\n  back n\n>
+
+task bump
+  take by, like number
+  like text
+
+  back <task bump\n  take n, like number\n  like number\n  back add(n, {by})\n>
+
+task consult-build
+  take helper-text, like text
+  take memory, like dynamic
+  take after, like dynamic
+  like told
+
+  back build-with(helper-text, consult-entry, memory, true)
+
+host consulting, cache-named(cache-module, <three>)
+host consult-first, consult-build(bump(1), consulting, again)
+host consult-moved, consult-build(bump(2), consulting, consult-first)
+
+test <the first build builds>
+  want hold, first/ok
+
+test <a unit never built before says so>
+  want hold, any-starting-ending(first/helper, <nothing recorded>, <>)
+
+test <a body edit builds>
+  want hold, body/ok
+
+test <the edited unit names its own text>
+  want hold, any-starting-ending(body/helper, <its own text changed>, <helper.tree>)
+
+test <and its importer is not built at all>
+  want hold, is-equal(body/entry/length, 0)
+
+test <a signature edit builds>
+  want hold, signature/ok
+
+test <the importer names the name that changed>
+  want hold, list-contains(signature/entry, <`greet` changed>)
+
+test <and nothing else>
+  want hold, is-equal(signature/entry/length, 1)
+
+test <a new compiler builds>
+  want hold, compiler/ok
+
+test <and every unit says the compiler changed>
+  want hold, list-contains(compiler/helper, <the compiler changed>)
+  want hold, list-contains(compiler/entry, <the compiler changed>)
+
+test <a fresh cache with nothing changed says the stored answer was missing>
+  want hold, list-contains(again/helper, <its stored answer was missing>)
+
+test <a consulting unit builds>
+  want hold, consult-first/ok
+
+test <and says what it consulted changed>
+  want hold, any-starting-ending(consult-moved/entry, <what it consulted changed>, <#bump#shape>)

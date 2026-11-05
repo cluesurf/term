@@ -1,0 +1,161 @@
+note <A STUB'S CARRIED SHAPE IS NOT THE IMPORTER'S CODE>
+
+# Ported from private-stub-shape.ts by task/term/suite-port.ts, finished by hand (item 0574). `mid.tree` has a
+# one-statement task `uses` whose body calls the public `pick` of `pub.tree`, while its closure also holds a private
+# `pick` of `priv.tree`. In mid's own unit the two are split by file and the call is bound `pick__in0_1`, and mid's stub
+# carries that body as its `stubShape` (compile/stub.ts) for the shape readers. The entry's unit splits three `pick`s
+# (`early.tree`'s too), and there `pick__in0_1` is priv's private one, so check/private.tree read the carried call as the
+# entry's own use of a private task: `private-name` in the separate build, nothing in the merged one
+# (term-self-host-001-0313, found by separate-diff on compile/minting.tree, whose minting-flow.tree's `is-halt-take` calls
+# `word-at`). The privacy check skips a stub's carried shape and body: their references were checked in their own unit.
+# compile/separate and compile/cache are the subject (decision 106).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find compiling-options-of
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find char-count
+  find substring
+  find ends-with
+  find index-of
+  find split
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind ok-of
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+bind names-of
+  take answer, like dynamic
+  like list, like text
+  case node
+    text <($answer.diagnostics ?? []).map(d =\> d.name ?? "")>
+
+host word-chars, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+
+# the module path of a file: its name without .tree, every character outside a word one written _
+task slug-path
+  take file, like text
+  like text
+
+  save stem, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stem, substring(file, 0, subtract(char-count(file), 5))
+  save out, <>
+  walk split(stem, <>)
+    take one, like text
+    fork test, is-above(index-of(word-chars, one), -1)
+      hold
+        save out, <{out}{one}>
+      miss
+        save out, <{out}_>
+  back <./{out}.mjs>
+
+host early, <task pick\n  take a, like boolean\n  take b, like boolean\n  like text\n  send back, \<early\>\n>
+
+host priv, <task pick\n  mark private\n  take kids, like list, like text\n  take at, like number\n  like text\n  send back, \<priv\>\n\ntask other\n  take kids, like list, like text\n  like text\n  send back, pick(kids, 0)\n>
+
+host pub, <task pick\n  take value, like text\n  take field, like text\n  like text\n  send back, \<pub\>\n>
+
+host mid, <load ./priv\n  find other\n\nload ./pub\n  find pick\n\ntask uses\n  take x, like text\n  like text\n  send back, pick(x, \<y\>)\n>
+
+task one-file
+  take name, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <./{name}>), bind(text, text), bind(answer, <{name}.tree>))
+
+# each load answers as its own name, and nothing else is found
+host files, make(list, one-file(<early>, early), one-file(<priv>, priv), one-file(<pub>, pub), one-file(<mid>, mid))
+
+task merged
+  take entry, like text
+  like compile-outcome
+
+  back compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, files), bind(cache, new-cache(cache-module))))
+
+task separate
+  take entry, like text
+  like dynamic
+
+  host options, compiling-options-of(make(compile-choice, bind(files, files)))
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), slug-path))
+
+host entry, <load ./early\n  find pick\n\nload ./priv\n  find other\n\nload ./mid\n  find uses\n\ntask run\n  take x, like text\n  like text\n  send back, uses(pick(true, false))\n>
+
+# the same closure reached in other orders, so whichever split name the entry's unit gives priv's task, one of them
+# is the name mid's carried shape holds
+host entry-late, <load ./mid\n  find uses\n\nload ./priv\n  find other\n\nload ./early\n  find pick\n\ntask run\n  take x, like text\n  like text\n  send back, uses(pick(true, false))\n>
+
+host entry-priv-first, <load ./priv\n  find other\n\nload ./early\n  find pick\n\nload ./mid\n  find uses\n\ntask run\n  take x, like text\n  like text\n  send back, uses(pick(true, false))\n>
+
+test <early, priv, mid: the merged build is clean>
+  want hold, merged(entry)/ok
+
+test <early, priv, mid: the separate build is clean, as the merged one>
+  want hold, ok-of(separate(entry))
+
+test <mid, priv, early: the merged build is clean>
+  want hold, merged(entry-late)/ok
+
+test <mid, priv, early: the separate build is clean, as the merged one>
+  want hold, ok-of(separate(entry-late))
+
+test <priv, early, mid: the merged build is clean>
+  want hold, merged(entry-priv-first)/ok
+
+test <priv, early, mid: the separate build is clean, as the merged one>
+  want hold, ok-of(separate(entry-priv-first))
+
+# the check still refuses a real use: an entry calling priv's private task through its own find
+host real, <load ./priv\n  find pick\n\ntask run\n  take x, like list, like text\n  like text\n  send back, pick(x, 0)\n>
+
+test <merged: a find of the private task is still refused>
+  host r, merged(real)
+  want hold, is-equal(r/ok, false)
+  want hold, contains(r/names, <private-name>)
+
+test <separate: a find of the private task is still refused>
+  host r, separate(real)
+  want hold, is-equal(ok-of(r), false)
+  want hold, contains(names-of(r), <private-name>)

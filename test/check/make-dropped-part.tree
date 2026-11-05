@@ -1,0 +1,92 @@
+# A part a construction has no place for is refused, never dropped (item 0819). `make hash(<a>)` and `make hash, <a>`
+# built an empty map, since a `make hash` keeps only its `save` lines and a value has no key. A `save` line under
+# `make list` built an empty list, one under `make pair` was left out, and a `bind` under `make list` built
+# `{ k: "a" }` typed as a list. Each with a clean build, on all four backends. Every other spelling means what it did.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(lean, true)))
+
+task said
+  take text, like text
+  like text
+
+  back join(built(text)/messages, < | >)
+
+host probe-head, <task probe\n  like unknown\n\n>
+
+host pair-head, <form pair\n  slot left, like number\n  slot right, like number\n\n>
+
+host hash-said, <`make hash` takes its entries as `save` lines, so a value under or beside the name has no key and would be dropped>
+
+# ---- refused: the part would be dropped ----
+
+test <a value under make hash's name>
+  host text, <{probe-head}  save h, make hash(\<a\>)\n  back h\n>
+  want hold, text-contains(said(text), hash-said)
+
+test <a value beside make hash's name>
+  host text, <{probe-head}  save h, make hash, \<a\>\n  back h\n>
+  want hold, text-contains(said(text), hash-said)
+
+test <a value after a space>
+  host text, <{probe-head}  save h, make hash \<a\>\n  back h\n>
+  want hold, text-contains(said(text), hash-said)
+
+test <a value beside make hash with save lines under it>
+  host text, <{probe-head}  save h\n    make hash, \<b\>\n      save k, \<a\>\n  back h\n>
+  want hold, text-contains(said(text), hash-said)
+
+test <a save line under make list>
+  host text, <{probe-head}  save h\n    make list\n      save k, \<a\>\n  back h\n>
+  want hold, text-contains(said(text), <a `save` line under `make list` is not an item, so it would be dropped>)
+
+test <a save line under a form's make>
+  host text, <{pair-head}{probe-head}  save h\n    make pair\n      bind left, 1\n      bind right, 2\n      save extra, 3\n  back h\n>
+  want hold, text-contains(said(text), <a `save` line under `make pair` is not a field, so it would be dropped>)
+
+test <a bind under make list, with no form or case named list>
+  host text, <{probe-head}  save h\n    make list\n      bind k, \<a\>\n  back h\n>
+  want hold, text-contains(said(text), <a `make list` item is a value under or beside the name, not a `bind`>)
+
+# ---- kept ----
+
+test <make hash with save lines>
+  host out, built(<{probe-head}  save h\n    make hash\n      save k, \<a\>\n  back h\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <new Map([["k", "a"]])>)
+
+test <make list with items under the name>
+  host out, built(<{probe-head}  save h, make list(\<a\>, \<b\>)\n  back h\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <["a", "b"]>)
+
+test <make list with items beside the name>
+  host out, built(<{probe-head}  save h, make list, \<a\>, \<b\>\n  back h\n>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <["a", "b"]>)
+
+test <a form's fields by bind>
+  host out, built(<{pair-head}{probe-head}  save h\n    make pair\n      bind left, 1\n      bind right, 2\n  back h\n>)
+  want hold, out/ok
+
+test <a case of the program's own named list takes its bind>
+  host out, built(<form shape\n  case list\n    link item, like number\n  case one\n\n{probe-head}  save h\n    make list\n      bind item, 1\n  back h\n>)
+  want hold, out/ok
+
+test <a case of the program's own named hash takes its bind>
+  host out, built(<form shape\n  case hash\n    link item, like number\n  case one\n\n{probe-head}  save h\n    make hash\n      bind item, 1\n  back h\n>)
+  want hold, out/ok

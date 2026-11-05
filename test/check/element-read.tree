@@ -1,0 +1,73 @@
+note <An element read is typed as the element>
+
+# Ported from element-read.ts by statement (item 0556). An element read is typed as the element (check/infer.ts, member
+# with an index): `read xs/{i}` and `read xs/0` on a `list number` are numbers, `read table/{key}` on a `hash text number`
+# is a number. They were `unknown` until 2026-10-02, so every backend treated them as a boxed dynamic: TypeScript compared
+# one to `0` with the structural `__termEqual` and did not check arithmetic on it for overflow.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/walking
+  find nodes-of
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <task first\n  take xs, like list, like number\n  take table, like hash, like text, like number\n  take key, like text\n  like number\n  save i, code 0\n  host a, read xs/\{i\}\n  host b, read xs/0\n  host c, read table/\{key\}\n  send back\n    call add\n      read a\n      call add\n        read b\n        read c\n>
+
+host overflow-check, make pattern, <<__termInt\(|__termIntStop\(__n\d+\)>>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+
+# the kind of the type of the let of this name, <> when there is no such let. The original read only the lets directly in
+# a function's body: this program has no other
+task let-kind
+  take out, like compile-outcome
+  take name, like text
+  like text
+
+  walk nodes-of(out/program, <let>)
+    take one, like dynamic
+    fork test, is-equal(<{one/name}>, name)
+      hold
+        back <{one/init/type/kind}>
+  back <>
+
+# the original's one FAIL when the program does not build stands in each test, as each needs the built program
+test <`read xs/\{i\}` on a list of numbers is a number>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(let-kind(out, <a>), <number>)
+
+test <`read xs/0` is a number>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(let-kind(out, <b>), <number>)
+
+test <`read table/\{key\}` on a hash of numbers is a number>
+  host out, built()
+  want hold, out/ok
+  want hold, is-equal(let-kind(out, <c>), <number>)
+
+test <TypeScript declares the reads as numbers, not any>
+  host out, built()
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <const a: number = >)
+  want hold, not(text-contains(out/emitted, <const a: any>))
+
+# the check is `__termInt(...)` inside an expression, or tested where it stands when it is all a statement's value
+# (typescript.ts, `testedInPlace`)
+test <and checks arithmetic on them for overflow>
+  host out, built()
+  want hold, out/ok
+  want hold, matches(overflow-check, out/emitted)

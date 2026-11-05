@@ -1,0 +1,171 @@
+note <Elaboration tests>
+
+# Ported from elaborate.ts by task/term/suite-port.ts, finished by hand (item 0556). check/elaborate is the subject, docked
+# (decision 106), and the checked program it reads comes from test/support/compiling's front-end (decision 119), also when
+# infer refuses it.
+
+# Elaboration tests: the surface language is lowered into the sound dependent kernel, and the KERNEL is the
+# authority. These prove the bridge actually checks (the `verified` set), exercises the quantitative machinery
+# (the erased polymorphic equality used by ==), and that the kernel independently catches type errors.
+# infer's own diagnostics are ignored here on purpose: we want to observe the KERNEL's independent verdict.
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find starts-with
+
+load ../support/judging
+  find read-field
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+
+dock load
+  load <@term/make/code/check/elaborate>, name elaborate-module
+
+host recursive-fib, <task fibonacci\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          call fibonacci\n            call subtract\n              read n\n              code 1\n          call fibonacci\n            call subtract\n              read n\n              code 2\n>
+
+# two functions, one calling the other: the kernel must resolve the cross-function call type
+host two-functions, <task double\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      read x\n\ntask quadruple\n  take x, like number\n  like number\n  send back\n    call double\n      call double\n        read x\n>
+
+# uses == : the surface == elaborates to the erased polymorphic equality (a multiplicity-0 type argument). If the
+# quantitative machinery were broken this would not check.
+host uses-equality, <task same\n  take a, like number\n  take b, like number\n  like boolean\n  send back\n    call is-equal\n      read a\n      read b\n>
+
+# declared result type (boolean) disagrees with the body (returns a number). The kernel must reject it.
+host wrong-result, <task bad\n  take n, like number\n  like boolean\n  send back n\n>
+
+# a wrong-typed argument: subtract wants numbers, gets a boolean. The kernel must reject it.
+host wrong-argument, <task oops\n  take flag, like boolean\n  like number\n  send back\n    call subtract\n      read flag\n      code 1\n>
+
+# a generic identity function, and a caller that uses it at a concrete type. The kernel must give identity a
+# polymorphic type and solve the type argument at the call by unification.
+host generic, <task identity\n  head t\n  take item, like t\n  like t\n  send back item\n\ntask use-identity\n  take n, like number\n  like number\n  send back\n    call identity\n      read n\n>
+
+# a generic function whose two parameters share the type, called with mismatched types. The kernel must reject:
+# the first argument fixes the type variable, the second then disagrees.
+host generic-mismatch, <task pair-equal\n  head t\n  take a, like t\n  take b, like t\n  like boolean\n  send back\n    call is-equal\n      read a\n      read b\n\ntask bad-call\n  take n, like number\n  take flag, like boolean\n  like boolean\n  send back\n    call pair-equal\n      read n\n      read flag\n>
+
+# mutation + a while loop: the effect layer must type the assignments and the loop condition through the kernel
+host while-loop, <task sum-below\n  take n, like number\n  like number\n  save total, code 0\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook step\n      save total\n        call add\n          read total\n          read i\n      save i\n        call add\n          read i\n          code 1\n  send back total\n>
+
+# an array constructed locally, then a for-each over it: the element type must flow to the loop variable
+host for-each, <task sum-pair\n  take a, like number\n  take b, like number\n  like number\n  save total, code 0\n  save items\n    make list\n      read a\n      read b\n  walk list, read items\n    hook next\n      take site, name x\n      save total\n        call add\n          read total\n          read x\n  send back total\n>
+
+# a match (fork case) on an enum, in an effectful body
+host match, <form light\n  case red\n  case green\n\ntask code-of\n  take c, like light\n  like number\n  fork case, read c\n    case red\n      send back, code 0\n    case green\n      send back, code 1\n>
+
+# async with await: the awaited result is typed transparently, so a typed async caller verifies
+host async, <task double-async\n  take n, like number\n  like number\n  wait true\n  send back\n    call add\n      read n\n      read n\n\ntask use-async\n  take n, like number\n  like number\n  wait true\n  send back\n    call double-async\n      read n\n      wait true\n>
+
+# an effectful type error: assigning a boolean to a number-typed mutable variable. The kernel must catch it.
+host bad-assign, <task wrong-assign\n  take n, like number\n  like number\n  save total, code 0\n  save total, true\n  send back total\n>
+
+# the kernel's report on the checked program
+task report
+  take source, like text
+  like dynamic
+
+  back elaborate-module/elaborate-report(front-end(source, make(compile-choice, bind(file, <t.tree>)))/program, <t.tree>)
+
+# whether the kernel verified a task of this name
+task is-verified
+  take r, like dynamic
+  take name, like text
+  like boolean
+
+  back contains(read-field(r, <verified>), name)
+
+# how many diagnostics the kernel gave
+task diagnostic-count
+  take r, like dynamic
+  like number
+
+  host found, read-field(r, <diagnostics>)
+  back found/length
+
+# whether one of the kernel's diagnostics is its own refusal, a message beginning `kernel:`
+task kernel-refused
+  take r, like dynamic
+  like boolean
+
+  walk read-field(r, <diagnostics>)
+    take one, like dynamic
+    fork test, starts-with(<{read-field(one, <message>)}>, <kernel:>)
+      hold
+        back true
+  back false
+
+test <recursive fibonacci is verified by the kernel>
+  want hold, is-verified(report(recursive-fib), <fibonacci>)
+
+test <recursive fibonacci has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(recursive-fib)), 0)
+
+test <cross-function calls verify (both functions)>
+  host r, report(two-functions)
+  want hold, and(is-verified(r, <double>), is-verified(r, <quadruple>))
+
+test <cross-function program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(two-functions)), 0)
+
+test <== verifies via the erased polymorphic equality (QTT)>
+  want hold, is-verified(report(uses-equality), <same>)
+
+test <equality program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(uses-equality)), 0)
+
+test <kernel catches a wrong result type>
+  want hold, kernel-refused(report(wrong-result))
+
+test <the rejected function is not in the verified set>
+  want hold, not(is-verified(report(wrong-result), <bad>))
+
+test <kernel catches a wrong argument type>
+  want hold, kernel-refused(report(wrong-argument))
+
+test <generic identity is verified by the kernel>
+  want hold, is-verified(report(generic), <identity>)
+
+test <generic call resolves the type argument by unification>
+  want hold, is-verified(report(generic), <use-identity>)
+
+test <generic program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(generic)), 0)
+
+test <generic function over a shared type variable verifies>
+  want hold, is-verified(report(generic-mismatch), <pair-equal>)
+
+test <kernel catches a mismatched generic call (type variable disagreement)>
+  want hold, kernel-refused(report(generic-mismatch))
+
+# ---- effect layer: mutation, loops, match ----
+test <effectful function with mutation + while loop is kernel-verified>
+  want hold, is-verified(report(while-loop), <sum-below>)
+
+test <while-loop program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(while-loop)), 0)
+
+test <for-each over an array is kernel-verified (element type flows to the loop variable)>
+  want hold, is-verified(report(for-each), <sum-pair>)
+
+test <for-each program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(for-each)), 0)
+
+test <match on an enum is kernel-verified>
+  want hold, is-verified(report(match), <code-of>)
+
+test <match program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(match)), 0)
+
+test <kernel catches an ill-typed assignment in an effectful body>
+  want hold, kernel-refused(report(bad-assign))
+
+test <async function and awaiting caller are kernel-verified>
+  host r, report(async)
+  want hold, and(is-verified(r, <double-async>), is-verified(r, <use-async>))
+
+test <async program has no kernel diagnostics>
+  want hold, is-equal(diagnostic-count(report(async)), 0)

@@ -1,0 +1,116 @@
+note <A `make pattern, <...>` literal is read when the program is built>
+
+# Ported from pattern-literal.ts by statement (item 0574). check/patterns.ts, regex-engine-0007: a literal is refused
+# when @term/base/pattern's reader refuses it, warned when it lands on the backtracking tier, naming why, and silent
+# otherwise. Each spelling of a literal is asked: positional in a task, `bind text` by name, a top-level `host`. A text
+# built at run time is the program's to handle, and so is a form of the same name a program declares itself. One test
+# per case of the original's table, in its order.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find project-path
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find starts-with, name text-starts-with
+
+task program
+  take head, like text
+  take body, like text
+  like text
+
+  back <load @term/base/pattern\n  find pattern\n  find matches\n{head}\ntask run\n  take input, like text\n  like boolean\n{body}\n>
+
+task build
+  take name, like text
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, project-path(<.>, <test/compile/{name}.tree>)), bind(stdlib, <node>)))
+
+# the warnings of a program that built, else its diagnostics, those named pattern-something, as `name: message`
+task said-of
+  take result, like compile-outcome
+  like list, like text
+
+  save notes, result/notes
+  fork test, result/ok
+    hold
+      save notes, result/warning-notes
+  host said, make list
+  walk notes
+    take one, like compile-note
+    fork test, text-starts-with(one/name, <pattern>)
+      hold
+        said/push(<{one/name}: {one/message}>)
+  back said
+
+# a message is held by its opening, so its explanation can be reworded without editing every case
+task agrees
+  take slug, like text
+  take head, like text
+  take body, like text
+  take builds, like boolean
+  take openings, like list, like text
+  like boolean
+
+  host result, build(<pattern-literal-{slug}>, program(head, body))
+  host said, said-of(result)
+  fork test, is-unequal(result/ok, builds)
+    hold
+      back false
+  fork test, is-unequal(said/length, openings/length)
+    hold
+      back false
+  save at, 0
+  walk openings
+    take opening, like text
+    fork test, not(text-starts-with(said/{at}, opening))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+host none, make list
+
+test <a pattern that reads, on tier B>
+  want hold, agrees(<a-pattern-that-reads-on-tier->, <>, <  send back, call(matches, make(pattern, text(\<a*b\>)), read(input))>, true, none)
+
+test <a pattern that reads, native>
+  want hold, agrees(<a-pattern-that-reads-native>, <>, <  send back, call(matches, make(pattern, text(\<\\d+\>)), read(input))>, true, none)
+
+test <a back reference>
+  want hold, agrees(<a-back-reference>,<>, <  send back, call(matches, make(pattern, text(\<(\\w)\\1\>)), read(input))>, true, make(list, <pattern-backtracks: `(\\w)\\1` needs a backtracking matcher, because of the back reference to group 1>))
+
+test <an atomic group, bound by name>
+  want hold, agrees(<an-atomic-group-bound-by-name>, <>, <  save p\n    make pattern\n      bind text, text \<(?\\\>ab|a)c\>\n  send back, call(matches, read(p), read(input))>, true, make(list, <pattern-backtracks: `(?\>ab|a)c` needs a backtracking matcher, because of an atomic group>))
+
+test <a possessive repetition in a top-level host>
+  want hold, agrees(<a-possessive-repetition-in-a-top-level-host>, <host fixed, make pattern, \<(ab)++c\>\n>, <  send back, call(matches, read(fixed), read(input))>, true, make(list, <pattern-backtracks: `(ab)++c` needs a backtracking matcher, because of a possessive repetition>))
+
+# the analysis takes both out of tier C, so neither is warned: `(a)\1` is `(a)a`, `[a-z]++` a greedy run and a lookahead
+test <a back reference the analysis replaces>
+  want hold, agrees(<a-back-reference-the-analysis-replaces>, <>, <  send back, call(matches, make(pattern, text(\<(a)\\1\>)), read(input))>, true, none)
+
+test <a possessive repetition the analysis replaces>
+  want hold, agrees(<a-possessive-repetition-the-analysis-replaces>, <>, <  send back, call(matches, make(pattern, text(\<[a-z]++x\>)), read(input))>, true, none)
+
+test <a count whose most is below its least>
+  want hold, agrees(<a-count-whose-most-is-below-its-least>, <>, <  send back, call(matches, make(pattern, text(\<a\\\{3,1\\\}\>)), read(input))>, false, make(list, <pattern-mismatch: `a\{3,1\}` is not a pattern: a count whose most is below its least, at code point 1>))
+
+test <a property that does not exist>
+  want hold, agrees(<a-property-that-does-not-exist>, <>, <  send back, call(matches, make(pattern, text(\<\\p\\\{Nope\\\}\>)), read(input))>, false, make(list, <pattern-mismatch: `\\p\{Nope\}` is not a pattern>))
+
+test <a text built at run time>
+  want hold, agrees(<a-text-built-at-run-time>, <>, <  send back, call(matches, make(pattern, read(input)), read(input))>, true, none)
+
+# a form of its own named `pattern`, with no stdlib pattern in the program: its text is nobody's pattern
+test <a form of its own named pattern>
+  host result, build(<pattern-literal-own-form>, <form pattern\n  slot text, like text\n\ntask run\n  like text\n  save p, make pattern, \<a\\\{3,1\\\}\>\n  send back, read p/text\n>)
+  want hold, result/ok
+  want hold, is-equal(said-of(result)/length, 0)

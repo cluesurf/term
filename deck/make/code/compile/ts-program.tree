@@ -1432,6 +1432,7 @@ task emit-type-script
           bind equal-used, st/equal-used
           bind text-used, st/text-used
           bind list-used, st/list-used
+          bind link-key-used, st/link-key-used
           bind flow-used, st/flow-used
           bind raise-codec, raise-codec
           bind fieldless, st/fieldless

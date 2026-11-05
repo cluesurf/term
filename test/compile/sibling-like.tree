@@ -1,0 +1,72 @@
+note <A `take`, `link` or `slot` has one type>
+
+# Ported from sibling-like.ts by task/term/suite-port.ts, finished by hand (item 0575). A second `like` beside the first
+# was read by nothing, so the element type the author wrote went nowhere in silence. It is refused by name, and the two
+# spellings that mean what it meant, nested and on one line, compile and type the element.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find contains, name text-contains
+
+host named, <a second `like` beside the first>
+
+task build
+  take name, like text
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, name)))
+
+# how many messages of a refused program hold the words
+task count-holding
+  take messages, like list, like text
+  take word, like text
+  like number
+
+  save count, 0
+  walk messages
+    take one, like text
+    fork test, text-contains(one, word)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <a second like under a take is refused by name>
+  host take, build(<t.tree>, <task first-of\n  take names\n    like list\n    like text\n\n  like text\n\n  send back, read names/0\n>)
+  want hold, is-equal(take/ok, false)
+  want hold, is-equal(count-holding(take/messages, named), 1)
+
+test <a second like under a link is refused by name>
+  host link-built, build(<l.tree>, <form shelf\n  link names\n    like list\n    like text\n>)
+  want hold, is-equal(link-built/ok, false)
+  want hold, any-holding(link-built/messages, named)
+
+test <the nested spelling compiles>
+  host nested, build(<n.tree>, <task first-of\n  take names\n    like list\n      like text\n\n  like text\n\n  send back, read names/0\n>)
+  want hold, nested/ok
+
+test <the one-line spelling compiles>
+  host line, build(<o.tree>, <task first-of\n  take names, like list, like text\n\n  like text\n\n  send back, read names/0\n>)
+  want hold, line/ok
+
+# the element type is READ: a number where the nested spelling says text is a type error, which it never was when
+# the second like was dropped
+test <the nested element type reaches the checker>
+  host wrong, build(<w.tree>, <task first-of\n  take names\n    like list\n      like text\n\n  like number\n\n  send back, read names/0\n>)
+  want hold, is-equal(wrong/ok, false)
+
+test <two type arguments under one like still compile>
+  host args, build(<a.tree>, <form pair\n  head k\n  head v\n  link key, like k\n  link value, like v\n\ntask key-of\n  take entry\n    like pair\n      like text\n      like number\n\n  like text\n\n  send back, read entry/key\n>)
+  want hold, args/ok
+
+# beside `like task` the second `like` IS read, as the function's result, and stays legal on a take and a link
+test <a function result beside like task still compiles>
+  host result, build(<r.tree>, <task apply\n  take step\n    like task\n    take n, like number\n    like number\n  take n, like number\n\n  like number\n\n  send back\n    call step, read n\n\nform stepper\n  link step\n    like task\n    take n, like number\n    like number\n>)
+  want hold, result/ok

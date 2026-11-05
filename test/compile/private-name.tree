@@ -1,0 +1,151 @@
+note <`mark private` is enforced per file (check/private.ts)>
+
+# Ported from private-name.ts by task/term/suite-port.ts, finished by hand (item 0574). A task marked private is visible
+# only inside the file that defines it: a call from another file, a reference to it as a value, and a `find` of it in a
+# `load` are each refused as `private-name`, naming the file. Exact rather than name-based: a parameter or local of the
+# same name in another file is its own binding and is never refused. A file under the package's `test/` may use a
+# private task of that package. `note private` is the old spelling, still honored, and warned about as `note-private`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+  find compiling-source
+
+load ../support/reading
+  find any-holding
+  find first-with
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+# `@app/<path>` resolves to `/pkg/<path>.tree`, so a file under `/pkg/test/` is a test of the package
+task module
+  take path, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, <@app/{path}>), bind(text, text), bind(answer, </pkg/{path}.tree>))
+
+task build
+  take files, like list, like compiling-source
+  take main, like text
+  take file, like text, fall </pkg/code/main.tree>
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, file), bind(files, files), bind(closed, true)))
+
+task refused-as-private
+  take result, like compile-outcome
+  like boolean
+
+  back and(not(result/ok), contains(result/names, <private-name>))
+
+# every diagnostic as `name: message (hint)`, joined, as the original's `said` reads a refusal
+task said
+  take result, like compile-outcome
+  like text
+
+  save out, <>
+  walk result/notes
+    take one, like compile-note
+    save out, <{out}{one/name}: {one/message} ({one/hint}) | >
+  back out
+
+# a.tree: a private helper, and a public task that uses it
+host a, <task helper\n  mark private\n  take x, like text\n  like text\n  send back, read x\n\ntask shout\n  take x, like text\n  like text\n  send back\n    call helper\n      read x\n>
+
+host none, make list
+host run-hi, <\ntask run\n  like text\n  send back\n    call helper\n      text \<hi\>\n>
+
+# the defining file uses its own private task
+host own-file, build(none, <{a}{run-hi}>)
+
+test <a private task called from its own file compiles>
+  want hold, own-file/ok
+
+test <and emits no warning for `mark private`>
+  want hold, own-file/ok
+  want hold, not(contains(own-file/warnings, <note-private>))
+
+# another file calls a's private helper by its package-global name
+host call-main, <load @app/a\n  find shout\n{run-hi}>
+host called, build(make(list, module(<a>, a)), call-main)
+
+test <a private task called from another file is refused>
+  want hold, refused-as-private(called)
+
+test <the refusal names the defining file>
+  want hold, text-contains(said(called), <in /pkg/a.tree>)
+
+test <the hint says how to fix it>
+  want hold, text-contains(said(called), <remove `mark private` from helper in>)
+
+test <the refusal points at the calling file>
+  want hold, is-equal(called/ok, false)
+  want hold, is-equal(called/notes/0/file, </pkg/code/main.tree>)
+
+# another file passes the private task as a value
+test <a private task referenced as a value from another file is refused>
+  host result, build(make(list, module(<a>, a)), <load @app/a\n  find shout\n\ntask run\n  like text\n  save f, read helper\n  send back, text \<x\>\n>)
+  want hold, refused-as-private(result)
+
+# another file finds the private task in a load block
+host found, build(make(list, module(<a>, a)), <load @app/a\n  find helper\n\ntask run\n  like text\n  send back, text \<x\>\n>)
+
+test <a `find` of a private task is refused>
+  want hold, refused-as-private(found)
+
+test <the find refusal points at the `find` line>
+  want hold, is-equal(found/ok, false)
+  want hold, is-equal(found/notes/0/line, 1)
+
+# a parameter and a local in another file share the private task's name: each is its own binding
+test <a same-named parameter or local in another file is not refused>
+  host result, build(make(list, module(<a>, a)), <load @app/a\n  find shout\n\ntask run\n  take helper, like text\n  like text\n  send back, read helper\n\ntask again\n  like text\n  save helper, text \<local\>\n  send back, read helper\n\ntask loud\n  like text\n  send back\n    call shout\n      text \<hi\>\n>)
+  want hold, result/ok
+
+# a public definition of the name the call may bind to keeps it reachable: a typed overload in b
+test <a call that may bind to a public overload is not refused>
+  host b, <task helper\n  take x, like number\n  like text\n  send back, text \<n\>\n>
+  host result, build(make(list, module(<a>, a), module(<b>, b)), <load @app/a\n  find shout\n\nload @app/b\n  find helper\n\ntask run\n  like text\n  send back\n    call helper\n      code 3\n>)
+  want hold, result/ok
+
+# a test of the package may use the package's private task
+host check-main, <load @app/code/a\n  find shout\n\ntask check-helper\n  like text\n  send back\n    call helper\n      text \<hi\>\n>
+
+test <a file under the package's test/ may call its private task>
+  host result, build(make(list, module(<code/a>, a)), check-main, </pkg/test/a.tree>)
+  want hold, result/ok
+
+# the same file outside test/ may not
+test <the same call from outside test/ is refused>
+  host outside, build(make(list, module(<code/a>, a)), check-main, </pkg/code/check.tree>)
+  want hold, refused-as-private(outside)
+
+# `note private`: the old spelling, honored and warned about
+host old, text-replace(a, <mark private>, <note private>)
+host own-old, build(none, <{old}{run-hi}>)
+
+test <`note private` still compiles in its own file>
+  want hold, own-old/ok
+
+test <`note private` warns as note-private>
+  want hold, own-old/ok
+  host warning, first-with(own-old/warning-notes, <name>, <note-private>)
+  want hold, is-unequal(warning, void)
+  want hold, is-equal(warning/severity, <warning>)
+
+test <the warning says to write `mark private`>
+  host warning, first-with(own-old/warning-notes, <name>, <note-private>)
+  want hold, is-unequal(warning, void)
+  want hold, text-contains(warning/hint, <`mark private`>)
+
+test <`note private` is still enforced across files>
+  host result, build(make(list, module(<a>, old)), call-main)
+  want hold, refused-as-private(result)

@@ -1,0 +1,124 @@
+note <The worker pool emits what the inline path emits, across several threads>
+
+# Ported from worker-pool.ts by statement (item 0577). Tier 4, phase 3: the worker path matches the inline path byte for
+# byte (the differential guarantee), a build of many definitions runs across several worker threads, and the pool's output
+# is the same however many workers process it. compile/worker-pool and the global scope it is handed are the subject
+# (decision 106), with the parser and the mill docked to build its input program as the original did. The runs are async,
+# so each test makes its own, as an async call cannot stand outside a task.
+
+load ../support/walking
+  find json-without
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/check/resolve>, name scope-module
+  load <@term/make/code/compile/worker-pool>, name pool-module
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+bind new-pool
+  take module, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <new $module.WorkerPool($size)>
+
+# the text of the functions from `from` to `count`, each a clean `take n, send back read n`, one blank line between
+task functions-text
+  take from, like number
+  take count, like number
+  like text
+
+  fork test, is-equal(from, count)
+    hold
+      back <>
+  host one, <task f{from}\n  take n, like number\n  like number\n  send back\n    read n\n>
+  host rest, functions-text(add(from, 1), count)
+  fork test, is-equal(rest, <>)
+    hold
+      back one
+  back <{one}\n{rest}>
+
+# a milled program of `count` independent functions, which resolve and type with no imports
+task many-functions
+  take count, like number
+  like dynamic
+
+  host parsed, parser-tree/parse(make(file-and-text, bind(file, <many.tree>), bind(text, functions-text(0, count))))
+  host milled, mill-module/mill(parsed/tree, <many.tree>)
+  back milled/program
+
+task emit-inline
+  take program, like dynamic
+  mark async
+  like dynamic
+
+  back wait pool-module/emit-program-parallel(program, scope-module/build-global-scope)
+
+task emit-pooled
+  take program, like dynamic
+  take pool, like dynamic
+  mark async
+  like dynamic
+
+  back wait pool-module/emit-program-parallel(program, scope-module/build-global-scope, pool)
+
+form runs
+  link inline, like dynamic
+  link pooled, like dynamic
+  link inline-second, like dynamic
+  link pooled-second, like dynamic
+
+# the inline build, then a pool of three, a second program through the same warm pool, and the pool closed
+task all-runs
+  mark async
+  like runs
+
+  host program, many-functions(8)
+  host inline, emit-inline(program)
+  host pool, new-pool(pool-module, 3)
+  host pooled, emit-pooled(program, pool)
+  # a second build reuses the warm workers and still matches (context sent again on the new revision)
+  host program-second, many-functions(5)
+  host pooled-second, emit-pooled(program-second, pool)
+  host inline-second, emit-inline(program-second)
+  wait pool/close()
+  back make(runs, bind(inline, inline), bind(pooled, pooled), bind(inline-second, inline-second), bind(pooled-second, pooled-second))
+
+test <inline build emits every function>
+  host built, all-runs()
+  host ts, built/inline/ts
+  want hold, text-contains(ts, <function f0>)
+  want hold, text-contains(ts, <function f1>)
+  want hold, text-contains(ts, <function f2>)
+  want hold, text-contains(ts, <function f7>)
+
+test <inline build has no diagnostics on a clean program>
+  host built, all-runs()
+  want hold, is-equal(built/inline/diagnostics/length, 0)
+
+test <inline build uses no worker threads>
+  host built, all-runs()
+  want hold, is-equal(built/inline/threads/length, 0)
+
+test <pooled build produces byte-identical TypeScript (differential guarantee)>
+  host built, all-runs()
+  want hold, is-equal(built/pooled/ts, built/inline/ts)
+
+test <pooled build produces identical diagnostics>
+  host built, all-runs()
+  want hold, is-equal(json-without(built/pooled/diagnostics, make list), json-without(built/inline/diagnostics, make list))
+
+test <pooled build actually ran on multiple worker threads>
+  host built, all-runs()
+  want hold, is-minimum(built/pooled/threads/length, 2)
+
+test <a second pooled build (warm workers, new revision) matches inline>
+  host built, all-runs()
+  want hold, is-equal(built/pooled-second/ts, built/inline-second/ts)

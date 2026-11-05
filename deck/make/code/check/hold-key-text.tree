@@ -1,0 +1,453 @@
+# A DEFINITION'S HOLD KEY TEXT, KEPT (decision 102 of term/self-host/change/001-finish-self-host). check/hold-walk.tree
+# `key-text` writes a statement's node-json for every task's memo key and for every definition that key reaches, again
+# on every check of every unit, which was a quarter of a body-edit rebuild on @cluesurf/zone (item 0416's profile). Here
+# each answer is kept by the statement's own native text, its `span` left out at every depth as hold-walk.tree
+# `key-skip` leaves it out, so a definition met again (the same stub in the next unit, the same task on the next check)
+# is never written twice. Ported from check/hold-key-memo.ts (item term-self-host-001-0748).
+#
+# EXACT, NOT HASHED: the key is the whole text, never a digest, and it holds everything the statement holds that
+# node-json can read (every field, a Map's and a Set's entries, a bigint, a number JSON cannot write, an absent value),
+# so two statements with one key have one node-json. A value it cannot write exactly (a function, a symbol, a class
+# instance, a cycle) answers no key, `<>`, and that statement is written as before.
+#
+# The decisions:
+#   - the memo is a `key-memo` record (spec section 4.8), a field of the one `hold-state` check/holds.ts holds, so it
+#     lives in the process beside the hold memo it serves, never in the store, and hold-state.tree `clear-hold-memo`
+#     empties it. It also empties itself whenever the texts it keeps pass `hold-key-memo-chars`. The original kept it
+#     in a module variable and reached hold-walk.tree through `globalThis`, which nothing reads now
+#   - the walk is Term over the host's own reads of a value (`value-kind` and the binds below it), written by hand as
+#     the original was, since a replacer made it 2.1 ms of every keystroke (item 0757). A field's name as JSON is
+#     written once per memo, as the original's `quotedKeys` was
+#   - a cycle overflows the stack, which `memo-key` answers as no key, as the original did. Only JavaScript holds such
+#     values, so on the native backends every bind below refuses and no key is ever made
+
+# what a key finds: the statement's node-json without its places, and every text in it
+form key-found
+  link text, like text
+  link names, like list, like text
+
+# the kept answers by key, the size of their texts, and each field's name as JSON
+form key-memo
+  mark shared
+  link kept, like hash, like text, like key-found
+  link chars, like number
+  link quoted, like hash, like text, like text
+
+# the most text the memo keeps, its keys and answers together, before it starts again empty
+host hold-key-memo-chars, 134217728
+
+# ---- the host's reads of a value ----
+
+# what a value is: `text`, `flag`, `absent`, `bigint`, `number`, `null`, `list`, `map`, `set`, `record` (a plain
+# object), or `refused` (a function, a symbol, a class instance)
+bind value-kind
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === 'string' ? 'text' : typeof $value === 'boolean' ? 'flag' : $value === undefined ? 'absent' : typeof $value === 'bigint' ? 'bigint' : typeof $value === 'number' ? 'number' : typeof $value !== 'object' ? 'refused' : $value === null ? 'null' : Array.isArray($value) ? 'list' : $value instanceof Map ? 'map' : $value instanceof Set ? 'set' : Object.getPrototypeOf($value) === Object.prototype || Object.getPrototypeOf($value) === null ? 'record' : 'refused')>
+  case browser
+    text <(typeof $value === 'string' ? 'text' : typeof $value === 'boolean' ? 'flag' : $value === undefined ? 'absent' : typeof $value === 'bigint' ? 'bigint' : typeof $value === 'number' ? 'number' : typeof $value !== 'object' ? 'refused' : $value === null ? 'null' : Array.isArray($value) ? 'list' : $value instanceof Map ? 'map' : $value instanceof Set ? 'set' : Object.getPrototypeOf($value) === Object.prototype || Object.getPrototypeOf($value) === null ? 'record' : 'refused')>
+  case rust
+    text <String::from("refused")>
+  case swift
+    text <"refused">
+  case kotlin
+    text <"refused">
+
+# a text value as JSON writes it
+bind quoted-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+  case browser
+    text <JSON.stringify($value)>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# a flag value, `true` or `false`
+bind flag-text
+  take value, like dynamic
+  like text
+  case node
+    text <($value ? 'true' : 'false')>
+  case browser
+    text <($value ? 'true' : 'false')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# a bigint's digits, or a number as `String` writes it
+bind host-digits
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# whether a number is one JSON writes as itself: finite, and not -0
+bind is-plain-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <(Number.isFinite($value) && !Object.is($value, -0))>
+  case browser
+    text <(Number.isFinite($value) && !Object.is($value, -0))>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+bind is-minus-zero
+  take value, like dynamic
+  like boolean
+  case node
+    text <Object.is($value, -0)>
+  case browser
+    text <Object.is($value, -0)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+bind item-count
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <0>
+  case swift
+    text <0>
+  case kotlin
+    text <0>
+
+bind item-at
+  take value, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$value[$at]>
+  case browser
+    text <$value[$at]>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <kotlin.TODO()>
+
+# a Map's entries, each a list of its key and its value, in their order
+bind map-entries
+  take value, like dynamic
+  like dynamic
+  case node
+    text <[...$value.entries()]>
+  case browser
+    text <[...$value.entries()]>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <kotlin.TODO()>
+
+# a Set's values, in their order
+bind set-values
+  take value, like dynamic
+  like dynamic
+  case node
+    text <[...$value]>
+  case browser
+    text <[...$value]>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <kotlin.TODO()>
+
+# a plain object's own keys, in their order
+bind field-names
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value)>
+  case browser
+    text <Object.keys($value)>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <mutableListOf()>
+
+bind field-at
+  take value, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$value[$name]>
+  case browser
+    text <$value[$name]>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <kotlin.TODO()>
+
+# whether a field's name is the marker, the one character U+0000, which no statement's own field is (the mill writes
+# words)
+bind is-marker
+  take name, like text
+  like boolean
+  case node
+    text <($name.length === 1 && $name.charCodeAt(0) === 0)>
+  case browser
+    text <($name.length === 1 && $name.charCodeAt(0) === 0)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# the marker as JSON writes it, the key of the values JSON would lose or merge
+bind marker-key
+  like text
+  case node
+    text <JSON.stringify(String.fromCharCode(0))>
+  case browser
+    text <JSON.stringify(String.fromCharCode(0))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# a text's size in UTF-16 units, as the original counted the memo's texts
+bind utf16-size
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <0>
+  case swift
+    text <0>
+  case kotlin
+    text <0>
+
+# ---- the walk ----
+
+# the text JSON.stringify writes with a replacer that marks what JSON would lose, `span` left out at every depth. A
+# value it cannot write exactly raises
+task exact-text
+  take memo, like key-memo
+  take value, like dynamic
+  like text
+  halt failure
+
+  save kind, value-kind(value)
+  fork test, is-equal(kind, <text>)
+    hold
+      back quoted-text(value)
+  fork test, is-equal(kind, <record>)
+    hold
+      save out, <\{>
+      save first, true
+      walk field-names(value)
+        take name
+        fork test, is-marker(name)
+          hold
+            halt <not exact>
+        fork test, is-unequal(name, <span>)
+          hold
+            fork test, first
+              hold
+                save first, false
+              miss
+                save out, <{out},>
+            save out, <{out}{quoted-name(memo, name)}:{exact-text(memo, field-at(value, name))}>
+      back <{out}\}>
+  fork test, is-equal(kind, <list>)
+    hold
+      save out, <[>
+      save size, item-count(value)
+      save at, 0
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          fork test, is-above(at, 0)
+            hold
+              save out, <{out},>
+          save out, <{out}{exact-text(memo, item-at(value, at))}>
+          save at, add(at, 1)
+      back <{out}]>
+  fork test, is-equal(kind, <number>)
+    hold
+      fork test, is-plain-number(value)
+        hold
+          back host-digits(value)
+      save written, host-digits(value)
+      fork test, is-minus-zero(value)
+        hold
+          save written, <-0>
+      back <\{{marker-key()}:"n","v":"{written}"\}>
+  fork test, is-equal(kind, <flag>)
+    hold
+      back flag-text(value)
+  fork test, is-equal(kind, <null>)
+    hold
+      back <null>
+  fork test, is-equal(kind, <absent>)
+    hold
+      back <\{{marker-key()}:"u"\}>
+  fork test, is-equal(kind, <bigint>)
+    hold
+      back <\{{marker-key()}:"b","v":"{host-digits(value)}"\}>
+  fork test, is-equal(kind, <map>)
+    hold
+      back <\{{marker-key()}:"m","e":{exact-text(memo, map-entries(value))}\}>
+  fork test, is-equal(kind, <set>)
+    hold
+      back <\{{marker-key()}:"s","v":{exact-text(memo, set-values(value))}\}>
+  halt <not exact>
+
+# a field's name as JSON, written once per memo: a program has few names and many fields (item 0757)
+task quoted-name
+  take memo, like key-memo
+  take name, like text
+  like text
+
+  fork test, memo/quoted/has(name)
+    hold
+      back memo/quoted/get(name)
+  save quoted, quoted-text(name)
+  save memo/quoted/{name}, quoted
+  back quoted
+
+# ---- the memo ----
+
+task fresh-key-memo
+  like key-memo
+
+  back
+    make key-memo
+      bind kept, found-table()
+      bind chars, 0
+      bind quoted, quoted-table()
+
+task found-table
+  like hash, like text, like key-found
+  mark private
+
+  back make hash
+
+task quoted-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task name-list
+  like list, like text
+  mark private
+
+  back make list
+
+# the statement's whole native text, `<>` when it cannot be written exactly
+task memo-key
+  take memo, like key-memo
+  take statement, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    back exact-text(memo, statement)
+  halt take
+    take problem
+    back <>
+  back <>
+
+task is-kept
+  take memo, like key-memo
+  take key, like text
+  like boolean
+
+  back memo/kept/has(key)
+
+# a copy of what a key found, so no caller's list is another's
+task kept-found
+  take memo, like key-memo
+  take key, like text
+  like key-found
+
+  save found, memo/kept/get(key)
+  back copied-found(found)
+
+task copied-found
+  take found, like key-found
+  like key-found
+  mark private
+
+  save names, name-list()
+  walk found/names
+    take name
+    names/push(name)
+  back
+    make key-found
+      bind text, found/text
+      bind names, names
+
+# keep what a key found, emptying the memo first when its texts would pass the most it keeps
+task keep-found
+  take memo, like key-memo
+  take key, like text
+  take found, like key-found
+  like boolean
+
+  save size, add(utf16-size(key), utf16-size(found/text))
+  fork test, is-above(add(memo/chars, size), hold-key-memo-chars)
+    hold
+      clear-key-memo(memo)
+  save memo/kept/{key}, copied-found(found)
+  save memo/chars, add(memo/chars, size)
+  back true
+
+task clear-key-memo
+  take memo, like key-memo
+
+  save memo/kept, found-table()
+  save memo/chars, 0
+
+# how many definitions the memo holds, for a test
+task key-memo-size
+  take memo, like key-memo
+  like number
+
+  back memo/kept/size

@@ -484,6 +484,9 @@ task check-type-names
   # a `make hash` reaches here as a record only when it has `bind` fields: the native map takes `save` entries and is
   # built as a map by the mill. So a record `hash` is the program's own form or case, or a mistake
   save own-hash, false
+  # and a `make list` with `bind` fields is a record too: the native list takes items, so without a form or case of its
+  # own it built `{ k: "a" }` typed as a list, `List(k: "a")` on Swift and Kotlin (item 0819)
+  save own-list, false
   walk program
     take one
     sift one
@@ -491,6 +494,9 @@ task check-type-names
         fork test, is-equal(name, <hash>)
           hold
             save own-hash, true
+        fork test, is-equal(name, <list>)
+          hold
+            save own-list, true
         push(constructible, name)
         # a form named like a case of another (`expression`, beside `statement`'s case `expression`) is renamed
         # `expression__form` to keep the two kinds apart, and its qualified constructions are still written by the
@@ -504,6 +510,9 @@ task check-type-names
           fork test, is-equal(variant/name, <hash>)
             hold
               save own-hash, true
+          fork test, is-equal(variant/name, <list>)
+            hold
+              save own-list, true
           push(constructible, variant/name)
           push(constructible, <{name}/{variant/name}>)
           push(constructible, <{written}/{variant/name}>)
@@ -578,6 +587,10 @@ task check-type-names
               fork test, and(is-equal(made, <hash>), not(own-hash))
                 hold
                   push(out/found, refusal(file, span, <a `make hash` entry is a `save <key>, <value>` line, not a `bind` (in `{shown}`)>, <write each entry as `save <key>, <value>` under `make hash`>))
+                  turn next
+              fork test, and(is-equal(made, <list>), not(own-list))
+                hold
+                  push(out/found, refusal(file, span, <a `make list` item is a value under or beside the name, not a `bind` (in `{shown}`)>, <write the items as `make list(a, b)` or `make list, a, b`. For entries by key write `make hash`>))
                   turn next
               fork test, not(has-text(constructible, made))
                 hold

@@ -28,8 +28,13 @@ load @term/base/text
 load @term/call/work/knit/gate
   find law-instance
 
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
 dock load
-  load <@term/make/code/parser/tree>, name tree-parsing
   load <@term/make/code/parser/narrow>, name narrowing
   load <@term/make/code/compile/mill-run>, name mill-running
   load <@term/make/code/compile/template>, name templating
@@ -390,7 +395,7 @@ task library-law
     hold
       back make none
   save text, host-fs/read-file-sync(file, <utf8>)
-  save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, text))))
+  save tree, parsed-tree(parse(make(token-source,bind(file, file), bind(text, text))))
   fork test, not(law-truth(tree))
     hold
       back make none
@@ -539,7 +544,7 @@ task sealed
   like text
 
   save own, own-text(text)
-  save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, <x.tree>), bind(text, own))))
+  save tree, parsed-tree(parse(make(token-source,bind(file, <x.tree>), bind(text, own))))
   save fused, make list
   fork test, law-truth(tree)
     hold
@@ -589,7 +594,7 @@ task milled
   take lean, like boolean
   like milled-answer
 
-  save parsed, tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, text)))
+  save parsed, parse(make(token-source,bind(file, file), bind(text, text)))
   fork test, not(is-ok(parsed))
     hold
       back make(milled-answer, bind(ok, false), bind(program, make list), bind(error, <it does not parse: {law-first-message(parsed)}>))
@@ -701,7 +706,7 @@ task check-instances
     take file
     save text, host-fs/read-file-sync(file, <utf8>)
     save own, own-text(text)
-    save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, own))))
+    save tree, parsed-tree(parse(make(token-source,bind(file, file), bind(text, own))))
     files/push make(tree-file, bind(file, file), bind(rel, host-path/relative(input/project, file)), bind(text, text), bind(own, own), bind(tree, tree))
 
   # what each file defines, by name: the app's forms and tasks, read from the model's own text

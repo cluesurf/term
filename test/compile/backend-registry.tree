@@ -1,0 +1,23 @@
+note <the experimental emitters stamp their output with the registry's banner>
+
+# Ported from backend-registry.ts by statement (item 0569). The registry itself is Term (compile/backend-registry.tree) and
+# so are its checks, deck/make/test/backend-registry.tree: which backends are stable, the notices, the banner in a given
+# prefix, the order. What stays here runs the WGSL emitter, the subject (decision 106), to see the banner reach what it
+# writes. The front end is test/support's (decision 119), under the name b.tree as the original read it.
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <@term/make/code/compile/wgsl>, name wgsl-module
+
+host double, <task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+
+test <emitted WGSL begins with the experimental banner>
+  host checked, front-end(double, make(compile-choice, bind(file, <b.tree>)))
+  host wgsl, wgsl-module/emit-wgsl(checked/program)
+  want hold, starts-with(<{wgsl}>, <// EXPERIMENTAL backend: WGSL>)

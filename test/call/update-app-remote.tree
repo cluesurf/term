@@ -1,0 +1,237 @@
+note <the Rust cask's update client on Linux and Windows, on the target's own machine>
+
+# Ported from update-app-remote.ts by statement (item 0551, decision 116: the converter read 0 tests in its async main).
+# deck/call/code/cask.ts and update.ts are the subjects (decision 106). The update app (deck/cask/test/update) is built as
+# a Rust cask, run on the target's own machine, launched, updated, launched again (native-dom-0032). The exit status is
+# decided by which page's code ran inside the WebView: 11 for the shipped page, 12 for the update. What only these
+# platforms show is `done` called back on the UI thread, through glib on Linux and the cask's executor on Windows.
+#
+# The update rides inside the app, published into its own resources (`served`), and the driver points the client at
+# `file://<bundle path>/served`. So the machine needs no server, and the update the first launch fetched stays in the
+# app's files for the second.
+#
+#   UPDATE_REMOTE=linux     the work droplet, inside make/Dockerfile.linux
+#   UPDATE_REMOTE=windows   the Windows machine WINDOWS_VM names (`pnpm term:ec2-windows --commit --cask` rents one)
+#
+# Both build and launch through task/term/cask/rust-remote.ts of the parent checkout TERM_PARENT_ROOT names, its default
+# export, loaded after the two local steps. With either unset every test skips. The original's one run is made once, by the first test that asks, and
+# each test reads the step it names. A raise ends the run where it stood: the steps after it fail, and so does the
+# test that the run raised nothing.
+
+load ../support/temp
+  find temp-folder
+
+load ../support/cli
+  find term-root
+
+load ../support/device/compose-remote
+  find remote-module
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find split, name text-split
+  find char-at
+  find contains, name text-contains
+
+dock load
+  load <@term/call/code/cask>, name update-cask
+  load <@term/call/code/update>, name update-publish
+  load <node:path>, name update-path
+
+form update-bundle-input
+  link out, like text
+  link name, like text
+  link target, like text
+
+form update-page-input
+  link root, like text
+  link page, like text
+  link entry, like text
+  link into, like text
+  link title, like text
+  link work, like text
+
+form update-program-input
+  link root, like text
+  link entry, like text
+  link driver, like text
+  link work, like text
+  link crate, like text
+  link target, like text
+
+form update-stamp-input
+  link target, like text
+  link native, like text
+  link into, like text
+
+form update-key-input
+  link identifier, like text
+  link into, like text
+  link key-file, like text
+
+form update-publish-input
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like text
+  link key-file, like text
+
+form update-remote-input
+  link target, like text
+  link term, like text
+  link project, like text
+  link name, like text
+  link crate, like text
+
+# the one run: what each step left, `raised` the words of a raise that ended it
+form update-run
+  mark shared
+  link done, like boolean
+  link hex, like text, fall <>
+  link platform, like text, fall <>
+  link first, like text, fall <>
+  link second, like text, fall <>
+  link third, like text, fall <>
+  link raised, like text, fall <>
+
+host app-name, <TermUpdate>
+host entry, <import \{ boot \} from './app'\nboot()\n>
+# how long one launch may take before it counts as hung
+host launch-limit, 60000
+host now, make(update-run, bind(done, false))
+
+# host reflect: the message a raise carries, as text. `take cause` types as exception, read through one bind
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause instanceof Error ? $cause.message : $cause).slice(0, 1600)>
+
+# the machine UPDATE_REMOTE names
+task target
+  like text
+
+  back variable(<UPDATE_REMOTE>)
+
+# why this run cannot happen here, <> when it can
+task skip-reason
+  like text
+
+  fork test, is-equal(variable(<TERM_PARENT_ROOT>), <>)
+    hold
+      back <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/rust-remote.ts>
+  fork test, and(is-unequal(target(), <linux>), is-unequal(target(), <windows>))
+    hold
+      back <UPDATE_REMOTE=linux or windows names the machine>
+  back <>
+
+# the status the page left with, from what the launch said: the digits after the first `cask exit `, <> when none
+task status-of
+  take said, like text
+  like text
+
+  save parts, text-split(said, <cask exit >)
+  fork test, is-below(parts/length, 2)
+    hold
+      back <>
+  save after, parts/1
+  save digits, <>
+  save at, 0
+  walk test
+    hook test, and(is-below(at, after/length), text-contains(<0123456789>, char-at(after, at)))
+    hook hold
+      save digits, <{digits}{char-at(after, at)}>
+      save at, add(at, 1)
+  back digits
+
+# build the app with its runtime version and update key, publish the other page into it as the update for exactly
+# this runtime version, then ship it to the machine and launch it three times
+task run-steps
+  like void
+  mark async
+
+  save root, term-root()
+  save cask, update-path/join(root, <deck/cask>)
+  save app, update-path/join(cask, <test/update>)
+  save platform, target()
+  save identifier, <surf.term.update-{platform}>
+  save dir, temp-folder(<term-update-{platform}->)
+  save key-file, update-path/join(dir, <key.pem>)
+  save bundle, update-cask/assemble-rust-bundle(make(update-bundle-input, bind(out, update-path/join(dir, <app>)), bind(name, app-name), bind(target, platform)))
+  save resources, update-path/join(bundle/app, <resources>)
+  wait update-cask/build-page(make(update-page-input, bind(root, root), bind(page, update-path/join(app, <page.tree>)), bind(entry, entry), bind(into, update-path/join(resources, <webview>)), bind(title, <Term update>), bind(work, update-path/join(dir, <work/page>))))
+  save crate, update-cask/crate-of(app-name)
+  # the resources directory and the update "server": the app's own `served`, as a file URL
+  save driver, <boot(cask::bundle_path(), format!("file://\{\}/served", cask::bundle_path()));>
+  save built, update-cask/build-rust-program(make(update-program-input, bind(root, cask), bind(entry, update-path/join(app, <main.tree>)), bind(driver, driver), bind(work, update-path/join(dir, <work>)), bind(crate, crate), bind(target, platform)))
+  save version, update-cask/stamp-runtime-version(make(update-stamp-input, bind(target, platform), bind(native, built/native), bind(into, resources)))
+  update-publish/stamp-update-key(make(update-key-input, bind(identifier, identifier), bind(into, resources), bind(key-file, key-file)))
+  save now/hex, version/hex
+  save next, update-path/join(dir, <next>)
+  wait update-cask/build-page(make(update-page-input, bind(root, root), bind(page, update-path/join(app, <page-next.tree>)), bind(entry, entry), bind(into, next), bind(title, <Term update>), bind(work, update-path/join(dir, <work/next>))))
+  save published, update-publish/publish-update(make(update-publish-input, bind(page, next), bind(out, update-path/join(resources, <served>)), bind(identifier, identifier), bind(platform, platform), bind(runtime-version, version/hex), bind(channel, <main>), bind(key-file, key-file)))
+  save now/platform, published/manifest/metadata/platform
+  # loaded only now: the two steps above need no machine
+  save remote-rust, remote-module(update-path/join(variable(<TERM_PARENT_ROOT>), <task/term/cask/rust-remote.ts>))
+  save machine, remote-rust/build-remote-rust(make(update-remote-input, bind(target, platform), bind(term, root), bind(project, built/project), bind(name, app-name), bind(crate, crate)))
+  machine/ship(bundle/app)
+  save now/first, machine/launch(launch-limit)
+  save now/second, machine/launch(launch-limit)
+  save now/third, machine/launch(launch-limit)
+
+# the run, made once
+task the-run
+  like update-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  fork
+    mark unsafe
+    run-steps()
+  halt take
+    take cause
+    save now/raised, raised-words(cause)
+  back now
+
+test <the app builds with its runtime version and update key>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(the-run()/hex/length, 64)
+
+test <the update is published for the target>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(the-run()/platform, target())
+
+test <the first launch runs the shipped page>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(status-of(the-run()/first), <11>)
+
+test <the second launch runs the update it fetched>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(status-of(the-run()/second), <12>)
+
+test <and keeps running it>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(status-of(the-run()/third), <12>)
+
+test <the run raises nothing>
+  fork test, is-unequal(skip-reason(), <>)
+    hold
+      skip <UPDATE_REMOTE and TERM_PARENT_ROOT name the machine and the parent checkout>
+  want hold, is-equal(the-run()/raised, <>)

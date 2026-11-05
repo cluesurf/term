@@ -1,0 +1,90 @@
+note <A relative `load` nothing answers is a build error naming the load and the reason (D027, beat-term-0065)>
+
+# Ported from unresolved-relative-load.ts by statement (item 0577). The project resolver keeps a relative load inside the
+# importer's package or the project root (the path-traversal guard) and answers not-found for anything else, and the
+# compiler used to go on: the name the load would have given was bound to some other definition in silence. The original
+# took the Term root as the project root and wrote its fixtures under tmp/ there. Here the project root is a temporary
+# folder of its own, and "outside" is a second one, so nothing is written in the repository.
+#
+#   a  the file is under the project root and exists: builds
+#   b  the file is outside the project root: refused, naming `load ./extra`
+#   c  the file is under the project root and missing: refused, naming `load ./gone`
+#   d  a path with a {platform} slot and no such file: not refused at the load
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load ../support/reading
+  find any-holding
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <node:fs>, name load-file
+  load <node:path>, name load-path
+
+host extra, <\ntask shout\n  take first, like text\n  like text\n  send back, text \<\{first\}!\>\n>
+
+host root, temp-folder(<term-relative-load-root->)
+host inside, load-path/join(root, <tmp>, <unresolved-relative-load>)
+host outside, temp-folder(<term-unresolved-relative-load->)
+
+# the entry, loading the path, built in the folder with the files written beside it
+task attempt
+  take folder, like text
+  take path, like text
+  take with-extra, like boolean
+  like dynamic
+
+  load-file/mkdir-sync(folder, make-record(make(list, <recursive>, true)))
+  fork test, with-extra
+    hold
+      load-file/write-file-sync(load-path/join(folder, <extra.tree>), extra)
+  host text, <load {path}\n  find shout\n\ntask main\n  like text\n  send back\n    call shout\n      text \<hi\>\n>
+  back compile-text(text, make(compile-choice, bind(file, load-path/join(folder, <main.tree>)), bind(project, root), bind(project-env, <node>), bind(env, <node>)))
+
+# true when one message holds both words
+task one-holding-both
+  take messages, like list, like text
+  take first, like text
+  take second, like text
+  like boolean
+
+  walk messages
+    take message, like text
+    fork test, and(text-contains(message, first), text-contains(message, second))
+      hold
+        back true
+  back false
+
+host a, attempt(load-path/join(inside, <present>), <./extra>, true)
+host b, attempt(load-path/join(outside, <present>), <./extra>, true)
+host c, attempt(load-path/join(inside, <absent>), <./gone>, false)
+host d, attempt(load-path/join(inside, <slot>), <./native/\{platform\}/gone>, false)
+
+test <a: a relative load of a file under the root builds>
+  want hold, is-equal(a/ok, true)
+
+test <b: a relative load of a file outside the root is refused>
+  want hold, is-equal(b/ok, false)
+
+test <b: the refusal names the load and the roots>
+  want hold, one-holding-both(b/messages, <load ./extra>, <project roots>)
+
+test <c: a relative load of a missing file is refused>
+  want hold, is-equal(c/ok, false)
+
+test <c: the refusal names the load>
+  want hold, any-holding(c/messages, <load ./gone>)
+
+# d: a `{platform}` slot is the one relative load left to the build on each platform (D027)
+test <d: a \{platform\} relative load with no such file is not refused at the load>
+  want hold, is-equal(any-holding(d/messages, <nothing answers>), false)

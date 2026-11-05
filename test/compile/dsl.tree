@@ -1,0 +1,256 @@
+note <The mill lowers the view (component) and hook (routing and CLI) surfaces to the compile tree>
+
+# Ported from dsl.ts by statement (item 0570). `dock` was a second spelling of a route and was retired on 2026-08-31: it is
+# the native FFI binding now (`dock load`, `dock type`) and nothing else. A route and a CLI command are both `hook`.
+# parser/tree and compile/mill are the subject (decision 106).
+
+load ../support/judging
+  find read-field
+
+load @term/base/text
+  find split
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-module
+  load <@term/make/code/compile/mill>, name mill-module
+
+bind parse-t
+  take module, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <$module.parse(\{ file: "t.tree", text: $text \})>
+
+bind nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# host reflect: a refusal's diagnostics, as the original threw them
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the milled program of a text, read in `role` (<> for none)
+task lower
+  take text, like text
+  take role, like text
+  like dynamic
+
+  host parsed, parse-t(tree-module, text)
+  fork test, not(parsed/ok)
+    hold
+      host why, json-text(parsed/diagnostics)
+      halt <parse: {why}>
+  save milled, void
+  fork test, is-equal(role, <>)
+    hold
+      save milled, mill-module/mill(parsed/tree, <t.tree>, nothing(0))
+    miss
+      save milled, mill-module/mill(parsed/tree, <t.tree>, role)
+  fork test, not(read-field(milled, <ok>))
+    hold
+      host why, json-text(read-field(milled, <diagnostics>))
+      halt <mill: {why}>
+  back read-field(milled, <program>)
+
+# the value at a path of fields and indexes, `a/0/b`: undefined where a step finds nothing
+task dig
+  take value, like dynamic
+  take path, like text
+  like dynamic
+
+  save at, value
+  walk split(path, </>)
+    take step, like text
+    save at, read-field(at, step)
+  back at
+
+# the field at a path, as text
+task text-at
+  take value, like dynamic
+  take path, like text
+  like text
+
+  back <{dig(value, path)}>
+
+# the first statement of a form, undefined when none
+task first-of
+  take program, like dynamic
+  take form, like text
+  like dynamic
+
+  walk program
+    take one, like dynamic
+    fork test, is-equal(text-at(one, <form>), form)
+      hold
+        back one
+  back nothing(0)
+
+task holds-form
+  take program, like dynamic
+  take form, like text
+  like boolean
+
+  back is-present(first-of(program, form))
+
+# what a hook became: <route> (a route is flagged `page: true`), <command> or <none>. The original bridge also wrote a
+# `component` KEY on every route, empty when it had no view; the mill is Term since item term-self-host-001-0280, which
+# writes an absent maybe as no key at all, so the flag is what is read (decision 034 section 2, absent and default are one)
+task kind-of
+  take text, like text
+  take role, like text
+  like text
+
+  host route, dig(first-of(lower(text, role), <dock>), <route>)
+  fork test, not(is-present(route))
+    hold
+      back <none>
+  fork test, is-equal(text-at(route, <page>), <true>)
+    hold
+      back <route>
+  back <command>
+
+# a zone component lowers to a `view` statement with params and a body
+host zone, first-of(lower(<view counter\n  take label, like text\n  view div\n    read app/count\n>, <>), <view>)
+
+test <zone lowers to a zone statement>
+  want hold, is-present(zone)
+
+test <zone keeps its name>
+  want hold, is-equal(text-at(zone, <name>), <counter>)
+
+test <zone keeps its params>
+  want hold, is-equal(text-at(zone, <params/0/name>), <label>)
+
+test <zone body is an element>
+  want hold, is-equal(text-at(zone, <body/0/form>), <element>)
+
+test <element nests a read child>
+  want hold, is-equal(text-at(zone, <body/0/form>), <element>)
+  want hold, is-equal(text-at(zone, <body/0/children/0/form>), <read>)
+
+# a server route lowers to a `dock` with HTTP method handlers
+host server, first-of(lower(<hook /users\n  task get\n    call list-users\n  task post\n    call make-user\n>, <>), <dock>)
+
+test <server route lowers to a dock>
+  want hold, is-present(server)
+
+test <dock keeps its path>
+  want hold, is-equal(text-at(server, <route/path>), </users>)
+
+test <dock collects methods>
+  host methods, dig(server, <route/methods>)
+  want hold, is-equal(methods/length, 2)
+  want hold, is-equal(text-at(server, <route/methods/0/name>), <get>)
+  want hold, is-equal(text-at(server, <route/methods/1/name>), <post>)
+
+test <method collects its call>
+  want hold, is-equal(text-at(server, <route/methods/0/calls/0/name>), <list-users>)
+
+# a CLI command lowers to a dock with options and a handler
+host command, first-of(lower(<hook make\n  take name\n    like text\n    need true\n  call make-deck\n    bind name, read name\n>, <>), <dock>)
+
+test <CLI command lowers to a dock>
+  want hold, is-equal(text-at(command, <route/path>), <make>)
+
+test <dock collects options>
+  want hold, is-equal(text-at(command, <route/takes/0/name>), <name>)
+
+test <option requiredness is captured>
+  want hold, is-equal(text-at(command, <route/takes/0/required>), <true>)
+
+test <dock collects the handler call>
+  want hold, is-equal(text-at(command, <route/calls/0/name>), <make-deck>)
+
+# THE FILE'S ROLE DECIDES what a `hook` is, and content is only the fallback. A project's role.tree says which files hold
+# CLI definitions and which hold routes (`role call` and `role site`), the same authority model the `code` and `view` roles
+# use for components. Asserted in BOTH directions: the role has to be able to overrule the content either way, or it is
+# not the authority, it is a hint.
+host path-like, <hook /users\n  task get\n    call list-users\n>
+host word-like, <hook make\n  take name\n    like text\n  call make-deck\n    bind name, read name\n>
+
+test <with no role, a path-shaped hook is a route>
+  want hold, is-equal(kind-of(path-like, <>), <route>)
+
+test <with no role, a word-shaped hook is a command>
+  want hold, is-equal(kind-of(word-like, <>), <command>)
+
+test <`role call` makes a path-shaped hook a COMMAND>
+  want hold, is-equal(kind-of(path-like, <call>), <command>)
+
+test <`role site` makes a word-shaped hook a ROUTE>
+  want hold, is-equal(kind-of(word-like, <site>), <route>)
+
+# A COMMAND'S HANDLER, both spellings. `task <impl>` names it and passes the takes in order; `call <impl>` with `bind`
+# children names it and binds its arguments. Only `task` was read, so a `call` handler was DROPPED without a word
+host with-call, first-of(lower(<hook one\n  take name\n    like text\n  call run-it\n    bind name, read name\n>, <>), <dock>)
+host with-task, first-of(lower(<hook two\n  take name\n    like text\n  task run-it\n>, <>), <dock>)
+
+test <a `call` handler is collected>
+  want hold, is-equal(text-at(with-call, <route/calls/0/name>), <run-it>)
+
+test <and its bound arguments come with it>
+  want hold, is-equal(text-at(with-call, <route/calls/0/args/length>), <1>)
+
+test <a `task` handler is collected>
+  want hold, is-equal(text-at(with-task, <route/calls/0/name>), <run-it>)
+
+# a CLI command tree in the `hook` surface lowers to a route: command name, its takes, the bound implementation task, and
+# nested subcommands
+task dock-at
+  take program, like dynamic
+  take path, like text
+  like dynamic
+
+  walk program
+    take one, like dynamic
+    fork test, and(is-equal(text-at(one, <form>), <dock>), is-equal(text-at(one, <route/path>), path))
+      hold
+        back one
+  back nothing(0)
+
+host tree-hook, dock-at(lower(<hook make\n  take name\n  task make-deck\n  hook face\n    take name\n    task make-face\n>, <>), <make>)
+
+test <hook command lowers to a route>
+  want hold, is-present(tree-hook)
+
+test <hook keeps the command name>
+  want hold, is-equal(text-at(tree-hook, <route/path>), <make>)
+
+test <hook collects its takes>
+  want hold, is-equal(text-at(tree-hook, <route/takes/0/name>), <name>)
+
+test <hook binds the implementation task>
+  want hold, is-equal(text-at(tree-hook, <route/calls/0/name>), <make-deck>)
+
+test <hook nests subcommands>
+  want hold, is-equal(text-at(tree-hook, <route/children/0/path>), <face>)
+  want hold, is-equal(text-at(tree-hook, <route/children/0/calls/0/name>), <make-face>)
+
+# a client route lowers to a dock that renders a zone component
+host client, first-of(lower(<hook /counter\n  view counter\n    bind label, text \<hits\>\n>, <>), <dock>)
+
+test <client route maps to a component>
+  want hold, is-equal(text-at(client, <route/component/name>), <counter>)
+
+test <component prop is captured>
+  want hold, is-equal(text-at(client, <route/component/props/0/name>), <label>)
+
+# `dock load` still lowers to a native FFI binding (not a route)
+host native-program, lower(<dock load\n  load \<node:fs\>, name fs\n>, <>)
+
+test <dock load stays native FFI>
+  want hold, holds-form(native-program, <native>)
+
+test <dock load is not a route>
+  want hold, not(holds-form(native-program, <dock>))

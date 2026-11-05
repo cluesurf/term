@@ -1,7 +1,10 @@
 // THE TERM ROOT, for every tool under task/term (spec.md section 3 rule 1, decision 004 of note/project/term).
 //
-// TERM_ROOT is TERM_ROOT from the environment when set, else the folder two above this file. Every tool reads the root
-// from here: nothing joins a fixed folder to the working directory, and nothing climbs out of the repository.
+// TERM_ROOT is TERM_ROOT from the environment when set, else the nearest folder at or above this file that holds
+// task/term/root.ts: the folder two above it where it sits, and the Term root when a test bundle inlines it (a suite
+// docks a task/term module by its @term/term package path, decision 121 of change 001, item 0962), as the compiler's
+// own modules find their install root. Every tool reads the root from here: nothing joins a fixed folder to the working
+// directory, and nothing climbs out of the repository.
 //
 // CALLER_CWD is the folder the person typed the command in: pnpm sets INIT_CWD to it, and `pnpm --dir` changes the
 // working directory to the Term root, so a path the person typed resolves against CALLER_CWD (rule 2).
@@ -17,9 +20,20 @@ import { existsSync } from 'node:fs'
 import { delimiter, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// the nearest folder at or above `from` holding task/term/root.ts, else the folder two above `from`
+function rootAbove(from: string): string {
+  let dir = from
+  while (true) {
+    if (existsSync(join(dir, 'task', 'term', 'root.ts'))) return dir
+    const up = dirname(dir)
+    if (up === dir) return resolve(from, '..', '..')
+    dir = up
+  }
+}
+
 export const TERM_ROOT: string = process.env.TERM_ROOT
   ? resolve(process.env.TERM_ROOT)
-  : resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  : rootAbove(dirname(fileURLToPath(import.meta.url)))
 
 export const CALLER_CWD: string = process.env.INIT_CWD ?? process.cwd()
 

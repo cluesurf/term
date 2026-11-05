@@ -338,8 +338,8 @@ for (const role of readdirSync(MILL).sort()) {
 
   const grammar = loadRoleGrammar(MILL, role)
   const closure: MillClosure = {
-    mine: new Set(grammar.mine.keys()),
-    mint: new Set(grammar.mint.keys()),
+    mine: [...grammar.mine.keys()],
+    mint: [...grammar.mint.keys()],
   }
 
   for (const file of grammar.files) {
@@ -354,12 +354,8 @@ function closureOf(file: string): MillClosure | undefined {
     return undefined
   }
 
-  const both = (pick: (c: MillClosure) => ReadonlySet<string>) =>
-    new Set(
-      [...pick(all[0]!)].filter(name =>
-        all.every(c => pick(c).has(name)),
-      ),
-    )
+  const both = (pick: (c: MillClosure) => readonly string[]) =>
+    pick(all[0]!).filter(name => all.every(c => pick(c).includes(name)))
 
   return { mine: both(c => c.mine), mint: both(c => c.mint) }
 }
@@ -640,7 +636,7 @@ const GRAMMAR = {
 }
 const fixtureContext: MillContext = {
   formDefiners: name => (name === 'thing' ? ['@fixture/forms'] : []),
-  closure: { mine: new Set(['a', 'b']), mint: new Set(['a', 'b']) },
+  closure: { mine: ['a', 'b'], mint: ['a', 'b'] },
 }
 
 function fixtureProblems(text: string, loads: MillLoad[]): string[] {

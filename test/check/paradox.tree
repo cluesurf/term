@@ -586,16 +586,18 @@ test <small: a recursive universe of codes still decodes (el (listcode natcode) 
 
 # 4. proof irrelevance holds for a truncation's constructor at its own arity, and nowhere past it. `mark prop` makes any two `wrap x` equal. The
 # eliminator's computing rule applies `wrap x` to a motive and branches, and then the LAST argument is a branch: `out1 (wrap true)` and
-# `out2 (wrap true)` were convertible until 2026-10-05, though in every model of the eliminator they are true and false
-host truncation, <{types}\nform trunc\n  mark prop\n  case wrap\n    link v, like bool\n\ntask out1\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make true\n\ntask out2\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make false\n>
+# `out2 (wrap true)` were convertible until 2026-10-05, though in every model of the eliminator they are true and false. Since decision 003
+# (subsingleton elimination) a match on a truncation returns only a proposition, so `out1` and `out2`, which return `bool`, are refused
+host truncation, <{types}\nform trunc\n  mark prop\n  case wrap\n    link v, like bool\n>
+host outs, <\ntask out1\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make true\n\ntask out2\n  take t, like trunc\n  like bool\n  fork case, read t\n    case wrap\n      send back\n        make false\n>
 
 test <a truncation is irrelevant: wrap true == wrap false>
   host left, wrapped-at(<true>, 6)
   host right, wrapped-at(<false>, 6)
   want hold, compiled(<{truncation}\nrule irrelevant\n  show hold\n    call is-equal\n{left}\n{right}\n  calm hold\n>)/ok
 
-test <and only at its arity: out1 (wrap true) == out2 (wrap true) is refused>
+test <out1 and out2 read a truncation into bool, so they are refused (decision 003)>
   host wrapped, wrapped-at(<true>, 8)
-  host out, compiled(<{truncation}\nrule past-the-arity\n  show hold\n    call is-equal\n      call out1\n{wrapped}\n      call out2\n{wrapped}\n  calm hold\n>)
+  host out, compiled(<{truncation}{outs}\nrule past-the-arity\n  show hold\n    call is-equal\n      call out1\n{wrapped}\n      call out2\n{wrapped}\n  calm hold\n>)
   want hold, not(out/ok)
-  want hold, holds-text(joined(out/names, out/messages), <invalid-proof: this proof does not establish the equality>)
+  want hold, holds-text(joined(out/names, out/messages), <is mark prop>)

@@ -1,0 +1,92 @@
+note <`link` chaining>
+
+# Ported from link-chain.ts by task/term/suite-port.ts, finished by hand (item 0573). A value expression with `link <fn>`
+# children pipes its value into fn as the first argument, so a nested call-after-call flattens into a top-down chain.
+# `call f, x / link g` lowers to g(f(x)). These tests lock in that the chain (1) lowers identically to the hand-nested
+# form, (2) discharges proofs the nested form discharges, (3) is genuinely computed (a false single-link claim is
+# rejected), and (4) leaves a constructor named `link` alone.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/list
+  find contains, name list-contains
+
+# a bit type and its flip, the shared prelude for the chain tests
+host prelude, <form bit\n  case off\n  case on\n\ntask flip\n  take b, like bit\n  like bit\n  fork case, read b\n    case off\n      send back\n        make on\n    case on\n      send back\n        make off\n>
+
+host choice, make(compile-choice, bind(file, <p.tree>))
+
+# a hold/rule with a working proof emits no unchecked-hold warning and compiles
+task proves
+  take source, like text
+  like boolean
+
+  host out, compile-text(source, choice)
+  fork test, out/ok
+    miss
+      back false
+  back is-equal(list-contains(out/warnings, <unchecked-hold>), false)
+
+# whether a source compiles, and the compiled TypeScript of it
+form lowering
+  link ok, like boolean
+  link text, like text
+
+task lowering-of
+  take source, like text
+  like lowering
+
+  host out, compile-text(source, choice)
+  back make(lowering, bind(ok, out/ok), bind(text, out/emitted))
+
+# 1. EQUIVALENCE: the chained task lowers to exactly the same TypeScript as the hand-nested task.
+host chained-task, <{prelude}\ntask apply-twice\n  take b, like bit\n  like bit\n  send back\n    call flip, read b\n      link flip\n>
+
+host nested-task, <{prelude}\ntask apply-twice\n  take b, like bit\n  like bit\n  send back\n    call flip\n      call flip\n        read b\n>
+
+test <chain lowers identically to nested>
+  host chained, lowering-of(chained-task)
+  host nested, lowering-of(nested-task)
+  want hold, chained/ok
+  want hold, nested/ok
+  want hold, is-equal(chained/text, nested/text)
+
+# 2. A THREE-DEEP chain lowers identically to its nest: flip(flip(flip(b))).
+host chained-thrice, <{prelude}\ntask apply-thrice\n  take b, like bit\n  like bit\n  send back\n    call flip, read b\n      link flip\n      link flip\n>
+
+host nested-thrice, <{prelude}\ntask apply-thrice\n  take b, like bit\n  like bit\n  send back\n    call flip\n      call flip\n        call flip\n          read b\n>
+
+test <three-deep chain lowers identically to nested>
+  host chained, lowering-of(chained-thrice)
+  host nested, lowering-of(nested-thrice)
+  want hold, chained/ok
+  want hold, nested/ok
+  want hold, is-equal(chained/text, nested/text)
+
+# 3. PROOF: the chained involution discharges (flip (flip b) = b).
+host chained-proof, <{prelude}\nrule flip-involution\n  seat b, like bit\n  show hold\n    call is-equal\n      call flip, read b\n        link flip\n      read b\n  fold b\n>
+
+test <chained involution proof discharges>
+  want hold, proves(chained-proof)
+
+# 4. A base with no inline argument still chains: read b / link flip / link flip = flip(flip(b)).
+host chained-from-read, <{prelude}\nrule flip-twice-from-read\n  seat b, like bit\n  show hold\n    call is-equal\n      read b\n        link flip\n        link flip\n      read b\n  fold b\n>
+
+test <chain onto a bare read discharges>
+  want hold, proves(chained-from-read)
+
+# 5. GENUINELY COMPUTED: a single link is NOT the identity, so this false claim must NOT prove.
+host false-single-link, <{prelude}\nrule one-flip-is-identity\n  seat b, like bit\n  show hold\n    call is-equal\n      read b\n        link flip\n      read b\n  fold b\n>
+
+test <single-link false claim is rejected>
+  want hold, is-equal(proves(false-single-link), false)
+
+# 6. REGRESSION: a constructor literally named `link` (`make link ...`) coexists with chaining, the head argument of
+# `make` is never mistaken for a chain pipe. With the prelude: `bit` was named and never declared here, which built
+# while an unknown type name was read as a hole
+host link-constructor, <{prelude}\nform chain\n  case stop\n  case link\n    link head, like bit\n    link rest, like chain\n\ntask first\n  take c, like chain\n  like bit\n  fork case, read c\n    case stop\n      send back\n        make off\n    case link\n      link head\n      link rest\n      send back\n        read head\n\ntask one\n  like chain\n  send back\n    make link\n      bind head\n        make on\n      bind rest\n        make stop\n>
+
+test <constructor named link coexists with chaining>
+  want hold, lowering-of(link-constructor)/ok

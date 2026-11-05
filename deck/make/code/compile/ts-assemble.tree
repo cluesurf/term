@@ -49,6 +49,7 @@ load ./ts-names
   find to-camel
   find to-member
   find identity-cases
+  find acronyms
 
 load ./ts-preludes
   find exception-class
@@ -57,6 +58,7 @@ load ./ts-preludes
   find raise-codec-prelude
   find inspect-prelude
   find maybe-field-prelude
+  find link-key-prelude
   find host-value-prelude
   find int-prelude
   find equal-prelude
@@ -107,6 +109,8 @@ form emit-flags
   link equal-used, like boolean
   link text-used, like boolean
   link list-used, like boolean
+  # a caught value's link was read by a key (compiler decision 015)
+  link link-key-used, like boolean
   # a raise or a Term frame was written: the exception class and its frame helpers ride in front
   link flow-used, like boolean
   # the exception codec's table of props specs (ts-emit.tree `raise-codec-specs`), `<>` for a program with no
@@ -739,6 +743,10 @@ task assemble-type-script
   fork test, flags/maybe-field-used
     hold
       push(prelude, maybe-field-prelude())
+
+  fork test, flags/link-key-used
+    hold
+      push(prelude, link-key-prelude(acronyms()))
 
   fork test, flags/host-used
     hold

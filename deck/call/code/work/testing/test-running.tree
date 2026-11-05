@@ -65,14 +65,21 @@ load ../preprocess/test-rewriting
 load ../preprocess/failure-reading
   find want-said
 
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/parser/diagnostic
+  find render
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
   load <esbuild>, name esbuild-module
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/make/code/parser/tree>, name tree-module
-  load <@term/make/code/parser/diagnostic>, name diagnostic-module
   load <@term/make/code/compile/mill>, name mill-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/separate>, name separate-module
@@ -84,10 +91,12 @@ dock load
 # 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
 # 5: keyed by hash-key, SHA-256 cut to 32 hex digits, no longer cyrb53 (decision 080, 2026-10-30)
 # 6: run as a child, the report at the end of the test file (decision 022 T5, item 0157)
+# 7: keyed by the project's dock map too, so a bundle kept from before a tsconfig `paths` change is built again (item
+# 0962 of change 001)
 task bundle-epoch
   like text
 
-  back <test-bundle-6>
+  back <test-bundle-7>
 
 # ---- what the runner answers ----
 
@@ -266,7 +275,7 @@ task discover-tests
   take file, like text
   like list, like text
 
-  save parsed, tree-module/parse(make(source-ask, bind(file, file), bind(text, rewritten)))
+  save parsed, parse(make(token-source, bind(file, file), bind(text, rewritten)))
   fork test, not(is-truthy(parsed/ok))
     hold
       back make list
@@ -503,6 +512,18 @@ task dock-options
       back maps
   back dock-options-of(tsconfig, mapped)
 
+# what decides which docks a bundle inlines: the nearest tsconfig and the specifiers its `paths` maps, one per line
+task dock-key
+  take root, like text
+  like text
+
+  save tsconfig, nearest-tsconfig(root)
+  fork test, is-equal(tsconfig, <>)
+    hold
+      back <>
+  save keys, tsconfig-path-keys(tsconfig)
+  back <{tsconfig}\n{keys/join(<\n>)}>
+
 # the `require` a node bundle is given, anchored at the project and not the bundle (boot-plan.tree `node-banner`)
 task project-banner
   take root, like text
@@ -735,7 +756,8 @@ task bundle-units
   save kept, host-text(units/bundles)
   save version, host-text(units/cache/version-of(<unit>))
   # a stored key, so hash-key (decision 080 of note/project/term/self-host/change/001-finish-self-host)
-  save key, hash-key(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{built/closure-key}\n{prelude}>)
+  save docks, dock-key(root)
+  save key, hash-key(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{docks}\n{built/closure-key}\n{prelude}>)
   save at, node-path/join(kept, <{key}.mjs>)
   save listed, node-path/join(kept, <{key}.inputs.json>)
   fork test, and(node-file/exists-sync(at), node-file/exists-sync(listed))
@@ -861,14 +883,14 @@ task run-test-file
   fork test, not(is-truthy(result/ok))
     hold
       save diagnostics, as-written(result/diagnostics, file, as-read/place)
-      back failed-run(<{render-each(diagnostics, source, diagnostic-module/render)}\ndid not compile>, diagnostics, source)
+      back failed-run(<{render-each(diagnostics, source, render)}\ndid not compile>, diagnostics, source)
   # a proof obligation the compiler could not discharge is only a warning, but for `term test` an unproven `hold` is a
   # failure: a stated proposition with no accepted proof must not pass
   save unproven, unproven-of(result/warnings)
   fork test, is-above(unproven/length, 0)
     hold
       save diagnostics, as-written(unproven, file, as-read/place)
-      save drawn, render-each(diagnostics, source, diagnostic-module/render)
+      save drawn, render-each(diagnostics, source, render)
       back failed-run(unproven-note(drawn, unproven/length), diagnostics, source)
   # a file with no runnable `test` tasks but a clean compile is a pass: any `hold` / `rule` proofs it carries were
   # checked during that compile

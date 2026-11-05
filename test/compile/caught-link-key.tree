@@ -1,0 +1,97 @@
+note <A caught value's link read by a key is read by the prop's written name>
+
+# Item 0788, compiler decision 015. `problem/link/{key}` is the one read by a run-time name in the language, and the key
+# is the prop's written name on every backend. TypeScript stores a raise's link camel-cased (`link: { whereFrom: ... }`)
+# and read the key as written, `problem.link[key]`, so `where-from` read undefined where Rust, Swift and Kotlin read
+# the value, and a told two-word prop was left out of the JSON body `expose` (deck/site/code/http/tell.tree) writes.
+# The read now goes through one prelude helper, `__termLinkKey`: the key camel-cased as the raise spells it when it
+# holds no capital, read as an own property only, and an absent prop reads null. So `whereFrom` and `constructor` read
+# absent as on the natives, and a missing prop goes into `set-field` as null. test/compile/caught-prop-native.ts holds
+# the same reads on all four backends.
+
+load @term/base/exception
+  find exception
+
+load @term/base/json
+  find make-object
+  find set-field
+  find stringify
+
+form lost-thing
+  like exception
+    bind note, <lost>
+    link where-from, like text
+    link told-at, like number
+
+task lose
+  like number
+
+  halt lost-thing
+    bind where-from, <a/b>
+    bind told-at, 7
+
+task seen
+  take value, like unknown
+  like text
+
+  sift value
+    case text
+      back <t:{value}>
+    case number
+      back <n:{value}>
+    miss
+      back <other>
+
+task keyed
+  take key, like text
+  like text
+
+  save answer, <none>
+  fork
+    mark unsafe
+    save got, lose()
+  halt take
+    take problem
+    save answer, seen(problem/link/{key})
+  back answer
+
+task body-of
+  take keys, like list, like text
+  like text
+
+  save answer, <none>
+  fork
+    mark unsafe
+    save got, lose()
+  halt take
+    take problem
+    save body, make-object()
+    walk keys
+      take prop
+      save body, set-field(body, prop, problem/link/{prop})
+    save answer, stringify(body)
+  back answer
+
+test <a two-word prop is read by its written name>
+  want hold, is-equal keyed(<where-from>), <t:a/b>
+
+test <a two-word number prop is read by its written name>
+  want hold, is-equal keyed(<told-at>), <n:7>
+
+test <the stored spelling is not a name of the prop>
+  want hold, is-equal keyed(<whereFrom>), <other>
+
+test <a name no form has reads absent>
+  want hold, is-equal keyed(<nowhere>), <other>
+
+test <an inherited name reads absent>
+  want hold, is-equal keyed(<constructor>), <other>
+
+test <a two-word told prop goes into a JSON body>
+  want hold, is-equal body-of(make list(<where-from>, <told-at>)), <\{"where-from":"a/b","told-at":7\}>
+
+test <a missing prop goes into a JSON body as null>
+  want hold, is-equal body-of(make list(<nowhere>)), <\{"nowhere":null\}>
+
+test <an inherited name goes into a JSON body as null>
+  want hold, is-equal body-of(make list(<constructor>, <toString>)), <\{"constructor":null,"toString":null\}>

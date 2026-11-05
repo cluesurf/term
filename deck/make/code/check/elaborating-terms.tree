@@ -45,6 +45,8 @@ load ../compile/type-text
   find integer-text
 
 load ./judging
+  find meta-mark
+  find meta-undo
   find judge-state
   find kernel-term
   find kernel-value
@@ -340,6 +342,7 @@ task attempt-type
 
   save st, ts/st
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save found, infer(st, ctx, term)/type
@@ -347,6 +350,7 @@ task attempt-type
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back make none
   back make none
 
@@ -360,6 +364,7 @@ task attempt-quoted-type
 
   save st, ts/st
   save fuel, st/unfold-fuel
+  save metas, meta-mark(st)
   fork
     mark unsafe
     save found, quote(st, ctx/level, infer(st, ctx, term)/type)
@@ -367,6 +372,7 @@ task attempt-quoted-type
   halt take
     take problem
     save st/unfold-fuel, fuel
+    meta-undo(st, metas)
     back make none
   back make none
 
@@ -2798,6 +2804,103 @@ task find-arm
         back make(some, one)
   back make none
 
+# whether a form is `mark prop`: its first constructor is registered as a truncation constructor (a mark prop form
+# registers every one of its constructors, and an ordinary form none)
+task is-truncation-form
+  take data, like elaboration-data
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(data/variant-names/has(name), false)
+    hold
+      back false
+  save variants, data/variant-names/get(name)
+  fork test, is-equal(variants/length, 0)
+    hold
+      back false
+  save key, ctor-key(name, get(variants, 0))
+  save found, false
+  walk data/truncations
+    take entry
+    fork test, is-equal(entry/name, key)
+      hold
+        save found, true
+  back found
+
+# whether a form is empty: every case takes a field of the form itself, so no value is ever the first (`never`), or
+# it has no case at all
+task is-empty-form
+  take data, like elaboration-data
+  take name, like text
+  like boolean
+  mark private
+
+  save every, true
+  walk data/variant-names/get(name)
+    take variant
+    save recursive, false
+    walk variant-fields(data, ctor-key(name, variant))
+      take field
+      sift field/type
+        case some
+          link found
+          sift const-name(spine-of(found)/head)
+            case some
+              link head
+              fork test, is-equal(head, name)
+                hold
+                  save recursive, true
+            case none
+              save recursive, recursive
+        case none
+          save recursive, recursive
+    save every, and(every, recursive)
+  back every
+
+# whether a form is the identity family `equal`: indexed, with one case that takes one field
+task is-identity-form
+  take data, like elaboration-data
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(scope-free(name), <equal>)
+    hold
+      back false
+  fork test, is-equal(data/type-former-indices/has(name), false)
+    hold
+      back false
+  save variants, data/variant-names/get(name)
+  fork test, is-unequal(variants/length, 1)
+    hold
+      back false
+  back is-equal(variant-fields(data, ctor-key(name, get(variants, 0)))/length, 1)
+
+# whether a match's result type is a proposition a truncation may eliminate into: a mark prop form, `equal` or an
+# empty form, applied to anything
+task is-proposition-type
+  take data, like elaboration-data
+  take type, like kernel-term
+  like boolean
+  mark private
+
+  sift const-name(spine-of(type)/head)
+    case some
+      link head
+      fork test, is-equal(data/variant-names/has(head), false)
+        hold
+          back false
+      fork test, is-truncation-form(data, head)
+        hold
+          back true
+      fork test, is-empty-form(data, head)
+        hold
+          back true
+      back is-identity-form(data, head)
+    case none
+      back false
+
 task match-term
   take ts, like term-state
   take subject-node, like expression
@@ -2851,6 +2954,16 @@ task match-term
     hold
       back no-term()
   save order, data/variant-names/get(enum-name)
+  # SUBSINGLETON ELIMINATION (decision 003): conversion ignores a truncation constructor's fields, so a match on a
+  # truncation returns only a proposition. Into data it would read back a field the kernel identified, and prove
+  # `unwrap (wrap yes) == unwrap (wrap no)`, which the running program refutes. One rule for the plain, dependent and
+  # indexed eliminators alike, a branch that returns a constant of data included
+  fork test, is-truncation-form(data, enum-name)
+    hold
+      fork test, is-equal(is-proposition-type(data, quote(st, ctx/level, result-value)), false)
+        hold
+          save form-name, scope-free(enum-name)
+          halt <kernel-type:form {form-name} is mark prop, so a match on it can only return a proposition (a mark prop form, equal or an empty form): returning data would read back a field the kernel treats as irrelevant (see test/check/subsingleton-elimination.tree)>
   save index-count, 0
   fork test, data/type-former-indices/has(enum-name)
     hold

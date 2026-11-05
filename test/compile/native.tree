@@ -1,0 +1,174 @@
+note <Per-env native resolution>
+
+# Ported from native.ts by statement (item 0573). A public module spells `native/{platform}/<name>` and the build fills
+# the slot with the target it is compiling for (node, browser and the rest). The user never names a concrete platform;
+# the env substitutes, a borrowed sibling env fills a gap (cloudflare to browser), and the abstract module beside the env
+# dirs is the last fallback. The implicit `native/<name>` rewrite is retired (stdlib-parity-0002). compile/native is the
+# subject (decision 106): the original's in-memory project is a resolver task handed to its with-native-env. The
+# original adds the platform-chain and view modules to its map before those tests: every module is here from the start,
+# and no earlier program loads them.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/judging
+  find make-record
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/native>, name native-module
+
+# host value: the answer a resolver gives for a path it does not hold
+bind not-held
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+form module-text
+  link path, like text
+  link text, like text
+
+task module-named
+  take path, like text
+  take text, like text
+  like module-text
+
+  back make(module-text, bind(path, path), bind(text, text))
+
+task name-task
+  take name, like text
+  take value, like text
+  like text
+
+  back <task {name}\n  like text\n  send back, text \<{value}\>\n>
+
+# an in-memory project: one platform-slotted native module with two platform implementations, an abstract module that
+# only exists beside the env dirs (the shared fallback), the platform chain's and the Apple rung's
+host modules, make(list, module-named(<@app/code/native/node/platform>, name-task(<platform-name>, <node>)), module-named(<@app/code/native/browser/platform>, name-task(<platform-name>, <browser>)), module-named(<@app/code/native/shared-only>, name-task(<shared-name>, <shared>)), module-named(<@app/code/native/ios/host>, name-task(<host-name>, <ios>)), module-named(<@app/code/native/swift/host>, name-task(<host-name>, <swift>)), module-named(<@app/code/native/memory/host>, name-task(<host-name>, <memory>)), module-named(<@app/code/native/apple/view>, name-task(<view-name>, <apple>)), module-named(<@app/code/native/ios/view>, name-task(<view-name>, <ios>)))
+
+task base
+  take path, like text
+  like dynamic
+
+  walk modules
+    take one, like module-text
+    fork test, is-equal(one/path, path)
+      hold
+        back make-record(make(list, <file>, path, <text>, one/text))
+  back not-held(0)
+
+task build-for
+  take source, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <public.tree>), bind(resolver, native-module/with-native-env(env, base))))
+
+task describing
+  take path, like text
+  take name, like text
+  like text
+
+  back <load @app/code/native/{path}\n  find {name}\n\ntask describe\n  like text\n  send back\n    call {name}\n>
+
+# the public module spells the platform slot; the build fills it
+host public, describing(<\{platform\}/platform>, <platform-name>)
+
+host node, build-for(public, <node>)
+
+test <compiles for the node target>
+  want hold, node/ok
+
+test <node target resolves the node impl>
+  want hold, node/ok
+  want hold, text-contains(node/emitted, <"node">)
+
+test <node target does not pull the browser impl>
+  want hold, node/ok
+  want hold, is-equal(text-contains(node/emitted, <"browser">), false)
+
+host browser, build-for(public, <browser>)
+
+test <compiles for the browser target>
+  want hold, browser/ok
+
+test <browser target resolves the browser impl>
+  want hold, browser/ok
+  want hold, text-contains(browser/emitted, <"browser">)
+
+# cloudflare has no impl of its own here: it borrows the browser's (NATIVE_ENV_FALLBACK)
+host cloudflare, build-for(public, <cloudflare>)
+
+test <compiles for the cloudflare target>
+  want hold, cloudflare/ok
+
+test <cloudflare borrows the browser impl>
+  want hold, cloudflare/ok
+  want hold, text-contains(cloudflare/emitted, <"browser">)
+
+# an env with no impl at all falls back to the abstract module beside the env dirs
+host shared-fallback, build-for(describing(<\{platform\}/shared-only>, <shared-name>), <node>)
+
+test <the abstract module is the last fallback>
+  want hold, shared-fallback/ok
+
+test <the fallback resolves the shared source>
+  want hold, shared-fallback/ok
+  want hold, text-contains(shared-fallback/emitted, <"shared">)
+
+# which of these names the emitted program quotes first, `none` when it quotes none, `failed` when it did not build
+task impl-of
+  take source, like text
+  take env, like text
+  take names, like list, like text
+  like text
+
+  host built, build-for(source, env)
+  fork test, built/ok
+    miss
+      back <failed>
+  walk names
+    take name, like text
+    fork test, text-contains(built/emitted, <"{name}">)
+      hold
+        back name
+  back <none>
+
+# the platform chain (native-dom-0010): a platform tries its own impl, then its language's, then the memory host. `host`
+# has an ios impl, a swift impl and a memory impl, and nothing for macos, kotlin or android.
+host host-source, describing(<\{platform\}/host>, <host-name>)
+host chain-names, make(list, <ios>, <apple>, <swift>, <memory>)
+
+test <ios resolves the ios impl through the chain>
+  want hold, is-equal(impl-of(host-source, <ios>, chain-names), <ios>)
+
+test <macos resolves the swift impl through the chain>
+  want hold, is-equal(impl-of(host-source, <macos>, chain-names), <swift>)
+
+test <swift resolves the swift impl through the chain>
+  want hold, is-equal(impl-of(host-source, <swift>, chain-names), <swift>)
+
+test <android resolves the memory impl through the chain>
+  want hold, is-equal(impl-of(host-source, <android>, chain-names), <memory>)
+
+test <kotlin resolves the memory impl through the chain>
+  want hold, is-equal(impl-of(host-source, <kotlin>, chain-names), <memory>)
+
+# the shared Apple rung: an `apple` impl serves macOS and iOS both, and loses to a platform's own
+host view-source, describing(<\{platform\}/view>, <view-name>)
+host view-names, make(list, <ios>, <apple>)
+
+test <macos resolves the apple view impl>
+  want hold, is-equal(impl-of(view-source, <macos>, view-names), <apple>)
+
+test <ios resolves the ios view impl>
+  want hold, is-equal(impl-of(view-source, <ios>, view-names), <ios>)
+
+# the retired implicit rewrite: an abstract `native/<name>` import no longer resolves an env impl
+test <the implicit abstract rewrite is retired (the import resolves nothing)>
+  want hold, is-equal(build-for(describing(<platform>, <platform-name>), <node>)/ok, false)
