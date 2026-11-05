@@ -390,6 +390,7 @@ every file, and three rules shape it:
 | `# text` | a comment. A comment directly above a definition is its documentation, shown on hover |
 | `<text>` | a text literal. `{x}` inside it interpolates a value. `<<...>>` is raw text, with no escapes |
 | `f(a, b)` | a call written where a value goes |
+| `a/b` | a path: a step into a module or into a value, below |
 
 So `take value, like number` is a `take` with two children, `value` and
 `like number`, and `back add(value, value)` returns the call's result.
@@ -397,6 +398,22 @@ What the words mean comes from the file's dialect, the vocabulary its
 [role](#dialects-mills-and-roles) (the kind of file it is) allows, and in ordinary code from the table
 below. Nearly every word is four letters, a deliberate small vocabulary
 shared by the language and its tools.
+
+### Paths
+
+A path is words joined by `/`, each step going one level in. One spelling
+serves two jobs: naming a module to import, and reading a value.
+
+| write | means |
+| --- | --- |
+| `load @term/base/list` | a module in a package: the package `@term/base`, then the file `list.tree` in its code folder |
+| `load ./parse/read` | a module beside this file: `parse/read.tree`, else `parse/read/base.tree` |
+| `p/x` | the field `x` of the record `p`. The base spelling is `read p/x` |
+| `xs/0` | the first item of the list `xs` |
+| `xs/{i}`, `h/{key}` | an item by a computed index, a hash value by a computed key |
+| `p/home/city` | steps chain: the field `city` of the field `home` |
+| `greet(who)/text` | a field of what a call returned |
+| `found/push x` | a call of the task `push` on `found`, a method call |
 
 ### Definitions
 
