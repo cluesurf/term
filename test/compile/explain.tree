@@ -6,7 +6,7 @@ note <Every rebuild explained>
 # has now. The builds run in order over one project and one record of inputs, so each is a top-level `host` that takes
 # the build before it. compile/separate and compile/cache are the subject (decision 106).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

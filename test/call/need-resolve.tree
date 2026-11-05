@@ -7,7 +7,7 @@ note <Which term runs here: one case per rule of term-versions.md "Resolution", 
 # original's order, each step's changes made and undone around the choices it holds, and the tests read them. The
 # original's two-space indent on a sub-case's name is left out.
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

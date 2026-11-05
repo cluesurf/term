@@ -11,7 +11,7 @@ load ./compiling
   find compiling-options
   find compiling-options-of
 
-load ./temp
+load @term/base/test/temp
   find temp-folder
   find remove-at-exit
   find remove-temp-folders

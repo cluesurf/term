@@ -10,7 +10,7 @@ load ../support/compiling
   find compile-choice
   find file-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

@@ -1,0 +1,56 @@
+note <A manifest is checked before publishing: a name, and a version that is not 0.0.0>
+
+# Ported from publish.test.ts by statement (item 0581). code/package/manifest.ts is the subject, docked: its
+# validateManifest converts a TypeScript manifest for code/package/manifest-reading.tree, so the test holds what a
+# TypeScript caller is given.
+
+dock load
+  load <@term/deck/code/package/manifest>, name manifest-face
+
+form publish-mark
+  link major, like number
+  link minor, like number
+  link patch, like number
+
+form publish-manifest
+  link host, like text
+  link name, like text
+  link mark, like publish-mark
+  link link, like list, like text
+
+form publish-input
+  link manifest, like publish-manifest
+
+# the errors validateManifest answers for a cluesurf manifest of `name` at major.minor.patch, with no links
+task errors-of
+  take name, like text
+  take major, like number
+  take minor, like number
+  take patch, like number
+  mark async
+  like list, like text
+
+  host mark, make(publish-mark, bind(major, major), bind(minor, minor), bind(patch, patch))
+  host manifest, make(publish-manifest, bind(host, <cluesurf>), bind(name, name), bind(mark, mark), bind(link, make list))
+  back wait manifest-face/validate-manifest(make(publish-input, bind(manifest, manifest)))
+
+test <validateManifest: passes valid manifest>
+  host errors, errors-of(<seed>, 1, 0, 2)
+  want hold, is-equal(errors/length, 0)
+
+test <validateManifest: fails on missing name>
+  host errors, errors-of(<>, 1, 0, 2)
+  want hold, errors/includes(<Missing package name>)
+
+test <validateManifest: fails on 0.0.0 version>
+  host errors, errors-of(<seed>, 0, 0, 0)
+  want hold, errors/includes(<Version must be set (not 0.0.0)>)
+
+# an even-patch rule is an author's convention, not the toolchain's, so both parities publish
+test <validateManifest: passes an odd patch number>
+  host errors, errors-of(<seed>, 1, 0, 3)
+  want hold, is-equal(errors/length, 0)
+
+test <validateManifest: passes an even patch number>
+  host errors, errors-of(<seed>, 1, 0, 4)
+  want hold, is-equal(errors/length, 0)

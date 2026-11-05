@@ -12,7 +12,7 @@ load @term/base/process/run
 load @term/base/file
   find write, name text-write
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 bind text-has

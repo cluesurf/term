@@ -1,0 +1,8 @@
+load @term/base/file
+  find append
+
+task go
+  mark async
+  like void
+
+  append(<file-load.txt>, <one>)

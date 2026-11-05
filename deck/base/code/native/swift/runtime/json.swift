@@ -18,17 +18,130 @@ final class JsonArray {
     init(_ items: [Any] = []) { self.items = items }
 }
 
-enum json {
-    // Foundation's parsed values into boxes, recursively
-    static func box(_ value: Any) -> Any {
+// Walks the text JSONSerialization already accepted, so an object's keys come out in the document's order. Foundation
+// hands an object back as an unordered Dictionary, and the keys were sorted until item 0940, where TypeScript, Rust and
+// Kotlin keep the document's order. Every value is still Foundation's own (NSNumber, CFBoolean, String, NSNull): the walk
+// reads only where each member starts, and pairs it with the value Foundation parsed.
+struct JsonOrder {
+    let bytes: [UInt8]
+    var at = 0
+
+    mutating func space() {
+        while at < bytes.count, bytes[at] == 0x20 || bytes[at] == 0x09 || bytes[at] == 0x0A || bytes[at] == 0x0D { at += 1 }
+    }
+    // past a string whose opening quote is at `at`, answering whether it held an escape
+    mutating func skipText() -> Bool {
+        var escaped = false
+        at += 1
+        while at < bytes.count, bytes[at] != 0x22 {
+            if bytes[at] == 0x5C { escaped = true; at += 1 }
+            at += 1
+        }
+        at += 1
+        return escaped
+    }
+    // past any one value starting at `at`
+    mutating func skip() {
+        space()
+        guard at < bytes.count else { return }
+        let head = bytes[at]
+        if head == 0x22 { _ = skipText(); return }
+        if head == 0x7B || head == 0x5B {
+            var depth = 0
+            while at < bytes.count {
+                let byte = bytes[at]
+                if byte == 0x22 { _ = skipText(); continue }
+                if byte == 0x7B || byte == 0x5B { depth += 1 }
+                if byte == 0x7D || byte == 0x5D {
+                    depth -= 1
+                    if depth == 0 { at += 1; return }
+                }
+                at += 1
+            }
+            return
+        }
+        while at < bytes.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x09, 0x0A, 0x0D].contains(bytes[at]) { at += 1 }
+    }
+    // the key whose quote is at `at`, decoded the way Foundation decoded it
+    mutating func key() -> String {
+        let start = at
+        let escaped = skipText()
+        if !escaped { return String(decoding: bytes[(start + 1)..<(at - 1)], as: UTF8.self) }
+        let data = Data(bytes[start..<at])
+        return (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) as? String ?? ""
+    }
+    // Foundation's value at `at` into boxes, an object's keys in the text's order
+    mutating func box(_ value: Any) -> Any {
+        space()
         if let dict = value as? [String: Any] {
+            // each key at its first place with its last member's value, as JSON.parse keeps a repeated key. Foundation
+            // keeps the first member's value, so a repeated key's last value is parsed again from its own text
+            var order: [String] = []
+            var last: [String: Range<Int>] = [:]
+            var repeated: Set<String> = []
+            at += 1
+            space()
+            while at < bytes.count, bytes[at] == 0x22 {
+                let name = key()
+                space()
+                at += 1
+                space()
+                let start = at
+                skip()
+                if last.updateValue(start..<at, forKey: name) == nil { order.append(name) } else { repeated.insert(name) }
+                space()
+                if at < bytes.count, bytes[at] == 0x2C { at += 1; space() }
+            }
+            if at < bytes.count { at += 1 }
+            let end = at
             let object = JsonObject()
-            for key in dict.keys.sorted() { object.set(key, box(dict[key]!)) }
+            for name in order {
+                let range = last[name]!
+                if repeated.contains(name) {
+                    let data = Data(bytes[range])
+                    guard let field = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { continue }
+                    var walk = JsonOrder(bytes: Array(data))
+                    object.set(name, walk.box(field))
+                    continue
+                }
+                guard let field = dict[name] else { continue }
+                at = range.lowerBound
+                object.set(name, box(field))
+            }
+            // a key the walk did not find keeps Foundation's value, after the rest
+            for name in dict.keys.sorted() where object.fields[name] == nil { object.set(name, JsonOrder.plainBox(dict[name]!)) }
+            at = end
             return object
         }
-        if let array = value as? [Any] { return JsonArray(array.map(box)) }
+        if let array = value as? [Any] {
+            at += 1
+            var items: [Any] = []
+            for item in array {
+                space()
+                items.append(box(item))
+                space()
+                if at < bytes.count, bytes[at] == 0x2C { at += 1 }
+            }
+            space()
+            if at < bytes.count { at += 1 }
+            return JsonArray(items)
+        }
+        skip()
         return value
     }
+    // boxes with no text to read the order from
+    static func plainBox(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            let object = JsonObject()
+            for key in dict.keys.sorted() { object.set(key, plainBox(dict[key]!)) }
+            return object
+        }
+        if let array = value as? [Any] { return JsonArray(array.map(plainBox)) }
+        return value
+    }
+}
+
+enum json {
     // boxes back into what JSONSerialization writes
     static func plain(_ value: Any) -> Any {
         if let object = value as? JsonObject { return object.fields.mapValues(plain) }
@@ -38,7 +151,10 @@ enum json {
     static func parse(_ text: String) -> Any {
         guard let data = text.data(using: .utf8),
               let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return NSNull() }
-        return box(value)
+        var walk = JsonOrder(bytes: Array(data))
+        // a byte order mark Foundation reads past
+        if walk.bytes.starts(with: [0xEF, 0xBB, 0xBF]) { walk.at = 3 }
+        return walk.box(value)
     }
     static func stringify(_ value: Any) -> String {
         // a bare number spells the way JSON does everywhere else: the shortest digits that read back to the same

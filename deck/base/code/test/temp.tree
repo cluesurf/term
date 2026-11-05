@@ -1,0 +1,136 @@
+# A test's temporary folders, removed when its process ends, however it ends: a pass, a failed want, a raise, an exit,
+# ctrl-c or SIGTERM. A test makes every temporary folder through `temp-folder`, or hands one it made another way to
+# `remove-at-exit`, and never leaves one behind. `TERM_KEEP_RUNS=1` keeps them, to read a failed build's sources.
+#
+# Any package's tests load it as `@term/base/test/temp`. A test runner that points TMPDIR at a folder per suite sees
+# every folder made here inside it.
+
+mark unstable
+
+load @term/base/list
+  find push
+
+dock load
+  load <node:fs>, name temp-file
+  load <node:os>, name temp-os
+  load <node:path>, name temp-path
+  load <global:process>, name temp-process
+
+bind temp-remove-options
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true, force: true, maxRetries: 3, retryDelay: 100 \})>
+
+# a folder whose name says process `pid` made it for `prefix`: its pid, or the empty text
+bind temp-owner-of
+  take prefix, like text
+  take entry, like text
+  like text
+  case node
+    text <<(new RegExp("^" + $prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\d+)-[A-Za-z0-9]{6}$").exec($entry)?.[1] ?? "")>>
+
+bind temp-alive
+  take pid, like text
+  like boolean
+  case node
+    text <(() =\> \{ try \{ process.kill(Number($pid), 0); return true \} catch (cause) \{ return cause.code === "EPERM" \} \})()>
+
+bind temp-keeps
+  take seed, like number
+  like boolean
+  case node
+    text <(process.env.TERM_KEEP_RUNS === "1")>
+
+bind temp-own-pid
+  take seed, like number
+  like text
+  case node
+    text <String(process.pid)>
+
+form temp-state
+  mark shared
+  link made, like list, like text
+  link hooked, like boolean
+
+host temp-now, make(temp-state, bind(made, make list), bind(hooked, false))
+
+# remove every folder this process made. A child may still be writing into one: the runner's own removal takes the rest
+task remove-temp-folders
+  like void
+
+  walk temp-now/made
+    take folder
+    fork
+      mark unsafe
+      temp-file/rm-sync(folder, temp-remove-options(0))
+    halt take
+      take problem
+      save ignored, 0
+  save temp-now/made, make list
+
+task temp-end-on
+  take signal, like text
+  take code, like number
+  like void
+  mark private
+
+  save stop
+    task
+      like void
+      remove-temp-folders()
+      temp-process/exit(code)
+  temp-process/once(signal, stop)
+
+task temp-hook
+  like void
+  mark private
+
+  fork test, temp-now/hooked
+    hold
+      back
+  save temp-now/hooked, true
+  fork test, temp-keeps(0)
+    hold
+      back
+  temp-process/on(<exit>, remove-temp-folders)
+  temp-end-on(<SIGINT>, 130)
+  temp-end-on(<SIGTERM>, 143)
+  temp-end-on(<SIGHUP>, 143)
+
+# a folder already made (by a library, a child, a fixed path), removed when the process ends. It answers the folder
+task remove-at-exit
+  take folder, like text
+  like text
+
+  temp-hook()
+  push(temp-now/made, folder)
+  back folder
+
+# the folders of `prefix` whose process is gone (killed past its exit hook), removed by the next run
+task temp-sweep
+  take prefix, like text
+  like void
+  mark private
+
+  save base, temp-os/tmpdir()
+  walk temp-file/readdir-sync(base)
+    take entry, like text
+    save owner, temp-owner-of(prefix, entry)
+    fork test, and(is-unequal(owner, <>), and(is-unequal(owner, temp-own-pid(0)), not(temp-alive(owner))))
+      hold
+        temp-file/rm-sync(temp-path/join(base, entry), temp-remove-options(0))
+
+# a new temporary folder `<tmpdir>/<prefix><pid>-XXXXXX`, removed when the process ends, and swept by the next run if
+# this one is killed (the pid in the name says whose it was)
+task temp-folder
+  take prefix, like text
+  like text
+
+  fork
+    mark unsafe
+    temp-sweep(prefix)
+  halt take
+    take problem
+    save ignored, 0
+  back remove-at-exit(temp-file/mkdtemp-sync(temp-path/join(temp-os/tmpdir(), <{prefix}{temp-own-pid(0)}->)))

@@ -1,0 +1,170 @@
+mark draft
+# a draft of item term-self-host-001-0983, landed in its line-lock window
+
+# How a console refuses a command line it does not understand: one failed item naming what was not understood, the
+# closing `The command line was not understood` with a `next` field saying what to run, exit 2 (section 18 of the
+# output standard). Term's own console (work/dispatch.tree) and every program `term boot` writes (work/hook/running.tree,
+# shipped as host/dock.mjs) refuse through these tasks, so the two cannot drift (zone decision 002, item
+# term-self-host-001-0983). The help both print is work/help.tree's `help-text`.
+#
+# The run is the printer's (work/output/printer.tree): a refusal opens it under the console's own name and version,
+# reports, and closes it. The flags were not understood, so the run prints as the defaults say.
+
+load @term/base/text
+  find substring
+  find char-count
+  find to-lower-case
+  find to-upper-case
+
+load @term/make/compile/node
+  find dock-route
+
+load @term/call/work/output/printer
+  find set-output
+  find open-run
+  find report
+  find close-run
+
+dock load
+  load <global:process>, name usage-process
+  load <global:JSON>, name usage-json
+
+# a refusal: the console's name and version, what was not understood (its first line, then the rest), and what to run
+form usage-ask
+  link name, like text
+  link mark, like text
+  link message, like text
+  link lines, like list, like text
+  link next, like text
+
+# a word that names no command, among the commands of a console
+form command-guess
+  link name, like text
+  link routes, like list, like dock-route
+  link word, like text
+
+form usage-opening
+  link verb, like text
+  link root, like text
+  link tool, like text
+
+form usage-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form usage-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+# a host value as text, the empty text when it is none
+task usage-text
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# the working directory, the empty text when the host gives none
+task usage-root
+  like text
+  mark private
+
+  back usage-text(usage-process/cwd())
+
+task capitalize
+  take value, like text
+  like text
+  mark private
+
+  back <{to-upper-case(substring(value, 0, 1))}{substring(value, 1)}>
+
+# Levenshtein distance between two words, two rows at a time
+task edit-distance
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  save m, char-count(a)
+  save n, char-count(b)
+  save row, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, n)
+    hook hold
+      row/push j
+      save j, add(j, 1)
+  save i, 1
+  walk test
+    hook test, is-maximum(i, m)
+    hook hold
+      save next, make list
+      next/push i
+      save j, 1
+      walk test
+        hook test, is-maximum(j, n)
+        hook hold
+          save cost, 1
+          fork test, is-equal(substring(a, subtract(i, 1), i), substring(b, subtract(j, 1), j))
+            hold
+              save cost, 0
+          save before, subtract(j, 1)
+          save best, add(row/{j}, 1)
+          save left, add(next/{before}, 1)
+          fork test, is-below(left, best)
+            hold
+              save best, left
+          save across, add(row/{before}, cost)
+          fork test, is-below(across, best)
+            hold
+              save best, across
+          next/push best
+          save j, add(j, 1)
+      save row, next
+      save i, add(i, 1)
+  back row/{n}
+
+# what to run instead of a word that names no command: the nearest command, two edits away at most, else the console
+# alone, which lists its commands
+task nearest-command
+  take guess, like command-guess
+  like text
+
+  save best, <>
+  save distance, 1000
+  save lower, to-lower-case(guess/word)
+  walk guess/routes
+    take one
+    save each, edit-distance(lower, one/path)
+    fork test, is-below(each, distance)
+      hold
+        save distance, each
+        save best, one/path
+  fork test, and(is-maximum(distance, 2), is-unequal(best, <>))
+    hold
+      back <{guess/name} {best}>
+  back <{guess/name}, for the list of commands>
+
+# A command line refused: the run opened under the console's name, a failed item with the message capitalized and its
+# other lines, and the closing with the `next` field, exit 2
+task refuse-usage
+  take ask, like usage-ask
+  like number
+
+  save tool, ask/name
+  fork test, is-unequal(ask/mark, <>)
+    hold
+      save tool, <{ask/name} {ask/mark}>
+  set-output(usage-json/parse(<\{\}>), ask/mark)
+  open-run(make usage-opening, verb(ask/name), root(usage-root()), tool(tool))
+  report(make usage-item, glyph(<failed>), kind(<problem>), verb(ask/name), subject(capitalize(ask/message)), message(ask/lines))
+  save code, close-run(make usage-close, verdict(<The command line was not understood>), next(ask/next), failure(<usage>))
+  back code

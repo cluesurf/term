@@ -1,0 +1,66 @@
+note <What `term make --explain` keeps of a unit reads back whole>
+
+# Item 0910. The port of the explain store (deck/call/code/work/build/explain-store.tree) wrote and read a unit's inputs
+# without `carried`, which the separate build gained after the port: a cold `term make --trees --explain` of @term/base
+# recalled a unit it had built once already that run and stopped with exit 70, reading the keys of the missing map. Each
+# map the build hands over now reads back with its entries, and a file written before `carried` reads it as empty.
+
+load @term/call/work/build/explain-store
+  find make-explain-store
+  find remember-explain
+  find recall-explain
+
+load @term/base/file/temporary
+  find make, name make-temporary
+
+load @term/base/file/directory
+  find remove, name remove-folder
+
+form inputs-given
+  link compiler, like text
+  link own, like hash, like text, like text
+  link read, like hash, like text, like text
+  link settings, like text
+  link names, like hash, like text, like text
+  link carried, like hash, like text, like text
+
+task one-entry
+  take key, like text
+  take value, like text
+  like hash, like text, like text
+
+  save out, make hash
+  out/set(key, value)
+  back out
+
+# remember inputs for a unit in a new folder, then recall them: the size of a recalled map, -1 when nothing came back
+task recalled-size
+  take field, like text
+  like number
+  mark async
+
+  save root, make-temporary(<directory>, <explain->)
+  save store, make-explain-store(root)
+  save given, make(inputs-given, bind(compiler, <c1>), bind(own, one-entry(<a.tree>, <p1>)), bind(read, one-entry(<b.tree>, <p2>)), bind(settings, <s1>), bind(names, one-entry(<x>, <a.tree>)), bind(carried, one-entry(<c.tree>, <p3>)))
+  remember-explain(store, <unit-a>, given)
+  save size, -1
+  sift recall-explain(store, <unit-a>)
+    case some
+      link got
+      save map, got/{field}
+      save size, -2
+      fork test, is-unequal(map, void)
+        hold
+          save size, map/size
+    case none
+      save nothing, 0
+  remove-folder(root)
+  back size
+
+test <a recalled unit holds the carried prints it was remembered with>
+  want hold, is-equal recalled-size(<carried>), 1
+
+test <a recalled unit holds its own, read and names maps>
+  want hold, is-equal recalled-size(<own>), 1
+  want hold, is-equal recalled-size(<read>), 1
+  want hold, is-equal recalled-size(<names>), 1

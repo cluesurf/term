@@ -4,7 +4,7 @@ note <`compileProject` compiles a project's .tree files to TypeScript under host
 # `compileProject` is the subject (decision 106). The original builds twice in sequence and reads the disk between the
 # builds, so `builds` runs both once, in that order, and keeps what each step saw for the tests to read.
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/reading

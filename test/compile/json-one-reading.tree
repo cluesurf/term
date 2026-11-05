@@ -1,0 +1,30 @@
+note <A JSON object is read in its document's key order on every backend>
+
+# Item 0940. Swift's parse sorted an object's keys, since JSONSerialization hands back an unordered Dictionary, so a
+# parse then stringify answered {"a":2,"b":1} for {"b":1,"a":2} where TypeScript, Rust and Kotlin keep the document's
+# order. The one meaning is TypeScript's JSON.parse: keys in the order the text names them, a repeated key kept at its
+# first place with its last value. Run with `--env rust`, `--env swift` and `--env kotlin` as well.
+
+load @term/base/json
+  find parse
+  find stringify
+  find get-field
+  find object-keys
+
+test <a parsed object keeps the document's key order>
+  want hold, is-equal stringify(parse(<\{"zebra":1,"apple":2,"mango":3\}>)), <\{"zebra":1,"apple":2,"mango":3\}>
+
+test <the keys of a parsed object are listed in the document's order>
+  want hold, is-equal object-keys(parse(<\{"zebra":1,"apple":2,"mango":3\}>)), make list(<zebra>, <apple>, <mango>)
+
+test <a nested object and an object in a list keep their order>
+  want hold, is-equal stringify(parse(<\{"y":\{"q":true,"b":null\},"x":[\{"t":"a/b","c":1.5\},2]\}>)), <\{"y":\{"q":true,"b":null\},"x":[\{"t":"a/b","c":1.5\},2]\}>
+
+test <a key spelled with an escape keeps its place>
+  want hold, is-equal object-keys(parse(<\{"z\\u0041":1,"a\\"b":2,"m":3\}>)), make list(<zA>, <a"b>, <m>)
+
+test <a repeated key keeps its first place and its last value>
+  want hold, is-equal stringify(parse(<\{"b":1,"a":2,"b":\{"d":4,"c":3\}\}>)), <\{"b":\{"d":4,"c":3\},"a":2\}>
+
+test <a field of a parsed object reads after reordering>
+  want hold, is-equal stringify(get-field(parse(<\{"s":"x","r":[3,\{"k":"v","j":"w"\}]\}>), <r>)), <[3,\{"k":"v","j":"w"\}]>

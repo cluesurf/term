@@ -1,0 +1,61 @@
+note <A match lowers by what it matches: a text by equality, a boolean by truth, a form by its discriminant>
+
+# Ported from match-lowering.test.ts by statement (item 0581). A match compiles three ways, and the wrong one is a
+# SILENT miss (every branch fails, no error), which is how the zone CLI shipped broken: an enum value tests
+# `subject.form === "variant"`, a text `subject === "literal"`, a boolean `if (subject)`. The text and boolean cases
+# used to emit `.form === ...`, which reads undefined off a primitive. The compiler is docked, as form-generics.test.tree
+# docks it.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/compile>, name match-compiling
+
+form match-source
+  link file, like text
+  link text, like text
+
+host by-text, <task classify\n  take kind, like text\n  like text\n  fork case, read kind\n    case keychain\n      send back\n        text \<mac\>\n    case secret\n      send back\n        text \<linux\>\n  send back\n    text \<none\>\n>
+host by-truth, <task label\n  take flag, like boolean\n  like text\n  fork case, read flag\n    case true\n      send back\n        text \<on\>\n    case false\n      send back\n        text \<off\>\n>
+host by-form, <form box\n  case full, like text\n  case void\n\ntask open\n  take b, like box\n  like text\n  fork case, read b\n    case full, link text\n      send back\n        read text\n    case void\n      send back\n        text \<empty\>\n>
+host by-call, <form flag\n  case yes\n  case no\n\ntask pick\n  take n, like number\n  like flag\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      send back\n        make yes\n    hook miss\n      send back\n        make no\n>
+
+# the TypeScript a source emits. A refused source raises, as the original's `emit` did
+task emitted
+  take source, like text
+  like text
+
+  host result, match-compiling/compile(make(match-source, bind(file, <match.tree>), bind(text, source)))
+  fork test, is-equal(result/ok, true)
+    hold
+      back result/typescript
+  halt <match.tree did not compile>
+
+test <match lowering: matches a STRING value by equality, not by .form>
+  host ts, emitted(by-text)
+  want hold, text-contains(ts, <kind === "keychain">)
+  want hold, text-contains(ts, <kind === "secret">)
+  want hold, not(text-contains(ts, <kind.form>))
+
+# both arms covered, so the chain closes with a plain `else` (exhaustive control flow) rather than a second `if`
+test <match lowering: matches a BOOLEAN by truthiness, not by .form>
+  host ts, emitted(by-truth)
+  want hold, not(text-contains(ts, <flag.form>))
+  want hold, text-contains(ts, <if (flag)>)
+  want hold, text-contains(ts, <} else \{>)
+
+# the LAST arm of an exhaustive match closes with a plain `else`, as the boolean case does. Both arms tested `.form`
+# until 2026-09-12, and a task whose arms all return then read to TypeScript as one that could fall out of the bottom
+test <match lowering: matches an ENUM value by its .form discriminant>
+  host ts, emitted(by-form)
+  want hold, text-contains(ts, <.form === "full">)
+  want hold, not(text-contains(ts, <.form === "void">))
+  want hold, text-contains(ts, <} else \{>)
+
+# a match on an ADT-returning call whose subject is a binary expression must wrap it, or `.form` binds to the last
+# operand. Sanity: it compiles and yields the two constructors
+test <match lowering: parenthesizes a compound subject before .form>
+  host ts, emitted(by-call)
+  want hold, text-contains(ts, <form: "yes">)
+  want hold, text-contains(ts, <form: "no">)

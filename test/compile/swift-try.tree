@@ -19,7 +19,7 @@ load ../support/running
 load ../support/reading
   find lines-of
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load @term/base/process/tool

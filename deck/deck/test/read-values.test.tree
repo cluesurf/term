@@ -1,0 +1,42 @@
+note <A line can carry more than one value, and all of them survive>
+
+# Ported from read-values.test.ts by statement (item 0581). `time <made>, <toss>` is a range. The parser keeps both
+# texts; the flattening to a form used to assign the value twice, so the LAST won and the first vanished. The original
+# held code/package/read.ts, a face whose logic is code/package/tree-reading.tree: this holds that module itself.
+
+load ../code/package/tree-reading
+  find read-tree
+  find tree-form
+
+# the first form read from `text`. A refused text raises its messages, as the original's `forms` helper did
+task first-form
+  take text, like text
+  like tree-form
+
+  host got, read-tree(<x.tree>, text)
+  fork test, not(got/ok)
+    hold
+      halt <x.tree did not read>
+  back got/forms/0
+
+test <a line with several values: keeps every one, in order>
+  host one, first-form(<time \<made\>, \<toss\>\n>)
+  want hold, is-equal(one/values, make list(<made>, <toss>))
+
+test <a line with several values: still reports the first as value, so existing readers are unchanged>
+  host one, first-form(<time \<made\>, \<toss\>\n>)
+  want hold, is-equal(one/value/unwrap-or(<>), <made>)
+
+test <a line with several values: handles a single value the same way>
+  host one, first-form(<code \<aes-256-gcm\>\n>)
+  want hold, is-equal(one/value/unwrap-or(<>), <aes-256-gcm>)
+  want hold, is-equal(one/values, make list(<aes-256-gcm>))
+
+test <a line with several values: gives no values to a line that carries none>
+  host one, first-form(<code aes-256-gcm\n>)
+  want hold, one/value/is-none()
+  want hold, is-equal(one/values/length, 0)
+
+test <a line with several values: keeps numbers too>
+  host one, first-form(<span 1, 2\n>)
+  want hold, is-equal(one/values, make list(<1>, <2>))

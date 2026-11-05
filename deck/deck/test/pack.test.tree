@@ -1,0 +1,191 @@
+note <Blobs pack into content-addressed packs whose slices give back every object, and binaries and large text stay loose>
+
+# Ported from pack.test.ts by statement (item 0581). The packing format (note/term/registry/17) is the basis of
+# packed-at-rest storage: buildPacks groups packable blobs and reports each one's placement, openPack and slicePack give
+# back the exact bytes (the slice math the server's placement-aware store.get uses), a pack is addressed by
+# hashObject({ kind: 'pack', bytes }), and isPackable keeps binaries and large text loose. code/object/pack.ts and
+# code/object/hash.ts are the subjects, docked.
+
+dock load
+  load <@term/deck/code/object/pack>, name pack-face
+  load <@term/deck/code/object/hash>, name hash-face
+
+# host value: a Buffer of a text's UTF-8 bytes
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+# host value: `size` bytes, each 0x61
+bind filled-bytes
+  take size, like number
+  like dynamic
+  case node
+    text <Buffer.alloc($size, 0x61)>
+
+# host native: Buffer.compare of two byte buffers, 0 when equal
+bind bytes-compare
+  take left, like dynamic
+  take right, like dynamic
+  like number
+  case node
+    text <Buffer.compare($left, $right)>
+
+form pack-object
+  link kind, like text
+  link bytes, like dynamic
+
+form pack-input
+  link id, like text
+  link path, like text
+  link bytes, like dynamic
+
+# small bounds, so a handful of tiny blobs form several packs deterministically, instead of the 256 KB to 1 MB
+# production packs
+form pack-params
+  link loose-threshold, like number
+  link min-pack, like number
+  link max-pack, like number
+  link boundary-avg, like number
+
+form pack-build
+  link blobs, like list, like pack-input
+  link params, like pack-params
+
+form packable-input
+  link path, like text
+  link size, like number
+  link bytes, like dynamic
+
+form round-trip
+  link packs, like number
+  link addressed, like number
+  link entries, like number
+  link found, like number
+  link sliced, like number
+  link placed, like number
+  link unique, like number
+
+task test-params
+  like pack-params
+
+  back make(pack-params, bind(loose-threshold, 1024), bind(min-pack, 120), bind(max-pack, 400), bind(boundary-avg, 2))
+
+task object-id
+  take kind, like text
+  take bytes, like dynamic
+  like text
+
+  back hash-face/hash-object(make(pack-object, bind(kind, kind), bind(bytes, bytes)))
+
+task repeated
+  take value, like text
+  take count, like number
+  like text
+
+  fork test, is-equal(count, 0)
+    hold
+      back <>
+  back <{value}{repeated(value, subtract(count, 1))}>
+
+# a packable blob keyed by its real content address, so dedup and placement behave exactly as in production
+task blob
+  take path, like text
+  take value, like text
+  like pack-input
+
+  host bytes, bytes-of(value)
+  back make(pack-input, bind(id, object-id(<blob>, bytes)), bind(path, path), bind(bytes, bytes))
+
+task six-blobs
+  like list, like pack-input
+
+  back make list(blob(<a/one.tree>, repeated(<zone one\n  text \<alpha\>\n>, 4)), blob(<a/two.tree>, repeated(<zone two\n  text \<beta\>\n>, 5)), blob(<b/three.tree>, repeated(<zone three\n  text \<gamma\>\n>, 6)), blob(<b/four.tree>, repeated(<zone four\n  text \<delta\>\n>, 3)), blob(<c/five.tree>, repeated(<zone five\n  text \<epsilon\>\n>, 7)), blob(<c/six.tree>, repeated(<zone six\n  text \<zeta\>\n>, 2)))
+
+# the blob of `blobs` whose id is `id`, or none
+task blob-of
+  take blobs, like list, like pack-input
+  take id, like text
+  like maybe, like pack-input
+
+  walk blobs
+    take one, like pack-input
+    fork test, is-equal(one/id, id)
+      hold
+        back make(some, one)
+  back make(none)
+
+# every pack opened: how many are addressed as the server records them, and of their entries how many name a blob,
+# slice back to its exact bytes, and carry the placement recorded for them, with the distinct ids over every pack
+task round-trip-of
+  take blobs, like list, like pack-input
+  take built, like dynamic
+  like round-trip
+
+  save addressed, 0
+  save entries, 0
+  save found, 0
+  save sliced, 0
+  save placed, 0
+  save ids, make list
+  walk built/packs
+    take pack, like dynamic
+    host open, pack-face/open-pack(pack/bytes)
+    fork test, is-equal(pack/id, object-id(<pack>, pack/bytes))
+      hold
+        save addressed, add(addressed, 1)
+    walk open/toc
+      take entry, like dynamic
+      save entries, add(entries, 1)
+      fork test, not(ids/includes(entry/id))
+        hold
+          ids/push(entry/id)
+      sift blob-of(blobs, entry/id)
+        case some, link value
+          save found, add(found, 1)
+          # the slice the server's store.get answers for a packed object
+          fork test, is-equal(bytes-compare(pack-face/slice-pack(open, entry/site, entry/size), value/bytes), 0)
+            hold
+              save sliced, add(sliced, 1)
+        case none
+          save found, found
+      host place, built/placement/get(entry/id)
+      fork test, and(is-equal(place/kind, <pack>), and(is-equal(place/pack, pack/id), and(is-equal(place/site, entry/site), is-equal(place/size, entry/size))))
+        hold
+          save placed, add(placed, 1)
+  back make(round-trip, bind(packs, built/packs/length), bind(addressed, addressed), bind(entries, entries), bind(found, found), bind(sliced, sliced), bind(placed, placed), bind(unique, ids/length))
+
+test <pack: round-trips every object through openPack + slicePack>
+  host blobs, six-blobs()
+  host built, pack-face/build-packs(make(pack-build, bind(blobs, blobs), bind(params, test-params())))
+  # every blob placed into some pack
+  want hold, is-equal(built/placement/size, blobs/length)
+  want hold, is-above(built/packs/length, 0)
+  host seen, round-trip-of(blobs, built)
+  # each pack is content-addressed exactly as the server records it
+  want hold, is-equal(seen/addressed, seen/packs)
+  want hold, is-equal(seen/found, seen/entries)
+  want hold, is-equal(seen/sliced, seen/entries)
+  want hold, is-equal(seen/placed, seen/entries)
+  # the union of every pack's table covers every blob exactly once
+  want hold, is-equal(seen/unique, blobs/length)
+
+test <pack: dedups identical content across paths into one placement>
+  host bytes, bytes-of(<zone dup\n  text \<same\>\n>)
+  host id, object-id(<blob>, bytes)
+  host first, make(pack-input, bind(id, id), bind(path, <x/a.tree>), bind(bytes, bytes))
+  host second, make(pack-input, bind(id, id), bind(path, <y/b.tree>), bind(bytes, bytes))
+  host built, pack-face/build-packs(make(pack-build, bind(blobs, make list(first, second)), bind(params, test-params())))
+  # one entry despite two paths (the same content packs once)
+  want hold, is-equal(built/placement/size, 1)
+  want hold, is-equal(built/placement/get(id)/kind, <pack>)
+
+test <pack: keeps binaries and large text loose>
+  host small, bytes-of(<zone tiny\n  text \<ok\>\n>)
+  want hold, is-equal(pack-face/is-packable(make(packable-input, bind(path, <a/small.tree>), bind(size, small/length), bind(bytes, small))), true)
+  # a png extension is binary whatever its bytes
+  want hold, is-equal(pack-face/is-packable(make(packable-input, bind(path, <a/logo.png>), bind(size, small/length), bind(bytes, small))), false)
+  # a large text blob (at least the 64 KB default loose threshold) stays loose
+  host large, filled-bytes(multiply(128, 1024))
+  want hold, is-equal(pack-face/is-packable(make(packable-input, bind(path, <a/big.tree>), bind(size, large/length), bind(bytes, large))), false)

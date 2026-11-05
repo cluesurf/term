@@ -1,0 +1,283 @@
+note <A deck.tree manifest is read, written back, and its old spellings named and rewritten>
+
+# Ported from manifest.test.ts by statement (item 0580). code/package/manifest.ts is the subject, docked: it hands the
+# grammars to the Term manifest modules and converts the shapes, so the test holds what a TypeScript caller is given.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/deck/code/package/manifest>, name manifest-face
+
+form manifest-text
+  link text, like text
+
+form manifest-write
+  link manifest, like dynamic
+
+# host native: a value written as JSON, to compare a list field for field
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host reflect: a raise's message
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+task parsed
+  take text, like text
+  like dynamic
+
+  back manifest-face/parse-manifest(make(manifest-text, bind(text, text)))
+
+task written
+  take manifest, like dynamic
+  like text
+
+  back manifest-face/write-manifest(make(manifest-write, bind(manifest, manifest)))
+
+task spellings
+  take text, like text
+  like dynamic
+
+  back manifest-face/manifest-spellings(make(manifest-text, bind(text, text)))
+
+task rewritten
+  take text, like text
+  like text
+
+  back manifest-face/rewrite-manifest-spellings(make(manifest-text, bind(text, text)))/text
+
+# the message reading the manifest raises, empty when it reads
+task refusal
+  take text, like text
+  like text
+
+  fork
+    mark unsafe
+    parsed(text)
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+# a version record is the given major, minor and patch
+task is-code
+  take code, like dynamic
+  take major, like number
+  take minor, like number
+  take patch, like number
+  like boolean
+
+  back and(and(is-equal(code/major, major), is-equal(code/minor, minor)), is-equal(code/patch, patch))
+
+test <parseManifest: parses a basic manifest>
+  host manifest, parsed(<\ndeck @cluesurf/my-app\n  mark \<1.0.0\>\n  head \<My cool app\>\n  mind \<Lance Pollard\>\n  lock apache-2\n  term \<tool\>\n  link @cluesurf/base, mark \<1.x.x\>\n  link @cluesurf/tree, mark \<2.1.0\>\n>)
+  want hold, is-equal(manifest/host, <cluesurf>)
+  want hold, is-equal(manifest/name, <my-app>)
+  want hold, is-code(manifest/mark, 1, 0, 0)
+  want hold, is-void(manifest/code)
+  want hold, is-equal(manifest/head, <My cool app>)
+  want hold, is-equal(manifest/lock, <apache-2>)
+  want hold, is-equal(json-of(manifest/term), <["tool"]>)
+  want hold, is-equal(json-of(manifest/mind), <[\{"name":"Lance Pollard"\}]>)
+  want hold, is-equal(manifest/link/length, 2)
+  want hold, is-equal(manifest/link/0/name, <@cluesurf/base>)
+  want hold, is-equal(manifest/link/0/mark/form, <wild>)
+  want hold, is-equal(manifest/link/0/mark/major, 1)
+  want hold, is-equal(manifest/link/1/name, <@cluesurf/tree>)
+  want hold, is-equal(manifest/link/1/mark/form, <exact>)
+  want hold, is-code(manifest/link/1/mark/code, 2, 1, 0)
+
+# the old spelling still reads: a text literal under `code` is the version, never a folder
+test <parseManifest: reads the old `code \<version\>` spelling, on the manifest and on a link>
+  host manifest, parsed(<\ndeck @cluesurf/old\n  code \<1.4.2\>\n  bear ./code\n  link @cluesurf/base, code \<1.x.x\>\n>)
+  want hold, is-code(manifest/mark, 1, 4, 2)
+  want hold, is-equal(manifest/code, <./code>)
+  want hold, is-equal(manifest/link/0/mark/form, <wild>)
+  want hold, is-equal(manifest/link/0/mark/major, 1)
+
+test <parseManifest: reads `mark` as the version and `code ./src` as the code root>
+  host manifest, parsed(<\ndeck @alice/tools\n  head \<Small tools for Alice\>\n  mark \<1.4.2\>\n  code ./src\n>)
+  want hold, is-code(manifest/mark, 1, 4, 2)
+  want hold, is-equal(manifest/code, <./src>)
+  want hold, text-contains(written(manifest), <  code ./src\n>)
+  want hold, text-contains(written(manifest), <  mark \<1.4.2\>\n>)
+
+host peer, <\ndeck @cluesurf/plugin\n  mark \<0.1.0\>\n  link @cluesurf/base, mark(\<1.x.x\>), have 1\n>
+
+test <parseManifest: parses peer dependencies>
+  want hold, is-equal(parsed(peer)/link/0/have, 1)
+
+test <parseManifest: writes a peer dependency that reads back as one>
+  host again, parsed(written(parsed(peer)))
+  want hold, is-equal(again/link/0/have, 1)
+  want hold, is-equal(again/link/0/name, <@cluesurf/base>)
+
+test <parseManifest: parses hooks>
+  host manifest, parsed(<\ndeck @cluesurf/tool\n  mark \<1.0.0\>\n  hook build, task ./task/build\n>)
+  want hold, is-equal(json-of(manifest/hook), <\{"build":"./task/build"\}>)
+
+test <parseManifest: parses role directive>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  role ./base/role\n>)
+  want hold, is-equal(manifest/role, <./base/role>)
+
+test <parseManifest: parses directory pointers>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  task ./task\n  book ./book\n  role ./base/role\n  line ./line\n  call ./call\n  test ./test\n>)
+  want hold, is-equal(manifest/task, <./task>)
+  want hold, is-equal(manifest/book, <./book>)
+  want hold, is-equal(manifest/role, <./base/role>)
+  want hold, is-equal(manifest/line, <./line>)
+  want hold, is-equal(manifest/call, <./call>)
+  want hold, is-equal(manifest/test, <./test>)
+
+test <parseManifest: parses hide flag>
+  host manifest, parsed(<\ndeck @cluesurf/my-app\n  mark \<0.0.1\>\n  hide true\n>)
+  want hold, is-equal(manifest/hide, true)
+
+test <parseManifest: parses site and view>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  site \<https://github.com/cluesurf/seed\>\n  view ./view/tree.gif\n>)
+  want hold, is-equal(manifest/site, <https://github.com/cluesurf/seed>)
+  want hold, is-equal(manifest/view, <./view/tree.gif>)
+
+test <parseManifest: parses sub-package deck entries>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  deck ./deck/load\n  deck ./deck/line\n>)
+  want hold, is-equal(json-of(manifest/deck), <["./deck/load","./deck/line"]>)
+
+test <parseManifest: parses mind with inline base>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  mind \<Lance Pollard\>, base \<lp@elk.fm\>\n>)
+  want hold, is-equal(manifest/mind/length, 1)
+  want hold, is-equal(manifest/mind/0/name, <Lance Pollard>)
+  want hold, is-equal(manifest/mind/0/base, <lp@elk.fm>)
+  want hold, is-void(manifest/mind/0/site)
+
+test <parseManifest: parses mind with child site>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  mind \<Lance Pollard\>, base \<lp@elk.fm\>\n    site \<lancejpollard.com\>\n>)
+  want hold, is-equal(manifest/mind/length, 1)
+  want hold, is-equal(manifest/mind/0/name, <Lance Pollard>)
+  want hold, is-equal(manifest/mind/0/base, <lp@elk.fm>)
+  want hold, is-equal(manifest/mind/0/site, <lancejpollard.com>)
+
+test <parseManifest: parses case work dev dependencies>
+  host manifest, parsed(<\ndeck @cluesurf/my-app\n  mark \<0.0.1\>\n  link @cluesurf/base, mark \<0.0.x\>\n\n  case work\n    link @cluesurf/buzz, mark \<0.0.x\>\n    link @cluesurf/crow, mark \<0.0.x\>\n>)
+  want hold, is-equal(manifest/link/length, 1)
+  want hold, is-equal(manifest/link/0/name, <@cluesurf/base>)
+  want hold, is-equal(manifest/dev-link/length, 2)
+  want hold, is-equal(manifest/dev-link/0/name, <@cluesurf/buzz>)
+  want hold, is-equal(manifest/dev-link/1/name, <@cluesurf/crow>)
+
+test <parseManifest: parses host registry blocks>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n\n  host \<https://npm.pkg.github.com\>\n    link @cluesurf/seal, mark \<0.0.x\>\n    link @cluesurf/cone, mark \<0.0.x\>\n>)
+  want hold, is-equal(manifest/host-link/length, 1)
+  want hold, is-equal(manifest/host-link/0/registry, <https://npm.pkg.github.com>)
+  want hold, is-equal(manifest/host-link/0/link/length, 2)
+  want hold, is-equal(manifest/host-link/0/link/0/name, <@cluesurf/seal>)
+
+test <parseManifest: parses a full manifest>
+  host manifest, parsed(<\ndeck @cluesurf/base\n  head \<A TreeCode Framework\>\n  mark \<0.0.1\>\n  sort tool\n  lock apache-2\n  site \<https://github.com/cluesurf/base\>\n  view ./view/tree.gif\n  hide true\n\n  term tree-code\n  term compiler\n\n  deck ./deck/load\n  deck ./deck/call\n\n  link @cluesurf/bind, mark \<0.0.x\>\n  link @cluesurf/moon, mark \<0.0.x\>\n\n  host \<https://npm.pkg.github.com\>\n    link @cluesurf/seal, mark \<0.0.x\>\n\n  case work\n    link @cluesurf/buzz, mark \<0.0.x\>\n\n  task ./task\n  book ./book\n  role ./base/role\n  call ./call\n\n  mind \<Lance Pollard\>, base \<lp@elk.fm\>\n    site \<lancejpollard.com\>\n>)
+  want hold, is-equal(manifest/host, <cluesurf>)
+  want hold, is-equal(manifest/name, <base>)
+  want hold, is-equal(manifest/head, <A TreeCode Framework>)
+  want hold, is-equal(manifest/sort, <tool>)
+  want hold, is-equal(manifest/lock, <apache-2>)
+  want hold, is-equal(manifest/site, <https://github.com/cluesurf/base>)
+  want hold, is-equal(manifest/view, <./view/tree.gif>)
+  want hold, is-equal(manifest/hide, true)
+  want hold, is-equal(json-of(manifest/term), <["tree-code","compiler"]>)
+  want hold, is-equal(json-of(manifest/deck), <["./deck/load","./deck/call"]>)
+  want hold, is-equal(manifest/link/length, 2)
+  want hold, is-equal(manifest/host-link/length, 1)
+  want hold, is-equal(manifest/dev-link/length, 1)
+  want hold, is-equal(manifest/task, <./task>)
+  want hold, is-equal(manifest/book, <./book>)
+  want hold, is-equal(manifest/role, <./base/role>)
+  want hold, is-equal(manifest/call, <./call>)
+  want hold, is-equal(manifest/mind/length, 1)
+  want hold, is-equal(manifest/mind/0/name, <Lance Pollard>)
+  want hold, is-equal(manifest/mind/0/base, <lp@elk.fm>)
+  want hold, is-equal(manifest/mind/0/site, <lancejpollard.com>)
+
+# gap 163 (guides: language/dsls/mills): a line the grammar does not read was dropped without a word
+test <parseManifest: refuses a misspelled field, naming it and its line>
+  want hold, text-contains(refusal(<deck @cluesurf/my-app\n  mark \<1.0.0\>\n  lnik @cluesurf/base, mark \<1.x.x\>\n>), <`lnik` at line 3 in deck.tree does not fit the manifest grammar>)
+
+test <parseManifest: refuses a field of the wrong shape, and a line outside `deck`>
+  want hold, text-contains(refusal(<deck @cluesurf/my-app\n  mark \<1.0.0\>\n  face \<Lance Pollard\>, site \<lp@elk.fm\>\n>), <`face` at line 3>)
+  want hold, text-contains(refusal(<deck @cluesurf/my-app\n  mark \<1.0.0\>\n\nboot ./site/boot\n>), <`boot` at line 4 in deck.tree is not a `deck`, `role` or `load`>)
+  want hold, text-contains(refusal(<deck @cluesurf/my-app\n  case work\n    lnik @cluesurf/base, mark \<1.x.x\>\n>), <`case` at line 2>)
+
+test <writeManifest: round-trips a manifest>
+  host output, written(parsed(<\ndeck @cluesurf/my-app\n  mark \<1.0.0\>\n  head \<My cool app\>\n  link @cluesurf/base, mark \<1.x.x\>\n>))
+  want hold, text-contains(output, <deck @cluesurf/my-app>)
+  want hold, text-contains(output, <mark \<1.0.0\>>)
+  want hold, text-contains(output, <head \<My cool app\>>)
+  want hold, text-contains(output, <link @cluesurf/base, mark \<1.x.x\>>)
+  # the default code root is not written
+  want hold, is-equal(text-contains(output, <code >), false)
+
+test <writeManifest: writes the old spelling back in the new one>
+  host manifest, parsed(<deck @cluesurf/old\n  code \<1.0.2\>\n  bear ./code\n  link @cluesurf/base, code \<0.0.x\>\n>)
+  want hold, is-equal(written(manifest), <deck @cluesurf/old\n  mark \<1.0.2\>\n  link @cluesurf/base, mark \<0.0.x\>\n>)
+
+test <writeManifest: writes new fields>
+  host output, written(parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  hide true\n  site \<https://github.com/cluesurf/seed\>\n  view ./view/tree.gif\n  deck ./deck/load\n  role ./base/role\n  call ./call\n  mind \<Lance Pollard\>, base \<lp@elk.fm\>\n    site \<lancejpollard.com\>\n>))
+  want hold, text-contains(output, <hide true>)
+  want hold, text-contains(output, <site \<https://github.com/cluesurf/seed\>>)
+  want hold, text-contains(output, <view ./view/tree.gif>)
+  want hold, text-contains(output, <deck ./deck/load>)
+  want hold, text-contains(output, <role ./base/role>)
+  want hold, text-contains(output, <call ./call>)
+  want hold, text-contains(output, <mind \<Lance Pollard\>, base \<lp@elk.fm\>>)
+  want hold, text-contains(output, <site \<lancejpollard.com\>>)
+
+test <writeManifest: writes case work block>
+  host output, written(parsed(<\ndeck @cluesurf/my-app\n  mark \<0.0.1\>\n  case work\n    link @cluesurf/buzz, mark \<0.0.x\>\n>))
+  want hold, text-contains(output, <case work>)
+  want hold, text-contains(output, <    link @cluesurf/buzz>)
+
+test <writeManifest: writes host block>
+  host output, written(parsed(<\ndeck @cluesurf/base\n  mark \<0.0.1\>\n  host \<https://npm.pkg.github.com\>\n    link @cluesurf/seal, mark \<0.0.x\>\n>))
+  want hold, text-contains(output, <host \<https://npm.pkg.github.com\>>)
+  want hold, text-contains(output, <    link @cluesurf/seal>)
+
+# `term lint` reports these and `term lint --fix` applies them (note/project/term/manifest/manifest-mark-and-code-root.md)
+host old, <# a comment that stays\ndeck @cluesurf/old\n  head \<Old spelling\>\n  code \<1.4.2\>\n  bear ./code\n  link @cluesurf/base, code \<0.0.x\>\n\n  case work\n    link @cluesurf/buzz, code \<0.0.x\>\n>
+
+# each spelling's rule and its line counted from 1
+task rules-at
+  take found, like dynamic
+  like list, like text
+
+  host out, make list
+  walk found
+    take one, like dynamic
+    out/push(<{one/rule}@{add(one/line, 1)}>)
+  back out
+
+test <manifestSpellings: names every old spelling, once each, by rule>
+  want hold, is-equal(json-of(rules-at(spellings(old))), <["manifest-code-version@4","manifest-bear@5","manifest-code-version@6","manifest-code-version@9"]>)
+
+test <manifestSpellings: rewrites them in place, keeping comments and blank lines>
+  host fixed, rewritten(old)
+  want hold, is-equal(fixed, <# a comment that stays\ndeck @cluesurf/old\n  head \<Old spelling\>\n  mark \<1.4.2\>\n  link @cluesurf/base, mark \<0.0.x\>\n\n  case work\n    link @cluesurf/buzz, mark \<0.0.x\>\n>)
+  want hold, is-equal(spellings(fixed)/length, 0)
+
+test <manifestSpellings: tells a code root from a version by form>
+  want hold, is-equal(spellings(<deck @a/b\n  mark \<1.0.0\>\n  code ./src\n>)/length, 0)
+
+test <manifestSpellings: keeps a non-default `bear` path as `code`>
+  want hold, is-equal(rewritten(<deck @a/b\n  mark \<1.0.0\>\n  bear ./src\n>), <deck @a/b\n  mark \<1.0.0\>\n  code ./src\n>)
+
+test <manifestSpellings: leaves a lockfile alone>
+  want hold, is-equal(spellings(<lock \<1\>\n\ndeck @a/b\n  code \<1.0.0\>\n>)/length, 0)

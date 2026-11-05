@@ -9,7 +9,7 @@ note <Does term make compile a DIALECT, rather than only the test harness?>
 load ../support/compiling
   find file-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/reading

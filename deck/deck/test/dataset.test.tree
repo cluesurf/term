@@ -74,11 +74,11 @@ task chunk-of
 
 # the files from `i` to `count` pushed onto `out`, code/mod-<i>.ts, the one at `edit` with another chunk
 task files-into
-  take out, like list, like package-file
+  take out, like list, like dynamic
   take i, like number
   take count, like number
   take edit, like number
-  like list, like package-file
+  like list, like dynamic
 
   fork test, is-equal(i, count)
     hold
@@ -95,14 +95,14 @@ task files-into
 task made-files
   take count, like number
   take edit, like number
-  like list, like package-file
+  like list, like dynamic
 
   host out, make list
   back files-into(out, 0, count, edit)
 
 task by-path
-  take left, like package-file
-  take right, like package-file
+  take left, like dynamic
+  take right, like dynamic
   like ordering
 
   fork test, is-below(left/path, right/path)
@@ -114,7 +114,7 @@ task by-path
   back make equal
 
 task written
-  take files, like list, like package-file
+  take files, like list, like dynamic
   take store, like dynamic
   like text
 

@@ -10,7 +10,7 @@ note <A build graph kept across rebuilds: what a session keeps, what an edit reb
 # builds before it left, so each build is a top-level `host` that takes the one before it, and reads what its tests need
 # before the next build moves it. call/make and call/cache-store are the subject (decision 106).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

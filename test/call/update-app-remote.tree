@@ -18,7 +18,7 @@ note <the Rust cask's update client on Linux and Windows, on the target's own ma
 # each test reads the step it names. A raise ends the run where it stood: the steps after it fail, and so does the
 # test that the run raised nothing.
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/cli

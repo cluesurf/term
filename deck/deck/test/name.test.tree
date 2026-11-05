@@ -1,0 +1,72 @@
+note <A package name with and without its .tree suffix, its scope, and the registry that serves it>
+
+# Ported from name.test.ts by statement (item 0581). The original held code/package/name.ts, a face whose logic is
+# code/package/registry-naming.tree: this holds that module itself.
+
+load ../code/package/registry-naming
+  find to-registry-name
+  find to-tree-name
+  find parse-scope
+  find resolve-registry
+  find root-scope
+
+# the registries the routing test names: @term and its @lab space
+task lab-registries
+  like hash, like text, like text
+
+  save routes, make hash
+  routes/set(<@term>, <https://tool.base.surf>)
+  routes/set(<@term/@lab>, <https://lab.example>)
+  back routes
+
+task alice-registries
+  like hash, like text, like text
+
+  save routes, make hash
+  routes/set(<@alice>, <ghcr.io/alice-gh/term>)
+  back routes
+
+test <toRegistryName: adds .tree suffix>
+  want hold, is-equal(to-registry-name(<@cluesurf/deck>), <@cluesurf/deck.tree>)
+
+test <toRegistryName: does not double-suffix>
+  want hold, is-equal(to-registry-name(<@cluesurf/deck.tree>), <@cluesurf/deck.tree>)
+
+test <toTreeName: removes .tree suffix>
+  want hold, is-equal(to-tree-name(<@cluesurf/deck.tree>), <@cluesurf/deck>)
+
+test <toTreeName: does not modify name without suffix>
+  want hold, is-equal(to-tree-name(<@cluesurf/deck>), <@cluesurf/deck>)
+
+test <parseScope: parses scoped name>
+  host parts, parse-scope(<@cluesurf/deck>)
+  want hold, is-equal(parts/scope, <@cluesurf>)
+  want hold, is-equal(parts/base, <deck>)
+
+test <parseScope: parses unscoped name>
+  host parts, parse-scope(<deck>)
+  want hold, is-equal(parts/scope, <>)
+  want hold, is-equal(parts/base, <deck>)
+
+test <parseScope: parses a nested space path as the scope>
+  host nested, parse-scope(<@cluesurf/@wordsurf/@alice/x>)
+  want hold, is-equal(nested/scope, <@cluesurf/@wordsurf/@alice>)
+  want hold, is-equal(nested/base, <x>)
+  host tune, parse-scope(<@cluesurf/@wordsurf/language~tune>)
+  want hold, is-equal(tune/scope, <@cluesurf/@wordsurf>)
+  want hold, is-equal(tune/base, <language~tune>)
+  host bare, parse-scope(<@cluesurf>)
+  want hold, is-equal(bare/scope, <@cluesurf>)
+  want hold, is-equal(bare/base, <>)
+
+test <resolveRegistry: routes a nested scope by its root space>
+  want hold, is-equal(root-scope(<@cluesurf/@wordsurf>), <@cluesurf>)
+  want hold, is-equal(root-scope(<@cluesurf>), <@cluesurf>)
+  host routes, lab-registries()
+  want hold, is-equal(resolve-registry(<@term/@wordsurf/x>, <npm>, routes), <https://tool.base.surf>)
+  want hold, is-equal(resolve-registry(<@term/@lab/x>, <npm>, routes), <https://lab.example>)
+  # a scope nobody names comes from ghcr.io/<scope>, and an unscoped name from the fallback registry
+  want hold, is-equal(resolve-registry(<@other/x>, <npm>, routes), <oci://ghcr.io/other>)
+  want hold, is-equal(resolve-registry(<left-pad>, <npm>, routes), <npm>)
+  # a base line writes a bare host and path, which is an OCI registry
+  want hold, is-equal(resolve-registry(<@alice/x>, <npm>, alice-registries()), <oci://ghcr.io/alice-gh/term>)

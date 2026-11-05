@@ -10,7 +10,7 @@ load ../support/running
   find build-text
   find run-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load @term/base/text

@@ -1,0 +1,350 @@
+note <Versions and holds: read, shown, compared, matched, picked and moved>
+
+# Ported from mark.test.ts by statement (item 0580). code/code.ts is the subject, docked: it leaves out a field the Term
+# module (code/version.tree) writes as nothing, and raises the original's message, so the test holds what a TypeScript
+# caller is given. A record the original compared whole is held field by field, a field it left out as absent.
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/deck/code/code>, name code-face
+
+form plain-code
+  link major, like number
+  link minor, like number
+  link patch, like number
+
+form pre-code
+  link major, like number
+  link minor, like number
+  link patch, like number
+  link prerelease, like text
+
+form bump-ask
+  link code, like dynamic
+  link level, like number
+
+form pre-ask
+  link code, like dynamic
+  link id, like text
+
+form pick-ask
+  link versions, like list, like dynamic
+  link hold, like dynamic
+
+# host native: a value written as JSON, to compare a list
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host reflect: a raise's message
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+task code-of
+  take major, like number
+  take minor, like number
+  take patch, like number
+  like dynamic
+
+  back make(plain-code, bind(major, major), bind(minor, minor), bind(patch, patch))
+
+task parsed
+  take text, like text
+  like dynamic
+
+  back code-face/parse-code(text)
+
+task hold-of
+  take text, like text
+  like dynamic
+
+  back code-face/parse-code-hold(text)
+
+task matches
+  take code, like dynamic
+  take hold, like text
+  like boolean
+
+  back code-face/code-match(code, hold-of(hold))
+
+# the version is the given numbers, with no prerelease and no build
+task is-plain
+  take code, like dynamic
+  take major, like number
+  take minor, like number
+  take patch, like number
+  like boolean
+
+  fork test, is-unequal(is-void(code/prerelease), true)
+    hold
+      back false
+  fork test, is-unequal(is-void(code/build), true)
+    hold
+      back false
+  back and(and(is-equal(code/major, major), is-equal(code/minor, minor)), is-equal(code/patch, patch))
+
+# the message reading the version raises, empty when it reads
+task refusal
+  take text, like text
+  like text
+
+  fork
+    mark unsafe
+    parsed(text)
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+test <parseCode: parses simple version>
+  want hold, is-plain(parsed(<1.2.3>), 1, 2, 3)
+
+test <parseCode: parses version with prerelease>
+  host code, parsed(<1.0.0-beta.1>)
+  want hold, is-equal(code/major, 1)
+  want hold, is-equal(code/minor, 0)
+  want hold, is-equal(code/patch, 0)
+  want hold, is-equal(code/prerelease, <beta.1>)
+  want hold, is-void(code/build)
+
+test <parseCode: throws on invalid version>
+  want hold, text-contains(refusal(<abc>), <Invalid version>)
+
+test <showCode: shows simple version>
+  want hold, is-equal(code-face/show-code(code-of(1, 2, 3)), <1.2.3>)
+
+test <showCode: shows version with prerelease>
+  want hold, is-equal(code-face/show-code(make(pre-code, bind(major, 1), bind(minor, 0), bind(patch, 0), bind(prerelease, <beta.1>))), <1.0.0-beta.1>)
+
+test <compareCode: compares major versions>
+  want hold, is-above(code-face/compare-code(code-of(2, 0, 0), code-of(1, 0, 0)), 0)
+
+test <compareCode: compares minor versions>
+  want hold, is-above(code-face/compare-code(code-of(1, 2, 0), code-of(1, 1, 0)), 0)
+
+test <compareCode: compares patch versions>
+  want hold, is-above(code-face/compare-code(code-of(1, 0, 2), code-of(1, 0, 1)), 0)
+
+test <compareCode: prerelease sorts before release>
+  host beta, make(pre-code, bind(major, 1), bind(minor, 0), bind(patch, 0), bind(prerelease, <beta>))
+  want hold, is-below(code-face/compare-code(beta, code-of(1, 0, 0)), 0)
+
+task by-version
+  take left, like text
+  take right, like text
+  like ordering
+
+  host said, code-face/compare-code(parsed(left), parsed(right))
+  fork test, is-below(said, 0)
+    hold
+      back make less
+  fork test, is-above(said, 0)
+    hold
+      back make greater
+  back make equal
+
+# semver 2.0, section 11, in its own order (guides: packages/versions), sorted from the reverse
+test <compareCode: orders pre-releases by their identifiers, numbers by value>
+  host reversed, make list
+  reversed/push(<1.0.0>)
+  reversed/push(<1.0.0-rc.10>)
+  reversed/push(<1.0.0-rc.2>)
+  reversed/push(<1.0.0-rc.1>)
+  reversed/push(<1.0.0-beta.11>)
+  reversed/push(<1.0.0-beta.2>)
+  reversed/push(<1.0.0-beta>)
+  reversed/push(<1.0.0-alpha.beta>)
+  reversed/push(<1.0.0-alpha.1>)
+  reversed/push(<1.0.0-alpha>)
+  want hold, is-equal(json-of(sort(reversed, by-version)), <["1.0.0-alpha","1.0.0-alpha.1","1.0.0-alpha.beta","1.0.0-beta","1.0.0-beta.2","1.0.0-beta.11","1.0.0-rc.1","1.0.0-rc.2","1.0.0-rc.10","1.0.0"]>)
+
+test <compareCode: ignores a build suffix>
+  want hold, is-equal(code-face/compare-code(parsed(<1.2.3+build.4>), parsed(<1.2.3>)), 0)
+
+task next
+  take from, like text
+  take id, like text
+  like text
+
+  back code-face/show-code(code-face/bump-prerelease(make(pre-ask, bind(code, parsed(from)), bind(id, id))))
+
+test <bumpPrerelease: starts one past the release>
+  want hold, is-equal(next(<1.4.2>, <rc>), <1.4.3-rc.1>)
+
+test <bumpPrerelease: moves its own count>
+  want hold, is-equal(next(<1.4.3-rc.9>, <rc>), <1.4.3-rc.10>)
+
+test <bumpPrerelease: starts a new name at the same version>
+  want hold, is-equal(next(<1.4.3-beta.4>, <rc>), <1.4.3-rc.1>)
+
+test <bumpPrerelease: and a patch move releases it>
+  want hold, is-equal(code-face/show-code(code-face/bump-code(make(bump-ask, bind(code, parsed(<1.4.3-rc.2>)), bind(level, 3)))), <1.4.3>)
+
+test <build suffix: parses and shows it>
+  host code, parsed(<1.2.3-rc.1+build.4>)
+  want hold, is-equal(code/major, 1)
+  want hold, is-equal(code/minor, 2)
+  want hold, is-equal(code/patch, 3)
+  want hold, is-equal(code/prerelease, <rc.1>)
+  want hold, is-equal(code/build, <build.4>)
+  want hold, is-equal(code-face/show-code(parsed(<1.2.3+build.4>)), <1.2.3+build.4>)
+
+# the hold is a band from base to head
+task is-band
+  take hold, like dynamic
+  take base, like dynamic
+  take head, like dynamic
+  like boolean
+
+  fork test, is-unequal(hold/form, <band>)
+    hold
+      back false
+  back and(is-plain(hold/base, base/major, base/minor, base/patch), is-plain(hold/head, head/major, head/minor, head/patch))
+
+# the hold is a wildcard of the major, and of the minor when it is not -1
+task is-wild
+  take hold, like dynamic
+  take major, like number
+  take minor, like number
+  like boolean
+
+  fork test, is-unequal(hold/form, <wild>)
+    hold
+      back false
+  fork test, is-equal(minor, -1)
+    hold
+      back and(is-equal(hold/major, major), is-void(hold/minor))
+  back and(is-equal(hold/major, major), is-equal(hold/minor, minor))
+
+test <parseCodeHold: parses exact version>
+  host hold, hold-of(<1.2.3>)
+  want hold, is-equal(hold/form, <exact>)
+  want hold, is-plain(hold/code, 1, 2, 3)
+
+test <parseCodeHold: parses major wildcard>
+  want hold, is-wild(hold-of(<1.x.x>), 1, -1)
+
+test <parseCodeHold: parses minor wildcard>
+  want hold, is-wild(hold-of(<1.2.x>), 1, 2)
+
+test <parseCodeHold: parses band range>
+  want hold, is-band(hold-of(<1.0.0..2.0.0>), code-of(1, 0, 0), code-of(2, 0, 0))
+
+test <parseCodeHold: parses union (test)>
+  host hold, hold-of(<0.14.x|0.15.x>)
+  want hold, is-equal(hold/form, <test>)
+  want hold, is-equal(hold/list/length, 2)
+  want hold, is-wild(hold/list/0, 0, 14)
+  want hold, is-wild(hold/list/1, 0, 15)
+
+# the npm rule: ^1.2.3 allows >=1.2.3 <2.0.0, so the lower bound is the version itself (1.0.0 must NOT match)
+test <parseCodeHold: parses caret constraint as a precise band>
+  want hold, is-band(hold-of(<^1.2.3>), code-of(1, 2, 3), code-of(2, 0, 0))
+
+# ^0.2.3 locks the left-most non-zero element: >=0.2.3 <0.3.0
+test <parseCodeHold: parses leading-zero caret locking the minor>
+  want hold, is-band(hold-of(<^0.2.3>), code-of(0, 2, 3), code-of(0, 3, 0))
+
+# ^0.0.3 is exactly >=0.0.3 <0.0.4
+test <parseCodeHold: parses double-zero caret locking the patch>
+  want hold, is-band(hold-of(<^0.0.3>), code-of(0, 0, 3), code-of(0, 0, 4))
+
+# the npm rule: ~1.2.3 allows >=1.2.3 <1.3.0 (patch movement within the minor)
+test <parseCodeHold: parses tilde constraint as a precise band>
+  want hold, is-band(hold-of(<~1.2.3>), code-of(1, 2, 3), code-of(1, 3, 0))
+
+test <parseCodeHold: caret band excludes versions below its base>
+  want hold, is-equal(matches(code-of(1, 0, 0), <^1.2.3>), false)
+  want hold, is-equal(matches(code-of(1, 9, 9), <^1.2.3>), true)
+  want hold, is-equal(matches(code-of(2, 0, 0), <^1.2.3>), false)
+
+test <parseCodeHold: tilde band stays within the minor>
+  want hold, is-equal(matches(code-of(1, 2, 9), <~1.2.3>), true)
+  want hold, is-equal(matches(code-of(1, 3, 0), <~1.2.3>), false)
+
+test <codeMatch: matches exact version>
+  want hold, is-equal(matches(code-of(1, 2, 3), <1.2.3>), true)
+
+test <codeMatch: does not match different exact version>
+  want hold, is-equal(matches(code-of(1, 2, 4), <1.2.3>), false)
+
+test <codeMatch: matches major wildcard>
+  want hold, is-equal(matches(code-of(1, 5, 3), <1.x.x>), true)
+
+test <codeMatch: does not match wrong major>
+  want hold, is-equal(matches(code-of(2, 0, 0), <1.x.x>), false)
+
+test <codeMatch: matches minor wildcard>
+  want hold, is-equal(matches(code-of(1, 2, 9), <1.2.x>), true)
+
+test <pickBestCode: picks highest matching version>
+  host versions, make list
+  versions/push(code-of(1, 0, 0))
+  versions/push(code-of(1, 1, 0))
+  versions/push(code-of(1, 2, 0))
+  versions/push(code-of(2, 0, 0))
+  want hold, is-plain(code-face/pick-best-code(make(pick-ask, bind(versions, versions), bind(hold, hold-of(<1.x.x>)))), 1, 2, 0)
+
+test <pickBestCode: returns undefined when no match>
+  host versions, make list
+  versions/push(code-of(2, 0, 0))
+  want hold, is-void(code-face/pick-best-code(make(pick-ask, bind(versions, versions), bind(hold, hold-of(<1.x.x>)))))
+
+test <codeMatch (band): matches version inside range>
+  want hold, is-equal(matches(code-of(1, 5, 0), <1.0.0..2.0.0>), true)
+
+test <codeMatch (band): matches lower bound (inclusive)>
+  want hold, is-equal(matches(code-of(1, 0, 0), <1.0.0..2.0.0>), true)
+
+test <codeMatch (band): does not match upper bound (exclusive)>
+  want hold, is-equal(matches(code-of(2, 0, 0), <1.0.0..2.0.0>), false)
+
+test <codeMatch (band): does not match below range>
+  want hold, is-equal(matches(code-of(0, 9, 0), <1.0.0..2.0.0>), false)
+
+test <codeMatch (test/union): matches first option>
+  want hold, is-equal(matches(code-of(0, 14, 5), <0.14.x|0.15.x>), true)
+
+test <codeMatch (test/union): matches second option>
+  want hold, is-equal(matches(code-of(0, 15, 0), <0.14.x|0.15.x>), true)
+
+test <codeMatch (test/union): does not match outside union>
+  want hold, is-equal(matches(code-of(0, 16, 0), <0.14.x|0.15.x>), false)
+
+task bumped
+  take level, like number
+  take code, like dynamic
+  like dynamic
+
+  back code-face/bump-code(make(bump-ask, bind(code, code), bind(level, level)))
+
+test <bumpCode: bumps major version>
+  want hold, is-plain(bumped(1, code-of(1, 2, 3)), 2, 0, 0)
+
+test <bumpCode: bumps minor version>
+  want hold, is-plain(bumped(2, code-of(1, 2, 3)), 1, 3, 0)
+
+test <bumpCode: bumps an even patch by one>
+  want hold, is-plain(bumped(3, code-of(1, 0, 2)), 1, 0, 3)
+
+test <bumpCode: bumps an odd patch by one>
+  want hold, is-plain(bumped(3, code-of(1, 0, 3)), 1, 0, 4)

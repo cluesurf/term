@@ -1,0 +1,46 @@
+note <A call may leave out a need false parameter, and a required one is still refused>
+
+# Ported from optional-take.test.ts by statement (item 0581). The inference pass checks arity as a range, from the
+# required count up to the declared count. The kernel sees only an arrow chain, so a call that left out an optional
+# parameter came back as a partial application, typed `(many Boolean) -> String` where a `String` was wanted, and the
+# mismatch was reported where the value was used. The compiler is docked, as form-generics.test.tree docks it.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/compile>, name optional-compiling
+
+form optional-source
+  link file, like text
+  link text, like text
+
+host omitted, <task greet\n  take name, like text\n  take loud, like boolean\n    need false\n  like text\n  send back\n    read name\n\ntask use\n  like text\n  send back\n    call greet\n      bind name, text \<hi\>\n>
+host given, <task greet\n  take name, like text\n  take loud, like boolean\n    need false\n  like text\n  send back\n    read name\n\ntask use\n  like text\n  send back\n    call greet\n      bind name, text \<hi\>\n      bind loud, true\n>
+host too-few, <task greet\n  take name, like text\n  take loud, like boolean\n  like text\n  send back\n    read name\n\ntask use\n  like text\n  send back\n    call greet\n      bind name, text \<hi\>\n>
+
+task compiled
+  take file, like text
+  take text, like text
+  like dynamic
+
+  back optional-compiling/compile(make(optional-source, bind(file, file), bind(text, text)))
+
+test <an omitted need false parameter: compiles rather than partially applying>
+  want hold, is-equal(compiled(<opt.tree>, omitted)/ok, true)
+
+test <an omitted need false parameter: emits a real call, not a curried one>
+  host result, compiled(<opt.tree>, omitted)
+  save out, <>
+  fork test, is-equal(result/ok, true)
+    hold
+      save out, result/typescript
+  # the left-out boolean is passed as its empty value, `false`, as Rust, Swift and Kotlin pass it
+  want hold, text-contains(out, <greet("hi", false)>)
+
+test <an omitted need false parameter: still compiles when the parameter IS given>
+  want hold, is-equal(compiled(<opt.tree>, given)/ok, true)
+
+# the point of the fix is to stop a LEGAL call being rejected. It must not start accepting an illegal one
+test <a genuinely missing required parameter: is still an error>
+  want hold, is-equal(compiled(<few.tree>, too-few)/ok, false)

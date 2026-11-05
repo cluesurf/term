@@ -1,0 +1,232 @@
+note <A file is classified as tree, text or binary, and a `.tree` ships as a record>
+
+# Ported from classify.test.ts by statement (item 0580). code/object/classify.ts, version.ts, restore.ts and store.ts are
+# the subject, docked: each fills the defaults a TypeScript caller is given and hands on to its Term module. The record
+# diff and the record parser are @cluesurf/save's, docked as the original imported them. Each test makes its folders by
+# the standard library's temp-folder (item 0985), so they are removed when the run ends.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find replace
+
+dock load
+  load <@term/deck/code/object/classify>, name classify-face
+  load <@term/deck/code/object/version>, name version-face
+  load <@term/deck/code/object/restore>, name restore-face
+  load <@term/deck/code/object/store>, name store-face
+  load <@cluesurf/save/diff/diff>, name save-diff
+  load <@cluesurf/save/tree/parse>, name save-parse
+  load <node:fs>, name classify-file
+  load <node:path>, name classify-path
+
+form classify-input
+  link path, like text
+  link bytes, like dynamic
+
+form store-input
+  link root, like text
+
+form version-input
+  link dir, like text
+  link store, like dynamic
+
+form restore-input
+  link root, like text
+  link dest, like text
+  link chunks, like dynamic
+  link store, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+# host value: a Buffer of a text's UTF-8 bytes
+bind bytes-of
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value)>
+
+# host value: a Buffer of the given byte values
+bind bytes-from
+  take values, like list, like number
+  like dynamic
+  case node
+    text <Buffer.from($values)>
+
+# host native: a value written as JSON, to compare a list field for field
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+task classified
+  take path, like text
+  take bytes, like dynamic
+  like text
+
+  back classify-face/classify(make(classify-input, bind(path, path), bind(bytes, bytes)))
+
+task looks-textual
+  take bytes, like dynamic
+  like boolean
+
+  back classify-face/looks-textual(bytes)
+
+task numbers
+  take first, like number
+  take second, like number
+  like list, like number
+
+  host out, make list
+  out/push(first)
+  out/push(second)
+  back out
+
+test <classify: sends `.tree` down the structured path by name alone>
+  want hold, is-equal(classified(<code/base.tree>, bytes-of(<word x\n>)), <tree>)
+
+test <classify: reads ordinary source as text>
+  want hold, is-equal(classified(<code/main.ts>, bytes-of(<const x = 1\n>)), <text>)
+
+# valid UTF-8, but a png is a png
+test <classify: trusts a binary extension over the bytes>
+  want hold, is-equal(classified(<view/logo.png>, bytes-of(<hello>)), <binary>)
+
+test <classify: catches binary content with no telling extension>
+  want hold, is-equal(classified(<weird>, bytes-from(numbers(0, 255))), <binary>)
+
+test <classify: treats an extensionless text file as text>
+  want hold, is-equal(classified(<LICENSE>, bytes-of(<MIT\n>)), <text>)
+
+test <classify: reads an extension case-insensitively and without the dot>
+  want hold, is-equal(classify-face/extension-of(<a/B.PNG>), <png>)
+  want hold, is-equal(classify-face/extension-of(<noext>), <>)
+  want hold, is-equal(classify-face/extension-of(<.hidden>), <>)
+
+test <classify: rejects a NUL byte and malformed UTF-8>
+  want hold, is-equal(looks-textual(bytes-from(numbers(97, 0))), false)
+  want hold, is-equal(looks-textual(bytes-from(numbers(255, 254))), false)
+  want hold, is-equal(looks-textual(bytes-of(<héllo>)), true)
+
+# A data `.tree` in the record grammar's canonical form, which is what the formatter writes back: a record is kept only
+# when it gives the file back byte for byte (object/version.ts `recordOf`)
+host canonical, <# the corpus\nword hello\n  syllables @integer 2\n  # written form\n  text hello\n>
+
+form source-folder
+  link dir, like text
+  link store, like dynamic
+
+# a source folder holding code/word.tree and code/main.ts, and a store of its own
+task set-up
+  like source-folder
+
+  host dir, temp-folder(<classify-src->)
+  classify-file/mkdir-sync(classify-path/join(dir, <code>), make(folder-ask, bind(recursive, true)))
+  classify-file/write-file-sync(classify-path/join(dir, <code/word.tree>), canonical)
+  classify-file/write-file-sync(classify-path/join(dir, <code/main.ts>), <export const x = 1\n>)
+  host store, store-face/local-object-store(make(store-input, bind(root, temp-folder(<classify-obj->))))
+  back make(source-folder, bind(dir, dir), bind(store, store))
+
+task built-of
+  take source, like source-folder
+  mark async
+  like dynamic
+
+  back wait version-face/build-version(make(version-input, bind(dir, source/dir), bind(store, source/store)))
+
+task file-at
+  take built, like dynamic
+  take path, like text
+  like dynamic
+
+  walk built/files
+    take file, like dynamic
+    fork test, is-equal(file/path, path)
+      hold
+        back file
+  back void
+
+task restored
+  take source, like source-folder
+  take built, like dynamic
+  take dest, like text
+  mark async
+  like text
+
+  wait restore-face/restore-version(make(restore-input, bind(root, built/root), bind(dest, dest), bind(chunks, built/tree-chunks), bind(store, source/store)))
+  back classify-file/read-file-sync(classify-path/join(dest, <code/word.tree>), <utf8>)
+
+test <`.tree` is parsed, not chunked: carries a record and no chunks>
+  host source, set-up()
+  host tree, file-at(built-of(source), <code/word.tree>)
+  want hold, is-equal(is-void(tree/record), false)
+  want hold, is-equal(tree/chunks/length, 0)
+
+test <`.tree` is parsed, not chunked: still chunks ordinary text>
+  host source, set-up()
+  host text, file-at(built-of(source), <code/main.ts>)
+  want hold, is-void(text/record)
+  want hold, is-above(text/chunks/length, 0)
+
+test <`.tree` is parsed, not chunked: keeps comments in the record>
+  host source, set-up()
+  host tree, file-at(built-of(source), <code/word.tree>)
+  want hold, is-equal(json-of(tree/record/comments/get(<>)), <["the corpus"]>)
+  want hold, is-equal(json-of(tree/record/comments/get(<text>)), <["written form"]>)
+
+test <`.tree` is parsed, not chunked: regenerates the file on checkout, comments included>
+  host source, set-up()
+  host built, built-of(source)
+  want hold, is-equal(restored(source, built, temp-folder(<classify-out->)), canonical)
+
+# the same record with its fields in another order, and Term source with several top-level nodes, which the record
+# grammar would cut to its first: neither comes back as written from a record, so both ship as bytes
+test <`.tree` is parsed, not chunked: ships as bytes a .tree its record would not give back>
+  host source, set-up()
+  classify-file/write-file-sync(classify-path/join(source/dir, <code/word.tree>), <# the corpus\nword hello\n  # written form\n  text hello\n  syllables @integer 2\n>)
+  classify-file/write-file-sync(classify-path/join(source/dir, <code/form.tree>), <form point\n  link x, like number\n\nform line\n  link from, like point\n>)
+  host built, built-of(source)
+  host word, file-at(built, <code/word.tree>)
+  host form, file-at(built, <code/form.tree>)
+  want hold, is-void(word/record)
+  want hold, is-above(word/chunks/length, 0)
+  want hold, is-void(form/record)
+  want hold, is-above(form/chunks/length, 0)
+
+# `word corpus`, a mark, and the fields 0 to 399, the one at `edit` changed
+task fields-from
+  take i, like number
+  take edit, like number
+  like text
+
+  fork test, is-equal(i, 400)
+    hold
+      back <>
+  host rest, fields-from(add(i, 1), edit)
+  fork test, is-equal(i, edit)
+    hold
+      back <\n  field{i} CHANGED{rest}>
+  back <\n  field{i} value{i}{rest}>
+
+task corpus
+  take edit, like number
+  like text
+
+  back <word corpus\n  mark \<0195f0e6-1c4a-7bd3-9f2e-4a1b8c7d6e5f\>{fields-from(0, edit)}\n>
+
+test <`.tree` is parsed, not chunked: reports a one-field edit as exactly one change>
+  host before, save-parse/parse-tree(corpus(-1))
+  host after, save-parse/parse-tree(corpus(199))
+  host changes, save-diff/diff-record(before/mark, before, after)
+  want hold, is-equal(changes/length, 1)
+  want hold, is-equal(changes/0/type, <field.set>)
+  want hold, is-equal(changes/0/field, <field199>)

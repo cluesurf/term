@@ -6,7 +6,7 @@ note <The roll from the units>
 # roll`, which builds from units writing nothing), and it must move when a file does. call/code/make, cache-store and
 # roll are the subject (decision 106).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

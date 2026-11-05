@@ -1,0 +1,3 @@
+deck @fixture/file-load
+  head <A program that loads @term/base/file and only appends, for test/compile/file-load-native.tree>
+  mark <0.0.0>

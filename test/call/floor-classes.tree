@@ -12,7 +12,7 @@ load @term/base/file
   find read, name floor-read
   find write, name floor-write
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 bind floor-has
@@ -94,7 +94,7 @@ test <the census counts foreign source and no untracked bundle>
 
 # The baseline's two lists, decision 108 of change 001, item term-self-host-001-0750. Each test runs the tool in a fresh
 # git repository under the system's temporary folder, holding the paths the lists name, so the real baseline is never
-# written. Those folders go when the run ends (test/support/temp.tree, item 0753).
+# written. Those folders go when the run ends (@term/base/test/temp, items 0753 and 0985).
 
 host floor-young, <2026-11-01T12:00:00>
 host floor-old, <2026-01-01T12:00:00>

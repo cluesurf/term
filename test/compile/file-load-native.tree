@@ -1,0 +1,44 @@
+note <A program that loads @term/base/file builds on every backend>
+
+# Item 0821. `term make --emit <native> --build` of a program loading @term/base/file, even for append alone, failed on
+# Rust (E0432 super::WatchEvent), Swift (cannot find type WatchEvent) and Kotlin (unresolved reference WatchEvent): the
+# emitted source took every runtime shim the closure docks, the watch shim among them, while the program never watched
+# and the watch-event form the shim names was pruned. A native target now takes a shim only when the emitted code names
+# its dock, as `term test`, the cask and the compose builds already did. Each build runs the fixture beside this file
+# through the `term` under test (@term/test/self), and a backend whose toolchain is not installed is passed over.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/text
+  find contains
+
+host fixture, <test/compile/file-load-fixture>
+
+task built
+  take target, like text
+  take tool, like text
+  like boolean
+  mark async
+
+  fork test, is-equal(find-tool(tool), <>)
+    hold
+      back true
+  save arguments, make list(<make>, <code/go.tree>, <--emit>, target, <--main>, <go>, <--build>, <--color>, <never>)
+  save ran, run-self(arguments, fixture, 280000)
+  back is-equal(ran/code, 0)
+
+test <a program that appends to a file builds on rust>
+  want hold, built(<rust>, <cargo>)
+
+test <a program that appends to a file builds on swift>
+  want hold, built(<swift>, <swiftc>)
+
+test <a program that appends to a file builds on kotlin>
+  want hold, built(<kotlin>, <kotlinc>)

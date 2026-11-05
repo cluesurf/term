@@ -104,7 +104,9 @@ task is-emit-target
 
 # the source for one target. `typescript` is the compile's own TypeScript, which the `node` target uses as it is; the
 # native targets emit from `program`. The compile must have been run with `env` set to the same target, because the
-# env decides which `{platform}` modules the program was built from
+# env decides which `{platform}` modules the program was built from. A native target emits first and hands its code to
+# `prelude-of`, which takes only the shims that code names: every shim the closure docks pulled in the watch shim of a
+# program that only appends, beside a pruned watch-event, and no native toolchain built it (item 0821)
 task emit-target
   take program, like list, like statement
   take typescript, like text
@@ -146,12 +148,12 @@ task emit-target
       save prelude, prelude-of(program, target, emitted)
       back <{prelude}\n{emitted}>
     case swift
-      save prelude, prelude-of(program, target, <>)
       save emitted, emit-swift(program)
+      save prelude, prelude-of(program, target, emitted)
       back <{prelude}\n{emitted}>
     case kotlin
-      save prelude, prelude-of(program, target, <>)
       save emitted, emit-kotlin(program)
+      save prelude, prelude-of(program, target, emitted)
       back hoist-imports(<{prelude}\n{emitted}>)
 
 # THE SAME PROGRAM AS FILES, ONE PER TERM MODULE (compile/unit-split, note/project/term/incremental-best-in-class.md,
@@ -212,8 +214,8 @@ task emit-target-units
         push(files, one)
       back make-unit-files(<main.rs>, files)
     case swift
-      save prelude, prelude-of(program, to-emit-target(target), <>)
       save emitted, emit-swift(program)
+      save prelude, prelude-of(program, to-emit-target(target), emitted)
       save cut, split-units(<{prelude}\n{emitted}>)
       save imports, import-lines(cut/shared, false)
       save files, make list
@@ -223,8 +225,8 @@ task emit-target-units
         push(files, make-file(<U_{unit-name(one/file)}.swift>, <{imports}{one/text}>))
       back make-unit-files(<Term.swift>, files)
     case kotlin
-      save prelude, prelude-of(program, to-emit-target(target), <>)
       save emitted, emit-kotlin(program)
+      save prelude, prelude-of(program, to-emit-target(target), emitted)
       save cut, split-units(hoist-imports(<{prelude}\n{emitted}>))
       save imports, import-lines(cut/shared, true)
       save files, make list

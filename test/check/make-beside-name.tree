@@ -10,7 +10,7 @@ load ../support/running
   find backends
   find run-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 host one, <task count\n  take xs, like list, like text\n  like text\n\n  back \<\{xs/length\} \{xs/0\}\>\n\n>

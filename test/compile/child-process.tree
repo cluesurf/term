@@ -12,7 +12,7 @@ note <process/child talks to a running child on node and rust: lines by one, std
 load ../support/running
   find run-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/compiling

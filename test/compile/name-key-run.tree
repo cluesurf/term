@@ -9,7 +9,7 @@ note <A unit's name key is its own, never the run's>
 # cache, as successive `term make` runs are, so each is a top-level `host` that takes the build before it. compile/separate
 # and compile/cache are the subject (decision 106).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

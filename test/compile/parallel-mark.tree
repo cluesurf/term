@@ -16,7 +16,7 @@ load ../support/walking
   find nodes-of
   find fields-of
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load @term/base/list

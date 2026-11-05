@@ -5,7 +5,7 @@ note <`term hold`, the gate: every file compiles, no claim is open, and every ti
 # refusal sits beside the project that holds, so a gate that refused everything would fail here. Each project is a temp
 # folder, removed when the run ends.
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

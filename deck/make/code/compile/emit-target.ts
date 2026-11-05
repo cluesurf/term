@@ -49,12 +49,19 @@ export function emitTarget(input: {
 }): string {
   const wake = input.wake
 
+  // a native target's prelude is held to the shims its emitted code names (item 0821); `node` takes every dock
   return source.emitTarget(
     input.program,
     input.typescript,
     input.target,
     (program, target, emitted) =>
-      nativePrelude(program, target, input.readRuntime, undefined, emitted),
+      nativePrelude(
+        program,
+        target,
+        input.readRuntime,
+        target === 'node' ? undefined : emitted,
+        emitted,
+      ),
     joinTypeScriptPrelude,
     program => emitRust(program, { wake }),
     program => emitSwift(program, { wake }),
@@ -84,7 +91,7 @@ export function emitTargetUnits(input: {
     input.program,
     input.target,
     (program, target, emitted) =>
-      nativePrelude(program, target, input.readRuntime, undefined, emitted),
+      nativePrelude(program, target, input.readRuntime, emitted, emitted),
     program => emitRust(program, { units: true, wake }),
     program => emitSwift(program, { units: true, wake }),
     program => emitKotlin(program, { units: true, wake }),

@@ -15,7 +15,7 @@ load ../support/judging
   find make-record
   find read-field
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load @term/base/list

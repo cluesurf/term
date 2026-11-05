@@ -6,7 +6,7 @@ note <The runtime version of a native build: the hash a page update is checked a
 # that decides compatibility differs: one byte of a source, the target, the minimum OS, the toolchain. Length framing keeps
 # two different splits of the same bytes apart (native-dom-0015).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

@@ -7,7 +7,7 @@ note <End-to-end package-manager install test>
 load ../support/compiling
   find file-text
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/reading

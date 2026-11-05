@@ -6,7 +6,7 @@ note <One unit cache for the machine>
 # between them, as `projectCache` lays them out. compile/separate, compile/cache and call/cache-store are the subject
 # (decision 106).
 
-load ../support/temp
+load @term/base/test/temp
   find temp-folder
 
 load ../support/judging

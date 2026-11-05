@@ -1,0 +1,93 @@
+mark draft
+# a draft of item term-self-host-001-0983, landed in its line-lock window
+
+# What a Term program prints, in term's own lines: the opening ● line with the tool and its version, one line per
+# item (✓ done, ✗ failed, ● info, ▲ warning, ⇒ skipped), a hint under an item (`next`, `file`), and the closing line
+# with the run's time, which sets the exit code. These print through the one run every term command prints through
+# (work/output/printer.tree), and the release ships this module with what it loads, so a program `term boot` builds
+# reports as term does (zone decision 002, item term-self-host-001-0983).
+#
+#   load @term/call/item
+#     find opening, item, field, closing, open-run, report, close-run, fail-run
+#
+# Every task takes one record or one value. Nothing else here is meant to be found.
+
+load @term/call/work/output/printer
+  find open-run, name printer-open-run
+  find report, name printer-report
+  find close-run, name printer-close-run
+  find fail-run, name printer-fail-run
+  find field, name printer-field
+
+load @term/call/work/item/event
+  find item-field
+
+load @term/base/environment
+  find current-directory
+
+# the run's opening: the command's verb, what it works on (a folder, a file), and the tool and its version
+form opening
+  link verb, like text
+  link subject, like text
+  link tool, like text
+
+# a hint under an item: `next` (what to run), `file` (where), or any other key
+form field
+  link key, like text
+  link value, like text
+
+# one line of the run: its glyph by name (done, failed, info, warning, skipped), its verb, its subject and its hints
+form item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields
+    like list, like field
+    need false
+
+# the run's closing: the verdict, what to run next, and the failure when it failed (usage, environment), the empty text
+# for none
+form closing
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+# the item as the printer reads it: its hints as the printer's own fields
+bind item-printed
+  take one, like item
+  take hints, like list, like item-field
+  like dynamic
+  case node
+    text <(\{ ...$one, fields: $hints \})>
+
+# open the run: the ● line, and the tool line under it
+task open-run
+  take begun, like opening
+  like void
+
+  printer-open-run(begun)
+
+# print one line of the run
+task report
+  take line, like item
+  like void
+
+  save hints, make list
+  walk line/fields
+    take hint
+    hints/push printer-field(hint/key, hint/value)
+  printer-report(item-printed(line, hints))
+
+# close the run: the closing line with the run's time, and the exit code (1 when an item failed, 2 for a usage failure)
+task close-run
+  take ended, like closing
+  like number
+
+  back printer-close-run(ended)
+
+# a failure nobody caught ends the run: its message as a ✗ line, exit 1
+task fail-run
+  take problem, like dynamic
+  like number
+
+  back printer-fail-run(problem, current-directory())
