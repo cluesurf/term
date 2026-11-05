@@ -23,6 +23,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { borrowedFile } from '../borrow'
+import { removeAtExit } from '../temp'
 
 // the width every Node terminal library uses, which the grid's table is generated from. Borrowed (test/borrow.ts), as
 // the Term package does not declare it: without it the width checks are skipped and the grids still run
@@ -472,7 +473,7 @@ const program =
   ).join('\n\n') +
   '\n'
 
-const dir = mkdtempSync(join(tmpdir(), 'term-cells-'))
+const dir = removeAtExit(mkdtempSync(join(tmpdir(), 'term-cells-')))
 const entry = join(dir, 'cells.tree')
 writeFileSync(entry, program)
 const result = compile(

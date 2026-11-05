@@ -1,0 +1,163 @@
+note <Strict positivity across forms: a strongly connected component, an alias, a form's parameter>
+
+# term-foundations-0002. A form that names itself to the left of an arrow is refused, and so is one that does it through
+# a second form, a chain of three, an alias, or a parameter of a form that uses it to the left of an arrow, which is
+# the nested-inductive rule of Coq and Lean. The first case is tmp/audit/kernel-1, which proved `empty` and `yes = no`
+# through `term hold` with no axiom. A form held through a parameter used only strictly positively, as a rose tree's
+# list of itself, is accepted. A refusal holds where a rule, claim or proof reaches the form (each case here adds an open
+# claim over it), and the same cycle no proof reaches is a warning (term-foundations-0047). The front end runs here as
+# it does in test/check/totality.tree.
+
+load ../support/reading
+  find any-with
+
+load ../support/judging
+  find read-field
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/check/resolve>, name resolve-module
+  load <@term/make/code/check/infer>, name infer-module
+  load <@term/make/code/check/totality>, name totality-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "t.tree", text: $text \})>
+
+bind errors-size
+  take report, like dynamic
+  like number
+  case node
+    text <$report.errors.length>
+
+task front-end
+  take text, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <t.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  resolve-module/resolve(built/program, <t.tree>)
+  infer-module/check(built/program, <t.tree>)
+  back built/program
+
+task report-of
+  take text, like text
+  like dynamic
+
+  back totality-module/check-totality(front-end(text), <t.tree>)
+
+# the text with a claim over the form `reached`, left open, so the kernel elaborates that form and all it reaches
+task under-claim
+  take text, like text
+  take reached, like text
+  like text
+
+  back <{text}\nrule reaches-it\n  take given, like {reached}\n  like {reached}\n  mark open\n>
+
+task refused
+  take text, like text
+  take reached, like text
+  like boolean
+
+  back any-with(read-field(report-of(under-claim(text, reached)), <errors>), <name>, <non-positive>)
+
+task accepted
+  take text, like text
+  take reached, like text
+  like boolean
+
+  save report, report-of(under-claim(text, reached))
+  back and(is-equal(errors-size(report), 0), not(any-with(read-field(report, <warnings>), <name>, <non-positive>)))
+
+# no rule, claim or proof reaches the text's forms: a negative cycle there is a warning, and nothing is refused
+task warned
+  take text, like text
+  like boolean
+
+  save report, report-of(text)
+  back and(is-equal(errors-size(report), 0), any-with(read-field(report, <warnings>), <name>, <non-positive>))
+
+# a type with no values, as kernel-1 writes it
+host empty-text, <form empty\n  case later\n    link next, like empty\n>
+
+# kernel-1: `bad` names only `neg`, and `neg` holds `bad` to the left of an arrow
+host pair-text, <{empty-text}\nform neg\n  case mk-neg\n    link run\n      like task\n        take b, like bad\n        like empty\n\nform bad\n  case wrap\n    link inner, like neg\n>
+
+# a chain of three: a names b, b names c, c holds a to the left of an arrow
+host three-text, <{empty-text}\nform first\n  case one\n    link next, like second\n\nform second\n  case two\n    link next, like third\n\nform third\n  case three\n    link run\n      like task\n        take x, like first\n        like empty\n>
+
+# an alias: `neg` stands for a task over `bad`, and `bad` holds `neg`
+host alias-text, <{empty-text}\nform neg\n  like task\n    take b, like bad\n    like empty\n\nform bad\n  case wrap\n    link inner, like neg\n>
+
+# a parameter used to the left of an arrow: `wrap` takes a `t` and holds a task over it, and `bad` holds `wrap bad`
+host wrap-text, <{empty-text}\nform wrap\n  head t\n  case mk\n    link run\n      like task\n        take x, like t\n        like empty\n\nform bad\n  case w\n    link inner, like wrap bad\n>
+
+# a parameter that loses its polarity through a second form: `pass` hands its `t` to `wrap`, and `bad` holds `pass bad`
+host pass-text, <{empty-text}\nform wrap\n  head t\n  case mk\n    link run\n      like task\n        take x, like t\n        like empty\n\nform pass\n  head t\n  case p\n    link inner, like wrap t\n\nform bad\n  case w\n    link inner, like pass bad\n>
+
+# a form under two arrows: positive, not strictly positive, and refused
+host twice-text, <{empty-text}\nform bad\n  case w\n    link run\n      like task\n        take f\n          like task\n            take b, like bad\n            like empty\n        like empty\n>
+
+# a parameter used strictly positively: `box` holds its `t` as a field, and `rose` holds `box rose`
+host box-text, <form box\n  head t\n  case put\n    link value, like t\n\nform rose\n  case node\n    link label, like text\n    link kids, like box rose\n>
+
+# a rose tree holding a list of itself
+host rose-text, <form rose\n  case node\n    link label, like text\n    link kids, like list, like rose\n>
+
+# a recursive form whose task field takes another form, which never names it back
+host apart-text, <form point\n  case at\n    link x, like number\n\nform chain\n  case step\n    link check\n      like task\n        take p, like point\n        like boolean\n    link next, like chain\n  case end\n>
+
+# a form holding a task over a parameter, never itself: `wrap` alone is accepted, its parameter is only negative
+host wrap-alone-text, <{empty-text}\nform wrap\n  head t\n  case mk\n    link run\n      like task\n        take x, like t\n        like empty\n\nform user\n  case u\n    link inner, like wrap number\n>
+
+# kernel-1 whole: the claim names only `empty`, and its proof reaches `bad` through the tasks it calls
+host proof-text, <{pair-text}\ntask self-apply\n  take b, like bad\n  like empty\n  fork case, read b\n    case wrap\n      fork case, read inner\n        case mk-neg\n          send back\n            call run\n              read b\n\ntask the-bad\n  like bad\n  send back\n    make wrap\n      bind inner\n        make mk-neg\n          bind run, read self-apply\n\nrule contradiction\n  like empty\n\ntask contradiction\n  send back\n    call self-apply\n      call the-bad\n>
+
+test <kernel-1: a negative occurrence through a second form is refused>
+  want hold, refused(pair-text, <bad>)
+
+test <kernel-1 whole: a form reached only through a proof's callees is refused>
+  want hold, any-with(read-field(report-of(proof-text), <errors>), <name>, <non-positive>)
+
+test <a negative occurrence through a chain of three forms is refused>
+  want hold, refused(three-text, <first>)
+
+test <a negative occurrence through an alias is refused>
+  want hold, refused(alias-text, <bad>)
+
+test <a form handed to a parameter used to the left of an arrow is refused>
+  want hold, refused(wrap-text, <bad>)
+
+test <a parameter handed on to a negative parameter is negative too>
+  want hold, refused(pass-text, <bad>)
+
+test <a form under two arrows is not strictly positive>
+  want hold, refused(twice-text, <bad>)
+
+test <a form handed to a strictly positive parameter is accepted>
+  want hold, accepted(box-text, <rose>)
+
+test <a rose tree holding a list of itself is accepted>
+  want hold, accepted(rose-text, <rose>)
+
+test <a recursive form with a task over a form outside its component is accepted>
+  want hold, accepted(apart-text, <chain>)
+
+test <a form with a negative parameter, given no form of its component, is accepted>
+  want hold, accepted(wrap-alone-text, <user>)
+
+# program-only general recursion through a record of tasks, as compile/separate-units.tree holds: warned, not refused
+test <a negative cycle no rule, claim or proof reaches is a warning>
+  want hold, warned(pair-text)
+
+test <a negative cycle through a parameter no proof reaches is a warning>
+  want hold, warned(wrap-text)

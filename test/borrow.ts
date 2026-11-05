@@ -4,8 +4,9 @@
 // parent repository's term:test alias names its mesh/). Not found, the suite skips the leg that needs it and says why.
 // A helper, not a suite: it sits beside temp.ts, where the gate looks for no suite.
 
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = resolve(HERE, '..')
@@ -26,9 +27,28 @@ function missing(name: string): string {
     : `no ${name} in the Term root, and TERM_TEST_MODULES names no project that has it`
 }
 
+// whether the package sits in a node_modules of the place or a folder above it. `require` also falls back to NODE_PATH,
+// and the pnpm shim of the Term root's own tsx points that at node_modules/.pnpm/node_modules, where pnpm hoists every
+// transitive dependency: string-width 7.2.0 (an older table) was found there before TERM_TEST_MODULES was ever asked
+function installedIn(place: string, name: string): boolean {
+  for (let dir = place; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, 'node_modules', name, 'package.json'))) {
+      return true
+    }
+
+    if (dirname(dir) === dir) {
+      return false
+    }
+  }
+}
+
 /** The package's entry file, or why it is not installed where it is looked for */
 export function borrowedFile(name: string): { file: string } | { reason: string } {
   for (const place of places()) {
+    if (!installedIn(place, name)) {
+      continue
+    }
+
     try {
       return { file: createRequire(join(place, 'package.json')).resolve(name) }
     } catch {
@@ -42,6 +62,10 @@ export function borrowedFile(name: string): { file: string } | { reason: string 
 /** The package as `require` loads it, or why it is not installed where it is looked for */
 export function borrowed<T>(name: string): { value: T } | { reason: string } {
   for (const place of places()) {
+    if (!installedIn(place, name)) {
+      continue
+    }
+
     try {
       return { value: createRequire(join(place, 'package.json'))(name) as T }
     } catch {

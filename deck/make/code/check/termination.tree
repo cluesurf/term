@@ -1,8 +1,10 @@
 # Totality: the two checks that keep the logic sound once definitions become proof-relevant.
 #
-# 1. Strict positivity (hard error). A datatype may not refer to itself in a negative position (to the left of an
-#    arrow) within its own fields. Negative occurrences let you build a non-terminating loop and thus a proof of
-#    falsehood, so they are rejected outright. See note/project/term/archive/computation/plans/18-type-theory-gaps.md.
+# 1. Strict positivity (an error under a proof, a warning elsewhere). A datatype may not occur to the left of an arrow within its own fields, nor may
+#    any form of its strongly connected component, through an alias or a form's parameter alike. Negative occurrences
+#    let you build a non-terminating loop and thus a proof of falsehood, so they are rejected wherever a rule, claim
+#    or proof reaches the form, and warned elsewhere. See
+#    note/project/term/archive/computation/plans/18-type-theory-gaps.md.
 # 2. Termination (warning). A recursive function should decrease some argument on every self-call, so it cannot spin
 #    forever. The structural / numeric-descent fragment is verified; recursion that cannot be shown to end is flagged
 #    (a warning today, because functions are still opaque postulates to the kernel; it becomes a hard error once
@@ -37,6 +39,7 @@ load ../parser/diagnostic
   find diagnose
   find diagnostic-input
   find span
+  find severity
 
 load ../compile/node
   find binding
@@ -67,44 +70,414 @@ form totality-report
 
 # ---- strict positivity ----
 
-# does `name` occur in `given` at a negative position, given the current polarity? Positive (true) is fine; negative
-# (false) is the violation. Function parameters flip polarity; array elements and results keep it.
-task negative-occurrence
-  take name, like text
+# Strict positivity across forms (term-foundations-0002), the nested-inductive rule of Coq and Lean. A recursive form
+# is judged with its strongly connected component: every form it names in its fields that names it back, through any
+# chain. An alias is a form whose one type is the one it stands for, so a chain through an alias is a chain. No form of
+# the component may occur to the left of an arrow, at any depth (strict: two arrows do not make it positive, since the
+# impredicative universe makes a positive but not strictly positive form unsound too, Coquand and Paulin-Mohring 1990),
+# nor as the argument of a form's parameter that form does not use strictly positively. Each parameter's polarity is a
+# greatest fixed point: every parameter starts strictly positive and loses it once one of its occurrences is not,
+# through any form it is handed to. A built-in container holds its elements strictly positively, and any other form the
+# program does not hold is unknown, so no argument of it is strictly positive. A list's element and a hash's key and
+# value keep the polarity they stand in. A form the kernel elaborates is refused, and any other is warned
+# (term-foundations-0047).
+form positivity-forms
+  mark shared
+  link order, like list, like text
+  # each form's parameter names, and the types its fields, cases, alias and base hold
+  link params, like hash, like text, like list, like text
+  link types, like hash, like text, like list, like type
+  # the forms of the program each form's types name, its own parameters left out
+  link edges, like hash, like text, like list, like text
+  # `<form> <index>` to whether the form uses that parameter only strictly positively
+  link polarity, like hash, like text, like boolean
+  # every form each form reaches through its edges, kept once found
+  link reached, like hash, like text, like hash, like text, like boolean
+
+# every name a type holds as a named type, at any depth
+task positivity-names-in
   take given, like type
-  take positive, like boolean
-  like boolean
+  take out, like list, like text
+  like void
   mark private
 
   sift given
     case named
       link type-name
-      back and(is-equal(type-name, name), not(positive))
+      add-text(out, type-name)
+      walk given/args
+        take arg
+        positivity-names-in(arg, out)
     case array
-      back negative-occurrence(name, element, positive)
+      positivity-names-in(element, out)
+    case map
+      positivity-names-in(key, out)
+      positivity-names-in(value, out)
     case function
-      # a parameter is contravariant (its polarity flips); the result keeps the current polarity
       walk params
         take param
-        fork test, negative-occurrence(name, param, not(positive))
-          hold
-            back true
-      back negative-occurrence(name, result, positive)
+        positivity-names-in(param, out)
+      positivity-names-in(result, out)
     miss
-      back false
+      save nothing, 0
 
-task positivity-errors
+# whether the form `form-name` uses its parameter at `at` only strictly positively. A form of the program answers by its
+# polarity. The built-in containers (a list, a hash, a maybe, a union) hold their elements strictly positively. Any other
+# name is unknown (an opaque dock type), so not
+task parameter-positive
+  take forms, like positivity-forms
+  take form-name, like text
+  take at, like number
+  like boolean
+  mark private
+
+  save key, <{form-name} {at}>
+  fork test, forms/polarity/has(key)
+    hold
+      back forms/polarity/get(key)
+  save containers, make(list, <list>, <hash>, <maybe>, <or>, <union>)
+  back contains(containers, form-name)
+
+# the first name of `targets` that `given` holds where it is not strictly positive, `<>` for none. `strict` says
+# whether this position is. `bound` are the parameters of the form being read: such a name is that parameter, never a
+# form, and has no arguments
+task non-strict-occurrence
+  take forms, like positivity-forms
+  take targets, like hash, like text, like boolean
+  take bound, like list, like text
+  take given, like type
+  take strict, like boolean
+  like text
+  mark private
+
+  sift given
+    case named
+      link type-name
+      fork test, and(not(strict), targets/has(type-name))
+        hold
+          back type-name
+      fork test, contains(bound, type-name)
+        hold
+          back <>
+      # an argument is strictly positive only where its form uses that parameter so
+      save at, 0
+      walk given/args
+        take arg
+        save kept, and(strict, parameter-positive(forms, type-name, at))
+        save found, non-strict-occurrence(forms, targets, bound, arg, kept)
+        fork test, is-unequal(found, <>)
+          hold
+            back found
+        save at, add(at, 1)
+      back <>
+    case array
+      back non-strict-occurrence(forms, targets, bound, element, strict)
+    case map
+      save found, non-strict-occurrence(forms, targets, bound, key, strict)
+      fork test, is-unequal(found, <>)
+        hold
+          back found
+      back non-strict-occurrence(forms, targets, bound, value, strict)
+    case function
+      # nothing to the left of an arrow is strictly positive; the result keeps the current polarity
+      walk params
+        take param
+        save found, non-strict-occurrence(forms, targets, bound, param, false)
+        fork test, is-unequal(found, <>)
+          hold
+            back found
+      back non-strict-occurrence(forms, targets, bound, result, strict)
+    miss
+      back <>
+
+# the forms of a program by name, with their edges, a name defined twice holding the types of both
+task positivity-forms-of
+  take program, like list, like statement
+  like positivity-forms
+  mark private
+
+  save forms
+    make positivity-forms
+      bind order, make list
+      bind params, make hash
+      bind types, make hash
+      bind edges, make hash
+      bind polarity, make hash
+      bind reached, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        save form-name, name
+        fork test, not(forms/types/has(form-name))
+          hold
+            save forms/types/{form-name}, make list
+            save forms/params/{form-name}, params
+            push(forms/order, form-name)
+        save held, forms/types/get(form-name)
+        walk fields
+          take field
+          push(held, field/type)
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            push(held, field/type)
+        sift alias
+          case some
+            link aliased
+            push(held, aliased)
+          case none
+            save nothing, 0
+        sift extend
+          case some
+            link extending
+            push(held, extending/base)
+            walk extending/links
+              take added
+              push(held, added/type)
+          case none
+            save nothing, 0
+        save forms/types/{form-name}, held
+      miss
+        save nothing, 0
+  walk forms/order
+    take form-name
+    save bound, forms/params/get(form-name)
+    save names, make list
+    walk forms/types/get(form-name)
+      take held
+      positivity-names-in(held, names)
+    save edges, make list
+    walk names
+      take named
+      fork test, and(forms/types/has(named), not(contains(bound, named)))
+        hold
+          push(edges, named)
+    save forms/edges/{form-name}, edges
+  back forms
+
+# every parameter's polarity, the greatest fixed point: all start strictly positive, and a pass that finds one used
+# otherwise, given what the others hold now, marks it and runs again
+task settle-polarity
+  take forms, like positivity-forms
+  like void
+  mark private
+
+  walk forms/order
+    take form-name
+    save at, 0
+    walk forms/params/get(form-name)
+      take param
+      save key, <{form-name} {at}>
+      save forms/polarity/{key}, true
+      save at, add(at, 1)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk forms/order
+        take form-name
+        save bound, forms/params/get(form-name)
+        save at, 0
+        walk bound
+          take param
+          save key, <{form-name} {at}>
+          fork test, forms/polarity/get(key)
+            hold
+              save targets, make hash
+              save targets/{param}, true
+              walk forms/types/get(form-name)
+                take held
+                fork test, is-unequal(non-strict-occurrence(forms, targets, bound, held, true), <>)
+                  hold
+                    save forms/polarity/{key}, false
+                    save changed, true
+          save at, add(at, 1)
+
+# every form `from` reaches through its edges, itself only when it lies on a cycle
+task form-reach
+  take forms, like positivity-forms
+  take from, like text
+  like hash, like text, like boolean
+  mark private
+
+  fork test, forms/reached/has(from)
+    hold
+      back forms/reached/get(from)
+  save seen, make hash
+  save stack, make list
+  push(stack, from)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save next, stack/pop()
+      walk forms/edges/get-or-default(next, make list)
+        take further
+        fork test, not(seen/has(further))
+          hold
+            save seen/{further}, true
+            push(stack, further)
+  save forms/reached/{from}, seen
+  back seen
+
+# what positivity finds in a program: refusals for the forms the kernel elaborates, warnings for the rest
+form positivity-findings
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+# The forms the kernel elaborates (term-foundations-0047): every form named in the signature of a rule, a claim, a
+# proof, or a task one of those calls or reads as a value, through any chain, and every form those reach through their
+# fields. A task's name keys every definition of it, so a claim and the task proving it are one entry
+task kernel-forms
+  take program, like list, like statement
+  take forms, like positivity-forms
+  like hash, like text, like boolean
+  mark private
+
+  save seeds, make list
+  save edges, make hash
+  save named-by, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(is-equal(claim, true), is-equal(theorem, true))
+          hold
+            add-text(seeds, name)
+        save named, named-by/get-or-default(name, make list)
+        walk params
+          take param
+          sift param/type
+            case some
+              link param-type
+              positivity-names-in(param-type, named)
+            case none
+              save nothing, 0
+        sift result
+          case some
+            link result-type
+            positivity-names-in(result-type, named)
+          case none
+            save nothing, 0
+        sift declared
+          case some
+            link signature
+            walk signature/params
+              take written
+              sift written/type
+                case some
+                  link written-type
+                  positivity-names-in(written-type, named)
+                case none
+                  save nothing, 0
+            sift signature/result
+              case some
+                link written-result
+                positivity-names-in(written-result, named)
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+        walk universals
+          take universal
+          walk universal/types
+            take written
+            sift written/type
+              case some
+                link seat-type
+                positivity-names-in(seat-type, named)
+              case none
+                save nothing, 0
+        save named-by/{name}, named
+        save found
+          make walked
+            bind calls, make list
+            bind values, make list
+            bind variant-fields, make hash
+            bind descends, make hash
+            bind param-forms, make hash
+        save no-members, make hash
+        save no-guards, make list
+        walk-calls(found, body-of(one), no-members, no-guards)
+        save callees, edges/get-or-default(name, make list)
+        walk found/calls
+          take call
+          add-text(callees, call/callee)
+        walk found/values
+          take value
+          add-text(callees, value)
+        save edges/{name}, callees
+      miss
+        save nothing, 0
+  save out, make hash
+  save seen, make hash
+  save stack, make list
+  walk seeds
+    take seed
+    save seen/{seed}, true
+    push(stack, seed)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save next, stack/pop()
+      walk named-by/get-or-default(next, make list)
+        take form-name
+        fork test, and(forms/types/has(form-name), not(out/has(form-name)))
+          hold
+            save out/{form-name}, true
+            save beyond, form-reach(forms, form-name)
+            walk forms/order
+              take other
+              fork test, beyond/has(other)
+                hold
+                  save out/{other}, true
+      walk edges/get-or-default(next, make list)
+        take further
+        fork test, not(seen/has(further))
+          hold
+            save seen/{further}, true
+            push(stack, further)
+  back out
+
+# A recursive form is judged with its strongly connected component. A form the kernel elaborates is refused
+# (`non-positive`, an error). Any other form is warned, naming the cycle, in the module that defines it: a program's own
+# general recursion through a record of tasks is legitimate, and only the kernel needs it out
+task positivity-findings-of
   take program, like list, like statement
   take file, like text
-  like list, like diagnostic
+  like positivity-findings
 
   save errors, make list
+  save warnings, make list
+  save forms, positivity-forms-of(program)
+  settle-polarity(forms)
+  save kernel, make hash
+  save kernel-known, false
   walk program
     take one
     sift one
       case record-type
         save record-name, name
         save record-span, span
+        save bound, params
+        save own, form-reach(forms, record-name)
+        # a form on no cycle cannot occur in its own fields, through any chain
+        fork test, not(own/has(record-name))
+          hold
+            turn next
+        # its component: every form it reaches that reaches it back, itself among them
+        save targets, make hash
+        save targets/{record-name}, true
+        walk forms/order
+          take other
+          fork test, and(own/has(other), not(contains(bound, other)))
+            hold
+              save their-reach, form-reach(forms, other)
+              fork test, their-reach/has(record-name)
+                hold
+                  save targets/{other}, true
         save fields-names, make list
         save fields-types, make list
         walk fields
@@ -117,23 +490,96 @@ task positivity-errors
             take field
             push(fields-names, field/name)
             push(fields-types, field/type)
+        sift alias
+          case some
+            link aliased
+            push(fields-names, <like>)
+            push(fields-types, aliased)
+          case none
+            save nothing, 0
+        sift extend
+          case some
+            link extending
+            push(fields-names, <like>)
+            push(fields-types, extending/base)
+            walk extending/links
+              take added
+              push(fields-names, added/name)
+              push(fields-types, added/type)
+          case none
+            save nothing, 0
+        # a warning is told in the module that defines the form, as a termination warning is
+        save own-module, true
+        sift record-span/file
+          case some
+            link from
+            save own-module, is-equal(from, file)
+          case none
+            save nothing, 0
+        save cycle, record-name
+        walk forms/order
+          take other
+          fork test, and(targets/has(other), is-unequal(other, record-name))
+            hold
+              save cycle, <{cycle}, {other}>
         save at, 0
         walk fields-types
           take field-type
-          fork test, negative-occurrence(record-name, field-type, true)
+          save found, non-strict-occurrence(forms, targets, bound, field-type, true)
+          fork test, is-unequal(found, <>)
             hold
+              fork test, not(kernel-known)
+                hold
+                  save kernel, kernel-forms(program, forms)
+                  save kernel-known, true
               save field-name, get(fields-names, at)
-              save input
-                make diagnostic-input
-                  bind file, file
-                  bind span, record-span
-                  bind message, make(some, <"{record-name}" occurs in a non-positive position in field "{field-name}">)
+              save message, <"{record-name}" occurs in a non-positive position in field "{field-name}">
+              fork test, is-unequal(found, record-name)
+                hold
+                  save message, <"{found}", which reaches "{record-name}" back, occurs in a non-positive position in field "{field-name}" of "{record-name}">
               save kind, make non-positive
-              push(errors, diagnose(kind, input))
+              fork test, kernel/has(record-name)
+                hold
+                  save input
+                    make diagnostic-input
+                      bind file, file
+                      bind span, record-span
+                      bind message, make(some, <{message}, and a rule, claim or proof reaches it>)
+                  push(errors, diagnose(kind, input))
+                miss
+                  fork test, own-module
+                    hold
+                      save input
+                        make diagnostic-input
+                          bind file, file
+                          bind span, record-span
+                          bind message, make(some, <{message}, in the cycle {cycle}. No rule, claim or proof reaches it, so the kernel never reads it>)
+                      save warned, diagnose(kind, input)
+                      save warned/severity, make warning
+                      push(warnings, warned)
           save at, add(at, 1)
       miss
         save nothing, 0
-  back errors
+  back
+    make positivity-findings
+      bind errors, errors
+      bind warnings, warnings
+
+task positivity-errors
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  back positivity-findings-of(program, file)/errors
+
+# the warnings of positivity: the non-positive forms no rule, claim or proof reaches
+task positivity-warnings
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+  mark private
+
+  back positivity-findings-of(program, file)/warnings
 
 # ---- linear facts, for numeric descent ----
 
@@ -2044,6 +2490,8 @@ task termination-warnings
       like boolean
   like list, like diagnostic
 
+  # positivity's warnings (the non-positive forms no proof reaches), then termination's
+  save warnings, positivity-warnings(program, file)
   save verdict, termination-verdict(program, proves)
   save by-name, make hash
   walk program
@@ -2053,7 +2501,6 @@ task termination-warnings
         save by-name/{name}, one
       miss
         save nothing, 0
-  save warnings, make list
   walk verdict/names
     take name
     fork test, verdict/ends/get(name)

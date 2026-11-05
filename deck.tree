@@ -29,7 +29,6 @@ deck @term/code
   deck ./deck/test
   # the task loader
   task ./task
-  book ./book
   line ./deck/call/code/line
   test ./test
   mind <Lance Pollard>

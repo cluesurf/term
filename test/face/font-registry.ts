@@ -146,9 +146,18 @@ const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
 const have = (command: string): boolean =>
   spawnSync('which', [command]).status === 0
-const scripts = Object.keys(SCRIPT).length
-const aliases = Object.keys(SCRIPT_ALIAS).length
-const fonts = Object.keys(FONT).length
+// the probes by kind, as the snapshot orders them: a script or an alias alone, a family alone, then the 4 orderings
+const scripts = probes.filter(probe => !probe.family && probe.script).length
+const fonts = probes.filter(probe => probe.family && !probe.script).length
+// the web's answer for a script alone, from the snapshot
+const webScript = (script: string): string | undefined =>
+  probes.find(probe => !probe.family && probe.script === script)?.web
+// belt's decided weight for anatolian, read from face's table, which `pnpm term:parity` holds equal to belt's
+const anatolianWeight = Number(
+  /bind script, text <anatolian>\n(?:.*\n){0,3}?\s*bind weight, code (\d+)/.exec(
+    readFileSync(join(FONT_DIR, 'table.tree'), 'utf8'),
+  )?.[1] ?? NaN,
+)
 
 // one target's answer, held to the web's: every probe, then the three orderings by name
 function judge(leg: string, report: string): void {
@@ -156,7 +165,7 @@ function judge(leg: string, report: string): void {
   const wrong = probes.filter((probe, i) => families[i] !== probe.web)
 
   ok(
-    `${leg}: every probe resolves to the web's face, ${probes.length - wrong.length} of ${probes.length} (${scripts} scripts, ${aliases} aliases, ${fonts} families, 4 orderings)`,
+    `${leg}: every probe resolves to the web's face, ${probes.length - wrong.length} of ${probes.length} (${scripts} scripts and aliases, ${fonts} families, 4 orderings)`,
     families.length === probes.length && wrong.length === 0,
     `${families.length} answers | ${wrong
       .slice(0, 6)
@@ -173,7 +182,7 @@ function judge(leg: string, report: string): void {
   )
   ok(
     `${leg}: an unknown family falls to the script`,
-    families[probes.length - 3] === web({ script: 'tibetan' }),
+    families[probes.length - 3] === webScript('tibetan'),
     families[probes.length - 3],
   )
   ok(
@@ -255,8 +264,8 @@ function runTypescript(): void {
   judge('typescript', said)
   ok(
     'typescript: a decided weight is read, under an alias too, and an undecided one is 0',
-    weights[0] === SCRIPT.anatolian.weight &&
-      weights[1] === SCRIPT.anatolian.weight &&
+    weights[0] === anatolianWeight &&
+      weights[1] === anatolianWeight &&
       weights[2] === 0,
     JSON.stringify(weights),
   )

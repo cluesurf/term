@@ -124,8 +124,13 @@ task count-down
   back <task sum\n  take n, like {kind}\n  like number\n  fork test\n    hook test\n      call is-equal\n        read n\n        code {base}\n    hook hold\n      send back\n        code 0\n    hook miss\n      send back\n        call add\n          call sum\n            call subtract\n              read n\n              code 1\n          read n\n>
 
 # ---- positivity ----
-test <strict positivity rejects a negative self-occurrence>
-  want hold, errors-name(totality-module/check-totality(record(<bad>, negative-type(0)), <t.tree>), <non-positive>)
+# no rule, claim or proof reaches this record, so it is warned, not refused (term-foundations-0047).
+# nested-positivity.tree holds the refusal
+test <strict positivity warns of a negative self-occurrence no proof reaches>
+  want hold, warnings-name(totality-module/check-totality(record(<bad>, negative-type(0)), <t.tree>), <non-positive>)
+
+test <and refuses nothing there>
+  want hold, is-equal(errors-size(totality-module/check-totality(record(<bad>, negative-type(0)), <t.tree>)), 0)
 
 test <strict positivity accepts a positive self-occurrence>
   want hold, is-equal(errors-size(totality-module/check-totality(record(<good>, positive-type(0)), <t.tree>)), 0)

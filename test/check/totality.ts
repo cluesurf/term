@@ -151,7 +151,8 @@ function countDown(take: string, base: number): string {
 
 function main(): void {
   // ---- positivity ----
-  // a self-reference to the left of an arrow (a parameter) is negative: rejected
+  // a self-reference to the left of an arrow (a parameter) is negative. No rule, claim or proof reaches this record,
+  // so it is warned, not refused (term-foundations-0047). test/check/nested-positivity.tree holds the refusal
   const negative: Type = {
     kind: 'function',
     params: [{ kind: 'named', name: 'bad' }],
@@ -164,9 +165,9 @@ function main(): void {
   )
 
   ok(
-    'strict positivity rejects a negative self-occurrence',
-    negativeReport.errors.some(d => d.name === 'non-positive'),
-    JSON.stringify(negativeReport.errors.map(d => d.name)),
+    'strict positivity warns of a negative self-occurrence no proof reaches',
+    negativeReport.warnings.some(d => d.name === 'non-positive') && negativeReport.errors.length === 0,
+    JSON.stringify(negativeReport.warnings.map(d => d.name)),
   )
 
   // a self-reference only in the result (positive) is fine

@@ -14,12 +14,14 @@
 import { spawnSync } from 'node:child_process'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { removeAtExit } from '../temp'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
@@ -83,6 +85,10 @@ const drawsUser = (tree: string): boolean =>
 
 const ONLY = process.env.ROUTE_ONLY ?? ''
 const ROOT = process.cwd()
+const TERM = join(
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname,
+  '../..',
+)
 
 if (!ONLY || ONLY === 'typescript') {
   const program = `load @term/site/code/dom/native/memory/dom
@@ -115,7 +121,13 @@ task run
       read root
   send back, text <{{at-home}}|{{at-user}}>
 `
-  const dir = mkdtempSync(join(tmpdir(), 'term-route-table-'))
+  // under the package's own tmp/, so the node host's `hono` resolves from the emitted module, as
+  // test/compile/slot-raise.ts writes its own. From the system temporary folder it resolved only through the NODE_PATH
+  // of whichever tsx shim ran it, which stopped holding hono once the Term root had its own tsx
+  mkdirSync(join(TERM, 'tmp'), { recursive: true })
+  const dir = removeAtExit(
+    mkdtempSync(join(TERM, 'tmp', 'route-table-')),
+  )
   const entry = join(dir, 'app.tree')
   writeFileSync(entry, program)
   const base = projectResolver(ROOT, 'node')

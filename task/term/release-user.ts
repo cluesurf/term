@@ -2,8 +2,8 @@
 // the stdlib has its manifest, every package is a sibling and nothing climbs out of the root, so Term 2.9.0 passed
 // them all and still could not test, unit-build or boot any project outside it. This suite:
 //
-//   1. builds this platform's release payload (task/release.ts --dry --platform <this> --out <temp>), payload gate
-//      and all, or takes one given with --from
+//   1. takes this platform's release payload as `pnpm run release --dry` wrote it, or one given with --from, or with
+//      --build builds it (task/release.ts --dry --platform <this> --out <temp>), payload gate and all
 //   2. installs it into a temporary HOME, under .base/@term/code/code/<version>/term, as the loader does
 //   3. in a project in the system temporary folder, outside any checkout, runs the installed `term`: make (its stdlib
 //      units must be named `_term_base_...`), test, boot from the project, boot from another folder, boot --out and
@@ -12,8 +12,11 @@
 //      path: the temporary folder, the HOME, the install and this checkout, each also flattened the way a unit name
 //      flattens a path (`Users_x_.base__term_...`), and every command's output for this checkout's path
 //
-//   npx tsx task/term/release-user.ts                    build and check this platform's payload
-//   npx tsx task/term/release-user.ts --from <x>         check a payload already built (a .tar.gz, or a folder holding
+//   npx tsx task/term/release-user.ts                    check the payload `pnpm run release --dry` wrote, at
+//                                                        tmp/release/<version>/term-<platform>.tar.gz (says so in one
+//                                                        line and exits 1 when there is none)
+//   npx tsx task/term/release-user.ts --build            build this platform's payload here and check it
+//   npx tsx task/term/release-user.ts --from <x>       check a payload already built (a .tar.gz, or a folder holding
 //                                                        term/, such as an install's code/<version>)
 //   npx tsx task/term/release-user.ts --keep             keep the temporary folder and print its path
 //
@@ -60,8 +63,10 @@ function tail(text: string, lines = 4): string {
 
 type Ran = { status: number | null; text: string }
 
-function run(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, timeout = 600): Ran {
-  const ran = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout: timeout * 1000, maxBuffer: 64 * 1024 * 1024 })
+// every run but the --build one stops at 180 seconds, so the nine `term` runs fit inside the board's 1800 together. A
+// stopped run is SIGKILLed and reads as a failure, never a hang
+function run(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, timeout = 180): Ran {
+  const ran = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout: timeout * 1000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 })
 
   return { status: ran.status, text: `${ran.stdout ?? ''}${ran.stderr ?? ''}${ran.error ? `\n${ran.error.message}` : ''}` }
 }
@@ -172,7 +177,15 @@ function writeProject(dir: string): void {
   }
 }
 
-// the payload: built here, or the one --from names, as a folder holding term/
+// the payload `pnpm run release --dry` writes for this machine, the file test/call/self-release.ts reads
+function payloadFile(): string {
+  const version = (JSON.parse(readFileSync(join(TERM, 'package.json'), 'utf8')) as { version: string }).version
+
+  return join(TERM, 'tmp', 'release', version, `term-${platformName()}.tar.gz`)
+}
+
+// the payload: the one `pnpm run release --dry` wrote, the one --from names (as a folder holding term/), or with
+// --build one built here
 function payload(work: string): string | undefined {
   const from = flagValue('--from')
   const unpacked = join(work, 'payload')
@@ -188,6 +201,14 @@ function payload(work: string): string | undefined {
     } else {
       cpSync(join(given, 'term'), join(unpacked, 'term'), { recursive: true, verbatimSymlinks: true })
     }
+
+    return existsSync(join(unpacked, 'term', 'host', 'line.js')) ? unpacked : undefined
+  }
+
+  if (!process.argv.includes('--build')) {
+    const tarball = payloadFile()
+    const untar = run('tar', ['-xzf', tarball, '-C', unpacked], work, process.env)
+    ok('the release payload unpacks', untar.status === 0, tail(untar.text))
 
     return existsSync(join(unpacked, 'term', 'host', 'line.js')) ? unpacked : undefined
   }
@@ -212,6 +233,15 @@ function payload(work: string): string | undefined {
 function main(): void {
   if (process.platform === 'win32') {
     console.log('release-user: 0 pass, 0 fail (skipped on Windows)')
+
+    return
+  }
+
+  // the payload is built by `pnpm run release --dry`, never here by default: building it takes as long as the board
+  // gives this whole suite, so a missing one is said in one line at once
+  if (flagValue('--from') === undefined && !process.argv.includes('--build') && !existsSync(payloadFile())) {
+    console.log(`release-user: no payload at ${payloadFile()}; run \`pnpm run release --dry\` first`)
+    process.exitCode = 1
 
     return
   }

@@ -183,16 +183,26 @@ const zone = spawnSync('node', [LINE, 'zone'], {
   timeout: 300000,
 })
 const zoneOut = `${zone.stdout ?? ''}${zone.stderr ?? ''}`
+// zone is its own package, outside this repository: with TERM_ZONE unset and none installed or on the PATH (a fresh
+// clone), `term zone` rightly says there is no zone here, and the leg skips. With TERM_ZONE set it always runs
+const noZone =
+  !process.env.TERM_ZONE?.trim() && /There is no zone here/.test(zoneOut)
 
-ok(
-  '`zone` boots and prints its usage',
-  /usage: zone\b/.test(zoneOut),
-  zoneOut,
-)
+if (noZone) {
+  console.log(
+    'skip  zone: TERM_ZONE is unset and no zone is installed or on the PATH',
+  )
+} else {
+  ok(
+    '`zone` boots and prints its usage',
+    /usage: zone\b/.test(zoneOut),
+    zoneOut,
+  )
+}
 
 // every command the usage advertises. A console that lists a command it does not have is worse than one that
 // lists none, and this is the list a person reads first.
-for (const command of [
+for (const command of noZone ? [] : [
   'bind',
   'call',
   'code',

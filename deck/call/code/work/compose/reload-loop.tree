@@ -102,6 +102,8 @@ form work-session
   link graph, like dynamic
   link store, like dynamic
   link generation, like number
+  # when the last build began reading its files (milliseconds), 0 before the first
+  link read-at, like number
   link running, like dynamic
   link building, like dynamic
   link dirty, like boolean
@@ -384,6 +386,7 @@ task build-and-launch
   node-fs/rm-sync(dir, make(work-remove, bind(recursive, true), bind(force, true)))
   node-fs/mkdir-sync(dir, make(work-folder, bind(recursive, true)))
   save started, now-ms()
+  save session/read-at, started
   save text, <>
   fork test, node-fs/exists-sync(session/entry)
     hold
@@ -692,6 +695,13 @@ task on-change
   fork test, or(not(ends-with-text(file, <.tree>)), or(starts-with-text(inside, <host/>), starts-with-text(inside, <node_modules/>)))
     hold
       back
+  # A write the last build already read changes nothing. The watcher hears writes made before it started, and writes
+  # made before a build began, seconds late when the file event daemon is behind: on a loaded machine the app's own
+  # files, written just before the loop started, came in after the first build and built and relaunched the same
+  # program again, a relaunch a test could take for the next edit's (compose-work drew `notes v1` after `notes v2`)
+  fork test, read-by-last-build(session, node-path/join(session/root, file))
+    hold
+      back
   timers/clear-timeout(session/timer)
   save session/scheduled, true
   save settled
@@ -700,6 +710,24 @@ task on-change
       save session/scheduled, false
       rebuild(session)
   save session/timer, timers/set-timeout(settled, settle-ms())
+
+# whether a file as it stands was written before the last build began reading, so that build read it. A file that is
+# gone, or a loop that has built nothing, answers false: its event rebuilds
+task read-by-last-build
+  take session, like work-session
+  take file, like text
+  like boolean
+
+  fork test, is-equal(session/read-at, 0)
+    hold
+      back false
+  fork
+    mark unsafe
+    save stat, node-fs/stat-sync(file)
+    back is-below(stat/mtime-ms, session/read-at)
+  halt take
+    take problem
+    back false
 
 bind ends-with-text
   take value, like text
@@ -754,6 +782,7 @@ task start-compose-work
       bind graph, graph
       bind store, store
       bind generation, 0
+      bind read-at, 0
       bind running, nothing()
       bind building, nothing()
       bind dirty, false
