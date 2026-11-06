@@ -8,7 +8,8 @@
 # this builds the catalog and prints. The catalog's entries are kink-find's `kink` records (a compiler code as its
 # number, a lint rule's -1, an absent remedy or fix kind the empty text), so `kinkCatalog()` and `findKink(query)`
 # answer those records, and a maybe, where the original answered its own Kink shape; the JSON printed is the original's.
-# The linter's catalog (make/code/lint/lint.ts) and the output library are docked.
+# The linter's catalog is lint/rule-check-dispatch.tree's, where make/code/lint/lint.ts was docked until
+# term-self-host-001-0960.
 
 load @term/base/list
   find list
@@ -40,8 +41,8 @@ load @term/call/work/output/printer
 load @term/call/work/item/event
   find item-field
 
-dock load
-  load <@term/make/code/lint/lint>, name lint-module
+load @term/make/lint/rule-check-dispatch
+  find list-lint-catalog
 
 # ---- the host values Term has no word for ----
 
@@ -139,7 +140,7 @@ task kink-catalog
       hold
         save fix-kind, to-text(fixes/get(word))
     out/push(make(kink, bind(kind, <compiler>), bind(name, word), bind(number, entry/code), bind(label, tool-hex-label(entry/code)), bind(severity, to-text(entry/severity)), bind(says, entry/message), bind(remedy, entry/fix), bind(fixable, fixable-here), bind(fixes, fix-kind)))
-  walk tool-lint-rules(lint-module/lint-catalog(), manifest-catalog())
+  walk tool-lint-rules(list-lint-catalog(),manifest-catalog())
     take rule, like dynamic
     out/push(make(kink, bind(kind, <lint>), bind(name, rule/name), bind(number, -1), bind(label, rule/code), bind(severity, tool-as-text(rule/severity)), bind(says, rule/docs), bind(remedy, <>), bind(fixable, rule/fixable), bind(fixes, <>)))
   back out

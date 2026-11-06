@@ -37,6 +37,9 @@ load ./node
   find function-param
   find bind-target
 
+load ./node-reach
+  find reach-expression
+
 load ./route-lower
   find lower-routes
 
@@ -384,18 +387,55 @@ task declared-key
     miss
       back <>
 
-# whether a top-level statement is exported: a task that is not `mark private`, a form, a mask, and a constant in
-# per-module emit
+# the names a public task's defaults call or read. A left-out argument's default is evaluated at the call site
+# (decision 032 section 4.7), so a caller in another unit names them, and a private task among them is exported from
+# the emitted module. Term privacy holds: no load finds it (term-self-host-001-0976)
+task fall-reached
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save names, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(private, true)
+          hold
+            turn next
+        walk params
+          take param
+          sift param/fallback
+            case some
+              link default-value
+              save reached, reach-expression(default-value, make list)
+              walk reached/expressions
+                take inner
+                sift inner
+                  case variable
+                    names/set(name, true)
+                  miss
+                    turn next
+            case none
+              turn next
+      miss
+        turn next
+  back names
+
+# whether a top-level statement is exported: a task that is not `mark private` or that a public task's default
+# reaches, a form, a mask, and a constant in per-module emit
 task is-exported
   take one, like statement
   take export-constants, like boolean
+  take fall-names, like hash, like text, like boolean
   like boolean
   mark private
 
   sift one
     case function
       link private
-      back is-unequal(private, true)
+      link name
+      back or(is-unequal(private, true), fall-names/has(name))
     case record-type
       back true
     case mask
@@ -663,6 +703,7 @@ task assemble-type-script
       hold
         last-index/set(key, index)
 
+  save fall-names, fall-reached(emittable)
   save lines, make list
   walk emittable
     take one
@@ -672,7 +713,7 @@ task assemble-type-script
       hold
         turn next
     save written, statement-of(one)
-    fork test, is-exported(one, export-constants)
+    fork test, is-exported(one, export-constants, fall-names)
       hold
         save written, <export {written}>
     fork test, is-above(written/length, 0)

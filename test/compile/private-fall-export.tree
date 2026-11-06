@@ -1,1 +1,102 @@
-mark draft
+note <A private task a public task's default names is exported from its unit>
+
+# term-self-host-001-0976. `held.tree` has a private `no-label` and a public `show` whose `label` falls back to
+# `no-label()`. check/inferring-expressions.tree copies a left-out argument's default to the call site (decision 032
+# section 4.7), so `entry.tree`'s `show(<x>)` calls `noLabel()` and its unit imports it from held's unit. ts-assemble
+# exported only tasks that are not `mark private`, so the import named nothing and the bundle failed (esbuild: No
+# matching export). A private task a public task's default reaches is part of that task's contract and is exported in
+# the emitted module (Term privacy holds: no load finds it). A private task no public default reaches stays unexported.
+# compile/separate and compile/cache are the subject (decision 106).
+
+load ../support/compiling
+  find compiling-source
+  find compile-choice
+  find compiling-options-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).CompileCache)()>
+
+bind entry-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "entry.tree", text: $text \})>
+
+bind options-of
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules \})>
+
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <$answer.ok>
+
+bind module-code
+  take answer, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($answer.modules?.get($file)?.code ?? "")>
+
+task module-of
+  take file, like text
+  like text
+
+  back <./{file}.mjs>
+
+# `hidden` is private and named by no default, `quiet` is private and named only by a private task's default
+host held, <task no-label\n  like text\n  mark private\n\n  send back, text \<none\>\n\ntask hidden\n  like text\n  mark private\n\n  send back, text \<hidden\>\n\ntask quiet\n  like text\n  mark private\n\n  send back, text \<quiet\>\n\ntask inner\n  take value, like text\n  take label, like text, fall quiet()\n  like text\n  mark private\n\n  send back, text \<\{label\}: \{value\} \{hidden()\}\>\n\ntask show\n  take value, like text\n  take label, like text, fall no-label()\n  like text\n\n  send back, inner(value, label)\n>
+
+host entry, <load ./held\n  find show\n\ntask main\n  like text\n\n  send back, show(text \<x\>)\n>
+
+host exports-no-label, make pattern, <<export function noLabel\(>>
+host has-hidden, make pattern, <<function hidden\(>>
+host exports-hidden, make pattern, <<export function hidden\(>>
+host exports-quiet, make pattern, <<export function quiet\(>>
+host calls-no-label, make pattern, <<noLabel\(\)>>
+
+task built
+  like dynamic
+
+  host files, make list(make(compiling-source, bind(file, <./held>), bind(text, held), bind(answer, <held.tree>)))
+  host options, compiling-options-of(make(compile-choice, bind(files, files), bind(closed, true)))
+  back separate-module/compile-separate(entry-of(entry), options-of(resolver-of(options), new-cache(cache-module), module-of))
+
+test <the two files build apart>
+  want hold, answer-ok(built())
+
+test <the caller's unit calls the private default at its call site>
+  want hold, matches(calls-no-label, module-code(built(), <entry.tree>))
+
+test <the private task a public default names is exported from its unit>
+  want hold, matches(exports-no-label, module-code(built(), <held.tree>))
+
+test <a private task no default names stays unexported>
+  host code, module-code(built(), <held.tree>)
+  want hold, matches(has-hidden, code)
+  want hold, is-equal(matches(exports-hidden, code), false)
+
+test <a private task named only by a private task's default stays unexported>
+  want hold, is-equal(matches(exports-quiet, module-code(built(), <held.tree>)), false)

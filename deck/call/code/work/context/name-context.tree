@@ -67,17 +67,18 @@ load @term/make/parser/tree
 load @term/make/parser/token
   find token-source
 
+# the mill's span reader, compile/mill-running.tree's, where compile/mill-run.ts was docked until
+# term-self-host-001-0958
+load @term/make/compile/mill-running
+  find span-of-node
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/load>, name load-module
-  # named for itself, never `mill-module`: the test runner docks compile/mill under that alias, and a port keeps one
-  # import per alias (traps.md)
-  load <@term/make/code/compile/mill-run>, name mill-run-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/make/code/parser/narrow>, name narrow-module
   load <@term/make/code/resolve>, name resolve-module
 
 # ---- the host values Term has no word for ----
@@ -107,6 +108,39 @@ bind value-or
   like dynamic
   case node
     text <($value ?? $fallback)>
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# the groups among a parse tree's nodes, as parser/narrow.ts's `groupsOf` kept them: every node whose kind is a group
+task groups-in
+  take nodes, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  save groups, make list
+  walk nodes
+    take one, like dynamic
+    fork test, is-same(one/kind, <group>)
+      hold
+        groups/push(one)
+  back groups
+
+# where a node's caret goes, as compile/mill-run.ts's `spanOfNode` answered it: the span, or nothing
+task span-at
+  take one, like dynamic
+  like dynamic
+  mark private
+
+  save span, nothing()
+  sift span-of-node(one)
+    case none
+      save span, nothing()
+    case some
+      save span, value
+  back span
 
 bind has-text
   take value, like text
@@ -323,13 +357,13 @@ task doc-at
       bind file, one/file
       bind text, one/text
   save parsed, parse-tolerant(source)
-  # the parser's tree, read as the docked narrow module reads it: a host value
+  # the parser's tree, read as host values, as the docked narrow module read it
   save tree, like dynamic
     read parsed/tree
   save comments, make list
-  walk narrow-module/groups-of(tree/nodes)
+  walk groups-in(tree/nodes)
     take group
-    save span, mill-run-module/span-of-node(group)
+    save span, span-at(group)
     fork test, and(is-truthy(span), is-same(span/start/line, line))
       hold
         walk value-or(group/comments, make list)

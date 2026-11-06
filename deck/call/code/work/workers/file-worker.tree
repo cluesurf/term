@@ -7,9 +7,10 @@
 # (the driver sends only the path) and posts back the emitted output.
 #
 # Loading the module starts the listener (decision 003: the emitted port is bundled as its own entry and the pool
-# starts it). Outside a worker there is no parent port and it does nothing. Docked: compile/compile.ts, compile/load.ts
-# (makeParseMemo), compile/native.ts (withNativeEnv) and node's worker_threads. The resolver, the cache, the deck finder,
-# the role readers and the file's reading are the build and cache lanes' ports (term-cli-in-term-0214). A warning is
+# starts it). Outside a worker there is no parent port and it does nothing. Docked: compile/compile.ts, compile/native.ts
+# (withNativeEnv) and node's worker_threads. The resolver, the cache, the deck finder, the role readers, the parse memo
+# (work/cache/compile-store.tree `make-parse-memo`, where compile/load.ts was docked until term-self-host-001-0956) and
+# the file's reading are the build and cache lanes' ports (term-cli-in-term-0214). A warning is
 # drawn by work/output/diagnostic-report, loaded (term-cli-in-term-0196).
 
 load @term/call/work/output/diagnostic-report
@@ -32,6 +33,7 @@ load ../build/host-faces
 
 load ../cache/compile-store
   find project-cache
+  find make-parse-memo
 
 load ./source-faces
   find face-buildable
@@ -41,7 +43,6 @@ dock load
   load <node:path>, name node-path
   load <node:worker_threads>, name worker-threads
   load <@term/make/code/compile/compile>, name compiling-module
-  load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
 
 # What the worker holds between jobs, built once per project root and env and reused for every file it handles: the
@@ -113,7 +114,7 @@ task make-ready
   # wrap the plain project resolver so `.../native/<name>` rewrites to the concrete `.../native/<env>/<name>`
   save held/resolve, native-module/with-native-env(file-env-or-node(env), face-project-resolver(make-project-resolver(root)))
   save held/cache, project-cache(root, file-version-of(worker-threads/worker-data))
-  save held/parsed, load-module/make-parse-memo()
+  save held/parsed, make-parse-memo()
   save held/deck-of, face-deck-finder(make-deck-finder())
   save reader, make-role-reader(root)
   save held/role-of, face-role-reader(reader)

@@ -39,12 +39,19 @@ load ./entry-layout
 load @term/deck/package/file-store
   find get-base-dir
 
+# the parse memo's port, where compile/load.ts `makeParseMemo` was docked until term-self-host-001-0954
+load @term/make/compile/loading-parses
+  find fresh-parse-memo
+  find parse-remembered
+
+load @term/make/compile/loading
+  find source
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <@term/make/code/compile/cache>, name compile-cache-module
   load <@term/make/code/compile/cache-scope.generated>, name cache-scope-module
-  load <@term/make/code/compile/load>, name parse-module
 
 form folder-ask
   link recursive, like boolean
@@ -729,6 +736,22 @@ task process-parse
   fork test, parse-memos/has(name)
     hold
       back parse-memos/get(name)
-  save memo, parse-module/make-parse-memo()
+  save memo, make-parse-memo()
   save parse-memos/{name}, memo
   back memo
+
+# ONE PARSE PER MODULE PER BUILD: compile/loading-parses.tree's memo, handed to the compiler as the host function of a
+# source to its parse it takes as `parsed`. compile/load.ts `makeParseMemo` built the same, with the same cap
+# (PARSE_MEMO_CAP), until term-self-host-001-0954
+host parse-memo-cap, 2048
+
+task make-parse-memo
+  like dynamic
+
+  save memo, fresh-parse-memo(parse-memo-cap)
+  save parse
+    task
+      take given, like source
+      like dynamic
+      back parse-remembered(memo, given)
+  back parse

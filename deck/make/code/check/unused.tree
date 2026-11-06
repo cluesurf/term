@@ -369,6 +369,16 @@ task find-unused
           case none
             save nothing, 0
         walk-body(body, fresh-declared(), referenced)
+        # a parameter's `fall` default reads what it names: a private task named only there was warned as never used
+        # (term-self-host-001-0987), as ir/simplifying.tree count-references counts it
+        walk params
+          take param
+          sift param/fallback
+            case some
+              link default-value
+              collect-reads(default-value, referenced)
+            case none
+              turn next
       miss
         turn next
 

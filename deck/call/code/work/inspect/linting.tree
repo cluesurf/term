@@ -5,7 +5,7 @@
 # and L055 manifest-inert (a manifest field no tool reads). note/project/term/manifest/manifest-mark-and-code-root.md.
 #
 # Ported from call/code/lint.ts (term-cli-in-term-0055). lint-words.tree holds the decisions beside the parser and the
-# rules, loaded, and so is the one parser (parser/tree). The rules (analyze), the mill's span reader, the files walk,
+# rules, loaded, and so is the one parser (parser/tree), and the mill's span reader. The rules (analyze), the files walk,
 # the role readers, the project resolver and the manifest name are docked until their own ports land, the manifest
 # spellings are @term/deck's spelling port, and every item prints through the output library.
 
@@ -66,9 +66,13 @@ load @term/deck/package/spelling
 load @term/call/work/item/event
   find tally
 
+# the mill's span reader, compile/mill-running.tree's, where compile/mill-run.ts was docked until
+# term-self-host-001-0958
+load @term/make/compile/mill-running
+  find span-of-node
+
 dock load
   load <@term/make/code/analyze>, name analyze-module
-  load <@term/make/code/compile/mill-run>, name mill-run-module
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
@@ -91,6 +95,20 @@ bind is-truthy
   like boolean
   case node
     text <Boolean($value)>
+
+# where a node's caret goes, as compile/mill-run.ts's `spanOfNode` answered it: the span, or nothing
+task span-at
+  take one, like dynamic
+  like dynamic
+  mark private
+
+  save span, nothing()
+  sift span-of-node(one)
+    case none
+      save span, nothing()
+    case some
+      save span, value
+  back span
 
 # a text's length in UTF-16 units, as a column counts it
 bind units
@@ -350,7 +368,7 @@ task inert-manifest-fields
             save span, nothing()
             fork test, is-above(named/length, 0)
               hold
-                save span, mill-run-module/span-of-node(get(named, 0))
+                save span, span-at(get(named, 0))
             fork test, and(is-unequal(word, <>), and(is-inert(word), not(is-absent(span))))
               hold
                 save start, span/start
@@ -403,7 +421,7 @@ task ambiguous-loads
             save span, nothing()
             fork test, is-above(named/length, 0)
               hold
-                save span, mill-run-module/span-of-node(get(named, 0))
+                save span, span-at(get(named, 0))
             fork test, and(is-unequal(path, <>), not(is-absent(span)))
               hold
                 # the first `base` under the load, which picks the package root when it names a word (a bare `base`

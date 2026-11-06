@@ -11,12 +11,21 @@
 # `test` blocks made tasks), since the file on disk still has them.
 #
 # Ported from deck/call/code/test-native.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
-# (compile/compile, compile/native and the three emitters) and the native build (native-build.ts). The project resolver
-# and the cache folder are the build and cache lanes' ports, loaded since term-cli-in-term-0065.
+# (compile/compile, compile/native, and the Rust and Kotlin emitters) and the native build (native-build.ts). The
+# project resolver and the cache folder are the build and cache lanes' ports, loaded since term-cli-in-term-0065.
 
 load @term/base/list
   find list
   find join
+
+# the Swift emitter, where compile/swift.ts was docked until term-self-host-001-0960: handed the wake the compile made
+# and one program, as the face handed them. compile/rust.ts and compile/kotlin.ts stay docked until their emitters'
+# `fail` slot declares the failure it may raise (ruling 0979)
+load @term/make/compile/swift-program
+  find emit-swift
+
+load @term/make/compile/program-warnings
+  find wake-group
 
 load @term/make/term/hash
   find hash-text
@@ -59,7 +68,6 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/rust>, name rust-module
-  load <@term/make/code/compile/swift>, name swift-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
 
 # the backends this command runs a project's tests on (the original's NATIVE_TEST_ENVS)
@@ -118,6 +126,13 @@ bind is-nothing
   like boolean
   case node
     text <($value === undefined)>
+
+# the wake a compile made, none when it made none (compile/swift.ts `options?.wake ?? []`)
+bind wake-of
+  take value, like dynamic
+  like list, like wake-group
+  case node
+    text <($value ?? [])>
 
 # `(found.file === file || found.file === real)`
 bind found-is
@@ -304,7 +319,7 @@ task run-native-test-file
     miss
       fork test, is-equal(env, <swift>)
         hold
-          save emitted, host-text(swift-module/emit-swift(result/program, wake))
+          save emitted, emit-swift(result/program, wake-of(result/wake), false)
         miss
           save emitted, host-text(kotlin-module/emit-kotlin(result/program, wake))
   save prelude, host-text(native-module/native-prelude(result/program, env, runtime-reader(), emitted))

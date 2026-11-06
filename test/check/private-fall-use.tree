@@ -1,1 +1,31 @@
-mark draft
+note <A private task named only in a parameter default is used>
+
+# term-self-host-001-0987. check/unused.tree counted the names read in each function body as the file's references, and
+# a parameter's `fall` default was never read, so `no-label` below, named only by `show`'s default, was warned as a
+# private task nothing uses. ir/simplifying.tree count-references already counts a default as a use. A private task
+# named nowhere is still warned. check/unused is the subject.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+host entry, <task no-label\n  like text\n  mark private\n\n  send back, text \<none\>\n\ntask hidden\n  like text\n  mark private\n\n  send back, text \<hidden\>\n\ntask show\n  take value, like text\n  take label, like text, fall no-label()\n  like text\n\n  send back, text \<\{label\}: \{value\}\>\n>
+
+task warned
+  like text
+
+  host built, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(closed, true)))
+  back join(built/warning-messages, < | >)
+
+test <a private task named nowhere is warned as never used>
+  want hold, text-contains(warned(), <private "hidden" is never used>)
+
+test <a private task named only in a parameter default is not warned>
+  want hold, not(text-contains(warned(), <"no-label">))
