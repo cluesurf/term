@@ -1,3 +1,6 @@
+mark draft
+# a draft of item term-self-host-001-0983, landed in its line-lock window
+
 # A program `term boot` builds answers its command line as term does (zone decision 002, item
 # term-self-host-001-0983). The runner it runs on (host/dock.mjs, work/hook/running.tree) answers -v and --version with
 # the manifest's mark, prints --help in term's layout (work/help.tree), and refuses an unknown command or flag in term's
