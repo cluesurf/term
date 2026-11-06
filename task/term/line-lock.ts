@@ -23,9 +23,20 @@
 // left by a breaker that died inside it is cleared after 10 s, the one remaining check-then-act, and it needs a
 // process to die within those milliseconds. (A process still running an older copy of this file breaks the old way.)
 //
+// WAITERS ARE SERVED IN ORDER (term-self-host-001-0989). Until 0989 every waiter polled mkdir once a second, so the
+// next holder was whoever polled first after a free: on 2026-11-05 one batch window lost the lock five times running.
+// Now a waiter that cannot take at once writes a ticket in `line-lock.waiters/` beside the lock, named by its arrival
+// (the moment takeLineLock was called), pid and a nonce, and it tries mkdir only while no live ticket is older than its
+// own. A ticket is dead when its pid is dead or it was not touched for 2 minutes (each waiter touches its own every
+// poll), and any waiter clears a dead one. The head polls every 100 ms, the rest every second. The ticket goes when the
+// take returns or throws, and on exit; a waiter killed by a signal leaves a ticket with a dead pid, cleared at once.
+// The mkdir lock, the holder file and the token pass-through are as they were: the queue only says who may try.
+// A process running a copy of this file from before 0989 writes no ticket and polls mkdir once a second as before: it
+// cannot be ordered, so it still races the head, which polls ten times as often and so wins about nine in ten.
+//
 //   node task/term/line-lock.ts take --by <item>     hold it for a live edit (waits). Again by the same item renews it
 //   node task/term/line-lock.ts free --by <item>     let it go. Refused (exit 3) when another holds it
-//   node task/term/line-lock.ts show                 who holds it, or `free`
+//   node task/term/line-lock.ts show                 who holds it, or `free`, and the waiting line in order
 //   node task/term/line-lock.ts prove                the lock's own proof on a throwaway root (`status: PASS`)
 //   node task/term/line-lock.ts run [--by <item>] -- <command...>
 //                                                    hold it while a command runs
@@ -49,7 +60,7 @@
 
 const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
-const { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } = require('node:fs')
 const { dirname, join, resolve } = require('node:path')
 
 // `at` is the last take or renewal, `taken` the first take (absent in a lock an older copy of this file wrote: `at`)
@@ -266,6 +277,107 @@ function pause(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
+// THE QUEUE (WAITERS ARE SERVED IN ORDER). A ticket untouched this long is dead though its pid lives (a reused pid)
+const TICKET_LIVE_MS = 120_000
+// how often the head of the line tries mkdir, and how often the rest look at the line
+const HEAD_POLL_MS = 100
+const QUEUE_POLL_MS = 1000
+
+type Ticket = { name: string; by: string; pid: number; arrived: string; live: boolean; why?: string }
+
+function waitersPath(term: string): string {
+  return `${lockPath(term)}.waiters`
+}
+
+// a ticket's file name sorts by arrival, then pid, then nonce: the line's order is the names' order
+function ticketName(arrived: number, pid: number, nonce: string): string {
+  return `${String(arrived).padStart(15, '0')}-${String(pid).padStart(10, '0')}-${nonce}.json`
+}
+
+// every ticket, oldest first, each marked live or dead. `clear` removes the dead ones
+function readQueue(term: string, clear = false): Ticket[] {
+  let names: string[]
+
+  try {
+    names = (readdirSync(waitersPath(term)) as string[]).filter(name => name.endsWith('.json')).sort()
+  } catch {
+    return []
+  }
+
+  const tickets: Ticket[] = []
+
+  for (const name of names) {
+    const file = join(waitersPath(term), name)
+    let body: { by?: string; pid?: number; arrived?: string }
+    let touched: number
+
+    try {
+      body = JSON.parse(readFileSync(file, 'utf8'))
+      touched = statSync(file).mtimeMs
+    } catch {
+      // gone between the listing and the read (its waiter took the lock or gave up)
+      continue
+    }
+
+    const pid = Number(body.pid)
+    const why = !alive(pid)
+      ? `pid ${pid} is dead`
+      : Date.now() - touched > TICKET_LIVE_MS
+        ? `not touched for ${Math.round((Date.now() - touched) / 1000)} s`
+        : undefined
+
+    if (why && clear) {
+      rmSync(file, { force: true })
+    }
+
+    tickets.push({ name, by: String(body.by ?? ''), pid, arrived: String(body.arrived ?? ''), live: !why, why })
+  }
+
+  return tickets
+}
+
+// one waiter's own ticket: written when it first has to wait, touched on every poll, removed when it is done
+function makeTicket(term: string, by: string, arrived: number) {
+  const name = ticketName(arrived, process.pid, randomUUID().slice(0, 8))
+  const file = join(waitersPath(term), name)
+  let written = false
+
+  const remove = (): void => {
+    if (written) {
+      written = false
+      process.removeListener('exit', remove)
+      rmSync(file, { force: true })
+    }
+  }
+
+  const stamp = (): void => {
+    if (written) {
+      try {
+        const now = new Date()
+        utimesSync(file, now, now)
+        return
+      } catch {
+        // cleared by another waiter as dead (a long sleep of the machine): write it again, same arrival
+      }
+    }
+
+    mkdirSync(waitersPath(term), { recursive: true })
+    const part = `${file}.part`
+    writeFileSync(part, `${JSON.stringify({ by, pid: process.pid, arrived: new Date(arrived).toISOString(), host: process.env.HOSTNAME ?? '' })}\n`)
+    renameSync(part, file)
+
+    if (!written) {
+      written = true
+      process.once('exit', remove)
+    }
+  }
+
+  // the live tickets older than this one: an empty list makes it the head of the line
+  const ahead = (): Ticket[] => readQueue(term, true).filter(ticket => ticket.live && ticket.name < name)
+
+  return { name, stamp, remove, ahead }
+}
+
 type Taken = {
   // false when the lock was already ours (a caller's token, or a hand lock of the same item): free() then does nothing
   owned: boolean
@@ -282,23 +394,49 @@ function takeLineLock(options: LockOptions): Taken {
   const inherited = process.env[TOKEN_ENV]
   const handBy = process.env[BY_ENV]
   const until = Date.now() + wait * 1000
-  let told = ''
 
   if (by === REFUSED_BY) {
     throw new Error(`line lock: refused, no item is named ${REFUSED_BY}: take it under your item's id`)
   }
 
   mkdirSync(dirname(lockPath(term)), { recursive: true })
+  const ticket = makeTicket(term, by, Date.now())
+
+  try {
+    return takeInLine({ options, ticket, until, inherited, handBy, say, wait, hours })
+  } finally {
+    ticket.remove()
+  }
+}
+
+type Line = {
+  options: LockOptions
+  ticket: ReturnType<typeof makeTicket>
+  until: number
+  inherited: string | undefined
+  handBy: string | undefined
+  say: (line: string) => void
+  wait: number
+  hours: number
+}
+
+// takeLineLock's loop: try mkdir only at the head of the line (WAITERS ARE SERVED IN ORDER)
+function takeInLine({ options, ticket, until, inherited, handBy, say, wait, hours }: Line): Taken {
+  const { term, by } = options
+  let told = ''
 
   for (;;) {
     let made = false
+    const ahead = ticket.ahead()
 
-    try {
-      mkdirSync(lockPath(term))
-      made = true
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'EEXIST') {
-        throw error
+    if (ahead.length === 0) {
+      try {
+        mkdirSync(lockPath(term))
+        made = true
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'EEXIST') {
+          throw error
+        }
       }
     }
 
@@ -352,7 +490,9 @@ function takeLineLock(options: LockOptions): Taken {
       return { owned: false, token: holder.token, free: () => {} }
     }
 
-    const stale = staleReason(term, hours)
+    // a lock that is gone is free: at the head that means try mkdir again at once, behind others it means wait in line
+    const present = existsSync(lockPath(term))
+    const stale = present || ahead.length === 0 ? staleReason(term, hours) : undefined
 
     if (stale) {
       if (breakStale(term, holder, hours)) {
@@ -365,18 +505,26 @@ function takeLineLock(options: LockOptions): Taken {
       continue
     }
 
+    // `still held after` is what tmp/self-host/queue/land.sh reads to retry: both messages keep it
+    const line = ahead.length > 0 ? `, ${ahead.length} waiting ahead (first ${ahead[0]!.by})` : ''
+
     if (Date.now() >= until) {
-      throw new Error(`line lock: held by ${describe(holder)}, still held after ${wait} s (${lockPath(term)})`)
+      throw new Error(
+        present
+          ? `line lock: held by ${describe(holder)}${line}, still held after ${wait} s (${lockPath(term)})`
+          : `line lock: free but not this waiter's turn${line}, still held after ${wait} s (${lockPath(term)})`,
+      )
     }
 
-    const now = describe(holder)
+    const now = `${present ? describe(holder) : 'the line'}${line}`
 
     if (now !== told) {
       say(`line lock: waiting for ${now}`)
       told = now
     }
 
-    pause(1000)
+    ticket.stamp()
+    pause(ahead.length === 0 ? HEAD_POLL_MS : QUEUE_POLL_MS)
   }
 }
 
@@ -448,11 +596,23 @@ function main(argv: string[]): number {
 
     if (!existsSync(lockPath(term))) {
       console.log('line lock: free')
-      return 0
+    } else {
+      const stale = staleReason(term, hours)
+      console.log(`line lock: held by ${describe(holder)}${stale ? ` (stale: ${stale})` : ''}`)
     }
 
-    const stale = staleReason(term, hours)
-    console.log(`line lock: held by ${describe(holder)}${stale ? ` (stale: ${stale})` : ''}`)
+    // the waiting line, in the order it is served. A waiter from before 0989 writes no ticket and is not listed
+    let place = 0
+
+    for (const ticket of readQueue(term)) {
+      place += ticket.live ? 1 : 0
+      console.log(
+        ticket.live
+          ? `  ${place}. ${ticket.by} (pid ${ticket.pid}, waiting since ${ticket.arrived})`
+          : `  -  ${ticket.by} (pid ${ticket.pid}, dead: ${ticket.why}, cleared by the next waiter)`,
+      )
+    }
+
     return 0
   }
 
@@ -678,6 +838,9 @@ function prove(): void {
     .then(() => {
       ok('three runs at once run one after another', readFileSync(log, 'utf8').trim().split('\n').join(',') === 'start,end,start,end,start,end')
       ok('and leave the lock free', !existsSync(lockPath(root)))
+      return proveLine(root, env, ok)
+    })
+    .then(() => {
       return raceStale(root, env, ok)
     })
     .then(() => {
@@ -685,6 +848,102 @@ function prove(): void {
       console.log(failed === 0 ? 'status: PASS' : `status: FAIL (${failed})`)
       process.exitCode = failed === 0 ? 0 : 1
     })
+}
+
+// WAITERS ARE SERVED IN ORDER (term-self-host-001-0989). A hand lock is held while three `run`s arrive one after
+// another (each waits for the one before to have its ticket), behind a dead waiter's older ticket. Freed, the three
+// run in their order of arrival and the dead ticket is cleared. A newcomer does not take a free lock while a live
+// ticket is older than it, and a waiter whose --wait runs out leaves no ticket
+async function proveLine(root: string, env: Record<string, string | undefined>, ok: (name: string, holds: boolean) => void): Promise<void> {
+  const quiet = (): void => {}
+  const settle = (ms: number): Promise<void> => new Promise(done => setTimeout(done, ms))
+  const until = async (test: () => boolean, ms = 20_000): Promise<boolean> => {
+    const end = Date.now() + ms
+
+    while (!test()) {
+      if (Date.now() > end) {
+        return false
+      }
+
+      await settle(50)
+    }
+
+    return true
+  }
+  const log = join(root, 'line-log')
+  writeFileSync(log, '')
+  const live = (): number => readQueue(root).filter(ticket => ticket.live).length
+
+  // a dead waiter, first in line
+  mkdirSync(waitersPath(root), { recursive: true })
+  const { spawnSync } = require('node:child_process')
+  const dead: number = spawnSync(process.execPath, ['-e', '0']).pid
+  writeFileSync(join(waitersPath(root), ticketName(1, dead, 'deadbeef')), `${JSON.stringify({ by: 'dead', pid: dead, arrived: new Date(1).toISOString() })}\n`)
+
+  takeLineLock({ term: root, by: 'gate', manual: true, wait: 0, say: quiet })
+  const body = (by: string): string =>
+    `const fs=require('fs');fs.appendFileSync(${JSON.stringify(log)},'${by} start\\n');setTimeout(()=>fs.appendFileSync(${JSON.stringify(log)},'${by} end\\n'),300)`
+  const runs: Promise<number | null>[] = []
+
+  for (const [index, by] of ['w1', 'w2', 'w3'].entries()) {
+    runs.push(
+      new Promise(done => {
+        spawn(process.execPath, [__filename, 'run', '--root', root, '--by', by, '--wait', '60', '--', process.execPath, '-e', body(by)], {
+          stdio: 'ignore',
+          env,
+        }).on('exit', (code: number | null) => done(code))
+      }),
+    )
+    // the next arrives only once this one stands in line
+    ok(`${by} stands in line, place ${index + 1}`, await until(() => live() === index + 1))
+  }
+
+  ok('the dead waiter\'s ticket is cleared by the live ones', !readQueue(root).some(ticket => ticket.by === 'dead'))
+
+  // freed: a newcomer at that instant finds the lock free (w1 polls every 100 ms) but three live tickets older than its own
+  const first = readQueue(root).find(ticket => ticket.live)
+  freeLineLock({ term: root, by: 'gate' })
+  let jumped = true
+
+  try {
+    jumped = takeLineLock({ term: root, by: 'jumper', wait: 0, say: quiet }).owned
+  } catch {
+    jumped = false
+  }
+
+  ok('w1 is first in line', first?.by === 'w1')
+  ok('a newcomer does not jump the line at the free', !jumped)
+  const codes = await Promise.all(runs)
+  const order = readFileSync(log, 'utf8').trim().split('\n').join(',')
+  ok('the three ran one after another, in their order of arrival', codes.every(code => code === 0) && order === 'w1 start,w1 end,w2 start,w2 end,w3 start,w3 end')
+  ok('and left the lock free and the line empty', !existsSync(lockPath(root)) && readQueue(root).length === 0)
+
+  // a waiter whose wait runs out takes its ticket with it
+  takeLineLock({ term: root, by: 'gate', manual: true, wait: 0, say: quiet })
+  const late = spawnSync(process.execPath, [__filename, 'run', '--root', root, '--by', 'late', '--wait', '2', '--', process.execPath, '-e', '0'], {
+    env,
+    encoding: 'utf8',
+  })
+  ok('a waiter out of time exits 3, still held after', late.status === 3 && /still held after/.test(late.stderr))
+  ok('and leaves no ticket', readQueue(root).length === 0)
+
+  // a free lock with a live ticket older than a newcomer's, the ticket being this proof's own pid
+  freeLineLock({ term: root, by: 'gate' })
+  const held = join(waitersPath(root), ticketName(2, process.pid, 'cafecafe'))
+  writeFileSync(held, `${JSON.stringify({ by: 'older', pid: process.pid, arrived: new Date(2).toISOString() })}\n`)
+  let refused = ''
+
+  try {
+    takeLineLock({ term: root, by: 'newcomer', wait: 0, say: quiet })
+  } catch (error) {
+    refused = (error as Error).message
+  }
+
+  ok('a free lock is not taken past an older live ticket', /not this waiter's turn, 1 waiting ahead \(first older\)/.test(refused) && !existsSync(lockPath(root)))
+  rmSync(held, { force: true })
+  const after = takeLineLock({ term: root, by: 'newcomer', wait: 0, say: quiet })
+  ok('and is, once that ticket is gone', after.owned)
+  after.free()
 }
 
 // THE STALE-BREAK RACE (term-cli-in-term-0155). Each round leaves a stale lock (a dead pid, a lapsed hand lock, or a
