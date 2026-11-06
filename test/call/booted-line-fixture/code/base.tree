@@ -1,0 +1,32 @@
+load @term/call/item
+  find opening
+  find item
+  find field
+  find closing
+  find open-run
+  find report
+  find close-run
+
+task answer
+  take who, like text
+  like number
+  back 3
+
+task hello
+  like number
+  open-run(make(opening, bind(verb, <hello>), bind(subject, <the fixture>), bind(tool, <greet 1.2.3>)))
+  save hint, make(field, bind(key, <next>), bind(value, <greet say>))
+  save hints, make list
+  hints/push hint
+  report(make(item, bind(glyph, <done>), bind(verb, <hello>), bind(subject, <said hello>), bind(fields, hints)))
+  back close-run(make(closing, bind(verdict, <Said hello>), bind(next, <>), bind(failure, <>)))
+
+# Greet people
+hook greet
+  # Say hello to someone
+  hook say
+    take who
+    task answer
+  # Say hello through the printer
+  hook hello
+    task hello

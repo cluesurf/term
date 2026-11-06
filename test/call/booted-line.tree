@@ -1,0 +1,111 @@
+# A program `term boot` builds answers its command line as term does (zone decision 002, item
+# term-self-host-001-0983). The runner it runs on (host/dock.mjs, work/hook/running.tree) answers -v and --version with
+# the manifest's mark, prints --help in term's layout (work/help.tree), and refuses an unknown command or flag in term's
+# shape (work/hook/usage.tree, which term's own console refuses through), exit 2. The fixture beside this file also
+# reports through @term/call/item, the printer a program loads. Each test boots the fixture with --out into a folder of
+# its own, through the `term` under test (@term/test/self), and runs the bundle with node.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/text
+  find contains
+  find starts-with
+  find trim
+
+load ../support/temp
+  find temp-folder
+
+dock load
+  load <node:path>, name booted-path
+
+bind booted-node
+  like text
+  case node
+    text <process.execPath>
+
+# the fixture booted into a new folder, and the bundle run with these words
+task run-booted
+  take words, like list, like text
+  like run-result
+  mark async
+
+  save out, temp-folder(<booted-line->)
+  save booting, make list
+  booting/push(<boot>)
+  booting/push(<code/base.tree>)
+  booting/push(<--out>)
+  booting/push(out)
+  save booted, run-self(booting, <test/call/booted-line-fixture>, 280000)
+  fork test, is-unequal(booted/code, 0)
+    hold
+      back booted
+  save line, make list
+  line/push(booted-path/join(out, <run.mjs>))
+  walk words
+    take word, like text
+    line/push(word)
+  back run(booted-node(), line)
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <-v answers the manifest's mark>
+  save ran, run-booted(make list(<-v>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(trim(ran/output), <1.2.3>)
+
+test <--version answers the manifest's mark>
+  save ran, run-booted(make list(<--version>))
+  want hold, is-equal(ran/code, 0)
+  want hold, is-equal(trim(ran/output), <1.2.3>)
+
+test <--help is term's layout, the commands under the program's name>
+  save ran, run-booted(make list(<--help>))
+  want hold, is-equal(ran/code, 0)
+  want hold, starts-with(ran/output, <greet [command]>)
+  want hold, contains(ran/output, <Commands:>)
+  want hold, contains(ran/output, <  greet say>)
+  want hold, contains(ran/output, <Say hello to someone>)
+
+test <a command's --help is term's layout of that command>
+  save ran, run-booted(make list(<say>, <--help>))
+  want hold, is-equal(ran/code, 0)
+  want hold, starts-with(ran/output, <greet say>)
+  want hold, contains(ran/output, <Options:>)
+  want hold, contains(ran/output, <--who>)
+
+test <a word near a command is refused in term's shape, naming the command>
+  save ran, run-booted(make list(<sya>))
+  want hold, is-equal(ran/code, 2)
+  want hold, contains(said(ran), <greet There is no command named sya>)
+  want hold, contains(said(ran), <The command line was not understood>)
+  want hold, contains(said(ran), <next greet say>)
+
+test <a word far from every command is refused, naming the list of commands>
+  save ran, run-booted(make list(<nope>))
+  want hold, is-equal(ran/code, 2)
+  want hold, contains(said(ran), <There is no command named nope>)
+  want hold, contains(said(ran), <next greet, for the list of commands>)
+
+test <an unknown flag is refused in term's shape, naming the help>
+  save ran, run-booted(make list(<say>, <--nope>))
+  want hold, is-equal(ran/code, 2)
+  want hold, contains(said(ran), <Unknown flag "--nope">)
+  want hold, contains(said(ran), <The command line was not understood>)
+  want hold, contains(said(ran), <next greet --help>)
+
+test <a program reports through @term/call/item>
+  save ran, run-booted(make list(<hello>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <said hello>)
+  want hold, contains(said(ran), <next greet say>)
+  want hold, contains(said(ran), <Said hello>)
