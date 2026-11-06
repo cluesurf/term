@@ -3911,6 +3911,30 @@ Rules for a change:
 `AGENTS.md` holds the same rules in short, for coding agents, and
 `CONTRIBUTING.md` the rest of the process.
 
+## Roadmap
+
+**2.10.0, next.** The compiler reaches its fixpoint: built by itself twice, it emits byte-identical TypeScript and Rust.
+
+- The release carries its own frozen compiler, so anyone can check the fixpoint from a fresh clone.
+- `term save <deck> -g` installs a package for the whole machine.
+- Every program built with `term boot` answers `--version` and `--help`, and reports errors the way `term` does.
+
+**3.0.0.** Term written entirely in Term, running as a native binary.
+
+- The compiler, the CLI and every package are `.tree`, with no TypeScript left in the toolchain.
+- The toolchain compiles to Rust and ships as a native binary with fast startup.
+- The fixpoint holds on both TypeScript and Rust, starting from a release Term built itself.
+- Every test suite is `.tree`.
+
+**Beyond 3.0.**
+
+- Direct lower-level targets: WebAssembly, assembly and GPU code without going through Rust.
+- A wider HVM backend.
+- Packages that ship their own grammars, and grammars that give the optimizer their own rules.
+- Constant folding on every backend, and more of the optimizer shared across them.
+- Every guide sample editable and runnable in the browser.
+- Mutation testing and complexity gates for the compiler.
+
 ## License
 
 Copyright 2026 Lance Pollard / <a href='https://clue.surf'>ClueSurf</a>
