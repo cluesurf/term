@@ -7,12 +7,9 @@
 #
 # The files exported are the ones holding a claim and every file they load, transitively: a relative load by its
 # path, a package load through the project's resolver. A load nothing resolves (a native one) is dropped and named.
-# The parser, the template expander and the mill's head reader are the compiler's ports, loaded
-# (term-self-host-001-0948 and 0959, where parser/tree, parser/narrow, compile/mill-run and compile/template were
-# docked). The load reader, the exporter and the Lean runner are docked, their answers host values. The Lean runner
-# stays docked while check/lean-running loads @term/base/process/run: in the merged CLI that runtime's import of
-# node's spawn and @term/base/task's task spawn are one top-level name, and Lean ran the task (DEFECT
-# term-self-host-001-0998).
+# The parser, the template expander, the mill's head reader and the Lean runner are the compiler's ports, loaded
+# (term-self-host-001-0948 and 0959, where parser/tree, parser/narrow, compile/mill-run, compile/template and
+# check/lean-run were docked). The load reader and the exporter are docked, their answers host values.
 
 load @term/base/maybe
   find maybe
@@ -54,10 +51,16 @@ load @term/make/compile/templates
 load @term/make/compile/mill-running
   find head-word
 
+load @term/make/check/lean-running
+  find say-install
+  find find-lean
+  find run-lean
+  find lean-version
+  find lean-claim, name lean-verdict
+
 dock load
   load <@term/make/code/compile/mill-check>, name load-reading
   load <@term/make/code/check/lean-export>, name lean-exporting
-  load <@term/make/code/check/lean-run>, name lean-running
   load <@term/make/code/compile/native>, name native-env
   load <node:fs>, name host-fs
   load <node:path>, name host-path
@@ -84,7 +87,7 @@ task no-problems
 
   back make list
 
-# the parser's tree, held as host values
+# the parser's tree, or Lean's version, held as host values
 task tree-held
   take tree, like dynamic
   like dynamic
@@ -218,18 +221,12 @@ bind source-pair
   case node
     text <(\{ file: $file, text: $text \})>
 
-bind lean-binary
-  take running, like dynamic
+# an environment variable, the empty text when it is not set, as check/lean-run.ts's `findLean` read TERM_LEAN and PATH
+bind env-text
+  take name, like text
   like text
   case node
-    text <($running.findLean() ?? "")>
-
-bind install-line
-  take running, like dynamic
-  like text
-  case node
-    text <$running.LEAN_INSTALL>
-
+    text <(process.env[$name] ?? "")>
 bind error-said
   take problem, like dynamic
   like text
@@ -272,51 +269,43 @@ bind was-exported
   case node
     text <<$exported.exported.some(entry_ => entry_.claim && entry_.name === $name)>>
 
-# the runner's two calls answer promises since Lean runs through @term/base/process/run under a limit (decision 075)
-bind run-lean
-  mark async
-  take running, like dynamic
-  take lean, like text
-  take file, like text
-  take source, like text
-  take claims, like list, like text
-  like dynamic
-  case node
-    text <$running.runLean(\{ lean: $lean, file: $file, source: $source, claims: $claims \})>
+# the runner's limits, as check/lean-run.ts handed them: 1800 s for a check, 60 s for `--version`
+host check-limit, 1800000
 
-bind lean-version
-  mark async
-  take running, like dynamic
-  take lean, like text
-  like dynamic
-  case node
-    text <$running.leanVersion($lean)>
+host version-limit, 60000
+
+# no verdict yet: Lean did not run
+task no-verdicts
+  like list, like lean-verdict
+  mark private
+
+  back make list
 
 # Lean's verdict on a claim, nothing when it gave none
-bind verdict-of
-  take run, like dynamic
+task verdict-of
+  take verdicts, like list, like lean-verdict
   take name, like text
-  like dynamic
-  case node
-    text <<$run?.claims.find(verdict_ => verdict_.name === $name)>>
+  like maybe, like lean-verdict
+  mark private
 
-bind verdict-word
-  take verdict, like dynamic
+  walk verdicts
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one)
+  back make none
+
+# why Lean refused a claim, the empty text for a claim it did not refuse (check/lean-run.ts kept `error` on a refused
+# one only)
+task verdict-error
+  take verdict, like lean-verdict
   like text
-  case node
-    text <$verdict.verdict>
+  mark private
 
-bind verdict-axioms
-  take verdict, like dynamic
-  like list, like text
-  case node
-    text <$verdict.axioms>
-
-bind verdict-error
-  take verdict, like dynamic
-  like text
-  case node
-    text <($verdict.error || "")>
+  fork test, is-equal(verdict/verdict, <refused>)
+    hold
+      back verdict/error
+  back <>
 
 bind lean-truth
   take value, like dynamic
@@ -476,7 +465,7 @@ task hold-lean
         walk read/claims
           take name
           stated/push make(stated-claim, bind(name, name), bind(file, host-path/relative(root, file)))
-  save lean, lean-binary(lean-running)
+  save lean, find-lean(env-text(<TERM_LEAN>), env-text(<PATH>))
   save missing, is-equal(lean, <>)
   save no-claims, make list
   save no-diagnostics, make list
@@ -519,24 +508,27 @@ task hold-lean
     fork test, was-exported(exported, one/name)
       hold
         leaning/push one/name
-  save run, no-run()
+  save verdicts, no-verdicts()
   fork test, not(missing)
     hold
-      save run, run-lean(lean-running, lean, file, exported-lean(exported), leaning)
+      save run, run-lean(lean, file, exported-lean(exported), leaning, check-limit)
+      save verdicts, run/claims
 
   save claims, make list
   walk stated
     take one
-    save verdict, verdict-of(run, one/name)
-    fork test, lean-truth(verdict)
-      hold
-        save checked, make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, verdict-word(verdict)), bind(axioms, verdict-axioms(verdict)))
+    sift verdict-of(verdicts, one/name)
+      case some
+        link verdict
+        save checked, make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, verdict/verdict), bind(axioms, verdict/axioms))
         save said, verdict-error(verdict)
         fork test, is-unequal(said, <>)
           hold
             save checked/reason, make(some, said)
         claims/push checked
         turn next
+      case none
+        save said, <>
     fork test, or(was-refused(exported, one/name), not(contains-file(leaning, one/name)))
       hold
         save why, refused-reason(exported, one/name)
@@ -558,7 +550,7 @@ task hold-lean
   fork test, not(missing)
     hold
       save answer/lean, make(some, lean)
-      save found-version, lean-version(lean-running, lean)
+      save found-version, tree-held(lean-version(lean, version-limit))
       save answer/version, make(some, found-version)
   back answer
 
@@ -642,7 +634,7 @@ task report-lean
       save lines, make list
       lines/push <Looked at TERM_LEAN, then the PATH.>
       save fields, make list
-      fields/push field(<next>, install-line(lean-running))
+      fields/push field(<next>, say-install())
       report(make(problem-fields-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <lean>), bind(subject, <Lean 4 is not installed, so no claim was re-checked>), bind(message, lines), bind(fields, fields)))
 
   walk result/claims

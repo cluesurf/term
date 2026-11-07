@@ -15,7 +15,6 @@ load @term/base/environment
 load ../cask/host-value
   find nothing
   find is-truthy
-  find value-or
   find raise-error
   find now-ms
 
@@ -29,6 +28,14 @@ load @term/call/work/build/build-graph
   find build-request
   find entry-ask
 
+# Kotlin's import hoist and the entry a program defines, where compile/kotlin.ts and compile/native-main.ts were
+# docked until term-self-host-001-0957
+load @term/make/compile/kotlin-program
+  find hoist-kotlin-imports
+
+load @term/make/compile/main-entry
+  find entry-of
+
 dock load
   load <node:fs>, name node-fs
   load <node:os>, name node-os
@@ -40,8 +47,6 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   # the build's own engine (decision 099): the reload loop's one graph, asked for the entry as one program. Docked as
   # its port, so each compose port does not carry a copy of the engine
-  load <@term/make/code/compile/kotlin>, name kotlin-module
-  load <@term/make/code/compile/native-main>, name native-main
   load <@term/make/code/resolve>, name resolve-module
 
 form tool-text
@@ -248,13 +253,28 @@ task start-task
       hold
         save named, name
         halt
-  save found, nothing()
+  save found, kotlin-entry(kotlin, <main>, <main_>)
+  save found, kotlin-entry(kotlin, <boot>, found)
   fork test, not(is-equal(named, <>))
     hold
-      save found, native-main/entry-of(<kotlin>, kotlin, named)
-  save found, value-or(found, native-main/entry-of(<kotlin>, kotlin, <boot>))
-  save found, value-or(found, native-main/entry-of(<kotlin>, kotlin, <main>))
-  back value-or(found, <main_>)
+      save found, kotlin-entry(kotlin, named, found)
+  back found
+
+# the task `name` as Kotlin spells it when `kotlin` defines it, else `otherwise`
+task kotlin-entry
+  take kotlin, like text
+  take name, like text
+  take otherwise, like text
+  like text
+  mark private
+
+  save found, otherwise
+  sift entry-of(<kotlin>, kotlin, make(some, name))
+    case none
+      save found, otherwise
+    case some
+      save found, value
+  back found
 
 # the entry file a build compiles: the app's own `file` when it has one, so its relative loads (`load ./notes`) resolve
 # beside it, else `text` written into the build's folder (a test's program, which loads only packages)
@@ -309,7 +329,7 @@ task compile-file
   like dynamic
   mark private
 
-  node-fs/write-file-sync(file, <{ask/header}{kotlin-module/hoist-kotlin-imports(text)}\n>)
+  node-fs/write-file-sync(file, <{ask/header}{hoist-kotlin-imports(text)}\n>)
   save args, make list
   args/push(file)
   args/push(<-classpath>)
@@ -331,7 +351,7 @@ task compile-kotlin
   like kotlin-built
 
   save runtime-cache-dir, runtime-cache()
-  save runtime, <{ask/header}{kotlin-module/hoist-kotlin-imports(ask/runtime)}>
+  save runtime, <{ask/header}{hoist-kotlin-imports(ask/runtime)}>
   save key-parts, make list
   key-parts/push(runtime)
   key-parts/push(join-on(ask/classpath, <:>))

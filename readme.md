@@ -146,17 +146,18 @@ Both install the same signed release, `@term/code`, from
 - `windows-x64`
 - `windows-arm64`
 
-Each checks the download's sha256 against the registry's digest, and the
-release signature against the `@term` key set, before anything goes on
-your `PATH`. It writes under `~/.base/@term/code/`, and adds one marked
-line to your shell's profile putting its `call/` folder, which holds the
-`term` command, on `PATH` for new terminals, once. `TERM_LOAD_PATH=0` edits no profile and prints the line
-instead.
+Each checks the download's sha256 against the registry's digest before
+anything goes on your `PATH`, and the script also checks the release
+signature against the `@term` key set. The script writes under
+`~/.base/@term/code/`, and adds one marked line to your shell's profile
+putting its `call/` folder, which holds the `term` command, on `PATH`
+for new terminals, once. `TERM_LOAD_PATH=0` edits no profile and prints
+the line instead. Homebrew keeps its copy in its own Caskroom.
 
 Term runs on Node.js 22.3 or newer.
 
 ```sh
-term --version     # 2.9.2
+term --version     # 2.10.0
 term self update   # the newest release, verified, beside the current one
 term self back     # back to the previous version, no download
 ```
@@ -176,10 +177,11 @@ each other by that name (`@term/base/code/list`), linked locally through
 `term link`.
 
 The compiler, CLI, language server and package manager began in
-TypeScript (under each deck's `code/`), and are being ported to `.tree`
-one module at a time ([Self-hosting](#self-hosting)). The standard
-library, the app framework and everything else are written in `.tree`
-and compiled by the compiler itself.
+TypeScript, and their logic is now written in `.tree`, with a named set
+of TypeScript files left around it ([Self-hosting](#self-hosting)). The
+standard library, the app framework and everything else are written in
+`.tree`, with each platform's native code beside them, and compiled by
+the compiler itself.
 
 ## Finding your way around
 
@@ -192,7 +194,8 @@ The repository's folders, and what each one holds:
 │   │   └── code/
 │   │       ├── parser/   .tree text to a generic tree, and diagnostic codes
 │   │       ├── compile/  mill to typed AST, then one emitter per backend
-│   │       │             (typescript.ts, rust.ts, kotlin.ts, swift.ts, wgsl.ts)
+│   │       │             (ts-emit.tree, rust-emit.tree, kotlin-emit.tree,
+│   │       │             swift-emit.tree, wgsl.tree, hvm.tree)
 │   │       ├── check/    type inference, the kernel, the prover, contracts
 │   │       ├── ir/       the optimizer's passes
 │   │       ├── lint/     lint rules
@@ -203,11 +206,12 @@ The repository's folders, and what each one holds:
 │   │   ├── code/blob/    binary format readers (gzip, pdf, font/otf, ...)
 │   │   └── code/feed.tree  the byte and text cursors every format reader reads
 │   ├── call/             @term/call   the CLI, built to host/line.js
-│   │   └── code/         line/base.tree is the console, make.ts the build driver,
-│   │                     test.ts the test runner, hold.ts the proof gate
+│   │   └── code/         line/base.tree is the console, work/ holds each verb:
+│   │                     work/build the build, work/testing the test runner,
+│   │                     work/hold the proof gate
 │   ├── flow/             @term/flow   the language server
 │   ├── deck/             @term/deck   the package manager
-│   ├── base/             @term/base   the standard library, all .tree
+│   ├── base/             @term/base   the standard library, in .tree
 │   │   ├── code/         one file per type (list.tree, text.tree, ...)
 │   │   │   ├── mask/     traits
 │   │   │   ├── proof/    equality and proof lemmas
@@ -238,7 +242,7 @@ Where to start digging:
 | --- | --- |
 | what a keyword means | [term.surf/guides](https://term.surf/guides), then the dialect in `deck/mill/code/tree/` |
 | why a file fails to compile | `deck/make/code/check/` |
-| what a backend emits | `deck/make/code/compile/<target>.ts` |
+| what a backend emits | `deck/make/code/compile/<target>-emit.tree` |
 | what a CLI command does | `deck/call/code/line/`, then the file it dispatches to |
 | a stdlib type or task | `deck/base/code/<name>.tree` |
 | the tests for any of it | `test/<area>/` |
@@ -349,7 +353,7 @@ library's `excess` once the sum passes `Number.MAX_SAFE_INTEGER`.
 
 ## Reference
 
-Everything below describes Term 2.9.2 as it is in this repository: what
+Everything below describes Term 2.10.0 as it is in this repository: what
 each construct is, how it is written, what it compiles to, and where it
 stops. Every `tree` sample on this page compiles with `term make` (or
 runs with `term test` when it holds `test` blocks). The counts were taken
@@ -610,7 +614,7 @@ Saved as `code/boot.tree` in a project whose `deck.tree` says
 
 ```
 ● boot demo
-  term 2.9.2 · development
+  term 2.10.0 · development
 ✓ build code/boot.tree
   335ms
 ● log demo
@@ -630,7 +634,7 @@ line, with the same message the editor shows:
 
 ```
 ● make demo
-  term 2.9.2 · 1 file
+  term 2.10.0 · 1 file
 ✗ check Argument: expected text, found number type-mismatch
   file code/boot.tree:14:13
   13 │   log <hello from term>
@@ -1702,7 +1706,7 @@ prove. `term hold` refuses it:
 
 ```
 ● hold demo
-  term 2.9.2 · 1 file
+  term 2.10.0 · 1 file
 ✗ prove This division is not shown to be by something other than zero: it does
   not follow from what is known here unproven
   file code/main.tree:11:14
@@ -1997,7 +2001,7 @@ under `code/` and `test/`, here with the file saved as `test/text.tree`:
 
 ```
 ● test demo
-  term 2.9.2 · 1 file
+  term 2.10.0 · 1 file
 ✓ test test/text.tree
   13:28:08.762 · 2.67s · 3 tests · 3 passed
   ⇒ parts: 3
@@ -3505,7 +3509,7 @@ deck @alice/tools
   code ./src
   boot ./code/boot
   link @bob/parse, mark <^1.2.0>
-  need @term/code, mark <2.9.x>
+  need @term/code, mark <2.10.x>
 ```
 
 | line | means |
@@ -3735,15 +3739,15 @@ sudo dnf install term
 
 apt and dnf put the release at `/usr/lib/term` and update it with the
 system. Every route installs the same signed release bytes, and the
-script and Homebrew routes write under `~/.base/@term/code/`:
+script writes under `~/.base/@term/code/`:
 
 ```
 ~/.base/@term/code/call/term                 a link, the one thing on PATH
-~/.base/@term/code/code/2.9.2/term/          the release, unpacked
-~/.base/@term/code/code/2.9.2/install.tree   its version, platform and sha256
+~/.base/@term/code/code/2.10.0/term/          the release, unpacked
+~/.base/@term/code/code/2.10.0/install.tree   its version, platform and sha256
 ```
 
-An install is one bundled script, `host/line.js`, holding:
+An install centers on one bundled script, `host/line.js`, holding:
 
 - the compiler
 - the package manager
@@ -3752,8 +3756,10 @@ An install is one bundled script, `host/line.js`, holding:
 - the linter
 - the dev server
 
-It sits beside the standard library's `.tree` source and three
-packages that cannot be bundled (`esbuild`, `hono`, `@hono/node-server`).
+It sits beside smaller scripts for its workers, the `.tree` source of
+the standard library, `@term/mill` and `@term/host`, the test reporter's
+files, and three packages that cannot be bundled (`esbuild`, `hono`,
+`@hono/node-server`).
 Node, the web and Cloudflare need nothing more. The native backends need
 their platform's compiler, which Term does not install, and
 `term show tools` checks for each:
@@ -3767,16 +3773,16 @@ their platform's compiler, which Term does not install, and
 ### Versions of Term
 
 Several versions live side by side, and each project can build with its
-own. `term self need 2.9.2` writes `need @term/code` into `deck.tree`
+own. `term self need 2.10.0` writes `need @term/code` into `deck.tree`
 and pins the release's hash in `lock.tree`, so every machine runs the
 same release. The version a command runs, first match wins:
 
 | | asked by | for |
 | --- | --- | --- |
-| 1 | `term +2.9.2 make` | that one command |
-| 2 | `TERM_VERSION=2.9.2` | every command that sees it |
+| 1 | `term +2.10.0 make` | that one command |
+| 2 | `TERM_VERSION=2.10.0` | every command that sees it |
 | 3 | `need` in the nearest `deck.tree` | that project |
-| 4 | `term self pick 2.9.x` | everywhere outside a project |
+| 4 | `term self pick 2.10.x` | everywhere outside a project |
 | 5 | `call/term` | where nothing asks |
 
 `term self show` prints which one runs here and why, and
@@ -3816,33 +3822,35 @@ pnpm --dir deck/flow bind     # installs it into VS Code
 
 ## Self-hosting
 
-A self-hosted language is one whose own tools are written in it. The standard library, the application framework, the grammars and the
-bindings are Term already. The compiler, the CLI and the package manager
-are being ported from TypeScript to Term one module at a time: each
-ported module is a `.tree` file the build compiles into its deck's
-`host/port/` (`pnpm run make:port`), and the TypeScript left is the
-shell around them. The CLI
-entry `host/line.js` is bundled from the Term console,
-`deck/call/code/line/base.tree`. Counted in this repository:
+A self-hosted language is one whose own tools are written in it. The
+compiler's logic, the kernel, the CLI and the package manager are `.tree`
+files now, alongside the standard library, the application framework,
+the grammars and the bindings. Each ported module is a `.tree` file the
+build compiles into its deck's `host/port/` (`pnpm run make:port`), and
+the CLI entry `host/line.js` is bundled from the Term console,
+`deck/call/code/line/base.tree`.
 
-| deck | `.tree` files | `.ts` files | `.ts` lines |
-| --- | --- | --- | --- |
-| `make`, the compiler | 293 | 102 | 13,281 |
-| `call`, the CLI | 246 | 65 | 30,681 |
-| `deck`, the package manager | 60 | 49 | 3,936 |
-| `flow`, the language server | 19 | 6 | 437 |
-| `test`, verification tooling | 62 | 27 | 3,444 |
-| `mill`, `scan`, `bind`, `cask`, `host`, `mark` | 588, 15, 3,092, 7, 12, 15 | 0 | 0 |
+The compiler compiles itself to the same text. That test is a fixpoint:
+a frozen older compiler builds the source, the result builds the same
+source again, and every emitted module of the two builds must match
+byte for byte, on TypeScript and on Rust text, the Rust source the
+compiler writes. `pnpm term:fixpoint` runs it.
 
-The kernel is still TypeScript (`deck/make/code/check/`), so a Term
-program cannot load it. The plan ends in a native `term` binary built by
-Term's own Rust backend. Today `term` runs on Node, and
-`term --version` takes about 0.13 seconds, nearly all of it starting
-Node.
+The built toolchain still holds TypeScript: the driver faces, thin files
+that keep the names and the process state of a module whose logic moved
+to `.tree`, with the files they reach. `pnpm term:left` lists every
+hand-written `.ts` file that remains, including the ones only the
+TypeScript suites under `test/` import.
+
+The kernel is Term (`deck/make/code/check/judging.tree`), and it ships
+inside the compiler's bundle, so a Term program cannot load it. The plan
+ends in a native `term` binary built by Term's own Rust backend, in Term
+3.0. Today `term` runs on Node, and `term --version` takes about 0.13
+seconds, nearly all of it starting Node.
 
 ## Status
 
-What works, measured in this repository on the release 2.9.2:
+What works, measured in this repository on the release 2.10.0:
 
 | area | state |
 | --- | --- |
@@ -3861,8 +3869,8 @@ What works, measured in this repository on the release 2.9.2:
 | the language server and VS Code extension | working. Installed from a `.vsix` |
 | installers | script, Homebrew, PowerShell, apt and dnf, for six platforms |
 
-The gate, `pnpm term:test`, runs 916 suites. The TypeScript suites under
-`test/` are 739 files.
+The gate, `pnpm term:test`, runs more than 900 suites. The TypeScript
+suites under `test/` are about 700 files.
 
 What is missing, as each guide's own "What is missing" part records:
 
@@ -3878,7 +3886,7 @@ What is missing, as each guide's own "What is missing" part records:
 | native | a device install on an iPhone (waits on a signing identity), notarization, installers, a full-screen terminal interface |
 | packages | a strict `link/`, hard links from the store, deltas inside a changed file, a transparency log, yanking a version |
 | editor | a Marketplace listing, packages for other editors |
-| self-hosting | a native `term` binary. The compiler's shell and kernel are TypeScript |
+| self-hosting | a native `term` binary. The driver faces around the compiler are TypeScript, and so are most test suites |
 
 ## Building from a clone
 
@@ -3913,11 +3921,11 @@ Rules for a change:
 
 ## Roadmap
 
-**2.10.0, next.** The compiler reaches its fixpoint: built by itself twice, it emits byte-identical TypeScript and Rust.
+**2.10.0, this release.** The compiler reaches its fixpoint: built by itself twice, it emits byte-identical TypeScript and Rust source, and it still runs on Node.
 
 - The release carries its own frozen compiler, so anyone can check the fixpoint from a fresh clone.
-- `term save <deck> -g` installs a package for the whole machine.
-- Every program built with `term boot` answers `--version` and `--help`, and reports errors the way `term` does.
+- `term save <deck> -g` installs a package for your user, and its command works in any folder.
+- Every command-line program built with `term boot` answers `-v` and `--help`, and reports errors the way `term` does.
 
 **3.0.0.** Term written entirely in Term, running as a native binary.
 

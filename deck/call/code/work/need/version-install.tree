@@ -59,6 +59,7 @@ load @term/call/work/need/version-choice
 load @term/call/work/small/home-folder
   find user-home
   find user-front-dir
+  find release-folder
 
 # the registry: @term/deck's ports
 load @term/deck/oci/toolchain-release
@@ -549,7 +550,7 @@ task install-file
   take version, like text
   like text
 
-  back user-home(home-parts(<code>, version, <install.tree>))
+  back node-path/join(release-folder(user-home(make list), version), <install.tree>)
 
 # Point the front (call/term) at a version, atomically: a new link beside it, renamed over the old one. ON WINDOWS
 # call\term.cmd is a one-line shim instead (need-files.tree `front-shim-text`)
@@ -676,7 +677,8 @@ task unpack
   mark private
 
   save code, user-home(home-parts(<code>))
-  save target, node-path/join(code, version)
+  # `code/<version>`, named by the one helper `term save --global` names a package's releases by
+  save target, release-folder(user-home(make list), version)
   save id, random-id(node-crypto)
   save staging, node-path/join(code, <.{version}.{id}>)
   save archive, <{staging}.tar.gz>

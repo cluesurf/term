@@ -390,6 +390,10 @@ hook term
     # Install without network
     take offline
       like boolean
+    # Install every package saved for the user (~/.base/deck.tree) instead of the project's
+    take global
+      like boolean
+      code g
     task load
 
   # Add a dependency
@@ -400,6 +404,10 @@ hook term
     # The versions it accepts: 1.4.2, 1.x.x, ^1.2.0, ~1.2.0, 1.0.0..2.0.0 (default 0.x.x)
     slot mark
       like text
+    # Install it for the user, from any folder: ~/.base/<scope>/<name>, its command on PATH
+    take global
+      like boolean
+      code g
     task save
 
   # Remove a dependency
@@ -407,6 +415,10 @@ hook term
     # Package name to remove
     slot deck
       like text
+    # Remove a package saved for the user, with its command
+    take global
+      like boolean
+      code g
     task toss
 
   # Link a local package for development

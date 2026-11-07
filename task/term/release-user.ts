@@ -11,6 +11,9 @@
 //   4. reads every file the runs wrote into the project (host/, the --out bundle, not the .base/ cache) for a machine
 //      path: the temporary folder, the HOME, the install and this checkout, each also flattened the way a unit name
 //      flattens a path (`Users_x_.base__term_...`), and every command's output for this checkout's path
+//   5. checks the payload carries term/host/compile.mjs, stage0 of the fixpoint chain `pnpm term:boot` fetches
+//      (decision 126 of change 001-finish-self-host), and that it exports the seven names port-build loads from stage0
+//      (task/stage0.ts STAGE0_SOURCES)
 //
 //   npx tsx task/term/release-user.ts                    check the payload `pnpm run release --dry` wrote, at
 //                                                        tmp/release/<version>/term-<platform>.tar.gz (says so in one
@@ -26,6 +29,7 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { TERM_ROOT } from './root'
 
 const TERM = realpathSync(TERM_ROOT)
@@ -230,7 +234,7 @@ function payload(work: string): string | undefined {
   return unpacked
 }
 
-function main(): void {
+async function main(): Promise<void> {
   if (process.platform === 'win32') {
     console.log('release-user: 0 pass, 0 fail (skipped on Windows)')
 
@@ -255,8 +259,13 @@ function main(): void {
     return
   }
 
+  // the names port-build loads from stage0, read from task/stage0.ts itself, by a dynamic import: task/term runs as
+  // CommonJS, and stage0.ts is an ES module with a top-level await (trap T-0170)
+  const { STAGE0_SOURCES } = (await import('../stage0')) as { STAGE0_SOURCES: Record<string, string[]> }
+  const stage0Names = Object.values(STAGE0_SOURCES).flat().sort()
+
   try {
-    check(work)
+    check(work, stage0Names)
   } finally {
     if (process.argv.includes('--keep')) {
       console.log(`kept ${work}`)
@@ -272,13 +281,30 @@ function main(): void {
   }
 }
 
-function check(work: string): void {
+function check(work: string, stage0Names: string[]): void {
   const unpacked = payload(work)
 
   if (unpacked === undefined) {
     ok('a payload to install', false, 'none built or given')
 
     return
+  }
+
+  // 0. stage0 of the fixpoint chain (decision 126): term/host/compile.mjs, loaded by a plain node outside any checkout,
+  // exporting every name port-build calls on a stage0
+  const compile = join(unpacked, 'term', 'host', 'compile.mjs')
+  ok('the payload carries term/host/compile.mjs, stage0 for term:boot', existsSync(compile))
+
+  if (existsSync(compile)) {
+    const listing = `const m = await import(${JSON.stringify(pathToFileURL(compile).href)}); console.log(Object.keys(m).sort().join(' '))`
+    const listed = run(process.execPath, ['--input-type=module', '-e', listing], work, personEnv(join(work, 'stage0-home')))
+    const exported = listed.text.trim().split('\n').at(-1)?.split(' ') ?? []
+    const missing = stage0Names.filter(name => !exported.includes(name))
+    ok(
+      `compile.mjs exports the ${stage0Names.length} names port-build loads from stage0`,
+      listed.status === 0 && stage0Names.length === 7 && missing.length === 0,
+      `exit ${listed.status}, ${stage0Names.length} names, missing ${missing.join(' ') || 'none'}: ${tail(listed.text)}`,
+    )
   }
 
   const version = (JSON.parse(readFileSync(join(unpacked, 'term', 'package.json'), 'utf8')) as { version: string }).version
@@ -348,4 +374,7 @@ function check(work: string): void {
   ok("no command's output names this checkout", told.length === 0, told.map(one => one.name).join(', '))
 }
 
-main()
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

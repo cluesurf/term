@@ -2,8 +2,8 @@
 // listen / accept / read / write / close. Each returns a promise, so the public async TCP API awaits it. The opaque
 // handle a seed `connection` / `listener` holds is the raw node Socket / Server. Reached only through the public TCP API.
 import {
-  createConnection,
-  createServer,
+  createConnection as tcpCreateConnection,
+  createServer as tcpCreateServer,
   type Socket,
   type Server,
 } from 'node:net'
@@ -27,7 +27,7 @@ const tcp = {
     new Promise((ok, fail) => {
       const socket = secure
         ? tlsConnect({ host, port }, () => ok(socket))
-        : createConnection(port, host, () => ok(socket))
+        : tcpCreateConnection(port, host, () => ok(socket))
       socket.on('error', fail)
     }),
 
@@ -42,7 +42,7 @@ const tcp = {
       const server =
         secure && certificate && key
           ? tlsCreateServer({ cert: certificate, key })
-          : createServer()
+          : tcpCreateServer()
       server.on('error', fail)
       // every connection is queued from the moment the server listens, so one that arrives before `accept` is asked
       // for is not lost: a client's connect resolves only once the connection exists, and the `connection` event had

@@ -1,0 +1,22 @@
+note <A runtime shim's own import never meets a program's top-level name>
+
+# Item 0998. A whole program sits behind its node runtime shims in one file, and esbuild lets a TypeScript import fall
+# silently to a top-level name of that file, since the import might be a type. So runner.ts's `import { spawn }` beside
+# a task `spawn` called the task, and every @term/base/process/run call in the merged CLI answered `child.on is not a
+# function`. `term test` keeps a program's modules apart and cannot see it, so the fixture beside this file is built
+# whole, by `term make --emit node`, through the `term` under test (@term/test/self). It has its own tasks under the
+# names the shims imported bare, and the public tasks over those shims must still reach node.
+
+load @term/test/self
+  find run-self
+
+load @term/base/text
+  find contains
+
+host fixture, <test/compile/shim-import-fixture>
+
+test <a whole program keeps its own tasks and the shims keep node>
+  save arguments, make list(<make>, <code/go.tree>, <--emit>, <node>, <--main>, <go>, <--run>, <--color>, <never>)
+  save ran, run-self(arguments, fixture, 120000)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(ran/output, <own a own b own c own d own e|0 ran|/a b.txt .txt true|true>)

@@ -129,6 +129,25 @@ task user-home
   settle-front(home)
   back join-all(home, parts)
 
+# `~/.base/<...parts>`: the user folder itself, beside the toolchain's `@term/code`. It holds the user's own manifest
+# and lock.tree, and a folder for each package `term save --global` installs, `~/.base/<scope>/<name>`, which stays
+# real and keeps the user's own files for it (decisions term/package-manager/001 and 002)
+task user-base
+  take parts, like list, like text
+  like text
+
+  back join-all(node-path/join(node-os/homedir(), <.base>), parts)
+
+# One release of a package under its home, `<home>/code/<version>`: term's own under `~/.base/@term/code`, and each
+# package `term save --global` installs under `~/.base/<scope>/<name>`, the one layout for both (decision
+# term/package-manager/002)
+task release-folder
+  take home, like text
+  take version, like text
+  like text
+
+  back node-path/join(home, <code>, version)
+
 # THE FRONT'S FOLDER, `call/`: the one thing on PATH, holding `term` (`term.cmd` on Windows), a link to the version
 # that dispatches. It was `bin/` until 2026-10-05, renamed by `settle-front` the way `settle` renames the home
 task front

@@ -1,0 +1,4 @@
+deck @probe/shim-import-fixture
+head <Probe>
+mark <0.0.2>
+link @term/base, mark <0.0.x>
