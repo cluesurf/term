@@ -5,9 +5,9 @@
 # printing. What it decides beside its build and its module is call/code/test-run-words.tree.
 #
 # Ported from deck/call/code/test-run.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
-# (compile/compile, compile/separate, compile/mill, compile/native, compile/typescript), the parser and its renderer
-# (handed straight to the docked mill and given the original's input) and esbuild (decision 002). The preprocessor, the
-# unit naming, the bundle writer and the cache folder are their lanes' ports, loaded since term-cli-in-term-0065.
+# (compile/compile, compile/native) and esbuild (decision 002). The preprocessor, the unit naming, the bundle writer
+# and the cache folder are their lanes' ports, loaded since term-cli-in-term-0065. The mill and the TypeScript names
+# are their ports, where compile/mill.ts and compile/typescript.ts were docked until term-self-host-001-0960.
 
 load @term/base/list
   find list
@@ -74,17 +74,26 @@ load @term/make/parser/token
 load @term/make/parser/diagnostic
   find render
 
+load @term/base/maybe
+  find maybe
+
+# the mill, handed what compile/mill.ts handed it when no role was given (none, not lean). The face's answer left a
+# mill's twins out, which nothing here reads
+load @term/make/compile/minting
+  find mill
+
+# the TypeScript identifier a Term name compiles to, compile/typescript.ts `toCamel`
+load @term/make/compile/ts-names
+  find to-camel
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
   load <esbuild>, name esbuild-module
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/make/code/compile/mill>, name mill-module
   load <@term/make/code/compile/compile>, name compile-module
-  load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/make/code/compile/typescript>, name typescript-module
 
 # moved when the bundling itself changes, so a kept bundle from before is never run
 # 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
@@ -279,11 +288,21 @@ task discover-tests
   fork test, not(is-truthy(parsed/ok))
     hold
       back make list
-  save built, mill-module/mill(parsed/tree, file)
-  fork test, not(is-truthy(built/ok))
+  save built, mill(parsed/tree, file, no-role(), false)
+  fork test, not(built/ok)
     hold
       back make list
-  back test-names-of(built/program)
+  # the mill's statements, read as host values, as the docked compile/mill.ts handed them
+  save program, like dynamic
+    read built/program
+  back test-names-of(program)
+
+# the role the mill is handed: none, as compile/mill.ts handed it when none was given
+task no-role
+  like maybe, like text
+  mark private
+
+  back make none
 
 # a test's label: its phrase, or its task's name with every dash a space
 task label-of
@@ -926,7 +945,7 @@ task run-test-file
       hold
         save at-line, add(head, 1)
     save chosen, text-at(chosen-of, name)
-    asked/push(make(child-test, bind(name, name), bind(exported, host-text(typescript-module/to-camel(name))), bind(line, at-line), bind(cases, cases-of(made/cases, name)), bind(cases-exported, host-text(typescript-module/to-camel(<{name}-cases>))), bind(case-exported, host-text(typescript-module/to-camel(<{name}-case>))), bind(label, label-of(made/labels, name)), bind(chosen, chosen)))
+    asked/push(make(child-test, bind(name, name), bind(exported, host-text(to-camel(name))), bind(line, at-line), bind(cases, cases-of(made/cases, name)), bind(cases-exported, host-text(to-camel(<{name}-cases>))), bind(case-exported, host-text(to-camel(<{name}-case>))), bind(label, label-of(made/labels, name)), bind(chosen, chosen)))
   save command, make list
   command/push(node-program())
   command/push(write-start(root, out, report-bundle, asked))

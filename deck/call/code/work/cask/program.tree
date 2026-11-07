@@ -36,6 +36,23 @@ load ../build/host-faces
 load @term/call/work/output/printer
   find run-tool
 
+# the Swift, Rust and Kotlin emitters, where compile/swift.ts, rust.ts and kotlin.ts were docked until
+# term-self-host-001-0957: handed no wake and one program, as the faces handed them. The Rust and Kotlin emitters take
+# a `fail` slot that declares `halt failure`, and are handed one that halts, as the faces' fail throws (decision 086
+# rule 3, ruling 0979)
+load @term/make/compile/swift-program
+  find emit-swift
+
+load @term/make/compile/rust-program
+  find emit-rust
+
+load @term/make/compile/kotlin-program
+  find emit-kotlin
+  find hoist-kotlin-imports
+
+load @term/make/compile/program-warnings
+  find wake-group
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -43,9 +60,6 @@ dock load
   load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/make/code/compile/swift>, name swift-module-emit
-  load <@term/make/code/compile/rust>, name rust-module-emit
-  load <@term/make/code/compile/kotlin>, name kotlin-module-emit
   load <@term/make/code/resolve>, name resolve-module
 
 form program-source
@@ -122,6 +136,21 @@ form android-built
   link dex, like text
   link native, like text
 
+# the wake an emitter is handed here: none, as the faces handed one when no `wake` was given
+task no-wake
+  like list, like wake-group
+  mark private
+
+  back make list
+
+# the fail an emitter is handed here: a refused emit stops the build, as the faces' fail threw
+task emit-refused
+  take reason, like text
+  like boolean
+  mark private
+
+  halt <{reason}>
+
 # the first three diagnostics' messages, as the refusal names them
 task program-said
   take diagnostics, like dynamic
@@ -192,7 +221,7 @@ task build-program
       save env, <ios>
   save result, compile-entry(ask/root, ask/entry, env)
 
-  save swift, swift-module-emit/emit-swift(result/program)
+  save swift, emit-swift(result/program, no-wake(), false)
   save prelude, native-module/native-prelude(result/program, env, read-runtime, swift)
   # a `boot` that can raise is `throws` in Swift, and the top-level line calling it says `try` (2026-10-04)
   save line, driver-line(ask/driver, swift)
@@ -302,7 +331,7 @@ task build-rust-program
   like rust-built
 
   save result, compile-entry(ask/root, ask/entry, <rust>)
-  save rust, rust-module-emit/emit-rust(result/program)
+  save rust, emit-rust(result/program, no-wake(), false, emit-refused)
   save prelude, native-module/native-prelude(result/program, <rust>, read-runtime, rust)
   save parts, make list
   parts/push(prelude)
@@ -407,14 +436,14 @@ task build-android-program
       save env, <android>
   save result, compile-entry(ask/root, ask/entry, env)
 
-  save kotlin, kotlin-module-emit/emit-kotlin(result/program)
+  save kotlin, emit-kotlin(result/program, no-wake(), false, emit-refused)
   save prelude, native-module/native-prelude(result/program, env, read-runtime, kotlin)
   # one package, the app's identifier, so the manifest's `.TermActivity` resolves; imports hoisted above everything
   save parts, make list
   parts/push(prelude)
   parts/push(kotlin)
   parts/push(ask/driver)
-  save hoisted, kotlin-module-emit/hoist-kotlin-imports(join(parts, <\n>))
+  save hoisted, hoist-kotlin-imports(join(parts, <\n>))
   save source, <package {ask/identifier}\n\n{hoisted}\n>
   save work, ask/work
   save file, node-path/join(work, <app.kt>)

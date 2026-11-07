@@ -6,10 +6,11 @@
 # Through the terminal output library: a `change` item per file rewritten, a failed `check` item per file `--check`
 # finds unformatted, each parse error a Problem item with its frame. `--list`'s formatted source is data, on stdout.
 #
-# The formatter is the compiler's (make/code/analyze.ts), docked. The walk of the paths and each file's role and
-# `mark lean` are the build lane's ports (work/build/tree-gathering.tree, role-reading.tree), where files.ts and
-# role-of.ts were docked until term-cli-in-term-0069. The role readers are host functions the build lane's faces make
-# per project, called through `call`.
+# The formatter is the compiler's analysis (make/code/analyzer.tree), where make/code/analyze.ts was docked until
+# term-self-host-001-0960: one parse, its diagnostics and kind, and the canonical layout of the held analysis. The
+# walk of the paths and each file's role and `mark lean` are the build lane's ports (work/build/tree-gathering.tree,
+# role-reading.tree), where files.ts and role-of.ts were docked until term-cli-in-term-0069. The role readers are host
+# functions the build lane's faces make per project, called through `call`.
 
 load @term/call/work/build/tree-gathering
   find collect-tree-files
@@ -33,12 +34,39 @@ load @term/call/work/output/printer
 load @term/call/work/item/event
   find tally
 
+load @term/make/analyzer
+  find analyze
+  find apply-format
+
+load @term/make/parser/token
+  find token-source
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@term/make/code/analyze>, name analyze-module
 
+# ---- the host values Term has no word for ----
+
+# a role reader's answer as the analysis takes it: absent for none (make/code/analyze.ts `role ?? undefined`)
+bind role-given
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value ?? undefined)>
+
+# a lean reader's answer as the analysis takes it, false when absent (make/code/analyze.ts `lean ?? false`)
+bind lean-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value ?? false)>
+
+# no view catalog, as make/code/analyze.ts handed none
+bind no-catalog
+  like dynamic
+  case node
+    text <undefined>
 form form-open
   link verb, like text
   link root, like text
@@ -70,14 +98,6 @@ form change-item
   link kind, like text
   link verb, like text
   link subject, like text
-
-form source-ask
-  link file, like text
-  link text, like text
-
-form analyze-ask
-  link role, like dynamic
-  link lean, like dynamic
 
 form counted-close
   link verdict, like text
@@ -147,18 +167,18 @@ task format-files
     save absolute, node-path/resolve(root, file)
     save role, role-of/call(<>, absolute)
     save lean, lean-of/call(<>, absolute)
-    save analysis, analyze-module/analyze(make(source-ask, bind(file, relative), bind(text, text)), make(analyze-ask, bind(role, role), bind(lean, lean)))
+    save analysis, analyze(make(token-source, bind(file, relative), bind(text, text)), role-given(role), lean-given(lean), no-catalog())
     save errors, make list
     walk analysis/diagnostics
       take diagnostic
-      fork test, is-equal(diagnostic/severity, <error>)
+      fork test, is-equal(diagnostic/severity, make error)
         hold
           errors/push(diagnostic)
     fork test, is-above(errors/length, 0)
       hold
         save broken, add(broken, 1)
         save facts, make list
-        fork test, is-equal(analysis/kind, <data>)
+        fork test, is-equal(analysis/kind, make data)
           hold
             facts/push(<data that could not be read>)
           miss
@@ -168,7 +188,7 @@ task format-files
           take diagnostic
           problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
         turn next
-    save formatted, analysis/format()
+    save formatted, apply-format(analysis/held)
     fork test, is-equal(formatted, text)
       hold
         turn next

@@ -2156,6 +2156,27 @@ task fields-of
         save nothing, 0
   back out
 
+# the top-level names a program's docks take in the emitted module: each dock's alias, and a `<global:X>` dock's X too,
+# which its runtime shim defines (a `const current` for `load <global:current>, name current`) or the host holds
+# (term-self-host-001-0988)
+task docked-names
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case native
+        save out, add-text(out, alias)
+        fork test, and(is-above(module/length, 7), is-equal(substring(module, 0, 7), <global:>))
+          hold
+            save out, add-text(out, substring(module, 7, module/length))
+      miss
+        save nothing, 0
+  back out
+
 # TWO MODULES DEFINING ONE NAME. Every task or component with bodied definitions in two or more files is split BY FILE:
 # each file's take a name of their own (`<name>__in0_<k>`, `k` its file's place among the name's files in sorted
 # order), the entry file's keeping the name, and each reference is bound by WHAT ITS OWN FILE IMPORTED:
@@ -2164,6 +2185,10 @@ task fields-of
 #   one such file      the reference is that file's
 #   several            the one whose definitions take the call's arity, else refused naming the files
 #   none (unimported)  the one file whose definitions take the arity, else refused with the `find` to add
+#
+# A task one file defines under a name a dock takes in another (`load <global:current>, name current` beside a private
+# `task current`) is split the same way: the merged module holds both at the top level, so the task yields, and a
+# reference whose file imported no such task keeps the dock's name
 task bind-by-import
   take state, like walk-state
   take entry, like text
@@ -2210,6 +2235,7 @@ task bind-by-import
           save these, get(defined-files, found)
           save these, add-text(these, file)
           set(defined-files, found, these)
+  save docked, docked-names(state/program)
   walk bindable
     take name
     save by-files, make list
@@ -2267,6 +2293,9 @@ task bind-by-import
                     save elsewhere, true
             case none
               save nothing, 0
+    fork test, and(and(is-above(by-files/length, 0), not(has-bind)), has-text(docked, name))
+      hold
+        save elsewhere, true
     fork test, or(is-above(by-files/length, 1), elsewhere)
       hold
         save sorted, sort(by-files, from-texts)

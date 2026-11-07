@@ -354,6 +354,7 @@ form rust-facts
     like task
       take reason, like text
       like boolean
+      halt failure
 
 # how many times a name was read in the statement being written, as a clone and as anything else
 form use-count

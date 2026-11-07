@@ -36,6 +36,9 @@
 //                            (runCommandLine, toCamel), term-cli-in-term-0225
 //   term/host/build-worker.mjs, term/host/separate-worker.mjs
 //                            the build pools' worker entries (work/workers/file-worker.tree, unit-worker.tree)
+//   term/host/compile.mjs    stage0 of the fixpoint chain (decision 126 of change 001-finish-self-host): task/stage0.ts's
+//                            bundle of the release tree's compile closure, the same bytes on every platform, which
+//                            `pnpm term:boot` fetches by the release boot.tree pins and runs term:fixpoint with
 //   term/package.json        the name and version `--version` and the build cache key read
 //   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
 //                            first holds alike (note/project/term/term-versions.md, "Disk")
@@ -63,6 +66,7 @@ import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
 import { announce, loadPublishKeypair } from '@term/call/code/host'
 import { packPayload, SECRET_FILE } from './release-pack'
+import { bundle as stage0Bundle } from './stage0'
 // the terminal output library, as a TYPE only: the module itself is loaded by `loadOutput`, because the port build is
 // what writes the modules it is made of, and a fresh clone has none until it runs (see `main`)
 import type * as Output from '@term/call/code/output'
@@ -321,7 +325,8 @@ function buildWindowsExe(input: { out: string; arch: 'amd64' | 'arm64' }): void 
   })
 }
 
-// line.js, dock.mjs, the two dispatch modules and the two worker entries, bundled once: they are the same for every platform
+// line.js, dock.mjs, the two dispatch modules, the two worker entries and stage0's compile.mjs, bundled once: they are
+// the same for every platform
 async function bundle(into: string, step: (done: number) => void = () => {}): Promise<void> {
   const common = {
     absWorkingDir: TERM,
@@ -352,6 +357,11 @@ async function bundle(into: string, step: (done: number) => void = () => {}): Pr
   await build({ ...common, entryPoints: ['deck/call/host/port/code/work/workers/file-worker.ts'], outfile: path.join(into, 'host', 'build-worker.mjs') })
   step(5)
   await build({ ...common, entryPoints: ['deck/call/host/port/code/work/workers/unit-worker.ts'], outfile: path.join(into, 'host', 'separate-worker.mjs') })
+  step(6)
+  // stage0 of the fixpoint chain (decision 126): task/stage0.ts's bundle of this tree's compile closure, the seven names
+  // port-build loads (decision 036), made once and copied into every platform, so its sha256 is the same bundle id
+  // everywhere. `pnpm term:boot` fetches the release boot.tree pins and hands this file to term:fixpoint --stage0
+  writeFileSync(path.join(into, 'host', 'compile.mjs'), (await stage0Bundle(TERM)).bytes)
 }
 
 // What a payload never carries from the source tree: any dotfile or dot-folder (a build's `.base/` cache, `.env*`,
@@ -578,8 +588,8 @@ async function main(): Promise<void> {
   }
 
   const bundled = Date.now()
-  const bundleSubject = 'line.js, dock.mjs, need.mjs, need-hand.mjs and the two worker entries'
-  await bundle(common, done => output.progress({ verb: 'bundle', subject: bundleSubject, done, total: 6, noun: 'files', one: 'file' }))
+  const bundleSubject = 'line.js, dock.mjs, need.mjs, need-hand.mjs, the two worker entries and compile.mjs'
+  await bundle(common, done => output.progress({ verb: 'bundle', subject: bundleSubject, done, total: 7, noun: 'files', one: 'file' }))
   output.report({ glyph: 'done', verb: 'bundle', subject: bundleSubject, duration: Date.now() - bundled })
 
   const built: Built[] = []

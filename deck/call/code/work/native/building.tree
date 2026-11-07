@@ -34,6 +34,10 @@ load @term/make/compile/main-entry
   find native-main
   find crates-named
 
+# Kotlin's import hoist, where compile/kotlin.ts was docked until term-self-host-001-0957
+load @term/make/compile/kotlin-program
+  find hoist-kotlin-imports
+
 load ../cask/host-value
   find nothing
   find is-truthy
@@ -63,7 +67,6 @@ dock load
   load <node:child_process>, name node-child
   load <global:process>, name host-process
   load <esbuild>, name esbuild-module
-  load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/make/code/resolve>, name resolve-module
 
 # a build: the command that runs it and the file it made, or why there is none
@@ -365,7 +368,7 @@ task build-native
 
   save file, <{stem}.kt>
   save main, native-main(<kotlin>, source, entry, true)
-  node-fs/write-file-sync(file, kotlin-module/hoist-kotlin-imports(<{source}\n{main}\n>))
+  node-fs/write-file-sync(file, hoist-kotlin-imports(<{source}\n{main}\n>))
   save artifact, <{stem}.jar>
   save classpath, kotlin-classpath()
   save args, make list
