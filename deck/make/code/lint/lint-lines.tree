@@ -3,8 +3,8 @@
 # trailing whitespace, a run of blank lines), and the fixes written back into the source.
 #
 # Ported from lint/lint.ts (self-hosting, 2026-10-06), which stays as the face and the dispatch: a rule is a TypeScript
-# object with `check` and `checkSource` closures, the seam plugin rules drop in through (lint/seed-rule.ts), and its
-# context hands each rule sets, a memo it writes, and the `report` and `slice` closures. The decisions:
+# object with `check` and `checkSource` closures, and its context hands each rule sets, a memo it writes, and the
+# `report` and `slice` closures. The decisions:
 #   - a column, a line's length and an offset count UTF-16 units, as a span's column does: a text is read through
 #     fixing.tree's `units-of` and sliced with `js-slice`, and a length is `unit-length`
 #   - `trim` and `trimEnd` are JavaScript's (compile/main-entry `whitespace-code`)

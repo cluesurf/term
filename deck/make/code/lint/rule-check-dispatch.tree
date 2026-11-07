@@ -13,8 +13,7 @@
 #   - `report` and `slice` are `report-into` and lint-lines' `slice-span`, and the config is lint-lines' `lint-setting`
 #   - L044's meaning check is format/milled-meaning.tree's `program-of`, called in Term (item 0087), where it was a
 #     dock of format/meaning.ts
-#   - the plugin seam (a caller's own rule list) is not carried: plugin rules stop loading by decision 029, and the
-#     face's `rules` parameter is read by nothing until REMOVE batch 2 drops it with lint/seed-rule.ts
+#   - the plugin seam (a caller's own rule list) is not carried: plugin rules stopped loading by decision 029
 
 load @term/base/list
   find list

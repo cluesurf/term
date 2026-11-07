@@ -511,7 +511,6 @@ const SUITES: Suite[] = [
   // test/tree/run.ts is a tool (`npx tsx test/tree/run.ts <file.tree>`), not a suite
   { name: 'tree/preprocess', file: 'test/tree/preprocess.ts' },
   { name: 'lint', file: 'test/lint/run.ts' },
-  { name: 'lint/seed-rule', file: 'test/lint/seed-rule.ts' },
   // every lint rule: is it named by a test, and does it fire? Fails when a rule has no test at all
   { name: 'lint/audit', file: 'test/lint/audit.ts', timeout: 600, slow: 20 },
   // the generated rule catalog matches the registry

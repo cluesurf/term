@@ -121,11 +121,6 @@ const body = [
   "`L005` report 10,190 findings that were all the compiler's own generated names and",
   "the language's own signature-only tasks.",
   '',
-  '## Writing one',
-  '',
-  'A rule can also be written in Term rather than TypeScript: `deck/make/code/lint/seed-rule.ts`',
-  'loads them, and they drop into the same registry. See `test/lint/seed-rule.ts`.',
-  '',
 ].join('\n')
 
 if (PAGE === undefined) {
