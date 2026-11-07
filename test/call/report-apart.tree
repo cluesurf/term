@@ -1,0 +1,36 @@
+# One test file run by two `term test` at once, on two envs, each reads only the report its own child wrote (item 1021).
+# The runner named one report file per test file and emptied it at each start, so a second env's start emptied what the
+# first env's child had written, and the first then read the second's verdicts as its own (deck/call/code/work/testing/
+# report-running.tree). The fixture's meet.sh runs test/meet.tree on node and, while that child still runs, on rust.
+# Side b skips the first test, so side a reading a skip is side a reading side b's report.
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/text
+  find contains
+
+host fixture, <test/call/report-apart-fixture>
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <the same file on node and on rust at once reads only its own report>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save arguments, make list(<meet.sh>)
+  save ran, run(<sh>, arguments, bind(directory, fixture), bind(limit, 600000))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <a exit 0>)
+  want hold, contains(said(ran), <b exit 0>)
+  want hold, contains(said(ran), <a: 2 tests · 2 passed>)
+  want hold, contains(said(ran), <b: 2 tests · 1 passed · 1 skipped>)

@@ -44,8 +44,10 @@
 //                            first holds alike (note/project/term/term-versions.md, "Disk")
 //   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`), and its deck.tree,
 //                            which names its units `_term_base_...` in every project (unit-naming.tree `unit-slug`)
-//   term/deck/host/          `@term/host`, the data dialect, and term/deck/call/ the three files of `@term/call` the
-//                            test report is compiled from in a user's project (test-running.tree `reporter-bundle`)
+//   term/deck/host/          `@term/host`, the data dialect, and term/deck/call/ the files of `@term/call` a user's
+//                            project compiles: the test report (test-running.tree `reporter-bundle`) and the printer
+//                            a program reports through (`@term/call/item`), with term/deck/make/ the one file of the
+//                            compiler that printer loads (`SHIPPED_CALL`, `SHIPPED_MAKE`)
 //   term/deck/mill/          `@term/mill`, every grammar: the format readers (code/text, code/blob, the cursors in
 //                            code/feed.tree) and the tree dialects (code/tree), its deck.tree and code/, reached by
 //                            name beside the stdlib (resolve.ts `siblingResolver`). `@term/feed` until 2026-10-06
@@ -474,9 +476,25 @@ function copyStdlib(into: string): void {
 // lines in. Its tests stay here, and a shelved draft builds nothing
 const SHIPPED_PACKAGES = ['mill', 'host']
 
-// the files of `@term/call` that `term test` compiles in a user's project: the report's own program
-// (test-running.tree `reporter-sources`). Only these ship, with the manifest that names the package
-const SHIPPED_CALL = ['code/test-report.tree', 'code/test-report-node.tree', 'code/work/preprocess/failure-reading.tree']
+// the files of `@term/call` a user's project compiles: the test report's own program, which `term test` builds
+// (test-running.tree `reporter-sources`), and the printer a program reports through, `@term/call/item`, with what it
+// loads (the run, work/output/printer.tree, and the output library, work/item/), item term-self-host-001-0983. Only these
+// ship, with the manifest that names the package and the role that reads them lean. A folder ships whole
+const SHIPPED_CALL = [
+  'role.tree',
+  'code/test-report.tree',
+  'code/test-report-node.tree',
+  'code/work/preprocess/failure-reading.tree',
+  'code/item.tree',
+  'code/output-plan.tree',
+  'code/draft-mark.tree',
+  'code/work/output/printer.tree',
+  'code/work/item',
+]
+
+// the one file of `@term/make` the printer loads: the diagnostic record and its renderer, whose own loads are the
+// stdlib's alone. Not the compiler: nothing else of the package ships
+const SHIPPED_MAKE = ['role.tree', 'code/parser/diagnostic.tree']
 
 function copyShippedPackages(into: string): void {
   for (const name of SHIPPED_PACKAGES) {
@@ -486,12 +504,14 @@ function copyShippedPackages(into: string): void {
     cpSync(path.join(from, 'code'), path.join(into, 'deck', name, 'code'), { recursive: true, filter: shipped(path.join(from, 'code')) })
   }
 
-  const call = path.join(TERM, 'deck', 'call')
+  for (const [name, files] of [['call', SHIPPED_CALL], ['make', SHIPPED_MAKE]] as const) {
+    const from = path.join(TERM, 'deck', name)
 
-  cpSync(path.join(call, 'deck.tree'), path.join(into, 'deck', 'call', 'deck.tree'))
+    cpSync(path.join(from, 'deck.tree'), path.join(into, 'deck', name, 'deck.tree'))
 
-  for (const file of SHIPPED_CALL) {
-    cpSync(path.join(call, file), path.join(into, 'deck', 'call', file))
+    for (const file of files) {
+      cpSync(path.join(from, file), path.join(into, 'deck', name, file), { recursive: true, filter: shipped(path.join(from, file)) })
+    }
   }
 }
 

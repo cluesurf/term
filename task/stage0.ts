@@ -28,12 +28,15 @@ const TERM = process.cwd()
 
 export const PIN_FILE = join(TERM, 'task', 'stage0.json')
 
-// what port-build loads from stage0. `--stage-check` loads the same specifiers from the working tree
+// what port-build loads from stage0. `--stage-check` loads the same specifiers from the working tree, from
+// task/port-build.ts, so a specifier of this folder is written relative to task/ (bundle() resolves from there too).
+// projectResolver is the port's (task/stage0-resolver.ts), never call/code/make.ts: that driver's closure carried
+// deck/make's analyze.ts and compile/feed-mill.ts into the shipped stage0, outside decision 127's list (item 1026)
 export const STAGE0_SOURCES: Record<string, string[]> = {
   '@term/make/code/compile/compile': ['compile'],
   '@term/make/code/compile/load': ['collectModules', 'makeParseMemo'],
   '@term/make/code/compile/native': ['nativePrelude'],
-  '@term/call/code/make': ['projectResolver'],
+  './stage0-resolver': ['projectResolver'],
   '@term/call/code/role-of': ['projectLeanOf'],
   '@term/make/code/compile/typescript': ['toCamel'],
 }
@@ -65,7 +68,8 @@ export async function bundle(root: string = TERM): Promise<{ bytes: Buffer; inpu
     .map(([from, names]) => `export { ${names.join(', ')} } from '${from}'`)
     .join('\n')
   const result = await build({
-    stdin: { contents, resolveDir: root, sourcefile: 'stage0-entry.ts', loader: 'ts' },
+    // from task/, where STAGE0_SOURCES' relative specifiers point. The `@term/*` ones go through tsconfig's paths
+    stdin: { contents, resolveDir: join(root, 'task'), sourcefile: 'stage0-entry.ts', loader: 'ts' },
     absWorkingDir: root,
     bundle: true,
     platform: 'node',

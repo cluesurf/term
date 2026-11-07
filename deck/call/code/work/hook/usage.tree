@@ -1,6 +1,3 @@
-mark draft
-# a draft of item term-self-host-001-0983, landed in its line-lock window
-
 # How a console refuses a command line it does not understand: one failed item naming what was not understood, the
 # closing `The command line was not understood` with a `next` field saying what to run, exit 2 (section 18 of the
 # output standard). Term's own console (work/dispatch.tree) and every program `term boot` writes (work/hook/running.tree,

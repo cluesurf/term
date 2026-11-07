@@ -1,0 +1,25 @@
+# The file test/call/report-apart.tree runs twice at once through meet.sh: side `a` on node, side `b` on rust. Side a
+# reports its first test, says so with `a.here` in REPORT_MEET, and its second test then reads the pipe `gate`, which
+# meet.sh writes once side b has ended. Side b skips the first test, so a report side a reads that holds a skip is one
+# side b wrote.
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find read, name file-read
+  find write, name file-write
+
+test <the first test is passed on side a and skipped on side b>
+  fork test, is-equal(variable(<REPORT_SIDE>), <b>)
+    hold
+      skip <side b skips the first test>
+  want hold, true
+
+test <the second test on side a ends only after side b has ended>
+  save gate, <b>
+  fork test, is-equal(variable(<REPORT_SIDE>), <a>)
+    hold
+      file-write(<{variable(<REPORT_MEET>)}/a.here>, <here>)
+      save gate, file-read(<{variable(<REPORT_MEET>)}/gate>)
+  want hold, is-unequal(gate, <>)

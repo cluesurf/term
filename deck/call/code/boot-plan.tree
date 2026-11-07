@@ -346,10 +346,12 @@ task node-banner
 
   back <import \{ createRequire as __createRequire \} from 'node:module'\nconst require = __createRequire({anchor})>
 
-# the run entry of a command-line program: the routes and the name given as JSON
+# the run entry of a command-line program: the routes, the name and the version (its manifest's mark, which `-v`
+# answers) given as JSON
 task cli-run-text
   take routes-json, like text
   take name-json, like text
+  take mark-json, like text, fall <"">
   like text
 
   save lines, make list
@@ -359,6 +361,7 @@ task cli-run-text
   push(lines, <const routes = {routes-json}>)
   push(lines, <const code = await runCommandLine(\{>)
   push(lines, <  name: {name-json},>)
+  push(lines, <  mark: {mark-json},>)
   push(lines, <  routes,>)
   push(lines, <  argv: process.argv.slice(2),>)
   push(lines, <  resolve: task =\> app[toCamel(task)],>)

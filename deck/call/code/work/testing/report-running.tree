@@ -32,6 +32,10 @@ dock load
 form folder-make
   link recursive, like boolean
 
+form report-remove
+  link recursive, like boolean
+  link force, like boolean
+
 # a child's run, as the runner reads it
 form report-ran
   # why a test the child never reported did not finish
@@ -85,18 +89,27 @@ bind host-flag
   case node
     text <($value === true)>
 
-# the file a test file's child reports to, emptied, inside the project's cache. One per test file, so two files never
-# share one
+# the file a test file's child reports to, empty, inside the project's cache (`<cache>/test/report/<hash>-*/report.tree`).
+# A fresh folder for each run, never one per test file: the same file run on two envs at once, by one `term` or by two,
+# must never empty or read the other's report (item 1021)
 task report-file-of
   take root, like text
   take file, like text
   like text
 
-  save folder, node-path/join(project-cache-dir(root), <test>, <report>)
-  node-file/mkdir-sync(folder, make(folder-make, bind(recursive, true)))
-  save path, node-path/join(folder, <{hash-text(file)}.tree>)
+  save reports, node-path/join(project-cache-dir(root), <test>, <report>)
+  node-file/mkdir-sync(reports, make(folder-make, bind(recursive, true)))
+  save folder, host-text(node-file/mkdtemp-sync(node-path/join(reports, <{hash-text(file)}->)))
+  save path, node-path/join(folder, <report.tree>)
   node-file/write-file-sync(path, <>)
   back path
+
+# a run's report folder taken away once its report is read, so the cache keeps no folder per run
+task report-file-done
+  take path, like text
+  mark private
+
+  node-file/rm-sync(node-path/dirname(path), make(report-remove, bind(recursive, true), bind(force, true)))
 
 # a report's text, the empty text when it is not there
 task report-text-of
@@ -126,5 +139,6 @@ task run-reported
       save entry, find-running-cli()
   save ended, spawn-reported(command, root, path, self-program(), entry, seconds-to-ms(seconds))
   save report, read-report(report-text-of(path))
+  report-file-done(path)
   save stop, stop-note(host-flag(ended/timed), seconds, host-text(ended/code), host-text(ended/said))
   back make(report-ran, bind(stop, stop), bind(report, report), bind(printed, ended/printed))

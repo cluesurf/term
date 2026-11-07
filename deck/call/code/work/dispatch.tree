@@ -94,12 +94,16 @@ load @term/call/work/tool/hunt-command
   find run-hunt-fuzz-child
 
 load @term/call/work/output/printer
-  find close-run
   find fail-run
-  find open-run
   find print-data
-  find report
   find set-output
+
+# the refusal's shape and the nearest command, shared with every program `term boot` writes (item 0983)
+load @term/call/work/hook/usage
+  find refuse-usage
+  find usage-ask
+  find nearest-command
+  find command-guess
 
 dock load
   load <node:os>, name host-os
@@ -269,22 +273,6 @@ form flag-word
   link inline, like boolean
   link value, like text
 
-form open-ask
-  link verb, like text
-  link root, like text
-
-form usage-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link message, like list, like text
-
-form usage-close
-  link verdict, like text
-  link next, like text
-  link failure, like text
-
 # THE PROGRAM (decision term/003 part 3): a console is one top-level hook, `hook term`, whose nested hooks are the
 # commands and whose takes are the global options. A file of several top-level hooks has no program, and its hooks are
 # the commands (hook-dispatch.ts `programOf`, the same rule)
@@ -427,77 +415,15 @@ task done-with
   like line-start
   back make line-start, done(true), exit(exit), words(make list)
 
-task capitalize
-  take value, like text
-  like text
-  back <{to-upper-case(substring(value, 0, 1))}{substring(value, 1)}>
-
-# Levenshtein distance between two words, two rows at a time
-task edit-distance
-  take a, like text
-  take b, like text
-  like number
-  save m, char-count(a)
-  save n, char-count(b)
-  save row, make list
-  save j, 0
-  walk test
-    hook test, is-maximum(j, n)
-    hook hold
-      row/push j
-      save j, add(j, 1)
-  save i, 1
-  walk test
-    hook test, is-maximum(i, m)
-    hook hold
-      save next, make list
-      next/push i
-      save j, 1
-      walk test
-        hook test, is-maximum(j, n)
-        hook hold
-          save cost, 1
-          fork test, is-equal(substring(a, subtract(i, 1), i), substring(b, subtract(j, 1), j))
-            hold
-              save cost, 0
-          save before, subtract(j, 1)
-          save best, add(row/{j}, 1)
-          save left, add(next/{before}, 1)
-          fork test, is-below(left, best)
-            hold
-              save best, left
-          save across, add(row/{before}, cost)
-          fork test, is-below(across, best)
-            hold
-              save best, across
-          next/push best
-          save j, add(j, 1)
-      save row, next
-      save i, add(i, 1)
-  back row/{n}
-
-# what to run instead of a word that names no command: the nearest command, two edits away at most
+# what to run instead of a word that names no command (work/hook/usage.tree, which every booted program shares)
 task suggest
   take routes, like list, like dock-route
   take word, like text
   like text
-  save best, <>
-  save distance, 1000
-  save lower, to-lower-case(word)
-  walk routes
-    take one
-    save each, edit-distance(lower, one/path)
-    fork test, is-below(each, distance)
-      hold
-        save distance, each
-        save best, one/path
-  fork test, and(is-maximum(distance, 2), is-unequal(best, <>))
-    hold
-      back <term {best}>
-  back <term, for the list of commands>
+  back nearest-command(make command-guess, name(<term>), routes(routes), word(word))
 
 # Wrong command-line usage (section 18): a failed item saying what was not understood, a `next` field with what to
-# run, exit 2. The flags were not understood, so the run prints as the defaults say. `lines` are the item's message
+# run, exit 2, in the shape every booted program refuses in (work/hook/usage.tree). `lines` are the item's message
 # lines under the subject, as line.ts split a refusal yargs wrote over several lines (`Invalid values:` and one
 # `Argument:` line per take)
 task usage-failure
@@ -507,13 +433,7 @@ task usage-failure
     like list, like text
     fall make list
   like number
-  save version, term-version()
-  set-output(host-json/parse(<\{\}>), version)
-  save root, text-or-empty(host-process/cwd())
-  open-run(make open-ask, verb(<term>), root(root))
-  report(make usage-item, glyph(<failed>), kind(<problem>), verb(<term>), subject(capitalize(message)), message(lines))
-  save code, close-run(make usage-close, verdict(<The command line was not understood>), next(next), failure(<usage>))
-  back code
+  back refuse-usage(make usage-ask, name(<term>), mark(term-version()), message(message), lines(lines), next(next))
 
 # a value outside its take's choices, and a usage refusal of the dispatcher: hook-dispatch.ts `ChoiceRefusal` and
 # `UsageRefusal`, the fields of every kind in one form (`kind` says which are set)
@@ -573,7 +493,8 @@ task refuse-choices
 # refusal here as data, and the run entry port-build writes passes this as runCommandLine's `refuse`: a value outside
 # its choices is yargs' `Invalid values:`, a slot left out `Not enough non-option arguments`, a required flag left out
 # `Missing required argument`, and the rest the dispatcher's own text, capitalized, under the same failed item and
-# close, exit 2. zone and every console boot-plan.tree writes keep hook-dispatch's own two lines
+# close, exit 2. Every console boot-plan.tree writes refuses in the same shape with the dispatcher's own words
+# (work/hook/running.tree)
 task refuse-line
   take refusal, like usage-refusal
   like number

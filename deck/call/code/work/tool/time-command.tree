@@ -3,9 +3,14 @@
 # file that did not compile, a saved baseline, regressions, the gate) is items through the output library.
 #
 # Ported from deck/call/code/time.ts (term-cli-in-term-0058). The comparison, the table and the profile's words are the
-# compiler's own Term (make/code/time/compare.tree, table.tree, profile.tree), loaded; the benchmark runner, the
-# executor (CompileFailure), the suite writer, the profilers, the build's file walk and resolver, the role reader, the
-# home folder and the output library are docked. `callTime(input)` takes the original's record.
+# compiler's own Term (make/code/time/compare.tree, table.tree, profile.tree), loaded. `callTime(input)` takes the
+# original's record.
+#
+# The benchmark runner, the two profilers and the suite writer are their ports, where the faces time/runner.ts,
+# execute.ts, cpu.ts, memory.ts and output.ts were docked until term-self-host-001-0960. Each compiling port answers a
+# file that did not compile as a record whose `ok` is false, where the faces threw execute.ts's `CompileFailure`, so
+# the run reads `ok` where it caught one. The defaults the faces gave are given here: no filter, 10 warmup and 100
+# timed runs, the 15 hottest functions over 500 ms.
 
 load @term/base/list
   find list
@@ -15,6 +20,23 @@ load @term/make/time/compare
   find format-comparison
   find format-markdown
   find should-fail
+
+load @term/make/time/runner-harness
+  find compile-benchmarks
+  find run-benchmarks
+
+load @term/make/time/cpu-profiling
+  find run-cpu-profile
+
+load @term/make/time/memory-profiling
+  find run-memory-profile
+
+load @term/make/time/output-records
+  find build-history-entry
+  find build-suite
+  find format-json
+  find from-saved
+  find laid-out
 
 load @term/make/time/table
   find format-table
@@ -60,11 +82,6 @@ load @term/call/work/item/event
   find item-field
 
 dock load
-  load <@term/make/code/time/runner>, name runner-module
-  load <@term/make/code/time/execute>, name execute-module
-  load <@term/make/code/time/output>, name suite-module
-  load <@term/make/code/time/cpu>, name cpu-module
-  load <@term/make/code/time/memory>, name memory-module
   load <@term/make/code/compile/native>, name native-module
   load <node:fs/promises>, name fs-promise
     mark async
@@ -77,25 +94,6 @@ bind time-given
   like boolean
   case node
     text <Boolean($value)>
-
-# time/output.ts `formatJson(suite)`, by its exact name: a dock call spelled format-json is emitted formatJSON (traps.md)
-bind time-suite-json
-  take suites, like dynamic
-  take suite, like dynamic
-  like text
-  case node
-    text <$suites.formatJson($suite)>
-
-bind time-diagnostics
-  take problem, like dynamic
-  like list, like dynamic
-  case node
-    text <$problem.diagnostics>
-
-bind time-nothing
-  like dynamic
-  case node
-    text <undefined>
 
 bind time-present
   take value, like dynamic
@@ -123,19 +121,6 @@ bind time-place
   case node
     text <$unit.place($diagnostic)>
 
-bind time-is-compile-failure
-  take execute, like dynamic
-  take problem, like dynamic
-  like boolean
-  case node
-    text <($problem instanceof $execute.CompileFailure)>
-
-bind time-rethrow
-  take problem, like dynamic
-  like void
-  case node
-    text <<(() => { throw $problem })()>>
-
 bind time-thrown-message
   take problem, like dynamic
   like text
@@ -148,42 +133,19 @@ bind time-exit
   case node
     text <process.exit($code)>
 
-bind time-compile-ask
-  take text, like text
-  take file, like text
-  take resolve, like dynamic
-  take filter, like dynamic
-  like dynamic
+# the benchmark filter given, the empty text for none (time/runner.ts `filter ?? ''`)
+bind time-filter
+  take value, like dynamic
+  like text
   case node
-    text <<({ text: $text, file: $file, resolve: $resolve, filter: $filter })>>
+    text <($value ?? "")>
 
-bind time-run-ask
-  take module, like dynamic
-  take root, like text
-  like dynamic
+# how many of the hottest functions a CPU profile shows, 15 when none is given (time/cpu.ts `top ?? 15`)
+bind time-top
+  take value, like dynamic
+  like number
   case node
-    text <<({ module: $module, root: $root })>>
-
-bind time-profile-ask
-  take text, like text
-  take file, like text
-  take resolve, like dynamic
-  take root, like text
-  take name, like text
-  take top, like dynamic
-  like dynamic
-  case node
-    text <<({ text: $text, file: $file, resolve: $resolve, root: $root, name: $name, top: $top })>>
-
-bind time-memory-ask
-  take text, like text
-  take file, like text
-  take resolve, like dynamic
-  take root, like text
-  take name, like text
-  like dynamic
-  case node
-    text <<({ text: $text, file: $file, resolve: $resolve, root: $root, name: $name })>>
+    text <($value ?? 15)>
 
 # the printer's problem-of as the record time-skipped-item reads it from (`$output.problemOf`), as it read the output
 # module's
@@ -201,12 +163,6 @@ bind time-append
   case node
     text <<($list.push(...$more), undefined)>>
 
-bind time-benchmarks-count
-  take module, like dynamic
-  like number
-  case node
-    text <$module.benchmarks.length>
-
 # a compile problem drawn as a ▲: the file is skipped, and the run goes on
 bind time-skipped-item
   take output, like dynamic
@@ -215,13 +171,6 @@ bind time-skipped-item
   like dynamic
   case node
     text <<({ ...$output.problemOf($placed.diagnostic, $root, $placed.text), glyph: "warning" })>>
-
-bind time-history-entry
-  take suites, like dynamic
-  take suite, like dynamic
-  like text
-  case node
-    text <<JSON.stringify($suites.buildHistoryEntry({ suite: $suite }), null, 2)>>
 
 bind time-now
   like number
@@ -237,11 +186,11 @@ bind time-folder-ask
 # compares as new
 bind time-baseline-results
   head t
-  take suites, like dynamic
+  take reader, like dynamic
   take text, like text
   like list, like t
   case node
-    text <<((saved) => (saved.results ?? saved.benchmarks ?? []).filter((r) => typeof r.mean_ns === "number").map($suites.fromSaved))(JSON.parse($text))>>
+    text <<((saved) => (saved.results ?? saved.benchmarks ?? []).filter((r) => typeof r.mean_ns === "number").map((r) => $reader(r)))(JSON.parse($text))>>
 
 bind time-platform
   take suite, like dynamic
@@ -411,7 +360,7 @@ task read-baseline
   fork
     mark unsafe
     save text, fs-promise/read-file(where, <utf-8>)
-    save results, time-baseline-results(suite-module, text)
+    save results, time-baseline-results(from-saved, text)
     save read, true
   halt take
     take error, like dynamic
@@ -506,33 +455,48 @@ task run-profile
   save relative, node-path/relative(root, file-path)
   save name, time-basename(node-path, file-path)
 
+  # a file that did not compile: its diagnostics, which the profiler answers where the faces threw them
+  save refused, false
+  save diagnostics, like list, like dynamic
+    make list
   fork
     mark unsafe
     # the profile is the answer the user asked for: data on stdout
     fork test, cpu
       hold
-        save result, wait cpu-module/run-cpu-profile(time-profile-ask(text, relative, resolve, root, name, input/top))
-        print-data(<\n{format-cpu-result(result)}\n\n>)
-        close-run(make(time-close, bind(verdict, <CPU profile complete>)))
+        save made, run-cpu-profile(text, relative, resolve, root, name, time-top(input/top), 500)
+        sift made/result
+          case some
+            link value
+            print-data(<\n{format-cpu-result(value)}\n\n>)
+            close-run(make(time-close, bind(verdict, <CPU profile complete>)))
+          case none
+            save refused, true
+            save diagnostics, made/diagnostics
       miss
-        save result, wait memory-module/run-memory-profile(time-memory-ask(text, relative, resolve, root, name))
-        print-data(<\n{format-memory-result(result)}\n\n>)
-        close-run(make(time-close, bind(verdict, <Memory profile complete>)))
+        save made, run-memory-profile(text, relative, resolve, root, name)
+        sift made/result
+          case some
+            link value
+            print-data(<\n{format-memory-result(value)}\n\n>)
+            close-run(make(time-close, bind(verdict, <Memory profile complete>)))
+          case none
+            save refused, true
+            save diagnostics, made/diagnostics
   halt take
     take error, like dynamic
-    fork test, time-is-compile-failure(execute-module, error)
-      hold
-        save diagnostics, time-diagnostics(error)
-        walk diagnostics
-          take diagnostic, like dynamic
-          save shown-text, text
-          fork test, is-unequal(diagnostic/file, relative)
-            hold
-              report(problem-of(diagnostic, root))
-              turn next
-          report(problem-of(diagnostic, root, shown-text))
-        time-exit(close-run(make(time-close-counts, bind(verdict, <Nothing profiled>), bind(counts, one-count(diagnostics/length, <errors>, <error>)))))
     stop-with(time-thrown-message(error), <Nothing profiled>)
+  fork test, refused
+    hold
+      walk diagnostics
+        take diagnostic, like dynamic
+        save shown-text, text
+        fork test, is-unequal(diagnostic/file, relative)
+          hold
+            report(problem-of(diagnostic, root))
+            turn next
+        report(problem-of(diagnostic, root, shown-text))
+      time-exit(close-run(make(time-close-counts, bind(verdict, <Nothing profiled>), bind(counts, one-count(diagnostics/length, <errors>, <error>)))))
 
 task call-time
   take input, like dynamic
@@ -601,30 +565,20 @@ task call-time
       fork test, time-has-faults(unit)
         hold
           turn next
-      save compiled, false
-      save module, time-nothing()
-      fork
-        mark unsafe
-        save module, runner-module/compile-benchmarks(time-compile-ask(unit/text, relative, resolve, input/filter))
-        save compiled, true
-      halt take
-        take problem, like dynamic
-        # a file that does not compile is skipped, not fatal: its problems drawn as ▲
-        fork test, not(time-is-compile-failure(execute-module, problem))
-          hold
-            time-rethrow(problem)
-        save diagnostics, time-diagnostics(problem)
-        walk diagnostics
-          take diagnostic, like dynamic
-          report(time-skipped-item(time-printer-face(problem-of), time-place(unit, diagnostic), root))
-        report(make(time-counted-warning, bind(glyph, <warning>), bind(verb, <time>), bind(subject, <{relative} did not compile, and its benchmarks did not run>), bind(counts, one-count(diagnostics/length, <errors>, <error>))))
-      fork test, not(compiled)
+      save built, compile-benchmarks(unit/text, relative, resolve, time-filter(input/filter))
+      fork test, not(built/ok)
+        hold
+          # a file that does not compile is skipped, not fatal: its problems drawn as ▲
+          save diagnostics, built/diagnostics
+          walk diagnostics
+            take diagnostic, like dynamic
+            report(time-skipped-item(time-printer-face(problem-of), time-place(unit, diagnostic), root))
+          report(make(time-counted-warning, bind(glyph, <warning>), bind(verb, <time>), bind(subject, <{relative} did not compile, and its benchmarks did not run>), bind(counts, one-count(diagnostics/length, <errors>, <error>))))
+          turn next
+      fork test, is-equal(built/benchmarks/length, 0)
         hold
           turn next
-      fork test, is-equal(time-benchmarks-count(module), 0)
-        hold
-          turn next
-      save ran, wait runner-module/run-benchmarks(time-run-ask(module, root))
+      save ran, run-benchmarks(built/code, built/benchmarks, root, 10, 100)
       time-append(all-results, ran)
 
     fork test, is-equal(all-results/length, 0)
@@ -632,10 +586,10 @@ task call-time
         report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no benchmark to run>), bind(fields, one-field(<next>, <define a zero-argument task named time-...>))))
         time-exit(close-run(make(time-close, bind(verdict, <Nothing benchmarked>))))
 
-    save suite, suite-module/build-suite(all-results)
+    save suite, build-suite(all-results)
     fork test, time-given(input/json)
       hold
-        print-data(<{time-suite-json(suite-module, suite)}\n>)
+        print-data(<{format-json(suite)}\n>)
       miss
         print-data(<\n{format-table(all-results)}\n\n>)
 
@@ -644,11 +598,11 @@ task call-time
         save dir, project-home(root, time-parts(<>))
         fs-promise/mkdir(dir, time-folder-ask())
         save saved, node-path/join(dir, <{input/save}.json>)
-        fs-promise/write-file(saved, time-suite-json(suite-module, suite))
+        fs-promise/write-file(saved, format-json(suite))
         report(make(time-done-item, bind(glyph, <done>), bind(verb, <save>), bind(subject, <Baseline {input/save}>), bind(fields, one-of-location(location(show-path(saved, root))))))
         save history-dir, node-path/join(dir, <history>)
         fs-promise/mkdir(history-dir, time-folder-ask())
-        fs-promise/write-file(node-path/join(history-dir, <{time-now()}.json>), time-history-entry(suite-module, suite))
+        fs-promise/write-file(node-path/join(history-dir, <{time-now()}.json>), laid-out(build-history-entry(suite), <>))
 
     # the comparison's counts ride on the closing item
     save compared, make list

@@ -20,7 +20,6 @@ load @term/base/text
   find starts-with
   find substring
   find replace-all
-  find contains
 
 load @term/base/float
   find to-decimal
@@ -125,7 +124,8 @@ task holds-key
   like boolean
   mark private
 
-  back contains(object-keys(value), key)
+  save keys, object-keys(value)
+  back keys/contains(key)
 
 # one saved result read back as one side of a comparison. A baseline written before 2026-10-04, or a history entry, has
 # the mean alone: its spread is `none`. The samples are the timings counted, else the iterations, else 0, as

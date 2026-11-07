@@ -448,6 +448,26 @@ task own-name
     miss
       back make none
 
+# which imports a statement's own name collides with: a form's or a mask's only a type's (`interface Field` beside an
+# imported `function field`), a task's or a constant's only a value's, and any other's (a view, written as a value
+# that may be spelled as a type) both
+task own-space
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      back <type>
+    case mask
+      back <type>
+    case function
+      back <value>
+    case let
+      back <value>
+    miss
+      back <both>
+
 # the render-runtime names a component module's emitted code calls but its AST never names (the view ABI and the HMR
 # bookkeeping), added to its value imports
 task zone-runtime
@@ -638,13 +658,22 @@ task plan-modules
     save value-imports, fresh-groups()
     save type-imports, fresh-groups()
 
+    # a type's name and a value's live apart, so a module's own `form field` leaves another module's task `field`
+    # imported, and its own task leaves a `form field` imported (item term-self-host-001-1022)
     save own, text-flags()
+    save own-types, text-flags()
     walk statements
       take one
       sift own-name(one)
         case some
           link known
-          save own/{known}, true
+          save space, own-space(one)
+          fork test, is-unequal(space, <value>)
+            hold
+              save own-types/{known}, true
+          fork test, is-unequal(space, <type>)
+            hold
+              save own/{known}, true
         case none
           save nothing, 0
 
@@ -667,7 +696,7 @@ task plan-modules
       fork test, defined/types/has(name)
         hold
           save from, defined/types/get(name)
-          fork test, and(and(is-unequal(from, <>), is-unequal(from, file)), not(own/has(name)))
+          fork test, and(and(is-unequal(from, <>), is-unequal(from, file)), not(own-types/has(name)))
             hold
               fork test, defined/type-exported/has(name)
                 hold

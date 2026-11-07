@@ -34,6 +34,9 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
+load @term/base/ordering
+  find ordering
+
 load @term/base/text
   find split
   find starts-with
@@ -3253,11 +3256,20 @@ task keys-of-texts
 # reaches it. A walk unfolds a pure task's body and reads a value's definition (check/unfolding.tree over the program),
 # so the key holds the text of every definition its names reach, and of every one those mention in turn: two programs
 # whose task is the same text over a dependency that changed never share a key (item 0326)
+#
+# THE KEY'S DEFINITIONS ARE SORTED ONCE PER PROGRAM (item term-self-host-001-1019). Every task sorted the texts of all
+# it reached and wrote each one's pair again, so a merged console of thousands of tasks, each reaching most of the
+# program, spent half its compile on keys (line/base, 756 s of 1,517). `ranked` holds every name in utf16 order once,
+# `rank` each name's place there, and `pairs` each name's pair text once it is first reached: a key sorts places,
+# which are numbers, and its text is the same text as before
 form definition-memo
   mark shared
   link statements, like hash, like text, like list, like statement
   link written, like hash, like text, like key-found
   link key-texts, like key-memo
+  link ranked, like list, like text
+  link rank, like hash, like text, like number
+  link pairs, like hash, like text, like text
 
 task definition-memo-of
   take program, like list, like statement
@@ -3287,11 +3299,21 @@ task definition-memo-of
         save held, by-name/get(name)
         push(held, s)
         save by-name/{name}, held
+  save ranked, sort(by-name/keys(), utf16-order)
+  save rank, rank-table()
+  save place, 0
+  walk ranked
+    take name
+    save rank/{name}, place
+    save place, add(place, 1)
   save memo
     make definition-memo
       bind statements, by-name
       bind written, key-found-table()
       bind key-texts, key-texts
+      bind ranked, ranked
+      bind rank, rank
+      bind pairs, pair-table()
   back memo
 
 task statement-lists
@@ -3299,6 +3321,36 @@ task statement-lists
   mark private
 
   back make hash
+
+task rank-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+task pair-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task places
+  like list, like number
+  mark private
+
+  back make list
+
+# two places of `ranked`, which are never equal, in their order
+task place-order
+  take left, like number
+  take right, like number
+  like ordering
+  mark private
+
+  fork test, is-below(left, right)
+    hold
+      back make less
+  back make greater
 
 task key-found-table
   like hash, like text, like key-found
@@ -3359,14 +3411,23 @@ task reached-definitions
             save seen/{name}, true
             push(queue, name)
       save at, add(at, 1)
-  save pairs, texts()
-  walk sort(queue, utf16-order)
+  # by place in `ranked`, which is the utf16 order of the names, each pair written once per program
+  save reached, places()
+  walk queue
     take name
-    save files, <>
-    walk defs/statements/get(name)
-      take one
-      save files, <{files}@{carried-file(one)}>
-    push(pairs, json-list(two-texts(json-text(<{name}{files}>), json-text(definition-found(defs, name)/text))))
+    push(reached, defs/rank/get(name))
+  save pairs, texts()
+  walk sort(reached, place-order)
+    take place
+    save name, get(defs/ranked, place)
+    fork test, not(defs/pairs/has(name))
+      hold
+        save files, <>
+        walk defs/statements/get(name)
+          take one
+          save files, <{files}@{carried-file(one)}>
+        save defs/pairs/{name}, json-list(two-texts(json-text(<{name}{files}>), json-text(definition-found(defs, name)/text)))
+    push(pairs, defs/pairs/get(name))
   back json-list(pairs)
 
 # THE FILE OF A STUB THAT CARRIES ANYTHING, `<>` for any other definition: a key leaves places out, but a kept walk's

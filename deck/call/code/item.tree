@@ -1,6 +1,3 @@
-mark draft
-# a draft of item term-self-host-001-0983, landed in its line-lock window
-
 # What a Term program prints, in term's own lines: the opening ● line with the tool and its version, one line per
 # item (✓ done, ✗ failed, ● info, ▲ warning, ⇒ skipped), a hint under an item (`next`, `file`), and the closing line
 # with the run's time, which sets the exit code. These print through the one run every term command prints through
@@ -17,10 +14,13 @@ load @term/call/work/output/printer
   find report, name printer-report
   find close-run, name printer-close-run
   find fail-run, name printer-fail-run
-  find field, name printer-field
 
+# a hint as the printer's own field, what the printer's `field` answers. Found through the printer as `field, name
+# printer-field`, the import was dropped beside this module's own `form field`, and the bundle called an undefined
+# `field` (the 13:07Z window)
 load @term/call/work/item/event
   find item-field
+  find plain-field
 
 load @term/base/environment
   find current-directory
@@ -75,7 +75,7 @@ task report
   save hints, make list
   walk line/fields
     take hint
-    hints/push printer-field(hint/key, hint/value)
+    hints/push plain-field(hint/key, hint/value)
   printer-report(item-printed(line, hints))
 
 # close the run: the closing line with the run's time, and the exit code (1 when an item failed, 2 for a usage failure)

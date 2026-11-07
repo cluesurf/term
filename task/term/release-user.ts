@@ -7,7 +7,8 @@
 //   2. installs it into a temporary HOME, under .base/@term/code/code/<version>/term, as the loader does
 //   3. in a project in the system temporary folder, outside any checkout, runs the installed `term`: make (its stdlib
 //      units must be named `_term_base_...`), test, boot from the project, boot from another folder, boot --out and
-//      the bundle run, and the same project with link/@term/base linked into this checkout
+//      the bundle run (its -v, --help, an unknown command, and a report through @term/call/item), and the same project
+//      with link/@term/base linked into this checkout
 //   4. reads every file the runs wrote into the project (host/, the --out bundle, not the .base/ cache) for a machine
 //      path: the temporary folder, the HOME, the install and this checkout, each also flattened the way a unit name
 //      flattens a path (`Users_x_.base__term_...`), and every command's output for this checkout's path
@@ -170,7 +171,9 @@ function personEnv(home: string): NodeJS.ProcessEnv {
 const PROJECT_FILES: Record<string, string> = {
   'deck.tree': 'deck @probe/user\n  mark <0.0.1>\n  test ./test\n',
   'code/helper.tree': 'load @term/base/text\n  find trim\n\ntask answer\n  take who, like text\n  like number\n  save said, trim(who)\n  back 3\n',
-  'code/base.tree': "load ./helper\n  find answer\n\n# Answer with the helper's number\nhook say\n  take who\n  task answer\n",
+  // `hello` reports through the printer a program loads from the payload, @term/call/item (item term-self-host-001-0983)
+  'code/base.tree':
+    "load ./helper\n  find answer\n\nload @term/call/item\n  find opening\n  find item\n  find field\n  find closing\n  find open-run\n  find report\n  find close-run\n\n# Answer with the helper's number\nhook say\n  take who\n  task answer\n\ntask hello\n  like number\n  open-run(make(opening, bind(verb, <hello>), bind(subject, <the project>), bind(tool, <user 0.0.1>)))\n  save hint, make(field, bind(key, <next>), bind(value, <user say>))\n  save hints, make list\n  hints/push hint\n  report(make(item, bind(glyph, <done>), bind(verb, <hello>), bind(subject, <said hello>), bind(fields, hints)))\n  back close-run(make(closing, bind(verdict, <Said hello>), bind(next, <>), bind(failure, <>)))\n\n# Say hello through the printer\nhook hello\n  task hello\n",
   'test/a.tree': 'load @term/base/text\n  find trim\n\ntest trims\n  want hold\n    call is-equal\n      call trim\n        text < a >\n      text <a>\n',
 }
 
@@ -354,6 +357,26 @@ function check(work: string, stage0Names: string[]): void {
   ok('term boot --out writes the bundle', booted.status === 0 && existsSync(join(out, 'run.mjs')), tail(booted.text))
   const bundled = run('node', [join(out, 'run.mjs'), 'say', '--who', 'you'], elsewhere, env)
   ok('the --out bundle runs', bundled.status === 3, `exit ${bundled.status}: ${tail(bundled.text)}`)
+
+  // the booted program answers its command line as term does (zone decision 002): its version from its manifest's
+  // mark, its help in term's layout, an unknown command refused in term's shape, and its own report through the
+  // printer the payload ships (@term/call/item)
+  const mark = run('node', [join(out, 'run.mjs'), '-v'], elsewhere, env)
+  ok('the booted program answers -v with its mark', mark.status === 0 && mark.text.trim() === '0.0.1', `exit ${mark.status}: ${tail(mark.text)}`)
+  const help = run('node', [join(out, 'run.mjs'), '--help'], elsewhere, env)
+  ok("the booted program's --help is term's layout", help.status === 0 && /^Commands:$/m.test(help.text) && /^ {2}user say\b/m.test(help.text), tail(help.text, 8))
+  const refused = run('node', [join(out, 'run.mjs'), 'nope'], elsewhere, env)
+  ok(
+    'the booted program refuses an unknown command in term\'s shape, exit 2',
+    refused.status === 2 && /✗ user There is no command named nope/.test(refused.text) && /The command line was not understood/.test(refused.text) && /next user, for the list of commands/.test(refused.text),
+    `exit ${refused.status}: ${tail(refused.text, 6)}`,
+  )
+  const hello = run('node', [join(out, 'run.mjs'), 'hello'], elsewhere, env)
+  ok(
+    'the booted program reports through @term/call/item',
+    hello.status === 0 && /✓ hello said hello/.test(hello.text) && /next user say/.test(hello.text) && /Said hello/.test(hello.text),
+    `exit ${hello.status}: ${tail(hello.text, 6)}`,
+  )
 
   // 4. the same project with link/@term/base linked into a checkout, as a person with a local Term link has
   const linked = join(work, 'linked')

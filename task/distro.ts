@@ -2,8 +2,9 @@
 // payloads `pnpm term:release` built (note/project/term/term-distro.md).
 //
 //   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
-//   pnpm term:distro --commit   also write the signed apt and dnf indexes into the term.surf site's public/ (served at
-//                               https://term.surf/apt and /rpm; `--site <dir>` or TERM_SITE_DIR, else host/site/)
+//   pnpm term:distro --commit   also write the signed apt and dnf indexes and the installer load.mjs (task/make-load.ts,
+//                               from installer.tree) into the term.surf site's public/ (served at https://term.surf/apt,
+//                               /rpm and /load.mjs; `--site <dir>` or TERM_SITE_DIR, else host/site/)
 //                               and the winget manifests into the winget-pkgs fork (`--winget <dir>` or
 //                               TERM_WINGET_FORK, else host/winget/). It writes files and nothing else: the GitHub
 //                               release, the deploy and every git step are printed for a person to run
@@ -15,7 +16,8 @@
 //   packages/term-<v>-windows-{x64,arm64}.zip    term\, with bin\term.exe (task/launcher/term.go) for winget
 //   winget/manifests/c/ClueSurf/Term/<v>/        ClueSurf.Term
 //   repo/                                        the repositories, packages included, as apt and dnf read them
-//   public/                                      the same without the packages: what --commit puts on term.surf
+//   public/                                      the same without the packages, and load.mjs: what --commit puts on
+//                                                term.surf
 //
 // NO PACKAGE IS STORED ON term.surf. Every file in packages/ is an asset of the GitHub release `v<version>` on
 // cluesurf/term, which winget downloads its zips from too. The indexes name each package under its version
@@ -206,11 +208,15 @@ async function main(): Promise<void> {
   writeFileSync(path.join(site, 'apt', 'term.list'), APT_LIST)
   writeFileSync(path.join(site, 'rpm', 'term.repo'), DNF_REPO)
   writeFileSync(path.join(site, 'term.asc'), run('gpg', ['--armor', '--export', KEY]))
+  // the installer `curl -fsSL https://term.surf/load | sh` hands over to, rebuilt from installer.tree's port as this
+  // release's tree holds it (task/make-load.ts), so term.surf never serves one built from a source that is gone (item
+  // term-self-host-001-1028). The release built the ports, so make-load runs without make:port
+  run(process.execPath, [path.join(TERM, 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(TERM, 'task', 'make-load.ts'), '--site', site], { cwd: TERM })
 
   output.report({
     glyph: 'done',
     verb: 'index',
-    subject: 'apt and dnf, signed',
+    subject: 'apt and dnf, signed, and the installer load.mjs',
     duration: Date.now() - indexed,
     fields: [output.field('key', KEY), output.location(output.showPath(site, TERM))],
   })
@@ -222,12 +228,12 @@ async function main(): Promise<void> {
   }
 
   // --commit: the files, and nothing in git
-  for (const name of ['apt', 'rpm', 'term.asc']) {
+  for (const name of ['apt', 'rpm', 'term.asc', 'load.mjs']) {
     rmSync(path.join(SITE_PUBLIC, name), { recursive: true, force: true })
     cpSync(path.join(site, name), path.join(SITE_PUBLIC, name), { recursive: true })
   }
 
-  output.report({ glyph: 'changed', kind: 'change', verb: 'write', subject: `${SITE_URL}/apt, /rpm and /term.asc`, fields: [output.location(output.showPath(SITE_PUBLIC, TERM))] })
+  output.report({ glyph: 'changed', kind: 'change', verb: 'write', subject: `${SITE_URL}/apt, /rpm, /term.asc and /load.mjs`, fields: [output.location(output.showPath(SITE_PUBLIC, TERM))] })
 
   const wingetTo = path.join(WINGET_FORK, 'manifests', 'c', 'ClueSurf', 'Term', version)
 
@@ -243,9 +249,9 @@ async function main(): Promise<void> {
       `1. the GitHub release on ${REPOSITORY}, which holds every package the indexes and the winget manifests name`,
       '   (the Term repository pushed first, so the tag names the commit they were built from):',
       GITHUB_RELEASE ? `   ${GITHUB_RELEASE} ${version} --commit` : `   upload every file of ${packages} to the release v${version}`,
-      '2. term.surf, which then serves the new indexes (a deploy builds from what is pushed):',
-      `   git -C ${SITE_PUBLIC} add apt rpm term.asc`,
-      `   git -C ${SITE_PUBLIC} commit -m "term ${version} for apt and dnf"`,
+      '2. term.surf, which then serves the new indexes and installer (a deploy builds from what is pushed):',
+      `   git -C ${SITE_PUBLIC} add apt rpm term.asc load.mjs`,
+      `   git -C ${SITE_PUBLIC} commit -m "term ${version} for apt, dnf and the installer"`,
       `   git -C ${SITE_PUBLIC} push`,
       SITE_DEPLOY ? `   ${SITE_DEPLOY}` : '   then deploy the site that serves this folder',
       '3. the winget pull request, on a branch of its own from upstream:',

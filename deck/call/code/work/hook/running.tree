@@ -9,8 +9,13 @@
 #
 # The input is the original's record, as a TypeScript caller writes it: `name`, `routes`, `argv`, `resolve` (a bound
 # task's name to the compiled function), and optionally `out` and `err` (a line to stdout and stderr) and `refuse` (a
-# usage refusal as data, for a console that words it its own way, decision cli-in-term/016 part 2). Those callbacks,
-# the call of the resolved function with its ordered values, and TERM_LINE_NAME are the host touches, each a bind.
+# usage refusal as data, for a console that words it its own way, decision cli-in-term/016 part 2), and `mark` (the
+# program's version, its manifest's mark, which the run entry `term boot` writes hands in). Those callbacks, the call
+# of the resolved function with its ordered values, and TERM_LINE_NAME are the host touches, each a bind.
+#
+# A CONSOLE WITH NO `refuse` ANSWERS AS TERM DOES (zone decision 002, item term-self-host-001-0983): `--version` and
+# `-v` print the mark, `--help` prints term's layout (work/help.tree), and a line the parse refuses is term's failed
+# item and closing with a `next` field, exit 2 (work/hook/usage.tree, which term's own console refuses through).
 
 load @term/base/list
   find join
@@ -33,6 +38,7 @@ load @term/call/work/hook/parsing
   find dispatch
   find command-routes
   find program-of
+  find console-program
   find passing-start
   find parse-line
   find parsed-line
@@ -47,6 +53,20 @@ load @term/call/work/hook/parsing
   find arg-value
   find line-arg
   find route-named
+
+load @term/base/text
+  find starts-with
+
+# term's help layout and term's refusal, the same code term's own console prints through (zone decision 002, item
+# term-self-host-001-0983)
+load @term/call/work/help
+  find help-text
+
+load @term/call/work/hook/usage
+  find refuse-usage
+  find usage-ask
+  find nearest-command
+  find command-guess
 
 # the original's RunInput
 form run-input
@@ -86,6 +106,14 @@ bind hook-has-refuse
   like boolean
   case node
     text <($input.refuse !== undefined)>
+
+# the program's version, its manifest's mark, which the run entry `term boot` writes hands in: the empty text when it
+# hands none, and then the program has no version flag
+bind hook-mark
+  take input, like run-input
+  like text
+  case node
+    text <($input.mark ?? "")>
 
 # the input's `refuse`, handed the refusal: its answer is the exit code
 bind hook-refuse
@@ -170,6 +198,7 @@ task dispatcher-surface
   kept/push program-of(routes)
   kept/push passing-start(routes, argv)
   kept/push render-usage(<>, routes)
+  kept/push render-help(routes/0, <>, no-lines())
   back kept
 
 task no-values
@@ -241,48 +270,63 @@ task handed-value
       back host-value-of(make(arg-number, bind(amount, 0)))
   back host-value-of(make(arg-text, bind(given, <>)))
 
-# `--help`: the help of the deepest command the bare words name, or the usage when they name none
-task show-help
-  take input, like run-input
-  take name, like text
-  take commands, like list, like dock-route
-  take bare, like list, like text
-  like number
-  save level, commands
-  save current, no-route-yet()
-  save parents, make list
-  save going, true
-  save at, 0
-  walk test
-    hook test, and(going, is-below(at, bare/length))
-    hook hold
-      save token, bare/{at}
-      save stepped, route-named(level, token)
-      sift stepped
-        case none
-          save going, false
-        case some
-          link found
-          sift current
-            case some
-              link held
-              parents/push held/path
-            case none
-              save nothing, 0
-          save current, make(some, found)
-          save level, found/children
-          save at, add(at, 1)
-  sift current
-    case none
-      hook-out(input, render-usage(name, commands))
+# the program's global options: its takes, when the console is one program hook
+task program-takes
+  take split, like console-program
+  like list, like dock-take
+  sift split/program
     case some
-      link deepest
-      hook-out(input, render-help(deepest, name, parents))
-  back 0
+      link program
+      back program/takes
+    case none
+      save nothing, 0
+  back make list
+
+# the help of the deepest command the bare words name, or the program's own, in term's layout (work/help.tree): the
+# program's usage line is its name, as a booted program's root note is its description, not a usage line
+task help-of
+  take name, like text
+  take split, like console-program
+  take bare, like list, like text
+  like text
+  back help-text(name, <>, program-takes(split), split/commands, bare)
 
 task no-route-yet
   like maybe, like dock-route
   back make none
+
+task no-lines
+  like list, like text
+  back make list
+
+# A line the parse refused, in term's shape (work/hook/usage.tree): a first word that names no command is said as term
+# says it, with the nearest command to run, and anything else in the dispatcher's own words, with the help to run
+task refuse-booted
+  take name, like text
+  take mark, like text
+  take commands, like list, like dock-route
+  take bare, like list, like text
+  take error, like text
+  like number
+  save message, error
+  save next, <{name} --help>
+  save first, <>
+  walk bare
+    take word
+    fork test, and(is-equal(first, <>), not(starts-with(word, <->)))
+      hold
+        save first, word
+  fork test, is-unequal(first, <>)
+    hold
+      save named, route-named(commands, first)
+      sift named
+        case none
+          save message, <There is no command named {first}>
+          save next, nearest-command(make command-guess, name(name), routes(commands), word(first))
+        case some
+          save nothing, 0
+  save lines, no-lines()
+  back refuse-usage(make usage-ask, name(name), mark(mark), message(message), lines(lines), next(next))
 
 # THE RUN
 task run-command-line
@@ -311,7 +355,10 @@ task run-command-line
   fork test, and(is-minimum(dashes, 0), is-below(dashes, cut))
     hold
       save cut, dashes
+  # `--version` and `-v` answer the program's mark, as term answers its own: a program with no mark has no version flag
+  save mark, hook-mark(input)
   save want-help, false
+  save want-version, false
   save bare, make list
   walk argv
     take word
@@ -322,21 +369,28 @@ task run-command-line
           hold
             save want-help, true
           miss
-            bare/push word
+            fork test, and(is-unequal(mark, <>), or(is-equal(word, <--version>), is-equal(word, <-v>)))
+              hold
+                save want-version, true
+              miss
+                bare/push word
       miss
         bare/push word
 
-  fork test, is-equal(bare/length, 0)
-    hold
-      hook-out(input, render-usage(name, commands))
-      fork test, want-help
-        hold
-          back 0
-      back 2
-
   fork test, want-help
     hold
-      back show-help(input, name, commands, bare)
+      hook-out(input, help-of(name, split, bare))
+      back 0
+
+  fork test, want-version
+    hold
+      hook-out(input, mark)
+      back 0
+
+  fork test, is-equal(bare/length, 0)
+    hold
+      hook-out(input, help-of(name, split, bare))
+      back 2
 
   save hit, parse-line(routes, argv)
 
@@ -351,9 +405,7 @@ task run-command-line
               back hook-number(answer)
             case none
               save nothing, 0
-      hook-err(input, <{name}: {hit/error}>)
-      hook-err(input, <run `{name} --help` to see the commands>)
-      back 2
+      back refuse-booted(name, mark, commands, bare, hit/error)
 
   save chosen, no-route-yet()
   save chosen, hit/route
@@ -379,15 +431,7 @@ task run-route
     hold
       fork test, is-above(route/children/length, 0)
         hold
-          save parents, make list
-          save last, subtract(hit/command/length, 1)
-          walk hit/command
-            take word
-            take at
-            fork test, is-below(at, last)
-              hold
-                parents/push word
-          hook-out(input, render-help(route, name, parents))
+          hook-out(input, help-of(name, program-of(input/routes), hit/command))
           back 2
       hook-err(input, <{name}: {join(hit/command, < >)} has no implementation bound>)
       back 2
@@ -402,6 +446,8 @@ task run-route
         hold
           save answer, wait hook-refuse(input, refusal)
           back hook-number(answer)
+      # in term's shape (work/hook/usage.tree): the first take left out is the item, every other one a line under it
+      save said, make list
       walk route/takes
         take one
         fork test, one/required
@@ -413,10 +459,15 @@ task run-route
                 fork test, is-unequal(one/note, <>)
                   hold
                     save tail, < - {one/note}>
-                hook-err(input, <{name} {join(hit/command, < >)}: missing required \<{one/name}\>{tail}>)
+                said/push <missing required \<{one/name}\>{tail}>
               case some
                 save nothing, 0
-      back 2
+      save message, <Missing a required argument of {name} {join(hit/command, < >)}>
+      save lines, no-lines()
+      walk said
+        take line
+        lines/push line
+      back refuse-usage(make usage-ask, name(name), mark(hook-mark(input)), message(message), lines(lines), next(<{name} {join(hit/command, < >)} --help>))
     case none
       save nothing, 0
 

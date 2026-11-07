@@ -702,9 +702,16 @@ async function run(): Promise<void> {
 
   for (const pair of pairs) {
     const found = compare(pair, out)
+    // a fixpoint pair covers every module step 2 reached: a module neither of its manifests lists (a Rust emit that
+    // wrote nothing for it on both sides) compares as nothing, so a short pair is no verdict (audit 0994)
+    const short = only.length === 0 && !found.missing && found.modules < modules.length
 
-    if (pair.label === 'fixpoint' && (found.differ > 0 || found.missing)) {
+    if (pair.label === 'fixpoint' && (found.differ > 0 || found.missing || short)) {
       holds = false
+    }
+
+    if (short) {
+      say(`${pair.label} ${found.target}: ${found.modules} modules compared, and step 2 reached ${modules.length}: no verdict over part of the toolchain`)
     }
 
     for (const line of report(found, pair)) {

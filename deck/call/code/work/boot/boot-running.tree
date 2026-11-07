@@ -121,6 +121,17 @@ load ../small/home-folder
 load ../small/manifest-file
   find manifest-value-of
 
+# the manifest's `mark` as the package manager reads it: `manifest-value-of` reads only a head whose argument is a name,
+# and `mark <1.2.3>` is a text, so it answered nothing and every booted program lost its -v (item 0983, 13:07Z window)
+load @term/deck/package/manifest-reading
+  find parse-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+
 # development in a browser: the small lane's port of feed.ts `serveBrowserDevelopment`, where it was imported at run
 # time until term-cli-in-term-0069
 load ../small/browser-serving
@@ -865,6 +876,32 @@ task bin-name-for
           back bin-name-of(deck)
   back node-path/basename(node-path/dirname(entry))
 
+# the version a command-line tool answers `-v` with: the `mark` of the app's deck.tree, the empty text when it has
+# none (zone decision 002, item term-self-host-001-0983)
+task mark-for
+  take base-dir, like text
+  like text
+  mark private
+
+  save deck-file, node-path/join(base-dir, <deck.tree>)
+  fork test, not(node-file/exists-sync(deck-file))
+    hold
+      back <>
+  # read through the package manager's own manifest reader, as `term show mark` does. A manifest that does not read
+  # has no mark, and the parsed default 0.0.0 is no mark either (the publish rule refuses it as a version)
+  save shown, <>
+  fork
+    mark unsafe
+    save read, parse-manifest(text-of(node-file/read-file-sync(deck-file, <utf8>)), make-grammars())
+    save shown, show-code(read/mark)
+  halt take
+    take problem
+    save shown, <>
+  fork test, is-equal(shown, <0.0.0>)
+    hold
+      back <>
+  back shown
+
 # the entry as a build item names it: relative to the working directory
 task shown-entry
   take run, like boot-run
@@ -1340,7 +1377,7 @@ task bundle-plan
     hold
       place-dispatch(run, out)
       # the route tree the program declared, embedded as data
-      node-file/write-file-sync(run-file, cli-run-text(boot-routes-json(plan/cli-routes), boot-json(run/bin-name)))
+      node-file/write-file-sync(run-file, cli-run-text(boot-routes-json(plan/cli-routes), boot-json(run/bin-name), boot-json(mark-for(run/base-dir))))
       back make(some, make(built-run, bind(run, run-file), bind(cli, true)))
   node-file/write-file-sync(run-file, server-run-text(run/port))
   back make(some, make(built-run, bind(run, run-file), bind(cli, false)))
