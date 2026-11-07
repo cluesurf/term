@@ -7,7 +7,7 @@
 // exited and both pipes closed, or 500 ms after the exit (a grandchild may hold a pipe). `group` (run and withInput
 // only) makes the child lead a new process group, and the limit then signals the whole group. Reached only through the
 // public run API.
-import { spawn as runnerSpawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { constants as runnerConstants } from 'node:os'
 
 type RunnerResult = {
@@ -16,7 +16,7 @@ type RunnerResult = {
   error: string
   signal: number
 }
-type RunnerChild = ReturnType<typeof runnerSpawn>
+type RunnerChild = ReturnType<typeof spawn>
 
 // the number of a signal's name, 0 when node has none for it
 const signalNumber = (name: string | null): number =>
@@ -188,7 +188,7 @@ const runner = {
     new Promise(resolve => {
       try {
         runnerCapture(
-          runnerSpawn(
+          spawn(
             command,
             argumentList,
             runnerOptions(directory, environment, group),
@@ -221,7 +221,7 @@ const runner = {
   ): Promise<number> =>
     new Promise(resolve => {
       try {
-        const child = runnerSpawn(command, argumentList, {
+        const child = spawn(command, argumentList, {
           ...runnerOptions(directory, environment),
           stdio: 'inherit',
         })
@@ -272,7 +272,7 @@ const runner = {
   ): Promise<RunnerResult> =>
     new Promise(resolve => {
       try {
-        const child = runnerSpawn(
+        const child = spawn(
           command,
           argumentList,
           runnerOptions(directory, environment, group),

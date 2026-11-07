@@ -2,8 +2,8 @@
 # calls, in its own deck and in every deck it loads. The roll says what a task can RAISE, and this says what it can DO,
 # so `term roll --diff` can report that a change gave a task the file system or the network.
 #
-# Read off each file milled alone (make/analyzer.tree, where make/code/analyze.ts was docked until
-# term-self-host-001-1008), followed by MODULE SCOPE, with `{platform}` filled for node as `term make` fills it. The search, the scope rules and the walk over a body are call/code/reach-graph.tree; this module
+# Read off each file milled alone (make/code/analyze.ts), followed by MODULE SCOPE, with `{platform}` filled for node as
+# `term make` fills it. The search, the scope rules and the walk over a body are call/code/reach-graph.tree; this module
 # reads and mills each file once, keeps it, and hands that module the module a file or a load is.
 #
 # Ported from deck/call/code/reach.ts (term-cli-in-term-0051). The original's `reachGraph(root)` answered an object
@@ -33,15 +33,10 @@ load ../build/host-faces
   find face-role-reader
   find face-lean-reader
 
-load @term/make/analyzer
-  find analyze
-
-load @term/make/parser/token
-  find token-source
-
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
+  load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
 
@@ -74,23 +69,14 @@ bind number-of
   case node
     text <Number($value)>
 
-# a role reader's answer as the analysis takes it: absent for none (make/code/analyze.ts `role ?? undefined`)
-bind role-given
-  take value, like dynamic
-  like dynamic
-  case node
-    text <($value ?? undefined)>
-
-# no view catalog, as the file analyzer was handed none here
-bind no-catalog
-  like dynamic
-  case node
-    text <undefined>
-
-# what the loader is asked of a file
+# what `analyze` is asked of a file
 form analyze-source
   link file, like text
   link text, like text
+
+form analyze-options
+  link role, like dynamic
+  link lean, like boolean
 
 # the tables a reach graph keeps for one root: the readers it was made with, and every file read, as the module it is,
 # or none for a file that could not be read or milled (and while it is being read, so a cycle of loads meets none)
@@ -169,15 +155,20 @@ task module-of
         case none
           back make none
 
-  save milled, analyze(make(token-source, bind(file, file), bind(text, text)), role-given(graph/role-of(file)), value-or(graph/lean-of(file), false), no-catalog())
-  # the program `analyze` answers, a host value (seam decision 004), none for a file that did not mill
+  save source
+    make analyze-source
+      bind file, file
+      bind text, text
+  save options
+    make analyze-options
+      bind role, graph/role-of(file)
+      bind lean, value-or(graph/lean-of(file), false)
+  save milled, analyze-module/analyze(source, options)
+  # the program `analyze` answers, a host value (seam decision 004)
   save program, like list, like dynamic
-    make list
-  sift milled/program
-    case some
-      link written
-      save program, written
-    case none
+    read milled/program
+  fork test, not(is-truthy(program))
+    hold
       back make none
 
   save one

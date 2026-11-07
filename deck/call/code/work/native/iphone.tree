@@ -92,14 +92,6 @@ load @term/call/work/output/printer
 load @term/call/work/item/event
   find item-field
 
-# the Swift emitter, where compile/swift.ts was docked until term-self-host-001-0957: handed no wake and one program,
-# as the face handed it
-load @term/make/compile/swift-program
-  find emit-swift
-
-load @term/make/compile/program-warnings
-  find wake-group
-
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -109,13 +101,7 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
-
-# the wake the Swift emitter is handed here: none, as the face handed one when no `wake` was given
-task no-wake
-  like list, like wake-group
-  mark private
-
-  back make list
+  load <@term/make/code/compile/swift>, name swift-emit
 
 form iphone-source
   link file, like text
@@ -234,7 +220,7 @@ task program-source
     hold
       refuse(<the app failed to compile: {compile-said(result/diagnostics)}>, <>)
 
-  save swift, <{emit-swift(result/program, no-wake(), false)}>
+  save swift, <{swift-emit/emit-swift(result/program)}>
   save prelude, value-or(native-module/native-prelude(result/program, <ios>, read-runtime, swift), <>)
   # the entry task: `boot`, as every Term program's is, else the older `main`. It throws when anything it reaches can
   # raise, and a raise nothing handles ends the program

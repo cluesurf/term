@@ -45,16 +45,12 @@ load ../build/project-resolving
 load ../build/host-faces
   find face-project-resolver
 
-# the Kotlin emitter, where compile/kotlin.ts was docked until term-self-host-001-0957. Its `fail` slot declares
-# `halt failure` (decision 086 rule 3, ruling 0979), so it is handed a fail that halts
-load @term/make/compile/kotlin-program
-  find emit-kotlin
-
 dock load
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
 
 form desktop-source
   link file, like text
@@ -69,13 +65,8 @@ form desktop-text
   link encoding, like text
 
 # how the Kotlin is emitted: the program's `wake` list, as the compile answered it
-# the fail the Kotlin emitter is handed: a refused emit stops the build, as compile/kotlin.ts's fail threw
-task emit-refused
-  take reason, like text
-  like boolean
-  mark private
-
-  halt <{reason}>
+form desktop-emit
+  link wake, like dynamic
 
 # what a desktop build is asked: where the program's packages resolve (`root`), the build's folder, the program's name
 # and text, and the entry's own path when the program is an app's (toolchain.tree `entry-file`). A session that builds
@@ -159,9 +150,7 @@ task build-compose
       back make(failed, bind(stage, <scope>), bind(reason, <{refused}>))
 
   # the JVM's own start, which calls the program's entry
-  # the wake the compile answered, else none, as the face handed `options.wake ?? []`
-  save no-wake, make list
-  save emitted, emit-kotlin(result/program, value-or(result/wake, no-wake), false, emit-refused)
+  save emitted, kotlin-module/emit-kotlin(result/program, make(desktop-emit, bind(wake, result/wake)))
   save kotlin, <{emitted}\nfun main() \{ {start-task(result/program, entry, emitted)}() \}\n>
   save prelude, native-module/native-prelude(result/program, <compose>, read-runtime, kotlin)
 

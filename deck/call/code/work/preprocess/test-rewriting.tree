@@ -13,7 +13,7 @@
 #
 # Ported from deck/call/code/test-preprocess.ts (term-cli-in-term-0021): preprocessTests, readable, carriesTests and
 # everything under them. The data reader is @term/deck's tree-reading port (term-cli-in-term-0234, where its face
-# package/read.ts was docked), and the text escape is compile/host-data.tree's.
+# package/read.ts was docked), and the text escape (compile/host) is docked.
 
 load @term/base/list
   find list
@@ -35,9 +35,8 @@ load @term/call/work/preprocess/condition-reading
 load @term/deck/package/tree-reading
   find read-tree
 
-# a text as a data literal writes it
-load @term/make/compile/host-data
-  find escape-text
+dock load
+  load <@term/make/code/compile/host>, name host-text-module
 
 # a guard's lines, each with the source line it came from
 form want-written
@@ -851,7 +850,7 @@ task snapshot-want
           save at, add(at, 1)
   fork test, snapshots-updating(snapshots)
     hold
-      lines/push(<  term-snapshot-take(\<{escape-text(label)}\>, {name})>)
+      lines/push(<  term-snapshot-take(\<{host-text-module/escape-text(label)}\>, {name})>)
       from/push(line)
       back make(want-written, bind(lines, lines), bind(from, from))
   save stored, stored-snapshot(snapshots, label, taken)
@@ -861,7 +860,7 @@ task snapshot-want
       from/push(line)
       back make(want-written, bind(lines, lines), bind(from, from))
   save held-group, make list
-  held-group/push(<want hold, is-equal {name}, \<{escape-text(host-as-text(stored))}\>>)
+  held-group/push(<want hold, is-equal {name}, \<{host-text-module/escape-text(host-as-text(stored))}\>>)
   save held-numbers, make list
   held-numbers/push(line)
   save held, guard(held-group, held-numbers, plain, 0, 0)
@@ -1476,7 +1475,7 @@ task case-snapshot-want
               lines/push(<  {text}>)
           from/push(numbers/{at})
           save at, add(at, 1)
-  save escaped, escape-text(label)
+  save escaped, host-text-module/escape-text(label)
   fork test, snapshots-updating(snapshots)
     hold
       lines/push(<  term-snapshot-take(\<{escaped} [\{term-case-label\}]\>, {name})>)
@@ -1492,11 +1491,11 @@ task case-snapshot-want
   save index, 0
   walk stored-case-labels(snapshots, label, taken)
     take one, like text
-    lines/push(<  fork test, is-equal(term-case-label, \<{escape-text(one)}\>)>)
+    lines/push(<  fork test, is-equal(term-case-label, \<{host-text-module/escape-text(one)}\>)>)
     from/push(line)
     lines/push(<    hold>)
     from/push(line)
-    lines/push(<      save {stored-name}, \<{escape-text(get(texts, index))}\>>)
+    lines/push(<      save {stored-name}, \<{host-text-module/escape-text(get(texts, index))}\>>)
     from/push(line)
     lines/push(<      save {found-name}, true>)
     from/push(line)

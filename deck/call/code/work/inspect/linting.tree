@@ -5,10 +5,9 @@
 # and L055 manifest-inert (a manifest field no tool reads). note/project/term/manifest/manifest-mark-and-code-root.md.
 #
 # Ported from call/code/lint.ts (term-cli-in-term-0055). lint-words.tree holds the decisions beside the parser and the
-# rules, loaded, and so is the one parser (parser/tree), and the mill's span reader. The rules are the compiler's
-# analysis (make/analyzer.tree, where make/code/analyze.ts was docked until term-self-host-001-1008). The files walk, the
-# role readers, the project resolver and the manifest name are the build and small lanes' ports, the manifest spellings
-# are @term/deck's spelling port, and every item prints through the output library.
+# rules, loaded, and so is the one parser (parser/tree), and the mill's span reader. The rules (analyze), the files walk,
+# the role readers, the project resolver and the manifest name are docked until their own ports land, the manifest
+# spellings are @term/deck's spelling port, and every item prints through the output library.
 
 load @term/base/list
   find get
@@ -72,12 +71,8 @@ load @term/call/work/item/event
 load @term/make/compile/mill-running
   find span-of-node
 
-load @term/make/analyzer
-  find analyze
-  find apply-lint
-  find lint-asked
-
 dock load
+  load <@term/make/code/analyze>, name analyze-module
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
@@ -146,27 +141,12 @@ bind resolve-with
   case node
     text <$resolve($path, $file)>
 
-# a role reader's answer as the analysis takes it: absent for none (make/code/analyze.ts `role ?? undefined`)
-bind role-given
-  take value, like dynamic
-  like dynamic
+# the rules' findings of one analysis
+bind lint-of
+  take analysis, like dynamic
+  like list, like dynamic
   case node
-    text <($value ?? undefined)>
-
-# a lean reader's answer as the analysis takes it, false when absent (make/code/analyze.ts `lean ?? false`)
-bind lean-given
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value ?? false)>
-
-# what the rules are asked here, make/code/analyze.ts's `askedOf` of the empty config: no severities, and no `lean` of
-# the caller's, so the file's own stands
-task no-config
-  like lint-asked
-  mark private
-
-  back make(lint-asked, bind(lean, make none))
+    text <$analysis.lint()>
 
 # `text.slice(0, start) + inserted + text.slice(end)`, by UTF-16 offsets
 bind splice
@@ -206,6 +186,10 @@ form fixed-finding
   link severity, like text
   link span, like stretch
   link fix, like edit
+
+form analysis-ask
+  link file, like text
+  link text, like text
 
 form readers
   link role, like dynamic
@@ -524,8 +508,7 @@ task findings-of
 
   save out, like list, like dynamic
     make list
-  save analysis, analyze(make(token-source, bind(file, relative), bind(text, text)), role-given(readers/role), lean-given(readers/lean), nothing())
-  walk apply-lint(analysis/held, no-config())
+  walk lint-of(analyze-module/analyze(make(analysis-ask, bind(file, relative), bind(text, text)), readers))
     take one
     out/push(one)
   walk manifest-findings(text, absolute)

@@ -86,9 +86,7 @@ load ./resolution
   find build-lockfile
 
 load ./linking
-  find link-packages-into
-  find project-links
-  find project-store
+  find link-packages
   find clean-links
 
 dock load
@@ -238,26 +236,8 @@ task host-route-of
       save config, installing-flag-routes(config, space, normalize-registry(registry))
   back oci-route-of(name, config)
 
-# `term load` in a project: its links in `<root>/link`, each version unpacked under `<root>/link/.base/@term/code`
 task install
   take root, like text
-  take clean, like boolean
-  take offline, like boolean
-  take grammars, like manifest-grammars
-  like install-answer
-
-  back install-into(root, project-links(root), project-store(root), clean, offline, grammars)
-
-# The ONE install (decisions term/package-manager/001 and 002): the manifest and lock.tree at `root`, a link at
-# `<link-dir>/<name>` for every deck chosen, each version unpacked under `store-dir`. A project installs into its own
-# `link/` folder (`install`). `term save --global` gives NO link folder (the empty text) and the user folder,
-# `~/.base`, as both root and store: each deck is then unpacked at `~/.base/<scope>/<name>/code/<version>`, as term
-# keeps itself, and nothing is linked over the user's own folder. `clean` empties `<root>/link`, the project's, and
-# nothing else
-task install-into
-  take root, like text
-  take link-dir, like text
-  take store-dir, like text
   take clean, like boolean
   take offline, like boolean
   take grammars, like manifest-grammars
@@ -302,7 +282,7 @@ task install-into
   save resolved, resolve(manifest, config, lock, workspaces)
 
   # step 6: link
-  link-packages-into(link-dir, store-dir, resolved, config)
+  link-packages(root, resolved, config)
 
   # step 7: pin the toolchain the manifest's `need` asks for, keeping the previous pin while it still satisfies the
   # request. A manifest with no `need` writes none, and drops a stale one
@@ -382,19 +362,6 @@ task add-dependency
   take grammars, like manifest-grammars
   like void
 
-  write-link(root, name, constraint, grammars)
-  install(root, false, false, grammars)
-
-# the manifest at `root` with a `link` line for `name`, accepting the versions `constraint` names (`0.x.x` for the
-# empty text), the line already there rewritten in place. A constraint that is no version is refused before the file
-# is touched. Nothing is installed: `add-dependency` and `term save --global` install after it, each into its own place
-task write-link
-  take root, like text
-  take name, like text
-  take constraint, like text
-  take grammars, like manifest-grammars
-  like void
-
   save manifest, load-manifest(root, grammars)
   save hold, make(wild, bind(major, 0), bind(minor, -1), bind(patch, -1))
   fork test, not(is-equal(constraint, <>))
@@ -417,18 +384,9 @@ task write-link
   save manifest/link, links
 
   fs-promise/write-file(node-path/join(root, <deck.tree>), write-manifest(manifest), <utf-8>)
-
-task remove-dependency
-  take root, like text
-  take name, like text
-  take grammars, like manifest-grammars
-  like void
-
-  drop-link(root, name, grammars)
   install(root, false, false, grammars)
 
-# the manifest at `root` without the `link` line for `name`. Nothing is installed, as with `write-link`
-task drop-link
+task remove-dependency
   take root, like text
   take name, like text
   take grammars, like manifest-grammars
@@ -444,6 +402,7 @@ task drop-link
   save manifest/link, links
 
   fs-promise/write-file(node-path/join(root, <deck.tree>), write-manifest(manifest), <utf-8>)
+  install(root, false, false, grammars)
 
 # whether a path is there to reach
 task can-reach

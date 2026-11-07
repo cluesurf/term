@@ -57,21 +57,20 @@ function sha(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex')
 }
 
-// the bundle of the working tree's compile closure, and the sources it was made from. task/release.ts ships these same
-// bytes in every platform's payload as term/host/compile.mjs (decision 126), so a release is a stage0 term:boot fetches
-export async function bundle(root: string = TERM): Promise<{ bytes: Buffer; inputs: string[] }> {
+// the bundle of the working tree's compile closure, and the sources it was made from
+async function bundle(): Promise<{ bytes: Buffer; inputs: string[] }> {
   const { build } = await import('esbuild')
   const contents = Object.entries(STAGE0_SOURCES)
     .map(([from, names]) => `export { ${names.join(', ')} } from '${from}'`)
     .join('\n')
   const result = await build({
-    stdin: { contents, resolveDir: root, sourcefile: 'stage0-entry.ts', loader: 'ts' },
-    absWorkingDir: root,
+    stdin: { contents, resolveDir: TERM, sourcefile: 'stage0-entry.ts', loader: 'ts' },
+    absWorkingDir: TERM,
     bundle: true,
     platform: 'node',
     format: 'esm',
     target: 'node22',
-    tsconfig: join(root, 'tsconfig.json'),
+    tsconfig: join(TERM, 'tsconfig.json'),
     banner: { js: "import { createRequire as __stage0Require } from 'node:module'\nconst require = __stage0Require(import.meta.url)" },
     // optional packages a bundled dependency reaches for only when they are installed
     external: ['fsevents'],

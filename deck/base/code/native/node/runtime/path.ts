@@ -2,16 +2,16 @@
 // forwards uniformly, matching the rust, swift, and kotlin path shims. The file extension carries its leading dot.
 import {
   join as joinPaths,
-  dirname as pathDirname,
-  basename as pathBasename,
-  extname as pathExtname,
-  isAbsolute as pathIsAbsolute,
+  dirname,
+  basename,
+  extname,
+  isAbsolute,
 } from 'node:path'
 
 const path = {
   join: (base: string, name: string): string => joinPaths(base, name),
-  directory: (target: string): string => pathDirname(target),
-  fileName: (target: string): string => pathBasename(target),
-  fileExtension: (target: string): string => pathExtname(target),
-  isAbsolute: (target: string): boolean => pathIsAbsolute(target),
+  directory: (target: string): string => dirname(target),
+  fileName: (target: string): string => basename(target),
+  fileExtension: (target: string): string => extname(target),
+  isAbsolute: (target: string): boolean => isAbsolute(target),
 }

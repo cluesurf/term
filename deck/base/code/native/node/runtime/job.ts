@@ -14,10 +14,10 @@
 // it when they end: a cancelled job's wait never ends, so nothing after it runs, and the work is collected with its
 // promise. Nothing waits on a cancelled job and nothing it raises afterwards surfaces: before this, an unawaited job that
 // raised was an unhandled rejection, which ends the Node process. Reached only through the public task API.
-import { AsyncLocalStorage as JobAsyncLocalStorage } from 'node:async_hooks'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 // the job whose work is running, read by a wait as it ends
-const __termJobCurrent = new JobAsyncLocalStorage<SeedJob>()
+const __termJobCurrent = new AsyncLocalStorage<SeedJob>()
 
 // a wait that never ends: what a cancelled job's next wait becomes
 const __termJobNever = (): Promise<void> => new Promise<void>(() => {})

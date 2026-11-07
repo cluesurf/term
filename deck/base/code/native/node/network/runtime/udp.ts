@@ -1,12 +1,12 @@
 // UDP runtime over node:dgram. The opaque handle a seed socket holds is the raw dgram Socket. Each call returns a
 // promise, so the public async UDP API awaits it. `receive` resolves with the datagram payload and its sender address,
 // matching the seed `datagram` form. Reached only through the public UDP API.
-import { createSocket as udpCreateSocket, type Socket } from 'node:dgram'
+import { createSocket, type Socket } from 'node:dgram'
 
 const udp = {
   open: (port: number, host: string): Promise<Socket> =>
     new Promise((ok, fail) => {
-      const socket = udpCreateSocket('udp4')
+      const socket = createSocket('udp4')
       socket.on('error', fail)
       socket.bind(port, host, () => ok(socket))
     }),

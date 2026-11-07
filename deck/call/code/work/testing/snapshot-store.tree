@@ -4,7 +4,7 @@
 #   list <renders a page>
 #     <\<h1\>Hello\</h1\>>, <second>
 #
-# Read and written through the data reader and writer every data file goes through (compile/host-data.tree), so
+# Read and written through the data reader and writer every data file goes through (compile/host.ts, docked), so
 # `term form`, `term mold` and `term look` read it as they read any other. `term test --update` writes it; a run
 # without the flag only reads it.
 #
@@ -14,20 +14,13 @@
 load @term/base/list
   find list
 
-load @term/base/maybe
-  find maybe
-
 load @term/call/snapshot-keep
   find snapshot-file-of
   find kept-snapshots
 
-load @term/make/compile/host-data
-  find read-data-text
-  find write-long
-  find host-anchor
-
 dock load
   load <node:fs>, name node-file
+  load <@term/make/code/compile/host>, name host-data
 
 # a test file's stored snapshots by phrase, or why its store could not be read
 form snapshot-read
@@ -95,13 +88,11 @@ task read-snapshots
   fork test, not(node-file/exists-sync(file))
     hold
       back make(snapshots, bind(stored, stored))
-  # a host value from here on: the entries below are read by their tags
-  save read, like dynamic
-    call read-data-text(data-source(file, node-file/read-file-sync(file, <utf8>)))
+  save read, host-data/read-data-text(data-source(file, node-file/read-file-sync(file, <utf8>)))
   fork test, not(is-same(read/ok, true))
     hold
       back make(unreadable, bind(problem, <{file} is not a data file: {first-message(read)}>))
-  save root, read/file/root
+  save root, read/data/root
   fork test, not(is-same(root/kind, <hash>))
     hold
       back make(unreadable, bind(problem, <{file} holds a {back-text(root/kind)}, where a hash from each test's phrase to its snapshots goes>))
@@ -151,22 +142,15 @@ task write-snapshots
   fork test, is-equal(kept/length, 0)
     hold
       back 0
-  # host values, built by the binds above
-  save entries, like list, like dynamic
-    make list
+  save entries, make list
   save written, 0
   walk kept
     take one
-    save texts, like list, like dynamic
-      make list
+    save texts, make list
     walk one/texts
       take value
       push(texts, data-text(value))
     push(entries, data-entry(one/phrase, texts))
     save written, add(written, one/texts/length)
-  save written-hash, like dynamic
-    call data-hash(entries)
-  save no-trees, like maybe, like hash, like text, like host-anchor
-    make none
-  node-file/write-file-sync(file, write-long(written-hash, no-trees))
+  node-file/write-file-sync(file, host-data/write-long(data-hash(entries)))
   back written

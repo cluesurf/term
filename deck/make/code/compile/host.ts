@@ -197,7 +197,7 @@ export const escapeText = (value: string): string =>
 
 // JSON: keys snake there unless `keep`, a whole number past 2^53 as its text (compile/host-data-json.tree)
 export const toJson = (data: Data, keep = false): string =>
-  json.hostJsonText(toPort(data), keep)
+  json.hostJson(toPort(data), keep)
 
 export const toJsonValue = (data: Data, keep = false): unknown =>
   json.hostJsonValue(toPort(data), keep)

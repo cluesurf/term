@@ -1,7 +1,7 @@
 // Subprocess runner over node:child_process. Spawns the command, accumulates stdout and stderr, and resolves with the
 // exit code and captured streams when the process closes. A spawn failure resolves with code -1 and the error text, so
 // the public run API stays total. Reached only through the public run API.
-import { spawn as runnerSpawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 const runner = {
   run: (
@@ -12,7 +12,7 @@ const runner = {
       let output = ''
       let error = ''
       try {
-        const child = runnerSpawn(command, argumentList)
+        const child = spawn(command, argumentList)
         child.stdout.on('data', (chunk: Buffer) => {
           output += chunk.toString()
         })
@@ -37,7 +37,7 @@ const runner = {
   ): Promise<number> =>
     new Promise(resolve => {
       try {
-        const child = runnerSpawn(command, argumentList, { stdio: 'inherit' })
+        const child = spawn(command, argumentList, { stdio: 'inherit' })
         child.on('error', () => resolve(-1))
         child.on('close', (code: number | null) => resolve(code ?? 0))
       } catch {
@@ -55,7 +55,7 @@ const runner = {
       let output = ''
       let error = ''
       try {
-        const child = runnerSpawn(command, argumentList)
+        const child = spawn(command, argumentList)
         child.stdout.on('data', (chunk: Buffer) => {
           output += chunk.toString()
         })

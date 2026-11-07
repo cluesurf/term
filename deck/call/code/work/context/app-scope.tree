@@ -23,19 +23,10 @@ load @term/base/list
   find join
   find contains
 
-load @term/make/parser/token
-  find token-source
-
-load @term/make/compile/host-data
-  find read-data-text
-  find expand-data
-
-load @term/make/compile/host-data-json
-  find host-json-value
-
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
+  load <@term/make/code/compile/host>, name host-module
 
 # ---- the host values Term has no word for ----
 
@@ -75,6 +66,14 @@ bind pattern-holds
   like boolean
   case node
     text <$pattern.test($value)>
+
+# compile/host.ts `toJsonValue(data)`, called on the docked module by its exact name
+bind json-value-of
+  take module, like dynamic
+  take data, like dynamic
+  like dynamic
+  case node
+    text <$module.toJsonValue($data)>
 
 # a key and its value, as one entry of a host record
 bind pair-of
@@ -313,6 +312,10 @@ form scope-read
   link scope, like hash, like text, like dynamic
   link file, like text
 
+form data-source
+  link file, like text
+  link text, like text
+
 # the messages of a list of diagnostics, joined by `; `
 task messages-of
   take diagnostics, like dynamic
@@ -423,20 +426,21 @@ task read-scope
           bind file, file
 
   save source
-    make token-source
+    make data-source
       bind file, file
       bind text, node-fs/read-file-sync(file, <utf8>)
-  save read, read-data-text(source)
+  save read, host-module/read-data-text(source)
   fork test, not(read/ok)
     hold
       scope-refuse(<{file} is not a data file: {messages-of(read/diagnostics)}>)
 
-  save expanded, expand-data(read/file, file)
+  save expanded, host-module/expand-data(read/data, file)
   fork test, not(expanded/ok)
     hold
       scope-refuse(<{file}: {messages-of(expanded/diagnostics)}>)
 
-  save value, host-json-value(expanded/value, false)
+  # the dock call `host-module/to-json-value` is emitted as `toJSONValue`, which the module does not export
+  save value, json-value-of(host-module, expanded/data)
   fork test, not(is-record(value))
     hold
       scope-refuse(<{file} holds a {kind-name(value)}; a scope is `host` entries, one per capability>)

@@ -1083,7 +1083,6 @@ task refuse-sole-copies
     like task
       take reason, like text
       like boolean
-      halt failure
   like boolean
   mark private
 
@@ -1451,7 +1450,6 @@ task emit-kotlin
     like task
       take reason, like text
       like boolean
-      halt failure
   like text
 
   # a task named like a docked module is renamed, since Kotlin reads `log.writeInfo` on a function `log` (dock-apart).

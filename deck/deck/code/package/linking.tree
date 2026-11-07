@@ -229,40 +229,15 @@ task unlink-quietly
     take missing
     save nothing, 0
 
-# where a deck is installed in the store: `<name>@<version>` in a project's, and by name in the user folder, each
-# release under `code/<version>` inside the deck's own folder, as term keeps its own under `@term/code/code/<version>`
-# (decision term/package-manager/002). `@term/code` is never put there: that folder is term's own
+# where a deck is installed in the store
 task deck-folder
   take seed-dir, like text
   take name, like text
   take code-text, like text
-  take by-name, like boolean
   like text
   mark private
 
-  fork test, by-name
-    hold
-      fork test, is-equal(name, <@term/code>)
-        hold
-          halt <@term/code is term itself, so it is not installed into the user folder>
-      back node-path/join(seed-dir, name, <code>, code-text)
   back node-path/join(seed-dir, <{name}@{code-text}>)
-
-# where an OCI install records the digest it unpacked: beside the project store's folders, or inside the release
-# folder in the user folder, where nothing but the release lives
-task digest-marker
-  take seed-dir, like text
-  take deck-dir, like text
-  take name, like text
-  take code-text, like text
-  take by-name, like boolean
-  like text
-  mark private
-
-  fork test, by-name
-    hold
-      back node-path/join(deck-dir, <.digest>)
-  back node-path/join(seed-dir, <.digest>, <{name}@{code-text}>)
 
 # the link for a deck's name inside a `link/` folder: `@scope/name` under its scope's folder, made first, and anything
 # else as the whole name
@@ -316,7 +291,6 @@ task install-oci
   take seed-dir, like text
   take deck-dir, like text
   take config, like dynamic
-  take by-name, like boolean
   like void
   mark private
 
@@ -328,7 +302,7 @@ task install-oci
     hold
       halt <lock.tree disagrees with itself for {resolved/name}@{code-text}: hash {resolved/hash}, site {resolved/site}>
 
-  save marker, digest-marker(seed-dir, deck-dir, resolved/name, code-text, by-name)
+  save marker, node-path/join(seed-dir, <.digest>, <{resolved/name}@{code-text}>)
   save pinned, false
   fork
     mark unsafe
@@ -429,16 +403,15 @@ task install-resolved
   take resolved, like resolved-deck
   take seed-dir, like text
   take config, like dynamic
-  take by-name, like boolean
   like void
   mark private
 
   save code-text, show-code(resolved/code)
-  save deck-dir, deck-folder(seed-dir, resolved/name, code-text, by-name)
+  save deck-dir, deck-folder(seed-dir, resolved/name, code-text)
 
   fork test, is-oci-registry(resolved/site)
     hold
-      install-oci(resolved, seed-dir, deck-dir, config, by-name)
+      install-oci(resolved, seed-dir, deck-dir, config)
     miss
       # skipped when installed already, and for a workspace deck (no tarball)
       fork test, and(not(can-reach(deck-dir)), not(is-equal(resolved/site, <>)))
@@ -464,14 +437,13 @@ task install-settled
   take resolved, like resolved-deck
   take seed-dir, like text
   take config, like dynamic
-  take by-name, like boolean
   like settled-install
   mark private
   mark async
 
   fork
     mark unsafe
-    install-resolved(resolved, seed-dir, config, by-name)
+    install-resolved(resolved, seed-dir, config)
     back make(settled-install, bind(ok, true), bind(error, 0), bind(at, 0))
   halt take
     take problem
@@ -481,14 +453,13 @@ task install-settled
 task linked-folder
   take seed-dir, like text
   take deck, like resolved-deck
-  take by-name, like boolean
   like text
   mark private
 
   fork test, not(is-equal(deck/local, <>))
     hold
       back deck/local
-  back deck-folder(seed-dir, deck/name, show-code(deck/code), by-name)
+  back deck-folder(seed-dir, deck/name, show-code(deck/code))
 
 # a relative symlink to a deck's folder, at its name in a `link/` folder
 task link-deck
@@ -521,20 +492,19 @@ task link-dependencies
   take seed-dir, like text
   take deck, like resolved-deck
   take resolved, like resolution
-  take by-name, like boolean
   like void
   mark private
 
   fork test, is-above(deck/link/length(), 0)
     hold
-      save deps-link-dir, node-path/join(linked-folder(seed-dir, deck, by-name), <link>)
+      save deps-link-dir, node-path/join(linked-folder(seed-dir, deck), <link>)
       fs-promise/mkdir(deps-link-dir, make(folder-ask, bind(recursive, true)))
       walk deck/link/keys()
         take dep-name
         sift find-resolved-deck(dep-name, resolved)
           case some
             link dep
-            link-deck(deps-link-dir, dep-name, linked-folder(seed-dir, dep, by-name))
+            link-deck(deps-link-dir, dep-name, linked-folder(seed-dir, dep))
           case none
             save nothing, 0
 
@@ -544,37 +514,10 @@ task link-packages
   take config, like dynamic
   like void
 
-  link-packages-into(project-links(root), project-store(root), resolved, config)
+  save link-dir, link-folder(root)
+  save seed-dir, node-path/join(link-dir, term-folder())
 
-# a project's `link/` folder, where `term load` links each deck by its name
-task project-links
-  take root, like text
-  like text
-
-  back link-folder(root)
-
-# where a project's versions are unpacked, `link/.base/@term/code`
-task project-store
-  take root, like text
-  like text
-
-  back node-path/join(link-folder(root), term-folder())
-
-# Every resolved deck installed under `seed-dir` and linked by its name in `link-dir`: a project's `link/` and
-# `link/.base/@term/code`. With NO link folder (the empty text) it is the user folder's layout, `term save --global`
-# (decision term/package-manager/002): `seed-dir` is `~/.base`, each deck is unpacked at `<seed-dir>/<scope>/<name>/
-# code/<version>`, inside a folder that stays real and keeps the user's own files, and nothing is linked at the top
-task link-packages-into
-  take link-dir, like text
-  take seed-dir, like text
-  take resolved, like resolution
-  take config, like dynamic
-  like void
-
-  save by-name, is-equal(link-dir, <>)
-  fork test, not(by-name)
-    hold
-      fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
+  fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
   fs-promise/mkdir(seed-dir, make(folder-ask, bind(recursive, true)))
   init-store()
 
@@ -595,7 +538,7 @@ task link-packages-into
         hook hold
           # read before the tick: its arguments are read when the job starts, after `at` has moved on
           save one, get(decks, at)
-          works/push(tick install-settled(one, seed-dir, config, by-name))
+          works/push(tick install-settled(one, seed-dir, config))
           save at, add(at, 1)
       # the failure that came first in time, as `Promise.all` raised it, once the chunk has settled
       save first, like maybe, like settled-install
@@ -621,17 +564,15 @@ task link-packages-into
           save nothing, 0
       save start, add(start, size)
 
-  # the top-level links of the project, none in the user folder
-  fork test, not(by-name)
-    hold
-      walk decks
-        take deck
-        link-deck(link-dir, deck/name, linked-folder(seed-dir, deck, by-name))
+  # the top-level links of the project
+  walk decks
+    take deck
+    link-deck(link-dir, deck/name, linked-folder(seed-dir, deck))
 
   # each deck's own links
   walk decks
     take deck
-    link-dependencies(seed-dir, deck, resolved, by-name)
+    link-dependencies(seed-dir, deck, resolved)
 
 task clean-links
   take root, like text

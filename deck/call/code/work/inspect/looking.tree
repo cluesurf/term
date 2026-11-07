@@ -5,21 +5,12 @@
 # THE ANSWER IS DATA. The table, the JSON and the CSV go to stdout through printData, so a pipe gets them clean; the
 # run around them (what was read, the counts, a failure) is items on stderr.
 #
-# Ported from call/code/look.ts (term-cli-in-term-0055). The type printer (compile/type-text) and the data reader
-# (compile/host-data) are loaded; the module inspector, the compiler, the role readers, the project resolver and the
-# deck reader are docked until their own ports land, and every item prints through the output library, docked.
+# Ported from call/code/look.ts (term-cli-in-term-0055). The type printer (compile/type-text) is loaded; the module
+# inspector, the compiler, the data reader (compile/host), the role readers, the project resolver and the deck reader
+# are docked until their own ports land, and every item prints through the output library, docked.
 
 load @term/make/compile/type-text
   find show-type
-
-load @term/make/compile/host-data
-  find read-data-text
-  find expand-data
-  find data-keys
-  find is-data-file
-
-load @term/make/compile/host-data-json
-  find host-json-value
 
 # the role and lean readers, the resolver and the deck finder: the build lane's ports, where role-of.ts, make.ts and
 # deck-of.ts were docked (term-cli-in-term-0069)
@@ -54,6 +45,7 @@ load @term/call/work/item/event
 dock load
   load <@term/make/code/inspect>, name inspect-module
   load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/host>, name data-module
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -91,7 +83,16 @@ bind resolve-with
   case node
     text <$resolve($path, $from)>
 
-# inspect.ts `toJson(...)`, by its exact name
+# compile/host.ts `toJsonValue(data)`, called by its exact name: a dock member spelled to-json-value is emitted
+# toJSONValue (traps.md)
+bind json-value-of
+  take module, like dynamic
+  take data, like dynamic
+  like dynamic
+  case node
+    text <$module.toJsonValue($data)>
+
+# compile/host.ts and inspect.ts `toJson(...)`, by their exact name
 bind json-text-of
   take module, like dynamic
   take value, like dynamic
@@ -222,13 +223,11 @@ task look-data
   like void
   mark private
 
-  save read, read-data-text(entry)
-  # the read when it failed, the expansion when it did not: both carry `ok` and `diagnostics`
-  save expanded, like dynamic
-    read read
+  save read, data-module/read-data-text(entry)
+  save expanded, read
   fork test, is-truthy(read/ok)
     hold
-      save expanded, expand-data(read/file, entry/file)
+      save expanded, data-module/expand-data(read/data, entry/file)
   fork test, not(is-truthy(expanded/ok))
     hold
       # each defect a Problem item with its frame (section 12)
@@ -239,10 +238,10 @@ task look-data
       report-problems(problems, root)
       close-run(make(plain-close, bind(verdict, <The data file does not read>)))
       back
-  save keys, data-keys(expanded/value)
+  save keys, data-module/data-keys(expanded/data)
   fork test, is-truthy(input/json)
     hold
-      print-data(<{json-pretty(host-json-value(expanded/value, false))}\n>)
+      print-data(<{json-pretty(json-value-of(data-module, expanded/data))}\n>)
     miss
       fork test, is-truthy(input/csv)
         hold
@@ -319,7 +318,7 @@ task call-look
           close-run(make(plain-close, bind(verdict, <Nothing to look at>)))
           back
   # a data file has no forms or tasks: list its keys instead, a path per row
-  fork test, is-data-file(entry)
+  fork test, data-module/is-data-file(entry)
     hold
       look-data(entry, input, root)
       back

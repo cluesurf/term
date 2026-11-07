@@ -1,34 +1,3 @@
-# The boot pin grammar: `boot.tree` at the Term root, the release stage0 comes from (08-bootstrap.md, "Stage0, after
-# the port", decision 126 of change 001-finish-self-host). Read by task/term/boot.ts through the mill executor.
-#
-#   boot
-#     code <2.10.0>
-#     site <oci://ghcr.io/cluesurf/term/code@sha256:…>
-#
-# `code` is the release's version and `site` its repository and image index digest, the trust anchor. A site with no
-# digest pins nothing yet: stage0 is then task/stage0.json's bundle.
+mark draft
 
-mine boot-file
-  mine list
-    mine any
-      mine form, like boot-head
-        site boot
-
-mine boot-head
-  mine term, term boot
-    mine list
-      mine any
-        mine form, like boot-code
-          site code
-        mine form, like boot-site
-          site site
-
-mine boot-code
-  mine term, term code
-    mine text
-      site text
-
-mine boot-site
-  mine term, term site
-    mine text
-      site text
+note <Shelved: term-self-host-001-0171 did not land, see tmp/self-host/queue/runs/2026-11-06T215325>

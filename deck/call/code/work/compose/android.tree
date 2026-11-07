@@ -62,11 +62,6 @@ load ../build/project-resolving
 load ../build/host-faces
   find face-project-resolver
 
-# the Kotlin emitter, where compile/kotlin.ts was docked until term-self-host-001-0957. Its `fail` slot declares
-# `halt failure` (decision 086 rule 3, ruling 0979), so it is handed a fail that halts
-load @term/make/compile/kotlin-program
-  find emit-kotlin
-
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -75,6 +70,7 @@ dock load
   load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
 
 form android-source
   link file, like text
@@ -85,13 +81,8 @@ form android-options
   link env, like text
   link cache, like dynamic
 
-# the fail the Kotlin emitter is handed: a refused emit stops the build, as compile/kotlin.ts's fail threw
-task emit-refused
-  take reason, like text
-  like boolean
-  mark private
-
-  halt <{reason}>
+form android-emit-options
+  link wake, like dynamic
 
 form android-run-options
   link stdio, like text
@@ -743,9 +734,7 @@ task build-compose-android
     hold
       back make(failed, bind(stage, <scope>), bind(reason, <{refused}>))
 
-  # the wake the compile answered, else none, as the face handed `options.wake ?? []`
-  save no-wake, make list
-  save kotlin, emit-kotlin(result/program, value-or(result/wake, no-wake), false, emit-refused)
+  save kotlin, kotlin-module/emit-kotlin(result/program, make(android-emit-options, bind(wake, result/wake)))
   save prelude, native-module/native-prelude(result/program, <compose-android>, read-runtime, kotlin)
   save driver-lines, make list
   driver-lines/push(<class TermActivity : TermComposeActivity() \{>)

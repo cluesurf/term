@@ -1540,7 +1540,6 @@ task emit-rust-pass
     like task
       take reason, like text
       like boolean
-      halt failure
   like text
   mark private
 
@@ -3015,7 +3014,6 @@ task emit-rust
     like task
       take reason, like text
       like boolean
-      halt failure
   like text
 
   # every fact and the emission of both passes read one STAMPED copy, each place a node of its own (D011 rule 4)
@@ -3050,7 +3048,6 @@ task rust-boxing-of
     like task
       take reason, like text
       like boolean
-      halt failure
   like rust-boxing
 
   save program, stamp-places(handed)

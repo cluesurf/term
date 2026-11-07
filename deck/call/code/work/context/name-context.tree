@@ -3,8 +3,8 @@
 # signature names, every place in the project that uses it, and the heads of what it calls, in that order, each part
 # taken while the budget lasts and what did not fit counted.
 #
-# Everything is read with the one parser and the mill (make/analyzer.tree, where make/code/analyze.ts was docked until
-# term-self-host-001-1008), the doc comment from the parse tree's own comments, as hover reads it. Each file is milled alone: no build, no cache, and a file that does not compile
+# Everything is read with the one parser and the mill (make/code/analyze.ts), the doc comment from the parse tree's
+# own comments, as hover reads it. Each file is milled alone: no build, no cache, and a file that does not compile
 # still answers for the parts that mill. What a definition shows, which expressions use a name, what a task calls, the
 # budget and the text are call/code/context-slice.tree; this module reads and mills the files, follows the loads, reads
 # a doc comment off the parse tree, and sorts the uses by the host's collation, `localeCompare`.
@@ -67,9 +67,6 @@ load @term/make/parser/tree
 load @term/make/parser/token
   find token-source
 
-load @term/make/analyzer
-  find analyze
-
 # the mill's span reader, compile/mill-running.tree's, where compile/mill-run.ts was docked until
 # term-self-host-001-0958
 load @term/make/compile/mill-running
@@ -79,6 +76,7 @@ dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
+  load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/resolve>, name resolve-module
@@ -112,19 +110,6 @@ bind value-or
     text <($value ?? $fallback)>
 
 bind nothing
-  like dynamic
-  case node
-    text <undefined>
-
-# a role reader's answer as the analysis takes it: absent for none (make/code/analyze.ts `role ?? undefined`)
-bind role-given
-  take value, like dynamic
-  like dynamic
-  case node
-    text <($value ?? undefined)>
-
-# no view catalog, as the file analyzer was handed none here
-bind no-catalog
   like dynamic
   case node
     text <undefined>
@@ -253,6 +238,10 @@ form mill-source
   link file, like text
   link text, like text
 
+form mill-options
+  link role, like dynamic
+  link lean, like dynamic
+
 form missing-name
   link error, like text
   link name, like text
@@ -312,10 +301,18 @@ task mill
       sift text
         case some
           link read
-          save result, analyze(make(token-source, bind(file, file), bind(text, read)), role-given(reader/role-of(file)), value-or(reader/lean-of(file), false), no-catalog())
-          sift result/program
-            case some
-              link program
+          save source
+            make mill-source
+              bind file, file
+              bind text, read
+          save options
+            make mill-options
+              bind role, reader/role-of(file)
+              bind lean, value-or(reader/lean-of(file), false)
+          save result, analyze-module/analyze(source, options)
+          save program, result/program
+          fork test, is-truthy(program)
+            hold
               save one
                 make milled
                   bind file, file
@@ -325,8 +322,6 @@ task mill
               save made
                 make some
                   read one
-            case none
-              save nothing, 0
         case none
           save nothing, 0
       save reader/milled/{file}, made
