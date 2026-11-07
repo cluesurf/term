@@ -105,6 +105,7 @@
     "term:self-host": "tsx task/term/self-host.ts",
     "term:left": "tsx task/term/self-host-left.ts",
     "term:fixpoint": "tsx task/term/fixpoint.ts",
+    "term:boot": "tsx task/term/boot.ts",
     "term:prelude-names": "tsx task/term/prelude-names.ts",
     "term:line-lock": "node task/term/line-lock.ts",
     "term:builder-closure": "tsx task/term/builder-closure.ts",

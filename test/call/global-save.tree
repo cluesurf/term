@@ -1,3 +1,211 @@
-mark draft
+# term save --global, toss --global and load --global (item term-package-manager-0004, decisions
+# term/package-manager/001 and 002), run in this process against a home folder of the suite's own. The package's
+# folder, ~/.base/@alice/demo, exists before the save with the user's own zone.tree in it, which save -g and toss -g
+# must keep byte for byte (zone's binding lives at ~/.base/@term/zone/zone.tree). HOME points into a temporary
+# folder, TERM_STORE and TERM_TRUST_DIR beside it, and the registry is this process's own (deck/deck/test/oci-server.tree),
+# holding @alice/demo 1.0.2, a deck whose `line` names its console. So no real home, store, key, token or registry is
+# read. The user manifest routes the alice scope to the registry with a base line, written before the first save.
 
-note <Shelved: term-package-manager-0004 did not land, see tmp/self-host/queue/runs/2026-11-07T035115>
+load @term/call/work/small/global-saving
+  find call-save-global
+  find call-toss-global
+  find call-load-global
+
+load @term/deck/test/oci-server
+  find start-oci-server
+  find close-oci-server
+  find oci-server
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load ../support/temp
+  find temp-folder
+
+dock load
+  load <node:fs>, name saving-file
+  load <node:path>, name saving-path
+  load <@term/deck/code/oci/layout>, name saving-layout
+  load <@term/deck/code/oci/publish>, name saving-publish
+  load <@term/deck/code/oci/transport>, name saving-transport
+  load <@term/deck/code/object/sign>, name saving-sign
+
+bind saving-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+bind saving-is-link
+  take place, like text
+  like boolean
+  case node
+    text <<(() => { try { return process.getBuiltinModule("node:fs").lstatSync($place).isSymbolicLink() } catch { return false } })()>>
+
+host saving-variables, make list(<HOME>, <TERM_STORE>, <TERM_TRUST_DIR>)
+host saving-own-text, <zone base, machine 7\n>
+
+form saving-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form saving-transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form saving-target
+  link kind, like text
+  link version, like text
+
+form saving-repository
+  link host, like text
+  link namespace, like text
+  link name, like text
+
+form saving-layout-ask
+  link dir, like text
+
+form saving-publish-ask
+  link dir, like text
+  link package, like text
+  link version, like text
+  link target, like saving-target
+  link link, like list, like text
+  link transport, like dynamic
+  link repository, like saving-repository
+  link scope, like text
+  link keys-repository, like text
+  link local, like dynamic
+  link keypair, like dynamic
+  link author, like text
+  link time, like text
+
+form saving-kept
+  link name, like text
+  link held, like boolean
+  link value, like text
+
+form saving-fixture
+  link server, like oci-server
+  link work, like text
+  link base, like text
+  link kept, like list, like saving-kept
+
+task saving-credentials
+  like saving-credential
+  mark async
+
+  back make(saving-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+# a registry holding @alice/demo 1.0.2, a deck with a console, and a home whose `.base/deck.tree` routes alice to it
+task open-saving
+  like saving-fixture
+  mark async
+
+  host server, start-oci-server()
+  host work, temp-folder(<term-global-save->)
+  host kept, make list
+  walk saving-variables
+    take name, like text
+    kept/push(make(saving-kept, bind(name, name), bind(held, has-variable(name)), bind(value, variable-of(name))))
+  set-variable(<HOME>, saving-path/join(work, <home>))
+  set-variable(<TERM_STORE>, saving-path/join(work, <store>))
+  set-variable(<TERM_TRUST_DIR>, saving-path/join(work, <trust>))
+  host source, saving-path/join(work, <demo>)
+  saving-file/mkdir-sync(saving-path/join(source, <code>, <line>), saving-folder-options(0))
+  saving-file/write-file-sync(saving-path/join(source, <deck.tree>), <deck @alice/demo\n  mark \<1.0.2\>\n  line ./code/line\n>)
+  saving-file/write-file-sync(saving-path/join(source, <code>, <line>, <base.tree>), <hook demo\n  task show\n>)
+  host transport, saving-transport/http-transport(make(saving-transport-ask, bind(host, server/host), bind(credentials, saving-credentials), bind(retries, 0)))
+  host local, saving-layout/layout-object-store(make(saving-layout-ask, bind(dir, saving-path/join(work, <publisher>))))
+  host target, make(saving-target, bind(kind, <version>), bind(version, <1.0.2>))
+  host repository, make(saving-repository, bind(host, server/host), bind(namespace, <alice>), bind(name, <alice/demo>))
+  host links, make list
+  host asked, make(saving-publish-ask, bind(dir, source), bind(package, <@alice/demo>), bind(version, <1.0.2>), bind(target, target), bind(link, links), bind(transport, transport), bind(repository, repository), bind(scope, <@alice>), bind(keys-repository, <alice/name>), bind(local, local), bind(keypair, saving-sign/generate-keypair()), bind(author, <alice>), bind(time, <2026-01-01T00:00:00.000Z>))
+  host published, wait saving-publish/publish-to-oci(asked)
+  host base, saving-path/join(work, <home>, <.base>)
+  saving-file/mkdir-sync(base, saving-folder-options(0))
+  # the package's folder is already there, holding the user's own file, as ~/.base/@term/zone holds zone.tree
+  host place, saving-path/join(base, <@alice>, <demo>)
+  saving-file/mkdir-sync(place, saving-folder-options(0))
+  saving-file/write-file-sync(saving-path/join(place, <zone.tree>), saving-own-text)
+  saving-file/write-file-sync(saving-path/join(base, <deck.tree>), <deck global\n  mark \<0.0.0\>\n  base alice, \<{server/host}/alice\>\n>)
+  back make(saving-fixture, bind(server, server), bind(work, work), bind(base, base), bind(kept, kept))
+
+# the variables as they were and the registry closed. The folder goes with the process (support/temp)
+task close-saving
+  take open, like saving-fixture
+  like void
+  mark async
+
+  walk open/kept
+    take one, like saving-kept
+    fork test, one/held
+      hold
+        set-variable(one/name, one/value)
+      miss
+        remove-variable(one/name)
+  close-oci-server(open/server)
+
+task read-or-empty
+  take file, like text
+  like text
+
+  fork test, saving-file/exists-sync(file)
+    hold
+      back saving-file/read-file-sync(file, <utf8>)
+  back <>
+
+test <term save --global: the release at ~/.base/@alice/demo/code/1.0.2 in a folder that stays real, the user's zone.tree kept, its row in ~/.base/deck.tree, and a launcher for its console on PATH>
+  host open, open-saving()
+  call-save-global(<@alice/demo>, <1.0.x>)
+  host place, saving-path/join(open/base, <@alice>, <demo>)
+  host linked, saving-is-link(place)
+  host release-there, saving-file/exists-sync(saving-path/join(place, <code>, <1.0.2>, <deck.tree>))
+  host own, read-or-empty(saving-path/join(place, <zone.tree>))
+  host manifest, read-or-empty(saving-path/join(open/base, <deck.tree>))
+  host locked, read-or-empty(saving-path/join(open/base, <lock.tree>))
+  host launcher, read-or-empty(saving-path/join(open/base, <@term>, <code>, <call>, <demo>))
+  close-saving(open)
+  want hold, not(linked)
+  want hold, release-there
+  want hold, is-equal(own, saving-own-text)
+  want hold, manifest/includes(<link @alice/demo>)
+  want hold, locked/includes(<@alice/demo>)
+  want hold, launcher/includes(<term save --global @alice/demo>)
+  want hold, launcher/includes(<boot>)
+  want hold, launcher/includes(<@alice/demo/code/1.0.2/code/line/base.tree>)
+
+test <term toss --global: the launcher, the releases and the manifest row removed, the folder and the user's zone.tree kept, the base line kept>
+  host open, open-saving()
+  call-save-global(<@alice/demo>, <1.0.x>)
+  call-toss-global(<@alice/demo>)
+  host place, saving-path/join(open/base, <@alice>, <demo>)
+  host gone-code, not(saving-file/exists-sync(saving-path/join(place, <code>)))
+  host gone-launcher, not(saving-file/exists-sync(saving-path/join(open/base, <@term>, <code>, <call>, <demo>)))
+  host own, read-or-empty(saving-path/join(place, <zone.tree>))
+  host manifest, read-or-empty(saving-path/join(open/base, <deck.tree>))
+  close-saving(open)
+  want hold, gone-code
+  want hold, gone-launcher
+  want hold, is-equal(own, saving-own-text)
+  want hold, not(manifest/includes(<@alice/demo>))
+  want hold, manifest/includes(<base alice>)
+
+test <term load --global: every deck the user manifest names installed again, its launcher written again>
+  host open, open-saving()
+  call-save-global(<@alice/demo>, <1.0.x>)
+  host place, saving-path/join(open/base, <@alice>, <demo>)
+  host launcher-file, saving-path/join(open/base, <@term>, <code>, <call>, <demo>)
+  saving-file/rm-sync(saving-path/join(place, <code>), saving-folder-options(0))
+  saving-file/unlink-sync(launcher-file)
+  call-load-global(false, false)
+  host release-there, saving-file/exists-sync(saving-path/join(place, <code>, <1.0.2>, <deck.tree>))
+  host launcher, read-or-empty(launcher-file)
+  close-saving(open)
+  want hold, release-there
+  want hold, launcher/includes(<term save --global @alice/demo>)

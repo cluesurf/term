@@ -57,6 +57,10 @@ const WINGET_FORK = givenDir({ flag: '--winget', variable: 'TERM_WINGET_FORK', f
 // alias names it (TERM_SITE_DEPLOY), and described otherwise
 const SITE_DEPLOY = process.env.TERM_SITE_DEPLOY?.trim() ?? ''
 
+// the command that makes the GitHub release, printed as the first publishing step when the person's alias names it
+// (TERM_GITHUB_RELEASE). It is the parent's, not this repository's: this package.json has no such script
+const GITHUB_RELEASE = process.env.TERM_GITHUB_RELEASE?.trim() ?? ''
+
 const SITE_URL = 'https://term.surf'
 
 // the GitHub repository whose releases hold every package
@@ -238,7 +242,7 @@ async function main(): Promise<void> {
     message: [
       `1. the GitHub release on ${REPOSITORY}, which holds every package the indexes and the winget manifests name`,
       '   (the Term repository pushed first, so the tag names the commit they were built from):',
-      `   pnpm --dir ${TERM} run term:github-release ${version} --commit`,
+      GITHUB_RELEASE ? `   ${GITHUB_RELEASE} ${version} --commit` : `   upload every file of ${packages} to the release v${version}`,
       '2. term.surf, which then serves the new indexes (a deploy builds from what is pushed):',
       `   git -C ${SITE_PUBLIC} add apt rpm term.asc`,
       `   git -C ${SITE_PUBLIC} commit -m "term ${version} for apt and dnf"`,

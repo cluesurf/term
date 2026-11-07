@@ -612,6 +612,11 @@ async function main(): Promise<void> {
       `${JSON.stringify({ name: '@cluesurf/term', version, type: 'module', private: true }, null, 2)}\n`,
     )
 
+    // the license and the notice travel with the code, in every package made from this stage (Apache-2.0 section 4)
+    for (const name of ['LICENSE', 'NOTICE']) {
+      cpSync(path.join(TERM, name), path.join(root, name))
+    }
+
     mkdirSync(path.join(root, 'bin'), { recursive: true })
 
     // windows-x64's term.exe is built on Windows by the Windows step, below

@@ -302,6 +302,50 @@ export function setRecording(on: boolean): void {
   recording = on
 }
 
+// A WORKER (port-build's THE JOBS). Each worker process has its own trace, and what a module observes there comes back
+// to the process that writes the manifest. What the worker observed while it loaded is the same as what that process
+// observed while it loaded, and that process files it as outside every module, so the worker drops it here and endModule
+// then answers the module's own keys alone
+export function forgetOutside(): void {
+  outside.clear()
+}
+
+// the module's own keys, each with what this process saw, in the order first made, and whether the process is untrackable
+export function sightings(keys: string[]): { rows: [string, string][]; untrackable: boolean } {
+  return { rows: keys.filter(key => key !== UNTRACKABLE).map(key => [key, seen.get(key)!]), untrackable: seen.has(UNTRACKABLE) }
+}
+
+// one module's observations, made in a worker, taken in as this process would have made them: a row new to the table goes
+// on its end, in the order the module made it, so a build by workers writes the table a build in one process writes. The
+// answer is the module's keys. `moved`: the worker's endModule found a key no longer holding. A row that disagrees with
+// what an earlier module saw is the same fact seen across two processes (a file changed while the run went on), and both
+// mark this module alone, the way endModule does. `untrackable` stays, as it does in one process
+export function adopt(rows: [string, string][], moved: boolean, untrackable: boolean): string[] {
+  const keys = new Set(outside)
+
+  if (untrackable) {
+    seen.set(UNTRACKABLE, 'never')
+  }
+
+  for (const [key, saw] of rows) {
+    const held = seen.get(key)
+
+    if (held === undefined) {
+      seen.set(key, saw)
+    } else if (held !== saw) {
+      moved = true
+    }
+
+    keys.add(key)
+  }
+
+  if (moved || seen.has(UNTRACKABLE)) {
+    keys.add(UNTRACKABLE)
+  }
+
+  return [...keys]
+}
+
 // every observation so far, in the order first made
 export function observations(): [string, string][] {
   return [...seen]

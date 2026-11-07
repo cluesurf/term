@@ -13,7 +13,7 @@
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID as aioRandomUuid } from 'node:crypto'
 
 // an open file: the node handle plus the cursor. node's FileHandle DOES carry a position for `read()` with no
 // offset, but `write` at a position does not move it, so the cursor is kept here for the same reason swift and
@@ -214,7 +214,7 @@ const aio = {
   ): Promise<string> => {
     const at = path.join(
       os.tmpdir(),
-      `${prefix}${randomUUID()}${suffix}`,
+      `${prefix}${aioRandomUuid()}${suffix}`,
     )
 
     try {

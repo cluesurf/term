@@ -2,7 +2,7 @@
 // standard input, one answer per line on its standard output, matched by `id`. The child is started on the first
 // exchange, kept for the rest of the run and stopped when this process exits. Nothing here ever evaluates a line it
 // reads: a line is parsed as data to find its `id`, and handed on as text. Reached only through the public driver API.
-import { spawn } from 'node:child_process'
+import { spawn as findDriverSpawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 
 type FindDriverEntry = {
@@ -85,7 +85,7 @@ const findDriverStart = (): FindDriverEntry | undefined => {
   }
 
   try {
-    const child = spawn(findDriverCommand, findDriverArguments, {
+    const child = findDriverSpawn(findDriverCommand, findDriverArguments, {
       stdio: ['pipe', 'pipe', 'inherit'],
     })
     const entry: FindDriverEntry = {

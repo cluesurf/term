@@ -1,3 +1,4 @@
-mark draft
-
-note <Shelved: term-self-host-001-0998 did not land, see tmp/self-host/queue/runs/2026-11-07T035115>
+deck @probe/shim-import-fixture
+head <Probe>
+mark <0.0.2>
+link @term/base, mark <0.0.x>

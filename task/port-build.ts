@@ -69,11 +69,29 @@
 //                                         tmp/self-host/stage-check/, each output compared byte for byte with step
 //                                         1's, the first differing line of each named. Exit 1 on any difference. The
 //                                         line lock is freed before step 2, which writes nothing a build reads
+//   npx tsx task/port-build.ts --jobs 4   compile in 4 worker processes (THE JOBS). `--jobs 1` compiles in this process
+//
+// THE JOBS. No module's compile waits on another's: every port compiles with stage0 from `.tree` sources, no compile reads
+// a port (the manifest's table holds no row under host/port), and decision 038 made every cache per module or attributed,
+// so there is no dependency order to keep. What made the loop serial was its one process: one trace, one table, one
+// stdout. So each module's turn is the same function in any process (compileTurn), and the three things that had an order
+// are put back in plan order by this process, whichever worker finished first: the stdout lines, the rows of the table
+// (port-trace.ts adopt), and the entries of the manifest. Output, stdout and manifest are then those of `--jobs 1`.
+//
+// Separate processes, never threads: the trace wraps `fs`, and stage0 holds module state. A worker is this script again
+// with `--port-worker`, so the fingerprint, which covers this file, covers the worker. It takes no lock (it runs under
+// this process's) and holds its own trace, whose rows come back with its turn. It does its write itself, straight after
+// the write-time check (NEVER OLDER OUTPUT OVER NEWER), so no gap opens between the two. The skip is decided here before
+// any compile starts, since it reads the manifest and needs no compiler. A compile that THROWS, or a worker that dies,
+// stops the run and exits 1 with no manifest written, what a throw in one process does. `--stage-check`'s step 2 runs in
+// workers the same way. TERM_PORT_BUILD_HOLD, port-race's hook, means one process: the race it holds is that process's
 
 // FIRST, before the compiler loads: the trace must see every read a compiler module makes, including while it loads
-import { beginModule, closeWindow, endModule, observations, observe, openWindow, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
+import { adopt, beginModule, closeWindow, endModule, forgetOutside, observations, observe, openWindow, real, setRecording, sha, sightings, untraced, UNTRACKABLE } from './port-trace'
 import traced, { writeSync } from 'node:fs'
+import { fork, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { availableParallelism, totalmem } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
@@ -420,6 +438,32 @@ const full = process.argv.includes('--full')
 // `--explain`: a `  skip  <path>` line per module skipped, which test/call/port-build-skip.ts reads
 const explain = process.argv.includes('--explain')
 
+// the room one worker needs, from the heaviest measured (item term-self-host-001-1016), and the most workers worth starting
+const JOB_MEMORY = 6 * 1024 ** 3
+const MOST_JOBS = 8
+
+// `--jobs <n>`, or as many as the machine has cores and memory to spare: four cores left for everything else, and no more
+// workers than its memory holds
+function jobCount(): number {
+  const at = process.argv.indexOf('--jobs')
+
+  if (process.env.TERM_PORT_BUILD_HOLD) {
+    return 1
+  }
+
+  if (at < 0) {
+    return Math.max(1, Math.min(MOST_JOBS, availableParallelism() - 4, Math.floor(totalmem() / JOB_MEMORY)))
+  }
+
+  const jobs = Number(process.argv[at + 1])
+
+  if (!Number.isInteger(jobs) || jobs < 1) {
+    throw new Error(`port-build: --jobs takes a whole number above 0, not ${process.argv[at + 1]}`)
+  }
+
+  return jobs
+}
+
 // raised whenever what a manifest entry means changes, so an older manifest is read as no manifest. 2: an entry's
 // reads are its own compile's observations (decision 038), no longer the process's running total
 const SCHEMA = 2
@@ -617,6 +661,236 @@ function holdForTest(name: string): void {
   }
 }
 
+// ONE MODULE'S TURN, in whichever process compiles it. `lines` are its stdout, printed in plan order. `tally` is the
+// count it adds to, `left` that it was reached and left unwritten and whether by a failure, `entry` the manifest entry of
+// the output now on disk, `keys` its observations (from a worker, `rows`, `drifted` and `untrackable` carry them in their
+// place, port-trace.ts adopt). `carried`: the module was skipped, and this is its old entry
+type Turn = {
+  tally: 'built' | 'unchanged' | 'stale' | 'failed' | 'moved'
+  lines: string[]
+  left?: boolean
+  entry?: Entry
+  keys?: string[]
+  rows?: [string, string][]
+  drifted?: boolean
+  untrackable?: boolean
+  carried?: Entry
+}
+
+// a module gone or shelved since the run began
+function goneTurn(name: string): Turn {
+  return { tally: 'moved', left: false, lines: [`  MOVED ${name}  (removed or shelved since this run began: run port-build again)`] }
+}
+
+// compile one module, and write its port when it changed
+function compileTurn(root: string, file: string, print: string | undefined): Turn {
+  const { compile, collectModules, makeParseMemo, projectResolver, projectLeanOf, toCamel } = stage0!.compiler
+  const lines: string[] = []
+  const name = relative(TERM, file)
+  // the text NOW, not as the plan read it: a full run reaches its last module minutes after it planned
+  let text = sourceOf(file)
+
+  if (text === undefined) {
+    return goneTurn(name)
+  }
+
+  let textHash = sha(text)
+  const outPath = portPath(root, file)
+  const runPath = outPath.replace(/\.ts$/, '-run.ts')
+
+  // a port is a LIBRARY its TypeScript callers build values for: no case is tested by identity. THE WRITE-TIME
+  // CHECK: every `.tree` this compile read, its own text first, is read again once it is done, and a change
+  // compiles it again from the text as it now is
+  let result: ReturnType<typeof compile> | undefined
+  let changed: string | undefined
+  // THE MODULE'S OWN KEY (decision 038): from here to its port's text, everything observed is this module's
+  beginModule()
+  for (let attempt = 1; ; attempt++) {
+    openWindow()
+    // the resolver and the role reader keep what they read (projectResolver's readCache and resolveMemo,
+    // projectRuleOf's byPackage and byFile), so each is made per compile: shared, a module served from them would
+    // show none of the reads its output rests on (decision 038), and a second attempt would read the old text
+    const resolve = projectResolver(root)
+    const leanOf = projectLeanOf(root)
+    // one parse and one walk per module of the closure, shared by the printer's walk and the compile, as compile
+    // makes a parse memo per call
+    const parsed = makeParseMemo()
+    const walked: WalkMemo = new Map()
+    // THE PRINTER'S RUN (decision term-cli-in-term-0240): a closure that holds the printer compiles with
+    // printerKeeper's text after the module's own
+    const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, collectModules)
+    result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
+
+    const read = closeWindow()
+
+    holdForTest(name)
+    // its own text as a text, the way it was compiled; the others by their bytes, the way the trace hashes them
+    changed = sourceOf(file) === text ? [...read].find(([path, hash]) => path !== file && observe('read', path) !== hash)?.[0] : file
+
+    if (changed === undefined || attempt === ATTEMPTS) {
+      break
+    }
+
+    lines.push(`  again ${name}  (${relative(TERM, changed)} changed while it compiled)`)
+
+    const now = sourceOf(file)
+
+    if (now === undefined) {
+      break
+    }
+
+    text = now
+    textHash = sha(text)
+  }
+
+  if (changed !== undefined) {
+    const keys = endModule()
+
+    lines.push(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
+    return { tally: 'moved', left: false, lines, keys }
+  }
+
+  if (!result.ok) {
+    const keys = endModule()
+
+    lines.push(`  FAIL  ${name}`)
+
+    for (const d of result.diagnostics.slice(0, 3)) {
+      lines.push(`        ${d.name}: ${d.message}`)
+    }
+
+    return { tally: 'failed', left: true, lines, keys }
+  }
+
+  const content = printerExports(portContent(result.program, result.typescript))
+  // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
+  // test fixture whose hooks name tasks it never defines) is a library like any other port
+  const run = basename(root) === 'call' ? runEntry(name, content, result.program, toCamel) : undefined
+  // the module's key ends with its prelude's reads
+  const keys = endModule()
+
+  if (run && 'missing' in run) {
+    lines.push(`  FAIL  ${name}`)
+    lines.push(`        run-entry: the port exports no task for ${run.missing.join(', ')}, which a hook names`)
+    return { tally: 'failed', left: true, lines, keys }
+  }
+
+  // the key of this output: the observations of its own compile (decision 038). `reads` is filled from `keys`
+  // when the manifest is written, as rows of its table
+  const entry: Entry | undefined =
+    print === undefined ? undefined : { text: textHash, fingerprint: print, out: sha(content), reads: [], ...(run ? { run: sha(run.text) } : {}) }
+  const existing = untraced(() => (existsSync(outPath) ? readFileSync(outPath, 'utf8') : undefined))
+  const existingRun = run ? untraced(() => (existsSync(runPath) ? readFileSync(runPath, 'utf8') : undefined)) : undefined
+
+  if (existing === content && existingRun === run?.text) {
+    return { tally: 'unchanged', lines, keys, entry }
+  }
+
+  if (check) {
+    lines.push(`  STALE ${name}`)
+    return { tally: 'stale', lines, keys }
+  }
+
+  untraced(() => {
+    mkdirSync(join(outPath, '..'), { recursive: true })
+    writeFileSync(outPath, content)
+
+    if (run) {
+      writeFileSync(runPath, run.text)
+    }
+  })
+
+  lines.push(`  built ${relative(TERM, outPath)}`)
+  return { tally: 'built', lines, keys, entry }
+}
+
+// THE JOBS: `work` handed out to at most `count` workers, each `arrive`d by its place as it finishes. The promise settles
+// when every worker has gone. A thrown compile or a worker that ends with work in hand rejects it, and every worker stops
+function fanOut<Answer>(count: number, flags: string[], work: { at: number; name: string; job: unknown }[], arrive: (at: number, answer: Answer) => void): Promise<void> {
+  type Reply = { ready?: true; answer?: Answer; thrown?: string }
+
+  return new Promise((done, fail) => {
+    const running = new Map<ChildProcess, { at: number; name: string } | undefined>()
+    let next = 0
+    let failure: Error | undefined
+
+    const stop = (): void => {
+      for (const child of running.keys()) {
+        child.kill('SIGKILL')
+      }
+    }
+    const stopped = (): void => {
+      stop()
+      process.exit(130)
+    }
+    const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+
+    process.on('exit', stop)
+    signals.forEach(signal => process.once(signal, stopped))
+
+    const stopFor = (error: Error): void => {
+      failure ??= error
+      stop()
+    }
+
+    const give = (child: ChildProcess): void => {
+      const item = work[next]
+
+      if (!item) {
+        running.set(child, undefined)
+        child.disconnect()
+        return
+      }
+
+      next++
+      running.set(child, item)
+      child.send(item.job as object)
+    }
+
+    for (let index = 0; index < Math.min(count, work.length); index++) {
+      const child = fork(process.argv[1]!, [...process.argv.slice(2), ...flags, '--port-worker'], { execArgv: process.execArgv })
+
+      running.set(child, undefined)
+      child.on('message', (reply: Reply) => {
+        if (failure) {
+          return
+        }
+
+        if (reply.thrown !== undefined) {
+          stopFor(new Error(`port-build: ${running.get(child)?.name} threw in a worker\n${reply.thrown}`))
+        } else if (reply.answer !== undefined) {
+          arrive(running.get(child)!.at, reply.answer)
+          give(child)
+        } else if (reply.ready) {
+          give(child)
+        }
+      })
+      child.on('error', stopFor)
+      child.on('exit', (code, signal) => {
+        const held = running.get(child)
+
+        running.delete(child)
+
+        // a worker leaves with exit 0 once told there is no more work, and in no other way
+        if (held !== undefined || next < work.length || code !== 0) {
+          stopFor(new Error(`port-build: a worker ended (${signal ?? `exit ${code}`})${held ? ` compiling ${held.name}` : ''}`))
+        }
+
+        if (running.size === 0) {
+          process.off('exit', stop)
+          signals.forEach(one => process.off(one, stopped))
+
+          if (failure) {
+            fail(failure)
+          } else {
+            done()
+          }
+        }
+      })
+    }
+  })
+}
+
 // `--verify`: each chosen module's port held against the manifest entry the build that wrote it left, the hash of the
 // text it compiled and of the port it wrote. The module's text now must be that text, and its port that port. It
 // reads the module's OWN source only: a port is emitted with every module it loads, and a change to one of those is
@@ -665,12 +939,9 @@ function verifyPorts(plan: { root: string; files: { file: string; text: string }
 }
 
 async function main(): Promise<void> {
-  let built = 0
-  let unchanged = 0
-  let stale = 0
-  let failed = 0
-  // modules left unwritten because their sources kept changing while they compiled (THE WRITE-TIME CHECK)
-  let moved = 0
+  // `moved`: modules left unwritten because their sources kept changing while they compiled (THE WRITE-TIME CHECK)
+  const counts = { built: 0, unchanged: 0, stale: 0, failed: 0, moved: 0 }
+  const jobs = jobCount()
 
   // port-build's own bookkeeping is no part of any module's trace. `settle` in home.ts reaches `fs` itself
   setRecording(false)
@@ -783,188 +1054,104 @@ async function main(): Promise<void> {
     }
   }
 
-  const { compile, collectModules, makeParseMemo, projectResolver, projectLeanOf, toCamel } = stage0!.compiler
-
   // the keys of each module written this run (decision 038), turned into rows of the manifest's table when it is written
   const freshKeys = new Map<string, string[]>()
 
-  for (const { root, files } of plan) {
-    for (const { file } of files) {
-      // the modules finished before this one, told as it starts: every way out of the turn below is a `continue`
-      tell()
-      done++
+  // every module's place in the plan, and its turn taken in that order, whichever finished first (THE JOBS)
+  const order = plan.flatMap(({ root, files }) => files.map(({ file }) => ({ root, file, name: relative(TERM, file) })))
+  const turns: (Turn | undefined)[] = []
+  let taken = 0
 
-      const name = relative(TERM, file)
-      // the text NOW, not as the plan read it: a full run reaches its last module minutes after it planned
-      let text = sourceOf(file)
+  const take = (name: string, turn: Turn): void => {
+    const keys = turn.rows ? adopt(turn.rows, turn.drifted === true, turn.untrackable === true) : turn.keys
 
-      if (text === undefined) {
-        left.set(name, false)
-        moved++
-        console.log(`  MOVED ${name}  (removed or shelved since this run began: run port-build again)`)
-        continue
-      }
+    for (const line of turn.lines) {
+      console.log(line)
+    }
 
-      let textHash = sha(text)
-      const outPath = portPath(root, file)
-      const runPath = outPath.replace(/\.ts$/, '-run.ts')
+    counts[turn.tally]++
 
-      // THE SKIP: the same compiler, the same text, every observation the compile that wrote it made still seeing
-      // the same thing, and that output on disk now
-      const last = old?.modules[name]
+    if (turn.left !== undefined) {
+      left.set(name, turn.left)
+    }
 
-      if (
-        last &&
-        last.fingerprint === print &&
-        last.text === textHash &&
-        last.reads.every(([from, to]) => {
-          for (let row = from; row < to; row++) {
-            if (!stillHolds(row)) {
-              return false
-            }
-          }
+    if (turn.carried) {
+      carried[name] = turn.carried
+    }
 
-          return true
-        }) &&
-        untraced(() => existsSync(outPath) && sha(readFileSync(outPath)) === last.out) &&
-        (last.run === undefined || untraced(() => existsSync(runPath) && sha(readFileSync(runPath)) === last.run))
-      ) {
-        carried[name] = last
-        unchanged++
+    if (turn.entry) {
+      fresh[name] = turn.entry
+      freshKeys.set(name, keys!)
+    }
+  }
 
-        if (explain) {
-          console.log(`  skip  ${name}`)
-        }
+  const arrive = (at: number, turn: Turn): void => {
+    turns[at] = turn
+    done++
+    tell()
 
-        continue
-      }
-
-      // a port is a LIBRARY its TypeScript callers build values for: no case is tested by identity. THE WRITE-TIME
-      // CHECK: every `.tree` this compile read, its own text first, is read again once it is done, and a change
-      // compiles it again from the text as it now is
-      let result: ReturnType<typeof compile> | undefined
-      let changed: string | undefined
-      // THE MODULE'S OWN KEY (decision 038): from here to its port's text, everything observed is this module's
-      beginModule()
-      for (let attempt = 1; ; attempt++) {
-        openWindow()
-        // the resolver and the role reader keep what they read (projectResolver's readCache and resolveMemo,
-        // projectRuleOf's byPackage and byFile), so each is made per compile: shared, a module served from them would
-        // show none of the reads its output rests on (decision 038), and a second attempt would read the old text
-        const resolve = projectResolver(root)
-        const leanOf = projectLeanOf(root)
-        // one parse and one walk per module of the closure, shared by the printer's walk and the compile, as compile
-        // makes a parse memo per call
-        const parsed = makeParseMemo()
-        const walked: WalkMemo = new Map()
-        // THE PRINTER'S RUN (decision term-cli-in-term-0240): a closure that holds the printer compiles with
-        // printerKeeper's text after the module's own
-        const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, collectModules)
-        result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
-
-        const read = closeWindow()
-
-        holdForTest(name)
-        // its own text as a text, the way it was compiled; the others by their bytes, the way the trace hashes them
-        changed = sourceOf(file) === text ? [...read].find(([path, hash]) => path !== file && observe('read', path) !== hash)?.[0] : file
-
-        if (changed === undefined || attempt === ATTEMPTS) {
-          break
-        }
-
-        console.log(`  again ${name}  (${relative(TERM, changed)} changed while it compiled)`)
-
-        const now = sourceOf(file)
-
-        if (now === undefined) {
-          break
-        }
-
-        text = now
-        textHash = sha(text)
-      }
-
-      if (changed !== undefined) {
-        endModule()
-        left.set(name, false)
-        moved++
-        console.log(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
-        continue
-      }
-
-      if (!result.ok) {
-        endModule()
-        left.set(name, true)
-        failed++
-        console.log(`  FAIL  ${name}`)
-
-        for (const d of result.diagnostics.slice(0, 3)) {
-          console.log(`        ${d.name}: ${d.message}`)
-        }
-
-        continue
-      }
-
-      const content = printerExports(portContent(result.program, result.typescript))
-      // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
-      // test fixture whose hooks name tasks it never defines) is a library like any other port
-      const run = basename(root) === 'call' ? runEntry(name, content, result.program, toCamel) : undefined
-      // the module's key ends with its prelude's reads
-      const keys = endModule()
-
-      if (run && 'missing' in run) {
-        left.set(name, true)
-        failed++
-        console.log(`  FAIL  ${name}`)
-        console.log(`        run-entry: the port exports no task for ${run.missing.join(', ')}, which a hook names`)
-        continue
-      }
-
-      // the key of this output: the observations of its own compile (decision 038). `reads` is filled from `keys`
-      // when the manifest is written, as rows of its table
-      const entry: Entry | undefined =
-        print === undefined ? undefined : { text: textHash, fingerprint: print, out: sha(content), reads: [], ...(run ? { run: sha(run.text) } : {}) }
-
-      if (entry) {
-        freshKeys.set(name, keys)
-      }
-      const existing = untraced(() => (existsSync(outPath) ? readFileSync(outPath, 'utf8') : undefined))
-      const existingRun = run ? untraced(() => (existsSync(runPath) ? readFileSync(runPath, 'utf8') : undefined)) : undefined
-
-      if (existing === content && existingRun === run?.text) {
-        if (entry) {
-          fresh[name] = entry
-        }
-
-        unchanged++
-        continue
-      }
-
-      if (check) {
-        stale++
-        console.log(`  STALE ${name}`)
-        continue
-      }
-
-      untraced(() => {
-        mkdirSync(join(outPath, '..'), { recursive: true })
-        writeFileSync(outPath, content)
-
-        if (run) {
-          writeFileSync(runPath, run.text)
-        }
-      })
-
-      if (entry) {
-        fresh[name] = entry
-      }
-
-      built++
-      console.log(`  built ${relative(TERM, outPath)}`)
+    for (; turns[taken]; taken++) {
+      take(order[taken]!.name, turns[taken]!)
+      turns[taken] = undefined
     }
   }
 
   tell()
+
+  // THE SKIP, for every module before any compiles: the same compiler, the same text, every observation the compile that
+  // wrote it made still seeing the same thing, and that output on disk now
+  const compiles: number[] = []
+
+  for (const [at, { root, file, name }] of order.entries()) {
+    const text = sourceOf(file)
+
+    if (text === undefined) {
+      arrive(at, goneTurn(name))
+      continue
+    }
+
+    const outPath = portPath(root, file)
+    const runPath = outPath.replace(/\.ts$/, '-run.ts')
+    const last = old?.modules[name]
+
+    if (
+      last &&
+      last.fingerprint === print &&
+      last.text === sha(text) &&
+      last.reads.every(([from, to]) => {
+        for (let row = from; row < to; row++) {
+          if (!stillHolds(row)) {
+            return false
+          }
+        }
+
+        return true
+      }) &&
+      untraced(() => existsSync(outPath) && sha(readFileSync(outPath)) === last.out) &&
+      (last.run === undefined || untraced(() => existsSync(runPath) && sha(readFileSync(runPath)) === last.run))
+    ) {
+      arrive(at, { tally: 'unchanged', carried: last, lines: explain ? [`  skip  ${name}`] : [] })
+    } else {
+      compiles.push(at)
+    }
+  }
+
+  if (jobs === 1 || compiles.length < 2) {
+    for (const at of compiles) {
+      arrive(at, compileTurn(order[at]!.root, order[at]!.file, print))
+    }
+  } else {
+    await fanOut<Turn>(
+      jobs,
+      [],
+      compiles.map(at => {
+        const { root, file, name } = order[at]!
+
+        return { at, name, job: { root, file, print } }
+      }),
+      arrive,
+    )
+  }
 
   // the manifest: this run's observations first, so a fresh entry's ranges index them as they are, then each row a
   // carried entry needs. A carried entry, or an old one this run did not reach (`--only`) or reached and left unwritten
@@ -1057,10 +1244,10 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `term port-build: ${built} built, ${unchanged} unchanged${check ? `, ${stale} stale` : ''}, ${failed} failed${moved > 0 ? `, ${moved} moved` : ''}`,
+    `term port-build: ${counts.built} built, ${counts.unchanged} unchanged${check ? `, ${counts.stale} stale` : ''}, ${counts.failed} failed${counts.moved > 0 ? `, ${counts.moved} moved` : ''}`,
   )
 
-  if (failed > 0 || stale > 0 || moved > 0) {
+  if (counts.failed > 0 || counts.stale > 0 || counts.moved > 0) {
     process.exitCode = 1
   }
 
@@ -1070,119 +1257,188 @@ async function main(): Promise<void> {
       return
     }
 
-    await stageTwo(plan, lock)
+    await stageTwo(plan, lock, jobs)
   }
 }
 
 const stageCheck = process.argv.includes('--stage-check')
 
-// STEP 2 of `--stage-check` (decision 030 §1, 036): every chosen module compiled again with the working tree's
-// compiler, which resolves to the ports step 1 just wrote (stage1), into `tmp/self-host/stage-check/`, and held byte
-// for byte against step 1's port and run entry. The ports on disk are hashed while the lock is still held, then the
-// lock is freed: step 2 writes only its scratch folder, and what it compares against is in memory
-async function stageTwo(plan: { root: string; files: { file: string; text: string }[] }[], lock: { free: () => void } | undefined): Promise<void> {
-  setRecording(false)
+// where step 2 writes
+const STAGE_SCRATCH = join(TERM, 'tmp', 'self-host', 'stage-check')
 
-  const hashOf = (path: string): string | undefined => (existsSync(path) ? sha(readFileSync(path)) : undefined)
-  const stageOne = new Map<string, { out?: string; run?: string }>()
+// one module's turn in step 2, in whichever process compiles it. `gone`: its source went since the run began
+type StageTurn = { tally: 'same' | 'differ' | 'failed' | 'gone'; lines: string[] }
 
-  for (const { root, files } of plan) {
-    for (const { file } of files) {
-      const outPath = portPath(root, file)
-      stageOne.set(file, { out: hashOf(outPath), run: hashOf(outPath.replace(/\.ts$/, '-run.ts')) })
-    }
-  }
-
-  lock?.free()
-
-  // the working tree's modules, by specifiers esbuild cannot follow, so the fingerprint never reaches them
+// the working tree's modules, by specifiers esbuild cannot follow, so the fingerprint never reaches them
+async function workingCompiler(): Promise<Compiler> {
   const working: Record<string, unknown> = {}
 
   for (const specifier of Object.keys(STAGE0_SOURCES)) {
     Object.assign(working, (await import(specifier)) as Record<string, unknown>)
   }
 
-  const c = working as Compiler
-  const scratch = join(TERM, 'tmp', 'self-host', 'stage-check')
-  let same = 0
-  let differ = 0
-  let failed = 0
+  return working as Compiler
+}
 
-  // the first line where two texts differ, 1-based, with both lines
-  const firstDifference = (a: string, b: string): string => {
-    const left = a.split('\n')
-    const right = b.split('\n')
+// the first line where two texts differ, 1-based, with both lines
+function firstDifference(a: string, b: string): string {
+  const left = a.split('\n')
+  const right = b.split('\n')
 
-    for (let line = 0; line < Math.max(left.length, right.length); line++) {
-      if (left[line] !== right[line]) {
-        return `line ${line + 1}\n          stage0: ${(left[line] ?? '<end>').slice(0, 160)}\n          stage1: ${(right[line] ?? '<end>').slice(0, 160)}`
-      }
+  for (let line = 0; line < Math.max(left.length, right.length); line++) {
+    if (left[line] !== right[line]) {
+      return `line ${line + 1}\n          stage0: ${(left[line] ?? '<end>').slice(0, 160)}\n          stage1: ${(right[line] ?? '<end>').slice(0, 160)}`
     }
-
-    return 'no line differs (a byte at the end)'
   }
+
+  return 'no line differs (a byte at the end)'
+}
+
+// step 2 keeps one resolver and one role reader per deck
+const stageReaders = new Map<string, { resolve: ReturnType<Compiler['projectResolver']>; leanOf: ReturnType<Compiler['projectLeanOf']> }>()
+
+function stageTurn(c: Compiler, root: string, file: string, one: { out?: string; run?: string }): StageTurn {
+  const readers = stageReaders.get(root) ?? { resolve: c.projectResolver(root), leanOf: c.projectLeanOf(root) }
+  const { resolve, leanOf } = readers
+
+  stageReaders.set(root, readers)
+
+  const name = relative(TERM, file)
+  const text = sourceOf(file)
+
+  if (text === undefined) {
+    return { tally: 'gone', lines: [] }
+  }
+
+  const parsed = c.makeParseMemo()
+  const walked: WalkMemo = new Map()
+  const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, c.collectModules)
+  const result = c.compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
+
+  if (!result.ok) {
+    return {
+      tally: 'failed',
+      lines: [`  FAIL   ${name}  (stage1 cannot compile it: ${result.diagnostics[0]?.name ?? ''} ${result.diagnostics[0]?.message ?? ''})`],
+    }
+  }
+
+  const content = printerExports(portContent(result.program, result.typescript, c.nativePrelude))
+  const run = basename(root) === 'call' ? runEntry(name, content, result.program, c.toCamel) : undefined
+  const runText = run && 'text' in run ? run.text : undefined
+  const outPath = join(STAGE_SCRATCH, relative(TERM, portPath(root, file)))
+
+  mkdirSync(dirname(outPath), { recursive: true })
+  writeFileSync(outPath, content)
+
+  if (runText !== undefined) {
+    writeFileSync(outPath.replace(/\.ts$/, '-run.ts'), runText)
+  }
+
+  const portSame = one.out === sha(content)
+  const runSame = one.run === (runText === undefined ? undefined : sha(runText))
+
+  if (portSame && runSame) {
+    return { tally: 'same', lines: [] }
+  }
+
+  const stagePath = portPath(root, file)
+  const which = portSame ? stagePath.replace(/\.ts$/, '-run.ts') : stagePath
+  const theirs = existsSync(which) ? readFileSync(which, 'utf8') : ''
+
+  return {
+    tally: 'differ',
+    lines: [`  DIFFER ${name}  (${portSame ? 'its run entry' : 'its port'}, ${firstDifference(theirs, portSame ? (runText ?? '') : content)})`],
+  }
+}
+
+// STEP 2 of `--stage-check` (decision 030 §1, 036): every chosen module compiled again with the working tree's
+// compiler, which resolves to the ports step 1 just wrote (stage1), into `tmp/self-host/stage-check/`, and held byte
+// for byte against step 1's port and run entry. The ports on disk are hashed while the lock is still held, then the
+// lock is freed: step 2 writes only its scratch folder, and what it compares against is in memory
+async function stageTwo(plan: { root: string; files: { file: string; text: string }[] }[], lock: { free: () => void } | undefined, jobs: number): Promise<void> {
+  setRecording(false)
+
+  const hashOf = (path: string): string | undefined => (existsSync(path) ? sha(readFileSync(path)) : undefined)
+  const order: { root: string; file: string; one: { out?: string; run?: string } }[] = []
 
   for (const { root, files } of plan) {
-    const resolve = c.projectResolver(root)
-    const leanOf = c.projectLeanOf(root)
-
     for (const { file } of files) {
-      const name = relative(TERM, file)
-      const text = sourceOf(file)
-
-      if (text === undefined) {
-        continue
-      }
-
-      const parsed = c.makeParseMemo()
-      const walked: WalkMemo = new Map()
-      const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, c.collectModules)
-      const result = c.compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
-
-      if (!result.ok) {
-        failed++
-        console.log(`  FAIL   ${name}  (stage1 cannot compile it: ${result.diagnostics[0]?.name ?? ''} ${result.diagnostics[0]?.message ?? ''})`)
-        continue
-      }
-
-      const content = printerExports(portContent(result.program, result.typescript, c.nativePrelude))
-      const run = basename(root) === 'call' ? runEntry(name, content, result.program, c.toCamel) : undefined
-      const runText = run && 'text' in run ? run.text : undefined
-      const outPath = join(scratch, relative(TERM, portPath(root, file)))
-
-      mkdirSync(dirname(outPath), { recursive: true })
-      writeFileSync(outPath, content)
-
-      if (runText !== undefined) {
-        writeFileSync(outPath.replace(/\.ts$/, '-run.ts'), runText)
-      }
-
-      const one = stageOne.get(file)!
-      const portSame = one.out === sha(content)
-      const runSame = one.run === (runText === undefined ? undefined : sha(runText))
-
-      if (portSame && runSame) {
-        same++
-        continue
-      }
-
-      differ++
-
-      const stagePath = portPath(root, file)
-      const which = portSame ? stagePath.replace(/\.ts$/, '-run.ts') : stagePath
-      const theirs = existsSync(which) ? readFileSync(which, 'utf8') : ''
-      console.log(`  DIFFER ${name}  (${portSame ? 'its run entry' : 'its port'}, ${firstDifference(theirs, portSame ? (runText ?? '') : content)})`)
+      const outPath = portPath(root, file)
+      order.push({ root, file, one: { out: hashOf(outPath), run: hashOf(outPath.replace(/\.ts$/, '-run.ts')) } })
     }
   }
 
-  console.log(`term port-build --stage-check: step 2 ${same} same, ${differ} differ, ${failed} failed (stage1 output in ${relative(TERM, scratch)})`)
+  lock?.free()
 
-  if (differ > 0 || failed > 0) {
+  const counts = { same: 0, differ: 0, failed: 0, gone: 0 }
+  const turns: (StageTurn | undefined)[] = []
+  let taken = 0
+
+  const arrive = (at: number, turn: StageTurn): void => {
+    turns[at] = turn
+
+    for (; turns[taken]; taken++) {
+      counts[turns[taken]!.tally]++
+      turns[taken]!.lines.forEach(line => console.log(line))
+      turns[taken] = undefined
+    }
+  }
+
+  if (jobs === 1 || order.length < 2) {
+    const c = await workingCompiler()
+
+    order.forEach(({ root, file, one }, at) => arrive(at, stageTurn(c, root, file, one)))
+  } else {
+    await fanOut<StageTurn>(
+      jobs,
+      ['--stage-two'],
+      order.map(({ root, file, one }, at) => ({ at, name: relative(TERM, file), job: { root, file, one } })),
+      arrive,
+    )
+  }
+
+  console.log(`term port-build --stage-check: step 2 ${counts.same} same, ${counts.differ} differ, ${counts.failed} failed (stage1 output in ${relative(TERM, STAGE_SCRATCH)})`)
+
+  if (counts.differ > 0 || counts.failed > 0) {
     process.exitCode = 1
   }
 }
 
+// a worker of THE JOBS: one job at a time from the process that started it, one answer back, until that process
+// disconnects. What it observed while it loaded is that process's to file, so only its modules' own keys go back
+async function portWorker(): Promise<void> {
+  const two = process.argv.includes('--stage-two')
+
+  forgetOutside()
+
+  if (two) {
+    setRecording(false)
+  }
+
+  const c = two ? await workingCompiler() : undefined
+  const send = (reply: object): void => {
+    process.send!(reply)
+  }
+
+  process.on('disconnect', () => process.exit(0))
+  process.on('message', (job: { root: string; file: string; print?: string; one?: { out?: string; run?: string } }) => {
+    try {
+      if (c) {
+        send({ answer: stageTurn(c, job.root, job.file, job.one!) })
+        return
+      }
+
+      const { keys, ...turn } = compileTurn(job.root, job.file, job.print)
+
+      send({ answer: keys ? { ...turn, ...sightings(keys), drifted: keys.includes(UNTRACKABLE) } : turn })
+    } catch (error) {
+      send({ thrown: (error as Error).stack ?? String(error) })
+    }
+  })
+  send({ ready: true })
+}
+
 // run as a script; imported (test/call/port-prelude-once.ts reads `portContent`) it builds nothing
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main()
+  await (process.argv.includes('--port-worker') ? portWorker() : main())
 }

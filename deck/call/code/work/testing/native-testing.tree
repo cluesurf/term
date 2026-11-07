@@ -11,18 +11,25 @@
 # `test` blocks made tasks), since the file on disk still has them.
 #
 # Ported from deck/call/code/test-native.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
-# (compile/compile, compile/native, and the Rust and Kotlin emitters) and the native build (native-build.ts). The
-# project resolver and the cache folder are the build and cache lanes' ports, loaded since term-cli-in-term-0065.
+# (compile/compile, compile/native). The project resolver and the cache folder are the build and cache lanes' ports,
+# loaded since term-cli-in-term-0065.
 
 load @term/base/list
   find list
   find join
 
-# the Swift emitter, where compile/swift.ts was docked until term-self-host-001-0960: handed the wake the compile made
-# and one program, as the face handed them. compile/rust.ts and compile/kotlin.ts stay docked until their emitters'
-# `fail` slot declares the failure it may raise (ruling 0979)
+# the Swift, Rust and Kotlin emitters, where compile/swift.ts was docked until term-self-host-001-0960 and compile/rust.ts
+# and compile/kotlin.ts until term-self-host-001-1008: handed the wake the compile made and one program, as the faces
+# handed them. The Rust and Kotlin emitters take a `fail` slot that declares `halt failure`, and are handed one that
+# halts, as the faces' fail threw (decision 086 rule 3, ruling 0979)
 load @term/make/compile/swift-program
   find emit-swift
+
+load @term/make/compile/rust-program
+  find emit-rust
+
+load @term/make/compile/kotlin-program
+  find emit-kotlin
 
 load @term/make/compile/program-warnings
   find wake-group
@@ -67,8 +74,6 @@ dock load
   load <node:child_process>, name child-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/make/code/compile/rust>, name rust-module
-  load <@term/make/code/compile/kotlin>, name kotlin-module
 
 # the backends this command runs a project's tests on (the original's NATIVE_TEST_ENVS)
 task native-test-envs
@@ -96,9 +101,6 @@ form compile-ask
   link role-of, like dynamic
   link lean-of, like dynamic
   link deck-of, like dynamic
-
-form wake-ask
-  link wake, like dynamic
 
 form build-ask
   link source, like text
@@ -133,6 +135,14 @@ bind wake-of
   like list, like wake-group
   case node
     text <($value ?? [])>
+
+# the fail an emitter is handed here: a refused emit stops the build, as the faces' fail threw
+task emit-refused
+  take reason, like text
+  like boolean
+  mark private
+
+  halt <{reason}>
 
 # `(found.file === file || found.file === real)`
 bind found-is
@@ -311,17 +321,16 @@ task run-native-test-file
         hold
           back failed(<did not compile for {env}>, own)
       back failed(<did not compile for {env}>, result/diagnostics)
-  save wake, make(wake-ask, bind(wake, result/wake))
   save emitted, <>
   fork test, is-equal(env, <rust>)
     hold
-      save emitted, host-text(rust-module/emit-rust(result/program, wake))
+      save emitted, emit-rust(result/program, wake-of(result/wake), false, emit-refused)
     miss
       fork test, is-equal(env, <swift>)
         hold
           save emitted, emit-swift(result/program, wake-of(result/wake), false)
         miss
-          save emitted, host-text(kotlin-module/emit-kotlin(result/program, wake))
+          save emitted, emit-kotlin(result/program, wake-of(result/wake), false, emit-refused)
   save prelude, host-text(native-module/native-prelude(result/program, env, runtime-reader(), emitted))
   # built as `term make --emit <env> --build` builds a program, with the same main, so a test runs on the 1 GiB stack
   # thread a program runs on, under the same driver for an async or raising entry

@@ -584,6 +584,15 @@ async function run(): Promise<void> {
   const modules = [...sources].sort()
   writeFileSync(join(out, 'modules.txt'), `${modules.join('\n')}\n`)
 
+  // THE COUNT: a verdict covers every module port-build's plan holds. A module neither manifest lists compares as
+  // nothing, so without this an empty or a short scratch folder reads as identical (audit 0994)
+  const planned = /^term port-build: (\d+) built, (\d+) unchanged, (\d+) failed/m.exec(readFileSync(logA, 'utf8'))
+  const plan = planned ? Number(planned[1]) + Number(planned[2]) + Number(planned[3]) : 0
+
+  if (modules.length === 0 || (only.length === 0 && modules.length !== plan)) {
+    stop(`A: ${modules.length} modules reached step 2, and port-build's plan holds ${plan}: no verdict over part of the toolchain, ${logA}`)
+  }
+
   // the ports stage0 wrote, and what the stage1 compiler wrote of each module or refused
   const takePorts = (stage: Stage): void => {
     for (const source of modules) {

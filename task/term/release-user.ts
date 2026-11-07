@@ -290,6 +290,8 @@ function check(work: string, stage0Names: string[]): void {
     return
   }
 
+  ok('the payload carries LICENSE and NOTICE', existsSync(join(unpacked, 'term', 'LICENSE')) && existsSync(join(unpacked, 'term', 'NOTICE')))
+
   // 0. stage0 of the fixpoint chain (decision 126): term/host/compile.mjs, loaded by a plain node outside any checkout,
   // exporting every name port-build calls on a stage0
   const compile = join(unpacked, 'term', 'host', 'compile.mjs')

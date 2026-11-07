@@ -43,6 +43,13 @@ load @term/make/parser/tree
 load @term/make/parser/token
   find token-source
 
+load @term/make/compile/host-data
+  find read-data-text
+  find expand-data
+
+load @term/make/compile/host-data-json
+  find host-json-value
+
 load @term/make/compile/templates
   find expand-templates
   find tree-template
@@ -58,23 +65,25 @@ load @term/make/check/law-english-reading
 # lean-check) fails the build with `span__form needs start, end`
 dock load
   load <@term/make/code/compile/mill>, name milling
-  load <@term/make/code/compile/host>, name data-reading
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:child_process>, name host-child
 
 # ---- the host's values ----
 
-# the manifest's entries, read by the data reader: a list `law` of maps, each `{ name, proofs: [{ kind, name }] }`,
-# and what did not read pushed onto `problems`
-bind manifest-entries
-  take reading, like dynamic
-  take file, like text
-  take text, like text
-  take problems, like list, like text
+# the manifest as JSON, a list `law` of maps, as each entry's `{ name, proofs: [{ kind, name }] }`
+bind manifest-rows
+  take value, like dynamic
   like list, like dynamic
   case node
-    text <<(() => { const read = $reading.readDataText({ file: $file, text: $text }); if (!read.ok) { $problems.push(`laws.tree does not read: ${read.diagnostics[0]?.message ?? "not data"}`); return [] } const expanded = $reading.expandData(read.data, $file); if (!expanded.ok) { $problems.push(`laws.tree does not read: ${expanded.diagnostics[0]?.message ?? "not data"}`); return [] } const value = $reading.toJsonValue(expanded.data); const entries = Array.isArray(value.law) ? value.law : []; const texts = v => (typeof v === "string" ? [v] : typeof v === "number" ? [String(v)] : Array.isArray(v) ? v.flatMap(texts) : []); return entries.map((entry, index) => { const e = entry ?? {}; const name = texts(e.name)[0] ?? `law ${index + 1}`; const proofs = ["rule", "hide", "sole", "private", "tier"].flatMap(kind => texts(e[kind]).map(one => ({ kind, name: one }))); return { name, proofs } }) })()>>
+    text <<(() => { const entries = Array.isArray($value.law) ? $value.law : []; const texts = v => (typeof v === "string" ? [v] : typeof v === "number" ? [String(v)] : Array.isArray(v) ? v.flatMap(texts) : []); return entries.map((entry, index) => { const e = entry ?? {}; const name = texts(e.name)[0] ?? `law ${index + 1}`; const proofs = ["rule", "hide", "sole", "private", "tier"].flatMap(kind => texts(e[kind]).map(one => ({ kind, name: one }))); return { name, proofs } }) })()>>
+
+# the first message of a list of diagnostics
+bind first-diagnostic
+  take diagnostics, like dynamic
+  like text
+  case node
+    text <($diagnostics[0]?.message ?? "not data")>
 
 bind manifest-entry-name
   take entry, like dynamic
@@ -675,6 +684,29 @@ task project-name
           back named
   back host-path/basename(root)
 
+# the manifest's entries, what did not read pushed onto `problems`
+task manifest-entries
+  take file, like text
+  take text, like text
+  take problems, like list, like text
+  like list, like dynamic
+  mark private
+
+  save none, like list, like dynamic
+    make list
+  save read, read-data-text(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(read/ok)
+    hold
+      problems/push <laws.tree does not read: {first-diagnostic(read/diagnostics)}>
+      back none
+  save expanded, expand-data(read/file, file)
+  fork test, not(expanded/ok)
+    hold
+      problems/push <laws.tree does not read: {first-diagnostic(expanded/diagnostics)}>
+      back none
+  save value, host-json-value(expanded/value, false)
+  back manifest-rows(value)
+
 task hold-report
   take input, like report-ask
   like hold-report
@@ -687,7 +719,7 @@ task hold-report
   save entries, make list
   fork test, has-manifest
     hold
-      save entries, manifest-entries(data-reading, law-file, host-fs/read-file-sync(law-file, <utf8>), problems)
+      save entries, manifest-entries(law-file, host-fs/read-file-sync(law-file, <utf8>), problems)
       walk entries
         take entry
         fork test, is-equal(entry-proofs(entry)/length, 0)

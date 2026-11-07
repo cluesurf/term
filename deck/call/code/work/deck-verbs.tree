@@ -8,24 +8,38 @@ load @term/call/work/small/dependency-edit
   find call-save
   find call-toss
 
+load @term/call/work/small/global-saving
+  find call-save-global
+  find call-toss-global
+  find call-load-global
+
 # The package verbs: `term load`, `term save`, `term toss`.
 #
 # Each takes its hook's arguments, maps them as line.ts's command does, and hands them to the handler: the small
 # lane's ports of deck/call/code/{load,save,toss}.ts (work/small/dependency-load.tree and dependency-edit.tree),
 # which open the run, print through the output library and close it. A verb here prints nothing of its own, catches
 # nothing and never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+#
+# `--global` (`-g`) acts on the user instead of the project, through work/small/global-saving.tree: the user's own
+# manifest in `~/.base`, each package at `~/.base/<scope>/<name>`, its command on PATH (decision
+# term/package-manager/001). The project root is not read then: the command works from any folder.
 
 # `term load`: install every dependency the manifest names
 task load
   mark async
   take clean, like boolean
   take offline, like boolean
+  take global, like boolean
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root, call project-root
-  call-load(root, clean, offline)
+  fork test, global
+    hold
+      call-load-global(clean, offline)
+    miss
+      # the project root is READ, not taken: a hook has no `root` argument to pass
+      save root, call project-root
+      call-load(root, clean, offline)
 
 # `term save [deck] [mark]`: add a dependency, accepting the versions `mark` names (line.ts passes it as
 # `constraint`)
@@ -34,18 +48,28 @@ task save
   take deck, like text
   # the hook's `mark`, by position: `mark` is a metadata word, so the parameter is named for what it holds
   take constraint, like text
+  take global, like boolean
 
   like void
 
-  save root, call project-root
-  call-save(root, deck, constraint)
+  fork test, global
+    hold
+      call-save-global(deck, constraint)
+    miss
+      save root, call project-root
+      call-save(root, deck, constraint)
 
 # `term toss [deck]`: remove a dependency
 task toss
   mark async
   take deck, like text
+  take global, like boolean
 
   like void
 
-  save root, call project-root
-  call-toss(root, deck)
+  fork test, global
+    hold
+      call-toss-global(deck)
+    miss
+      save root, call project-root
+      call-toss(root, deck)

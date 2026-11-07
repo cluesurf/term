@@ -42,7 +42,7 @@ load ./host-data
   find number-text
 
 # a value as JSON text, written as `JSON.stringify` writes it: no space anywhere
-task host-json
+task host-json-text
   take given, like host-value
   take keep, like boolean
   like text
