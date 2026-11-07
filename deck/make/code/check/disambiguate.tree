@@ -2738,7 +2738,9 @@ task mangle
   back name
 
 # the definition a call with `arity` arguments targets: the one whose accepted range holds it, an exact arity winning a
-# tie; a typed same-arity group targets its first candidate until the checker re-targets it
+# tie; a typed same-arity group targets its first candidate until the checker re-targets it. A call no range holds
+# targets the definition nearest its arity, so the checker refuses it for the arguments it leaves out or adds. It was
+# renamed to `<name>__<arity>`, which nothing defines, and refused as an unknown name (item 0760)
 task target-of
   take arity-of, like arity-state
   take name, like text
@@ -2747,9 +2749,21 @@ task target-of
   mark private
 
   save picked, -1
+  save nearest, -1
+  save nearest-gap, -1
   walk arity-of/ranges
     take one
     take at
+    fork test, is-equal(one/original, name)
+      hold
+        save gap, subtract(one/least, arity)
+        fork test, is-above(arity, one/most)
+          hold
+            save gap, subtract(arity, one/most)
+        fork test, or(is-below(nearest-gap, 0), is-below(gap, nearest-gap))
+          hold
+            save nearest, at
+            save nearest-gap, gap
     fork test, and(is-equal(one/original, name), and(is-minimum(arity, one/least), is-maximum(arity, one/most)))
       hold
         fork test, is-equal(one/most, arity)
@@ -2759,6 +2773,9 @@ task target-of
         fork test, is-below(picked, 0)
           hold
             save picked, at
+  fork test, is-below(picked, 0)
+    hold
+      save picked, nearest
   fork test, is-below(picked, 0)
     hold
       back mangle(arity-of, name, arity)

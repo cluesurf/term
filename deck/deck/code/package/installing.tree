@@ -73,6 +73,9 @@ load ./registry-naming
 load ../oci/toolchain-pin
   find pin-need
 
+load ../oci/oci-routing
+  find oci-route-of
+
 load ./manifest-text
   find write-manifest
 
@@ -140,6 +143,17 @@ bind routes-over
   case node
     text <Object.assign(\{\}, $base, Object.fromEntries($more))>
 
+# the config with every package of one scope routed to one registry, and the bare registry that registry too, so the
+# scope's own route wins over every route a base line or a host group laid down (`--registry`). An unscoped package,
+# an empty space, has the bare registry alone
+bind installing-flag-routes
+  take given, like dynamic
+  take space, like text
+  take target, like text
+  like dynamic
+  case node
+    text <<({ ...$given, registry: $target, scopeRegistries: ($space === "" ? {} : { [$space]: $target }) })>>
+
 # a host `Code` (prerelease and build absent when there are none) as version.tree's `code`
 task code-of-host
   take host, like dynamic
@@ -193,6 +207,35 @@ task route-once
           halt <{scope} is routed to two registries in deck.tree: {earlier} and {registry}>
   routes/set(scope, registry)
 
+# The fetch config a project reads every registry through: the default config, its scope routes an object, with the
+# manifest's own routes (its `base` lines and `host <registry>` groups) laid over the defaults. `term load` installs
+# under it and `term host` publishes under it (`host-route-of`), so the two never disagree on where a scope lives
+task project-fetch-config
+  take manifest, like deck-manifest
+  like dynamic
+
+  save made, make-default-fetch-config()
+  save config, installing-object-routes(made)
+  save config/scope-registries, routes-over(config/scope-registries, host-scope-registries(manifest))
+  back config
+
+# The route `term host` publishes a package to: the route `term load` fetches it from, under the project's fetch
+# config, so a `base` line keeps a scope off ghcr.io. A given `registry` (`--registry`) routes the package's own scope
+# there instead, over any base line, and the empty text is no registry, as the command line hands an option it was
+# not given. None when the package is not on an OCI registry
+task host-route-of
+  take name, like text
+  take registry, like text
+  take manifest, like deck-manifest
+  like dynamic
+
+  save config, project-fetch-config(manifest)
+  fork test, not(is-equal(registry, <>))
+    hold
+      save space, root-scope(parse-scope(name)/scope)
+      save config, installing-flag-routes(config, space, normalize-registry(registry))
+  back oci-route-of(name, config)
+
 task install
   take root, like text
   take clean, like boolean
@@ -200,20 +243,17 @@ task install
   take grammars, like manifest-grammars
   like install-answer
 
-  save made, make-default-fetch-config()
-  save config, installing-object-routes(made)
-  fork test, offline
-    hold
-      save config/offline, true
-
   init-store()
 
   # step 1: read the manifest
   save loaded, load-manifest(root, grammars)
 
-  # a `host <registry>` group routes its links' scopes to that registry, so a third-party scope on its own OCI
-  # namespace installs, and its links resolve beside the plain ones
-  save config/scope-registries, routes-over(config/scope-registries, host-scope-registries(loaded))
+  # a `base` line or a `host <registry>` group routes its scope to that registry, so a third-party scope on its own
+  # OCI namespace installs, and its links resolve beside the plain ones
+  save config, project-fetch-config(loaded)
+  fork test, offline
+    hold
+      save config/offline, true
 
   save links, make list
   walk loaded/link

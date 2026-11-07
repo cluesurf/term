@@ -7,7 +7,7 @@
 import { stdlibBase } from '@term/make/code/resolve'
 import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir, totalmem } from 'node:os'
-import { rmSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import * as path from 'node:path'
 import { buildSync } from 'esbuild'
@@ -33,9 +33,29 @@ export type DefResult = {
 } & DefOutput
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const WORKER_SOURCE = path.join(HERE, 'def-worker.ts')
-// the seed package root (four levels up from deck/make/code/compile/), whose tsconfig carries the package path mappings
-const SEED_ROOT = path.resolve(HERE, '..', '..', '..', '..')
+const WORKER_PATH = path.join('deck', 'make', 'code', 'compile', 'def-worker.ts')
+
+// The Term root, whose tsconfig carries the package path mappings: the nearest folder at or above `from` holding
+// deck/make/code/compile/def-worker.ts, so a copy of this module bundled elsewhere under the root (a term test bundle
+// under .base/@term/code/cache/test, item 0982) still finds the worker source. Else four levels up, where the source
+// sits in deck/make/code/compile/ (as task/term/root.ts finds the root, item 0962)
+function termRootAbove(from: string): string | undefined {
+  let dir = from
+  while (true) {
+    if (existsSync(path.join(dir, WORKER_PATH))) {
+      return dir
+    }
+    const up = path.dirname(dir)
+    if (up === dir) {
+      return undefined
+    }
+    dir = up
+  }
+}
+
+const FOUND_ROOT = termRootAbove(HERE)
+const SEED_ROOT = FOUND_ROOT ?? path.resolve(HERE, '..', '..', '..', '..')
+const WORKER_SOURCE = FOUND_ROOT ? path.join(FOUND_ROOT, WORKER_PATH) : path.join(HERE, 'def-worker.ts')
 
 // `worker_threads` needs a runnable module path, and a worker thread does not inherit the tsx `@/` path resolution.
 // So bundle the worker once per process with esbuild (which resolves `@/` from the tsconfig) into a self-contained

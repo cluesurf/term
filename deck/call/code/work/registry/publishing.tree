@@ -61,17 +61,13 @@ load @term/deck/version
 load @term/deck/package/registry-naming
   find normalize-registry
 
-load @term/deck/package/registry-fetching
-  find make-default-fetch-config
-
 load @term/deck/package/installing
-  find host-scope-registries
+  find host-route-of
 
 load @term/deck/oci/oci-address
   find is-oci-registry
 
 load @term/deck/oci/oci-routing
-  find oci-route-of
   find transport-for
 
 load @term/deck/oci/key-trust
@@ -118,12 +114,6 @@ bind is-truthy
   like boolean
   case node
     text <Boolean($value)>
-
-bind is-absent
-  take value, like dynamic
-  like boolean
-  case node
-    text <($value === undefined)>
 
 # `value ?? ""`
 bind text-or-empty
@@ -212,22 +202,6 @@ bind record-of
   like dynamic
   case node
     text <Object.fromEntries($entries)>
-
-# the fetch config `--registry` names: that registry, and no scope routes
-bind flag-config
-  take registry, like dynamic
-  like dynamic
-  case node
-    text <(\{ registry: $registry, scopeRegistries: \{\} \})>
-
-# the default fetch config with the manifest's own scope routes over its defaults. Both route sets are hashes (a Map)
-# where the faces answered objects, and the route reads the config's routes by key, so each is an object here
-bind scoped-config
-  take defaults, like dynamic
-  take scoped, like dynamic
-  like dynamic
-  case node
-    text <(\{ ...$defaults, scopeRegistries: \{ ...Object.fromEntries($defaults.scopeRegistries), ...Object.fromEntries($scoped) \} \})>
 
 # the host's own environment and fetch, which the index ping reads, as the face handed them
 bind publish-env
@@ -451,7 +425,9 @@ task push-log
   report(make(debug-item, bind(glyph, <info>), bind(verb, <push>), bind(subject, sentence(message)), bind(level, <debug>)))
 
 # The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope, else
-# the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI.
+# the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI. The route is
+# @term/deck's `host-route-of`, the one `term load` fetches through, so a scope publishes where it installs from. The
+# command line hands an option it was not given as the empty text, which is no registry
 task route-of
   take name, like text
   take registry, like dynamic
@@ -459,28 +435,19 @@ task route-of
   like dynamic
   mark private
 
-  save flag, nothing()
-  fork test, not(is-absent(registry))
+  save given, text-or-empty(registry)
+  save flag, <>
+  fork test, not(is-equal(given, <>))
     hold
-      save flag, normalize-registry(registry)
-  fork test, not(is-absent(flag))
-    hold
+      save flag, normalize-registry(given)
       fork test, not(is-oci-registry(flag))
         hold
           refuse(<--registry must be an OCI registry, \<host\>/\<namespace\>. The custom https registry is retired (note/project/term/registry/18-oci-registry-default.md)>)
-  save config, nothing()
-  fork test, is-truthy(flag)
-    hold
-      save config, flag-config(flag)
-    miss
-      save defaults, make-default-fetch-config()
-      save scoped, host-scope-registries(manifest)
-      save config, scoped-config(defaults, scoped)
-  save route, oci-route-of(name, config)
+  save route, host-route-of(name, flag, manifest)
   # an UNSCOPED package has no scope to pick a registry by: said so, with where to put one
   fork test, not(is-truthy(route))
     hold
-      refuse(unrouted(name, is-truthy(flag)))
+      refuse(unrouted(name, not(is-equal(flag, <>))))
   back route
 
 # The term.surf token that credits a publish to an account in the package index: `TERM_TOKEN` (`SEED_TOKEN` still

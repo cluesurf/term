@@ -1,9 +1,5 @@
 note <The worker pool emits what the inline path emits, across several threads>
 
-# shelved until term-self-host-001-0982: docked in a test bundle, compile/worker-pool.ts looks for def-worker.ts beside
-# the bundle, so every test raises. Remove this line when 0982 lands
-mark draft
-
 # Ported from worker-pool.ts by statement (item 0577). Tier 4, phase 3: the worker path matches the inline path byte for
 # byte (the differential guarantee), a build of many definitions runs across several worker threads, and the pool's output
 # is the same however many workers process it. compile/worker-pool and the global scope it is handed are the subject

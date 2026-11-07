@@ -1,3 +1,50 @@
-mark draft
+note <A call to an overloaded task at an arity none of its definitions takes>
 
-note <Shelved: term-self-host-001-0760 did not land, see tmp/self-host/0760/window>
+# Item 0760. The arity pass renamed such a call to `<name>__<arity>`, which nothing defines, so `pick(make list, <x>)`
+# (one argument: the comma puts `<x>` under `make list`) was refused as 'the name "pick__1" is not defined'. The call
+# now targets the definition nearest its arity, and the checker refuses it for what it leaves out, as it does a call to
+# a task defined once. The message names the definition it targets as the build renamed it (`pick__2`), as every
+# message about an overload does. Each refusal sits beside an acceptance, so the suite cannot pass by refusing everything.
+
+load ../support/compiling
+  find compile-outcome
+  find compile-text
+
+load @term/base/text
+  find contains, name text-contains
+
+host typed-pair, <task pick\n  take got, like list, like unknown\n  take n, like number\n  like number\n  back got/length\n\ntask pick\n  take got, like list, like unknown\n  take s, like text\n  like number\n  back got/length\n\n>
+
+host by-arity, <task pick\n  take n, like number\n  like number\n  back n\n\ntask pick\n  take n, like number\n  take m, like number\n  like number\n  back add(n, m)\n\n>
+
+# refused, never as an unknown name, and some message about `pick` says `reason`
+task refused-for
+  take outcome, like compile-outcome
+  take reason, like text
+  like boolean
+
+  fork test, outcome/ok
+    hold
+      back false
+  save named, false
+  walk outcome/messages
+    take message
+    fork test, text-contains(message, <is not defined>)
+      hold
+        back false
+    fork test, and(text-contains(message, <pick>), text-contains(message, reason))
+      hold
+        save named, true
+  back named
+
+test <a made list with no second argument, against a typed pair, is refused for what it leaves out>
+  want hold, refused-for(compile-text(<{typed-pair}task run\n  like number\n  back pick(make list, \<x\>)\n>), <leaves out>)
+
+test <the same call with the list closed and the text beside it builds>
+  want hold, compile-text(<{typed-pair}task run\n  like number\n  back pick(make(list), \<x\>)\n>)/ok
+
+test <three arguments against definitions of one and two is refused for the one it adds>
+  want hold, refused-for(compile-text(<{by-arity}task run\n  like number\n  back pick(1, 2, 3)\n>), <one more>)
+
+test <one and two arguments against the same definitions build>
+  want hold, compile-text(<{by-arity}task run\n  like number\n  back add(pick(1), pick(1, 2))\n>)/ok

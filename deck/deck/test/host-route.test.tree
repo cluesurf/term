@@ -1,3 +1,78 @@
-mark draft
+note <term host publishes where term load fetches: a base line routes the scope, --registry wins over it, and with neither a scope goes to ghcr.io/\<scope\>>
 
-note <Shelved: registry-0009 did not land, see tmp/self-host/queue/runs/2026-11-06T215325>
+# registry-0009: term host pushed a scoped package to ghcr.io/<scope> though the project's base line or --registry named
+# another registry, while term load already followed the base line. `host-route-of` is the route `term host` takes,
+# under `project-fetch-config`, the config `term load` installs under. The registries are loopback names nothing is
+# sent to: a route is decided, never pushed.
+
+load ../code/package/installing
+  find host-route-of
+  find project-fetch-config
+
+load ../code/package/manifest-reading
+  find parse-manifest
+
+load ../code/package/grammar-reading
+  find make-grammars
+
+load ../code/oci/oci-routing
+  find oci-route-of
+
+bind route-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# a project manifest read from its text, as term load and term host read deck.tree
+task manifest-of
+  take text, like text
+  like dynamic
+
+  back parse-manifest(text, make-grammars())
+
+host based, manifest-of(<deck @team/tools\n  head \<Small tools\>\n  mark \<1.0.0\>\n  base team, \<localhost:5000/team/term\>\n>)
+
+host plain, manifest-of(<deck @team/tools\n  head \<Small tools\>\n  mark \<1.0.0\>\n>)
+
+test <host route: a base line sends the scope to its registry, not ghcr.io>
+  host route, host-route-of(<@team/tools>, <>, based)
+  want hold, is-equal(route/registry/host, <localhost:5000>)
+  want hold, is-equal(route/repository/name, <team/term/tools>)
+  want hold, is-equal(route/keys-repository, <team/term/name>)
+
+test <host route: the route term load fetches the same package from>
+  host published, host-route-of(<@team/tools>, <>, based)
+  host fetched, oci-route-of(<@team/tools>, project-fetch-config(based))
+  want hold, is-equal(route-json(published), route-json(fetched))
+
+test <host route: a nested scope routes by its root space's base line>
+  host route, host-route-of(<@team/@kit/tools>, <>, based)
+  want hold, is-equal(route/registry/host, <localhost:5000>)
+
+test <host route: --registry wins over the base line>
+  host route, host-route-of(<@team/tools>, <oci://localhost:5001/flagged>, based)
+  want hold, is-equal(route/registry/host, <localhost:5001>)
+  want hold, is-equal(route/repository/name, <flagged/tools>)
+  want hold, is-equal(route/keys-repository, <flagged/name>)
+
+test <host route: --registry routes a scope with no base line>
+  host route, host-route-of(<@team/tools>, <localhost:5001/flagged>, plain)
+  want hold, is-equal(route/registry/host, <localhost:5001>)
+  want hold, is-equal(route/repository/name, <flagged/tools>)
+
+test <host route: with neither, a scope publishes to ghcr.io/\<scope\>>
+  host route, host-route-of(<@team/tools>, <>, plain)
+  want hold, is-equal(route/registry/host, <ghcr.io>)
+  want hold, is-equal(route/repository/name, <team/tools>)
+
+test <host route: an unscoped package goes to --registry, and nowhere without one>
+  host route, host-route-of(<tools>, <oci://localhost:5001/flagged>, plain)
+  want hold, is-equal(route/registry/host, <localhost:5001>)
+  want hold, is-absent(host-route-of(<tools>, <>, plain))
