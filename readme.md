@@ -3925,6 +3925,10 @@ Rules for a change:
 - The toolchain compiles to Rust and ships as a native binary with fast startup.
 - The fixpoint holds on both TypeScript and Rust, starting from a release Term built itself.
 - Every test suite is `.tree`.
+- A settled universe for the kernel, and inductive types owned by the kernel.
+- Every proof re-checked by independent checkers, with a hostile test set and a standing adversary each release.
+- Statements locked, and proofs that hold only vacuously reported.
+- Emitted programs run and compared on every target, with generated programs hunting miscompiles.
 
 **Beyond 3.0.**
 
