@@ -200,7 +200,7 @@ bind field-names
   case swift
     text <[]>
   case kotlin
-    text <mutableListOf()>
+    text <kotlin.collections.mutableListOf()>
 
 bind field-at
   take value, like dynamic
