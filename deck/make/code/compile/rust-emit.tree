@@ -392,6 +392,11 @@ form rust-state
   link closure-depth, like number
   link current-async, like boolean
   link guard-depth, like number
+  # within a guard's body at this closure level: the labels of the loops opened inside it (`<>` for an unnamed one),
+  # and each `turn next` or `halt` written there that leaves through the guard to a loop outside it (`emit-guard`)
+  link guard-active, like boolean
+  link guard-loops, like list, like text
+  link guard-exits, like list, like text
   link awaited-calls, like list, like expression
   link caught-names, like hash, like text, like boolean
   link budget-uses, like number
@@ -462,6 +467,9 @@ task new-rust-state
       bind closure-depth, 0
       bind current-async, false
       bind guard-depth, 0
+      bind guard-active, false
+      bind guard-loops, make list
+      bind guard-exits, make list
       bind awaited-calls, make list
       bind caught-names, make hash
       bind budget-uses, 0
@@ -2731,6 +2739,51 @@ task opens-literal
       save at, add(at, 1)
   back and(is-below(at, codes/length), is-equal(get(codes, at), 123))
 
+# a bind's rendered text in one pair when a cast is at its top level, outside every bracket and text literal:
+# `$value.chars().count() as i64` spliced bare before a `<` has rustc read the `<` as the start of the type's generic
+# arguments, and the whole file is refused (`is-below(char-count(scope), 2)`, item term-self-host-001-0797)
+task cast-grouped
+  take text, like text
+  like text
+  mark private
+
+  save codes, to-runes(text)
+  save depth, 0
+  save quoted, false
+  save at, 0
+  walk test
+    hook test, is-below(at, codes/length)
+    hook hold
+      save code, get(codes, at)
+      fork test, quoted
+        hold
+          # a backslash in a text literal escapes the code after it
+          fork test, is-equal(code, 92)
+            hold
+              save at, add(at, 1)
+            miss
+              fork test, is-equal(code, 34)
+                hold
+                  save quoted, false
+        miss
+          fork test, is-equal(code, 34)
+            hold
+              save quoted, true
+          fork test, or(or(is-equal(code, 40), is-equal(code, 91)), is-equal(code, 123))
+            hold
+              save depth, add(depth, 1)
+          fork test, or(or(is-equal(code, 41), is-equal(code, 93)), is-equal(code, 125))
+            hold
+              save depth, subtract(depth, 1)
+          # ` as ` at depth 0: a space, `a`, `s` and a space
+          fork test, and(and(is-equal(depth, 0), is-equal(code, 32)), is-below(add(at, 3), codes/length))
+            hold
+              fork test, and(and(is-equal(get(codes, add(at, 1)), 97), is-equal(get(codes, add(at, 2)), 115)), is-equal(get(codes, add(at, 3)), 32))
+                hold
+                  back <({text})>
+      save at, add(at, 1)
+  back text
+
 # `^(\{|(match|if|loop|unsafe)\b)`: a left side that opens a block expression
 task opens-block
   take text, like text
@@ -3825,6 +3878,9 @@ task emit-closure
       save st/value-slot, make none
       save st/current-raising, closure-raising
       save st/guard-depth, 0
+      # a guard around the closure is no guard inside it
+      save outer-guard-active, st/guard-active
+      save st/guard-active, false
       # the result: its own, else the call site's hint where its own was left unknown
       save inferred, make none
       sift closure-type
@@ -3892,19 +3948,27 @@ task emit-closure
       save st/closure-depth, subtract(st/closure-depth, 1)
       save st/current-raising, outer-raising
       save st/guard-depth, outer-guard-depth
+      save st/guard-active, outer-guard-active
       save st/current-result, outer-result
       save st/current-async, previous-async
       save st/move-args, outer-move-args
 
-      # each captured cell handle and local is cloned BEFORE the `move`, only where the rendered body names it
+      # each captured cell handle and local is cloned BEFORE the `move`, only where the rendered body names it. A name
+      # the closure declares itself is its own, never captured: the outer locals are every name the task declares
+      # anywhere, so one the task declares only after the closure was cloned before it existed (`let found =
+      # found.clone()`, E0425, item term-self-host-001-1057). A write to a name in scope outside is a cell, not a `let`
       save used, make list
       walk used-names(closure-body)
         take name
         add-text(used, name)
+      save own-names, make list
+      walk let-names(closure-body)
+        take name
+        add-text(own-names, name)
       save captured, make list
       walk used
         take name
-        fork test, and(and(outer-locals/has(name), not(param-names/has(name))), and(not(st/cell-vars/has(name)), has-word(body, vname(name))))
+        fork test, and(and(and(outer-locals/has(name), not(param-names/has(name))), not(has-text(own-names, name))), and(not(st/cell-vars/has(name)), has-word(body, vname(name))))
           hold
             push(captured, name)
       save cells, make list
@@ -4614,7 +4678,7 @@ task emit-call
           sift render-bind(bind-node, <rust>, rendered)
             case some
               link made
-              back made
+              back cast-grouped(made)
             case none
               back bind-gap(callee-name)
 
@@ -6354,7 +6418,17 @@ task emit-guard
           save result, spell(st/current-result, facts)
       save outer-raising, st/current-raising
       save st/guard-depth, add(st/guard-depth, 1)
+      save outer-active, st/guard-active
+      save outer-loops, st/guard-loops
+      save outer-exits, st/guard-exits
+      save st/guard-active, true
+      save st/guard-loops, make list
+      save st/guard-exits, make list
       save body, emit-block(guard-body, add(depth, 2), st, facts)
+      save exits, st/guard-exits
+      save st/guard-active, outer-active
+      save st/guard-loops, outer-loops
+      save st/guard-exits, outer-exits
       save st/guard-depth, subtract(st/guard-depth, 1)
       save returned, <return value>
       fork test, outer-raising
@@ -6380,7 +6454,18 @@ task emit-guard
       fork test, st/current-async
         hold
           save guarded, <(async \{ \n{body}\n{pad(add(depth, 1))}std::result::Result::Ok::\<Option\<{result}\>, TermException\>(None)\n{pad(depth)}\}).await>
-      back <match {guarded} \{\n{pad(add(depth, 1))}std::result::Result::Ok(Some(value)) =\> {returned},\n{pad(add(depth, 1))}std::result::Result::Ok(None) =\> \{\}\n{pad(add(depth, 1))}{handler}\n{pad(depth)}\}>
+      save matched, <match {guarded} \{\n{pad(add(depth, 1))}std::result::Result::Ok(Some(value)) =\> {returned},\n{pad(add(depth, 1))}std::result::Result::Ok(None) =\> \{\}\n{pad(add(depth, 1))}{handler}\n{pad(depth)}\}>
+      fork test, is-equal(exits/length, 0)
+        hold
+          back matched
+      # the loop exits the body recorded (`loop-exit`), each written here, outside the closure. Not again through an
+      # outer guard: a guard inside a guard does not build on Rust (trap T-0185)
+      save after, make list
+      walk exits
+        take written
+        take at
+        push(after, <if __guard_exit == {to-text(add(at, 1))} \{ {written} \}>)
+      back <\{ let mut __guard_exit: u8 = 0;\n{pad(depth)}{matched}\n{pad(depth)}{join-texts(after, <\n{pad(depth)}>)} \}>
     miss
       back <>
 
@@ -8287,6 +8372,32 @@ task emit-function
 
 # ---- a statement ----
 
+# a `turn next` or `halt` inside a guard's body, whose loop is outside the guard: the body is a closure, and rustc
+# refuses a `continue` or `break` inside one (E0267, item term-self-host-001-1057). The body records the exit, leaves
+# with `Ok(None)`, and `emit-guard` writes the statement itself after the guard. A labeled one leaves when its label is
+# no loop opened inside the guard, an unlabeled one when no loop was
+task loop-exit
+  take written, like text
+  take label, like text
+  take st, like rust-state
+  like text
+  mark private
+
+  fork test, not(st/guard-active)
+    hold
+      back written
+  fork test, is-equal(label, <>)
+    hold
+      fork test, is-above(st/guard-loops/length, 0)
+        hold
+          back written
+    miss
+      fork test, has-text(st/guard-loops, label)
+        hold
+          back written
+  push(st/guard-exits, written)
+  back <\{ __guard_exit = {to-text(st/guard-exits/length)}; return std::result::Result::Ok(None); \}>
+
 task emit-statement
   take node, like statement
   take depth, like number
@@ -8311,11 +8422,31 @@ task emit-statement
     case throw
       back emit-throw(node, st, facts)
     case while
-      back emit-while(node, depth, st, facts)
+      # a case's links are its fields in order
+      link while-cond
+      link while-body
+      link while-span
+      link while-must
+      link while-down
+      link while-label
+      push(st/guard-loops, while-label)
+      save made, emit-while(node, depth, st, facts)
+      save dropped, st/guard-loops/pop()
+      back made
     case guard
       back emit-guard(node, depth, st, facts)
     case for-each
-      back emit-for-each(node, depth, st, facts)
+      link for-each-item
+      link for-each-index
+      link for-each-iterable
+      link for-each-body
+      link for-each-span
+      link for-each-must
+      link for-each-label
+      push(st/guard-loops, for-each-label)
+      save made, emit-for-each(node, depth, st, facts)
+      save dropped, st/guard-loops/pop()
+      back made
     case match
       back emit-match(node, depth, st, facts)
     case if
@@ -8324,14 +8455,14 @@ task emit-statement
       link break-label
       fork test, is-unequal(break-label, <>)
         hold
-          back <break {loop-name(break-label)};>
-      back <break;>
+          back loop-exit(<break {loop-name(break-label)};>, break-label, st)
+      back loop-exit(<break;>, break-label, st)
     case continue
       link continue-label
       fork test, is-unequal(continue-label, <>)
         hold
-          back <continue {loop-name(continue-label)};>
-      back <continue;>
+          back loop-exit(<continue {loop-name(continue-label)};>, continue-label, st)
+      back loop-exit(<continue;>, continue-label, st)
     case exit
       back <std::process::exit(0);>
     case debug

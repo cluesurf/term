@@ -92,6 +92,12 @@ const NATIVE_FILE_GAP: { env: Native; file: string; reason: string }[] = [
     file: 'deck/base/test/find/find.tree',
     reason: 'find has a node driver host only so far (native/node/find/send), the native hosts are a later item',
   })),
+  // one DispatchSource kqueue source on the watched path (note/project/term/stdlib/native-async-file-and-server.md)
+  {
+    env: 'swift',
+    file: 'deck/base/test/file/watch.tree',
+    reason: 'watch.swift reports the directory, not the file, and ignores deep (D026)',
+  },
 ]
 const REPORT = 'gate-report'
 

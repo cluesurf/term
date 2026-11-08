@@ -1,9 +1,12 @@
 // SNAPSHOTS (decisions-2026-10.md, D11): `want snapshot, <text>` holds a text against the one stored in the test file's
-// `<test>.snapshot.tree`, and `term test --update` writes that file. A project run as a person runs it: with no store
-// each snapshot fails naming its line and the command that writes it, `--update` writes the store and passes, a second
-// run passes against it, a change to the code fails with both texts, a text holding every character a literal escapes
-// comes back exactly, a value that is not text is refused at the build, and `--update` is refused off node. On each
-// native backend this machine has, the tests hold against the store node wrote.
+// `<test>.snapshot.tree`, and `term test --commit` writes that file (decision 022 T2, item 0186: writers write only on
+// `--commit`, and `--update` is its old spelling, still honored with a warning). A project run as a person runs it: with
+// no store each snapshot fails naming its line and the command that writes it, `--commit` writes the store and passes, a
+// second run passes against it, a change to the code fails with both texts, a text holding every character a literal
+// escapes and every character the store's own syntax could misread comes back exactly, a change of one of its
+// characters fails naming the line, `--update` still writes with the warning, a value that is not text is refused at
+// the build, and `--commit` is refused off node. On each native backend this machine has, the tests hold against the
+// store node wrote.
 // Run: npx tsx test/call/test-snapshot.ts
 
 import { spawnSync } from 'node:child_process'
@@ -94,19 +97,20 @@ ok(
 ok(
   'naming the line and the command that writes it',
   empty.out.includes(
-    'no snapshot is stored for line 6: term test --update writes it',
+    'no snapshot is stored for line 6: term test --commit writes it',
   ),
   empty.out,
 )
 
-const updated = run('--update')
+const updated = run('--commit')
 ok(
-  '--update passes and writes three',
+  '--commit passes and writes three',
   updated.out.includes('2 tests · 2 passed') &&
     updated.out.includes('3 snapshots written') &&
     updated.code === 0,
   updated.out,
 )
+ok('--commit gives no warning', !updated.out.includes('--update is'), updated.out)
 ok('the store exists beside the test', existsSync(store))
 
 const stored = existsSync(store) ? readFileSync(store, 'utf8') : ''
@@ -154,10 +158,72 @@ ok(
 )
 code('hello')
 
-const refused = run('--update', '--env', 'rust')
+// a text holding what the store's own syntax could misread: a backslash, both angle brackets doubled and alone, both
+// braces, a line break, a carriage return, a tab, trailing spaces, blank lines and a character past U+FFFF, and the empty
+// text beside it. Written in Term's own escapes, `two` the word one run changes
+const escapeCode = (two: string): string =>
+  String.raw`task tricky
+  like text
+  back <\\ \< \> \{ \} \<\< \>\> end\nline ${two}\r\ttab  \n\n\nafter blanks 𝄞  >
+`
+writeFileSync(join(root, 'code', 'escape.tree'), escapeCode('two'))
+writeFileSync(
+  join(root, 'test', 'escape.tree'),
+  [
+    'load ../code/escape',
+    '  find tricky',
+    '',
+    'test <keeps what the store could misread>',
+    '  want snapshot, tricky()',
+    '  want snapshot, <>',
+    '',
+  ].join('\n'),
+)
+const escaped = run('escape', '--commit')
 ok(
-  '--update is refused off node',
-  refused.out.includes('Snapshots are written on node') &&
+  '--commit records the text the store could misread, and the empty text',
+  escaped.out.includes('1 test · 1 passed') &&
+    escaped.out.includes('2 snapshots written') &&
+    escaped.code === 0,
+  escaped.out,
+)
+const escapeHeld = run('escape')
+ok(
+  'node holds both against the store',
+  escapeHeld.out.includes('1 test · 1 passed') && escapeHeld.code === 0,
+  escapeHeld.out,
+)
+writeFileSync(join(root, 'code', 'escape.tree'), escapeCode('tw0'))
+const moved = run('escape')
+ok(
+  'one character changed fails, naming the line',
+  moved.out.includes('1 failed') &&
+    moved.out.includes('test/escape.tree:5') &&
+    moved.code === 1,
+  moved.out,
+)
+const spelled = run('escape', '--update')
+ok(
+  '--update still writes, with the warning',
+  spelled.out.includes('2 snapshots written') &&
+    spelled.out.includes('term test --update is term test --commit now') &&
+    spelled.code === 0,
+  spelled.out,
+)
+const spelledHeld = run('escape')
+ok(
+  'and what it wrote holds',
+  spelledHeld.out.includes('1 test · 1 passed') && spelledHeld.code === 0,
+  spelledHeld.out,
+)
+writeFileSync(join(root, 'code', 'escape.tree'), escapeCode('two'))
+const back = run('escape', '--commit')
+ok('--commit writes the first text back', back.code === 0, back.out)
+
+const refused = run('--commit', '--env', 'rust')
+ok(
+  '--commit is refused off node',
+  refused.out.includes('Snapshots are written on node: --commit runs without --env') &&
     refused.code !== 0,
   refused.out,
 )
@@ -196,6 +262,13 @@ for (const [env, tools] of [
     `${env}: the tests hold against the store node wrote`,
     native.out.includes('2 tests · 2 passed') && native.code === 0,
     native.out,
+  )
+
+  const nativeEscape = run('--env', env, 'escape')
+  ok(
+    `${env}: the text the store could misread holds against what node wrote`,
+    nativeEscape.out.includes('1 test · 1 passed') && nativeEscape.code === 0,
+    nativeEscape.out,
   )
 }
 

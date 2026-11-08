@@ -332,9 +332,16 @@ task run-native-test-file
         miss
           save emitted, emit-kotlin(result/program, wake-of(result/wake), false, emit-refused)
   save prelude, host-text(native-module/native-prelude(result/program, env, runtime-reader(), emitted))
+  # compiled: the run pool's next file may build, and this one waits for a run slot (item 0158). The toolchain builds
+  # into the slot's own folder, so no build writes over a program another slot is running
+  save run-slot, gate-slot(input/gate)
+  save folder, work
+  fork test, is-above(run-slot, 0)
+    hold
+      save folder, node-path/join(work, <slot-{run-slot}>)
   # built as `term make --emit <env> --build` builds a program, with the same main, so a test runs on the 1 GiB stack
   # thread a program runs on, under the same driver for an async or raising entry
-  save built, build-native(make(build-ask, bind(source, <{prelude}\n{emitted}>), bind(target, env), bind(folder, work), bind(name, <term-test>), bind(entry, report-name())))
+  save built, build-native(make(build-ask, bind(source, <{prelude}\n{emitted}>), bind(target, env), bind(folder, folder), bind(name, <term-test>), bind(entry, report-name())))
   fork test, not(is-truthy(built/ok))
     hold
       save none, make list
@@ -390,6 +397,13 @@ task result-of
     hold
       save one/error, why-of(want, settled/note, env, source)
   back one
+
+# a run pool's gate called and waited (`term test`'s pool, item 0158): the run slot it answers, 0 without a pool
+bind gate-slot
+  take gate, like dynamic
+  like number
+  case node
+    text <<Number((await ((given) => (typeof given === "function" ? given() : 0))($gate)) ?? 0)>>
 
 # the seconds `--limit` said, 0 for nothing
 bind limit-of

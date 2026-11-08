@@ -1,5 +1,5 @@
-# `term test`'s decisions that are not its file system, its builds or its printing: which files a run collects, what
-# a control (a file of laws stated false on purpose) is judged by, the counts a round closes with, and what each item
+# `term test`'s decisions that are not its file system, its builds or its printing: which files a run collects, the
+# order it runs them in and how many at once, what a control (a file of laws stated false on purpose) is judged by, the counts a round closes with, and what each item
 # and refusal says.
 #
 # Ported from deck/call/code/test.ts (self-hosting, 2026-10-06), which stays as the face: it walks the folders, builds
@@ -10,6 +10,12 @@ load @term/base/list
   find get
   find join
   find contains
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+  find from-texts
 
 load @term/base/text
   find split
@@ -357,6 +363,72 @@ task reasons-once
         push(out, reason)
   back out
 
+# ---- the order a round runs in (decision 022 T5, item 0158) ----
+
+# a test file as a round orders it: its path, its path relative to the root, and the seconds its last run took, -1 when
+# it was never timed
+form timed-file
+  link path, like text
+  link rel, like text
+  link seconds, like number
+
+# 0 for a file never timed, 1 for a timed one
+task timed-rank
+  take file, like timed-file
+  like number
+  mark private
+
+  fork test, is-below(file/seconds, 0)
+    hold
+      back 0
+  back 1
+
+# which of two files runs first: one never timed, since it may be the longest, then the longer by its last run, then by
+# its path relative to the root
+task run-before
+  take left, like timed-file
+  take right, like timed-file
+  like ordering
+  mark private
+
+  fork test, is-unequal(timed-rank(left), timed-rank(right))
+    hold
+      back from-numbers(timed-rank(left), timed-rank(right))
+  fork test, is-unequal(left/seconds, right/seconds)
+    hold
+      back from-numbers(right/seconds, left/seconds)
+  back from-texts(left/rel, right/rel)
+
+# the paths of a round's files in the order they are built and run: never timed first, then by the last run's seconds,
+# longest first, then by path
+task run-order
+  take files, like list, like timed-file
+  like list, like text
+
+  save paths, make list
+  walk sort(files, run-before)
+    take one, like timed-file
+    push(paths, one/path)
+  back paths
+
+# how many test files run at once: what `--jobs` said, else the cores less one, at most 8, and never fewer than 1
+task jobs-of
+  take given, like number
+  take cores, like number
+  like number
+
+  fork test, is-above(given, 0)
+    hold
+      back given
+  save jobs, subtract(cores, 1)
+  fork test, is-above(jobs, 8)
+    hold
+      save jobs, 8
+  fork test, is-below(jobs, 1)
+    hold
+      save jobs, 1
+  back jobs
+
 # the subject of a watched round's item: every file, or how many of them an edit reached
 task round-subject
   take reached, like number
@@ -430,8 +502,8 @@ task env-refusal
     hold
       back
         make refusal
-          bind subject, <Snapshots are written on node: --update runs without --env, and --env {env} then holds the tests to them>
-          bind next, <term test --update>
+          bind subject, <Snapshots are written on node: --commit runs without --env, and --env {env} then holds the tests to them>
+          bind next, <term test --commit>
           bind failure, <usage>
   fork test, is-above(missing/length, 0)
     hold

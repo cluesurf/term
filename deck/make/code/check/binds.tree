@@ -31,9 +31,16 @@ load ../parser/diagnostic
 
 load ../compile/node
   find statement
+  find expression
+  find expression-type
+  find bind-param
+  find type
 
 load ../compile/node-reach
   find reach-statements
+
+load ../compile/node-walk
+  find expressions-in
 
 load ../compile/bind
   find bind-target-of
@@ -52,6 +59,214 @@ task backends
   push(out, <rust>)
   push(out, <swift>)
   push(out, <kotlin>)
+  back out
+
+# ---- a maybe handed to a dynamic bind parameter ----
+#
+# Decision 136 of term/self-host/change/001-finish-self-host. A `need false` field typed `maybe T` is read as a Term maybe
+# on every backend (D10), so a call that hands `value/span` to a bind's `like dynamic` parameter gives the bind's host
+# code the maybe itself, `{form: some}` or `{form: none}`, never the host's optional. A host `??` over it never falls
+# back: emission.tree's `value-or(gap/span, no-span())` compiled clean and its fallback never ran (trap T-0947). The
+# meaning stays D10's. This warns at each such argument of a call in the file being compiled, naming the field and the
+# bind, and `--strict` makes the warning fail the run. A typed parameter, or a maybe read first with a `sift`, is not
+# warned about.
+
+# whether a type is `maybe T`
+task is-maybe-of
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link type-name
+      back is-equal(type-name, <maybe>)
+    miss
+      back false
+
+# every form's `need false` maybe fields, each as `<form>/<field>`. A SET: its order is never read
+task optional-maybe-fields
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link owner
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        walk form-fields
+          take field
+          fork test, and(field/optional, is-maybe-of(field/type))
+            hold
+              save key, <{owner}/{field/name}>
+              save out/{key}, true
+        walk form-variants
+          take variant
+          walk variant/fields
+            take field
+            fork test, and(field/optional, is-maybe-of(field/type))
+              hold
+                save key, <{owner}/{field/name}>
+                save out/{key}, true
+      miss
+        turn next
+  back out
+
+# the `<form>/<field>` a read of a `need false` maybe field names, `<>` for any other expression
+task optional-maybe-read
+  take given, like expression
+  take fields, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift given
+    case member
+      link read-target
+      link field-name
+      sift expression-type(read-target)
+        case some
+          link known
+          sift known
+            case named
+              link owner
+              save key, <{owner}/{field-name}>
+              fork test, fields/has(key)
+                hold
+                  back key
+            miss
+              back <>
+        case none
+          back <>
+    miss
+      back <>
+  back <>
+
+# whether the parameter an argument fills is `like dynamic`: the one its label names, else the one at its position
+task fills-dynamic
+  take params, like list, like bind-param
+  take label, like text
+  take position, like number
+  like boolean
+  mark private
+
+  walk params
+    take param
+    take place
+    save fills, false
+    fork test, is-equal(label, <>)
+      hold
+        save fills, is-equal(place, position)
+      miss
+        save fills, is-equal(param/name, label)
+    fork test, fills
+      hold
+        sift param/type
+          case some
+            link given
+            sift given
+              case dynamic
+                back true
+              miss
+                back false
+          case none
+            back false
+  back false
+
+task dynamic-maybe-warning
+  take file, like text
+  take where, like span
+  take field, like text
+  take called, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, where
+      bind message, make(some, <`{field}` is a `need false` maybe, and the bind `{called}` takes it as `like dynamic`, so its host code gets the Term maybe, never the host's optional>)
+      bind hint, make(some, <read `{field}` with a `sift` and hand `{called}` the value, or give its parameter a type, such as `like maybe, like \<form\>`>)
+  save kind, make maybe-to-dynamic
+  back diagnose(kind, input)
+
+task warn-maybe-to-dynamic
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  # each bind with host code, by name: its parameters
+  save binds, make hash
+  walk program
+    take one
+    sift one
+      case bind
+        fork test, is-above(targets/length, 0)
+          hold
+            save binds/{name}, params
+      miss
+        turn next
+  fork test, is-equal(binds/keys()/length, 0)
+    hold
+      back out
+  save fields, optional-maybe-fields(program)
+  fork test, is-equal(fields/keys()/length, 0)
+    hold
+      back out
+  walk program
+    take one
+    sift one
+      case function
+        save mine, false
+        sift span/file
+          case some
+            link written
+            save mine, is-equal(written, file)
+          case none
+            save mine, false
+        fork test, not(mine)
+          hold
+            turn next
+        walk expressions-in(body)
+          take expression
+          sift expression
+            case call
+              # the CALL's span and labels, before the callee's arm binds its own
+              save call-span, span
+              save call-args, args
+              save labels, names
+              save called, <>
+              sift callee
+                case variable
+                  link callee-name
+                  save called, callee-name
+                miss
+                  save nothing, 0
+              fork test, or(is-equal(called, <>), not(binds/has(called)))
+                hold
+                  turn next
+              save params, binds/get(called)
+              walk call-args
+                take arg
+                take place
+                save label, <>
+                fork test, is-below(place, labels/length)
+                  hold
+                    save label, get(labels, place)
+                save read-field, optional-maybe-read(arg, fields)
+                fork test, and(is-unequal(read-field, <>), fills-dynamic(params, label, place))
+                  hold
+                    push(out, dynamic-maybe-warning(file, call-span, read-field, called))
+            miss
+              turn next
+      miss
+        turn next
   back out
 
 # the names called anywhere in the program, a call's callee written as a bare name. A SET: its order is never read

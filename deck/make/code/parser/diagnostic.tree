@@ -779,6 +779,7 @@ form diagnostic-name
   case raise-escapes-slot, text <raise-escapes-slot>
   case slot-kink-kept, text <slot-kink-kept>
   case handle-escapes, text <handle-escapes>
+  case maybe-to-dynamic, text <maybe-to-dynamic>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -1033,6 +1034,12 @@ task entry-of
     # its raise is charged where its maker waits it (decision 092 rule 3)
     case handle-escapes
       back error-entry(0x4d, <a handle of a job that can raise leaves the task that made it>, <wait it in the task that made it, or handle the raise inside the job>)
+    # a `need false` maybe field handed to a `like dynamic` parameter of a bind: D10 reads the field as a Term maybe on
+    # every backend, so the bind's host code gets the maybe, never the host's optional, and a host fallback over it
+    # never runs (decision 136 of term/self-host/change/001-finish-self-host, check/binds.tree). A warning in 3.0, an
+    # error under `--strict`
+    case maybe-to-dynamic
+      back warning-entry(0x4f, <a `need false` maybe is handed to a bind's `like dynamic` parameter, so its host code gets the Term maybe>, <read the maybe with a `sift` and hand the bind the value, or give the parameter a type, such as `like maybe, like \<form\>`>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1118,3 +1125,4 @@ task diagnostic-names
       make raise-escapes-slot
       make slot-kink-kept
       make handle-escapes
+      make maybe-to-dynamic

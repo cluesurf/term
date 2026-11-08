@@ -96,6 +96,8 @@ form test-ask
   link ride, like boolean
   link update, like boolean
   link limit, like dynamic
+  link jobs, like dynamic
+  link commit, like boolean
 
 form host-ask
   link root, like text
@@ -113,10 +115,14 @@ task test
   take case, like text
   take env, like text
   take ride, like boolean
-  # write what each `want snapshot` sees, instead of comparing against it (line.ts:1010)
+  # the old spelling of `commit`, honored with a warning (item 0186)
   take update, like boolean
   # the seconds a test file may run (a text as the console hands a flag, empty for the default of 300)
   take limit, like text
+  # how many test files run at once (a text as the console hands a flag, empty for the default, item 0158)
+  take jobs, like text
+  # write what each `want snapshot` sees, instead of comparing against it (decision 022 T2, item 0186)
+  take commit, like boolean
 
   like void
 
@@ -134,6 +140,8 @@ task test
         bind ride, read ride
         bind update, read update
         bind limit, read limit
+        bind jobs, read jobs
+        bind commit, read commit
   halt take
     take error
     log-fail format-error error

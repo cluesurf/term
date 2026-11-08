@@ -1,0 +1,63 @@
+# browser bitwise integer ops, 64-bit like the compiled backends: the answer is the signed 64-bit one, exact within the
+# 53-bit safe-integer range a host number lives under. Each is a declarative binding over the host operators, inlined
+# at the use site with no runtime shim: the host operator where it IS the 64-bit answer (both sides signed 32-bit, or
+# both unsigned 32-bit, or a shift whose answer stays safe), BigInt only past it. Each side is read once, through the
+# arrow's own parameters. Internal: reached only through the public bit API.
+
+bind bit-and
+  take left, like number
+  take right, like number
+  like number
+  case browser
+    text <((bitL: number, bitR: number): number =\> (bitL | 0) === bitL && (bitR | 0) === bitR ? bitL & bitR : bitL \>\>\> 0 === bitL && bitR \>\>\> 0 === bitR ? (bitL & bitR) \>\>\> 0 : Number(BigInt.asIntN(64, BigInt(Math.trunc(bitL)) & BigInt(Math.trunc(bitR)))))($left, $right)>
+
+bind bit-or
+  take left, like number
+  take right, like number
+  like number
+  case browser
+    text <((bitL: number, bitR: number): number =\> (bitL | 0) === bitL && (bitR | 0) === bitR ? bitL | bitR : bitL \>\>\> 0 === bitL && bitR \>\>\> 0 === bitR ? (bitL | bitR) \>\>\> 0 : Number(BigInt.asIntN(64, BigInt(Math.trunc(bitL)) | BigInt(Math.trunc(bitR)))))($left, $right)>
+
+bind bit-exclusive-or
+  take left, like number
+  take right, like number
+  like number
+  case browser
+    text <((bitL: number, bitR: number): number =\> (bitL | 0) === bitL && (bitR | 0) === bitR ? bitL ^ bitR : bitL \>\>\> 0 === bitL && bitR \>\>\> 0 === bitR ? (bitL ^ bitR) \>\>\> 0 : Number(BigInt.asIntN(64, BigInt(Math.trunc(bitL)) ^ BigInt(Math.trunc(bitR)))))($left, $right)>
+
+bind bit-not
+  take value, like number
+  like number
+  case browser
+    text <((bitV: number): number =\> (bitV | 0) === bitV ? ~bitV : Number(BigInt.asIntN(64, ~BigInt(Math.trunc(bitV)))))($value)>
+
+bind bit-shift-left
+  take value, like number
+  take count, like number
+  like number
+  case browser
+    text <((bitV: number, bitC: number): number =\> \{ if (Number.isSafeInteger(bitV) && Number.isInteger(bitC) && bitC \>= 0 && bitC \< 64) \{ const bitS = bitV * 2 ** bitC; if (Number.isSafeInteger(bitS)) return bitS + 0 \} return Number(BigInt.asIntN(64, BigInt(Math.trunc(bitV)) \<\< BigInt(Math.trunc(bitC)))) \})($value, $count)>
+
+# arithmetic (sign-preserving), matching the compiled backends
+bind bit-shift-right
+  take value, like number
+  take count, like number
+  like number
+  case browser
+    text <((bitV: number, bitC: number): number =\> Number.isSafeInteger(bitV) && Number.isInteger(bitC) && bitC \>= 0 && bitC \< 64 ? Math.floor(bitV / 2 ** bitC) + 0 : Number(BigInt.asIntN(64, BigInt(Math.trunc(bitV)) \>\> BigInt(Math.trunc(bitC)))))($value, $count)>
+
+bind bit-shift-right-unsigned
+  take value, like number
+  take count, like number
+  like number
+  case browser
+    text <((bitV: number, bitC: number): number =\> Number.isSafeInteger(bitV) && Number.isInteger(bitC) && bitC \>= 0 && bitC \< 64 && bitV \>= 0 ? Math.floor(bitV / 2 ** bitC) : Number(BigInt.asUintN(64, BigInt(Math.trunc(bitV))) \>\> BigInt(Math.trunc(bitC))))($value, $count)>
+
+# A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND, `Math.imul` exactly: the high bits are DISCARDED, which is what the classic
+# string hashes are defined in terms of. Each side is read once, as the arguments of the one call
+bind bit-multiply-32
+  take left, like number
+  take right, like number
+  like number
+  case browser
+    text <Math.imul(Math.trunc($left), Math.trunc($right))>

@@ -704,12 +704,18 @@ hook term
     # Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
     take ride
       like boolean
-    # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
+    # The old spelling of --commit: it still writes the snapshots, with a warning
     take update
       like boolean
     # The seconds a test file may run before it and its children are ended (default 300)
     take limit
       like text
+    # How many test files run at once (default the cores less one, at most 8)
+    take jobs
+      like text
+    # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
+    take commit
+      like boolean
     task test-project
 
   # Run benchmarks, or profile a file with --cpu / --memory
@@ -1216,6 +1222,8 @@ task test-project
   take ride, like boolean
   take update, like boolean
   take limit, like text
+  take jobs, like text
+  take commit, like boolean
   like void
   call test-verb
     read filter
@@ -1225,6 +1233,8 @@ task test-project
     read ride
     read update
     read limit
+    read jobs
+    read commit
 
 task walk-project
   like void

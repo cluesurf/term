@@ -237,12 +237,13 @@ task pascal
 # ---- emitted text ----
 
 # outer parentheses around an assigned or returned value are the binary case's grouping: a BALANCED outer pair is
-# stripped
+# stripped. The unit value `()` is no grouping and stays: stripped, a `void` argument was written as nothing
+# (`JSON::stringify(roll.clone(), , 2)`) and a unit answer as `Ok()` (item term-self-host-001-1053)
 task bare
   take rendered, like text
   like text
 
-  fork test, or(not(starts-with(rendered, <(>)), not(ends-with(rendered, <)>)))
+  fork test, or(or(not(starts-with(rendered, <(>)), not(ends-with(rendered, <)>))), is-equal(rendered, <()>))
     hold
       back rendered
   save depth, 0

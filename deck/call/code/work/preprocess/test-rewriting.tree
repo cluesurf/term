@@ -459,7 +459,7 @@ task sampled-prelude
   lines/push(<>)
   back lines
 
-# declared once in a file that takes a snapshot: the check that its value is text, and under `--update` the record of
+# declared once in a file that takes a snapshot: the check that its value is text, and under `--commit` the record of
 # every one taken, read back by the runner through the two tasks after the tests ran (SNAPSHOT_PRELUDE and
 # SNAPSHOT_RECORD)
 task snapshot-prelude
@@ -810,7 +810,7 @@ task compared-guard
   back make(want-written, bind(lines, lines), bind(from, from))
 
 # One `want snapshot`, the `taken`th of its test (`label`), rewritten: its value saved through `term-snapshot-of`, then
-# recorded (`--update`), held against the stored text, or the test's failure when none is stored
+# recorded (`--commit`), held against the stored text, or the test's failure when none is stored
 task snapshot-want
   take group, like list, like text
   take numbers, like list, like number
@@ -857,7 +857,7 @@ task snapshot-want
   save stored, stored-snapshot(snapshots, label, taken)
   fork test, host-is-undefined(stored)
     hold
-      lines/push(<  halt \<no snapshot is stored for line {shown-line}: term test --update writes it\>>)
+      lines/push(<  halt \<no snapshot is stored for line {shown-line}: term test --commit writes it\>>)
       from/push(line)
       back make(want-written, bind(lines, lines), bind(from, from))
   save held-group, make list
@@ -1437,7 +1437,7 @@ task enumerated-test
   back make(cases-written, bind(lines, out), bind(from, from), bind(kind, kind), bind(compares, compares), bind(snapshotted, snapshotted))
 
 # One `want snapshot` inside a case, the `taken`th of its body: as `snapshot-want`, keyed by the case's label, which is
-# known only as the case runs. So under `--update` the label is the test's phrase and the case's own, and otherwise
+# known only as the case runs. So under `--commit` the label is the test's phrase and the case's own, and otherwise
 # every stored text of this place in the test is written in, and the case picks its own by its label
 task case-snapshot-want
   take group, like list, like text
@@ -1505,7 +1505,7 @@ task case-snapshot-want
   from/push(line)
   lines/push(<    hold>)
   from/push(line)
-  lines/push(<      halt \<no snapshot is stored for line {shown-line} in case \{term-case-label\}: term test --update writes it\>>)
+  lines/push(<      halt \<no snapshot is stored for line {shown-line} in case \{term-case-label\}: term test --commit writes it\>>)
   from/push(line)
   save held-group, make list
   held-group/push(<want hold, is-equal {name}, {stored-name}>)

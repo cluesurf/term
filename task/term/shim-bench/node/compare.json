@@ -1,0 +1,63 @@
+{
+  "shim": "compare",
+  "candidate": "task/term/shim-bench/node/compare.tree",
+  "rounds": 40,
+  "ops": [
+    {
+      "op": "deep-equal",
+      "shim_op": "deep-equal",
+      "term_op": "deep-equal",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "compare-pairs"
+    },
+    {
+      "op": "contains",
+      "shim_op": "contains",
+      "term_op": "contains",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "contains-pairs"
+    },
+    {
+      "op": "as-text",
+      "shim_op": "as-text",
+      "term_op": "as-text",
+      "arity": 1,
+      "kind": "text",
+      "cases": "any-singles"
+    },
+    {
+      "op": "is-truthy",
+      "shim_op": "is-truthy",
+      "term_op": "is-truthy",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "any-singles"
+    },
+    {
+      "op": "above",
+      "shim_op": "above",
+      "term_op": "above",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "number-pairs"
+    },
+    {
+      "op": "below",
+      "shim_op": "below",
+      "term_op": "below",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "number-pairs"
+    },
+    {
+      "op": "gap",
+      "shim_op": "gap",
+      "term_op": "gap",
+      "arity": 2,
+      "kind": "number",
+      "cases": "number-pairs"
+    }
+  ]
+}

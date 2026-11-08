@@ -1,0 +1,47 @@
+{
+  "shim": "path",
+  "candidate": "deck/base/code/native/browser/path.tree",
+  "rounds": 40,
+  "ops": [
+    {
+      "op": "join",
+      "shim_op": "join",
+      "term_op": "path-join",
+      "arity": 2,
+      "kind": "text",
+      "cases": "path-pairs"
+    },
+    {
+      "op": "directory",
+      "shim_op": "directory",
+      "term_op": "path-directory",
+      "arity": 1,
+      "kind": "text",
+      "cases": "path-singles"
+    },
+    {
+      "op": "file-name",
+      "shim_op": "file-name",
+      "term_op": "path-file-name",
+      "arity": 1,
+      "kind": "text",
+      "cases": "path-singles"
+    },
+    {
+      "op": "file-extension",
+      "shim_op": "file-extension",
+      "term_op": "path-file-extension",
+      "arity": 1,
+      "kind": "text",
+      "cases": "path-singles"
+    },
+    {
+      "op": "is-absolute",
+      "shim_op": "is-absolute",
+      "term_op": "path-is-absolute",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "path-singles"
+    }
+  ]
+}

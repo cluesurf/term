@@ -1,0 +1,127 @@
+{
+  "shim": "bit",
+  "candidate": "task/term/shim-bench/node/bit.tree",
+  "rounds": 40,
+  "ops": [
+    {
+      "op": "and",
+      "shim_op": "and",
+      "term_op": "bit-and",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-pairs"
+    },
+    {
+      "op": "or",
+      "shim_op": "or",
+      "term_op": "bit-or",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-pairs"
+    },
+    {
+      "op": "exclusive-or",
+      "shim_op": "exclusive-or",
+      "term_op": "bit-exclusive-or",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-pairs"
+    },
+    {
+      "op": "not",
+      "shim_op": "not",
+      "term_op": "bit-not",
+      "arity": 1,
+      "kind": "number",
+      "cases": "bit-singles"
+    },
+    {
+      "op": "shift-left",
+      "shim_op": "shift-left",
+      "term_op": "bit-shift-left",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-shifts"
+    },
+    {
+      "op": "shift-right",
+      "shim_op": "shift-right",
+      "term_op": "bit-shift-right",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-shifts"
+    },
+    {
+      "op": "shift-right-unsigned",
+      "shim_op": "shift-right-unsigned",
+      "term_op": "bit-shift-right-unsigned",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-shifts"
+    },
+    {
+      "op": "multiply-32",
+      "shim_op": "multiply-32",
+      "term_op": "bit-multiply-32",
+      "arity": 2,
+      "kind": "number",
+      "cases": "bit-pairs"
+    },
+    {
+      "op": "and-word",
+      "shim_op": "and",
+      "term_op": "bit-and",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-pairs"
+    },
+    {
+      "op": "or-word",
+      "shim_op": "or",
+      "term_op": "bit-or",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-pairs"
+    },
+    {
+      "op": "exclusive-or-word",
+      "shim_op": "exclusive-or",
+      "term_op": "bit-exclusive-or",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-pairs"
+    },
+    {
+      "op": "not-word",
+      "shim_op": "not",
+      "term_op": "bit-not",
+      "arity": 1,
+      "kind": "number",
+      "cases": "word-singles"
+    },
+    {
+      "op": "shift-left-word",
+      "shim_op": "shift-left",
+      "term_op": "bit-shift-left",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-shifts"
+    },
+    {
+      "op": "shift-right-word",
+      "shim_op": "shift-right",
+      "term_op": "bit-shift-right",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-shifts"
+    },
+    {
+      "op": "shift-right-unsigned-word",
+      "shim_op": "shift-right-unsigned",
+      "term_op": "bit-shift-right-unsigned",
+      "arity": 2,
+      "kind": "number",
+      "cases": "word-shifts"
+    }
+  ]
+}

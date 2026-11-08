@@ -78,6 +78,15 @@ load @term/make/parser/diagnostic
   find diagnostic-input
   find diagnostic-name
 
+load @term/make/check/binds
+  find check-bind-targets
+
+load @term/make/compile/hvm
+  find emit-hvm
+
+load @term/make/compile/wgsl
+  find emit-wgsl
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -85,9 +94,6 @@ dock load
   load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/emit-target>, name target-module
-  load <@term/make/code/check/binds>, name binds-module
-  load <@term/make/code/compile/hvm>, name hvm-module
-  load <@term/make/code/compile/wgsl>, name wgsl-module
 
 # ---- the host values Term has no word for ----
 
@@ -167,6 +173,15 @@ bind span-file
   like dynamic
   case node
     text <$gap.span?.file>
+
+# a gap's span as the host holds it, `undefined` for none. Read as a host value on purpose: with the gaps typed
+# (compile/hvm and compile/wgsl loaded, not docked), `value-or(gap/span, ...)` wrapped the span in an option and the
+# fallback never ran (term-self-host-001-0947)
+bind gap-span
+  take gap, like dynamic
+  like dynamic
+  case node
+    text <$gap.span>
 
 # one refusal per construct and place: `${gap.form}@${gap.span?.start.line}:${gap.span?.start.column}`
 bind gap-key
@@ -454,8 +469,8 @@ task emit-program
     hold
       back refused-with(<{input/file} is not a program (data or a stylesheet), so it has no {env} source>)
 
-  # every bind the emitted program calls has a case for this backend (check/binds.ts)
-  save checked, binds-module/check-bind-targets(result/program, file, env)
+  # every bind the emitted program calls has a case for this backend (check/binds.tree)
+  save checked, check-bind-targets(result/program, file, env)
   save unbound, checked/errors
   fork test, is-above(unbound/length, 0)
     hold
@@ -566,9 +581,9 @@ task emit-fragment
   save source, <>
   fork test, is-same(input/target, <wgsl>)
     hold
-      save source, wgsl-module/emit-wgsl(result/program, gaps)
+      save source, emit-wgsl(result/program, gaps)
     miss
-      save source, hvm-module/emit-hvm(result/program, gaps)
+      save source, emit-hvm(result/program, gaps)
 
   fork test, is-same(gaps/length, 0)
     hold
@@ -592,7 +607,7 @@ task emit-fragment
     save asked
       make diagnostic-input
         bind file, value-or(span-file(gap), file)
-        bind span, value-or(gap/span, no-span())
+        bind span, value-or(gap-span(gap), no-span())
         bind message, make(some, <{gap/form} is outside what {name} lowers: {holds}>)
         bind hint, make(some, <keep the part that runs on {name} to that fragment, or emit this program for node, rust, swift or kotlin>)
     push(refusals, diagnose(make(not-implemented), asked))

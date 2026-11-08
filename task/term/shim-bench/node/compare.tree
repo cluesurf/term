@@ -1,0 +1,126 @@
+# The node and browser compare shim (native/<env>/runtime/compare.ts) in Term. The host questions (is this the same
+# value, what host type is it, is it a list) are declarative bindings, each one host expression; the decisions are
+# Term. Two values are deep-equal when they are the same value, or both are lists of one size whose items are
+# deep-equal.
+
+bind is-same
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
+
+bind is-host-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind is-host-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "number")>
+
+bind is-host-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+task deep-equal
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+
+  fork test, is-same(a, b)
+    hold
+      back true
+  fork test, and(is-host-list(a), is-host-list(b))
+    hold
+      fork test, is-unequal(a/length, b/length)
+        hold
+          back false
+      save at, 0
+      walk test
+        hook test, is-below(at, a/length)
+        hook hold
+          fork test, not(deep-equal(a/{at}, b/{at}))
+            hold
+              back false
+          save at, add(at, 1)
+      back true
+  back false
+
+task contains
+  take list, like dynamic
+  take value, like dynamic
+  like boolean
+
+  fork test, not(is-host-list(list))
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, list/length)
+    hook hold
+      fork test, deep-equal(list/{at}, value)
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+task as-text
+  take value, like dynamic
+  like text
+
+  fork test, is-host-text(value)
+    hold
+      back value
+  back <>
+
+task is-truthy
+  take value, like dynamic
+  like boolean
+
+  back host-truth(value)
+
+task above
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+
+  fork test, and(is-host-number(a), is-host-number(b))
+    hold
+      back is-above(a, b)
+  back false
+
+task below
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+
+  fork test, and(is-host-number(a), is-host-number(b))
+    hold
+      back is-below(a, b)
+  back false
+
+task gap
+  take a, like dynamic
+  take b, like dynamic
+  like float
+
+  fork test, and(is-host-number(a), is-host-number(b))
+    hold
+      save d, subtract(a, b)
+      fork test, is-below(d, 0)
+        hold
+          back subtract(0, d)
+      back d
+  back divide(0.0, 0.0)

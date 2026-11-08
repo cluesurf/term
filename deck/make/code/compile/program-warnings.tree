@@ -62,6 +62,9 @@ load ../check/private
 load ../check/deprecated
   find warn-deprecated
 
+load ../check/binds
+  find warn-maybe-to-dynamic
+
 load ../check/lost-writes
   find warn-lost-collection-writes
   find check-lost-writes
@@ -484,6 +487,9 @@ task program-warnings
   push-all(found, run/literal-warnings)
   push-all(found, run/pattern-warnings)
   push-all(found, run/bind-warnings)
+  # a `need false` maybe handed to a bind's `like dynamic` parameter, which its host code gets as the Term maybe
+  # (decision 136 of term/self-host/change/001-finish-self-host). Read here, after the checker typed every read
+  push-all(found, warn-maybe-to-dynamic(run/program, file))
   push-all(found, warn-deprecated(run/program, file))
   # a write to a list or hash parameter its caller never sees under value semantics
   push-all(found, warn-lost-collection-writes(run/program, file))

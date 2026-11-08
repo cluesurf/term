@@ -1,0 +1,119 @@
+{
+  "shim": "json",
+  "candidate": "deck/base/code/native/browser/json.tree",
+  "rounds": 100,
+  "ops": [
+    {
+      "op": "get-field",
+      "shim_op": "get-field",
+      "term_op": "json-get-field",
+      "arity": 2,
+      "kind": "dynamic",
+      "cases": "field-pairs"
+    },
+    {
+      "op": "get-item",
+      "shim_op": "get-item",
+      "term_op": "json-get-item",
+      "arity": 2,
+      "kind": "dynamic",
+      "cases": "item-pairs"
+    },
+    {
+      "op": "array-item",
+      "shim_op": "array-item",
+      "term_op": "json-array-item",
+      "arity": 2,
+      "kind": "dynamic",
+      "cases": "item-pairs"
+    },
+    {
+      "op": "as-number",
+      "shim_op": "as-number",
+      "term_op": "json-as-number",
+      "arity": 1,
+      "kind": "number",
+      "cases": "json-singles"
+    },
+    {
+      "op": "as-text",
+      "shim_op": "as-text",
+      "term_op": "json-as-text",
+      "arity": 1,
+      "kind": "text",
+      "cases": "json-singles"
+    },
+    {
+      "op": "as-boolean",
+      "shim_op": "as-boolean",
+      "term_op": "json-as-boolean",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "is-null",
+      "shim_op": "is-null",
+      "term_op": "json-is-null",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "is-array",
+      "shim_op": "is-array",
+      "term_op": "json-is-array",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "is-object",
+      "shim_op": "is-object",
+      "term_op": "json-is-object",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "is-text",
+      "shim_op": "is-text",
+      "term_op": "json-is-text",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "is-boolean",
+      "shim_op": "is-boolean",
+      "term_op": "json-is-boolean",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "json-singles"
+    },
+    {
+      "op": "array-size",
+      "shim_op": "array-size",
+      "term_op": "json-array-size",
+      "arity": 1,
+      "kind": "number",
+      "cases": "json-singles"
+    },
+    {
+      "op": "object-keys",
+      "shim_op": "object-keys",
+      "term_op": "json-object-keys",
+      "arity": 1,
+      "kind": "dynamic",
+      "cases": "json-singles"
+    },
+    {
+      "op": "stringify",
+      "shim_op": "stringify",
+      "term_op": "json-stringify",
+      "arity": 1,
+      "kind": "text",
+      "cases": "json-singles"
+    }
+  ]
+}

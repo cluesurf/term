@@ -830,7 +830,7 @@ const SAMPLED_AT = ' sampled at '
 // the test file's snapshot file, `<test>.snapshot.tree` beside it: a hash from each test's phrase to the list of its
 // snapshots in order, a Term data file (call/code/test-snapshot.ts). The stored text is written into the test as a
 // literal, so the comparison is an ordinary `want hold, is-equal`, which reports both texts when they differ and runs
-// alike on every backend. `term test --update` instead records what each `want snapshot` sees and writes the file.
+// alike on every backend. `term test --commit` instead records what each `want snapshot` sees and writes the file.
 // A snapshot is text: a value of another type is turned into text by the test, which decides how it is shown
 export type Snapshots = {
   // each test's stored snapshots, by its phrase
@@ -839,7 +839,7 @@ export type Snapshots = {
   update: boolean
 }
 
-// declared once in a file that takes a snapshot: the check that its value is text, and under `--update` the record of
+// declared once in a file that takes a snapshot: the check that its value is text, and under `--commit` the record of
 // every one taken, read back by the runner through the two tasks after the tests ran
 const SNAPSHOT_PRELUDE = [
   'task term-snapshot-of',
@@ -873,7 +873,7 @@ const SNAPSHOT_RECORD = [
 const SNAPSHOT_HEAD = /^want snapshot\s*(?:,\s*(.*))?$/
 
 // one `want snapshot`, the `taken`th of its test (`label`), rewritten: its value saved through `term-snapshot-of`, then
-// recorded (`--update`), held against the stored text, or the test's failure when none is stored
+// recorded (`--commit`), held against the stored text, or the test's failure when none is stored
 function snapshotWant(
   group: string[],
   numbers: number[],
@@ -918,7 +918,7 @@ function snapshotWant(
     return {
       lines: [
         ...saved.lines,
-        `  halt <no snapshot is stored for line ${line + 1}: term test --update writes it>`,
+        `  halt <no snapshot is stored for line ${line + 1}: term test --commit writes it>`,
       ],
       from: [...saved.from, line],
     }
@@ -1205,7 +1205,7 @@ export function preprocessTests(
   let compares = false
   // whether a test takes inputs, so the file needs SAMPLED_PRELUDE
   let sampled = false
-  // whether a test takes a snapshot, so the file needs SNAPSHOT_PRELUDE (and SNAPSHOT_RECORD under `--update`)
+  // whether a test takes a snapshot, so the file needs SNAPSHOT_PRELUDE (and SNAPSHOT_RECORD under `--commit`)
   let snapshotted = false
 
   const emit = (text: string, from: number): void => {
@@ -1587,7 +1587,7 @@ function enumeratedTest(input: {
 }
 
 // One `want snapshot` inside a case: as `snapshotWant`, keyed by the case's label, which is known only as the case runs.
-// Under `--update` the key is the phrase and the case's own label, and otherwise every stored text of this place is
+// Under `--commit` the key is the phrase and the case's own label, and otherwise every stored text of this place is
 // written in, and the case picks its own by its label
 function caseSnapshotWant(
   group: string[],
@@ -1653,7 +1653,7 @@ function caseSnapshotWant(
   lines.push(
     `  fork test, not(${foundName})`,
     '    hold',
-    `      halt <no snapshot is stored for line ${shownLine} in case {term-case-label}: term test --update writes it>`,
+    `      halt <no snapshot is stored for line ${shownLine} in case {term-case-label}: term test --commit writes it>`,
   )
   from.push(line, line, line)
 

@@ -329,7 +329,27 @@ task file-of
     case none
       back make none
 
-# every path a dock's shim is looked for at, in the order they are tried
+# whether a text holds an ASCII upper-case letter
+task has-upper
+  take value, like text
+  like boolean
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      save code, char-code-at(value, at)
+      fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+# every path a dock's shim is looked for at, in the order they are tried. A shim's file is named in lower case, so a
+# dock of a host global spelled with a capital (`<global:JSON>`, `Math`, `Date`) has none: a file system that folds
+# case answered `runtime/JSON.rs` with `json.rs`, the shim of `<global:json>`, and the Rust prelude of a program
+# docking both held `mod json` twice (E0428, item term-self-host-001-1054), where a case-sensitive one reads nothing
 task shim-candidates
   take dock, like global-dock
   take env, like native-env
@@ -340,6 +360,9 @@ task shim-candidates
   mark private
 
   save candidates, make list
+  fork test, has-upper(dock/name)
+    hold
+      back candidates
   save extension, runtime-extension(env)
   save name, dock/name
   sift file-of(dock)

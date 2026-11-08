@@ -7,7 +7,8 @@
 # collects, a control's verdict, the counts a round closes with and what each refusal says.
 #
 # Ported from deck/call/code/test.ts (term-cli-in-term-0018). `call-test` takes the original's one input record as it
-# came (root, filter, merged, case, env, ride, update), so a TypeScript caller moves to it unchanged. Docked until
+# came (root, filter, merged, case, env, ride, update, and `commit`, which `update` is the old spelling of), so a TypeScript caller moves to it unchanged, and `jobs`
+# beside them (item 0158): a round builds its files one at a time and runs `jobs` of them at once. Docked until
 # their integrate: the output library (call/code/output.ts, so the run shares the options the console set: a loaded
 # port carries its own copy of the printer's state, term-cli-in-term-0069) and the compiler's reach (compile/reach.ts).
 # The build session, resolver, watcher, readers, caches and both test runners are their lanes' ports, loaded since
@@ -33,6 +34,9 @@ load @term/call/test-plan
   find case-subject
   find failure-fact
   find env-refusal
+  find timed-file
+  find run-order
+  find jobs-of
 
 load @term/call/draft-mark
   find declares-draft
@@ -221,6 +225,10 @@ form run-ask
   link chosen, like text, fall <>
   # the seconds `--limit` said, 0 for nothing
   link limit, like number
+  # the run's pool turn (item 0158): called once the file is built, it lets the next file build and waits for a run slot
+  link gate
+    like dynamic
+    need false
 
 form native-ask
   link root, like text
@@ -235,6 +243,10 @@ form native-ask
   link limit, like number
   # what `--case` said, the empty text for nothing
   link chosen, like text, fall <>
+  # the run's pool turn, as `run-ask` has it: it answers the run slot, whose folder the program is built in
+  link gate
+    like dynamic
+    need false
 
 # ---- this run's own state ----
 
@@ -250,6 +262,8 @@ form test-context
   link update, like boolean
   # the seconds a test file may run, as `--limit` said, 0 for the default
   link limit, like number
+  # how many test files run at once (`--jobs`, test-plan.tree `jobs-of`)
+  link jobs, like number
   link role-of, like dynamic
   link lean-of, like dynamic
   link deck-of, like dynamic
@@ -407,6 +421,90 @@ bind limit-given
   like number
   case node
     text <Number($value ?? 0)>
+
+# ---- the run pool (decision 022 T5, item 0158) ----
+
+# `Math.floor(Number(value ?? 0))`, a `--jobs` as given, 0 for nothing or what is not a number
+bind jobs-given
+  take value, like dynamic
+  like number
+  case node
+    text <<((given) => (Number.isFinite(Math.floor(Number(given ?? 0))) ? Math.floor(Number(given ?? 0)) : 0))($value)>>
+
+# the cores this machine has for the run
+bind core-count
+  like number
+  case node
+    text <process.getBuiltinModule("node:os").availableParallelism()>
+
+# A round's pool: `jobs` run slots and the one build turn. Every file of the round is handed to it in run order, and its
+# builds go one at a time in that order, in the one session: a file's build starts once the file before it calls its
+# turn's `gate` (it is built) or ends. The gate then waits for a free slot, first come first served, and the run holds
+# it to its end. `timed` is each file's milliseconds, waiting left out
+bind make-pool
+  take jobs, like number
+  like dynamic
+  case node
+    text <<((size) => ({ free: Array.from({ length: Math.max(1, size) }, (_, at) => at), waiters: [], build: Promise.resolve(), all: [], timed: [] }))($jobs)>>
+
+# one file handed to the pool: `runner` is called with its turn `{ file, rel, started, waited, slot, gate }` once the build
+# before it is done. Answers nothing, and never waits
+bind pool-start
+  take pool, like dynamic
+  take file, like text
+  take rel, like text
+  take runner, like dynamic
+  like void
+  case node
+    text <<void ((pool, file, rel, work) => { const before = pool.build; let open = () => undefined; pool.build = new Promise((go) => { open = go }); const turn = { file, rel, started: 0, waited: 0, slot: -1, opened: false }; const opening = () => { if (!turn.opened) { turn.opened = true; open() } }; turn.gate = async () => { opening(); const at = Date.now(); turn.slot = pool.free.length > 0 ? pool.free.shift() : await new Promise((given) => { pool.waiters.push(given) }); turn.waited += Date.now() - at; return turn.slot }; const done = before.then(async () => { turn.started = Date.now(); try { await work(turn) } finally { opening(); if (turn.slot !== -1) { const freed = turn.slot; turn.slot = -1; const next = pool.waiters.shift(); if (next) { next(freed) } else { pool.free.push(freed) } } pool.timed.push([rel, Date.now() - turn.started - turn.waited]) } }); done.catch(() => undefined); pool.all.push(done) })($pool, $file, $rel, $runner)>>
+
+# every file handed to the pool, ended. The first that raised raises here, once all of them are over
+bind pool-drain
+  take pool, like dynamic
+  like void
+  case node
+    text <<void (await ((pool) => Promise.allSettled(pool.all).then((ends) => { const failed = ends.find((end) => end.status === "rejected"); if (failed) { throw failed.reason } }))($pool))>>
+
+# the milliseconds a file's item says it took: from its build's start, the wait for a run slot left out
+bind turn-ms
+  take ticket, like dynamic
+  like number
+  case node
+    text <<((turn) => Date.now() - turn.started - turn.waited)($ticket)>>
+
+# where the seconds each test file last ran are kept, a cache: `{ <env>: { <path relative to the root>: seconds } }`
+task seconds-path
+  take root, like text
+  like text
+  mark private
+
+  back node-path/join(project-cache-dir(root), <test>, <seconds.json>)
+
+# the seconds kept for one env, an empty table when there are none or they cannot be read
+bind read-seconds
+  take path, like text
+  take env, like text
+  like dynamic
+  case node
+    text <<((path, env) => { try { const kept = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(path, "utf8")); const own = kept === null || typeof kept !== "object" ? undefined : kept[env]; return own !== null && typeof own === "object" && !Array.isArray(own) ? own : {} } catch { return {} } })($path, $env)>>
+
+# a file's last seconds in a table, -1 when it was never timed
+bind seconds-at
+  take table, like dynamic
+  take rel, like text
+  like number
+  case node
+    text <<((table, rel) => (Object.hasOwn(table, rel) && typeof table[rel] === "number" && Number.isFinite(table[rel]) && table[rel] >= 0 ? table[rel] : -1))($table, $rel)>>
+
+# a round's times kept for its env over what the cache holds now, written whole by a rename. Only a cache: a write that
+# fails is left
+bind keep-seconds
+  take path, like text
+  take env, like text
+  take pool, like dynamic
+  like void
+  case node
+    text <<void ((path, env, pool) => { try { const fs = process.getBuiltinModule("node:fs"); let kept = {}; try { kept = JSON.parse(fs.readFileSync(path, "utf8")) } catch { kept = {} } if (kept === null || typeof kept !== "object" || Array.isArray(kept)) { kept = {} } const own = kept[env] !== null && typeof kept[env] === "object" && !Array.isArray(kept[env]) ? kept[env] : {}; for (const [rel, ms] of pool.timed) { own[rel] = Math.round(ms) / 1000 } kept[env] = own; fs.mkdirSync(process.getBuiltinModule("node:path").dirname(path), { recursive: true }); const part = path + "." + process.pid + ".part"; fs.writeFileSync(part, JSON.stringify(kept, null, 2) + String.fromCharCode(10)); fs.renameSync(part, path) } catch { } })($path, $env, $pool)>>
 
 # A package script run for its output, both streams, never rejecting: `{ code, lines }`. `raw` passes it through
 # instead
@@ -652,19 +750,34 @@ task run-round
     miss
       save resolve, face-project-resolver(make-project-resolver(context/root))
   save tally, make(round-count, bind(pass, 0), bind(fail, 0), bind(proved, 0), bind(broken, 0), bind(skips, 0), bind(skipped, 0), bind(controls, 0))
+  # the files in run order (test-plan.tree `run-order`), by the seconds each took the last time it ran on this env
+  save env-key, <node>
+  fork test, is-unequal(context/native, <>)
+    hold
+      save env-key, context/native
+  save seconds-file, seconds-path(context/root)
+  save table, read-seconds(seconds-file, env-key)
+  save timed, make list
   walk files
     take file
     save rel, host-text(node-path/relative(context/root, file))
-    save started, now-ms()
-    fork
-      mark unsafe
-      run-file(context, tally, resolve, file, rel, started)
-    halt take
-      take problem
-      save tally/broken, add(tally/broken, 1)
-      save message, make list
-      message/push(message-of(problem))
-      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
+    timed/push(make(timed-file, bind(path, file), bind(rel, rel), bind(seconds, seconds-at(table, rel))))
+  # built one at a time in that order, and run `jobs` at once, each item printed as its file ends
+  save pool, make-pool(context/jobs)
+  save round-work
+    task
+      take pool-turn, like dynamic
+      like void
+      mark async
+      run-turn(context, tally, resolve, pool-turn)
+  walk run-order(timed)
+    take file
+    pool-start(pool, file, host-text(node-path/relative(context/root, file)), round-work)
+  pool-drain(pool)
+  # a run `--case` cut down ran only some of each file's tests, so its times are not the files'
+  fork test, is-equal(context/chosen, <>)
+    hold
+      keep-seconds(seconds-file, env-key, pool)
   close-session(context/session)
   # the round is over: the next one turns the session again before it marks it turned (decision 097)
   save context/graph/turned, false
@@ -672,14 +785,37 @@ task run-round
   save last-test-turns/turns, context/session/turns
   back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skips, tally/skips), bind(skipped, tally/skipped), bind(controls, tally/controls))
 
-# one test file of a round, its counts added to the round's
+# one file's turn in the round's pool: the file built and run, or what it raised as its item
+task run-turn
+  take context, like test-context
+  take tally, like round-count
+  take resolve, like dynamic
+  take pool-turn, like dynamic
+  like void
+  mark async
+  mark private
+
+  save file, host-text(pool-turn/file)
+  save rel, host-text(pool-turn/rel)
+  fork
+    mark unsafe
+    run-file(context, tally, resolve, file, rel, pool-turn)
+  halt take
+    take problem
+    save tally/broken, add(tally/broken, 1)
+    save message, make list
+    message/push(message-of(problem))
+    report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(message, message)))
+
+# one test file of a round, its counts added to the round's. `pool-turn` is its turn in the round's pool: its `gate` is
+# called once the file is built, before its child runs
 task run-file
   take context, like test-context
   take tally, like round-count
   take resolve, like dynamic
   take file, like text
   take rel, like text
-  take started, like number
+  take pool-turn, like dynamic
   like void
   mark async
   mark private
@@ -710,7 +846,7 @@ task run-file
           save glyph, <done>
       save facts, make list
       facts/push(verdict/fact)
-      report(make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(facts, facts)))
       back
   # the file's snapshots, held to or recorded. A store that cannot be read is the file's failure, never an empty
   # store, which would fail every snapshot as unwritten
@@ -722,7 +858,7 @@ task run-file
       save tally/broken, add(tally/broken, 1)
       save facts, make list
       facts/push(why)
-      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(facts, facts)))
       back
     case snapshots
       link kept
@@ -750,9 +886,9 @@ task run-file
   save ran, nothing()
   fork test, and(is-unequal(context/native, <>), is-above(chosen/length, 0))
     hold
-      save ran, run-native-test-file(make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of), bind(limit, context/limit), bind(chosen, context/chosen)))
+      save ran, run-native-test-file(make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of), bind(limit, context/limit), bind(chosen, context/chosen), bind(gate, pool-turn/gate)))
     miss
-      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots), bind(limit, context/limit), bind(chosen, context/chosen))
+      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots), bind(limit, context/limit), bind(chosen, context/chosen), bind(gate, pool-turn/gate))
       fork test, is-unequal(context/chosen, <>)
         hold
           save phrase, context/chosen
@@ -766,7 +902,7 @@ task run-file
   fork test, is-truthy(ran/printed)
     hold
       save printed, ran/printed
-  # under `--update`, the texts each test's `want snapshot`s saw replace the ones it had
+  # under `--commit`, the texts each test's `want snapshot`s saw replace the ones it had
   save recorded, false
   save written, 0
   fork test, and(context/update, is-truthy(ran/taken))
@@ -809,7 +945,7 @@ task run-file
       report-problems(problems-of(diagnostics, file, ran/text), context/root)
       save facts, make list
       facts/push(failure-fact(host-text(ran/failure)))
-      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(facts, facts)))
       back
   save total, ran/results/length
   # `--case` chose no case of the enumerated tests it ran, and no other test: the file held none of what it asked for
@@ -836,7 +972,7 @@ task run-file
       save tally/proved, add(tally/proved, 1)
       save facts, make list
       facts/push(<proofs checked>)
-      report(make(item-ask, bind(glyph, <done>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <done>), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(facts, facts)))
       back
   save tally/pass, add(tally/pass, held)
   save tally/fail, add(tally/fail, missed)
@@ -861,7 +997,7 @@ task run-file
   fork test, is-above(missed, 0)
     hold
       save glyph, <failed>
-  save item, make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(counts, counts))
+  save item, make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, turn-ms(pool-turn)), bind(counts, counts))
   fork test, is-above(printed/length, 0)
     hold
       save item/quote, printed
@@ -923,7 +1059,9 @@ task run-seed-tests
   fork test, is-truthy(input/case)
     hold
       save chosen, host-text(input/case)
-  save update, is-true(input/update)
+  # `--commit` writes the snapshots (decision 022 T2, item 0186), and `--update` is its old spelling, honored and warned
+  save spelled-old, and(is-true(input/update), not(is-true(input/commit)))
+  save update, or(is-true(input/commit), is-true(input/update))
   save ride, is-truthy(input/ride)
   save facts, make list
   fork test, is-truthy(input/filter)
@@ -941,6 +1079,9 @@ task run-seed-tests
   save counts, make list
   counts/push(count(files/length, <files>, <file>))
   open-run(make(open-ask, bind(verb, <test>), bind(root, root), bind(counts, counts), bind(facts, facts)))
+  fork test, spelled-old
+    hold
+      report(make(item-ask, bind(glyph, <warning>), bind(verb, <test>), bind(subject, <term test --update is term test --commit now>)))
   # a backend this command does not run on, and one whose toolchain this machine does not have, are said before
   # anything is built. The toolchain is asked after the backend is known to be one this command runs on
   save env, text-or-empty(input/env)
@@ -987,7 +1128,9 @@ task run-seed-tests
   fork test, not(merged)
     hold
       save units, make(test-units, bind(root, root), bind(cache, project-cache(root)), bind(bundles, node-path/join(project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(finder, finder), bind(graph, graph))
-  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(limit, limit-given(input/limit)), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(graph, graph), bind(units, units))
+  # how many files run at once: what `--jobs` said, else the cores less one, at most 8 (test-plan.tree `jobs-of`)
+  save jobs, jobs-of(jobs-given(input/jobs), core-count())
+  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(limit, limit-given(input/limit)), bind(jobs, jobs), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(graph, graph), bind(units, units))
   # the session's first round: everything it was handed, turned once here for every file of it (decision 097)
   turn-session(session, files)
   save graph/turned, true

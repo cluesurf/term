@@ -1,0 +1,79 @@
+{
+  "shim": "rune",
+  "candidate": "deck/base/code/native/node/rune.tree",
+  "rounds": 20,
+  "ops": [
+    {
+      "op": "is-letter",
+      "shim_op": "is-letter",
+      "term_op": "scalar-is-letter",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-number",
+      "shim_op": "is-number",
+      "term_op": "scalar-is-number",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-whitespace",
+      "shim_op": "is-whitespace",
+      "term_op": "scalar-is-whitespace",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-uppercase",
+      "shim_op": "is-uppercase",
+      "term_op": "scalar-is-uppercase",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-lowercase",
+      "shim_op": "is-lowercase",
+      "term_op": "scalar-is-lowercase",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-alphanumeric",
+      "shim_op": "is-alphanumeric",
+      "term_op": "scalar-is-alphanumeric",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "is-control",
+      "shim_op": "is-control",
+      "term_op": "scalar-is-control",
+      "arity": 1,
+      "kind": "boolean",
+      "cases": "codes"
+    },
+    {
+      "op": "to-uppercase",
+      "shim_op": "to-uppercase",
+      "term_op": "scalar-to-uppercase",
+      "arity": 1,
+      "kind": "number",
+      "cases": "codes"
+    },
+    {
+      "op": "to-lowercase",
+      "shim_op": "to-lowercase",
+      "term_op": "scalar-to-lowercase",
+      "arity": 1,
+      "kind": "number",
+      "cases": "codes"
+    }
+  ]
+}

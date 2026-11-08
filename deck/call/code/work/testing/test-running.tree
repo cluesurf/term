@@ -949,6 +949,8 @@ task run-test-file
   save command, make list
   command/push(node-program())
   command/push(write-start(root, out, report-bundle, asked))
+  # built: the run pool's next file may build, and this one waits for a run slot (item 0158)
+  wait-gate(input/gate)
   save ran, run-reported(command, root, file, limit-of(input/limit))
   save results, make list
   walk settle-report(names, ran/report/entries, ran/stop)
@@ -1090,6 +1092,13 @@ bind runtime-reader
   like dynamic
   case node
     text <((p) =\> (process.getBuiltinModule("node:fs").existsSync(p) ? process.getBuiltinModule("node:fs").readFileSync(p, "utf8") : undefined))>
+
+# a run pool's gate called and waited, when the run has one (`term test`'s pool, item 0158): nothing without
+bind wait-gate
+  take gate, like dynamic
+  like void
+  case node
+    text <<void (await ((given) => (typeof given === "function" ? given() : undefined))($gate))>>
 
 # the seconds `--limit` said, 0 for nothing
 bind limit-of
