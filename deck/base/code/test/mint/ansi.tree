@@ -1,7 +1,7 @@
 
 mark draft
-dock load
-  load <global:shape>, name shape
+load @term/base/native/{platform}/shape
+  find shape
 
 load ../view/tint
   find make, name make-zone

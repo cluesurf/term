@@ -521,11 +521,13 @@ test <but not the name being given another text>
   want hold, refused(<dock load\n  load \<global:Math\>, name math\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  take s, like text\n  have\n    call is-equal\n      read s/length\n      code 3\n  save s, text \<four\>\n  hold\n    call is-equal\n      read s/length\n      code 3\n>, <unproven>)
 
 # ---- an impure call inside a mask ----
+# bitwise-and is read by its NAME as a value inside its constant mask, whatever its body: a host min, so the fixture
+# docks no shim (it docked the bit global until item 1090)
 test <a masked roll is inside its mask, whatever the roll was>
-  want hold, proven(<dock load\n  load \<global:Math\>, name math\n  load \<global:bit\>, name bit\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call bit/and\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255\n  send back, code 0\n>)
+  want hold, proven(<dock load\n  load \<global:Math\>, name math\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call math/min\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255\n  send back, code 0\n>)
 
 test <two unmasked rolls are still not equal>
-  want hold, refused(<dock load\n  load \<global:Math\>, name math\n  load \<global:bit\>, name bit\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call bit/and\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-equal\n      call roll\n      call roll\n  send back, code 0\n>, <unchecked-hold>)
+  want hold, refused(<dock load\n  load \<global:Math\>, name math\n\ntask bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back\n    call math/min\n      read left\n      read right\n\ntask roll\n  like number\n  send back\n    call math/random\n\ntask t\n  like number\n  hold\n    call is-equal\n      call roll\n      call roll\n  send back, code 0\n>, <unchecked-hold>)
 
 # ---- a pop ----
 test <a pop off a list of three leaves two>

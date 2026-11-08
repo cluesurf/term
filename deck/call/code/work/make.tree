@@ -31,9 +31,11 @@ load @term/call/work/tint
 
 load @term/call/work/build/build-command
   find call-make
+  find make-ask
 
 load @term/call/work/context/emission
   find call-emit
+  find emit-call-ask
 
 load @term/call/work/build/role-reading
   find make-role-reader
@@ -48,6 +50,7 @@ load @term/call/work/cache/remote-store
 # line.ts's other make branches (line.ts:821-904), their lanes' ports since term-cli-in-term-0067
 load @term/call/work/native/project
   find call-make-native
+  find native-call-ask
 
 load @term/call/work/compose/packaging
   find make-compose
@@ -55,6 +58,7 @@ load @term/call/work/compose/packaging
 
 load @term/call/work/native/iphone
   find make-uikit
+  find uikit-call-ask
 
 load @term/call/work/cask/command
   find make-cask
@@ -69,42 +73,6 @@ dock load
   load <node:process>, name node-process
   # the global, for process.exitCode: a namespace import of node:process cannot be written (traps.md, 0041)
   load <global:process>, name host-process
-
-form make-ask
-  link root, like text
-  link ride, like boolean
-  link separate, like boolean
-  link merged, like boolean
-  link explain, like boolean
-  link trees, like boolean
-
-form remote-ask
-  link cacheDir, like text
-  link endpoint, like text
-  link token, like text
-
-# The asks of the docked branches. An option the line did not name reaches its handler as undefined, as line.ts
-# handed argv.<x> on, so those fields are host values (option-given)
-form emit-call-ask
-  link root, like text
-  link file, like dynamic
-  link target, like dynamic
-  link out, like dynamic
-  link units, like boolean
-  link build, like boolean
-  link run, like boolean
-  link main, like dynamic
-
-form native-call-ask
-  link root, like text
-  link env, like dynamic
-  link build, like boolean
-
-form uikit-call-ask
-  link root, like text
-  link entry, like dynamic
-  link team, like dynamic
-  link link, like dynamic
 
 # a file named without --emit (line.ts:888-895)
 form file-refusal-open

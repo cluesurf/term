@@ -1,6 +1,6 @@
 # stage0 of the fixpoint chain: the release `pnpm term:boot` fetches, verifies and builds stage1 and stage2 with. The
-# site's image index digest is the trust anchor. Until 2.10.0 is published it carries none, and stage0 is
-# task/stage0.json's bundle; publishing 2.10.0 (item 0997) writes its index digest here as `@sha256:<64 hex>`
+# site's image index digest is the trust anchor: term:boot refuses unless the registry serves exactly this index under
+# the version tag, and stage0 is the term/host/compile.mjs its signed payload carries (decision 126)
 boot
   code <2.10.0>
-  site <oci://ghcr.io/cluesurf/term/code>
+  site <oci://ghcr.io/cluesurf/term/code@sha256:9d1a690aaf63182301e03167790897ec7af44a3c90b355e8f51d46a638d21908>

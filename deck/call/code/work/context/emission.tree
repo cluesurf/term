@@ -342,6 +342,18 @@ form rust-ask
 
 # ---- the emit ----
 
+# The asks of the docked branches. An option the line did not name reaches its handler as undefined, as line.ts
+# handed argv.<x> on, so those fields are host values (option-given)
+form emit-call-ask
+  link root, like text
+  link file, like dynamic
+  link target, like dynamic
+  link out, like dynamic
+  link units, like boolean
+  link build, like boolean
+  link run, like boolean
+  link main, like dynamic
+
 # a runtime shim's text, or `undefined` when there is none
 task read-runtime
   take file, like text
@@ -563,7 +575,7 @@ task no-span
 
 # the program's source for WGSL or HVM, or a refusal naming each construct outside the fragment and where it is
 task emit-fragment
-  take input, like dynamic
+  take input, like fragment-program-ask
   like dynamic
 
   save file, node-path/resolve(input/root, input/file)
@@ -784,7 +796,7 @@ task ended
 
 # a fragment target: the program's source for WGSL or HVM, or a refusal naming each construct outside the fragment
 task call-fragment
-  take input, like dynamic
+  take input, like emit-call-ask
   like void
   mark private
 
@@ -818,7 +830,7 @@ task call-fragment
 
 # LLVM IR and WebAssembly, through the program's Rust (call/code/native-build.ts `buildThroughRust`)
 task call-through-rust
-  take input, like dynamic
+  take input, like emit-call-ask
   like void
   mark private
 
@@ -930,7 +942,7 @@ task call-through-rust
 task finish-built
   take built, like dynamic
   take target, like dynamic
-  take input, like dynamic
+  take input, like emit-call-ask
   take started, like number
   like void
   mark private
@@ -963,7 +975,7 @@ task finish-built
 # one file per module, each written only when its text changed, and `units.txt` naming the files of this program
 task write-units
   take files, like dynamic
-  take input, like dynamic
+  take input, like emit-call-ask
   take started, like number
   like void
   mark private
@@ -1021,7 +1033,7 @@ task write-units
 
 # node, rust, swift or kotlin: the program's source, or one file per module, or built and run
 task call-native
-  take input, like dynamic
+  take input, like emit-call-ask
   like void
   mark private
 
@@ -1090,7 +1102,7 @@ task call-native
 # `--build` and `--run`: the program with its main, built by its toolchain into `--out` (host/<target>/ by default)
 task build-native
   take source, like text
-  take input, like dynamic
+  take input, like emit-call-ask
   take started, like number
   like void
   mark private
@@ -1125,7 +1137,7 @@ task build-native
 
 # `term make --emit <target> <file.tree>`: one program's source for one backend, a fragment target's, or built
 task call-emit
-  take input, like dynamic
+  take input, like emit-call-ask
   like void
 
   # the project folder is the subject; the program and the backend are what this run is about, as facts

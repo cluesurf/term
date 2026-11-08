@@ -7,8 +7,8 @@ load @term/base/console
 
 # equality descends structurally through the compare runtime, so `want` needs no equality mask on
 # the element type (rust would otherwise demand PartialEq on `t`)
-dock load
-  load <global:compare>, name compare-runtime
+load @term/base/native/{platform}/compare
+  find compare-runtime
 
 # the meta object a test block constructs: a name and the work that returns whether it passed
 

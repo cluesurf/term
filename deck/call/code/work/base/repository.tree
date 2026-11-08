@@ -372,7 +372,7 @@ form open-subject-facts
   link verb, like text
   link root, like dynamic
   link subject, like dynamic
-  link facts, like list, like dynamic
+  link facts, like list, like text
 
 form close-verdict
   link verdict, like text
@@ -489,6 +489,53 @@ form opened
   link chunks, like dynamic
   link chunk-file, like text
   link ref-file, like text
+
+form root-ask
+  link root, like text
+
+form branch-ask
+  link root, like text
+  link branch, like text
+
+form commit-ask
+  link root, like text
+  link commit, like text
+
+form diff-ask
+  link root, like text
+  link to, like text
+  link from, like text
+
+form show-ask
+  link root, like text
+  link commit, like text
+  link mark, like text
+
+# NOT `make-ask`, which is what this was called until 2026-09-13: `make.tree` declares a DIFFERENT `make-ask`
+# (root, ride, separate, trees) and Term names are PACKAGE-GLOBAL, so the two collided and whichever module was
+# read second decided what the name meant. `pnpm term:name-clash` lists every such pair.
+form base-make-ask
+  link root, like text
+  link branch, like text
+  link author, like text
+  link message, like text
+
+form merge-ask
+  link root, like text
+  link from, like text
+  link into, like text
+  link author, like text
+
+form export-ask
+  link root, like text
+  link commit, like text
+  link out, like text
+
+form tag-ask
+  link root, like text
+  link name, like text
+  link commit, like text
+  link branch, like text
 
 # where a repository keeps itself, beside the working files, the way `.git` does
 task base-home
@@ -690,7 +737,7 @@ task resolve-commit
 
 # every branch, and where it points
 task call-base-log
-  take input, like dynamic
+  take input, like branch-ask
   like void
 
   save root, input/root
@@ -735,7 +782,7 @@ task call-base-log
 
 # what changed between two commits, as field-level changes
 task call-base-diff
-  take input, like dynamic
+  take input, like diff-ask
   like void
 
   save root, input/root
@@ -774,7 +821,7 @@ task call-base-diff
 
 # one record as of a commit, in canonical form
 task call-base-show
-  take input, like dynamic
+  take input, like show-ask
   like void
 
   save root, input/root
@@ -793,7 +840,7 @@ task call-base-show
 
 # whether a repository is coherent, and what it holds
 task call-base-check
-  take input, like dynamic
+  take input, like root-ask
   like void
 
   save root, input/root
@@ -820,7 +867,7 @@ task call-base-check
 
 # every record at a commit, by mark and form
 task call-base-list
-  take input, like dynamic
+  take input, like commit-ask
   like void
 
   save root, input/root
@@ -859,7 +906,7 @@ task repository-name
 
 # create a repository here, the one verb nothing else can run without
 task call-base-init
-  take input, like dynamic
+  take input, like root-ask
   like void
 
   save root, input/root
@@ -927,7 +974,7 @@ task working-records
 
 # what the working files would change, against a branch: the read half of `commit`
 task call-base-status
-  take input, like dynamic
+  take input, like branch-ask
   like void
 
   save root, input/root
@@ -1007,7 +1054,7 @@ task report-conflicts
 
 # commit the working files onto a branch
 task call-base-commit
-  take input, like dynamic
+  take input, like base-make-ask
   like void
 
   save root, input/root
@@ -1036,7 +1083,7 @@ task call-base-commit
 
 # write a commit's records back out as `.tree` files under `record/`
 task call-base-checkout
-  take input, like dynamic
+  take input, like commit-ask
   like void
 
   save root, input/root
@@ -1057,7 +1104,7 @@ task call-base-checkout
 
 # merge one branch into another; conflicts are RETURNED, so a person decides
 task call-base-merge
-  take input, like dynamic
+  take input, like merge-ask
   like void
 
   save root, input/root
@@ -1085,7 +1132,7 @@ task call-base-merge
 
 # name a commit, so it can be cited
 task call-base-tag
-  take input, like dynamic
+  take input, like tag-ask
   like void
 
   save root, input/root
@@ -1121,7 +1168,7 @@ task cell
 
 # the working tree at a commit as `.tree` files somebody can read without our software, written wherever `out` says
 task call-base-export
-  take input, like dynamic
+  take input, like export-ask
   like void
 
   save root, input/root

@@ -97,19 +97,6 @@ function random(): number {
 const pick = <T>(list: T[]): T => list[Math.floor(random() * list.length)]!
 const int = (low: number, high: number): number => low + Math.floor(random() * (high - low + 1))
 
-function bitValue(): number {
-  switch (int(0, 5)) {
-    case 0: return int(-256, 256)
-    case 1: return int(-2147483648, 2147483647)
-    case 2: return int(2147483648, 4294967295)
-    case 3: return int(-9007199254740991, 9007199254740991)
-    case 4: return int(0, 9007199254740991)
-    default: return pick([0, -1, 1, 2147483647, -2147483648, 4294967295, 4294967296, 9007199254740991, -9007199254740991])
-  }
-}
-// the hash-loop shape: both sides in the signed or unsigned 32-bit range, where the shim takes the host operator
-const word = (): number => (random() < 0.5 ? int(-2147483648, 2147483647) : int(0, 4294967295))
-
 function scalar(): unknown {
   return pick<unknown>([0, 1, -1, 2.5, 1e21, 'a', '', 'text', '😀', '𝔸', true, false, null, int(-1000, 1000), 'k' + int(0, 9)])
 }
@@ -146,12 +133,8 @@ function pathText(): string {
 // each case is its arguments, then 'plain' or 'record' (a case holding a record, counted apart when it differs)
 const many = (n: number, make: () => unknown[]): unknown[][] => Array.from({ length: n }, make)
 const GENERATORS: Record<string, (n: number) => unknown[][]> = {
-  'bit-pairs': n => many(n, () => [bitValue(), bitValue(), 'plain']),
-  'bit-shifts': n => many(n, () => [bitValue(), random() < 0.7 ? int(0, 31) : int(32, 63), 'plain']),
-  'bit-singles': n => many(n, () => [bitValue(), 'plain']),
-  'word-pairs': n => many(n, () => [word(), word(), 'plain']),
-  'word-shifts': n => many(n, () => [word(), int(0, 31), 'plain']),
-  'word-singles': n => many(n, () => [int(-2147483648, 2147483647), 'plain']),
+  // the bit generators (bit-*, word-*) went with the bit shim on node and browser (items 1070 and 1090): its
+  // baseline is in git history, task/term/shim-bench/<env>/bit.baseline.json before 1090
   // an equal pair half the time, so the deep walk is reached and not only the first difference
   'compare-pairs': n =>
     many(n, () => {

@@ -110,6 +110,12 @@ dock load
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
 
+form uikit-call-ask
+  link root, like text
+  link entry, like dynamic
+  link team, like dynamic
+  link link, like dynamic
+
 # the wake the Swift emitter is handed here: none, as the face handed one when no `wake` was given
 task no-wake
   like list, like wake-group

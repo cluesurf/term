@@ -3,6 +3,9 @@
 object shape {
     fun isList(value: Any?): Boolean = value is List<*>
 
+    // the same answer as typeOf's `number`, on every backend (item term-self-host-001-1091)
+    fun isNumber(value: Any?): Boolean = value is Number
+
     fun isText(value: Any?): Boolean = value is String
 
     fun isNull(value: Any?): Boolean = value == null

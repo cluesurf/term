@@ -933,7 +933,11 @@ task empty-of
             hold
               back <std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))>
           back <0>
+        # an unknown or dynamic slot is the boxed dynamic, so its empty value is a box too: `0` there failed rustc
+        # (E0308 expected Rc<dyn Any>, found integer) on every left-out dynamic field (term-self-host-001-1056)
         case unknown
+          back <std::rc::Rc::new(())>
+        case dynamic
           back <std::rc::Rc::new(())>
         miss
           back <0>

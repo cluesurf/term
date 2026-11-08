@@ -52,10 +52,14 @@ load ./test-running
   find run-test-file
   find tests-of
   find case-matches
+  find run-ask
+  find snapshot-ask
+  find listed-test
 
 load ./native-testing
   find run-native-test-file
   find missing-tools
+  find native-ask
 
 load ../build/project-resolving
   find make-project-resolver
@@ -183,10 +187,6 @@ form case-place
 
 # ---- what the test runners are handed ----
 
-form snapshot-ask
-  link stored, like hash, like text, like list, like text
-  link update, like boolean
-
 form plain-tests-ask
   link plain-wants, like boolean
   link snapshots, like snapshot-ask
@@ -203,50 +203,6 @@ form test-units
   link finder, like dynamic
   # the run's one build graph (decision 094 rule 1): every test file is built through its `build-request`
   link graph, like build-graph
-
-form run-ask
-  link file, like text
-  link source, like text
-  link resolve, like dynamic
-  link env, like text
-  link read-runtime, like dynamic
-  link role-of, like dynamic
-  link lean-of, like dynamic
-  link units
-    like dynamic
-    need false
-  link snapshots
-    like snapshot-ask
-    need false
-  link select
-    like dynamic
-    need false
-  # what `--case` said, the empty text for nothing: an enumerated test `select` does not answer runs the cases it does
-  link chosen, like text, fall <>
-  # the seconds `--limit` said, 0 for nothing
-  link limit, like number
-  # the run's pool turn (item 0158): called once the file is built, it lets the next file build and waits for a run slot
-  link gate
-    like dynamic
-    need false
-
-form native-ask
-  link root, like text
-  link file, like text
-  link text, like text
-  link source, like text
-  link tests, like list, like dynamic
-  link env, like text
-  link role-of, like dynamic
-  link lean-of, like dynamic
-  link deck-of, like dynamic
-  link limit, like number
-  # what `--case` said, the empty text for nothing
-  link chosen, like text, fall <>
-  # the run's pool turn, as `run-ask` has it: it answers the run slot, whose folder the program is built in
-  link gate
-    like dynamic
-    need false
 
 # ---- this run's own state ----
 
@@ -472,6 +428,18 @@ bind turn-ms
   case node
     text <<((turn) => Date.now() - turn.started - turn.waited)($ticket)>>
 
+form test-ask
+  link root, like text
+  link filter, like text
+  link merged, like boolean
+  link case, like text
+  link env, like text
+  link ride, like boolean
+  link update, like boolean
+  link limit, like dynamic
+  link jobs, like dynamic
+  link commit, like boolean
+
 # where the seconds each test file last ran are kept, a cache: `{ <env>: { <path relative to the root>: seconds } }`
 task seconds-path
   take root, like text
@@ -519,7 +487,7 @@ bind run-script
 # ---- the command ----
 
 task call-test
-  take input, like dynamic
+  take input, like test-ask
   like void
   mark async
 
@@ -531,7 +499,7 @@ task call-test
     fail-run(problem, input/root)
 
 task test-project
-  take input, like dynamic
+  take input, like test-ask
   like void
   mark async
   mark private
@@ -864,19 +832,21 @@ task run-file
       link kept
       save stored, kept
   save snapshots, make(snapshot-ask, bind(stored, stored), bind(update, context/update))
-  save listed, nothing()
+  # what the preprocessor is handed: a native run writes every `want` as the plain marker
+  save listing, nothing()
   fork test, is-unequal(context/native, <>)
     hold
-      save listed, tests-of(file, source, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots)))
+      save listing, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots))
     miss
-      save listed, tests-of(file, source, make(tests-ask, bind(snapshots, snapshots)))
+      save listing, make(tests-ask, bind(snapshots, snapshots))
+  save listed, tests-of(file, source, listing)
   save chosen, make list
   walk listed/tests
-    take listed-test, like dynamic
+    take one-test, like listed-test
     # an enumerated test runs too, for the cases whose label holds the phrase (decision 022 T6)
-    fork test, or(or(is-equal(context/chosen, <>), case-matches(context/chosen, listed-test)), is-unequal(host-text(listed-test/cases), <>))
+    fork test, or(or(is-equal(context/chosen, <>), case-matches(context/chosen, one-test)), is-unequal(host-text(one-test/cases), <>))
       hold
-        chosen/push(listed-test)
+        chosen/push(one-test)
   # `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all
   fork test, and(is-unequal(context/chosen, <>), is-equal(chosen/length, 0))
     hold
@@ -913,10 +883,10 @@ task run-file
       save taken-keys, hash-keys(ran/taken)
       save stored-keys, hash-keys(stored)
       walk listed/tests
-        take listed-test, like dynamic
-        save label, host-text(listed-test/label)
+        take one-test, like listed-test
+        save label, host-text(one-test/label)
         phrases/push(label)
-        fork test, is-unequal(host-text(listed-test/cases), <>)
+        fork test, is-unequal(host-text(one-test/cases), <>)
           hold
             save took, false
             walk taken-keys
@@ -1043,7 +1013,7 @@ task report-case
 # ---- the run ----
 
 task run-seed-tests
-  take input, like dynamic
+  take input, like test-ask
   like void
   mark async
   mark private

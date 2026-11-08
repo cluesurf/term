@@ -215,7 +215,8 @@ type Pair = {
 }
 
 async function pairs(): Promise<Pair[]> {
-  installShims(['bit', 'regex'])
+  // bit is no longer a shim on node (item 1070: native/node/bit.tree is host binds, inlined into every port)
+  installShims(['regex'])
 
   const typescript = (await import(
     join(TERM, 'deck/make/code/compile/typescript.ts')

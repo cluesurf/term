@@ -3449,6 +3449,58 @@ task emit-record
                             save holder, <Box>
                         save value, <{holder}::new({owned(field/value, st, facts)})>
             push(fields, field-entry(field/name, value))
+          # a field the construction leaves out takes its type's empty value, as a plain record's does (below): Rust
+          # has no default for a left-out field, and `make group` with only `nodes` was `Node::Group { nodes }` (E0063),
+          # one with none at all `Type::Unknown`, a value rustc refuses for a variant with fields (E0533). Item
+          # term-self-host-001-1055 (and 1057's E0533)
+          save case-key, <{owner-form}/{record-name}>
+          save declared-names, make list
+          fork test, facts/case-field-names/has(case-key)
+            hold
+              save declared-names, facts/case-field-names/get(case-key)
+            miss
+              fork test, facts/variant-fields/has(record-name)
+                hold
+                  save declared-names, facts/variant-fields/get(record-name)
+          save declared-types, make hash
+          fork test, facts/case-field-types/has(case-key)
+            hold
+              save declared-types, facts/case-field-types/get(case-key)
+            miss
+              fork test, facts/variant-types/has(record-name)
+                hold
+                  save declared-types, facts/variant-types/get(record-name)
+          save given-names, make list
+          walk record-fields
+            take field
+            push(given-names, field/name)
+          walk declared-names
+            take left-out
+            fork test, not(has-text(given-names, left-out))
+              hold
+                save left-type, make none
+                fork test, declared-types/has(left-out)
+                  hold
+                    save left-type, make(some, declared-types/get(left-out))
+                save empty, empty-of(left-type)
+                save left-key, <{record-name}/{left-out}>
+                fork test, facts/field-lists/has(left-key)
+                  hold
+                    save empty, <Vec::new()>
+                  miss
+                    fork test, and(not(has-payload), facts/recursive-fields/has(left-key))
+                      hold
+                        fork test, is-reusable(owner-form, facts)
+                          hold
+                            note-built(owner-form, st)
+                            save empty, <term_box_{snake(owner-form)}({empty})>
+                          miss
+                            save left-holder, <std::rc::Rc>
+                            fork test, facts/boxed-forms/has(owner-form)
+                              hold
+                                save left-holder, <Box>
+                            save empty, <{left-holder}::new({empty})>
+                push(fields, field-entry(left-out, empty))
           # a type argument nothing constrains is named the unit type, the others `_`
           save args, args-of(record-type)
           save any-free, false
@@ -3806,6 +3858,67 @@ task emit-map
 
 # a `move` closure boxed as `Rc<dyn Fn>`: its reassigned parameters shadowed by `let mut`, its own result and raise
 # state, every captured local and cell cloned before the `move`, an async body a pinned future
+# the names the `link` lines of a body's match arms give, nested blocks included, closures not (item
+# term-self-host-001-1086)
+task arm-binds-into
+  take block, like list, like statement
+  take found, like list, like text
+  mark private
+
+  walk block
+    take one
+    sift one
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          arm-binds-into(branch/body, found)
+        sift if-otherwise
+          case some
+            link if-else
+            arm-binds-into(if-else, found)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        arm-binds-into(while-body, found)
+      case for-each
+        link walk-item
+        link walk-index
+        link walk-iterable
+        link walk-body
+        arm-binds-into(walk-body, found)
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        walk match-cases
+          take arm
+          walk arm/binds
+            take given
+            add-text(found, given)
+          arm-binds-into(arm/body, found)
+        sift match-otherwise
+          case some
+            link match-else
+            arm-binds-into(match-else, found)
+          case none
+            save nothing, 0
+      case guard
+        link guard-body
+        link guard-catch
+        arm-binds-into(guard-body, found)
+        sift guard-catch
+          case some
+            link clause
+            arm-binds-into(clause/body, found)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
 task emit-closure
   take node, like expression
   take st, like rust-state
@@ -3956,7 +4069,9 @@ task emit-closure
       # each captured cell handle and local is cloned BEFORE the `move`, only where the rendered body names it. A name
       # the closure declares itself is its own, never captured: the outer locals are every name the task declares
       # anywhere, so one the task declares only after the closure was cloned before it existed (`let found =
-      # found.clone()`, E0425, item term-self-host-001-1057). A write to a name in scope outside is a cell, not a `let`
+      # found.clone()`, E0425, item term-self-host-001-1057). A write to a name in scope outside is a cell, not a `let`.
+      # The names an arm's `link` lines give are its own too (`case some` / `link key` is `Maybe::Some { value: key }`,
+      # E0425, item term-self-host-001-1086)
       save used, make list
       walk used-names(closure-body)
         take name
@@ -3965,6 +4080,7 @@ task emit-closure
       walk let-names(closure-body)
         take name
         add-text(own-names, name)
+      arm-binds-into(closure-body, own-names)
       save captured, make list
       walk used
         take name
@@ -4660,6 +4776,20 @@ task emit-call
             fork test, starts-with(expression-text, <{macro}!(>)
               hold
                 save formats, true
+          # a bind whose text is its one parameter (`$value`, a shallow copy natively) hands the argument on as the
+          # answer, so it is owned: cloned unless this is its last use. Rendered bare it moved, and the next read of it
+          # failed rustc (E0382 borrow of moved value `given`, node-rebuild.tree's copy binds, term-self-host-001-1058)
+          save identity, false
+          sift bind-node
+            case bind
+              link params
+              walk params
+                take param
+                fork test, and(and(is-equal(params/length, 1), starts-with(expression-text, <$>)), is-equal(substring(expression-text, 1, expression-text/length), param/name))
+                  hold
+                    save identity, true
+            miss
+              save nothing, 0
           save rendered, make list
           walk call-args
             take one
@@ -4673,7 +4803,11 @@ task emit-call
                   miss
                     save text, emit-expr(one, st, facts)
               miss
-                save text, emit-expr(one, st, facts)
+                fork test, identity
+                  hold
+                    save text, owned(one, st, facts)
+                  miss
+                    save text, emit-expr(one, st, facts)
             push(rendered, text)
           sift render-bind(bind-node, <rust>, rendered)
             case some
@@ -6500,6 +6634,13 @@ task emit-for-each
       fork test, has-index
         hold
           st/local-names/set(for-each-index, true)
+      # an item the body writes (`save field/value, ...` on the item, or the item itself) is bound `mut`, and owned,
+      # never the element by reference: an immutable binding failed rustc (E0594, term-self-host-001-1058)
+      save item-written, has-text(reassigned(for-each-body), for-each-item)
+      save item-mut, <>
+      fork test, item-written
+        hold
+          save item-mut, <mut >
       # a list is walked by position, each element cloned out under a borrow that ends before the body runs
       fork test, is-array
         hold
@@ -6552,6 +6693,9 @@ task emit-for-each
               fork test, and(not(by-ref), is-unequal(element, <*__item>))
                 hold
                   save by-ref, only-borrowed(for-each-body, for-each-item, facts)
+              fork test, item-written
+                hold
+                  save by-ref, false
               save outer-borrowed, st/borrowed-names
               fork test, and(by-ref, not(inner))
                 hold
@@ -6564,7 +6708,7 @@ task emit-for-each
               fork test, by-ref
                 hold
                   save bound, <__item>
-              back <{named}for {each} \{\n{pad(add(depth, 1))}let {vname(for-each-item)} = {bound}; {index}\n{budget}{walked}\n{pad(depth)}\}>
+              back <{named}for {each} \{\n{pad(add(depth, 1))}let {item-mut}{vname(for-each-item)} = {bound}; {index}\n{budget}{walked}\n{pad(depth)}\}>
           # the element at `__at` of a list's storage, copied or cloned out, each read its own statement
           save suffix, <.clone()>
           fork test, is-equal(element, <*__item>)
@@ -6574,14 +6718,14 @@ task emit-for-each
           fork test, and(is-equal(lent-as, <write>), is-unequal(walked-name, <>))
             hold
               save list, vname(walked-name)
-              back <\{ let mut __at: usize = 0; {named}while __at \< {list}.len() \{ let {vname(for-each-item)} = {list}[__at]{suffix}; {index}__at += 1;\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\} \}>
+              back <\{ let mut __at: usize = 0; {named}while __at \< {list}.len() \{ let {item-mut}{vname(for-each-item)} = {list}[__at]{suffix}; {index}__at += 1;\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\} \}>
           save walked, emit-expr(for-each-iterable, st, facts)
-          back <\{ let __walked = &({walked}); let mut __at: usize = 0; {named}while __at \< __walked.borrow().len() \{ let {vname(for-each-item)} = __walked.borrow()[__at]{suffix}; {index}__at += 1;\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\} \}>
+          back <\{ let __walked = &({walked}); let mut __at: usize = 0; {named}while __at \< __walked.borrow().len() \{ let {item-mut}{vname(for-each-item)} = __walked.borrow()[__at]{suffix}; {index}__at += 1;\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\} \}>
       # a walk that names its index enumerates, `i64` because that is what a Term number is here
       fork test, has-index
         hold
-          back <{named}for ({vname(for-each-index)}, {vname(for-each-item)}) in {iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) \{\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
-      back <{named}for {vname(for-each-item)} in {iterable} \{\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+          back <{named}for ({vname(for-each-index)}, {item-mut}{vname(for-each-item)}) in {iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) \{\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+      back <{named}for {item-mut}{vname(for-each-item)} in {iterable} \{\n{budget}{emit-block(for-each-body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
     miss
       back <>
 

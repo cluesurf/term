@@ -353,6 +353,11 @@ form listener
   link server, like dynamic
   link timer, like dynamic
 
+form bind-ask
+  link root, like text
+  link toss, like boolean
+  link again, like boolean
+
 task one-field
   head t
   take value, like t

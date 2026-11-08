@@ -1,9 +1,9 @@
 
-dock load
-  load <global:shape>, name shape
+load @term/base/native/{platform}/shape
+  find shape
 
-dock load
-  load <global:compare>, name compare-runtime
+load @term/base/native/{platform}/compare
+  find compare-runtime
 
 load @term/base/list
   find get

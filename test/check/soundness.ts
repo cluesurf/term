@@ -2290,17 +2290,19 @@ ${between}  hold
   )
 
   // ---- an impure call inside a mask ----
+  // The prover reads a call to a task NAMED bitwise-and with a constant mask as a value inside the mask
+  // (check/inequality.tree, hold-walk.tree), whatever its body. The body is a host min so the fixture docks no shim:
+  // it docked the bit global until item 1090, whose node and browser shims went in the REMOVE batch.
 
   const masked = (goal: string): string => `dock load
   load <global:Math>, name math
-  load <global:bit>, name bit
 
 task bitwise-and
   take left, like number
   take right, like number
   like number
   send back
-    call bit/and
+    call math/min
       read left
       read right
 

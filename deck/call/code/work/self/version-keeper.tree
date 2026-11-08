@@ -454,6 +454,10 @@ form show-step
 
 # ---- printing ----
 
+form self-toss-ask
+  link root, like text
+  link mark, like text
+
 task open-self
   take root, like text
   take subject, like text
@@ -1626,9 +1630,9 @@ task number-in
 
 # ---- toss, wash ----
 
-# `input.mark` is the version to remove (a field named by a reserved word, so the input is read as the host value)
+# `input.mark` is the version to remove (a field named by a reserved word, so it is read through keeper-mark-of)
 task call-self-toss
-  take input, like dynamic
+  take input, like self-toss-ask
   like void
 
   save version, keeper-mark-of(input)

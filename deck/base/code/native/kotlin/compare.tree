@@ -1,0 +1,4 @@
+# kotlin structural comparison, through the compare runtime shim (runtime/compare.kt). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call it as `compare-runtime`.
+
+dock load
+  load <global:compare>, name compare-runtime

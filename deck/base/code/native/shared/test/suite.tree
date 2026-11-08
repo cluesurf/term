@@ -1,6 +1,6 @@
 
-dock load
-  load <global:shape>, name shape
+load @term/base/native/{platform}/shape
+  find shape
 
 load @term/base/test/suite
   find report

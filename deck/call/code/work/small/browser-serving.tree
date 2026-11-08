@@ -48,6 +48,7 @@ load @term/call/work/output/printer
 # the tree reader: @term/deck's tree-reading port (term-cli-in-term-0234, where its face package/read.ts was docked)
 load @term/deck/package/tree-reading
   find read-tree
+  find tree-form
 
 load @term/call/work/item/event
   find item-field
@@ -207,7 +208,7 @@ task stop-on-interrupt
 # never a pattern (note/project/term/one-parser.md): `task boot` is a form headed `task` whose first term, or else
 # whose first child's head, is `boot`
 task defines-boot
-  take form, like dynamic
+  take form, like tree-form
   like boolean
   mark private
 

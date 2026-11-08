@@ -37,56 +37,18 @@ load @term/call/work/base/repository
   find call-base-merge
   find call-base-export
   find call-base-tag
+  find root-ask
+  find branch-ask
+  find commit-ask
+  find diff-ask
+  find show-ask
+  find base-make-ask
+  find merge-ask
+  find export-ask
+  find tag-ask
 
 dock load
   load <node:process>, name node-process
-
-form root-ask
-  link root, like text
-
-form branch-ask
-  link root, like text
-  link branch, like text
-
-form commit-ask
-  link root, like text
-  link commit, like text
-
-form diff-ask
-  link root, like text
-  link to, like text
-  link from, like text
-
-form show-ask
-  link root, like text
-  link commit, like text
-  link mark, like text
-
-# NOT `make-ask`, which is what this was called until 2026-09-13: `make.tree` declares a DIFFERENT `make-ask`
-# (root, ride, separate, trees) and Term names are PACKAGE-GLOBAL, so the two collided and whichever module was
-# read second decided what the name meant. `pnpm term:name-clash` lists every such pair.
-form base-make-ask
-  link root, like text
-  link branch, like text
-  link author, like text
-  link message, like text
-
-form merge-ask
-  link root, like text
-  link from, like text
-  link into, like text
-  link author, like text
-
-form export-ask
-  link root, like text
-  link commit, like text
-  link out, like text
-
-form tag-ask
-  link root, like text
-  link name, like text
-  link commit, like text
-  link branch, like text
 
 # every verb ends the same way, so the guard is written once
 task fail-with

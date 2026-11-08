@@ -164,6 +164,47 @@ form listed-tests
   link text, like text
   link tests, like list, like listed-test
 
+# ---- what `term test` (test-command.tree) hands a file's run ----
+
+form snapshot-ask
+  link stored, like hash, like text, like list, like text
+  link update, like boolean
+
+form run-ask
+  link file, like text
+  link source, like text
+  link resolve, like dynamic
+  link env, like text
+  link read-runtime, like dynamic
+  # left out by the dev harness's TypeScript caller (call/code/test-run.ts), as are chosen and limit
+  link role-of
+    like dynamic
+    need false
+  link lean-of
+    like dynamic
+    need false
+  link units
+    like dynamic
+    need false
+  link snapshots
+    like snapshot-ask
+    need false
+  link select
+    like dynamic
+    need false
+  # what `--case` said, the empty text for nothing: an enumerated test `select` does not answer runs the cases it does
+  link chosen
+    like text
+    need false
+  # the seconds `--limit` said, 0 for nothing
+  link limit
+    like number
+    need false
+  # the run's pool turn (item 0158): called once the file is built, it lets the next file build and waits for a run slot
+  link gate
+    like dynamic
+    need false
+
 # a test as `--case` asks of it
 form case-ask
   link name, like text
@@ -861,7 +902,7 @@ task failed-run
 # next), select (run only the tests it answers yes for) and snapshots (the file's stored snapshots, and whether to
 # record new ones)
 task run-test-file
-  take input, like dynamic
+  take input, like run-ask
   like test-run
   mark async
 

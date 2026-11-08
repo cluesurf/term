@@ -152,6 +152,11 @@ form program-build
   link folder, like text
   link name, like text
 
+form native-call-ask
+  link root, like text
+  link env, like dynamic
+  link build, like boolean
+
 # the backends a whole project builds for
 task project-envs
   like list, like text

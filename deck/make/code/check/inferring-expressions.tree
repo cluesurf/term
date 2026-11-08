@@ -2058,6 +2058,25 @@ task is-digits
       save at, add(at, 1)
   back true
 
+# whether a file other than the one being checked docks a module under this name (a `dock load` alias, never a
+# `dock type`, which fill-docks keeps apart), so a reference that reached it through `find` is the host's own value
+task docked-elsewhere
+  take st, like infer-state
+  take name, like text
+  like boolean
+  mark private
+
+  walk st/docks-by-file/keys()
+    take docked-file
+    fork test, is-equal(docked-file, st/current-file)
+      hold
+        turn next
+    save docks, st/docks-by-file/get(docked-file)
+    fork test, docks/has(name)
+      hold
+        back true
+  back false
+
 # whether a path names a native backend's own file: `/native/<a-z or ->/` anywhere in it (the original's pattern)
 task is-native-file
   take path, like text
@@ -4566,6 +4585,13 @@ task infer-expression
           # a task referenced as a first-class value: its (freshly instantiated) function type
           save signature, instantiate(st/functions/get(variable-name), st/sub)
           save found-type, function-of(signature/params, signature/result)
+          back inferred-of(found-type, with-type(node, found-type))
+      # a module ANOTHER file docks, reached here through `load` and `find` (the flat merge binds the name to that
+      # dock): the host's own value as well, so a typed binding of what it answers is checked as it is in the docking
+      # file. Without it a found `shape/type-of` lost `__termHost` and the native downcasts (trap T-1067)
+      fork test, docked-elsewhere(st, variable-name)
+        hold
+          save found-type, dynamic-type()
           back inferred-of(found-type, with-type(node, found-type))
       save found-type, unknown-type()
       back inferred-of(found-type, with-type(node, found-type))

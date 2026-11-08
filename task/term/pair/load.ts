@@ -3,12 +3,13 @@
 // MOVED here from task/term/self-host.ts (item term-self-host-001-0011), which now imports it, so there is one
 // version. A module emitted under `host/**` assumes the natives it calls are already global, because `term boot`
 // PREPENDS them to the bundle. Importing one directly skips that, and the first native call dies with
-// `ReferenceError: bit is not defined` pointing at emitted code rather than at the missing setup. A shim is
-// CONCATENATED and not imported -- it declares `const bit = {...}` at top level -- so it is evaluated here the way
+// `ReferenceError: regex is not defined` pointing at emitted code rather than at the missing setup. A shim is
+// CONCATENATED and not imported -- it declares `const regex = {...}` at top level -- so it is evaluated here the way
 // deck/zone/test/shim.ts does it.
 //
 // A pair module (tmp/self-host/pairs/<name>.ts) that reads a port calls
-// `installShims(['bit', 'regex'])` before it imports the port, exactly as self-host.ts does.
+// `installShims(['regex'])` before it imports the port, exactly as self-host.ts does. bit is no shim on node since
+// item 1070 (native/node/bit.tree holds host binds, inlined into each port).
 //
 // Run from the Term root, the way every other term task is.
 

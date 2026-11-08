@@ -47,13 +47,16 @@ load @term/call/work/bundle/worker-casting
 # `term test` runs the testing lane's port (work/testing/test-command.tree), loaded since term-cli-in-term-0065
 load @term/call/work/testing/test-command
   find call-test
+  find test-ask
 
 # `term host` and `term bind` run the registry lane's ports, and `term self` the self lane's, since term-cli-in-term-0068
 load @term/call/work/registry/publishing
   find call-host
+  find host-ask
 
 load @term/call/work/registry/login
   find call-bind
+  find bind-ask
 
 load @term/call/work/self/version-keeper
   find call-self-check
@@ -73,6 +76,7 @@ load @term/call/work/self/version-keeper
   find need-ask
   find show-ask
   find wash-ask
+  find self-toss-ask
 
 load @term/call/work/self/skill-writing
   find call-self-skill
@@ -83,29 +87,12 @@ load @term/call/work/self/skill-writing
 load @term/call/work/tool/show-command
   find call-show
   find term-version
+  find show-toolchain-ask
+  find show-what-ask
+  find show-name-ask
 
 dock load
   load <node:process>, name node-process
-
-form test-ask
-  link root, like text
-  link filter, like text
-  link merged, like boolean
-  link case, like text
-  link env, like text
-  link ride, like boolean
-  link update, like boolean
-  link limit, like dynamic
-  link jobs, like dynamic
-  link commit, like boolean
-
-form host-ask
-  link root, like text
-  link dryRun, like boolean
-  link registry, like text
-  link trust, like text
-  link untrust, like text
-  link ping, like boolean
 
 # `term test [filter]`: run the project's tests, or the ones whose name matches
 task test
@@ -210,10 +197,6 @@ task host
     log-fail format-error error
     node-process/exit code 1
 
-form self-toss-ask
-  link root, like text
-  link mark, like text
-
 # a number option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined.
 # The argument is always a local, so the text may read it twice. Named for this file (a bind of one name in two
 # modules of one port is one bind, traps.md 0103)
@@ -222,11 +205,6 @@ bind app-number-given
   like dynamic
   case node
     text <($given.form === "some" ? $given.value : undefined)>
-
-form bind-ask
-  link root, like text
-  link toss, like boolean
-  link again, like boolean
 
 # `term bind`: log this machine in to term.surf with Google, so `term host` credits what it publishes
 task bind
@@ -476,26 +454,6 @@ task self-wash
     take error
     log-fail format-error error
     node-process/exit code 1
-
-form show-toolchain-ask
-  link root, like text
-  link version, like text
-  link back, like text
-
-form show-what-ask
-  link root, like text
-  link what, like text
-  link budget, like number
-  link version, like text
-  link back, like text
-
-form show-name-ask
-  link root, like text
-  link what, like text
-  link name, like text
-  link budget, like number
-  link version, like text
-  link back, like text
 
 # `term show [what] [name]`: the toolchain's version and platform, the project's version (`mark`), the native
 # toolchains (`tools`), what a diagnostic means (`kink`), or one name of the project sized to `--budget` (`name`).

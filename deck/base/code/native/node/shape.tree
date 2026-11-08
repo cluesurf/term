@@ -1,0 +1,4 @@
+# node value shape questions (is-null, is-present, is-text, type-of), through the shape runtime shim (runtime/shape.ts). Internal: shared modules reach it through `@term/base/native/{platform}/shape` and call it as `shape`.
+
+dock load
+  load <global:shape>, name shape

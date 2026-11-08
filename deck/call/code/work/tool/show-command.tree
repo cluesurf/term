@@ -190,6 +190,26 @@ form tool
   link name, like text
   link args, like list, like text
 
+form show-toolchain-ask
+  link root, like text
+  link version, like text
+  link back, like text
+
+form show-what-ask
+  link root, like text
+  link what, like text
+  link budget, like number
+  link version, like text
+  link back, like text
+
+form show-name-ask
+  link root, like text
+  link what, like text
+  link name, like text
+  link budget, like number
+  link version, like text
+  link back, like text
+
 task tool-of
   take backend, like text
   take name, like text

@@ -1,0 +1,4 @@
+# kotlin value shape questions (is-null, is-present, is-text, type-of), through the shape runtime shim (runtime/shape.kt). Internal: shared modules reach it through `@term/base/native/{platform}/shape` and call it as `shape`. native/kotlin/text.tree keeps its own dock.
+
+dock load
+  load <global:shape>, name shape

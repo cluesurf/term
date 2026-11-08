@@ -1,0 +1,4 @@
+# node structural comparison, through the compare runtime shim (runtime/compare.ts). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call it as `compare-runtime`, the name the shim calls itself by, so the alias stays as it is.
+
+dock load
+  load <global:compare>, name compare-runtime

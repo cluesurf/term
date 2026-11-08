@@ -385,6 +385,14 @@ form facts-close
 
 # ---- the pieces ----
 
+form host-ask
+  link root, like text
+  link dryRun, like boolean
+  link registry, like text
+  link trust, like text
+  link untrust, like text
+  link ping, like boolean
+
 task one-text
   take value, like text
   like list, like text
