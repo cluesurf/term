@@ -87,7 +87,8 @@ export async function bundle(root: string = TERM): Promise<{ bytes: Buffer; inpu
   return {
     bytes: Buffer.from(result.outputFiles[0]!.contents),
     inputs: Object.keys(result.metafile.inputs)
-      .filter(input => input !== 'stage0-entry.ts' && !input.startsWith('<'))
+      // the stdin entry is named from resolveDir, so task/stage0-entry.ts since 1026 (item 1040): it is no file
+      .filter(input => input !== 'stage0-entry.ts' && input !== 'task/stage0-entry.ts' && !input.startsWith('<'))
       .sort(),
   }
 }
