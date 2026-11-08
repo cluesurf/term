@@ -1,41 +1,121 @@
-# browser path implementation. Forwards to the linked path runtime shim (the platform path library). Internal: reached only through the public path API.
+# browser path implementation, plain POSIX over `/`: the browser has no path library. The decisions are Term over host
+# text bindings, so a position is the host's UTF-16 offset, as it was in the runtime shim this replaces, and no code
+# point is counted. The file extension carries its leading dot. Internal: reached only through the public path API.
 
-dock load
-  load <global:path>, name path
+bind host-last-index
+  take value, like text
+  take part, like text
+  like number
+  case browser
+    text <($value).lastIndexOf($part)>
+
+bind host-slice
+  take value, like text
+  take from, like number
+  like text
+  case browser
+    text <($value).slice($from)>
+
+bind host-slice-to
+  take value, like text
+  take from, like number
+  take to, like number
+  like text
+  case browser
+    text <($value).slice($from, $to)>
+
+bind host-ends-with
+  take value, like text
+  take part, like text
+  like boolean
+  case browser
+    text <($value).endsWith($part)>
+
+bind host-starts-with
+  take value, like text
+  take part, like text
+  like boolean
+  case browser
+    text <($value).startsWith($part)>
 
 task path-join
   take base, like text
   take name, like text
   like text
-  send back
-    call path/join
-      read base
-      read name
+  fork test
+    hook test
+      call host-ends-with
+        read base
+        text </>
+    hook hold
+      send back, text <{base}{name}>
+  send back, text <{base}/{name}>
 
 task path-directory
   take target, like text
   like text
-  send back
-    call path/directory
+  save cut
+    call host-last-index
       read target
+      text </>
+  fork test
+    hook test
+      call is-below
+        read cut
+        code 0
+    hook hold
+      send back, text <>
+  fork test
+    hook test
+      call is-equal
+        read cut
+        code 0
+    hook hold
+      send back, text </>
+  send back
+    call host-slice-to
+      read target
+      code 0
+      read cut
 
 task path-file-name
   take target, like text
   like text
   send back
-    call path/file-name
+    call host-slice
       read target
+      call add
+        call host-last-index
+          read target
+          text </>
+        code 1
 
 task path-file-extension
   take target, like text
   like text
-  send back
-    call path/file-extension
+  save name
+    call path-file-name
       read target
+  save dot
+    call host-last-index
+      read name
+      text <.>
+  fork test
+    hook test
+      call is-above
+        read dot
+        code 0
+    hook hold
+      send back
+        call host-slice
+          read name
+          read dot
+  send back, text <>
 
 task path-is-absolute
   take target, like text
   like boolean
   send back
-    call path/is-absolute
+    call host-starts-with
       read target
+      text </>

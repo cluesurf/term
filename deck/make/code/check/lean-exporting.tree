@@ -1,14 +1,25 @@
 # THE SECOND CHECKER'S INPUT: every claim the kernel checked as one term, written out as Lean 4 source, so the proof is
 # re-checked by a kernel that shares no code with Term's (note/project/term/proof/lean-export/spec.md).
 #
-# Ported from check/lean-export.ts (items term-self-host-change-001-finish-self-host-0005 and 0006), which stays as the
-# face. Part 1 (0005) is the translation's own tools, the original's lines 80 to 495: a kernel term (de Bruijn
-# indices, check/judging.tree `kernel-term`) as a NAMED term whose every binder has a name unique in the export, the
-# walks over a named term, and the printer that writes one as Lean. Part 2 (0006) is the export itself (`export-lean`),
-# `plant-lean` and `join-sources`. The front end (parse, mill, resolve, the claim fill, the surface check, the kernel's
-# reading of the types, elaboration) is the build's own TypeScript, so the face runs it and hands its answers in as a
-# `lean-front`: the checked program, its claims, the elaboration data, and the judge state elaboration left, whose
-# `definition` the export reads and `quote`s itself, as the original read `judgeState()`. The decisions:
+# Ported from check/lean-export.ts (items term-self-host-change-001-finish-self-host-0005 and 0006, and
+# term-self-host-001-0511), which stays as the face. Part 1 (0005) is the translation's own tools, the original's lines
+# 80 to 495: a kernel term (de Bruijn indices, check/judging.tree `kernel-term`) as a NAMED term whose every binder has
+# a name unique in the export, the walks over a named term, and the printer that writes one as Lean. Part 2 (0006) is
+# the export itself (`export-lean`), `plant-lean` and `join-sources`. Part 3 (0511) is the front end, the original's
+# lines 497 to 579 (`lean-front-of`): parse, mill, resolve, the claim fill, the declared types, the surface check, the
+# kernel's reading of the types and elaboration, answered as a `lean-front` (the checked program, its claims, the
+# elaboration data, the judge state the face hands in, whose `definition` the export reads and `quote`s itself, as the
+# original read `judgeState()`, and the kernel's report). The face runs `export-lean` over it inside judge.ts's
+# `kernel`. The decisions:
+#   - the front end calls the passes that are Term by their `.tree` names (parser/tree, check/resolving, check/claim,
+#     check/alias, check/elaborating-data) and docks the faces the build's own phases dock (decision 031 section 3):
+#     compile/template and compile/mill, as compile/unit-mill.tree does, check/infer, as compile/program-types.tree
+#     does, check/elaborate, as compile/program-proofs.tree does, and check/overload for the groups the last binding
+#     left, which the original's resolve read off `overloadBound` at the call
+#   - the declared types are compile/program-types.tree's `with-declared`, written again here (`lean-front-declared`)
+#     since loading that phase would bring the whole driver's closure into this port
+#   - a parse or a mill that fails raises `failure` with `lean-front:` in front of the original's message, which the
+#     face throws as the original's `Error`; any other raise of a step leaves as it came, as it did from the original
 #   - the original's `Names` class is `name-counter`, a `mark shared` record handed to every task that names a binder,
 #     so one counter numbers the whole export as the one instance did
 #   - a refusal (the original's `Refuse`, thrown and caught per definition) raises `failure` with `lean-refuse:` in
@@ -53,9 +64,30 @@ load ./judging
 
 load ./elaborating-data
   find elaboration-data
+  find elaboration-data-of
+  find new-alias-state
+
+load ./resolving
+  find resolve-program
+
+load ./claim
+  find fill-claims
+
+load ./alias
+  find transparent-aliases
 
 load ../compile/node
   find statement
+  find binding
+  find declared-param
+  find declared-signature
+
+dock load
+  load <@term/make/code/compile/template>, name lean-front-template
+  load <@term/make/code/compile/mill>, name lean-front-mill
+  load <@term/make/code/check/infer>, name lean-front-infer
+  load <@term/make/code/check/overload>, name lean-front-overload
+  load <@term/make/code/check/elaborate>, name lean-front-elaborate
 
 load ../parser/tree
   find parse
@@ -2168,9 +2200,10 @@ task recursion
 
 # ---- the export ----
 
-# what the front end (the face's, as the build runs it up to the kernel) hands the export: the source's file, the
+# what the front end (`lean-front-of`, as the build runs it up to the kernel) hands the export: the source's file, the
 # checked program, its claims in order, the kernel's reading of the program's types, the judge state elaboration left
-# (its `definition` holds every task the kernel kept), and what the kernel proved and declined
+# (its `definition` holds every task the kernel kept), what the kernel proved and declined, and the message of each
+# diagnostic elaboration gave
 form lean-front
   link file, like text
   link program, like list, like statement
@@ -2179,6 +2212,192 @@ form lean-front
   link st, like judge-state
   link proven, like list, like text
   link declined, like list, like lean-refusal
+  link diagnostics, like list, like text
+
+# ---- THE FRONT END: the build's own steps up to the kernel, as the original's `frontEnd` and the head of its
+# `exportLean` ran them (item 0511) ----
+
+# a deep copy, as the original's `structuredClone`. Natively a value is already a copy
+bind lean-front-copy
+  take value, like dynamic
+  like dynamic
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a dock's answer, read as the program it holds
+task lean-front-statements
+  take value, like dynamic
+  like list, like statement
+  mark private
+
+  back value
+
+# a dock's answer, read as the refusals it holds
+task lean-front-refusals
+  take value, like dynamic
+  like list, like lean-refusal
+  mark private
+
+  back value
+
+# a dock's answer, read as the names it holds
+task lean-front-names
+  take value, like dynamic
+  like list, like text
+  mark private
+
+  back value
+
+# the messages of a list of diagnostics, in order
+task lean-front-messages
+  take value, like dynamic
+  like list, like text
+  mark private
+
+  save out, make list
+  walk value
+    take one
+    push(out, one/message)
+  back out
+
+# a parse or a mill that failed, as the original's `Error`: `lean-front:` in front, which the face reads off
+task lean-front-failed
+  take step, like text
+  take diagnostics, like dynamic
+  like text
+  mark private
+
+  save joined, join(lean-front-messages(diagnostics), <; >)
+  back <lean-front:{step} failed: {joined}>
+
+# the elaboration data's `same-value-args`, which the export never asks
+task lean-front-never-same
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  mark private
+
+  back false
+
+# each task's parameter and result types as written, before the surface pass seeds them: a copy of each, so what the
+# checker writes into the program's own types is not seen here (compile/program-types.tree `with-declared`)
+task lean-front-declared
+  take program, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        save written-params, make list
+        walk params
+          take param
+          sift param/type
+            case some
+              link param-type
+              save copied-type, lean-front-copy(param-type)
+              save kept
+                make declared-param
+                  bind type, make(some, copied-type)
+              push(written-params, kept)
+            case none
+              save bare, make declared-param
+              push(written-params, bare)
+        sift result
+          case some
+            link written-result
+            save copied-result, lean-front-copy(written-result)
+            save signature
+              make declared-signature
+                bind params, written-params
+                bind result, make(some, copied-result)
+            save one/declared, make(some, signature)
+          case none
+            save bare-signature
+              make declared-signature
+                bind params, written-params
+            save one/declared, make(some, bare-signature)
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+# every claim of the program in order, once each: a `rule` with no `show`
+task lean-front-claims
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(is-equal(claim, true), not(theorem))
+          hold
+            fork test, not(seen/has(name))
+              hold
+                seen/set(name, true)
+                push(out, name)
+      miss
+        turn next
+  back out
+
+# THE FRONT END: the parse, the mill, the resolver, the claim fill, the declared types, the surface check, the kernel's
+# reading of the program's types (the same one elaboration builds for itself) and elaboration. A parse or a mill that
+# fails raises `lean-front-failed`'s text; any other raise leaves as it came
+task lean-front-of
+  take source, like lean-source
+  take st, like judge-state
+  like lean-front
+
+  save token-text
+    make token-source
+      bind file, source/file
+      bind text, source/text
+  save parsed, parse(token-text)
+  fork test, not(parsed/ok)
+    hold
+      halt <{lean-front-failed(<parse>, parsed/diagnostics)}>
+  save built, lean-front-mill/mill(lean-front-template/expand-templates(parsed/tree), source/file)
+  fork test, not(built/ok)
+    hold
+      halt <{lean-front-failed(<mill>, built/diagnostics)}>
+  save milled, lean-front-statements(built/program)
+  save no-scope, like maybe, like hash, like text, like binding
+    make none
+  save every-task, like maybe, like text
+    make none
+  save resolved, resolve-program(milled, source/file, lean-front-overload/overload-bound/groups, no-scope, every-task)
+  save claims, lean-front-claims(milled)
+  save program, lean-front-declared(fill-claims(milled))
+  save checked, lean-front-infer/check(program, source/file)
+  save copied, lean-front-statements(lean-front-copy(program))
+  save no-literals, like list, like text
+    make list
+  save data, elaboration-data-of(copied, new-alias-state(transparent-aliases(program)), no-literals, lean-front-never-same)
+  save report, lean-front-elaborate/elaborate-report(program, source/file)
+  back
+    make lean-front
+      bind file, source/file
+      bind program, program
+      bind claims, claims
+      bind data, data
+      bind st, st
+      bind proven, lean-front-names(report/proven)
+      bind declined, lean-front-refusals(report/declined)
+      bind diagnostics, lean-front-messages(report/diagnostics)
 
 task lean-case-of
   take variant, like text

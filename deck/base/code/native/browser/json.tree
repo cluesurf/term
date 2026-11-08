@@ -1,172 +1,263 @@
-# browser JSON implementation. Forwards to the linked json runtime shim (the host JSON library over the opaque dynamic value). Internal: reached only through the public json API.
+# browser JSON implementation over the opaque dynamic value (the host's own JSON value). The host calls and questions are
+# declarative bindings, each one host expression inlined at the use site, and the accessors' decisions are Term, so no
+# runtime shim is linked. Internal: reached only through the public json API.
 
-dock load
-  load <global:json>, name json
-
-task json-parse
+bind json-parse
   take text, like text
   like dynamic
-  send back
-    call json/parse
-      read text
+  case browser
+    text <JSON.parse($text)>
 
-task json-stringify
+bind json-stringify
   take value, like dynamic
   like text
-  send back
-    call json/stringify
-      read value
+  case browser
+    text <JSON.stringify($value)>
 
-task json-get-field
-  take value, like dynamic
-  take key, like text
+bind json-make-object
   like dynamic
-  send back
-    call json/get-field
-      read value
-      read key
+  case browser
+    text <(\{\})>
 
-task json-get-item
-  take value, like dynamic
-  take index, like number
-  like dynamic
-  send back
-    call json/get-item
-      read value
-      read index
-
-task json-as-number
-  take value, like dynamic
-  like float
-  send back
-    call json/as-number
-      read value
-
-task json-as-text
-  take value, like dynamic
-  like text
-  send back
-    call json/as-text
-      read value
-
-task json-as-boolean
-  take value, like dynamic
-  like boolean
-  send back
-    call json/as-boolean
-      read value
-
-task json-is-null
-  take value, like dynamic
-  like boolean
-  send back
-    call json/is-null
-      read value
-
-task json-make-object
-  like dynamic
-  send back
-    call json/make-object
-
-task json-set-field
-  take value, like dynamic
+# the field set on the value, in place
+bind host-set-field
+  take target, like dynamic
   take key, like text
   take field, like dynamic
   like dynamic
-  send back
-    call json/set-field
-      read value
-      read key
-      read field
+  case browser
+    text <(($target)[$key] = $field)>
 
-task json-make-array
+bind json-make-array
   like dynamic
-  send back
-    call json/make-array
+  case browser
+    text <[]>
 
-task json-push-item
-  take value, like dynamic
+# the item pushed on the value, in place
+bind host-push-item
+  take target, like dynamic
   take item, like dynamic
-  like dynamic
-  send back
-    call json/push-item
-      read value
-      read item
+  like number
+  case browser
+    text <($target).push($item)>
 
-task json-from-text
+bind json-from-text
   take value, like text
   like dynamic
-  send back
-    call json/from-text
-      read value
+  case browser
+    text <$value>
 
-task json-from-number
+bind json-from-number
   take value, like float
   like dynamic
-  send back
-    call json/from-number
-      read value
+  case browser
+    text <$value>
 
-task json-from-boolean
+bind json-from-boolean
   take value, like boolean
   like dynamic
-  send back
-    call json/from-boolean
-      read value
+  case browser
+    text <$value>
 
-task json-make-null
+bind json-make-null
   like dynamic
-  send back
-    call json/make-null
+  case browser
+    text <null>
 
-task json-is-array
+bind json-is-array
   take value, like dynamic
   like boolean
-  send back
-    call json/is-array
-      read value
+  case browser
+    text <Array.isArray($value)>
+
+bind json-is-null
+  take value, like dynamic
+  like boolean
+  case browser
+    text <($value == null)>
+
+bind host-keys
+  take value, like dynamic
+  like list
+    like text
+  case browser
+    text <Object.keys($value)>
+
+# `typeof value` is `kind`
+bind is-host-kind
+  take value, like dynamic
+  take kind, like text
+  like boolean
+  case browser
+    text <(typeof $value === $kind)>
+
+# `key` is a field of the value or of what it inherits (JavaScript's `in`)
+bind has-host-key
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case browser
+    text <($key in $value)>
 
 task json-is-object
   take value, like dynamic
   like boolean
   send back
-    call json/is-object
-      read value
+    call and
+      call not
+        call json-is-null
+          read value
+      call and
+        call is-host-kind
+          read value
+          text <object>
+        call not
+          call json-is-array
+            read value
+
+# the value itself back, with the field set on it
+task json-set-field
+  take value, like dynamic
+  take key, like text
+  take field, like dynamic
+  like dynamic
+  call host-set-field
+    read value
+    read key
+    read field
+  send back, read value
+
+# the value itself back, with the item pushed on it
+task json-push-item
+  take value, like dynamic
+  take item, like dynamic
+  like dynamic
+  call host-push-item
+    read value
+    read item
+  send back, read value
+
+# the field names of an object, none for anything else
+task json-object-keys
+  take value, like dynamic
+  like list
+    like text
+  fork test
+    hook test
+      call json-is-object
+        read value
+    hook hold
+      send back
+        call host-keys
+          read value
+  send back
+    make list
 
 task json-is-text
   take value, like dynamic
   like boolean
   send back
-    call json/is-text
+    call is-host-kind
       read value
+      text <string>
 
 task json-is-boolean
   take value, like dynamic
   like boolean
   send back
-    call json/is-boolean
+    call is-host-kind
       read value
+      text <boolean>
 
-task json-array-size
+task json-get-field
   take value, like dynamic
-  like number
+  take key, like text
+  like dynamic
+  fork test
+    hook test
+      call and
+        call json-is-object
+          read value
+        call has-host-key
+          read value
+          read key
+    hook hold
+      send back, read value/{key}
   send back
-    call json/array-size
-      read value
+    call json-make-null
+
+task json-get-item
+  take value, like dynamic
+  take index, like number
+  like dynamic
+  fork test
+    hook test
+      call and
+        call json-is-array
+          read value
+        call and
+          call is-minimum
+            read index
+            code 0
+          call is-below
+            read index
+            read value/length
+    hook hold
+      send back, read value/{index}
+  send back
+    call json-make-null
 
 task json-array-item
   take value, like dynamic
   take index, like number
   like dynamic
   send back
-    call json/array-item
+    call json-get-item
       read value
       read index
 
-task json-object-keys
+task json-as-number
   take value, like dynamic
-  like list
-    like text
-  send back
-    call json/object-keys
-      read value
+  like float
+  fork test
+    hook test
+      call is-host-kind
+        read value
+        text <number>
+    hook hold
+      send back, read value
+  send back, code 0
+
+task json-as-text
+  take value, like dynamic
+  like text
+  fork test
+    hook test
+      call is-host-kind
+        read value
+        text <string>
+    hook hold
+      send back, read value
+  send back, text <>
+
+task json-as-boolean
+  take value, like dynamic
+  like boolean
+  fork test
+    hook test
+      call json-is-boolean
+        read value
+    hook hold
+      send back, read value
+  send back, false
+
+task json-array-size
+  take value, like dynamic
+  like number
+  fork test
+    hook test
+      call json-is-array
+        read value
+    hook hold
+      send back, read value/length
+  send back, code 0

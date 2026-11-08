@@ -1,14 +1,15 @@
-# node path implementation. Forwards to the linked path runtime shim (the platform path library). Internal: reached only through the public path API.
+# node path implementation: node:path itself, docked straight, with no runtime shim between. The file extension carries
+# its leading dot. Internal: reached only through the public path API.
 
 dock load
-  load <global:path>, name path
+  load <node:path>, name node-path
 
 task path-join
   take base, like text
   take name, like text
   like text
   send back
-    call path/join
+    call node-path/join
       read base
       read name
 
@@ -16,26 +17,26 @@ task path-directory
   take target, like text
   like text
   send back
-    call path/directory
+    call node-path/dirname
       read target
 
 task path-file-name
   take target, like text
   like text
   send back
-    call path/file-name
+    call node-path/basename
       read target
 
 task path-file-extension
   take target, like text
   like text
   send back
-    call path/file-extension
+    call node-path/extname
       read target
 
 task path-is-absolute
   take target, like text
   like boolean
   send back
-    call path/is-absolute
+    call node-path/is-absolute
       read target

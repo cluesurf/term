@@ -1,27 +1,16 @@
 // THE SECOND CHECKER'S INPUT: every claim the kernel checked as one term, written out as Lean 4 source, so the proof is
 // re-checked by a kernel that shares no code with Term's (note/project/term/proof/lean-export/spec.md).
 //
-// THE FACE (items term-self-host-change-001-finish-self-host-0005 and 0006). The translation is Term,
-// check/lean-exporting.tree, whose header says what it decided. This face keeps the front end, which runs the build's
-// own TypeScript steps up to the kernel (parse, mill, resolve, the claim fill, the declared types, the surface check,
-// the kernel's reading of the types, elaboration), and hands the port what they answered: the checked program, its
-// claims, the elaboration data and the judge state elaboration left. The port runs inside judge.ts's `kernel`, as the
-// original's `quote` did, so a kernel error leaves it as the original's class. Its other raises (a parse that failed
-// in `joinSources`, a plant with no definition) leave as the original's `Error` with the same message. The shapes are
-// the original's. Before: tmp/retired/make/check/lean-export.ts.
+// THE FACE (items term-self-host-change-001-finish-self-host-0005, 0006 and term-self-host-001-0511). The work is
+// Term, check/lean-exporting.tree, whose header says what it decided: the front end (`lean-front-of`: parse, mill,
+// resolve, the claim fill, the declared types, the surface check, the kernel's reading of the types, elaboration) and
+// the export after it. This face holds the names and shapes callers know, the one judge state, and the error classes.
+// The export runs inside judge.ts's `kernel`, as the original's `quote` did, so a kernel error leaves it as the
+// original's class. A parse or mill that failed in the front end, a parse that failed in `joinSources` and a plant with
+// no definition leave as the original's `Error` with the same message. Before: tmp/retired/make/check/lean-export.ts.
 
-import { parse } from '@term/make/code/parser/tree'
-import { expandTemplates } from '@term/make/code/compile/template'
-import { mill } from '@term/make/code/compile/mill'
-import { resolve } from '@term/make/code/check/resolve'
-import { check } from '@term/make/code/check/infer'
-import { fillClaims } from '@term/make/code/check/claim'
-import { elaborateReport } from '@term/make/code/check/elaborate'
-import { transparentAliases } from '@term/make/code/check/alias'
-import * as elaborating from '@term/make/code/check/elaborating-data'
 import type { Term } from '@term/make/code/check/judge'
 import { judgeState, kernel } from '@term/make/code/check/judge'
-import type { Program } from '@term/make/code/compile/node'
 import * as exporting from '@term/make/code/check/lean-exporting'
 
 export type LeanSource = { file: string; text: string }
@@ -55,6 +44,9 @@ export type LeanExport = {
   signature: { name: string; type: Term }[]
 }
 
+// the front end's raise of a failed parse or mill (its note `lean-front:` and the message), as the original's `Error`
+const FRONT = 'lean-front:'
+
 // a Term raise as the original's plain `Error`, its note the message; anything else as it came
 function asError(error: unknown): unknown {
   const note = (error as { note?: unknown } | null)?.note
@@ -62,97 +54,39 @@ function asError(error: unknown): unknown {
   return typeof note === 'string' ? new Error(note) : error
 }
 
-// ---- the front end, as the build runs it up to the kernel (compile/compile.ts, from the parse to `elaborateReport`)
-// ----
+// the front end's own raise as the original's `Error`; any other raise of a step it runs as it came
+function asFrontError(error: unknown): unknown {
+  const note = (error as { note?: unknown } | null)?.note
 
-function frontEnd(source: LeanSource): {
-  program: Program
-  claims: string[]
-} {
-  const parsed = parse({ file: source.file, text: source.text })
-
-  if (!parsed.ok) {
-    throw new Error(
-      `parse failed: ${parsed.diagnostics.map(d => d.message).join('; ')}`,
-    )
-  }
-
-  const built = mill(expandTemplates(parsed.tree), source.file)
-
-  if (!built.ok) {
-    throw new Error(
-      `mill failed: ${built.diagnostics.map(d => d.message).join('; ')}`,
-    )
-  }
-
-  resolve(built.program, source.file)
-
-  const claims = built.program.flatMap(s =>
-    s.form === 'function' && s.claim === true && !s.theorem
-      ? [s.name]
-      : [],
-  )
-
-  const program = fillClaims(
-    built.program as never,
-  ) as unknown as Program
-
-  for (const statement of program) {
-    if (statement.form === 'function') {
-      statement.declared = {
-        params: statement.params.map(p =>
-          p.type ? { type: structuredClone(p.type) } : {},
-        ),
-        ...(statement.result
-          ? { result: structuredClone(statement.result) }
-          : {}),
-      }
-    }
-  }
-
-  check(program, source.file)
-
-  return { program, claims: [...new Set(claims)] }
+  return typeof note === 'string' && note.startsWith(FRONT)
+    ? new Error(note.slice(FRONT.length))
+    : error
 }
 
 export function exportLean(source: LeanSource): LeanExport {
-  const { program, claims } = frontEnd(source)
+  let front: ReturnType<typeof exporting.leanFrontOf>
 
-  // the kernel's reading of the program's types, the same one elaboration builds for itself (pure in the program)
-  const data = elaborating.elaborationDataOf(
-    structuredClone(program) as never,
-    elaborating.newAliasState(transparentAliases(program)),
-    [],
-    () => false,
-  )
+  try {
+    front = exporting.leanFrontOf(source, judgeState())
+  } catch (error) {
+    throw asFrontError(error)
+  }
 
-  const report = elaborateReport(program, source.file)
-
-  const out = kernel(() =>
-    exporting.exportLean({
-      file: source.file,
-      program: program as never,
-      claims,
-      data,
-      st: judgeState(),
-      proven: report.proven,
-      declined: report.declined,
-    }),
-  )
+  const out = kernel(() => exporting.exportLean(front))
 
   return {
     lean: out.lean,
-    claims,
+    claims: front.claims,
     exported: out.exported,
     refused: out.refused,
     axioms: out.axioms,
     kernel: {
-      proven: report.proven,
-      declined: report.declined,
-      diagnostics: report.diagnostics.map(d => d.message),
+      proven: front.proven,
+      declined: front.declined,
+      diagnostics: front.diagnostics,
     },
     terms: out.terms as unknown as LeanExport['terms'],
-    signature: data.signature as unknown as LeanExport['signature'],
+    signature: front.data.signature as unknown as LeanExport['signature'],
   }
 }
 

@@ -1,67 +1,58 @@
-# node rune (Unicode code point) predicates, via the linked rune runtime shim (host Unicode tables). Internal: reached only through the public rune API.
+# node rune (Unicode code point) predicates and case mapping as declarative bindings over the host's Unicode tables
+# (regex property escapes and String case mapping), each inlined at the use site with no runtime shim. `$code` is the
+# code point. Internal: reached only through the public rune API.
 
-dock load
-  load <global:rune>, name rune
-
-task scalar-is-letter
+bind scalar-is-letter
   take code, like number
   like boolean
-  send back
-    call rune/is-letter
-      read code
+  case node
+    text </\\p\{L\}/u.test(String.fromCodePoint($code))>
 
-task scalar-is-number
+bind scalar-is-number
   take code, like number
   like boolean
-  send back
-    call rune/is-number
-      read code
+  case node
+    text </\\p\{N\}/u.test(String.fromCodePoint($code))>
 
-task scalar-is-whitespace
+bind scalar-is-whitespace
   take code, like number
   like boolean
-  send back
-    call rune/is-whitespace
-      read code
+  case node
+    text </\\s/u.test(String.fromCodePoint($code))>
 
-task scalar-is-uppercase
+bind scalar-is-uppercase
   take code, like number
   like boolean
-  send back
-    call rune/is-uppercase
-      read code
+  case node
+    text </\\p\{Lu\}/u.test(String.fromCodePoint($code))>
 
-task scalar-is-lowercase
+bind scalar-is-lowercase
   take code, like number
   like boolean
-  send back
-    call rune/is-lowercase
-      read code
+  case node
+    text </\\p\{Ll\}/u.test(String.fromCodePoint($code))>
 
-task scalar-is-alphanumeric
+bind scalar-is-alphanumeric
   take code, like number
   like boolean
-  send back
-    call rune/is-alphanumeric
-      read code
+  case node
+    text </[\\p\{L\}\\p\{N\}]/u.test(String.fromCodePoint($code))>
 
-task scalar-is-control
+bind scalar-is-control
   take code, like number
   like boolean
-  send back
-    call rune/is-control
-      read code
+  case node
+    text </\\p\{Cc\}/u.test(String.fromCodePoint($code))>
 
-task scalar-to-uppercase
+# the code point is read once: an argument with an effect runs once, as it did through the shim
+bind scalar-to-uppercase
   take code, like number
   like number
-  send back
-    call rune/to-uppercase
-      read code
+  case node
+    text <((c: number): number =\> String.fromCodePoint(c).toUpperCase().codePointAt(0) ?? c)($code)>
 
-task scalar-to-lowercase
+bind scalar-to-lowercase
   take code, like number
   like number
-  send back
-    call rune/to-lowercase
-      read code
+  case node
+    text <((c: number): number =\> String.fromCodePoint(c).toLowerCase().codePointAt(0) ?? c)($code)>
