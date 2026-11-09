@@ -14,7 +14,15 @@ load @term/call/work/home
 
 load @term/call/work/inspect/looking
   find call-look
-  find look-ask
+
+# what `call-look` takes
+form look-ask
+  link root, like text
+  link target, like text
+  link json, like boolean
+  link csv, like boolean
+  link kind, like text
+  link all, like boolean
 
 # The hook passes a take to the parameter of its own name, else to the one at its position, so these stand in the
 # hook's order (target, json, csv, kind, all): `json-out`, `csv-out` and `whole` are filled by position.

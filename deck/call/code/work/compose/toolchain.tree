@@ -22,7 +22,6 @@ load ../cask/host-value
 # their module (`scope-refuse`), so its one-argument refusal never meets host-value.tree's two-argument `refuse`
 load ../context/app-scope
   find check-scope
-  find scope-ask
 
 
 load @term/call/work/build/build-graph
@@ -94,6 +93,10 @@ form runtime-folder
 form scope-source
   link file, like text
   link text, like text
+
+form scope-ask
+  link root, like text
+  link files, like list, like text
 
 # what the program's Kotlin is compiled with: the compiler (`kotlinc`, or a session's warm worker), the build's stage
 # times, the folder the Kotlin files are written to, the file name, the text opening each file (Android's `package`),

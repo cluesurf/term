@@ -46,7 +46,6 @@ load ./native-value
 # until term-cli-in-term-0069
 load ../context/emission
   find emit-program
-  find program-emit
 
 load @term/call/work/output/printer
   find close-run
@@ -141,6 +140,11 @@ form native-close-failed
   link verdict, like text
   link counts, like list, like tally
   link failure, like text
+
+form program-emit
+  link root, like dynamic
+  link file, like text
+  link target, like text
 
 form program-build
   link source, like dynamic

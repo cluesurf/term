@@ -41,10 +41,19 @@ load @term/call/work/workers/file-pool
 # `term base import` runs the base lane's port (work/base/data-import.tree), since term-cli-in-term-0068
 load @term/call/work/base/data-import
   find call-base-import
-  find import-ask
 
 dock load
   load <node:process>, name node-process
+
+form import-ask
+  link root, like text
+  link source, like text
+  link form, like text
+  link key, like text
+  link mark, like text
+  link branch, like text
+  link author, like text
+  link message, like text
 
 form parallel-ask
   link concurrency, like number

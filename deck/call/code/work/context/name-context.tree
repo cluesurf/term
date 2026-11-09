@@ -129,12 +129,6 @@ bind no-catalog
   case node
     text <undefined>
 
-form context-ask
-  link root, like text
-  link query, like dynamic
-  link json, like boolean
-  link budget, like dynamic
-
 # the groups among a parse tree's nodes, as parser/narrow.ts's `groupsOf` kept them: every node whose kind is a group
 task groups-in
   take nodes, like list, like dynamic

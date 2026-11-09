@@ -193,15 +193,6 @@ form compile-ask
   link role-of, like dynamic
   link lean-of, like dynamic
 
-# what `call-look` takes
-form look-ask
-  link root, like text
-  link target, like text
-  link json, like boolean
-  link csv, like boolean
-  link kind, like text
-  link all, like boolean
-
 task one-of
   take value, like dynamic
   like list, like dynamic

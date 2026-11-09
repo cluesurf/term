@@ -218,16 +218,6 @@ form import-meta
   link time, like number
   link message, like dynamic
 
-form import-ask
-  link root, like text
-  link source, like text
-  link form, like text
-  link key, like text
-  link mark, like text
-  link branch, like text
-  link author, like text
-  link message, like text
-
 task one-of
   take value, like dynamic
   like list, like dynamic

@@ -16,7 +16,10 @@ load @term/call/work/home
 load @term/call/work/registry/linking
   find call-link
   find call-unlink
-  find link-ask
+
+form link-ask
+  link root, like text
+  link deck, like text
 
 task link
   mark async

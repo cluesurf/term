@@ -196,12 +196,6 @@ form view-counted-close
   link verdict, like text
   link counts, like list, like dynamic
 
-form view-ask
-  link root, like text
-  link path, like text
-  link find, like boolean
-  link back, like text
-
 # the options read as compile/view-catalog-handed.tree's `handed-check`, whose absent field is `none`
 task view-handed-of
   take given, like dynamic

@@ -19,7 +19,6 @@ load ./kink-showing
 
 load ../context/name-context
   find show-context
-  find context-ask
 
 load ../need/running-install
   find find-install-root
@@ -178,6 +177,12 @@ form kink-ask
   link root, like text
   link query, like dynamic
   link json, like boolean
+
+form context-ask
+  link root, like text
+  link query, like dynamic
+  link json, like boolean
+  link budget, like dynamic
 
 # the toolchains each backend calls, the tool and the arguments it is asked its version with
 form tool
