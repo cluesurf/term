@@ -101,6 +101,11 @@ bind is-truthy
   case node
     text <Boolean($value)>
 
+form lint-ask
+  link root, like text
+  link paths, like list, like text
+  link fix, like boolean
+
 # where a node's caret goes, as compile/mill-run.ts's `spanOfNode` answered it: the span, or nothing
 task span-at
   take one, like dynamic

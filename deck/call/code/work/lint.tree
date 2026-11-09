@@ -10,11 +10,7 @@ load @term/call/work/home
 
 load @term/call/work/inspect/linting
   find call-lint
-
-form lint-ask
-  link root, like text
-  link paths, like list, like text
-  link fix, like boolean
+  find lint-ask
 
 task lint
   mark async

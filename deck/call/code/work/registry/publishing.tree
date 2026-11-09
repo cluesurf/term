@@ -494,7 +494,7 @@ task read-keypair
 # The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys
 # may sign it. Minted on the first publish from this machine, at mode 0600.
 task load-publish-keypair
-  take input, like dynamic
+  take input, like mint-ask
   like dynamic
 
   save file, kept-at(user-home(home-parts(<key>)), legacy-user-home(home-parts(<key>)))
@@ -553,7 +553,7 @@ task git-source
 # token, when there is one, credits the version to its account. Reports the outcome and answers whether it was sent.
 # `pnpm term:release` calls it too, for `@term/code`
 task announce
-  take input, like dynamic
+  take input, like announce-ask
   like boolean
 
   save token, read-index-token()
@@ -568,7 +568,7 @@ task announce
 
 # `--trust` / `--untrust`: sign a new key set for the scope with this machine's key
 task rotate-key-set
-  take input, like dynamic
+  take input, like host-ask
   take route, like dynamic
   like void
   mark private
@@ -692,7 +692,7 @@ task push-version
   close-run(make(plain-close, bind(verdict, <Published {name}@{version}>)))
 
 task publish
-  take input, like dynamic
+  take input, like host-ask
   like void
   mark private
 
@@ -755,18 +755,18 @@ task publish
     take one
     entries/push(pair-of(one/key, one/value))
   save common, common-of(root, name, version, links, local, first-author(manifest), now-iso(), <{name} {version}>, record-of(entries), include)
-  fork test, is-truthy(input/dry-run)
+  fork test, input/dryRun
     hold
       build-dry(name, version, route, common)
     miss
       push-version(name, version, route, common)
 
 task call-host
-  take input, like dynamic
+  take input, like host-ask
   like void
 
   save facts, make list
-  fork test, is-truthy(input/dry-run)
+  fork test, input/dryRun
     hold
       facts/push(<--dry>)
     miss

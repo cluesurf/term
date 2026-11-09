@@ -90,6 +90,10 @@ form usage-close
   link next, like text
   link failure, like text
 
+form link-ask
+  link root, like text
+  link deck, like text
+
 task one-of
   take value, like dynamic
   like list, like dynamic

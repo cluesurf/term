@@ -1175,9 +1175,17 @@ task records-visit
                   take one
                   push(binds, one)
                 save fields, text-types()
-                fork test, scope/variant-types/has(arm/label)
+                # the case of the subject's own form first: by the bare label, another form's case of that name
+                # gave its fields, so a record field read bare left the parameter borrowed and the arm handed a
+                # reference (E0308 expected `Maybe<i64>`, found `&Maybe<i64>`, term-self-host-001-1099)
+                save owned-label, <{form-name-of(expression-type(match-subject))}/{arm/label}>
+                fork test, scope/variant-types/has(owned-label)
                   hold
-                    save fields, scope/variant-types/get(arm/label)
+                    save fields, scope/variant-types/get(owned-label)
+                  miss
+                    fork test, scope/variant-types/has(arm/label)
+                      hold
+                        save fields, scope/variant-types/get(arm/label)
                 save order, fields/keys()
                 # an arm's `link` lines select fields by name, or rename them in declaration order (check/arm.ts)
                 save renames, false
@@ -1309,6 +1317,10 @@ task borrowed-records
             take field
             save types/{field/name}, field/type
           save variant-types/{variant/name}, types
+          # and by its own form, since two forms can name a case alike and the bare name holds the last one
+          # (node.tree's `form`, `text`, `word` beside minted's: term-self-host-001-1099)
+          save owned-key, <{record-name}/{variant/name}>
+          save variant-types/{owned-key}, types
           save field-names/{variant/name}, types/keys()
       miss
         save nothing, 0

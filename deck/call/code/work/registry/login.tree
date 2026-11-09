@@ -659,7 +659,7 @@ task log-in
   close-run(make(done-next-close, bind(verdict, <Logged in as {who}>), bind(done, true), bind(next, <term host>)))
 
 task call-bind
-  take input, like dynamic
+  take input, like bind-ask
   like void
 
   open-run(make(subject-open, bind(verb, <bind>), bind(root, input/root), bind(subject, <term.surf>)))

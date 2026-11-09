@@ -976,7 +976,9 @@ task quantified
   like text
   mark private
 
-  save groups, make list
+  # typed where it is made: its last group is read (`/noun`) before inference has met a push
+  save groups, like list, like law-group
+    make list
   walk binders
     take binder
     save size, groups/length

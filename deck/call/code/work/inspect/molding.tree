@@ -143,6 +143,21 @@ form mold-source
   link file, like text
   link text, like text
 
+# `file` is a host value: the path when the line named one, else undefined, which call-mold labels `stdin` (input.file
+# ?? 'stdin'), as line.ts handed argv.file on
+form mold-ask
+  link root, like text
+  link file, like dynamic
+  link pack, like boolean
+  link json, like boolean
+  link keep, like boolean
+  link tree, like boolean
+  link check, like boolean
+  link trees, like boolean
+  link lines, like boolean
+  link code, like boolean
+  link canonical, like boolean
+
 task mold-one
   take value, like text
   like list, like text

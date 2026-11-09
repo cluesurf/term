@@ -1218,6 +1218,30 @@ task payload-of
       back make(some, name)
   back make none
 
+# the fields of the case `label` of the form `target` is, the form's own case where two forms name a case alike: read
+# by the bare label, the other form's case answered, and a write or read of the subject's field in its arm fell through
+# to the enum (E0609 no field `type_` on type `Expression`, 115 sites, term-self-host-001-1059)
+task arm-case-fields
+  take target, like expression
+  take label, like text
+  take facts, like rust-facts
+  like list, like text
+  mark private
+
+  save owner, named-of(expression-type(target))
+  fork test, and(is-equal(owner, <>), facts/variant-owner/has(label))
+    hold
+      save owner, facts/variant-owner/get(label)
+  save case-key, <{owner}/{label}>
+  fork test, facts/case-field-names/has(case-key)
+    hold
+      back facts/case-field-names/get(case-key)
+  fork test, facts/variant-fields/has(label)
+    hold
+      back facts/variant-fields/get(label)
+  save none-found, make list
+  back none-found
+
 # what holds a form's payload: a `Box` for a form nothing clones, an `Rc` for one the program shares
 task payload-holder
   take owner, like text
@@ -1538,11 +1562,16 @@ task box-unknown
   like text
   mark private
 
+  save form, form-of(value)
+  save kind, kind-of-node(value)
+  # a whole number into a `float` slot (a field, a parameter) is made the `f64` there: Term's number is one, rustc
+  # refused `0` and an `i64` where an `f64` is (E0308, knit/spend.tree's `bind(dollars, 0)`, term-self-host-001-1094)
+  fork test, and(is-equal(kind-of(into), <float>), or(is-equal(form, <integer>), is-equal(kind, <number>)))
+    hold
+      back <(({rendered}) as f64)>
   fork test, and(is-unequal(kind-of(into), <unknown>), is-unequal(kind-of(into), <dynamic>))
     hold
       back rendered
-  save form, form-of(value)
-  save kind, kind-of-node(value)
   fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), or(is-equal(kind, <unknown>), is-equal(kind, <dynamic>)))
     hold
       back rendered
@@ -1706,11 +1735,9 @@ task member-path
           fork test, st/narrowing/has(variable-name)
             hold
               save variant, st/narrowing/get(variable-name)
-              fork test, facts/variant-fields/has(variant)
+              fork test, has-text(arm-case-fields(member-target, variant, facts), member-name)
                 hold
-                  fork test, has-text(facts/variant-fields/get(variant), member-name)
-                    hold
-                      back snake(member-name)
+                  back snake(member-name)
         miss
           save nothing, 0
       save root, root-variable(node)
@@ -2898,6 +2925,14 @@ task emit-binary
           back <(({left} {op} {right}) as i64)>
       save left, binary-operand(binary-left, op, node, st, facts)
       save right, binary-operand(binary-right, op, node, st, facts)
+      # a whole number beside a float is made the `f64`: rustc has no `f64 + {integer}` nor `f64 == {integer}`
+      # (E0277, `add(total/requests, 1)` in knit/spend.tree, term-self-host-001-1094)
+      fork test, and(is-equal(left-kind, <float>), or(is-equal(right-kind, <number>), is-form(binary-right, <integer>)))
+        hold
+          save right, <(({right}) as f64)>
+      fork test, and(is-equal(right-kind, <float>), or(is-equal(left-kind, <number>), is-form(binary-left, <integer>)))
+        hold
+          save left, <(({left}) as f64)>
       # a loose value compares as it does on TypeScript, Swift and Kotlin, deeply, through the runtime's compare.rs. An
       # identity task inlined away or a type left unresolved leaves concrete values here, so Rust picks: their own `==` when
       # they have one, the box otherwise. runtime-prelude.tree links the shim by this name
@@ -6078,7 +6113,9 @@ task emit-assign
           # a write to a field of a `mark shared` value goes through its handle, the value computed first
           fork test, and(not(has-index), is-shared(expression-type(member-target), facts))
             hold
-              save value, bare(owned(assign-value, st, facts))
+              # into a field typed `unknown` or `dynamic` the value goes boxed, as a construction's field does: bare, a
+              # concrete value failed rustc (E0308 expected `Rc<dyn Any>`, found `DevServer`, term-self-host-001-1094)
+              save value, bare(box-unknown(expression-type(assign-target), assign-value, owned(assign-value, st, facts), facts))
               back <\{ let __shared_value = {value}; {member-path(member-target, st, facts)}.borrow_mut().{snake(member-name)} {op} __shared_value; \}>
           # a field of a match subject written in the arm that narrowed it: the subject's own case is written, never the
           # arm's local (decision 115 section 3)
@@ -6088,11 +6125,9 @@ task emit-assign
               fork test, and(is-unequal(arm-root, <>), st/narrowing/has(arm-root))
                 hold
                   save arm-label, st/narrowing/get(arm-root)
-                  fork test, facts/variant-fields/has(arm-label)
+                  fork test, has-text(arm-case-fields(member-target, arm-label, facts), member-name)
                     hold
-                      fork test, has-text(facts/variant-fields/get(arm-label), member-name)
-                        hold
-                          back arm-write(member-target, arm-label, member-name, assign-value, st, facts)
+                      back arm-write(member-target, arm-label, member-name, assign-value, st, facts)
           # a write to a list slot or a map entry by a computed key goes through `borrow_mut`, the value and the key
           # computed first. A literal slot, `save xs/0, ...`, is a member named `0`: the same write at that index
           save literal, false
@@ -7221,6 +7256,12 @@ task emit-case-arm
   save pattern, <>
   fork test, is-above(fields/length, 0)
     hold
+      # a local the arm writes (`save component/props, ...`) is bound `mut` where the arm holds it by value: bound
+      # plain, the write failed rustc (E0594 cannot assign to `component.props`, term-self-host-001-1094)
+      save arm-written, make list
+      fork test, and(and(not(scene/borrowed-subject), not(scene/referenced)), not(facts/payloads/has(<{owner}/{label}>)))
+        hold
+          save arm-written, reassigned(branch/body)
       save parts, make list
       walk locals
         take local
@@ -7228,7 +7269,11 @@ task emit-case-arm
           hold
             push(parts, <{snake(local/field)}: _>)
           miss
-            push(parts, field-binding(local/field, local/local))
+            fork test, has-text(arm-written, local/local)
+              hold
+                push(parts, <{snake(local/field)}: mut {snake(local/local)}>)
+              miss
+                push(parts, field-binding(local/field, local/local))
       save pattern, braced-pattern(parts, is-below(locals/length, fields/length))
   save payload, payload-of(owner, label, facts)
   save has-payload, false

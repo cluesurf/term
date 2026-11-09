@@ -2162,7 +2162,17 @@ task move-expression
         move-expression(st, arg, restrict)
     case member
       link member-target
+      link member-name
+      link member-index
       move-expression(st, member-target, restrict)
+      # a computed key (`x/{name}`) is a read of its name too: left uncounted, an earlier read of `name` was its last,
+      # moved, and the key failed rustc (E0382 use of moved value `name`, `task_name`, 11 sites, term-self-host-001-1094)
+      sift member-index
+        case some
+          link known
+          move-expression(st, known, restrict)
+        case none
+          save nothing, 0
     case binary
       link binary-op
       link binary-left

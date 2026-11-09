@@ -185,6 +185,10 @@ form capability
     like dynamic
     need false
 
+form scope-ask
+  link root, like text
+  link files, like list, like text
+
 # one task of a scoped capability: the access each argument needs
 task task-entry
   take name, like text
