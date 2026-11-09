@@ -533,12 +533,13 @@ bind boot-spawn-server
   case node
     text <process.getBuiltinModule("node:child_process").spawn("node", [$run], \{ cwd: $cwd, stdio: ["inherit", "pipe", "pipe"] \})>
 
-# the exit code a command-line program's child ended with, 1 when a signal ended it
+# the exit code a command-line program's child ended with, 128 plus the signal's number when a signal ended it (1 for
+# a signal the host has no number for)
 bind boot-exit-code
   take child, like dynamic
   like number
   case node
-    text <(await new Promise((done) =\> $child.once("exit", (code) =\> done(code ?? 1))))>
+    text <(await new Promise((done) =\> $child.once("exit", (code, signal) =\> done(code ?? (128 + (process.getBuiltinModule("node:os").constants.signals[signal] ?? -127))))))>
 
 # the server child's exit code once it ends, or null when a signal ended it
 bind boot-server-exit
@@ -947,7 +948,14 @@ task boot-built
 
 # a command-line program runs ONCE with the forwarded arguments and exits with the command's own code. The run closes
 # BEFORE the program runs: what follows is the program's own output. It runs in the USER'S cwd, so it resolves their
-# relative paths
+# relative paths.
+#
+# CTRL+C IS THE CHILD'S. While it runs, this process ignores SIGINT and SIGQUIT, as system(3) does: the terminal sends
+# them to its whole foreground group, so the child has them already, and this process waits for it to finish tearing
+# down. Dying on the first press handed the shell its prompt back mid-teardown, and a second press reached the shell
+# instead of the program. A SIGTERM or SIGHUP sent to this process alone is forwarded (hand-off in
+# need/version-dispatch does the same). A child killed by a signal exits this process 128 plus its number, as a shell
+# reports it
 task run-command-line
   take run, like boot-run
   take run-path, like text
@@ -957,7 +965,30 @@ task run-command-line
 
   finish(run, <{run/bin-name} built>)
   save child, boot-spawn-inherit(run-path, run/input/args, run/input/root)
+  save on-interrupt
+    task
+      take signal, like dynamic
+      like void
+      save nothing-here, 0
+  save on-terminate
+    task
+      take signal, like dynamic
+      like void
+      child/kill(<SIGTERM>)
+  save on-hangup
+    task
+      take signal, like dynamic
+      like void
+      child/kill(<SIGHUP>)
+  host-process/on(<SIGINT>, on-interrupt)
+  host-process/on(<SIGQUIT>, on-interrupt)
+  host-process/on(<SIGTERM>, on-terminate)
+  host-process/on(<SIGHUP>, on-hangup)
   save code, boot-exit-code(child)
+  host-process/off(<SIGINT>, on-interrupt)
+  host-process/off(<SIGQUIT>, on-interrupt)
+  host-process/off(<SIGTERM>, on-terminate)
+  host-process/off(<SIGHUP>, on-hangup)
   host-process/exit(code)
 
 task run-server
