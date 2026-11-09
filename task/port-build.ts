@@ -26,8 +26,8 @@
 // Since decision 038 (term-self-host-001-0288) the observations are THE MODULE'S OWN: what its compile and its prelude
 // observed, each one every time it was made, plus what the process observed outside any module, never the running
 // total of the process. So an edit rebuilds the modules that read the file and no other. Every cache that could carry
-// one module's reads into another is made per module here (the resolver, the role reader, the walk memo) or attributed
-// by the trace (port-trace.ts SOUNDNESS). The parse memo is the run's (THE RUN'S PARSE MEMO): it reads no file.
+// one module's reads into another is made per module here (the resolver, the role reader, the parse and walk memos) or
+// attributed by the trace (port-trace.ts SOUNDNESS).
 //
 //   npx tsx task/port-build.ts            build every port, report what changed
 //   npx tsx task/port-build.ts --check    write nothing, exit 1 if any port's output is missing or stale
@@ -682,28 +682,6 @@ function goneTurn(name: string): Turn {
   return { tally: 'moved', left: false, lines: [`  MOVED ${name}  (removed or shelved since this run began: run port-build again)`] }
 }
 
-// THE RUN'S PARSE MEMO (term-self-host-001-1097). Every port inlines its reached load closure, so each of a run's
-// compiles parsed the same stdlib and compiler modules again, once per port that loads them. One parse memo now serves
-// every compile this process makes, one per compiler (stage0, or under --stage-check step 2 the working tree's). It is
-// keyed by a file and its exact text (compile/loading-parses.tree parse-remembered answers a kept parse only for the
-// very text it was made from), and parsing reads nothing from the disk: the text comes from the resolver, which is still
-// made per compile, so every file a module's compile reaches is still READ in that module's own trace (decision 038), and
-// a hit only spares the parse of a text already read. The walk memo stays per module: a kept walk re-resolves only the
-// loads that resolved, so the lookups that answered nothing would drop out of the next module's key
-const RUN_PARSE_CAP = 16384
-const runParses = new Map<Compiler['makeParseMemo'], ParseMemo>()
-
-function runParseMemo(makeParseMemo: Compiler['makeParseMemo']): ParseMemo {
-  let memo = runParses.get(makeParseMemo)
-
-  if (memo === undefined) {
-    memo = makeParseMemo(RUN_PARSE_CAP)
-    runParses.set(makeParseMemo, memo)
-  }
-
-  return memo
-}
-
 // compile one module, and write its port when it changed
 function compileTurn(root: string, file: string, print: string | undefined): Turn {
   const { compile, collectModules, makeParseMemo, projectResolver, projectLeanOf, toCamel } = stage0!.compiler
@@ -734,9 +712,9 @@ function compileTurn(root: string, file: string, print: string | undefined): Tur
     // show none of the reads its output rests on (decision 038), and a second attempt would read the old text
     const resolve = projectResolver(root)
     const leanOf = projectLeanOf(root)
-    // one parse per module text for the whole run (THE RUN'S PARSE MEMO) and one walk per module of the closure,
-    // both shared by the printer's walk and the compile
-    const parsed = runParseMemo(makeParseMemo)
+    // one parse and one walk per module of the closure, shared by the printer's walk and the compile, as compile
+    // makes a parse memo per call
+    const parsed = makeParseMemo()
     const walked: WalkMemo = new Map()
     // THE PRINTER'S RUN (decision term-cli-in-term-0240): a closure that holds the printer compiles with
     // printerKeeper's text after the module's own
@@ -1163,21 +1141,10 @@ async function main(): Promise<void> {
       arrive(at, compileTurn(order[at]!.root, order[at]!.file, print))
     }
   } else {
-    // LONGEST FIRST (term-self-host-001-1097): the workers take the biggest closures first, so the run does not end on
-    // one worker compiling the console's whole closure while the others idle. A module's size is the number of
-    // observations its last build made (a module with no entry counts as the biggest). Only the order work is handed out
-    // changes: each turn is still taken in plan order (THE JOBS), so output, stdout and manifest are as they were
-    const size = (at: number): number => {
-      const reads = previous?.modules[order[at]!.name]?.reads
-      return reads === undefined ? Number.MAX_SAFE_INTEGER : reads.reduce((sum, [from, to]) => sum + to - from, 0)
-    }
-    const sizes = new Map(compiles.map(at => [at, size(at)]))
-    const longestFirst = [...compiles].sort((a, b) => sizes.get(b)! - sizes.get(a)! || a - b)
-
     await fanOut<Turn>(
       jobs,
       [],
-      longestFirst.map(at => {
+      compiles.map(at => {
         const { root, file, name } = order[at]!
 
         return { at, name, job: { root, file, print } }
@@ -1343,7 +1310,7 @@ function stageTurn(c: Compiler, root: string, file: string, one: { out?: string;
     return { tally: 'gone', lines: [] }
   }
 
-  const parsed = runParseMemo(c.makeParseMemo)
+  const parsed = c.makeParseMemo()
   const walked: WalkMemo = new Map()
   const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, c.collectModules)
   const result = c.compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
