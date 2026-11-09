@@ -3405,6 +3405,48 @@ task field-entry
       back value
   back <{snake(name)}: {value}>
 
+# the empty value of a left-out field or argument: a record form is built whole from its own fields' empty values, as a
+# construction that leaves them all out is, since rustc has no integer for a struct (E0308 expected `SnapshotAsk`,
+# found integer: `snapshots: 0`, `async_: 0`, `report: 0`, item term-self-host-001-1102). A form already being built
+# further out (a record that holds itself) keeps the scalar answer of rust-tables `empty-of`
+task left-out-empty
+  take given, like maybe, like type
+  take facts, like rust-facts
+  take seen, like list, like text
+  like text
+  mark private
+
+  save name, named-of(given)
+  fork test, or(or(is-equal(name, <>), not(facts/record-fields/has(name))), has-text(seen, name))
+    hold
+      back empty-of(given)
+  save inner-seen, make list
+  walk seen
+    take one
+    push(inner-seen, one)
+  push(inner-seen, name)
+  save parts, make list
+  walk facts/record-fields/get(name)
+    take field
+    save empty, <>
+    fork test, facts/field-lists/has(<{name}/{field/name}>)
+      hold
+        save empty, <Vec::new()>
+      miss
+        save empty, left-out-empty(make(some, field/type), facts, inner-seen)
+    push(parts, <{snake(field/name)}: {empty}>)
+  fork test, facts/phantom-forms/has(name)
+    hold
+      push(parts, <_marker: std::marker::PhantomData>)
+  save built, <{pascal(name)} \{\}>
+  fork test, is-above(parts/length, 0)
+    hold
+      save built, <{pascal(name)} \{ {join-texts(parts, <, >)} \}>
+  fork test, facts/context/shared-forms/has(name)
+    hold
+      back <TermShared::new({built})>
+  back built
+
 task note-built
   take owner, like text
   take st, like rust-state
@@ -3517,7 +3559,7 @@ task emit-record
                 fork test, declared-types/has(left-out)
                   hold
                     save left-type, make(some, declared-types/get(left-out))
-                save empty, empty-of(left-type)
+                save empty, left-out-empty(left-type, facts, make list)
                 save left-key, <{record-name}/{left-out}>
                 fork test, facts/field-lists/has(left-key)
                   hold
@@ -3589,7 +3631,7 @@ task emit-record
         take field
         fork test, not(has-text(given, field/name))
           hold
-            save empty, empty-of(make(some, field/type))
+            save empty, left-out-empty(make(some, field/type), facts, make list)
             fork test, facts/field-lists/has(<{record-name}/{field/name}>)
               hold
                 save empty, <Vec::new()>
@@ -4924,7 +4966,7 @@ task emit-call
                 miss
                   # lent where the callee borrows the slot, as a written argument there is (`emit-argument`): a maybe
                   # left out was passed as the value to a `&Maybe` (item 0403)
-                  save filled, empty-of(missing)
+                  save filled, left-out-empty(missing, facts, make list)
                   fork test, and(and(callee-variable, not(local-callee)), facts/borrow-params/has(callee-name))
                     hold
                       fork test, has-number(facts/borrow-params/get(callee-name), i)

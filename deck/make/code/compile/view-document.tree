@@ -316,7 +316,9 @@ bind floor-third
   case kotlin
     text <Math.floorDiv($value, 3L)>
 
-# a text's UTF-16 units, each as a text, as `a[i]` read them
+# a text's UTF-16 units, each as a text, as `a[i]` read them. On Rust a list is the shared `Rc<RefCell<Vec>>`, as
+# bytes.tree's and unicode.tree's binds answer it: the bare `Vec` failed every read (E0599 no method named `borrow`
+# found for `Vec<String>`, near and distance, term-self-host-001-1100)
 bind utf16-units
   take value, like text
   like list, like text
@@ -325,7 +327,7 @@ bind utf16-units
   case browser
     text <Array.from(\{ length: $value.length \}, (_, i) =\> $value[i]!)>
   case rust
-    text <($value.encode_utf16().map(|u| String::from_utf16_lossy(&[u])).collect::\<Vec\<String\>\>())>
+    text <std::rc::Rc::new(std::cell::RefCell::new($value.encode_utf16().map(|u| String::from_utf16_lossy(&[u])).collect::\<Vec\<String\>\>()))>
   case swift
     text <($value.utf16.map \{ String(utf16CodeUnits: [$0], count: 1) \})>
   case kotlin

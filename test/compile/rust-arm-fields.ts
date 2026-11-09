@@ -6,6 +6,11 @@
 //     below, node.tree's `form`, `text`, `word` beside minted's), the arm's record fields read as that form's scalars,
 //     a bare read of one kept the parameter `&R`, and the arm handed the reference on (E0308 expected `Maybe<i64>`,
 //     found `&Maybe<i64>`, 22 sites: origin_of's FindOrigin, node_of, written_at, empty_annotation)
+//   - shared-label-list-field (item term-self-host-001-1100): compile/backend-lending.tree owned-fields read an arm's
+//     fields by its bare case label, so where a later form has a case of the same name (`value`'s `list` below,
+//     host-value's beside feed-rule's and mine-rule's), the arm's locals were that form's fields, the list field the
+//     arm handed to a task taking the shared list was never seen, and it stayed a plain `Vec` (E0308 expected
+//     `Rc<RefCell<Vec<FeedRule>>>`, found `Vec<FeedRule>`, gather_codes, rule_children, match_rule)
 // Run: npx tsx test/compile/rust-arm-fields.ts
 
 import { spawnSync } from 'node:child_process'
@@ -115,6 +120,73 @@ task handed
   back add(add(size-in(spot-of(one)), size-in(origin/spot)), at-in(origin/at))
 `
 
+// `list` is a case of both `rule` and `value`; `value`'s, written later, holds no `children`
+const sharedLabelListField = `load @term/base/list
+  find push
+
+form rule
+  case list
+    link children, like list, like rule
+    link count, like number
+  case any
+    link children, like list, like rule
+    link send, like text
+  case char
+    link literal, like number
+
+form value
+  case list
+    link items, like list, like number
+  case word
+    link text, like text
+
+task gather-codes
+  take rules, like list, like rule
+  take codes, like list, like number
+
+  walk rules
+    take rule
+    sift rule
+      case char
+        push(codes, literal)
+      case any
+        gather-codes(children, codes)
+      case list
+        gather-codes(children, codes)
+      miss
+        save nothing, 0
+
+task rule-children
+  take rule, like rule
+  like list, like rule
+
+  sift rule
+    case list
+      back children
+    case any
+      back children
+    miss
+      back make list
+
+task char-list
+  take at, like number
+  like list, like rule
+  save inner, make list
+  push(inner, make(char, bind(literal, at)))
+  back inner
+
+task gathered
+  take at, like number
+  like number
+  save some, make list
+  push(some, make(list, bind(children, char-list(at)), bind(count, 1)))
+  push(some, make(any, bind(children, char-list(add(at, 1))), bind(send, <s>)))
+  save codes, make list
+  gather-codes(some, codes)
+  save kids, rule-children(get(some, 0))
+  back add(add(codes/length, kids/length), add(get(codes, 0), get(codes, 1)))
+`
+
 interface Case {
   name: string
   text: string
@@ -128,6 +200,8 @@ interface Case {
 const cases: Case[] = [
   // handed(3) is 3 + 3 + 7
   { name: 'shared-label-borrowed-arm', text: sharedLabelBorrowedArm, entries: ['handed'], calls: [['handed', 3]], want: '13', pattern: /fn (spot|origin)_of\(value: &Held\)/, code: 'E0308' },
+  // gathered(3) is (2 + 1) + (3 + 4)
+  { name: 'shared-label-list-field', text: sharedLabelListField, entries: ['gathered'], calls: [['gathered', 3]], want: '10', pattern: /List \{ children: Vec<Rule>/, code: 'E0308' },
 ]
 
 const camel = (snake: string): string => snake.replace(/_(\w)/g, (_, c: string) => c.toUpperCase())

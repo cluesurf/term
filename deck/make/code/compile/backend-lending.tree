@@ -1653,16 +1653,24 @@ task fields-visit
         case match
           link match-subject
           link match-cases
-          # an arm binding a list field: its local only read
+          # an arm binding a list field: its local only read. The fields are the subject's own form's case first: by
+          # the bare label, a later form's case of that name gave its fields (hostValue's `list` for feed-rule's), the
+          # arm's local was never the list, and the field stayed a plain `Vec` a call took shared (E0308 expected
+          # `Rc<RefCell<Vec<FeedRule>>>`, found `Vec<FeedRule>`, term-self-host-001-1100)
+          save subject-form, form-name-of(expression-type(match-subject))
           walk match-cases
             take arm
-            fork test, scope/fields-of/has(arm/label)
+            save arm-key, <{subject-form}/{arm/label}>
+            fork test, not(scope/fields-of/has(arm-key))
+              hold
+                save arm-key, arm/label
+            fork test, scope/fields-of/has(arm-key)
               hold
                 save binds, make list
                 walk arm/binds
                   take one
                   push(binds, one)
-                walk arm-locals(scope/fields-of/get(arm/label), binds)
+                walk arm-locals(scope/fields-of/get(arm-key), binds)
                   take pair
                   save key, <{arm/label}/{pair/field}>
                   fork test, and(st/keys/has(key), not(only-reads(arm/body, pair/local, scope/lend, false)))
@@ -1744,6 +1752,8 @@ task owned-fields
                 take field
                 push(names, field/name)
               save fields-of/{variant/name}, names
+              save owned-key, <{record-name}/{variant/name}>
+              save fields-of/{owned-key}, names
           miss
             # a plain record's list fields, read through their path (`p/points`), keyed `form/field`
             fork test, is-equal(record-variants/length, 0)
@@ -1766,6 +1776,10 @@ task owned-fields
                 take field
                 push(names, field/name)
               save fields-of/{variant/name}, names
+              # and by its own form, since two forms can name a case alike and the bare name holds the last one
+              # (term-self-host-001-1100)
+              save owned-key, <{record-name}/{variant/name}>
+              save fields-of/{owned-key}, names
               walk variant/fields
                 take field
                 fork test, is-equal(bare-kind(field/type), <array>)

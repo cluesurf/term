@@ -354,6 +354,11 @@ form emit-call-ask
   link run, like boolean
   link main, like dynamic
 
+form program-emit
+  link root, like dynamic
+  link file, like text
+  link target, like text
+
 # a runtime shim's text, or `undefined` when there is none
 task read-runtime
   take file, like text

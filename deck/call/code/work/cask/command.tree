@@ -102,6 +102,7 @@ load ../build/host-faces
 
 load ../context/app-scope
   find check-scope
+  find scope-ask
 
 load ../tool/show-command
   find tool-version
@@ -218,10 +219,6 @@ form run-interrupted
 form source-ask
   link file, like text
   link text, like text
-
-form scope-ask
-  link root, like text
-  link files, like list, like text
 
 form cask-folder
   link recursive, like boolean

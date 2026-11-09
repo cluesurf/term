@@ -38,24 +38,20 @@ load @term/call/work/boot/boot-running
 
 load @term/call/work/inspect/viewing
   find call-view
+  find view-ask
 
 load @term/call/work/tool/seek-command
   find call-seek
 
 load @term/call/work/inspect/molding
   find call-mold
+  find mold-ask
 
 dock load
   load <node:process>, name node-process
   # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
   load <global:process>, name host-process
   load <global:JSON>, name host-json
-
-form view-ask
-  link root, like text
-  link path, like text
-  link find, like boolean
-  link back, like text
 
 form seek-ask
   link root, like text
@@ -64,21 +60,6 @@ form seek-ask
   link sarif, like text
   link format, like text
   link fix, like boolean
-
-# `file` is a host value: the path when the line named one, else undefined, which call-mold labels `stdin` (input.file
-# ?? 'stdin'), as line.ts handed argv.file on
-form mold-ask
-  link root, like text
-  link file, like dynamic
-  link pack, like boolean
-  link json, like boolean
-  link keep, like boolean
-  link tree, like boolean
-  link check, like boolean
-  link trees, like boolean
-  link lines, like boolean
-  link code, like boolean
-  link canonical, like boolean
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
 # argv.<x>). The argument is always a local, so the text may read it twice. Named for this file (a bind of one name
