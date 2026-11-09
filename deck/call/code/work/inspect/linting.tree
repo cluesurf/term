@@ -545,7 +545,7 @@ task findings-of
   back out
 
 task call-lint
-  take input, like dynamic
+  take input, like lint-ask
   like void
 
   save root, input/root

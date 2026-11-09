@@ -137,7 +137,7 @@ task refused
 # no argument: register the current package in the global link registry, so any project can later `term link
 # <name>` to use this working copy
 task register-link
-  take root, like dynamic
+  take root, like text
   like void
   mark private
 
@@ -146,8 +146,8 @@ task register-link
   close-run(make(next-done-close, bind(verdict, <{full-name} is registered>), bind(next, <term link {full-name}, in the project that uses it>), bind(done, true)))
 
 task link-deck
-  take root, like dynamic
-  take deck, like dynamic
+  take root, like text
+  take deck, like text
   like void
   mark private
 
@@ -179,7 +179,7 @@ task link-deck
   close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
 
 task call-link
-  take input, like dynamic
+  take input, like link-ask
   like void
 
   save root, input/root
@@ -203,8 +203,8 @@ task call-link
     refused(error, <Not linked>)
 
 task unlink-deck
-  take root, like dynamic
-  take deck, like dynamic
+  take root, like text
+  take deck, like text
   like void
   mark private
 
@@ -213,12 +213,13 @@ task unlink-deck
   close-run(make(done-close, bind(verdict, <{deck} is unlinked>), bind(done, true)))
 
 task call-unlink
-  take input, like dynamic
+  take input, like link-ask
   like void
 
   save root, input/root
   save deck, input/deck
-  save facts, make list
+  save facts, like list, like dynamic
+    make list
   fork test, is-truthy(deck)
     hold
       facts/push(deck)

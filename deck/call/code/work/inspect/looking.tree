@@ -130,8 +130,8 @@ bind cell
 
 form facts-open
   link verb, like text
-  link root, like dynamic
-  link facts, like list, like dynamic
+  link root, like text
+  link facts, like list, like text
 
 form problem-item
   link glyph, like text
@@ -226,7 +226,7 @@ task plural-s
 # `--json` prints the value itself, keys in snake case, the way `term make` would export it
 task look-data
   take entry, like dynamic
-  take input, like dynamic
+  take input, like look-ask
   take root, like dynamic
   like void
   mark private
@@ -283,7 +283,7 @@ task look-data
   close-run(make(facts-close, bind(verdict, <{keys/length} key{plural-s(keys/length)} listed>), bind(facts, facts)))
 
 task call-look
-  take input, like dynamic
+  take input, like look-ask
   like void
 
   save root, input/root

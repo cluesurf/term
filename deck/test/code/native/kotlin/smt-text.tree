@@ -1,0 +1,16 @@
+# kotlin's solver binding, through the smt-text runtime shim (runtime/smt-text.kt, a `z3 -in` process per script).
+# Internal: smt-query.tree reaches it through `@term/test/native/{platform}/smt-text` and calls `evaluate-smt`.
+
+dock load
+  load <global:smt-text>, name smt-text
+
+# Z3's answer to one SMT-LIB2 script. A task, never the dock alias found from smt-query.tree: `term test` builds the two
+# as separate units, and a found alias reached smt-query's as an undefined `smtText` (item 1075)
+task evaluate-smt
+  mark async
+  take script, like text
+  like text
+  send back
+    call smt-text/evaluate
+      read script
+      wait true

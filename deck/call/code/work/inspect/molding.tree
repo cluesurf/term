@@ -183,7 +183,7 @@ task refuse-data
   close-run(make(mold-close, bind(verdict, <The data does not read>)))
 
 task call-mold
-  take input, like dynamic
+  take input, like mold-ask
   like void
 
   save root, input/root

@@ -851,6 +851,45 @@ task zero-of
     case none
       back make none
 
+# a literal put in place of a parameter: a whole number given to a `float` parameter is the float it was converted to
+# at the call, since the body reads it where a float belongs. `scale(at, 2)` inlined into `at * 2` failed rustc (E0277
+# cannot multiply `f64` by `{integer}`, item term-self-host-001-1104), where the call itself took `2.0`
+task float-literal-for
+  take arg, like expression
+  take given, like maybe, like type
+  like expression
+  mark private
+
+  save wants-float, false
+  sift given
+    case some
+      link one
+      sift one
+        case float
+          save wants-float, true
+        case named
+          link type-name
+          save wants-float, is-equal(type-name, <float>)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, not(wants-float)
+    hold
+      back arg
+  sift arg
+    case integer
+      link value
+      link digits
+      link span
+      back
+        make expression/float
+          bind value, value
+          bind span, span
+          bind type, given
+    miss
+      back arg
+
 task has-zero
   take given, like maybe, like type
   like boolean
@@ -1220,7 +1259,7 @@ task expand
         fork test, and(plain, not(has-text(written, param-name)))
           hold
             push(substituted-names, param-name)
-            push(substituted, arg)
+            push(substituted, float-literal-for(arg, param/type))
           miss
             save made-name, fresh-name(round/names, param-name)
             save renamed/{param-name}, made-name

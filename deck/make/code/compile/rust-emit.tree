@@ -3578,12 +3578,39 @@ task emit-record
                                 save left-holder, <Box>
                             save empty, <{left-holder}::new({empty})>
                 push(fields, field-entry(left-out, empty))
-          # a type argument nothing constrains is named the unit type, the others `_`
+          # a type argument nothing constrains is named the unit type, the others `_`. A case given a field the form
+          # declares as a bare type parameter leaves rustc to read it off that value instead: `make(some, x)` with x
+          # from an untyped list was `Maybe::<()>::Some { value: x }` (E0308 expected `()`, found `Minted`, item
+          # term-self-host-001-1104)
+          save owner-params, make list
+          fork test, facts/inspect-forms/has(owner-form)
+            hold
+              sift facts/inspect-forms/get(owner-form)
+                case record-type
+                  link owner-name
+                  link owner-declared-params
+                  save owner-params, owner-declared-params
+                miss
+                  save nothing, 0
+          save given-params, make list
+          walk record-fields
+            take field
+            fork test, declared-types/has(field/name)
+              hold
+                sift declared-types/get(field/name)
+                  case named
+                    link type-name
+                    fork test, has-text(owner-params, type-name)
+                      hold
+                        push(given-params, type-name)
+                  miss
+                    save nothing, 0
           save args, args-of(record-type)
           save any-free, false
           save spelled-args, make list
           walk args
             take arg
+            take arg-at
             save free, false
             sift arg
               case variable
@@ -3591,7 +3618,14 @@ task emit-record
                 save free, not(facts/context/var-names/has(variable-id))
               miss
                 save nothing, 0
-            fork test, free
+            save given-generic, false
+            walk owner-params
+              take owner-param
+              take param-at
+              fork test, and(is-equal(param-at, arg-at), has-text(given-params, owner-param))
+                hold
+                  save given-generic, true
+            fork test, and(free, not(given-generic))
               hold
                 save any-free, true
                 push(spelled-args, <()>)

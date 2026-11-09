@@ -1,7 +1,7 @@
 # Questions for an SMT solver, written in Term: linear integer terms and the formulas over them, their SMT-LIB2 text,
 # a satisfiability query with its model read back, and the queries every solver-backed checker asks. What crosses to
-# the solver is TEXT (smt-text.ts, the one binding), so the formulas, the encodings and every algorithm built on them
-# are Term.
+# the solver is TEXT (native/<env>/smt-text.tree, each env's one binding), so the formulas, the encodings and every
+# algorithm built on them are Term.
 #
 # Written for the self-hosting port of deck/test/code/smt.ts and the modules built on it (2026-10-05). There each
 # formula was a Z3 object built through Z3's JavaScript API; here it is data, printed as SMT-LIB2.
@@ -20,8 +20,8 @@ load @term/base/exception
 load @term/base/text/number
   find parse-integer
 
-dock load
-  load <global:smt-text>, name smt-text
+load @term/test/native/{platform}/smt-text
+  find evaluate-smt
 
 # an integer-valued term
 form smt-term
@@ -307,7 +307,7 @@ task check-sat
   fork test, is-above(names/length, 0)
     hold
       lines/push(<(get-value ({join(names, < >)}))>)
-  host evaluated, wait smt-text/evaluate(join(lines, <\n>))
+  host evaluated, evaluate-smt(join(lines, <\n>))
   host printed, solver-answer(evaluated)
   host answer, split(trim(printed), <\n>)
   host status, trim(get(answer, 0))

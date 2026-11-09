@@ -217,6 +217,8 @@ task emit-form
       link form-fields
       link form-variants
       link form-alias
+      link form-tag
+      link form-text
       save context, facts/context
       save letters, upper-params(form-params)
       save generics, <>
@@ -347,7 +349,29 @@ task emit-form
                         save shape, < \{ .. \}>
                 push(tag-arms, <Self::{pascal(variant/name)}{shape} =\> {json-text(tag-text(variant/name))}>)
               save tagged, <\n{pad(depth)}impl{generics} {pascal(form-name)}{type-args} \{\n{pad(add(depth, 1))}#[allow(dead_code)]\n{pad(add(depth, 1))}pub fn term_tag(&self) -\> String \{ match self \{ {join-texts(tag-arms, <, >)} \}.to_string() \}\n{pad(depth)}\}>
-          back <{derive}enum {pascal(form-name)}{generics} \{\n{join-texts(cases, <,\n>)}\n{pad(depth)}\}{join-texts(structs, <>)}{written}{enum-key}{tagged}>
+          # a `mark text` form is a closed set of texts, and a template writes the case's text, as TypeScript, which
+          # holds the text itself, does: `<the operator {op}>` failed rustc (E0277 `BinaryOp` doesn't implement
+          # `Display`, item term-self-host-001-1104). A case with no `text` is its own name (check/text-forms)
+          save shown, <>
+          fork test, form-text
+            hold
+              save text-arms, make list
+              walk form-variants
+                take variant
+                save said, variant/name
+                sift variant/text
+                  case some
+                    link value
+                    save said, value
+                  case none
+                    save nothing, 0
+                save shape, <>
+                fork test, is-above(variant/fields/length, 0)
+                  hold
+                    save shape, < \{ .. \}>
+                push(text-arms, <Self::{pascal(variant/name)}{shape} =\> {json-text(said)}>)
+              save shown, <\n{pad(depth)}impl{generics} std::fmt::Display for {pascal(form-name)}{type-args} \{\n{pad(add(depth, 1))}fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ f.write_str(match self \{ {join-texts(text-arms, <, >)} \}) \}\n{pad(depth)}\}>
+          back <{derive}enum {pascal(form-name)}{generics} \{\n{join-texts(cases, <,\n>)}\n{pad(depth)}\}{join-texts(structs, <>)}{written}{enum-key}{tagged}{shown}>
 
       # a list the record owns is the plain `Vec`
       save lines, make list

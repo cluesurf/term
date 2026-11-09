@@ -372,7 +372,7 @@ task document-plural
   back <documents>
 
 task call-view
-  take input, like dynamic
+  take input, like view-ask
   like void
 
   save root, input/root
