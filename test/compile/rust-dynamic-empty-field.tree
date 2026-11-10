@@ -1,0 +1,63 @@
+note <a construction leaving out an optional field typed dynamic, on TypeScript and Rust>
+
+# Ported from rust-dynamic-empty-field.ts by statement (item term-self-host-001-1133), one test per `ok`. A Rust emitter
+# shape the CLI's entry refused (finding/native-entry.md of term/self-host/change/001-finish-self-host, item 1056),
+# held through rustc and RUN, against TypeScript's answer: a construction that leaves out an optional field typed
+# `dynamic`. The left-out field takes its type's empty value (item 1055), and compile/rust-tables empty-of had no
+# `dynamic` case, so it wrote `0` where the field is the boxed dynamic `Rc<dyn Any>` (E0308 expected `Rc<dyn Any>`,
+# found integer: `ItemAsk { duration: 0 }`, `KeeperItem { kind: 0, facts: 0 }`, 243 sites). A field typed `unknown`
+# beside it, the same slot, is the control. Built directly, given to a task, and with the dynamic field given. No rustc
+# is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+  find lines-matching
+
+load @term/base/pattern
+  find pattern
+
+load @term/base/text
+  find contains, name text-contains
+
+host items, <form item\n  link name, like text\n  link size, like number\n  link wait\n    like dynamic\n    need false\n  link rest\n    like unknown\n    need false\n  link tag\n    like text\n    need false\n\ntask measure\n  take one, like item\n  like number\n  back add(one/size, 100)\n\ntask count\n  take at, like number\n  like number\n  save one, make(item, bind(name, \<a\>), bind(size, at))\n  save two, make(item, bind(name, \<bb\>), bind(size, 2), bind(wait, 7))\n  back add(one/size, two/size)\n\ntask weigh\n  take at, like number\n  like number\n  back measure(make(item, bind(name, \<c\>), bind(size, at)))\n>
+
+# count(3) is 5 and count(10) is 12; weigh(4) is 104
+task empty-field
+  like native-case
+
+  back native-case-of(<items>, items, make(list, <count>, <weigh>), make(list, call-of(<count>, <count>, <3>), call-of(<count>, <count>, <10>), call-of(<weigh>, <weigh>, <4>)))
+
+host bare-zero, make pattern, <<\b(wait|rest): 0\b>>
+
+test <TypeScript answers>
+  host one, empty-field()
+  want hold, is-equal(one/typescript, <5|12|104>)
+
+test <a left-out dynamic or unknown field is never a bare 0>
+  host one, empty-field()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, bare-zero)/length, 0)
+
+test <rustc compiles it>
+  host one, empty-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <no integer where the boxed dynamic belongs (E0308)>
+  host one, empty-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <Rust answers what TypeScript does>
+  host one, empty-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <5|12|104>)

@@ -1,0 +1,62 @@
+note <a closure whose sift arm links a name the task declares later, on TypeScript and Rust>
+
+# Ported from rust-closure-arm-link.ts by statement (item term-self-host-001-1133), one test per `ok`. A Rust emitter
+# shape the CLI's entry refused (finding/native-entry.md of term/self-host/change/001-finish-self-host, item 1086, the
+# rest of 1057), held through rustc and RUN, against TypeScript's answer: a closure whose sift arm binds a name by `link`
+# (`case some` / `link key`, written `Maybe::Some { value: key }`) that the task declares too, later. The outer locals
+# are every name the task declares, so the closure cloned `key` before the task had it (`let key = key.clone()`, E0425,
+# at `owns-inner-item` and `enter-task`). Once directly in the closure's body, once inside a fork in it. No rustc is the
+# test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+  find lines-matching
+
+load @term/base/pattern
+  find pattern
+
+load @term/base/text
+  find contains, name text-contains
+
+host arms, <load @term/base/maybe\n  find maybe\n\ntask half\n  take i, like number\n  like maybe number\n  fork test, is-below(i, 5)\n    hold\n      back make some(add(i, 10))\n  back make none\n\ntask pick\n  take at, like number\n  like number\n  save chooser\n    task\n      take i, like number\n      like number\n      sift half(i)\n        case some\n          link key\n          back key\n        case none\n          back 0\n  save first, chooser(at)\n  save key, add(first, 1)\n  back key\n\ntask pick-deep\n  take at, like number\n  like number\n  save chooser\n    task\n      take i, like number\n      like number\n      fork test, is-above(i, 0)\n        hold\n          sift half(i)\n            case some\n              link deep\n              back deep\n            case none\n              save nothing, 0\n      back 0\n  save first, chooser(at)\n  save deep, add(first, 2)\n  back deep\n>
+
+# pick(3) is 14 and pick(9) is 1; pick-deep(2) is 14 and pick-deep(9) is 2
+task arm-link
+  like native-case
+
+  back native-case-of(<arms>, arms, make(list, <pick>, <pick-deep>), make(list, call-of(<pick>, <pick>, <3>), call-of(<pick>, <pick>, <9>), call-of(<pick_deep>, <pickDeep>, <2>), call-of(<pick_deep>, <pickDeep>, <9>)))
+
+host early-clone, make pattern, <<let (key|deep) = (key|deep)\.clone\(\)>>
+
+test <TypeScript answers>
+  host one, arm-link()
+  want hold, is-equal(one/typescript, <14|1|14|2>)
+
+test <the closure clones no name its arms bind>
+  host one, arm-link()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, early-clone)/length, 0)
+
+test <rustc compiles it>
+  host one, arm-link()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <no name cloned before it is declared (E0425)>
+  host one, arm-link()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0425>))
+
+test <Rust answers what TypeScript does>
+  host one, arm-link()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <14|1|14|2>)

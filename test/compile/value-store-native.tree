@@ -1,0 +1,151 @@
+note <a value is copied at the store, decided at compile time, the same on every backend>
+
+# Ported from value-store-native.ts by statement (item term-self-host-001-1131), one walked test per case of its table,
+# each backend a case of it, as the original's loop gave one line per case and backend. Decision 115 of change 001, item
+# 0888: a form not marked shared, a union included, is a value on every backend (D1). A write through one name never
+# reaches another, and no value can hold itself. Each program is built and RUN on TypeScript, Rust, Swift and Kotlin,
+# resolving from the working directory's project, and every backend must print the same text.
+#
+# Held, each a leg of tmp/self-host/0887/four.ts or of the decision:
+# - `save t/left, t` in a `case node` arm makes t a node whose left is the old t (depth 2): before, TypeScript overflowed
+#   the stack (t held itself) and Rust, Swift and Kotlin did not build (the arm's local was written, or a val).
+# - a record stored in a `make` and written after keeps the holder's copy (1): before, TypeScript and Kotlin answered 5.
+# - `save r/u, make(node, bind(r, r))`, a record holding a union that holds the record, ends (1).
+# - a union parameter written in an arm (node.tree `with-type`'s shape) leaves the caller's value as it was, and so does
+#   a union let that aliases another: on Rust, Swift and Kotlin now, on TypeScript from item 0907 (a gap until then).
+# - the plain record legs that already held: an aliasing let and a written parameter.
+#
+# A gap names a backend a case cannot pass on yet, and why: never the store this file holds. It is the case's own skip,
+# as a backend whose toolchain is not installed is.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host forms-text, <form tree\n  case leaf\n  case node\n    link left, like tree\n\ntask depth\n  take t, like tree\n  like number\n  sift t\n    case leaf\n      back 0\n    case node\n      back add(depth(left), 1)\n\nform pair\n  link x, like number\n  link y, like number\n\nform holder\n  link p, like pair\n>
+
+# a union reaches TypeScript as a value only after 016's projections, the compiler's own union sites and the lowerings
+# (decision 118 step 5): until then a written union parameter and an aliasing union let alias there, as before 0888. Each
+# of the two union tests skips TypeScript saying so (a skip takes a text literal)
+
+host shape-text, <form shape\n  case dot\n    link size, like number\n  case box\n    link size, like number\n>
+
+host size-of-text, <task size-of\n  take s, like shape\n  like number\n  sift s\n    case dot\n      back size\n    case box\n      back size\n>
+
+# the arm writes the matched subject, and the stored value is the subject as it was
+test <arm-write-self>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<value-store->)
+  host body, <task run\n  like text\n  save t, make(node, bind(left, make leaf))\n  sift t\n    case node\n      save t/left, t\n    case leaf\n      back \<leaf\>\n  back \<\{depth(t)\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-arm-write-self>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <2>)
+
+# the arm writes the subject with a value that does not hold it
+test <arm-write-other>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<value-store->)
+  host body, <task run\n  like text\n  save t, make(node, bind(left, make leaf))\n  save before, depth(t)\n  sift t\n    case node\n      save t/left, make(node, bind(left, make leaf))\n    case leaf\n      back \<leaf\>\n  back \<\{before\} \{depth(t)\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-arm-write-other>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 2>)
+
+# a record stored in a make, then written: the holder keeps the value as stored
+test <stored-then-written>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<value-store->)
+  host body, <task run\n  like text\n  save a, make(pair, bind(x, 1), bind(y, 1))\n  save h, make(holder, bind(p, a))\n  save a/x, 5\n  back \<\{h/p/x\} \{a/x\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-stored-then-written>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 5>)
+
+# a record stored into a field, then written
+test <field-stored-then-written>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<value-store->)
+  host body, <task run\n  like text\n  save a, make(pair, bind(x, 1), bind(y, 1))\n  save h, make(holder, bind(p, make(pair, bind(x, 0), bind(y, 0))))\n  save h/p, a\n  save a/x, 7\n  back \<\{h/p/x\} \{a/x\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-field-stored-then-written>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 7>)
+
+# a record holding a union that holds the record: the store holds the root, so the root is rebuilt. rustc E0072 before any
+# store: a record and a union that hold each other are not boxed (the recursive fields reach only a form that holds
+# itself), item 0888's log.md entry
+test <root-in-make>
+  take backend, like text
+    walk backends()
+  fork test, is-equal(backend, <rust>)
+    hold
+      skip <a record and a union holding each other are not boxed on Rust (E0072), apart from the store>
+  host folder, temp-folder(<value-store->)
+  host body, <form room\n  link u, like door\n  link n, like number\n\nform door\n  case shut\n  case open\n    link r, like room\n\ntask count-rooms\n  take r, like room\n  like number\n  save at, r/u\n  sift at\n    case shut\n      back 1\n    case open\n      back add(count-rooms(r), 1)\n\ntask run\n  like text\n  save r, make(room, bind(u, make shut), bind(n, 1))\n  save r/u, make(open, bind(r, r))\n  save inner, r/u\n  sift inner\n    case open\n      back \<\{count-rooms(r)\}\>\n    case shut\n      back \<shut\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-root-in-make>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1>)
+
+# a union parameter written in an arm, as node.tree with-type writes its expression: the caller's value stays
+test <union-param-written>
+  take backend, like text
+    walk backends()
+  fork test, is-equal(backend, <typescript>)
+    hold
+      skip <a union is copied at a written parameter or an aliasing let on TypeScript from item term-self-host-001-0907 (decision 118)>
+  host folder, temp-folder(<value-store->)
+  host body, <{shape-text}\ntask grow\n  take s, like shape\n  like shape\n  sift s\n    case dot\n      save s/size, 9\n    case box\n      save s/size, 8\n  back s\n\n{size-of-text}\ntask run\n  like text\n  save a, make(dot, bind(size, 1))\n  save b, grow(a)\n  back \<\{size-of(a)\} \{size-of(b)\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-union-param-written>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 9>)
+
+# a union let that aliases another, written in an arm: the first name's value stays
+test <union-alias-let>
+  take backend, like text
+    walk backends()
+  fork test, is-equal(backend, <typescript>)
+    hold
+      skip <a union is copied at a written parameter or an aliasing let on TypeScript from item term-self-host-001-0907 (decision 118)>
+  host folder, temp-folder(<value-store->)
+  host body, <{shape-text}\n{size-of-text}\ntask run\n  like text\n  save a, make(dot, bind(size, 1))\n  save b, a\n  sift b\n    case dot\n      save b/size, 9\n    case box\n      save b/size, 8\n  back \<\{size-of(a)\} \{size-of(b)\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-union-alias-let>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 9>)
+
+# the legs that held before: an aliasing let and a written parameter
+test <alias-and-param>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<value-store->)
+  host body, <task bump\n  take p, like pair\n  like number\n  save p/x, 9\n  back p/x\n\ntask run\n  like text\n  save a, make(pair, bind(x, 1), bind(y, 1))\n  save b, a\n  save b/x, 2\n  save n, bump(a)\n  back \<\{a/x\} \{a/x\}\>\n>
+  host ran, run-text(<{forms-text}\n{body}>, backend, folder, <v-alias-and-param>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <1 1>)

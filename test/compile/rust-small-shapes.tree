@@ -1,0 +1,85 @@
+note <a free maybe type argument, a text form in a template and a whole number into an inlined float, on TypeScript and Rust>
+
+# Ported from rust-small-shapes.ts by statement (item term-self-host-001-1133), one test per `ok` of each of its three
+# shapes. Small Rust type-phase shapes the CLI's entry refused (item 1104 of term/self-host/change/001-finish-self-host,
+# found by 1059), one program per shape (T-1091), each held through rustc and RUN against TypeScript's answer:
+#   maybe-free     a `make(some, x)` whose type argument the checker leaves free (x read from an untyped list) was
+#                  `Maybe::<()>::Some { value: x }` (E0308 expected `()`, found `Minted`: minting.tree mask-of)
+#   text-display   a `mark text` form's value in a template had no `Display` (E0277 `BinaryOp` doesn't implement
+#                  `std::fmt::Display`: law-english-reading.tree binary-piece and unary-piece)
+#   float-inline   a whole number given to a `float` parameter of an INLINED task stayed a whole number in the body
+#                  (`scale(at, 2)` as `at * 2`, E0277 cannot multiply `f64` by `{integer}`: check/eliminate.tree)
+# No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+host maybe-free-text, <load @term/base/maybe\n  find maybe\n\nload @term/base/list\n  find push\n\nform minted\n  link name, like text\n\ntask first-name\n  take given, like maybe, like minted\n  like text\n  sift given\n    case some\n      link value\n      back value/name\n    case none\n      back \<\>\n\ntask names\n  take one, like minted\n  like text\n  save declared, make list\n  push(declared, one)\n  save defaults, make hash\n  walk declared\n    take each\n    save defaults/\{first-name(make(some, each))\}, true\n  save out, \<\>\n  walk defaults/keys()\n    take key\n    save out, key\n  back out\n\ntask check\n  like text\n  back names(make(minted, bind(name, \<n\>)))\n>
+
+host text-display-text, <form sign\n  mark text\n  case plus, text \<+\>\n  case minus, text \<-\>\n  case blank\n\ntask said\n  take one, like sign\n  like text\n  back \<the sign \{one\}\>\n\ntask check\n  like text\n  back \<\{said(make(plus))\}|\{said(make(minus))\}|\{said(make(blank))\}\>\n>
+
+host float-inline-text, <task scaled\n  take a, like float\n  take k, like float\n  like float\n  mark private\n  back multiply(a, k)\n\ntask twice\n  take at, like float\n  like float\n  back scaled(at, 2)\n\ntask check\n  like text\n  back \<\{twice(1.5)\}\>\n>
+
+# one shape by its name, its `check` printed alone
+task shape
+  take name, like text
+  take text, like text
+  like native-case
+
+  back native-case-of(name, text, make(list, <check>), make(list, call-of(<check>, <check>, <>)))
+
+test <maybe-free: TypeScript answers>
+  host one, shape(<maybe-free>, maybe-free-text)
+  want hold, is-equal(one/typescript, <n>)
+
+test <maybe-free: rustc compiles it>
+  host one, shape(<maybe-free>, maybe-free-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <maybe-free: Rust answers what TypeScript does>
+  host one, shape(<maybe-free>, maybe-free-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <n>)
+
+test <text-display: TypeScript answers>
+  host one, shape(<text-display>, text-display-text)
+  want hold, is-equal(one/typescript, <the sign +|the sign -|the sign blank>)
+
+test <text-display: rustc compiles it>
+  host one, shape(<text-display>, text-display-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <text-display: Rust answers what TypeScript does>
+  host one, shape(<text-display>, text-display-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <the sign +|the sign -|the sign blank>)
+
+test <float-inline: TypeScript answers>
+  host one, shape(<float-inline>, float-inline-text)
+  want hold, is-equal(one/typescript, <3>)
+
+test <float-inline: rustc compiles it>
+  host one, shape(<float-inline>, float-inline-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <float-inline: Rust answers what TypeScript does>
+  host one, shape(<float-inline>, float-inline-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <3>)

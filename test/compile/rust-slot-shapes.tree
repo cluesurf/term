@@ -1,0 +1,192 @@
+note <a computed key, an arm's link it writes, a whole number in a float slot and a shared dynamic field, on TypeScript and Rust>
+
+# Ported from rust-slot-shapes.ts by statement (item term-self-host-001-1133), one test per `ok` of each of its four
+# cases. Rust emitter shapes the CLI's entry refused after 1058 (finding/native-entry.md of
+# term/self-host/change/001-finish-self-host, item 1094), each its own program, held through rustc and RUN, against
+# TypeScript's answer:
+#   key-moved: a computed key (`save seen/{name}, ...`) was no read of `name` to the move scan (rust-names.tree
+#   move-on-last-use), so a name read once besides its keys moved there and the key after failed (E0382 use of moved
+#   value `name`, `task_name`, 11 sites in scan_pure, bind_capture, count_name)
+#   arm-local-write: a sift arm's link the arm writes (`save component/props, ...`) was bound plain (E0594 cannot assign
+#   to `component.props`, node-rewrite.tree and disambiguate.tree)
+#   float-slot: a whole number into a `float` field or parameter, or beside a float in arithmetic or a comparison,
+#   stayed an integer (E0308 expected `f64`, found integer, 36 sites, knit/spend.tree; E0277 `f64 + {integer}`)
+#   shared-dynamic-write: a field of a `mark shared` form typed `dynamic` written with a concrete value took it unboxed
+#   (E0308 expected `Rc<dyn Any>`, found `DevServer`)
+# No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+host key-moved-text, <load @term/base/list\n  find push\n\ntask note-name\n  take names, like list, like text\n  take seen, like hash, like text, like number\n  take name, like text\n  push(names, name)\n  save seen/\{name\}, names/length\n\ntask note-twice\n  take seen, like hash, like text, like number\n  take name, like text\n  save seen/\{name\}, 1\n  save seen/\{name\}, 2\n\ntask count-names\n  take at, like number\n  like number\n  save names, make list\n  save seen, make hash\n  note-name(names, seen, \<a\>)\n  note-name(names, seen, \<bb\>)\n  note-twice(seen, \<c\>)\n  back add(names/length, at)\n>
+
+host arm-local-write-text, <load @term/base/maybe\n  find maybe\n\nform spot\n  link name, like text\n  link size, like number\n\nform bag\n  link name, like text\n  link spot, like maybe, like spot\n\ntask grow-bag\n  take one, like bag\n  like number\n  save held, one\n  sift held/spot\n    case some\n      link found\n      save found/size, add(found/size, 5)\n      save held/spot, make(some, found)\n    case none\n      save nothing, 0\n  sift held/spot\n    case some\n      link found\n      back found/size\n    case none\n      back 0\n\ntask grow\n  take at, like number\n  like number\n  back grow-bag(make(bag, bind(name, \<b\>), bind(spot, make(some, make(spot, bind(name, \<s\>), bind(size, at))))))\n>
+
+host float-slot-text, <form price\n  link input, like float\n  link output, like float\n\ntask scale\n  take x, like float\n  take by, like number\n  like float\n  save y, add(x, by)\n  fork test, is-above(y, 100)\n    hold\n      back 100\n  back y\n\ntask priced\n  take at, like number\n  like float\n  save p, make(price, bind(input, 4), bind(output, at))\n  fork test, is-equal(p/input, 4)\n    hold\n      back add(add(p/input, p/output), scale(2, at))\n  back add(p/input, 1)\n>
+
+host shared-dynamic-write-text, <form spot\n  link name, like text\n  link size, like number\n\nform holder\n  mark shared\n  link name, like text\n  link held, like dynamic\n\ntask hold-spot\n  take at, like number\n  like number\n  save h, make(holder, bind(name, \<h\>), bind(held, 0))\n  save h/held, make(spot, bind(name, \<s\>), bind(size, at))\n  back add(at, 1)\n>
+
+# count-names(3) is 2 + 3
+task key-moved
+  like native-case
+
+  back native-case-of(<key-moved>, key-moved-text, make(list, <count-names>), make(list, call-of(<count_names>, <countNames>, <3>)))
+
+# grow(3) is 3 + 5
+task arm-local-write
+  like native-case
+
+  back native-case-of(<arm-local-write>, arm-local-write-text, make(list, <grow>), make(list, call-of(<grow>, <grow>, <3>)))
+
+# priced(3) is (4 + 3) + (2 + 3)
+task float-slot
+  like native-case
+
+  back native-case-of(<float-slot>, float-slot-text, make(list, <priced>), make(list, call-of(<priced>, <priced>, <3>)))
+
+# hold-spot(3) is 4
+task shared-dynamic-write
+  like native-case
+
+  back native-case-of(<shared-dynamic-write>, shared-dynamic-write-text, make(list, <hold-spot>), make(list, call-of(<hold_spot>, <holdSpot>, <3>)))
+
+host key-moved-shape, make pattern, <<list_push\([^;]*, name\);>>
+host arm-local-write-shape, make pattern, <<value: found \} => \{\n[^\n]*found\.size = >>
+host float-slot-shape, make pattern, <<input: 4\b>>
+host shared-dynamic-write-shape, make pattern, <<let __shared_value = Spot \{>>
+
+test <key-moved: TypeScript answers>
+  host one, key-moved()
+  want hold, is-equal(one/typescript, <5>)
+
+test <key-moved: the emitted shape is gone>
+  host one, key-moved()
+  want hold, one/built
+  want hold, not(matches(key-moved-shape, one/rust))
+
+test <key-moved: rustc compiles it>
+  host one, key-moved()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <key-moved: no E0382>
+  host one, key-moved()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0382>))
+
+test <key-moved: Rust answers what TypeScript does>
+  host one, key-moved()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <5>)
+
+
+test <arm-local-write: TypeScript answers>
+  host one, arm-local-write()
+  want hold, is-equal(one/typescript, <8>)
+
+test <arm-local-write: the emitted shape is gone>
+  host one, arm-local-write()
+  want hold, one/built
+  want hold, not(matches(arm-local-write-shape, one/rust))
+
+test <arm-local-write: rustc compiles it>
+  host one, arm-local-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <arm-local-write: no E0594>
+  host one, arm-local-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0594>))
+
+test <arm-local-write: Rust answers what TypeScript does>
+  host one, arm-local-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <8>)
+
+
+test <float-slot: TypeScript answers>
+  host one, float-slot()
+  want hold, is-equal(one/typescript, <12>)
+
+test <float-slot: the emitted shape is gone>
+  host one, float-slot()
+  want hold, one/built
+  want hold, not(matches(float-slot-shape, one/rust))
+
+test <float-slot: rustc compiles it>
+  host one, float-slot()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <float-slot: no E0308>
+  host one, float-slot()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <float-slot: Rust answers what TypeScript does>
+  host one, float-slot()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <12>)
+
+
+test <shared-dynamic-write: TypeScript answers>
+  host one, shared-dynamic-write()
+  want hold, is-equal(one/typescript, <4>)
+
+test <shared-dynamic-write: the emitted shape is gone>
+  host one, shared-dynamic-write()
+  want hold, one/built
+  want hold, not(matches(shared-dynamic-write-shape, one/rust))
+
+test <shared-dynamic-write: rustc compiles it>
+  host one, shared-dynamic-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <shared-dynamic-write: no E0308>
+  host one, shared-dynamic-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <shared-dynamic-write: Rust answers what TypeScript does>
+  host one, shared-dynamic-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <4>)

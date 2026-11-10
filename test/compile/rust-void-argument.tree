@@ -1,0 +1,112 @@
+note <a void argument to a dock call and a unit value answered, on TypeScript and Rust>
+
+# Ported from rust-void-argument.ts by statement (item term-self-host-001-1133), one test per `ok`. A `void` argument to
+# a dock call, and a unit value answered. The emitter strips a balanced outer pair of parentheses off a value as the
+# binary case's grouping, and the unit value `()` is such a pair: stripped, the argument was written as nothing,
+# `JSON::stringify(roll.clone(), , 2)`, a parse error that refused the whole file. The CLI's entry met it at two sites
+# (write-watch-roll in deck/call/code/work/build/tree-watching.tree and its twin in build-command.tree,
+# finding/native-entry.md of term/self-host/change/001-finish-self-host, item 1053). TypeScript writes `undefined`. Held
+# through rustc and RUN, against TypeScript's answer. Every file is lean, as the original's leanOf said. No rustc is
+# the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-held
+  find native-case-at
+  find native-case-keep
+  find refused-case
+  find choice-for
+  find typescript-answer
+  find rust-run-of
+  find unwrap-of
+  find lines-matching
+
+load ../support/compiling
+  find compile-text
+  find emit-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# the shape the CLI's entry wrote, lean: a dock call with `void` in the middle of its arguments
+host program, <dock load\n  load \<global:probe\>, name probe-host\n\ntask show\n  take n, like number\n  like text\n  back probe-host/shown(n, void, 2)\n\ntask check\n  take n, like number\n  like void\n  fork test, is-below(n, 0)\n    hold\n      back void\n  probe-host/shown(n, void, 2)\n>
+
+host entries, make list(<show>, <check>)
+
+# the host's probe the TypeScript module reads, set before the module runs
+host typescript-probe, <(globalThis as Record\<string, unknown\>).probe = \{ shown: (n: number, r: unknown, k: number) =\> String(n) + "|" + (r === undefined ? "void" : "value") + "|" + String(k) \}>
+
+# the dock's module, as a crate or a runtime file would hold it: the unit is Rust's void
+host rust-host, <mod probe_host \{\n    pub fn shown(n: i64, r: (), k: i64) -\> String \{ format!("\{\}|\{\}|\{\}", n, if r == () \{ "void" \} else \{ "value" \}, k) \}\n\}\n>
+
+task void-case
+  like native-case
+
+  fork test, native-case-held(<void>)
+    hold
+      back native-case-at(<void>)
+  save folder, temp-folder(<rust-void-argument->)
+  save typescript, typescript-answer(compile-text(program, choice-for(</gate/code/void.tree>, <all>, entries, <node>)), <check(-1)\ncheck(1)\nprocess.stdout.write(show(5))>, folder, <void>, typescript-probe)
+  save out, compile-text(program, choice-for(</gate/code/void.tree>, <all>, entries, <rust>))
+  fork test, not(out/ok)
+    hold
+      save refused, refused-case(typescript, out)
+      native-case-keep(<void>, refused)
+      back refused
+  save emitted, emit-text(out, <rust>)
+  save rust, <{emitted}\n{rust-host}\nfn main() \{\n    check(-1){unwrap-of(emitted, <check>)};\n    check(1){unwrap-of(emitted, <check>)};\n    print!("\{\}", show(5){unwrap-of(emitted, <show>)});\n\}\n>
+  save made, make(native-case, bind(typescript, typescript), bind(built, true), bind(refusal, <>), bind(rust, emitted), bind(run, rust-run-of(rust, folder, <void>)))
+  native-case-keep(<void>, made)
+  back made
+
+host empty-argument, make pattern, <<\(\s*,|,\s*,|,\s*\)>>
+host dock-call, make pattern, <<probe_host::>>
+host bare-ok, make pattern, <<Ok\(\)>>
+
+# the lines of a text both patterns match
+task lines-matching-both
+  take text, like text
+  take first, like pattern
+  take second, like pattern
+  like number
+
+  save count, 0
+  walk lines-matching(text, first)
+    take line, like text
+    fork test, matches(second, line)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <TypeScript passes the void>
+  host one, void-case()
+  want hold, is-equal(one/typescript, <5|void|2>)
+
+test <no argument is written as nothing>
+  host one, void-case()
+  want hold, one/built
+  want hold, is-equal(lines-matching-both(one/rust, empty-argument, dock-call), 0)
+
+# `back void` in a task that can raise: the unit answer was stripped the same way, `Ok()` (E0061)
+test <a unit answer is written Ok(())>
+  host one, void-case()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, bare-ok)/length, 0)
+
+test <rustc compiles it>
+  host one, void-case()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <Rust answers what TypeScript does>
+  host one, void-case()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <5|void|2>)

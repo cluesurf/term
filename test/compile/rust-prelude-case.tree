@@ -1,0 +1,92 @@
+note <a dock of a host global spelled with a capital takes no runtime shim, read as a case-folding file system reads it>
+
+# Ported from rust-prelude-case.ts by statement (item term-self-host-001-1133), one test per `ok`. A dock of a host
+# global spelled with a capital (`<global:JSON>`) has no runtime shim. Its shim was looked for at `runtime/JSON.rs`, and
+# a file system that folds case (this Mac's) answered with `json.rs`, the shim of `<global:json>`: the Rust prelude of a
+# program docking both held `mod json` twice, and rustc refused it (E0428). The CLI's entry met it
+# (finding/native-entry.md of term/self-host/change/001-finish-self-host, item 1054). The files are read here as a
+# case-folding file system reads them, on any machine. compile/native's `native-prelude` is the subject (decision 106).
+# A program the original could not build failed its one test, so every test here also holds that it compiled.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+
+load ../support/reading
+  find lines-of
+
+load @term/base/path
+  find directory, name path-directory
+  find file-name, name path-file-name
+
+load @term/base/file/directory
+  find list, name list-folder
+
+load @term/base/text
+  find starts-with, name text-starts-with
+  find to-lower-case
+
+dock load
+  load <@term/make/code/compile/native>, name native-module
+
+host docked, <dock load\n  load \<global:json\>, name host-json\n\ntask shown\n  take n, like number\n  like text\n  send back\n    call host-json/stringify\n      read n\n>
+
+# the stdlib's json, whose native module docks <global:json>, beside the host's JSON
+host both, <load @term/base/json\n  find from-number\n  find stringify\n\ndock load\n  load \<global:JSON\>, name host-json\n\ntask shown\n  take n, like number\n  like text\n  send back\n    call host-json/stringify\n      read n\n\ntask both\n  take n, like number\n  like text\n  save a, shown(n)\n  save b\n    call stringify\n      call from-number\n        read n\n  send back, text \<\{a\}\{b\}\>\n>
+
+host plain, <load @term/base/json\n  find from-number\n  find stringify\n\ntask one\n  take n, like number\n  like text\n  send back\n    call stringify\n      call from-number\n        read n\n>
+
+# a path read as a case-folding file system reads it: the file of its folder whose name is the same in lower case, void
+# when there is none
+task read-folded
+  take path, like text
+  like dynamic
+
+  save folder, path-directory(path)
+  save wanted, to-lower-case(path-file-name(path))
+  walk list-folder(folder)
+    take name, like text
+    fork test, is-equal(to-lower-case(name), wanted)
+      hold
+        back file-text(<{folder}/{name}>)
+  back void
+
+# the program compiled for Rust from these entries
+task built
+  take text, like text
+  take entries, like list, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/case.tree>), bind(stdlib, <rust>), bind(env, <rust>), bind(entries, entries)))
+
+# how many lines of a program's Rust prelude open `mod json {`, read folded
+task mods
+  take out, like compile-outcome
+  like number
+
+  save prelude, native-module/native-prelude(out/program, <rust>, read-folded)
+  save count, 0
+  walk lines-of(prelude)
+    take line, like text
+    fork test, text-starts-with(line, <mod json \{>)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <a dock of \<global:JSON\> alone takes no shim>
+  host out, built(docked, make list(<shown>))
+  want hold, out/ok
+  want hold, is-equal(mods(out), 0)
+
+test <beside the stdlib json, the prelude holds mod json once>
+  host out, built(both, make list(<both>))
+  want hold, out/ok
+  want hold, is-equal(mods(out), 1)
+
+# a capital-free dock still takes its shim, read folded or not
+test <the stdlib json alone takes its shim>
+  host out, built(plain, make list(<one>))
+  want hold, out/ok
+  want hold, is-equal(mods(out), 1)

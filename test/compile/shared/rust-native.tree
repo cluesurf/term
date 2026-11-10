@@ -1,0 +1,301 @@
+note <one program compiled for node and for Rust, its emitted text run on each with a main of its own>
+
+# The shared body of the thirteen test/compile/rust-*.ts suites, ported by statement (item term-self-host-001-1133).
+# Each compiled one program for node and ran its emitted TypeScript with its own calls, then compiled it for Rust and
+# built its emitted text, with no prelude, beside a `main` of its own through rustc on edition 2021, and ran that. A
+# suite here holds only its program, its calls and its assertions. It is not test/support/running's `run-text`, which
+# adds a `run` task and the prelude: these programs are held exactly as the CLI's entry met them.
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../../support/running
+  find running-node
+
+load ../../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find starts-with, name text-starts-with
+  find trim
+
+# one call of a task the suite's main makes, by its Rust name and its TypeScript name, the argument written the same in both
+form native-call
+  link rust, like text
+  link typescript, like text
+  link argument, like text, fall <>
+
+# a Rust program built by rustc and run. `state` is <skipped> with no rustc, <refused> when the compile refused it,
+# <failed> when rustc did not build it, else <ran>. `errors` are rustc's lines that start with `error`, as each original
+# filtered them, and `output` what the program printed, trimmed
+form rust-run
+  link state, like text
+  link errors, like text, fall <>
+  link output, like text, fall <>
+
+# one program on both: what its TypeScript printed (or why not), whether it compiled for Rust, the Rust it emitted, and
+# that Rust built and run
+form native-case
+  link typescript, like text
+  link built, like boolean
+  link refusal, like text
+  link rust, like text
+  link run, like rust-run
+
+task call-of
+  take rust, like text
+  take typescript, like text
+  take argument, like text
+  like native-call
+
+  back make(native-call, bind(rust, rust), bind(typescript, typescript), bind(argument, argument))
+
+# the program file is lean, as each original's leanOf said of that file alone
+task gate-lean
+  take file, like text
+  like boolean
+
+  back text-starts-with(file, </gate/code/>)
+
+# how a program compiles on `env`, <node> or <rust>: the stdlib under that env, the driver's env only on Rust, as the
+# originals asked. `lean` is <gate> for the program file alone, <all> for every file, <none> for none
+task choice-for
+  take file, like text
+  take lean, like text
+  take entries, like list, like text
+  take env, like text
+  like compile-choice
+
+  save choice, make(compile-choice, bind(file, file), bind(stdlib, env), bind(entries, entries))
+  fork test, is-equal(env, <rust>)
+    hold
+      save choice/env, <rust>
+  fork test, is-equal(lean, <gate>)
+    hold
+      save choice/lean-of, gate-lean
+  fork test, is-equal(lean, <all>)
+    hold
+      save choice/lean, true
+  back choice
+
+# the messages of a refused compile, joined
+task refusal-of
+  take out, like compile-outcome
+  like text
+
+  back <refused: {out/messages/join(< | >)}>
+
+# the calls, each written `name(argument)` with its Rust or TypeScript name and the Rust unwrap after a raising one
+task calls-written
+  take calls, like list, like native-call
+  take rust, like text
+  take on-rust, like boolean
+  like list, like text
+
+  save out, make list
+  walk calls
+    take one, like native-call
+    fork test, on-rust
+      hold
+        out/push(<{one/rust}({one/argument}){unwrap-of(rust, one/rust)}>)
+      miss
+        out/push(<{one/typescript}({one/argument})>)
+  back out
+
+# the TypeScript statement that prints every call's answer, joined by the separator
+task typescript-main
+  take calls, like list, like native-call
+  take separator, like text
+  like text
+
+  save written, calls-written(calls, <>, false)
+  back <process.stdout.write([{written/join(<, >)}].join("{separator}"))>
+
+# the Rust main that prints every call's answer, joined by the separator
+task rust-main
+  take rust, like text
+  take calls, like list, like native-call
+  take separator, like text
+  like text
+
+  save holes, make list
+  walk calls
+    take one, like native-call
+    holes/push(<\{\}>)
+  save written, calls-written(calls, rust, true)
+  back <fn main() \{\n    print!("{holes/join(separator)}", {written/join(<, >)});\n\}\n>
+
+# `.ok().unwrap()` when the emitted Rust's task of this name answers a Result, else nothing
+task unwrap-of
+  take rust, like text
+  take name, like text
+  like text
+
+  fork test, matches(make(pattern, <fn {name}\\([^)]*\\) -\> std::result::Result>), rust)
+    hold
+      back <.ok().unwrap()>
+  back <>
+
+# the lines of a text the pattern matches
+task lines-matching
+  take text, like text
+  take found, like pattern
+  like list, like text
+
+  save out, make list
+  walk lines-of(text)
+    take line, like text
+    fork test, matches(found, line)
+      hold
+        out/push(line)
+  back out
+
+# what a compiled program's emitted TypeScript prints under `main`, run under node with tsx's loader, else why not.
+# `before` is written ahead of the module, for a host value it reads as it loads
+task typescript-answer
+  take out, like compile-outcome
+  take main, like text
+  take folder, like text
+  take name, like text
+  take before, like text, fall <>
+  like text
+
+  fork test, not(out/ok)
+    hold
+      back refusal-of(out)
+  save file, <{folder}/{name}.ts>
+  write-file(file, <{before}\n{out/emitted}\n{main}\n>)
+  save result, run(running-node(0), make list(<--import>, <tsx>, file))
+  fork test, is-unequal(result/code, 0)
+    hold
+      back <exit {result/code}: {result/error}>
+  back result/output
+
+# rustc's lines that start with `error`
+task error-lines
+  take said, like text
+  like text
+
+  save out, make list
+  walk lines-of(said)
+    take line, like text
+    fork test, text-starts-with(line, <error>)
+      hold
+        out/push(line)
+  back out/join(<\n>)
+
+# a whole Rust program built by rustc and run
+task rust-run-of
+  take rust, like text
+  take folder, like text
+  take name, like text
+  like rust-run
+
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      back make(rust-run, bind(state, <skipped>))
+  save source, <{folder}/{name}.rs>
+  save binary, <{folder}/{name}>
+  write-file(source, rust)
+  save built, run(<rustc>, make list(<--edition>, <2021>, <-A>, <warnings>, <-o>, binary, source))
+  save errors, error-lines(built/error)
+  fork test, is-unequal(built/code, 0)
+    hold
+      back make(rust-run, bind(state, <failed>), bind(errors, errors))
+  save ran, run(binary, make list)
+  back make(rust-run, bind(state, <ran>), bind(errors, errors), bind(output, trim(ran/output)))
+
+# every case made in this process, by its name: a suite's tests read one case each, and a run is async, so a case is made
+# once, in the first test that asks for it, never at the top of a file
+form native-cases
+  mark shared
+  link held, like hash, like text, like native-case
+
+host native-held, make(native-cases, bind(held, make hash))
+
+# one program compiled under `/gate/code/<name>.tree` and run on both, its calls printed joined by the separator, made once
+task native-case-of
+  take name, like text
+  take program, like text
+  take entries, like list, like text
+  take calls, like list, like native-call
+  take lean, like text, fall <gate>
+  take separator, like text, fall <|>
+  like native-case
+
+  fork test, native-case-held(name)
+    hold
+      back native-case-at(name)
+  save made, native-case-made(name, program, entries, calls, lean, separator)
+  native-case-keep(name, made)
+  back made
+
+# whether a case of this name was made in this process, for a suite whose main is its own
+task native-case-held
+  take name, like text
+  like boolean
+
+  back native-held/held/has(name)
+
+task native-case-at
+  take name, like text
+  like native-case
+
+  back native-held/held/{name}
+
+task native-case-keep
+  take name, like text
+  take made, like native-case
+  like void
+
+  save native-held/held/{name}, made
+
+# a case whose Rust compile refused it, beside what its TypeScript printed
+task refused-case
+  take typescript, like text
+  take out, like compile-outcome
+  like native-case
+
+  back make(native-case, bind(typescript, typescript), bind(built, false), bind(refusal, refusal-of(out)), bind(rust, <>), bind(run, make(rust-run, bind(state, <refused>))))
+
+task native-case-made
+  take name, like text
+  take program, like text
+  take entries, like list, like text
+  take calls, like list, like native-call
+  take lean, like text
+  take separator, like text
+  like native-case
+
+  save folder, temp-folder(<rust-native->)
+  save file, </gate/code/{name}.tree>
+  save typescript, typescript-answer(compile-text(program, choice-for(file, lean, entries, <node>)), typescript-main(calls, separator), folder, name)
+  save out, compile-text(program, choice-for(file, lean, entries, <rust>))
+  fork test, not(out/ok)
+    hold
+      back refused-case(typescript, out)
+  save rust, emit-text(out, <rust>)
+  save run, rust-run-of(<{rust}\n{rust-main(rust, calls, separator)}>, folder, name)
+  back make(native-case, bind(typescript, typescript), bind(built, true), bind(refusal, <>), bind(rust, rust), bind(run, run))

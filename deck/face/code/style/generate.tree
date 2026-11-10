@@ -1,0 +1,1198 @@
+
+# The Tailwind generator: writes a `look` stylesheet (`tailwind.tree`) that is the full atomic utility set, derived
+# from the theme scales. The build then compiles that stylesheet to CSS through look-css, as it does a hand-written
+# `face` file. A family crossed with a scale is one `face` per cell. Run: `FACE_STYLE_DIR=code/style term boot star
+# code/style/generate.tree` in deck/face, which writes code/style/tailwind.tree. `term boot` runs a program in its
+# package root, so a relative FACE_STYLE_DIR reads from deck/face, and with none the file lands there. The scales here
+# are the one source, so the tokens and the utilities stay in step. Ported from generate.ts (item
+# term-self-host-001-0712): its output is the same file, byte for byte.
+#
+# A scale is a list of `key=value` lines in the order the original wrote its object. The original walked each object
+# with Object.entries, which lists the keys that read as array indexes ('0', '12', never '0.5' or '01') first, in
+# numeric order, and the rest after them in the order written. `in-key-order` does the same, so the file comes out in
+# the original's order on every backend.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find directory
+  find variable
+  find has-variable
+
+load @term/base/file
+  find write
+
+load @term/base/path
+  find resolve-path
+
+load @term/base/text
+  find index-of
+  find substring
+  find char-count
+  find char-code-at
+  find split
+
+load @term/base/list
+  find list
+
+# one declaration, or one cell of a scale: a key (a property, or a utility's suffix) and its css value
+form entry
+  link key, like text
+  link value, like text
+
+# one `face` rule: its class name, its declarations, and the category that picks its variants
+form rule
+  link name, like text
+  link decls, like list, like entry
+  link category, like text
+
+# a scale's entries from its `key=value` lines. The key ends at the first `=`, and an empty key names the bare
+# utility (`rounded`, `shadow`, `border`)
+task scale
+  take lines, like list, like text
+  like list
+    like entry
+  save out
+    make list
+  walk list
+    read lines
+    hook next
+      take site, name line
+      save at
+        call index-of
+          read line
+          text <=>
+      call out/push
+        make entry
+          bind key
+            call substring
+              read line
+              code 0
+              read at
+          bind value
+            call substring
+              read line
+              call add
+                read at
+                code 1
+              call char-count
+                read line
+  send back, read out
+
+# the later scale's keys over the earlier's, as an object spread: a key both hold keeps its first place and takes the
+# later value
+task merge-scales
+  take base, like list, like entry
+  take over, like list, like entry
+  like list
+    like entry
+  save out
+    make list
+  walk list
+    read base
+    hook next
+      take site, name item
+      call out/push
+        read item
+  walk list
+    read over
+    hook next
+      take site, name item
+      save found, code -1
+      save at, code 0
+      walk list
+        read out
+        hook next
+          take site, name held
+          fork test
+            hook test
+              call is-equal
+                read held/key
+                read item/key
+            hook hold
+              save found, read at
+          save at
+            call add
+              read at
+              code 1
+      fork test
+        hook test
+          call is-below
+            read found
+            code 0
+        hook hold
+          call out/push
+            read item
+        hook miss
+          call out/set
+            read found
+            read item
+  send back, read out
+
+# a key Object.entries lists first: '0', or digits that do not start with '0'
+task is-index-key
+  take key, like text
+  like boolean
+  host size
+    call char-count
+      read key
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 0
+    hook hold
+      send back, false
+  save digits, true
+  walk list
+    call split
+      read key
+      text <>
+    hook next
+      take site, name rune
+      host point
+        call char-code-at
+          read rune
+          code 0
+      fork test
+        hook test
+          call or
+            call is-below
+              read point
+              code 48
+            call is-above
+              read point
+              code 57
+        hook hold
+          save digits, false
+  fork test
+    hook test
+      call not
+        read digits
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 1
+    hook hold
+      send back, true
+  send back
+    call is-unequal
+      call char-code-at
+        read key
+        code 0
+      code 48
+
+# whether index key `a` names a larger number than index key `b`: more digits, or as many and a larger digit first
+task is-later-index
+  take a, like text
+  take b, like text
+  like boolean
+  host size-a
+    call char-count
+      read a
+  host size-b
+    call char-count
+      read b
+  fork test
+    hook test
+      call is-unequal
+        read size-a
+        read size-b
+    hook hold
+      send back
+        call is-above
+          read size-a
+          read size-b
+  save answer, false
+  save settled, false
+  save at, code 0
+  walk list
+    call split
+      read a
+      text <>
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call not
+            read settled
+        hook hold
+          host left
+            call char-code-at
+              read rune
+              code 0
+          host right
+            call char-code-at
+              read b
+              read at
+          fork test
+            hook test
+              call is-unequal
+                read left
+                read right
+            hook hold
+              save settled, true
+              save answer
+                call is-above
+                  read left
+                  read right
+      save at
+        call add
+          read at
+          code 1
+  send back, read answer
+
+# a scale in Object.entries order: the index keys first, by number, then the rest as written
+task in-key-order
+  take entries, like list, like entry
+  like list
+    like entry
+  save numbered
+    make list
+  save named
+    make list
+  walk list
+    read entries
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call is-index-key
+            read item/key
+        hook hold
+          save grown
+            make list
+          save placed, false
+          walk list
+            read numbered
+            hook next
+              take site, name held
+              fork test
+                hook test
+                  call and
+                    call not
+                      read placed
+                    call is-later-index
+                      read held/key
+                      read item/key
+                hook hold
+                  call grown/push
+                    read item
+                  save placed, true
+              call grown/push
+                read held
+          fork test
+            hook test
+              call not
+                read placed
+            hook hold
+              call grown/push
+                read item
+          save numbered, read grown
+        hook miss
+          call named/push
+            read item
+  walk list
+    read named
+    hook next
+      take site, name item
+      call numbered/push
+        read item
+  send back, read numbered
+
+# one rule with a single declaration
+task util
+  take rules, like list, like rule
+  take name, like text
+  take property, like text
+  take value, like text
+  take category, like text
+  call rules/push
+    make rule
+      bind name, read name
+      bind decls
+        make list
+          make entry
+            bind key, read property
+            bind value, read value
+      bind category, read category
+
+# a fixed-value utility per cell of a scale over one property. An empty key is the bare prefix, an empty prefix the
+# bare key (`static`, `fixed`)
+task family
+  take rules, like list, like rule
+  take prefix, like text
+  take property, like text
+  take cells, like list, like entry
+  take category, like text
+  walk list
+    call in-key-order
+      read cells
+    hook next
+      take site, name cell
+      host key, read cell/key
+      save name, text <{prefix}-{key}>
+      fork test
+        hook test
+          call is-equal
+            read key
+            text <>
+        hook hold
+          save name, read prefix
+      call util
+        bind rules, read rules
+        bind name, read name
+        bind property, read property
+        bind value, read cell/value
+        bind category, read category
+
+# a utility of one declaration that is no cell of a scale (display, which sets one property per name)
+task group
+  take rules, like list, like rule
+  take name, like text
+  take property, like text
+  take value, like text
+  take category, like text
+  call util
+    bind rules, read rules
+    bind name, read name
+    bind property, read property
+    bind value, read value
+    bind category, read category
+
+# the spacing scale (rem), Tailwind's default ramp
+task space-scale
+  like list
+    like entry
+  send back
+    call scale
+      make list
+        text <0=0px>
+        text <px=1px>
+        text <0.5=0.125rem>
+        text <1=0.25rem>
+        text <1.5=0.375rem>
+        text <2=0.5rem>
+        text <2.5=0.625rem>
+        text <3=0.75rem>
+        text <3.5=0.875rem>
+        text <4=1rem>
+        text <5=1.25rem>
+        text <6=1.5rem>
+        text <7=1.75rem>
+        text <8=2rem>
+        text <9=2.25rem>
+        text <10=2.5rem>
+        text <11=2.75rem>
+        text <12=3rem>
+        text <14=3.5rem>
+        text <16=4rem>
+        text <20=5rem>
+        text <24=6rem>
+        text <28=7rem>
+        text <32=8rem>
+        text <40=10rem>
+        text <48=12rem>
+        text <56=14rem>
+        text <64=16rem>
+        text <72=18rem>
+        text <80=20rem>
+        text <96=24rem>
+
+# fractional and keyword sizes that width and height share
+task fraction-scale
+  like list
+    like entry
+  send back
+    call scale
+      make list
+        text <1/2=50%>
+        text <1/3=33.333333%>
+        text <2/3=66.666667%>
+        text <1/4=25%>
+        text <3/4=75%>
+        text <full=100%>
+        text <min=min-content>
+        text <max=max-content>
+        text <fit=fit-content>
+        text <auto=auto>
+
+# the color palette, one line per hue and shade: hue, shade, hex. The semantic tokens (surface, accent) live in
+# theme.tree, and this is the raw ramp the bg-, text- and border- utilities name
+task palette
+  like list
+    like text
+  send back
+    make list
+      text <zinc 50 #fafafa>
+      text <zinc 100 #f4f4f5>
+      text <zinc 200 #e4e4e7>
+      text <zinc 300 #d4d4d8>
+      text <zinc 400 #a1a1aa>
+      text <zinc 500 #71717a>
+      text <zinc 600 #52525b>
+      text <zinc 700 #3f3f46>
+      text <zinc 800 #27272a>
+      text <zinc 900 #18181b>
+      text <zinc 950 #09090b>
+      text <violet 50 #f5f3ff>
+      text <violet 100 #ede9fe>
+      text <violet 200 #ddd6fe>
+      text <violet 300 #c4b5fd>
+      text <violet 400 #a78bfa>
+      text <violet 500 #8b5cf6>
+      text <violet 600 #7c3aed>
+      text <violet 700 #6d28d9>
+      text <violet 800 #5b21b6>
+      text <violet 900 #4c1d95>
+      text <violet 950 #2e1065>
+      text <emerald 50 #ecfdf5>
+      text <emerald 100 #d1fae5>
+      text <emerald 200 #a7f3d0>
+      text <emerald 300 #6ee7b7>
+      text <emerald 400 #34d399>
+      text <emerald 500 #10b981>
+      text <emerald 600 #059669>
+      text <emerald 700 #047857>
+      text <emerald 800 #065f46>
+      text <emerald 900 #064e3b>
+      text <emerald 950 #022c22>
+      text <rose 50 #fff1f2>
+      text <rose 100 #ffe4e6>
+      text <rose 200 #fecdd3>
+      text <rose 300 #fda4af>
+      text <rose 400 #fb7185>
+      text <rose 500 #f43f5e>
+      text <rose 600 #e11d48>
+      text <rose 700 #be123c>
+      text <rose 800 #9f1239>
+      text <rose 900 #881337>
+      text <rose 950 #4c0519>
+      text <amber 50 #fffbeb>
+      text <amber 100 #fef3c7>
+      text <amber 200 #fde68a>
+      text <amber 300 #fcd34d>
+      text <amber 400 #fbbf24>
+      text <amber 500 #f59e0b>
+      text <amber 600 #d97706>
+      text <amber 700 #b45309>
+      text <amber 800 #92400e>
+      text <amber 900 #78350f>
+      text <amber 950 #451a03>
+      text <blue 50 #eff6ff>
+      text <blue 100 #dbeafe>
+      text <blue 200 #bfdbfe>
+      text <blue 300 #93c5fd>
+      text <blue 400 #60a5fa>
+      text <blue 500 #3b82f6>
+      text <blue 600 #2563eb>
+      text <blue 700 #1d4ed8>
+      text <blue 800 #1e40af>
+      text <blue 900 #1e3a8a>
+      text <blue 950 #172554>
+
+# 0.05 for 5, as the original's String(n / 100) writes a whole percentage from 0 to 100
+task percent-text
+  take n, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 100
+    hook hold
+      send back, text <1>
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, text <0>
+  fork test
+    hook test
+      call is-below
+        read n
+        code 10
+    hook hold
+      send back, text <0.0{n}>
+  fork test
+    hook test
+      call is-equal
+        call modulo
+          read n
+          code 10
+        code 0
+    hook hold
+      host tenths
+        call divide
+          read n
+          code 10
+      send back, text <0.{tenths}>
+  send back, text <0.{n}>
+
+# every rule, in the original's order
+task build
+  like list
+    like rule
+  save rules
+    make list
+  host space
+    call space-scale
+  host fraction
+    call fraction-scale
+
+  # spacing: padding and margin, each side, and gap
+  walk list
+    call scale
+      make list
+        text <p=padding>
+        text <px=padding-inline>
+        text <py=padding-block>
+        text <pt=padding-top>
+        text <pr=padding-right>
+        text <pb=padding-bottom>
+        text <pl=padding-left>
+        text <m=margin>
+        text <mx=margin-inline>
+        text <my=margin-block>
+        text <mt=margin-top>
+        text <mr=margin-right>
+        text <mb=margin-bottom>
+        text <ml=margin-left>
+        text <gap=gap>
+        text <gap-x=column-gap>
+        text <gap-y=row-gap>
+    hook next
+      take site, name side
+      call family
+        bind rules, read rules
+        bind prefix, read side/key
+        bind property, read side/value
+        bind cells, read space
+        bind category, text <space>
+
+  # sizing
+  call family
+    bind rules, read rules
+    bind prefix, text <w>
+    bind property, text <width>
+    bind cells
+      call merge-scales
+        bind base
+          call merge-scales
+            bind base, read space
+            bind over, read fraction
+        bind over
+          call scale
+            make list
+              text <screen=100vw>
+    bind category, text <size>
+  call family
+    bind rules, read rules
+    bind prefix, text <h>
+    bind property, text <height>
+    bind cells
+      call merge-scales
+        bind base
+          call merge-scales
+            bind base, read space
+            bind over, read fraction
+        bind over
+          call scale
+            make list
+              text <screen=100vh>
+    bind category, text <size>
+  call family
+    bind rules, read rules
+    bind prefix, text <min-w>
+    bind property, text <min-width>
+    bind cells
+      call scale
+        make list
+          text <0=0px>
+          text <full=100%>
+          text <min=min-content>
+          text <max=max-content>
+    bind category, text <size>
+  call family
+    bind rules, read rules
+    bind prefix, text <max-w>
+    bind property, text <max-width>
+    bind cells
+      call merge-scales
+        bind base, read fraction
+        bind over
+          call scale
+            make list
+              text <none=none>
+              text <xs=20rem>
+              text <sm=24rem>
+              text <md=28rem>
+              text <lg=32rem>
+              text <xl=36rem>
+              text <2xl=42rem>
+    bind category, text <size>
+  call family
+    bind rules, read rules
+    bind prefix, text <min-h>
+    bind property, text <min-height>
+    bind cells
+      call scale
+        make list
+          text <0=0px>
+          text <full=100%>
+          text <screen=100vh>
+    bind category, text <size>
+  call family
+    bind rules, read rules
+    bind prefix, text <max-h>
+    bind property, text <max-height>
+    bind cells
+      call scale
+        make list
+          text <full=100%>
+          text <screen=100vh>
+    bind category, text <size>
+
+  # colors over the palette
+  walk list
+    call palette
+    hook next
+      take site, name line
+      host parts
+        call split
+          read line
+          text < >
+      host hue
+        call parts/get
+          code 0
+      host shade
+        call parts/get
+          code 1
+      host hex
+        call parts/get
+          code 2
+      call util
+        bind rules, read rules
+        bind name, text <bg-{hue}-{shade}>
+        bind property, text <background-color>
+        bind value, read hex
+        bind category, text <color>
+      call util
+        bind rules, read rules
+        bind name, text <text-{hue}-{shade}>
+        bind property, text <color>
+        bind value, read hex
+        bind category, text <color>
+      call util
+        bind rules, read rules
+        bind name, text <border-{hue}-{shade}>
+        bind property, text <border-color>
+        bind value, read hex
+        bind category, text <color>
+      call util
+        bind rules, read rules
+        bind name, text <ring-{hue}-{shade}>
+        bind property, text <--tw-ring-color>
+        bind value, read hex
+        bind category, text <color>
+      call util
+        bind rules, read rules
+        bind name, text <fill-{hue}-{shade}>
+        bind property, text <fill>
+        bind value, read hex
+        bind category, text <color>
+  call util
+    bind rules, read rules
+    bind name, text <bg-white>
+    bind property, text <background-color>
+    bind value, text <#ffffff>
+    bind category, text <color>
+  call util
+    bind rules, read rules
+    bind name, text <bg-black>
+    bind property, text <background-color>
+    bind value, text <#000000>
+    bind category, text <color>
+  call util
+    bind rules, read rules
+    bind name, text <bg-transparent>
+    bind property, text <background-color>
+    bind value, text <transparent>
+    bind category, text <color>
+  call util
+    bind rules, read rules
+    bind name, text <text-white>
+    bind property, text <color>
+    bind value, text <#ffffff>
+    bind category, text <color>
+  call util
+    bind rules, read rules
+    bind name, text <text-black>
+    bind property, text <color>
+    bind value, text <#000000>
+    bind category, text <color>
+
+  # typography
+  call family
+    bind rules, read rules
+    bind prefix, text <text>
+    bind property, text <font-size>
+    bind cells
+      call scale
+        make list
+          text <xs=0.75rem>
+          text <sm=0.875rem>
+          text <base=1rem>
+          text <lg=1.125rem>
+          text <xl=1.25rem>
+          text <2xl=1.5rem>
+          text <3xl=1.875rem>
+          text <4xl=2.25rem>
+          text <5xl=3rem>
+          text <6xl=3.75rem>
+    bind category, text <type>
+  call family
+    bind rules, read rules
+    bind prefix, text <font>
+    bind property, text <font-weight>
+    bind cells
+      call scale
+        make list
+          text <thin=100>
+          text <light=300>
+          text <normal=400>
+          text <medium=500>
+          text <semibold=600>
+          text <bold=700>
+          text <extrabold=800>
+          text <black=900>
+    bind category, text <type>
+  call family
+    bind rules, read rules
+    bind prefix, text <leading>
+    bind property, text <line-height>
+    bind cells
+      call scale
+        make list
+          text <none=1>
+          text <tight=1.25>
+          text <snug=1.375>
+          text <normal=1.5>
+          text <relaxed=1.625>
+          text <loose=2>
+    bind category, text <type>
+  call family
+    bind rules, read rules
+    bind prefix, text <tracking>
+    bind property, text <letter-spacing>
+    bind cells
+      call scale
+        make list
+          text <tighter=-0.05em>
+          text <tight=-0.025em>
+          text <normal=0em>
+          text <wide=0.025em>
+          text <wider=0.05em>
+          text <widest=0.1em>
+    bind category, text <type>
+  call family
+    bind rules, read rules
+    bind prefix, text <text>
+    bind property, text <text-align>
+    bind cells
+      call scale
+        make list
+          text <left=left>
+          text <center=center>
+          text <right=right>
+          text <justify=justify>
+    bind category, text <type>
+
+  # display, flex and grid
+  walk list
+    call scale
+      make list
+        text <block=block>
+        text <inline-block=inline-block>
+        text <inline=inline>
+        text <flex=flex>
+        text <inline-flex=inline-flex>
+        text <grid=grid>
+        text <hidden=none>
+    hook next
+      take site, name shown
+      call group
+        bind rules, read rules
+        bind name, read shown/key
+        bind property, text <display>
+        bind value, read shown/value
+        bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <flex>
+    bind property, text <flex-direction>
+    bind cells
+      call scale
+        make list
+          text <row=row>
+          text <row-reverse=row-reverse>
+          text <col=column>
+          text <col-reverse=column-reverse>
+    bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <flex>
+    bind property, text <flex-wrap>
+    bind cells
+      call scale
+        make list
+          text <wrap=wrap>
+          text <wrap-reverse=wrap-reverse>
+          text <nowrap=nowrap>
+    bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <items>
+    bind property, text <align-items>
+    bind cells
+      call scale
+        make list
+          text <start=flex-start>
+          text <center=center>
+          text <end=flex-end>
+          text <stretch=stretch>
+          text <baseline=baseline>
+    bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <justify>
+    bind property, text <justify-content>
+    bind cells
+      call scale
+        make list
+          text <start=flex-start>
+          text <center=center>
+          text <end=flex-end>
+          text <between=space-between>
+          text <around=space-around>
+          text <evenly=space-evenly>
+    bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <self>
+    bind property, text <align-self>
+    bind cells
+      call scale
+        make list
+          text <auto=auto>
+          text <start=flex-start>
+          text <center=center>
+          text <end=flex-end>
+          text <stretch=stretch>
+    bind category, text <layout>
+  call family
+    bind rules, read rules
+    bind prefix, text <grid-cols>
+    bind property, text <grid-template-columns>
+    bind cells
+      call scale
+        make list
+          text <1=repeat(1, minmax(0, 1fr))>
+          text <2=repeat(2, minmax(0, 1fr))>
+          text <3=repeat(3, minmax(0, 1fr))>
+          text <4=repeat(4, minmax(0, 1fr))>
+          text <5=repeat(5, minmax(0, 1fr))>
+          text <6=repeat(6, minmax(0, 1fr))>
+          text <12=repeat(12, minmax(0, 1fr))>
+    bind category, text <layout>
+
+  # borders and radius
+  call family
+    bind rules, read rules
+    bind prefix, text <rounded>
+    bind property, text <border-radius>
+    bind cells
+      call scale
+        make list
+          text <none=0px>
+          text <sm=0.125rem>
+          text <=0.25rem>
+          text <md=0.375rem>
+          text <lg=0.5rem>
+          text <xl=0.75rem>
+          text <2xl=1rem>
+          text <3xl=1.5rem>
+          text <full=9999px>
+    bind category, text <border>
+  call family
+    bind rules, read rules
+    bind prefix, text <border>
+    bind property, text <border-width>
+    bind cells
+      call scale
+        make list
+          text <=1px>
+          text <0=0px>
+          text <2=2px>
+          text <4=4px>
+          text <8=8px>
+    bind category, text <border>
+
+  # effects
+  call family
+    bind rules, read rules
+    bind prefix, text <shadow>
+    bind property, text <box-shadow>
+    bind cells
+      call scale
+        make list
+          text <sm=0 1px 2px 0 rgb(0 0 0 / 0.05)>
+          text <=0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)>
+          text <md=0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)>
+          text <lg=0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)>
+          text <xl=0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)>
+          text <2xl=0 25px 50px -12px rgb(0 0 0 / 0.25)>
+          text <none=0 0 #0000>
+    bind category, text <effect>
+  save opacity
+    make list
+  walk list
+    make list
+      code 0
+      code 5
+      code 10
+      code 20
+      code 25
+      code 30
+      code 40
+      code 50
+      code 60
+      code 70
+      code 75
+      code 80
+      code 90
+      code 95
+      code 100
+    hook next
+      take site, name n
+      call opacity/push
+        make entry
+          bind key, text <{n}>
+          bind value
+            call percent-text
+              read n
+  call family
+    bind rules, read rules
+    bind prefix, text <opacity>
+    bind property, text <opacity>
+    bind cells, read opacity
+    bind category, text <effect>
+
+  # position and layout
+  call family
+    bind rules, read rules
+    bind prefix, text <>
+    bind property, text <position>
+    bind cells
+      call scale
+        make list
+          text <static=static>
+          text <fixed=fixed>
+          text <absolute=absolute>
+          text <relative=relative>
+          text <sticky=sticky>
+    bind category, text <misc>
+  call family
+    bind rules, read rules
+    bind prefix, text <inset>
+    bind property, text <inset>
+    bind cells
+      call scale
+        make list
+          text <0=0px>
+          text <auto=auto>
+          text <full=100%>
+    bind category, text <misc>
+  call family
+    bind rules, read rules
+    bind prefix, text <z>
+    bind property, text <z-index>
+    bind cells
+      call scale
+        make list
+          text <0=0>
+          text <10=10>
+          text <20=20>
+          text <30=30>
+          text <40=40>
+          text <50=50>
+          text <auto=auto>
+    bind category, text <misc>
+  call family
+    bind rules, read rules
+    bind prefix, text <overflow>
+    bind property, text <overflow>
+    bind cells
+      call scale
+        make list
+          text <auto=auto>
+          text <hidden=hidden>
+          text <visible=visible>
+          text <scroll=scroll>
+    bind category, text <misc>
+  call family
+    bind rules, read rules
+    bind prefix, text <cursor>
+    bind property, text <cursor>
+    bind cells
+      call scale
+        make list
+          text <pointer=pointer>
+          text <default=default>
+          text <not-allowed=not-allowed>
+          text <wait=wait>
+          text <text=text>
+    bind category, text <misc>
+  send back, read rules
+
+# the variants a category gets: interactive visuals take the state variants, layout, spacing, sizing and type take the
+# breakpoints, and colors also flip in dark mode. So the catalog stays useful without every variant on every utility
+task variants-for
+  take category, like text
+  like list
+    like text
+  save none
+    make list
+  walk list
+    call scale
+      make list
+        text <color=hover,focus,active,disabled,dark,md,lg>
+        text <effect=hover,focus,active,disabled>
+        text <border=hover,focus,dark>
+        text <layout=sm,md,lg,xl>
+        text <space=sm,md,lg>
+        text <size=sm,md,lg>
+        text <type=sm,md,lg,dark>
+    hook next
+      take site, name held
+      fork test
+        hook test
+          call is-equal
+            read held/key
+            read category
+        hook hold
+          send back
+            call split
+              read held/value
+              text <,>
+  send back, read none
+
+# one rule's lines, as a bare utility, or under a `<prefix>:` variant class with a `case <prefix>` wrapper
+task emit
+  take lines, like list, like text
+  take rule, like rule
+  take prefix, like text
+  save name, read rule/name
+  save indent, text <  >
+  fork test
+    hook test
+      call is-equal
+        read prefix
+        text <>
+    hook miss
+      save name, text <{prefix}:{name}>
+      save indent, text <    >
+  call lines/push
+    text <face {name}>
+  fork test
+    hook test
+      call is-equal
+        read prefix
+        text <>
+    hook miss
+      call lines/push
+        text <  case {prefix}>
+  walk list
+    read rule/decls
+    hook next
+      take site, name decl
+      host property, read decl/key
+      host value, read decl/value
+      call lines/push
+        text <{indent}have {property}, text \<{value}\>>
+
+# the whole stylesheet: the bare utilities first, then every variant form (md:flex, hover:bg-x, dark:text-x) the
+# category map names
+task main
+  host rules
+    call build
+  save lines
+    make list
+  call lines/push
+    text <>
+  call lines/push
+    text <# GENERATED by face/code/style/generate.ts. Do not edit by hand. The full Tailwind atomic utility set,>
+  call lines/push
+    text <# derived from the theme scales, with responsive + state variants per category. Compiled to CSS by look-css.>
+  walk list
+    read rules
+    hook next
+      take site, name rule
+      call emit
+        bind lines, read lines
+        bind rule, read rule
+        bind prefix, text <>
+  save variant-count, code 0
+  walk list
+    read rules
+    hook next
+      take site, name rule
+      walk list
+        call variants-for
+          read rule/category
+        hook next
+          take site, name prefix
+          call emit
+            bind lines, read lines
+            bind rule, read rule
+            bind prefix, read prefix
+          save variant-count
+            call add
+              read variant-count
+              code 1
+  save folder, call directory
+  fork test
+    hook test
+      call has-variable
+        text <FACE_STYLE_DIR>
+    hook hold
+      save folder
+        call variable
+          text <FACE_STYLE_DIR>
+  host out
+    call resolve-path
+      call directory
+      call resolve-path
+        read folder
+        text <tailwind.tree>
+  host sheet
+    call lines/join
+      text <\n>
+  call write
+    read out
+    text <{sheet}\n>
+  host base-count, read rules/length
+  host total
+    call add
+      read base-count
+      read variant-count
+  call log
+    text <generated {base-count} base + {variant-count} variant = {total} utilities -\> {out}>
+
+tick main

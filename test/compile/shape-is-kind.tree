@@ -1,0 +1,49 @@
+note <shape is-list and is-number answer the same on every backend>
+
+# Ported from shape-is-kind.ts by statement (item term-self-host-001-1135), one walked test per case of its table, each
+# backend a case of it, then its last `ok`. Item term-self-host-001-1091, found by 1089: Swift's isList answered false
+# for every Term list (a Term list is the prelude's SeedList<T>, never an [Any]), and Rust's is_number answered false for
+# a bare integer literal and a number variable (an i32 handed to the generic, where it asked i64 and f64 only).
+# is-number was Rust's alone: node, browser, swift and kotlin now answer it too, as type-of's `number`. Two programs, so
+# one op's absence never hides the other's answer: is-list of a list and of a text, and is-number of a bare integer, a
+# decimal, a number variable, a text and a boolean. A backend whose toolchain is not installed is the case's own skip.
+# The neighbour suite is shape-type-of.tree.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host list-program, <dock load\n  load \<global:shape\>, name shape\n\ntask run\n  like text\n  save xs\n    make list\n      code 1\n      code 2\n  host a, like boolean\n    call shape/is-list\n      bind value, read xs\n  host b, like boolean\n    call shape/is-list\n      bind value, text \<a\>\n  back \<\{a\} \{b\}\>\n>
+
+host number-program, <dock load\n  load \<global:shape\>, name shape\n\ntask run\n  like text\n  save n, code 5\n  host c, like boolean\n    call shape/is-number\n      bind value, code 7\n  host d, like boolean\n    call shape/is-number\n      bind value, code 1.5\n  host e, like boolean\n    call shape/is-number\n      bind value, read n\n  host f, like boolean\n    call shape/is-number\n      bind value, text \<7\>\n  host g, like boolean\n    call shape/is-number\n      bind value, true\n  back \<\{c\} \{d\} \{e\} \{f\} \{g\}\>\n>
+
+test <is-list answers alike>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<shape-is-kind->)
+  host ran, run-text(list-program, backend, folder, <lists>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <true false>)
+
+test <is-number answers alike>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<shape-is-kind->)
+  host ran, run-text(number-program, backend, folder, <numbers>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <true true true false false>)
+
+# the original counted the runs that were not skipped, and TypeScript needs no toolchain beyond node
+test <at least TypeScript ran>
+  host folder, temp-folder(<shape-is-kind->)
+  host ran, run-text(list-program, <typescript>, folder, <lists>)
+  want hold, is-unequal(ran/state, <skipped>)

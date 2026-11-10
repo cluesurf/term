@@ -1,0 +1,94 @@
+note <a bind whose Rust text ends in a cast, compared with is-below, on TypeScript and Rust>
+
+# Ported from rust-cast-operand.ts by statement (item term-self-host-001-1133), one test per `ok`. A bind whose Rust
+# text ends in a cast, compared with `is-below`. The bind's text was spliced as written, so
+# `is-below(char-count(scope), 2)` emitted `scope.chars().count() as i64 < 2` and rustc read the `<` as the start of
+# `i64`'s generic arguments: a parse error, and the whole file refused. The CLI's entry met it at four sites
+# (finding/native-entry.md of term/self-host/change/001-finish-self-host, item 0797). A bind's text with a cast at its
+# top level is now emitted in one pair. Held through rustc and RUN, against TypeScript's answer. No rustc is the test's
+# skip. The program is longhand, under `cast.tree`, as the original compiled it.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-held
+  find native-case-at
+  find native-case-keep
+  find refused-case
+  find choice-for
+  find typescript-answer
+  find rust-run-of
+  find lines-matching
+
+load ../support/compiling
+  find compile-text
+  find emit-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# the stdlib's char-count (a task over the code-point-count bind) and a bind of the program's own, each the left side of
+# a less-than, the shape the CLI's entry refused
+host cast, <load @term/base/text\n  find char-count\n\nbind width-of\n  take value, like text\n  like number\n  case node\n    text \<$value.length\>\n  case browser\n    text \<$value.length\>\n  case rust\n    text \<$value.len() as i64\>\n  case swift\n    text \<$value.utf8.count\>\n  case kotlin\n    text \<$value.length.toLong()\>\n\ntask short\n  take value, like text\n  like number\n  save answer, code 0\n  fork test\n    hook test\n      call is-below\n        call char-count\n          read value\n        code 2\n    hook hold\n      save answer, code 1\n  send back, read answer\n\ntask narrow\n  take value, like text\n  like number\n  save answer, code 0\n  fork test\n    hook test\n      call is-below\n        call width-of\n          read value\n        code 3\n    hook hold\n      save answer, code 1\n  send back, read answer\n>
+
+host entries, make list(<short>, <narrow>)
+
+# a text parameter is a `String` or a lent `&str`, as the emitter decides: the main passes what the signature asks
+task argument
+  take rust, like text
+  take name, like text
+  take value, like text
+  like text
+
+  fork test, matches(make(pattern, <fn {name}\\(\\w+: &str>), rust)
+    hold
+      back <"{value}">
+  back <"{value}".to_string()>
+
+task cast-case
+  like native-case
+
+  fork test, native-case-held(<cast>)
+    hold
+      back native-case-at(<cast>)
+  save folder, temp-folder(<rust-cast-operand->)
+  save typescript, typescript-answer(compile-text(cast, choice-for(<cast.tree>, <none>, entries, <node>)), <process.stdout.write([short("a"), short("abc"), narrow("ab"), narrow("abcd")].join(""))>, folder, <cast>)
+  save out, compile-text(cast, choice-for(<cast.tree>, <none>, entries, <rust>))
+  fork test, not(out/ok)
+    hold
+      save refused, refused-case(typescript, out)
+      native-case-keep(<cast>, refused)
+      back refused
+  save emitted, emit-text(out, <rust>)
+  save rust, <{emitted}\nfn main() \{\n    print!("\{\}\{\}\{\}\{\}", short({argument(emitted, <short>, <a>)}), short({argument(emitted, <short>, <abc>)}), narrow({argument(emitted, <narrow>, <ab>)}), narrow({argument(emitted, <narrow>, <abcd>)}));\n\}\n>
+  save made, make(native-case, bind(typescript, typescript), bind(built, true), bind(refusal, <>), bind(rust, rust), bind(run, rust-run-of(rust, folder, <cast>)))
+  native-case-keep(<cast>, made)
+  back made
+
+host bare-cast, make pattern, << as i64 <>>
+
+test <TypeScript compares the counts>
+  host one, cast-case()
+  want hold, is-equal(one/typescript, <1010>)
+
+test <no cast is left bare before a less-than>
+  host one, cast-case()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, bare-cast)/length, 0)
+
+test <rustc compiles it>
+  host one, cast-case()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <Rust answers what TypeScript does>
+  host one, cast-case()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <1010>)

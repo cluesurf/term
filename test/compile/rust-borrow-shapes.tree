@@ -1,0 +1,106 @@
+note <a copy bind over a variable and a walk writing its item's field, on TypeScript and Rust>
+
+# Ported from rust-borrow-shapes.ts by statement (item term-self-host-001-1133), one test per `ok` of each of its two
+# cases. Two Rust emitter shapes of the borrow phase the CLI's entry refused (finding/native-entry.md of
+# term/self-host/change/001-finish-self-host, item 1058), each its own program, held through rustc and RUN, against
+# TypeScript's answer:
+#   copy-bind: a bind whose Rust text is its one parameter (`$value`, node-rebuild.tree's shallow copies) took a
+#   variable bare, so `let mut copy = given;` moved it and the next read of `given` failed (E0382 borrow of moved value,
+#   21 sites in the rebuild ports). Once on a local, once on a parameter
+#   walk-item-write: a walk whose body writes a field of its item (`save field/value, ...`) bound the item with a plain
+#   `let`, and the write failed (E0594 cannot assign to `field.value`, 21 sites in node-rewrite, check/extend). Once over
+#   a list, once over a list of a record's field
+# No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+host copy-bind-text, <form spot\n  link name, like text\n  link size, like number\n\nbind copy-spot\n  take value, like spot\n  like spot\n  case node\n    text \<(\\\{ ...$value \\\})\>\n  case browser\n    text \<(\\\{ ...$value \\\})\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\ntask grow-from\n  take given, like spot\n  like number\n  save copy, copy-spot(given)\n  save copy/size, add(given/size, 10)\n  back add(copy/size, given/size)\n\ntask grow\n  take at, like number\n  like number\n  back grow-from(make(spot, bind(name, \<a\>), bind(size, at)))\n\ntask grow-local\n  take at, like number\n  like number\n  save given, make(spot, bind(name, \<b\>), bind(size, at))\n  save copy, copy-spot(given)\n  save copy/size, add(given/size, 20)\n  back add(copy/size, given/size)\n>
+
+host walk-write-text, <load @term/base/list\n  find push\n\nform spot\n  link name, like text\n  link size, like number\n\nform bag\n  link name, like text\n  link spots, like list, like spot\n\ntask total\n  take at, like number\n  like number\n  save spots, make list\n  push(spots, make(spot, bind(name, \<a\>), bind(size, at)))\n  push(spots, make(spot, bind(name, \<b\>), bind(size, 2)))\n  save out, make list\n  walk spots\n    take one\n    save one/size, add(one/size, 1)\n    push(out, one)\n  save sum, 0\n  walk out\n    take one\n    save sum, add(sum, one/size)\n  back sum\n\ntask total-bag\n  take at, like number\n  like number\n  save spots, make list\n  push(spots, make(spot, bind(name, \<a\>), bind(size, at)))\n  save held, make(bag, bind(name, \<x\>), bind(spots, spots))\n  save out, make list\n  walk held/spots\n    take item\n    save item/size, add(item/size, 5)\n    push(out, item)\n  save sum, 0\n  walk out\n    take item\n    save sum, add(sum, item/size)\n  back sum\n>
+
+# grow(3) is (3 + 10) + 3; grow-local(4) is (4 + 20) + 4
+task copy-bind
+  like native-case
+
+  back native-case-of(<copy-bind>, copy-bind-text, make(list, <grow>, <grow-local>), make(list, call-of(<grow>, <grow>, <3>), call-of(<grow_local>, <growLocal>, <4>)))
+
+# total(3) is 4 + 3; total-bag(1) is 6
+task walk-item-write
+  like native-case
+
+  back native-case-of(<walk-item-write>, walk-write-text, make(list, <total>, <total-bag>), make(list, call-of(<total>, <total>, <3>), call-of(<total_bag>, <totalBag>, <1>)))
+
+host copy-bind-shape, make pattern, <<let mut copy = given;>>
+host walk-item-write-shape, make pattern, <<let (one|item) = [^;]*;[^\n]*\n[^\n]*(one|item)\.size = >>
+
+test <copy-bind: TypeScript answers>
+  host one, copy-bind()
+  want hold, is-equal(one/typescript, <16|28>)
+
+test <copy-bind: the emitted shape is gone>
+  host one, copy-bind()
+  want hold, one/built
+  want hold, not(matches(copy-bind-shape, one/rust))
+
+test <copy-bind: rustc compiles it>
+  host one, copy-bind()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <copy-bind: no E0382>
+  host one, copy-bind()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0382>))
+
+test <copy-bind: Rust answers what TypeScript does>
+  host one, copy-bind()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <16|28>)
+
+test <walk-item-write: TypeScript answers>
+  host one, walk-item-write()
+  want hold, is-equal(one/typescript, <7|6>)
+
+test <walk-item-write: the emitted shape is gone>
+  host one, walk-item-write()
+  want hold, one/built
+  want hold, not(matches(walk-item-write-shape, one/rust))
+
+test <walk-item-write: rustc compiles it>
+  host one, walk-item-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <walk-item-write: no E0594>
+  host one, walk-item-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0594>))
+
+test <walk-item-write: Rust answers what TypeScript does>
+  host one, walk-item-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <7|6>)

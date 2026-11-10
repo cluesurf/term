@@ -1,0 +1,59 @@
+note <a union case built leaving out a field it declares need false, on TypeScript and Rust>
+
+# Ported from rust-left-out-field.ts by statement (item term-self-host-001-1133), one test per `ok`. A construction of
+# a union's case that leaves out a field the case declares `need false`. TypeScript allows the omission and Rust has no
+# default for a left-out field: `make group` with only `nodes` was `Node::Group { nodes }` (E0063), and a case built with
+# none of its fields, `make unknown`, was `Type::Unknown`, a value rustc refuses for a variant with fields (E0533). The
+# CLI's entry met 279 and 16 such sites (finding/native-entry.md of term/self-host/change/001-finish-self-host, items
+# 1055 and 1057). A left-out field now takes its type's empty value, as a plain record's does. Held through rustc and
+# RUN, against TypeScript's answer. No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+load @term/base/text
+  find contains, name text-contains
+
+# a case with a needed field and two left out, one of them recursive, and a case with only a left-out field
+host left-out, <load @term/base/maybe\n  find maybe\n\nform shape\n  case circle\n    link radius, like number\n    link label\n      like text\n      need false\n    link inner\n      like maybe, like shape\n      need false\n  case blank\n    link free\n      like boolean\n      need false\n\ntask size-of\n  take value, like shape\n  like number\n  sift value\n    # a left-out field is read nowhere: TypeScript holds it as undefined, Rust as the empty value\n    case circle\n      link radius\n      back radius\n    case blank\n      link free\n      fork test, free\n        hold\n          back 1\n      back 2\n\ntask sizes\n  like text\n  save a, make(circle, bind(radius, 3))\n  save b, make(blank)\n  save c, make(circle, bind(radius, 1), bind(label, \<ab\>))\n  back \<\{size-of(a)\}|\{size-of(b)\}|\{size-of(c)\}\>\n>
+
+task left-out-field
+  like native-case
+
+  back native-case-of(<left-out>, left-out, make(list, <sizes>), make(list, call-of(<sizes>, <sizes>, <>)))
+
+test <TypeScript answers>
+  host one, left-out-field()
+  want hold, is-equal(one/typescript, <3|2|1>)
+
+test <rustc compiles it>
+  host one, left-out-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <no construction leaves a field out (E0063)>
+  host one, left-out-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0063>))
+
+test <no case with fields is written as a value (E0533)>
+  host one, left-out-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0533>))
+
+test <Rust answers what TypeScript does>
+  host one, left-out-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <3|2|1>)

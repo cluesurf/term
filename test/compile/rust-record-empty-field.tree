@@ -1,0 +1,64 @@
+note <a construction leaving out a need false field typed a record form, on TypeScript and Rust>
+
+# Ported from rust-record-empty-field.ts by statement (item term-self-host-001-1133), one test per `ok`. A Rust emitter
+# shape the CLI's entry refused (item 1102 of term/self-host/change/001-finish-self-host, found by 1059): a construction
+# that leaves out a `need false` field typed a RECORD form. The left-out field takes its type's empty value (item 1055),
+# and compile/rust-tables empty-of answers `0` for any form name, so rustc refused `RunAsk { snapshots: 0 }`,
+# `ChangedTask { async_: 0 }` and `HoldHit { report: 0 }` (E0308 expected `SnapshotAsk`, found integer). The empty value
+# of a record is now its own construction with every field empty. Held through rustc and RUN, against TypeScript's
+# answer: a plain record, a nested record (a record inside the left-out one, and a list), a union case, and a trailing
+# `need false` parameter of a record type left out of a call. The left-out field is read nowhere: TypeScript holds it as
+# undefined, Rust as the empty record. No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+  find lines-matching
+
+load @term/base/pattern
+  find pattern
+
+load @term/base/text
+  find contains, name text-contains
+
+host shelves, <form mark\n  link name, like text\n\nform tally\n  link seen, like boolean\n  link count, like number\n  link label, like text\n  link marks, like list, like text\n  link first, like mark\n\nform shelf\n  link name, like text\n  link size, like number\n  link tally\n    like tally\n    need false\n\nform change\n  case moved\n    link size, like number\n    link tally\n      like tally\n      need false\n  case kept\n\ntask shelf-size\n  take one, like shelf\n  like number\n  back add(one/size, 100)\n\ntask change-size\n  take value, like change\n  like number\n  sift value\n    case moved\n      link size\n      back size\n    case kept\n      back 0\n\ntask weigh\n  take base, like number\n  take extra\n    like tally\n    need false\n  like number\n  back add(base, 1)\n\ntask count\n  take at, like number\n  like number\n  save one, make(shelf, bind(name, \<a\>), bind(size, at))\n  save two, make(shelf, bind(name, \<bb\>), bind(size, 2), bind(tally, make(tally, bind(seen, true), bind(count, 1), bind(label, \<x\>), bind(marks, make(list)), bind(first, make(mark, bind(name, \<m\>))))))\n  save three, make(moved, bind(size, 7))\n  back add(add(shelf-size(one), two/size), add(change-size(three), weigh(at)))\n>
+
+# count(3) is 103 + 2 + 7 + 4 = 116 and count(10) is 110 + 2 + 7 + 11 = 130
+task empty-record
+  like native-case
+
+  back native-case-of(<shelves>, shelves, make(list, <count>), make(list, call-of(<count>, <count>, <3>), call-of(<count>, <count>, <10>)))
+
+host bare-zero, make pattern, <<\b(tally|extra): 0\b|weigh\([^)]*, 0\)>>
+
+test <TypeScript answers>
+  host one, empty-record()
+  want hold, is-equal(one/typescript, <116|130>)
+
+test <a left-out record field or argument is never a bare 0>
+  host one, empty-record()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, bare-zero)/length, 0)
+
+test <rustc compiles it>
+  host one, empty-record()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <no integer where a record belongs (E0308)>
+  host one, empty-record()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <Rust answers what TypeScript does>
+  host one, empty-record()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <116|130>)

@@ -1,0 +1,71 @@
+note <a closure declaring a name its task declares later, and a loop exit inside a guarded fork, on TypeScript and Rust>
+
+# Ported from rust-closure-guard-exit.ts by statement (item term-self-host-001-1133), one test per `ok`. Two Rust
+# emitter shapes the CLI's entry refused (finding/native-entry.md of term/self-host/change/001-finish-self-host, item
+# 1057), each held through rustc and RUN, against TypeScript's answer:
+#   a closure that declares a name the task declares too, later: the outer locals are every name the task declares, so
+#   the closure cloned `found` before the task had it (`let found = found.clone()`, E0425, at `slot-local-of`)
+#   a `turn next` or `halt` inside a guarded fork, whose loop is outside it: the guard's body is a closure, and rustc
+#   refuses a `continue` or `break` inside one (E0267)
+# No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+  find lines-matching
+
+load @term/base/pattern
+  find pattern
+
+load @term/base/text
+  find contains, name text-contains
+
+host exits, <load @term/base/list\n  find push\n\ntask pick\n  take at, like number\n  like number\n  save chooser\n    task\n      take i, like number\n      like number\n      fork test, is-below(i, 5)\n        hold\n          save found, add(i, 10)\n          back found\n      back 0\n  save first, chooser(at)\n  save found, add(first, 1)\n  back found\n\ntask count-good\n  take items, like list, like number\n  like number\n  save total, 0\n  walk items\n    take item\n    fork\n      mark unsafe\n      fork test, is-below(item, 0)\n        hold\n          turn next\n      fork test, is-above(item, 100)\n        hold\n          halt\n      fork test, is-equal(item, 7)\n        hold\n          halt \<seven\>\n      save total, add(total, item)\n    halt take\n      take problem\n      save total, add(total, 1000)\n  back total\n\ntask counted\n  like number\n  save items, make list\n  push(items, 1)\n  push(items, -2)\n  push(items, 3)\n  push(items, 7)\n  push(items, 4)\n  push(items, 200)\n  push(items, 5)\n  back count-good(items)\n>
+
+# pick(3) is 14 and pick(9) is 1; the walk adds 1 and 3, skips -2, catches 7's raise (1000), adds 4, stops at 200
+task guard-exit
+  like native-case
+
+  back native-case-of(<exits>, exits, make(list, <pick>, <counted>), make(list, call-of(<pick>, <pick>, <3>), call-of(<pick>, <pick>, <9>), call-of(<counted>, <counted>, <>)))
+
+host early-clone, make pattern, <<let found = found\.clone\(\)>>
+
+test <TypeScript answers>
+  host one, guard-exit()
+  want hold, is-equal(one/typescript, <14|1|1008>)
+
+test <the closure clones no name of its own>
+  host one, guard-exit()
+  want hold, one/built
+  want hold, is-equal(lines-matching(one/rust, early-clone)/length, 0)
+
+test <rustc compiles it>
+  host one, guard-exit()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <no continue or break inside a closure (E0267)>
+  host one, guard-exit()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0267>))
+
+test <no name cloned before it is declared (E0425)>
+  host one, guard-exit()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0425>))
+
+test <Rust answers what TypeScript does>
+  host one, guard-exit()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <14|1|1008>)

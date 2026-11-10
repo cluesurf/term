@@ -1,0 +1,317 @@
+note <term test --jobs runs files at once with the same counts, and orders them by the seconds it kept>
+
+# Ported from test-jobs.ts by statement (item term-self-host-001-1134), one test per `ok` in its order. Decision 022 T5,
+# item 0158: a project of six test files that each wait a second. Run one at a time they take six seconds at least, and
+# four at once they finish in under three quarters of that, with the same counts per file. The seconds each file took are
+# kept in the project's cache, and the next run orders by them: a file never timed first, then the longest, then by path.
+# Each run is the `term` under test (@term/test/self) over a project in a temporary folder, with `--log json`. The runs
+# build on one another as the original's did, so each is made once, by the first test that needs it, and kept in
+# `jobs-now` for the tests after it.
+
+load @term/test/self
+  find run-self
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/json
+  find parse, name json-read
+  find stringify, name json-text
+  find get-field
+  find set-field
+  find make-object
+  find from-number
+  find is-object
+  find object-keys
+  find as-number
+
+load @term/base/list
+  find push
+  find contains
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+
+host names, make list(<a>, <b>, <c>, <d>, <e>, <f>)
+
+# one `term test` run: its exit code, all it printed, its milliseconds, and the JSON items of its log
+form jobs-run
+  link code, like number
+  link out, like text
+  link ms, like number
+  link items, like list, like dynamic
+
+# the project and the runs made so far, each step once
+form jobs-state
+  mark shared
+  link root, like text
+  link measured, like boolean
+  link reordered, like boolean
+  link tried, like boolean
+  link warm, like jobs-run
+  link one, like jobs-run
+  link four, like jobs-run
+  link ordered, like jobs-run
+  link strange, like jobs-run
+
+task no-run
+  like jobs-run
+
+  back make(jobs-run, bind(code, 0), bind(out, <>), bind(ms, 0), bind(items, make list))
+
+host jobs-now, make(jobs-state, bind(root, <>), bind(measured, false), bind(reordered, false), bind(tried, false), bind(warm, no-run()), bind(one, no-run()), bind(four, no-run()), bind(ordered, no-run()), bind(strange, no-run()))
+
+# a line of the log as a JSON value, <> when it is no JSON
+task item-of
+  take line, like text
+  like dynamic
+
+  save value, json-read(<null>)
+  fork
+    mark unsafe
+    save value, json-read(line)
+  halt take
+    take problem
+    save ignored, 0
+  back value
+
+# the JSON items among the lines a run printed
+task items-of
+  take out, like text
+  like list, like dynamic
+
+  save items, make list
+  walk text-split(out, <\n>)
+    take line, like text
+    fork test, starts-with(line, <\{>)
+      hold
+        save item, item-of(line)
+        fork test, is-object(item)
+          hold
+            items/push(item)
+  back items
+
+# `term test` with these arguments and `--log json`, in the project
+task run-jobs
+  take arguments, like list, like text
+  like jobs-run
+  mark async
+
+  save argument-list, make list(<test>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--log>)
+  argument-list/push(<json>)
+  save started, clock-now()
+  save ran, run-self(argument-list, jobs-now/root, 600000)
+  save ms, subtract(clock-now(), started)
+  save out, <{ran/output}{ran/error}>
+  back make(jobs-run, bind(code, ran/code), bind(out, out), bind(ms, ms), bind(items, items-of(out)))
+
+# whether an item is the step of one test file
+task is-file-step
+  take item, like dynamic
+  like boolean
+
+  back and(is-equal(item/kind, <step>), is-equal(item/verb, <test>))
+
+# each file's item, `<subject> <counts>`, sorted
+task per-file
+  take items, like list, like dynamic
+  like list, like text
+
+  save out, make list
+  walk items
+    take item, like dynamic
+    fork test, is-file-step(item)
+      hold
+        out/push(<{item/subject} {json-text(item/counts)}>)
+  back sort(out, from-texts)
+
+# the subject of each file's item, in the order they came
+task files-of
+  take items, like list, like dynamic
+  like list, like text
+
+  save out, make list
+  walk items
+    take item, like dynamic
+    fork test, is-file-step(item)
+      hold
+        out/push(<{item/subject}>)
+  back out
+
+# the totals of the closing item, <> when there is none
+task close-of
+  take items, like list, like dynamic
+  like text
+
+  walk items
+    take item, like dynamic
+    fork test, is-equal(item/kind, <close>)
+      hold
+        back json-text(item/counts)
+  back <>
+
+# the project: a deck and six test files that each wait a second
+task make-project
+  like text
+
+  save root, temp-folder(<test-jobs->)
+  make-folder(<{root}/test>)
+  write-file(<{root}/deck.tree>, <deck @probe/jobs\n  mark \<0.0.1\>\n>)
+  walk names
+    take name, like text
+    write-file(<{root}/test/{name}.tree>, <load @term/base/clock\n  find sleep\n\ntest \<{name} waits a second\>\n  sleep(1000)\n  want hold, true\n\ntest \<{name} holds\>\n  want hold, is-equal(1, 1)\n>)
+  back root
+
+# a first run builds every file, so the runs measured after it read the bundles from the cache
+task measured
+  like jobs-state
+  mark async
+
+  fork test, not(jobs-now/measured)
+    hold
+      save jobs-now/root, make-project()
+      save jobs-now/warm, run-jobs(make list(<--jobs>, <4>))
+      save jobs-now/one, run-jobs(make list(<--jobs>, <1>))
+      save jobs-now/four, run-jobs(make list(<--jobs>, <4>))
+      save jobs-now/measured, true
+  back jobs-now
+
+# the seconds file of the project
+task seconds-file
+  like text
+
+  back <{jobs-now/root}/.base/@term/code/cache/test/seconds.json>
+
+# what the seconds file holds, an empty object when it is not there
+task kept-seconds
+  like dynamic
+
+  fork test, file-exists(seconds-file())
+    hold
+      back json-read(read-file(seconds-file()))
+  back make-object()
+
+# the seconds kept for node for a file, 0 when there are none
+task seconds-of
+  take kept, like dynamic
+  take file, like text
+  like float
+
+  fork test, not(contains(object-keys(kept), <node>))
+    hold
+      back 0.0
+  save node, get-field(kept, <node>)
+  fork test, not(contains(object-keys(node), file))
+    hold
+      back 0.0
+  back as-number(get-field(node, file))
+
+# d made the longest by its kept seconds, and g a new file never timed, then one at a time
+task reordered
+  like jobs-state
+  mark async
+
+  save state, measured()
+  fork test, not(jobs-now/reordered)
+    hold
+      save kept, kept-seconds()
+      save node, make-object()
+      fork test, contains(object-keys(kept), <node>)
+        hold
+          save node, get-field(kept, <node>)
+      set-field(node, <test/d.tree>, from-number(30))
+      set-field(kept, <node>, node)
+      make-folder(<{jobs-now/root}/.base/@term/code/cache/test>)
+      write-file(seconds-file(), json-text(kept))
+      write-file(<{jobs-now/root}/test/g.tree>, <test \<g is new\>\n  want hold, true\n>)
+      save jobs-now/ordered, run-jobs(make list(<--jobs>, <1>))
+      save jobs-now/reordered, true
+  back jobs-now
+
+# a `--jobs` that is no number, after the seven files are there
+task tried
+  like jobs-state
+  mark async
+
+  save state, reordered()
+  fork test, not(jobs-now/tried)
+    hold
+      save jobs-now/strange, run-jobs(make list(<--jobs>, <many>))
+      save jobs-now/tried, true
+  back jobs-now
+
+test <the first run passes>
+  save state, measured()
+  want hold, is-equal(state/warm/code, 0)
+
+test <one at a time passes>
+  save state, measured()
+  want hold, is-equal(state/one/code, 0)
+
+test <four at once passes>
+  save state, measured()
+  want hold, is-equal(state/four/code, 0)
+
+test <one at a time takes six seconds at least>
+  save state, measured()
+  want hold, not(is-below(state/one/ms, 6000))
+
+# relative to the run at one job, never a wall-clock bound: on a loaded machine both runs slow down together, and a fixed
+# 4000 ms failed at 4283 ms in the 2026-11-08 queue trial with the runs overlapping as they should
+test <four at once takes under three quarters of one at a time>
+  save state, measured()
+  want hold, is-below(state/four/ms, multiply(state/one/ms, 0.75))
+
+test <per-file counts are equal at one and at four>
+  save state, measured()
+  save one, per-file(state/one/items)
+  save four, per-file(state/four/items)
+  want hold, and(is-equal(one/length, names/length), is-equal(one/join(<\n>), four/join(<\n>)))
+
+test <the totals are equal at one and at four>
+  save state, measured()
+  save one, close-of(state/one/items)
+  want hold, and(is-equal(one, close-of(state/four/items)), is-unequal(one, <>))
+
+test <each file has its seconds kept for node>
+  save state, measured()
+  save kept, kept-seconds()
+  save all, true
+  walk names
+    take name, like text
+    fork test, is-below(seconds-of(kept, <test/{name}.tree>), 1.0)
+      hold
+        save all, false
+  want hold, all
+
+# one at a time, items come in run order
+test <a file never timed runs first, then the longest>
+  save state, reordered()
+  save order, files-of(state/ordered/items)
+  want hold, is-above(order/length, 1)
+  want hold, is-equal(order/0, <test/g.tree>)
+  want hold, is-equal(order/1, <test/d.tree>)
+
+test <a --jobs that is no number runs at the default>
+  save state, tried()
+  want hold, and(is-equal(state/strange/code, 0), is-equal(files-of(state/strange/items)/length, add(names/length, 1)))

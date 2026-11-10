@@ -115,9 +115,9 @@ legacy tmp/pair-induct.ts
 # retired, decision 112, test/compile/unresolved-relative-load.ts (item 0838): legacy tmp/pair-load.ts
 legacy tmp/pair-simplify.ts
 legacy tmp/pair-format.ts
-legacy tmp/pair-line-layout.ts
+# retired, decision 112, test/compile/lean-second.ts L044 cases, face lint/rules/line-layout.ts removed by rm batch 2 c0979668, 0 disagree at 0810 (item 1042): legacy tmp/pair-line-layout.ts
 legacy tmp/pair-host.ts
-legacy tmp/pair-data-grammar.ts
+# retired, decision 112, test/compile/host-tools.ts L040 and test/lint/audit.ts, face lint/rules/data-grammar.ts removed by rm batch 2 c0979668 (item 1042): legacy tmp/pair-data-grammar.ts
 legacy tmp/pair-view-catalog.ts
 legacy tmp/pair-mill-run.ts
 legacy tmp/pair-mill-load.ts
@@ -137,7 +137,7 @@ legacy tmp/self-host/pairs/backend-hooked-reads.ts
 # dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-kotlin.ts
 # retired, decision 112, test/check/module-scope.ts (item 0864): legacy tmp/pair-census.ts
 # dead, decision term/compiler/013, reference is a retired whole emitter, cannot load (item 0810): legacy tmp/pair-main-entry.ts
-legacy tmp/self-host/pairs/backend-hooked-intervals.ts
+# retired, decision 112, test/ir/facts/interval.ts, face ir/facts/interval.ts removed by rm batch 2 c0979668 (item 1042): legacy tmp/self-host/pairs/backend-hooked-intervals.ts
 legacy tmp/pair-fixing.ts
 legacy tmp/pair-banner.ts  # term-self-host-001-0845
 # retired, decision 112, test/compile/prelude-reach.ts (item 0846): legacy tmp/pair-runtime-prelude.ts
@@ -188,7 +188,7 @@ legacy tmp/pair-call-host.ts
 # retired, decision 112, test/call/roll.ts (item 0870): legacy tmp/pair-call-roll.ts
 # retired, decision 112, test/lint/run.tree (item 0871): legacy tmp/pair-call-lint.ts
 legacy tmp/pair-call-bind.ts
-legacy tmp/pair-call-test-run.ts
+# retired, decision 112, test/call/test-flags.ts and test/call/test-cases.tree, testsOf and caseMatches left the face for test-run-words.tree at e00cf767, the reference's API is gone (item 1042): legacy tmp/pair-call-test-run.ts
 # retired, decision 112, test/call/lifecycle.ts (item 0872): legacy tmp/pair-call-mind.ts
 legacy tmp/pair-call-uikit.ts
 legacy tmp/pair-call-load.ts
@@ -202,11 +202,11 @@ legacy tmp/pair-emit-target.ts
 legacy tmp/pair-incremental-parsing.ts
 legacy tmp/pair-node-json.ts  # term-self-host-001-0849
 pair checker-switches-key
-pair side-files-answer
+pair side-files-answer-saved-faces  # item 1042: side-files-answer, its reference handed the faces rm batch 2 removed
 # retired, decision 112, test/compile/template.ts (item 0854): pair unit-mill-functions
 pair host-code
-pair analyze-entry --timeout 600000
-pair lint-driver --timeout 600000
+# retired, decision 112, test/lint/run.tree analyze cases and test/compile/host-tools.ts, reference analyze.ts imports lint/rules/data-grammar.ts removed by rm batch 2 c0979668, 0 disagree at 0810 (item 1042): pair analyze-entry --timeout 600000
+# retired, decision 112, test/lint/run.tree, reference lint-face.ts imports lint/rules/data-grammar.ts and line-layout.ts removed by rm batch 2 c0979668, 570 of 570 at 0847 (item 1042): pair lint-driver --timeout 600000
 legacy tmp/self-host/pairs/view-handed.ts
 # retired, decision 112, the board's compile suites and program-driver-phase (item 0866): pair program-gate-phase --timeout 600000
 # retired, decision 112, test/compile/slot-raise.ts, test/check/make-split.tree and test/check/word-forms.tree, 76 read as decision 027 rows 56 and 69 (item 0855): pair minting --timeout 60000
@@ -220,7 +220,7 @@ pair kernel-terms
 pair backend-rust-face --timeout 600000
 pair backend-kotlin-face --timeout 600000
 # retired, decision 112, test/compile/cache-verify.ts (item 0856): pair cache-compile
-pair inferring --sample 500 --seed 7 --timeout 600000
+pair inferring-saved-faces --sample 500 --seed 7 --timeout 600000  # item 1042: inferring, its reference handed the faces rm batch 2 removed
 pair backend-swift-face --timeout 600000  # term-self-host-001-0857
 pair backend-typescript-face --timeout 600000  # term-self-host-001-0858
 # retired, decision 112, test/compile/backends.ts (item 0869): pair backend-face --timeout 600000
@@ -250,7 +250,7 @@ pair hide-guard --timeout 600000
 pair missing-wait-refusals --timeout 600000
 pair sole-spending --timeout 900000
 pair sole-holding --timeout 900000
-pair views-lowered --timeout 600000
+pair views-lowered-saved-faces --timeout 600000  # item 1042: views-lowered, both sides handed the faces rm batch 2 removed
 pair law-english-sentences --timeout 600000  # term-self-host-001-0863
 pair time-run-output --timeout 600000
 pair time-run-execute --timeout 600000

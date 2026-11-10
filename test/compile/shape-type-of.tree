@@ -1,0 +1,38 @@
+note <shape type-of answers Term's words, the same on every backend>
+
+# Ported from shape-type-of.ts by statement (item term-self-host-001-1135), one walked test for its loop, each backend a
+# case of it, then its last `ok`. Item term-self-host-001-1089: the shape runtime shim answered JavaScript's own `typeof`
+# on TypeScript (`string`, `undefined`), and `flag`, `void` and `record` on Rust (a list too read `record`), where Swift
+# and Kotlin answered `text`, `boolean`, `null`, `list` and `object`. The words are Term's: `text` and `boolean` are its
+# type names, `list` its list, `null` and `object` the words the stdlib's json-kind answers (deck/base/code/json.tree).
+# One program asks the kind of a text, an integer, a decimal, a boolean, a list, a record and a hash, and every backend
+# whose toolchain is here must print the one line below. A backend whose toolchain is not installed is the case's own
+# skip. The neighbour suite is shape-is-kind.tree.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <dock load\n  load \<global:shape\>, name shape\n\nform point\n  link x, like number\n\ntask run\n  like text\n  save xs\n    make list\n      code 1\n      code 2\n  save p\n    make point\n      bind x, code 1\n  save h\n    make hash\n      save \<k\>, code 1\n  host a, like text\n    call shape/type-of\n      bind value, text \<a\>\n  host b, like text\n    call shape/type-of\n      bind value, code 7\n  host c, like text\n    call shape/type-of\n      bind value, code 1.5\n  host d, like text\n    call shape/type-of\n      bind value, true\n  host e, like text\n    call shape/type-of\n      bind value, read xs\n  host f, like text\n    call shape/type-of\n      bind value, read p\n  host g, like text\n    call shape/type-of\n      bind value, read h\n  back \<\{a\} \{b\} \{c\} \{d\} \{e\} \{f\} \{g\}\>\n>
+
+host wanted, <text number number boolean list object object>
+
+test <type-of answers Term's words>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<shape-type-of->)
+  host ran, run-text(program, backend, folder, <kinds>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, wanted)
+
+# the original counted the backends that were not skipped, and TypeScript needs no toolchain beyond node
+test <at least TypeScript ran>
+  host folder, temp-folder(<shape-type-of->)
+  host ran, run-text(program, <typescript>, folder, <kinds>)
+  want hold, is-unequal(ran/state, <skipped>)

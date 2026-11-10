@@ -1,0 +1,497 @@
+note <term:boot fetches and verifies a pinned stage0 from a loopback registry, and refuses each wrong pin in one line>
+
+# Ported from boot.ts by statement (item term-self-host-001-1134), one test per `ok` in its order. Item 0171, decision
+# 126 of change 001: `pnpm term:boot` against a loopback registry (deck/deck/test/oci-server.tree), a throwaway key and a
+# fresh HOME. Never a real registry, keychain or token.
+#
+#   1. publish a payload carrying term/host/compile.mjs as 2.10.0, and one without it as 2.10.2, signed by a throwaway
+#      key that founds the key set of @term
+#   2. a boot.tree pinning 2.10.0's index digest: term:boot --fetch-only fetches, verifies and keeps compile.mjs, those
+#      bytes, under the HOME
+#   3. refusals, each one line naming the digest and the reason: a tampered digest, a version the registry does not
+#      hold, a signer outside the trusted key set, a release with no compile.mjs, a boot.tree that is no boot pin
+#   4. with TERM_BOOT_ONLY: the whole chain, term:fixpoint --stage0 <the fetched folder> on that subset, which must read
+#      `fixpoint ts ... identical` (a smoke run). It needs TERM_BOOT_PAYLOAD, a real release payload, and TERM_BOOT_OUT,
+#      where it goes. These are the original's --only, --payload and --out flags, since a test file takes no flags
+#
+# release.ts, transport.ts, keys.ts and sign.ts are docked as oci-release.test.tree docks them. The registry answers from
+# this process, so every term:boot is a child run without blocking (process/run is async). The fixture is made once, by
+# the first test, and kept in `boot-now`, and the last test closes the registry.
+
+load ../../deck/deck/test/oci-server
+  find start-oci-server
+  find close-oci-server
+
+load ../support/running
+  find running-node
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+  find variables
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find escape-pattern
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+  find contains, name text-contains
+  find substring
+
+dock load
+  load <@term/deck/code/oci/release>, name release-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <@term/deck/code/oci/keys>, name keys-face
+  load <@term/deck/code/object/sign>, name sign-face
+  load <node:crypto>, name boot-crypto
+  load <node:fs>, name boot-fs
+  load <node:path>, name boot-path
+
+host version, <2.10.0>
+host bare-version, <2.10.2>
+host package-name, <@term/code>
+host tampered-digest, <sha256:0000000000000000000000000000000000000000000000000000000000000000>
+
+# host value: the platform a release is built for here, <> when none is (currentPlatform answers undefined)
+bind platform-text
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# host value: this process's environment with the release registry named, as releaseRoute reads it
+bind registry-env
+  take registry, like text
+  like dynamic
+  case node
+    text <(\{ ...process.env, TERM_RELEASE_REGISTRY: $registry \})>
+
+form basic-credential
+  link kind, like text
+  link username, like text
+  link password, like text
+
+form transport-ask
+  link host, like text
+  link credentials, like dynamic
+  link retries, like number
+
+form route-ask
+  link package, like text
+  link env, like dynamic
+
+form publisher-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link scope, like dynamic
+  link keypair, like dynamic
+
+form release-payload
+  link platform, like text
+  link bytes, like dynamic
+
+form release-publish
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link version, like text
+  link payloads, like list, like release-payload
+  link keypair, like dynamic
+
+# a file a payload packs, under its term/ folder
+form packed-file
+  link path, like text
+  link text, like text
+
+# the fixture, made once. `server` is the registry, `fetched` the first --fetch-only run, `chain` what the whole chain
+# printed, <> until it ran
+form boot-state
+  mark shared
+  link made, like boolean
+  link platform, like text
+  link work, like text
+  link server, like dynamic
+  link stranger, like text
+  link repository, like text
+  link index, like text
+  link bare-index, like text
+  link stage0-id, like text
+  link pinned, like text
+  link tampered, like text
+  link absent, like text
+  link no-stage0, like text
+  link broken, like text
+  link fetched, like run-result
+  link kept, like text
+  link chained, like boolean
+  link chain, like text
+  link closed, like boolean
+
+task no-run
+  like run-result
+
+  back make(run-result, bind(code, 0), bind(output, <>), bind(error, <>), bind(signal, 0))
+
+host boot-now, make(boot-state, bind(made, false), bind(platform, <>), bind(work, <>), bind(server, 0), bind(stranger, <>), bind(repository, <>), bind(index, <>), bind(bare-index, <>), bind(stage0-id, <>), bind(pinned, <>), bind(tampered, <>), bind(absent, <>), bind(no-stage0, <>), bind(broken, <>), bind(fetched, no-run()), bind(kept, <>), bind(chained, false), bind(chain, <>), bind(closed, false))
+
+task tester-credentials
+  like basic-credential
+  mark async
+
+  back make(basic-credential, bind(kind, <basic>), bind(username, <tester>), bind(password, <secret>))
+
+# the sha256 of a file's bytes, in hex
+task sha-of
+  take file, like text
+  like text
+
+  save hasher, boot-crypto/create-hash(<sha256>)
+  hasher/update(boot-fs/read-file-sync(file))
+  back hasher/digest(<hex>)
+
+# a payload folder packed as a release packs one: term/ at the top of a .tar.gz, answering the archive's path
+task pack
+  take name, like text
+  take files, like list, like packed-file
+  like text
+  mark async
+
+  save dir, <{boot-now/work}/{name}>
+  walk files
+    take one, like packed-file
+    save path, <{dir}/term/{one/path}>
+    make-folder(boot-path/dirname(path))
+    write-file(path, one/text)
+  save environment
+    make hash
+      save <COPYFILE_DISABLE>, <1>
+  save archive, <{dir}/term.tar.gz>
+  save packed, run(<tar>, make(list,<-czf>, archive, <-C>, dir, <term>), bind(environment, environment))
+  back archive
+
+task boot-file
+  take name, like text
+  take text, like text
+  like text
+
+  save file, <{boot-now/work}/{name}>
+  write-file(file, text)
+  back file
+
+# a fresh machine: its own HOME and trust pins, the loopback registry's credentials, nothing of this shell's. The
+# arguments of `env`: every TERM_, npm_ and GHCR_TOKEN variable taken out, then the machine's own set
+task machine
+  take home, like text
+  take extra, like text, fall <>
+  like list, like text
+
+  save out, make list
+  save present, variables()
+  walk present/keys()
+    take name, like text
+    fork test, or(starts-with(name, <TERM_>), or(starts-with(name, <npm_>), is-equal(name, <GHCR_TOKEN>)))
+      hold
+        out/push(<-u>)
+        out/push(name)
+  out/push(<HOME={home}>)
+  out/push(<TERM_OCI_HOST={boot-now/server/host}>)
+  out/push(<TERM_OCI_USERNAME=tester>)
+  out/push(<TERM_OCI_TOKEN=secret>)
+  out/push(<TERM_TRUST_DIR={home}/trust>)
+  out/push(<TERM_STORE={home}/store>)
+  fork test, is-unequal(extra, <>)
+    hold
+      out/push(extra)
+  back out
+
+# term:boot as a child on a machine, to its end
+task boot
+  take arguments, like list, like text
+  take machine-arguments, like list, like text
+  take limit, like number, fall 120000
+  like run-result
+  mark async
+
+  save root, term-root()
+  save argument-list, make list
+  walk machine-arguments
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(running-node(0))
+  argument-list/push(<{root}/node_modules/tsx/dist/cli.mjs>)
+  argument-list/push(<{root}/task/term/boot.ts>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  back run(<env>, argument-list, bind(directory, root), bind(limit, limit))
+
+# the refusal lines of what term:boot wrote to its error stream
+task refusals-of
+  take text, like text
+  like list, like text
+
+  save out, make list
+  walk text-split(text, <\n>)
+    take line, like text
+    fork test, starts-with(line, <term:boot: refused>)
+      hold
+        out/push(line)
+  back out
+
+# a text as a pattern that matches it exactly
+task quoted
+  take value, like text
+  like text
+
+  back escape-pattern(value)/text
+
+# the site of a pinned digest
+task site-of
+  take digest, like text
+  like text
+
+  back <oci://{boot-now/server/host}/{boot-now/repository}@{digest}>
+
+# 1. the two releases published, the boot pins written, and the pinned release fetched once
+task prepared
+  like boot-state
+  mark async
+
+  fork test, boot-now/made
+    hold
+      back boot-now
+  save boot-now/made, true
+  save boot-now/platform, platform-text(release-face/current-platform())
+  fork test, is-equal(boot-now/platform, <>)
+    hold
+      back boot-now
+  save boot-now/work, temp-folder(<term-boot->)
+  save given, variable(<TERM_BOOT_PAYLOAD>)
+  save with-stage0, <>
+  fork test, is-unequal(given, <>)
+    hold
+      save with-stage0, boot-path/resolve(given)
+    miss
+      save with-stage0, pack(<with>, make(list,make(packed-file, bind(path, <package.json>), bind(text, <\{\}\n>)), make(packed-file, bind(path, <host/compile.mjs>), bind(text, <export const compile = () =\> 0\n>))))
+  save without-stage0, pack(<without>, make(list,make(packed-file, bind(path, <package.json>), bind(text, <\{\}\n>)), make(packed-file, bind(path, <host/line.js>), bind(text, <\n>))))
+  # the compile.mjs the published payload carries, as term:boot must keep it
+  save listed, <{boot-now/work}/listed>
+  make-folder(listed)
+  save unpacked, run(<tar>, make(list,<-xzf>, with-stage0, <-C>, listed, <term/host/compile.mjs>))
+  save boot-now/stage0-id, sha-of(<{listed}/term/host/compile.mjs>)
+  save boot-now/server, start-oci-server()
+  save transport, transport-face/http-transport(make(transport-ask, bind(host, boot-now/server/host), bind(credentials, tester-credentials), bind(retries, 0)))
+  save route, release-face/release-route(make(route-ask, bind(package, package-name), bind(env, registry-env(<oci://{boot-now/server/host}/cluesurf/term>))))
+  save keypair, sign-face/generate-keypair()
+  save stranger, sign-face/generate-keypair()
+  save boot-now/stranger, stranger/public-key
+  save founded, wait keys-face/ensure-publisher(make(publisher-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair)))
+  save repository, <{route/repository/name}>
+  save boot-now/repository, repository
+  save with-payload, make(list,make(release-payload, bind(platform, boot-now/platform), bind(bytes, boot-fs/read-file-sync(with-stage0))))
+  save published, wait release-face/publish-release(make(release-publish, bind(transport, transport), bind(repository, repository), bind(package, package-name), bind(version, version), bind(payloads, with-payload), bind(keypair, keypair)))
+  save without-payload, make(list,make(release-payload, bind(platform, boot-now/platform), bind(bytes, boot-fs/read-file-sync(without-stage0))))
+  save bare, wait release-face/publish-release(make(release-publish, bind(transport, transport), bind(repository, repository), bind(package, package-name), bind(version, bare-version), bind(payloads, without-payload), bind(keypair, keypair)))
+  save boot-now/index, <{published/index}>
+  save boot-now/bare-index, <{bare/index}>
+  save boot-now/pinned, boot-file(<boot.tree>, <boot\n  code \<{version}\>\n  site \<{site-of(boot-now/index)}\>\n>)
+  save boot-now/tampered, boot-file(<tampered.tree>, <boot\n  code \<{version}\>\n  site \<{site-of(tampered-digest)}\>\n>)
+  save boot-now/absent, boot-file(<absent.tree>, <boot\n  code \<9.9.8\>\n  site \<{site-of(boot-now/index)}\>\n>)
+  save boot-now/no-stage0, boot-file(<bare.tree>, <boot\n  code \<{bare-version}\>\n  site \<{site-of(boot-now/bare-index)}\>\n>)
+  save boot-now/broken, boot-file(<broken.tree>, <boot\n  code \<{version}\>\n>)
+  # 2. the pinned release, fetched and verified
+  save home, <{boot-now/work}/home>
+  save boot-now/fetched, boot(make(list,<--boot>, boot-now/pinned, <--fetch-only>), machine(home))
+  save boot-now/kept, <{home}/.base/@term/code/boot/{substring(boot-now/index, 7)}/{boot-now/platform}/term/host/compile.mjs>
+  back boot-now
+
+# whether a refusal run ended 1 with one refusal line the pattern matches, and named no stage0
+task refused-in-one-line
+  take ran, like run-result
+  take wanted, like text
+  like boolean
+
+  save said, refusals-of(ran/error)
+  fork test, is-unequal(said/length, 1)
+    hold
+      back false
+  save handed, make(pattern, <<stage0 [a-f0-9]{64} at >>)
+  back and(is-equal(ran/code, 1), and(matches(make(pattern, wanted), said/0), not(matches(handed, ran/output))))
+
+test <term:boot --fetch-only fetches and verifies the pinned release>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  want hold, is-equal(state/fetched/code, 0)
+  want hold, text-contains(state/fetched/output, <index {state/index} as pinned>)
+
+test <the release key set was trusted on first use>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  want hold, text-contains(state/fetched/output, <signed by a key of @term (first-use)>)
+
+test <compile.mjs is kept under the HOME, the bytes the payload carries>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  want hold, file-exists(state/kept)
+  want hold, is-equal(sha-of(state/kept), state/stage0-id)
+
+test <term:boot names the stage0 it hands over by its bundle id>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  want hold, text-contains(state/fetched/output, <stage0 {state/stage0-id} at >)
+
+test <a second fetch keeps the folder the first one verified>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save again, boot(make(list,<--boot>, state/pinned, <--fetch-only>), machine(<{state/work}/home>))
+  want hold, is-equal(again/code, 0)
+  want hold, file-exists(state/kept)
+
+# 3. the refusals, one line each, naming the digest and the reason
+test <term:boot refuses a tampered digest in one line>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save ran, boot(make(list,<--boot>, state/tampered, <--fetch-only>), machine(<{state/work}/home-tampered>))
+  want hold, refused-in-one-line(ran, <^term:boot: refused {quoted(tampered-digest)}: .* serves the index {quoted(state/index)}, not the pinned one$>)
+
+test <term:boot refuses a version the registry does not hold in one line>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save ran, boot(make(list,<--boot>, state/absent, <--fetch-only>), machine(<{state/work}/home-absent>))
+  want hold, refused-in-one-line(ran, <^term:boot: refused {quoted(state/index)}: {quoted(<@term/code@9.9.8>)} is not released$>)
+
+test <term:boot refuses a signer outside the trusted key set in one line>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save ran, boot(make(list,<--boot>, state/pinned, <--fetch-only>), machine(<{state/work}/home-stranger>, <TERM_TRUSTED_KEYS=@term={state/stranger}>))
+  want hold, refused-in-one-line(ran, <^term:boot: refused {quoted(state/index)}: {quoted(<@term/code@{version}>)} for {quoted(state/platform)} is signed by a key outside the key set of @term [(]env[)]$>)
+
+test <term:boot refuses a release with no compile.mjs in one line>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save ran, boot(make(list,<--boot>, state/no-stage0, <--fetch-only>), machine(<{state/work}/home-bare>))
+  want hold, refused-in-one-line(ran, <^term:boot: refused {quoted(state/bare-index)}: .* carries no term/host/compile[.]mjs, so it is no stage0>)
+
+test <term:boot refuses a boot.tree that is no boot pin in one line>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  save ran, boot(make(list,<--boot>, state/broken, <--fetch-only>), machine(<{state/work}/home-broken>))
+  want hold, refused-in-one-line(ran, <^term:boot: refused .*broken[.]tree: a boot pin is one boot with one code and one site$>)
+
+test <no Authorization header reached the storage host>
+  save state, prepared()
+  fork test, is-equal(state/platform, <>)
+    hold
+      skip <no release is built for this platform>
+  want hold, is-equal(state/server/leaked-auth/length, 0)
+
+# 4. the whole chain on a subset, run once by the first of its tests
+task chained
+  like boot-state
+  mark async
+
+  save state, prepared()
+  fork test, or(boot-now/chained, is-equal(boot-now/platform, <>))
+    hold
+      back boot-now
+  save boot-now/chained, true
+  save only, variable(<TERM_BOOT_ONLY>)
+  fork test, is-equal(only, <>)
+    hold
+      back boot-now
+  save out, boot-path/resolve(variable(<TERM_BOOT_OUT>))
+  save chain, boot(make(list,<--boot>, boot-now/pinned, <--only>, only, <--out>, out, <--jobs>, <2>), machine(<{boot-now/work}/home-chain>), 3600000)
+  save boot-now/chain, <{chain/output}{chain/error}>
+  back boot-now
+
+# whether a line of the chain says the fixpoint holds on more than no module for `target`
+task identical-on
+  take lines, like text
+  take target, like text
+  like boolean
+
+  save holding, make(pattern, <^fixpoint {target}: [0-9]*[1-9][0-9]* modules, identical>)
+  save found, false
+  walk text-split(lines, <\n>)
+    take line, like text
+    fork test, matches(holding, line)
+      hold
+        save found, true
+  back found
+
+# whether the chain was asked for: `name` is TERM_BOOT_ONLY to ask, and TERM_BOOT_PAYLOAD and TERM_BOOT_OUT, which it needs
+task is-set
+  take name, like text
+  like boolean
+
+  back is-unequal(variable(name), <>)
+
+test <term:boot runs term:fixpoint --stage0 the fetched folder on the subset>
+  save state, chained()
+  fork test, or(is-equal(state/platform, <>), not(is-set(<TERM_BOOT_ONLY>)))
+    hold
+      skip <TERM_BOOT_ONLY names no subset, or no release is built for this platform>
+  want hold, and(is-set(<TERM_BOOT_PAYLOAD>), is-set(<TERM_BOOT_OUT>))
+  want hold, text-contains(state/chain, <term:fixpoint --stage0 >)
+  want hold, text-contains(state/chain, <term:fixpoint stage0 {substring(state/stage0-id, 0, 12)}>)
+
+test <the fixpoint holds on the subset: stage1 and stage2 emit identical TypeScript>
+  save state, chained()
+  fork test, or(is-equal(state/platform, <>), not(is-set(<TERM_BOOT_ONLY>)))
+    hold
+      skip <TERM_BOOT_ONLY names no subset, or no release is built for this platform>
+  want hold, identical-on(state/chain, <ts>)
+
+# the last test: the registry closed, whatever ran
+test <and identical Rust>
+  save state, chained()
+  fork test, and(is-unequal(state/platform, <>), not(state/closed))
+    hold
+      save boot-now/closed, true
+      close-oci-server(state/server)
+  fork test, or(is-equal(state/platform, <>), not(is-set(<TERM_BOOT_ONLY>)))
+    hold
+      skip <TERM_BOOT_ONLY names no subset, or no release is built for this platform>
+  want hold, identical-on(state/chain, <rust>)

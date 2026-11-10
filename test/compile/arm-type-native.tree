@@ -1,0 +1,151 @@
+note <the native runs of a type named in a sift's arm>
+
+# Ported from arm-type-native.ts by statement (item term-self-host-001-1130), one walked test per case of its table, each
+# backend a case of it, as the original's loop gave one `ok` per case and backend. Item 0830, term/compiler decision 012:
+# a form named only under a `case list` / `like point` was dropped by the tree shake, which reads names through
+# compile/node-reach.tree, and a form two files define was left under its written name by check/scope's binding, so these
+# programs were refused. Each answers one text, the same on all four backends, through the real toolchain. The walks
+# themselves are test/compile/arm-type-reached.tree. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find substring
+
+host list-load, <load @term/base/list\n  find push\n>
+
+host pick-list, <task pick\n  take value, like unknown\n  like text\n\n  sift value\n    case list\n      like point\n      link items\n      back \<list \{items/length\}\>\n    miss\n      back \<miss\>\n>
+
+host a-text, <{list-load}\nform point\n  link x, like number\n\ntask make-a\n  like unknown\n\n  save one\n    make point\n      bind x, 1\n  back one\n\ntask make-as\n  like unknown\n\n  save out, make list\n  save one\n    make point\n      bind x, 1\n  push(out, one)\n  back out\n>
+
+host b-text, <{list-load}\nform point\n  link name, like text\n\ntask make-b\n  like unknown\n\n  save one\n    make point\n      bind name, \<n\>\n  back one\n\ntask make-bs\n  like unknown\n\n  save out, make list\n  save one\n    make point\n      bind name, \<n\>\n  push(out, one)\n  back out\n>
+
+host point-fill, <  save one\n    make point\n      bind x, 1\n  push(out, one)>
+
+# A list a task built and hands back as `unknown` (item 0885). Rust keeps a list local that only fills as the plain `Vec`
+# and puts it into the shared cell at its return, and that cell went out unboxed: the box held `RefCell<Vec<T>>` where
+# every arm downcasts to the list's own `Rc<RefCell<Vec<T>>>`, so the arm answered miss in one file too
+task owned
+  take result, like text
+  take fill, like text
+  take arm, like text
+  like text
+
+  back <{list-load}\nform point\n  link x, like number\n\ntask make-as\n  take go, like boolean\n  like {result}\n\n  save out, make list\n{fill}\n  fork test, go\n    hold\n      back out\n  back 3\n\ntask pick\n  take value, like unknown\n  like text\n\n  sift value\n    case list\n      like {arm}\n      link items\n      back \<list \{items/length\}\>\n    miss\n      back \<miss\>\n\ntask run\n  like text\n\n  back \<\{pick(make-as(true))\},\{pick(make-as(false))\}\>\n>
+
+# a module the program loads by `path`, answering as the file of its name
+task module
+  take path, like text
+  take text, like text
+  like compiling-source
+
+  back make(compiling-source, bind(file, path), bind(text, text), bind(answer, <{substring(path, 2)}.tree>))
+
+# the choice of every case: its modules first, then the stdlib under the backend's env
+task modules
+  take files, like list, like compiling-source
+  like compile-choice
+
+  back make(compile-choice, bind(stdlib, <node>), bind(files, files))
+
+test <a form imported and named only in a list arm>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host files, make list(module(<./shapes>, <form point\n  link x, like number\n\nform other\n  link y, like number\n>))
+  host ran, run-text(<load ./shapes\n  find point\n\n{pick-list}\ntask run\n  like text\n\n  back pick(3)\n>, backend, folder, <case0>, modules(files))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <miss>)
+
+test <an arm in a dependency, its form private to it>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host files, make list(module(<./dep>, <form point\n  link x, like number\n\n{pick-list}>))
+  host ran, run-text(<load ./dep\n  find pick\n\ntask run\n  like text\n\n  back pick(3)\n>, backend, folder, <case1>, modules(files))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <miss>)
+
+test <a list arm over a form two files define takes the one its file finds>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host files, make list(module(<./a>, a-text), module(<./b>, b-text))
+  host ran, run-text(<load ./a\n  find point\n  find make-as\n\nload ./b\n  find make-bs\n\n{pick-list}\ntask run\n  like text\n\n  back \<\{pick(make-as())\},\{pick(make-bs())\}\>\n>, backend, folder, <case2>, modules(files))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <list 1,miss>)
+
+test <a form's own arm over a form two files define takes the one its file finds>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host files, make list(module(<./a>, a-text), module(<./b>, b-text))
+  host ran, run-text(<load ./a\n  find point\n  find make-a\n\nload ./b\n  find make-b\n\ntask pick\n  take value, like unknown\n  like text\n\n  sift value\n    case point\n      back \<a \{value/x\}\>\n    miss\n      back \<miss\>\n\ntask run\n  like text\n\n  back \<\{pick(make-a())\},\{pick(make-b())\}\>\n>, backend, folder, <case3>, modules(files))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <a 1,miss>)
+
+test <a filled list of a form handed back as unknown, in one file>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host ran, run-text(owned(<unknown>, point-fill, <point>), backend, folder, <case4>, modules(make list))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <list 1,miss>)
+
+test <a filled list of text handed back as unknown>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host ran, run-text(owned(<unknown>, <  push(out, \<a\>)\n  push(out, \<b\>)>, <text>), backend, folder, <case5>, modules(make list))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <list 2,miss>)
+
+test <a filled list of a form handed back as dynamic>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host ran, run-text(owned(<dynamic>, point-fill, <point>), backend, folder, <case6>, modules(make list))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <list 1,miss>)
+
+test <a filled list of lists of a form handed back as unknown>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<arm-type-native->)
+  host fill, <  save inner, make list\n  save one\n    make point\n      bind x, 1\n  push(inner, one)\n  push(out, inner)>
+  host ran, run-text(owned(<unknown>, fill, <list, like point>), backend, folder, <case7>, modules(make list))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <list 1,miss>)

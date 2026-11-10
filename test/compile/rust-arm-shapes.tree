@@ -1,0 +1,65 @@
+note <a sift arm writing its subject's field, where another form has a case of the same label, on TypeScript and Rust>
+
+# Ported from rust-arm-shapes.ts by statement (item term-self-host-001-1133), one test per `ok` of its one case. Rust
+# emitter shapes of the type phase the CLI's entry refused (finding/native-entry.md of
+# term/self-host/change/001-finish-self-host, item 1059), each its own program, held through rustc and RUN, against
+# TypeScript's answer:
+#   shared-label-arm-write: a sift arm that writes a field of its subject (`save one/size, ...`) is written through the
+#   subject's own case (decision 115 section 3) only when the arm's case label names that field. The fields were looked
+#   up by the bare label, so where another form has a case of the same name without that field (`box` below, node.tree's
+#   `float`, `array`, `let`, `expression`), the write fell through to `one.size = ...` on the enum (E0609 no field on
+#   type `Expression`, `Statement`, `Type`, `ViewNode`, `Node`, `TemplatePart`, 115 sites). No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# `box` is a case of both forms; `mark`'s, written last, has no `size`
+host shared-label, <form shape\n  case box\n    link size, like number\n    link name, like text\n  case dot\n    link size, like number\n\nform mark\n  case box\n    link name, like text\n  case line\n    link name, like text\n\ntask grow-shape\n  take one, like shape\n  like shape\n  sift one\n    case box\n      save one/size, add(one/size, 10)\n    case dot\n      save one/size, add(one/size, 1)\n  back one\n\ntask size-of\n  take one, like shape\n  like number\n  sift one\n    case box\n      back one/size\n    case dot\n      back one/size\n\ntask grow\n  take at, like number\n  like number\n  save a, grow-shape(make(box, bind(size, at), bind(name, \<a\>)))\n  save b, grow-shape(make(dot, bind(size, at)))\n  back add(size-of(a), size-of(b))\n>
+
+# grow(3) is (3 + 10) + (3 + 1)
+task arm-write
+  like native-case
+
+  back native-case-of(<shared-label-arm-write>, shared-label, make(list, <grow>), make(list, call-of(<grow>, <grow>, <3>)))
+
+host arm-write-shape, make pattern, <<\bone\.size = >>
+
+test <shared-label-arm-write: TypeScript answers>
+  host one, arm-write()
+  want hold, is-equal(one/typescript, <17>)
+
+test <shared-label-arm-write: the emitted shape is gone>
+  host one, arm-write()
+  want hold, one/built
+  want hold, not(matches(arm-write-shape, one/rust))
+
+test <shared-label-arm-write: rustc compiles it>
+  host one, arm-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <shared-label-arm-write: no E0609>
+  host one, arm-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0609>))
+
+test <shared-label-arm-write: Rust answers what TypeScript does>
+  host one, arm-write()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <17>)

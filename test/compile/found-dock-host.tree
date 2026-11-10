@@ -1,0 +1,115 @@
+note <a dock alias reached through find is still a host value>
+
+# Ported from found-dock-host.ts by statement (item term-self-host-001-1135), one test per `ok` of its first loop (a
+# literal list of two programs), and one walked test per `ok` of its second, each backend a case of it. Item
+# term-self-host-001-1087, trap T-1067: a shared module that docked `<global:shape>` itself had `host actual-type, like
+# text` over `shape/type-of(...)` checked at the binding: `__termHost(...)` on TypeScript, a downcast raising
+# `data-mismatch` on Rust, Swift and Kotlin. Moved into a module of its own and reached as `load ... / find shape`, the
+# same line compiled to a bare call, because the checker typed a dock alias as the host's own value (`dynamic`) only in
+# the file that docked it. Every output still read the same, since the shim answers a text, so only the emitted body
+# showed it. Each program is compiled twice, the dock in the file and the dock in a module the file loads, and both must
+# emit the check and raise the same `data-mismatch` on every backend whose toolchain is here. The module is answered from
+# the choice's `files`, before the project the program resolves from, so no folder inside the root is needed.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-source
+  find file-text
+
+load ../support/running
+  find backends
+  find build-text
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+
+host dock-text, <dock load\n  load \<global:shape\>, name shape\n>
+
+# a text the host answers, held as a text (passes) and as a number (raises at the binding)
+host body-text, <task run\n  like text\n  host kind, like text\n    call shape/type-of\n      bind value, text \<a\>\n  save answer, \<none\>\n  fork\n    mark unsafe\n    host count, like number\n      call shape/type-of\n        bind value, text \<a\>\n    save answer, \<\{count\}\>\n  halt take\n    take problem\n    save answer, \<\{problem/form\}: \{problem/note\}\>\n  back \<\{kind\} \{answer\}\>\n>
+
+host found-text, <load ./helper\n  find shape\n\n{body-text}>
+
+host inline-text, <{dock-text}\n{body-text}>
+
+host raised, < data-mismatch: Data does not fit the shape>
+
+# the module the found program loads: the dock alone, as native/<platform>/shape.tree holds it
+task choice
+  like compile-choice
+
+  host helper, make(compiling-source, bind(file, <./helper>), bind(text, <# the dock alone, as native/\<platform\>/shape.tree holds it\n\n{dock-text}>), bind(answer, <helper.tree>))
+  back make(compile-choice, bind(files, make list(helper)))
+
+# the program of a name, <inline> or <found>
+task program-of
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <inline>)
+    hold
+      back inline-text
+  back found-text
+
+# the TypeScript build-text wrote for a program, <(no emit)> when it wrote none
+task emitted-of
+  take name, like text
+  like text
+
+  host folder, temp-folder(<found-dock-host->)
+  host built, build-text(program-of(name), <typescript>, folder, name, choice())
+  fork test, is-unequal(built/state, <built>)
+    hold
+      back <(no emit)>
+  back file-text(<{folder}/{name}-typescript.ts>)
+
+# what a program printed on a backend, <skipped> when its toolchain is not here, else how it failed
+task said-on
+  take name, like text
+  take backend, like text
+  like text
+
+  host folder, temp-folder(<found-dock-host->)
+  host ran, run-text(program-of(name), backend, folder, <{name}-run>, choice())
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      back <skipped>
+  back <{ran/state}: {ran/reason}>
+
+test <inline: the text binding is checked on TypeScript>
+  want hold, text-contains(emitted-of(<inline>), <__termHost(shape.typeOf("a"), "string", "kind")>)
+
+test <inline: the number binding is checked on TypeScript>
+  want hold, text-contains(emitted-of(<inline>), <__termHost(shape.typeOf("a"), "number", "count")>)
+
+test <found: the text binding is checked on TypeScript>
+  want hold, text-contains(emitted-of(<found>), <__termHost(shape.typeOf("a"), "string", "kind")>)
+
+test <found: the number binding is checked on TypeScript>
+  want hold, text-contains(emitted-of(<found>), <__termHost(shape.typeOf("a"), "number", "count")>)
+
+test <the docked file raises data-mismatch at the number binding>
+  take backend, like text
+    walk backends()
+  host inline, said-on(<inline>, backend)
+  fork test, is-equal(inline, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, ends-with(inline, raised)
+
+test <the file that finds the dock prints the same>
+  take backend, like text
+    walk backends()
+  host inline, said-on(<inline>, backend)
+  fork test, is-equal(inline, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(said-on(<found>, backend), inline)

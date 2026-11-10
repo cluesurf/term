@@ -1,0 +1,85 @@
+note <a need false maybe field handed to a like dynamic parameter of a bind is the warning maybe-to-dynamic>
+
+# Ported from maybe-to-dynamic.ts by statement (item term-self-host-001-1135), one test per `ok` in its order. Decision
+# 136 of change 001: a `need false` maybe field handed to a `like dynamic` parameter of a bind is the warning
+# `maybe-to-dynamic`, naming the field and the bind. D10 reads the field as a Term maybe on every backend, so the bind's
+# host code gets the maybe and a host `??` over it never falls back (trap T-0947, the 1074 case). The meaning stays D10's
+# (test/compile/maybe-field.ts). Held here: the 1074 case warns once, at the call, naming `gap/span` and `value-or`; a
+# maybe read first with a `sift`, a bind whose parameter is typed, a maybe field that is not `need false`, and a `need
+# false` field that is not a maybe are not warned about; and the warning is a warning, so the build still succeeds. Each
+# program compiles lean, as a library, under the node env over the stdlib.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+
+host head-text, <load @term/base/maybe\n  find maybe\n\nform spot\n  link line, like number\n\nform gap\n  link form, like text\n  link span\n    like maybe, like spot\n    need false\n  link kept\n    like maybe, like spot\n  link count\n    like number\n    need false\n\nbind value-or\n  take value, like dynamic\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\nbind spot-or\n  take value, like maybe, like spot\n  take fallback, like dynamic\n  like dynamic\n  case node\n    text \<($value ?? $fallback)\>\n  case browser\n    text \<($value ?? $fallback)\>\n  case rust\n    text \<$value\>\n  case swift\n    text \<$value\>\n  case kotlin\n    text \<$value\>\n\ntask no-spot\n  like spot\n\n  back\n    make spot\n      bind line, 0\n>
+
+# the 1074 case (tmp/self-host/1074/case/maybe-host.tree)
+host flagged-text, <task span-or\n  take value, like gap\n  like dynamic\n\n  back value-or(value/span, no-spot())\n>
+
+# the program, the head and then `body`, compiled as maybe-to-dynamic.tree
+task build
+  take body, like text
+  like compile-outcome
+
+  back compile-text(<{head-text}\n{body}>, make(compile-choice, bind(file, <maybe-to-dynamic.tree>), bind(lean, true), bind(library, true), bind(stdlib, <node>)))
+
+# the messages of the maybe-to-dynamic warnings a compile gave
+task said
+  take out, like compile-outcome
+  like list, like text
+
+  save found, make list
+  walk out/warning-notes
+    take warning, like compile-note
+    fork test, is-equal(warning/name, <maybe-to-dynamic>)
+      hold
+        found/push(warning/message)
+  back found
+
+# whether there is one message, and it names the field and the bind
+task names-field-and-bind
+  take messages, like list, like text
+  like boolean
+
+  fork test, is-unequal(messages/length, 1)
+    hold
+      back false
+  back and(text-contains(messages/0, <gap/span>), text-contains(messages/0, <value-or>))
+
+test <the 1074 case builds>
+  host out, build(flagged-text)
+  want hold, out/ok
+
+test <the 1074 case warns once>
+  host out, build(flagged-text)
+  want hold, is-equal(said(out)/length, 1)
+
+test <the warning names the field and the bind>
+  host out, build(flagged-text)
+  want hold, names-field-and-bind(said(out))
+
+test <a maybe read with a sift first is not warned about>
+  host out, build(<task span-or\n  take value, like gap\n  like dynamic\n\n  sift value/span\n    case some\n      link found\n      back value-or(found, no-spot())\n    case none\n      back no-spot()\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))
+
+test <a bind whose parameter is typed is not warned about>
+  host out, build(<task span-or\n  take value, like gap\n  like dynamic\n\n  back spot-or(value/span, no-spot())\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))
+
+test <a maybe field that is not need false is not warned about>
+  host out, build(<task kept-or\n  take value, like gap\n  like dynamic\n\n  back value-or(value/kept, no-spot())\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))
+
+test <a need false field that is not a maybe is not warned about>
+  host out, build(<task count-or\n  take value, like gap\n  like dynamic\n\n  back value-or(value/count, 0)\n>)
+  want hold, and(out/ok, is-equal(said(out)/length, 0))

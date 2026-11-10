@@ -1,106 +1,84 @@
-note <A host bind that names a type parameter takes it fresh at each call, as a generic task does (item term-self-host-001-0804)>
+note <a host bind that names a type parameter takes it fresh at each call, as a generic task does>
 
-# Ported from generic-bind.ts by hand (item term-self-host-001-0809).
+# Ported from generic-bind.ts by statement (item term-self-host-001-1129), one test per `ok` in its order. Item 0804: the
+# grammar read `head t` under a bind, and the program dropped it, so `t` was an undeclared name, one inference variable
+# the signature kept, and the first call pinned it for the whole program. The answers on all four toolchains are held by
+# test/compile/meaning-native/generic-bind.tree. Held here: what is still refused, a bound, a form of the parameter's
+# name, and a bind reached through another module. Each program compiles under the node env over the stdlib.
 
 load ../support/compiling
+  find compile-text
   find compile-choice
   find compile-outcome
-  find compile-text
   find compiling-source
-
-load @term/base/list
-  find push
+  find file-text
 
 load @term/base/text
   find contains, name text-contains
-
-# A host bind that names a type parameter takes it fresh at each call, as a generic task does (item
-# term-self-host-001-0804). The grammar read `head t` under a bind, and the program dropped it: `t` was then an undeclared
-# name, one inference variable the signature kept, so the first call pinned it for the whole program. The answers on all
-# four toolchains are held by test/compile/meaning-native/generic-bind.tree. Held here: what is still refused, a bound, a
-# form of the parameter's name, and a bind reached through another module.
-# Run: npx tsx test/check/generic-bind.ts
-
-bind generic-read-fixture
-  take path, like text
-  like text
-  case node
-    text <process.getBuiltinModule("node:fs").readFileSync($path, "utf8")>
-
-task built
-  take source, like text
-  like compile-outcome
-
-  back built(source, make list)
-
-task built
-  take source, like text
-  take files, like list, like compiling-source
-  like compile-outcome
-
-  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(env, <node>), bind(files, files)))
-
-# the messages of a refused program, joined, and <built> for one that compiled
-bind generic-said
-  take outcome, like dynamic
-  like text
-  case node
-    text <($outcome.ok ? "built" : $outcome.messages.join(" | "))>
 
 host first-of-text, <bind first-of\n  head t\n  take items, like list, like t\n  take count, like number\n  like list, like t\n  case node\n    text \<$items.slice(0, $count)\>\n>
 
 host lists-text, <task texts\n  like list, like text\n  back make list\n\ntask numbers\n  like list, like number\n  back make list\n>
 
-host twice, <{first-of-text}\n{lists-text}\ntask run\n  like number\n  save a, first-of(texts(), 1)\n  save b, first-of(numbers(), 1)\n  back add(a/length, b/length)\n>
-
-host carried, <{first-of-text}\n{lists-text}\ntask run\n  like number\n  save a, first-of(texts(), 1)\n  back a/0\n>
-
-host clash, <bind pair-of\n  head t\n  take left, like t\n  take right, like t\n  like t\n  case node\n    text \<$left\>\n\ntask run\n  like text\n  back pair-of(\<a\>, 1)\n>
-
 host mask-text, <mask sized\n  task size-of\n    take self\n    like number\n\nform box\n  link n, like number\n  wear sized\n    task size-of\n      take self\n      back 1\n\nform other\n  link n, like number\n\nbind sized-of\n  head t, need sized\n  take value, like t\n  like number\n  case node\n    text \<0\>\n>
 
-host met, <{mask-text}\ntask run\n  like number\n  save b\n    make box\n      bind n, 1\n  back sized-of(b)\n>
+# a run that calls first-of with a list of text and then a list of numbers
+host twice-run, <task run\n  like number\n  save a, first-of(texts(), 1)\n  save b, first-of(numbers(), 1)\n  back add(a/length, b/length)\n>
 
-host unmet, <{mask-text}\ntask run\n  like number\n  save b\n    make other\n      bind n, 1\n  back sized-of(b)\n>
+# the program compiled as main.tree, loads read from `files` first and then the stdlib
+task build
+  take main, like text
+  take files
+    like list, like compiling-source
+    fall make list
+  like compile-outcome
 
-host shadow, <form t\n  link n, like number\n\n{first-of-text}\n{lists-text}\ntask run\n  like number\n  save a, first-of(texts(), 1)\n  save b, first-of(numbers(), 1)\n  back add(a/length, b/length)\n>
+  back compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(files, files)))
 
-host across, <load @app/lib\n  find first-of\n\n{lists-text}\ntask run\n  like number\n  save a, first-of(texts(), 1)\n  save b, first-of(numbers(), 1)\n  back add(a/length, b/length)\n>
+# what a compile said: built, else its messages joined
+task said
+  take out, like compile-outcome
+  like text
 
-host plain, <bind size-of\n  take items, like list\n  like number\n  case node\n    text \<$items.length\>\n\n{lists-text}\ntask run\n  like number\n  save a, size-of(texts())\n  save b, size-of(numbers())\n  back add(a, b)\n>
+  fork test, out/ok
+    hold
+      back <built>
+  back out/messages/join(< | >)
 
 test <two calls with two element types build>
-  host out, built(twice)
-  want hold, out/ok
+  host out, build(<{first-of-text}\n{lists-text}\n{twice-run}>)
+  want hold, is-equal(said(out), <built>)
 
 test <the result is the element a call handed in: a text is no number>
-  host out, built(carried)
-  want hold, not(out/ok)
-  want hold, text-contains(generic-said(out), <text>)
+  host out, build(<{first-of-text}\n{lists-text}\ntask run\n  like number\n  save a, first-of(texts(), 1)\n  back a/0\n>)
+  want hold, and(not(out/ok), text-contains(said(out), <text>))
 
 test <one call still fits its arguments to one another>
-  want hold, not(built(clash)/ok)
+  host out, build(<bind pair-of\n  head t\n  take left, like t\n  take right, like t\n  like t\n  case node\n    text \<$left\>\n\ntask run\n  like text\n  back pair-of(\<a\>, 1)\n>)
+  want hold, not(out/ok)
 
 test <a bound on a bind a call meets>
-  want hold, built(met)/ok
+  host out, build(<{mask-text}\ntask run\n  like number\n  save b\n    make box\n      bind n, 1\n  back sized-of(b)\n>)
+  want hold, is-equal(said(out), <built>)
 
 test <a bound on a bind a call does not meet>
-  host out, built(unmet)
-  want hold, not(out/ok)
-  want hold, text-contains(generic-said(out), <no "sized" instance for>)
+  host out, build(<{mask-text}\ntask run\n  like number\n  save b\n    make other\n      bind n, 1\n  back sized-of(b)\n>)
+  want hold, and(not(out/ok), text-contains(said(out), <no "sized" instance for>))
 
 # the four-backend fixture itself, which that harness compiles without reading its refusals
 test <generic-bind.tree builds>
-  host out, compile-text(generic-read-fixture(<test/compile/meaning-native/generic-bind.tree>), make(compile-choice, bind(file, <main.tree>), bind(env, <node>), bind(stdlib, <node>)))
-  want hold, out/ok
+  host out, build(file-text(<test/compile/meaning-native/generic-bind.tree>))
+  want hold, is-equal(said(out), <built>)
 
 test <a type parameter shadows a form of its name>
-  want hold, built(shadow)/ok
+  host out, build(<form t\n  link n, like number\n\n{first-of-text}\n{lists-text}\n{twice-run}>)
+  want hold, is-equal(said(out), <built>)
 
 test <a bind in another module>
-  host files, make list
-  files/push(make(compiling-source, bind(file, <@app/lib>), bind(text, first-of-text)))
-  want hold, built(across, files)/ok
+  host lib, make(compiling-source, bind(file, <@app/lib>), bind(text, first-of-text), bind(answer, <lib.tree>))
+  host out, build(<load @app/lib\n  find first-of\n\n{lists-text}\n{twice-run}>, make list(lib))
+  want hold, is-equal(said(out), <built>)
 
 test <a bind naming no type parameter keeps its one element, as a task does>
-  want hold, not(built(plain)/ok)
+  host out, build(<bind size-of\n  take items, like list\n  like number\n  case node\n    text \<$items.length\>\n\n{lists-text}\ntask run\n  like number\n  save a, size-of(texts())\n  save b, size-of(numbers())\n  back add(a, b)\n>)
+  want hold, not(out/ok)

@@ -1,0 +1,112 @@
+note <a sift arm's fields where another form has a case of the same label, on TypeScript and Rust>
+
+# Ported from rust-arm-fields.ts by statement (item term-self-host-001-1133), one test per `ok` of each of its two cases.
+# Rust emitter shapes of a sift arm's fields the CLI's entry refused after 1094 (finding/native-entry.md of
+# term/self-host/change/001-finish-self-host), each its own program, held through rustc and RUN, against TypeScript's
+# answer:
+#   shared-label-borrowed-arm (item 1099): compile/backend-copies.tree borrowed-records read an arm's field types by its
+#   bare case label, so where another form has a case of the same name (`token`'s `word` below, node.tree's `form`,
+#   `text`, `word` beside minted's), the arm's record fields read as that form's scalars, a bare read of one kept the
+#   parameter `&R`, and the arm handed the reference on (E0308 expected `Maybe<i64>`, found `&Maybe<i64>`, 22 sites:
+#   origin_of's FindOrigin, node_of, written_at, empty_annotation)
+#   shared-label-list-field (item 1100): compile/backend-lending.tree owned-fields read an arm's fields by its bare case
+#   label, so where a later form has a case of the same name (`value`'s `list` below, host-value's beside feed-rule's and
+#   mine-rule's), the arm's locals were that form's fields, the list field the arm handed to a task taking the shared
+#   list was never seen, and it stayed a plain `Vec` (E0308 expected `Rc<RefCell<Vec<FeedRule>>>`, found
+#   `Vec<FeedRule>`, gather_codes, rule_children, match_rule)
+# No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+
+# `word` and `other` are cases of both `held` and `token`; `token`'s, written later, hold no record
+host shared-label-borrowed-arm, <load @term/base/maybe\n  find maybe\n\nform spot\n  link name, like text\n  link size, like number\n\nform held\n  case word\n    link word-name, like text\n    link word-spot, like maybe, like spot\n    link word-at, like maybe, like number\n  case other\n    link other-name, like text\n    link other-spot, like maybe, like spot\n    link other-at, like maybe, like number\n\nform token\n  case word\n    link word-text, like text\n    link word-size, like number\n    link word-count, like number\n  case other\n    link other-text, like text\n\nform origin\n  link spot, like maybe, like spot\n  link at, like maybe, like number\n\ntask spot-of\n  take value, like held\n  like maybe, like spot\n  sift value\n    case word\n      link word-name\n      link word-spot\n      back word-spot\n    case other\n      link other-name\n      link other-spot\n      back other-spot\n\ntask origin-of\n  take value, like held\n  like origin\n  sift value\n    case word\n      link word-name\n      link word-spot\n      link word-at\n      back make(origin, bind(spot, word-spot), bind(at, word-at))\n    miss\n      back make(origin, bind(spot, make none), bind(at, make none))\n\ntask size-in\n  take found, like maybe, like spot\n  like number\n  sift found\n    case some\n      link spot\n      back spot/size\n    case none\n      back 0\n\ntask at-in\n  take found, like maybe, like number\n  like number\n  sift found\n    case some\n      link at\n      back at\n    case none\n      back 0\n\ntask handed\n  take at, like number\n  like number\n  save one, make(word, bind(word-name, \<w\>), bind(word-spot, make(some, make(spot, bind(name, \<s\>), bind(size, at)))), bind(word-at, make(some, 7)))\n  save origin, origin-of(one)\n  back add(add(size-in(spot-of(one)), size-in(origin/spot)), at-in(origin/at))\n>
+
+# `list` is a case of both `rule` and `value`; `value`'s, written later, holds no `children`
+host shared-label-list-field, <load @term/base/list\n  find push\n\nform rule\n  case list\n    link children, like list, like rule\n    link count, like number\n  case any\n    link children, like list, like rule\n    link send, like text\n  case char\n    link literal, like number\n\nform value\n  case list\n    link items, like list, like number\n  case word\n    link text, like text\n\ntask gather-codes\n  take rules, like list, like rule\n  take codes, like list, like number\n\n  walk rules\n    take rule\n    sift rule\n      case char\n        push(codes, literal)\n      case any\n        gather-codes(children, codes)\n      case list\n        gather-codes(children, codes)\n      miss\n        save nothing, 0\n\ntask rule-children\n  take rule, like rule\n  like list, like rule\n\n  sift rule\n    case list\n      back children\n    case any\n      back children\n    miss\n      back make list\n\ntask char-list\n  take at, like number\n  like list, like rule\n  save inner, make list\n  push(inner, make(char, bind(literal, at)))\n  back inner\n\ntask gathered\n  take at, like number\n  like number\n  save some, make list\n  push(some, make(list, bind(children, char-list(at)), bind(count, 1)))\n  push(some, make(any, bind(children, char-list(add(at, 1))), bind(send, \<s\>)))\n  save codes, make list\n  gather-codes(some, codes)\n  save kids, rule-children(get(some, 0))\n  back add(add(codes/length, kids/length), add(get(codes, 0), get(codes, 1)))\n>
+
+# handed(3) is 3 + 3 + 7
+task borrowed-arm
+  like native-case
+
+  back native-case-of(<shared-label-borrowed-arm>, shared-label-borrowed-arm, make(list, <handed>), make(list, call-of(<handed>, <handed>, <3>)))
+
+# gathered(3) is (2 + 1) + (3 + 4)
+task list-field
+  like native-case
+
+  back native-case-of(<shared-label-list-field>, shared-label-list-field, make(list, <gathered>), make(list, call-of(<gathered>, <gathered>, <3>)))
+
+host borrowed-arm-shape, make pattern, <<fn (spot|origin)_of\(value: &Held\)>>
+host list-field-shape, make pattern, <<List \{ children: Vec<Rule[>]>>
+
+test <shared-label-borrowed-arm: TypeScript answers>
+  host one, borrowed-arm()
+  want hold, is-equal(one/typescript, <13>)
+
+test <shared-label-borrowed-arm: the emitted shape is gone>
+  host one, borrowed-arm()
+  want hold, one/built
+  want hold, not(matches(borrowed-arm-shape, one/rust))
+
+test <shared-label-borrowed-arm: rustc compiles it>
+  host one, borrowed-arm()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <shared-label-borrowed-arm: no E0308>
+  host one, borrowed-arm()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <shared-label-borrowed-arm: Rust answers what TypeScript does>
+  host one, borrowed-arm()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <13>)
+
+test <shared-label-list-field: TypeScript answers>
+  host one, list-field()
+  want hold, is-equal(one/typescript, <10>)
+
+test <shared-label-list-field: the emitted shape is gone>
+  host one, list-field()
+  want hold, one/built
+  want hold, not(matches(list-field-shape, one/rust))
+
+test <shared-label-list-field: rustc compiles it>
+  host one, list-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <shared-label-list-field: no E0308>
+  host one, list-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, one/built
+  want hold, not(text-contains(one/run/errors, <E0308>))
+
+test <shared-label-list-field: Rust answers what TypeScript does>
+  host one, list-field()
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <10>)

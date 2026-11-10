@@ -45,6 +45,10 @@
 // in a diff and added by a lead's Decide: item, and no flag adds to either. A later classifier fix that uncovers more
 // files writes a new list under its own decision.
 //
+// MOVED IN AND LEAVING (item 0934). MOVED_IN names the files that moved into the tree from elsewhere, each with its
+// porting item, and `--commit` adds them to `port`. OWED_TREES owes a whole package that leaves the repository (deck/save,
+// decision 129) to the item that moves it out. Zone is its own repository and is not walked. Each is a line of this file.
+//
 //   pnpm term:floor            report, and fail on a new port file, a refused listed file, or an owed row past its item
 //   pnpm term:floor --list     every port file, with its lines, then every owed file, with its item
 //   pnpm term:floor --commit   rewrite the baseline (shrink only, D108's lists apart)
@@ -58,7 +62,7 @@ import { existsSync, readFileSync, readdirSync, lstatSync, writeFileSync } from 
 import { basename, dirname, join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { scan as hostTextScan } from './host-text'
-import { PARENT_ROOT, TERM_ROOT, parentPaths, parentRoot } from './root'
+import { PARENT_ROOT, TERM_ROOT, parentRoot } from './root'
 
 // F1 by name (D029): the runtimes emitted or served code imports by path, relative to the Term package
 // (the Term root). Each holds its reason. self-host-left.ts reads this list
@@ -92,12 +96,17 @@ const UNDERCOUNTED: { asOf: string; decision: number; files: ReadonlyArray<strin
     'test/compile/feed-mill-bench.ts',
     'test/assurance/hold.sh',
     'test/check/foundation.sh',
-    ...parentPaths('deck/zone/test/all.sh'),
-    ...parentPaths('deck/zone/test/e2e.sh'),
-    ...parentPaths('deck/zone/test/fresh.sh'),
-    ...parentPaths('deck/zone/test/help.sh'),
-    ...parentPaths('deck/zone/test/load.sh'),
-    ...parentPaths('deck/zone/test/save.sh'),
+  ],
+}
+
+// Item 0934 (lead ruling 2026-11-04): files that moved into the Term tree on 2026-11-04 from elsewhere, so they are no
+// growth of the toolchain. `--commit` adds each to `port`, and each has its porting item. No flag adds to it
+const MOVED_IN: { item: string; files: ReadonlyArray<{ path: string; port: string }> } = {
+  item: 'term-self-host-001-0934',
+  files: [
+    { path: 'deck/call/code/knit-stream.ts', port: 'term-self-host-001-1127' },
+    { path: 'test/borrow.ts', port: 'term-self-host-001-1128' },
+    { path: 'test/distro-redirect.ts', port: 'term-self-host-001-1128' },
   ],
 }
 
@@ -106,7 +115,34 @@ const OWED: ReadonlyArray<{ path: string; item: string }> = [
   { path: 'deck/call/code/launch-only.ts', item: 'term-self-host-001-0721' },
   { path: 'deck/call/code/census-keep.ts', item: 'term-self-host-001-0142' },
   { path: 'deck/make/code/check/hold-key-memo.ts', item: 'term-self-host-001-0748' },
-  ...(PARENT_ROOT ? [{ path: parentPaths('deck/zone/test/spot.sh')[0]!, item: 'term-self-host-001-0749' }] : []),
+  // item 0934: new test .ts that break tests-are-.tree, each owed by its port to .tree, never admitted
+  { path: 'test/check/generic-bind.ts', item: 'term-self-host-001-1129' },
+  { path: 'test/compile/arm-type-native.ts', item: 'term-self-host-001-1130' },
+  { path: 'test/compile/value-store-native.ts', item: 'term-self-host-001-1131' },
+  // item 1132: test files added 11-06 to 11-08, each owed by its port to .tree. meet.sh rides with the boot.ts item, since
+  // the floor has no fixture class by path
+  { path: 'test/call/boot.ts', item: 'term-self-host-001-1134' },
+  { path: 'test/call/test-jobs.ts', item: 'term-self-host-001-1134' },
+  { path: 'test/call/report-apart-fixture/meet.sh', item: 'term-self-host-001-1134' },
+  { path: 'test/check/maybe-to-dynamic.ts', item: 'term-self-host-001-1135' },
+  { path: 'test/compile/found-dock-host.ts', item: 'term-self-host-001-1135' },
+  { path: 'test/compile/shape-is-kind.ts', item: 'term-self-host-001-1135' },
+  { path: 'test/compile/shape-type-of.ts', item: 'term-self-host-001-1135' },
+  ...[
+    'arm-fields',
+    'arm-shapes',
+    'borrow-shapes',
+    'cast-operand',
+    'closure-arm-link',
+    'closure-guard-exit',
+    'dynamic-empty-field',
+    'left-out-field',
+    'prelude-case',
+    'record-empty-field',
+    'slot-shapes',
+    'small-shapes',
+    'void-argument',
+  ].map(name => ({ path: `test/compile/rust-${name}.ts`, item: 'term-self-host-001-1133' })),
   { path: 'test/compile/list-loose-native.ts', item: 'term-self-host-001-0708' },
   { path: 'test/call/boot-graph.ts', item: 'term-self-host-001-0602' },
   { path: 'test/call/build-entry-ask.ts', item: 'term-self-host-001-0602' },
@@ -135,6 +171,13 @@ const OWED: ReadonlyArray<{ path: string; item: string }> = [
   { path: 'test/server/store-clean.ts', item: 'term-self-host-001-0677' },
 ]
 
+// A whole package leaving the Term repository, owed by the item that moves it out: every file under the prefix is a
+// row of OWED with that item, and fails the same way once the item closes with the files still here. deck/save leaves
+// by decision 129 section 6, and nothing in it is ported
+const OWED_TREES: ReadonlyArray<{ prefix: string; item: string; decision: number }> = [
+  { prefix: 'deck/save/', item: 'term-self-host-001-1045', decision: 129 },
+]
+
 // run from the repository root, the way `pnpm term:floor` runs it
 const HOME = TERM_ROOT
 const TERM = TERM_ROOT
@@ -145,8 +188,9 @@ const argv = process.argv.slice(2)
 const list = argv.includes('--list')
 const commit = argv.includes('--commit')
 
-// every Term package, plus the Term repository's own suites, plus zone, which is a Term package living outside it.
-// Built on demand, so a tool importing FLOOR_F1_FILES from any directory walks nothing
+// every Term package, plus the Term repository's own suites. Zone is not walked: it is its own repository with its own
+// self-contained check, and it left the Term floor by item 0934. Built on demand, so a tool importing FLOOR_F1_FILES
+// from any directory walks nothing
 function listRoots(): Array<{ name: string; dir: string }> {
   return [
     ...readdirSync(join(TERM, 'deck'))
@@ -154,9 +198,6 @@ function listRoots(): Array<{ name: string; dir: string }> {
       .filter(name => lstatSync(join(TERM, 'deck', name)).isDirectory())
       .map(name => ({ name: `@term/${name}`, dir: join(TERM, 'deck', name) })),
     { name: 'test/', dir: join(TERM, 'test') },
-    // parentPaths answers relative to the Term root, so it is joined to it: run from any other folder, the bare path
-    // named a folder that is not there and `git -C` threw
-    ...(PARENT_ROOT ? [{ name: '@term/zone', dir: join(TERM, parentPaths('deck/zone')[0]!) }] : []),
   ]
 }
 
@@ -523,9 +564,15 @@ function main(): void {
   // what the class says is outside the floor, and of that what `port` may hold: a row of OWED never reaches it (D108)
   const outside = found.filter(f => f.cls === 'port')
   const owedKeys = new Set(OWED.map(row => row.path))
-  const ports = outside.filter(f => !owedKeys.has(f.key))
+  const treeOf = (key: string) => OWED_TREES.find(tree => key.startsWith(tree.prefix))
+  const ports = outside.filter(f => !owedKeys.has(f.key) && treeOf(f.key) === undefined)
   const portKeys = new Set(ports.map(f => f.key))
-  const owedHere = OWED.filter(row => existsSync(join(HOME, row.path)))
+  const owedHere = [
+    ...OWED.filter(row => existsSync(join(HOME, row.path))),
+    ...outside
+      .filter(f => !owedKeys.has(f.key) && treeOf(f.key) !== undefined)
+      .map(f => ({ path: f.key, item: treeOf(f.key)!.item })),
+  ]
   const old: { port: string[]; owed?: Array<{ path: string; item: string }> } = existsSync(BASELINE)
     ? JSON.parse(readFileSync(BASELINE, 'utf8'))
     : { port: [] }
@@ -534,7 +581,9 @@ function main(): void {
   // with no baseline yet there is nothing to be new against, and a --commit --first-write takes the whole set
   const unheld = existsSync(BASELINE) ? ports.filter(f => !held.has(f.key)) : []
   const listed = new Set(UNDERCOUNTED.files)
-  const fresh = unheld.filter(f => !listed.has(f.key))
+  const movedKeys = new Set(MOVED_IN.files.map(entry => entry.path))
+  const movedIn = unheld.filter(f => movedKeys.has(f.key))
+  const fresh = unheld.filter(f => !listed.has(f.key) && !movedKeys.has(f.key))
   const admitted: Found[] = []
   const refused: string[] = []
 
@@ -643,6 +692,15 @@ function main(): void {
   if (admitted.length > 0) {
     console.log('')
     console.log(`  ${admitted.length} undercounted: first committed before ${UNDERCOUNTED.asOf} (D${UNDERCOUNTED.decision}). \`--commit\` adds them to port`)
+  }
+
+  if (movedIn.length > 0) {
+    console.log('')
+    console.log(`  ${movedIn.length} moved in (${MOVED_IN.item}), each with its porting item. \`--commit\` adds them to port:`)
+
+    for (const f of movedIn) {
+      console.log(`    ${f.key}  ${MOVED_IN.files.find(entry => entry.path === f.key)!.port}`)
+    }
   }
 
   if (refused.length > 0) {
