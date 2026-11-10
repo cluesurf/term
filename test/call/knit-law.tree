@@ -1,0 +1,384 @@
+# `term knit`'s law library and the instance check (call/work/knit/law-library.tree), with no term hold and no API,
+# ported from test/call/knit.ts "the law library and the instance check" (item term-self-host-001-1127, decision
+# 1142). Each law is a template; the seal appends it below the marker and undoes any edit there; the instance check
+# passes the library fixture (test/assurance/library) and refuses run-4-no-example's isolation, the delete policy
+# restated by hand (test/call/knit-fixture/restated), the same in a template of the library's name, a hole bound to a
+# task beside the law, a hole left out, a law fused twice or not at all. Each project is a copy under tmp/knit-test,
+# removed when the suite ends.
+
+load @term/call/work/knit/law-library
+  find library-law
+  find library-names
+  find read-library-mark
+  find own-text
+  find sealed
+  find seal
+  find check-instances
+  find instance-ask
+
+load @term/call/work/knit/gate
+  find law-instance
+  find law-sentence
+  find gate-ask
+  find gate-of
+
+load @term/call/work/knit/hold-reading
+  find hold-read
+
+load @term/call/work/knit/project-frame
+  find package-root
+  find first-ask
+  find first-message
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+  find split
+  find trim-end
+  find replace, name text-replace
+  find starts-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load ../support/temp
+  find remove-at-exit
+
+dock load
+  load <node:fs>, name law-fs
+  load <node:path>, name law-path
+  load <global:JSON>, name law-json
+
+bind law-fill-at
+  take fill, like dynamic
+  take hole, like text
+  like text
+  case node
+    text <String($fill?.[$hole] ?? "")>
+
+form law-copy-options
+  link recursive, like boolean
+  link filter, like dynamic
+
+form law-folder-options
+  link recursive, like boolean
+
+host root, package-root()
+
+# the folder every copy of this suite goes in, removed when the suite ends
+task law-dir
+  like text
+
+  host knit-test, law-path/join(root, <tmp/knit-test>)
+  law-fs/mkdir-sync(knit-test, make(law-folder-options, bind(recursive, true)))
+  back remove-at-exit(law-fs/mkdtemp-sync(law-path/join(knit-test, <law->)))
+
+host copies, law-dir()
+
+task keep-source
+  take source, like text
+  like boolean
+
+  back and(not(text-contains(source, </.base>)), not(text-contains(source, </host>)))
+
+# a copy of a project to check (the original's `projectOf`), without its build output
+task project-of
+  take name, like text
+  take from, like text
+  like text
+
+  host dir, law-path/join(copies, name)
+  law-fs/cp-sync(from, dir, make(law-copy-options, bind(recursive, true), bind(filter, keep-source)))
+  back dir
+
+# a copy with its code/law.tree replaced
+task project-with
+  take name, like text
+  take from, like text
+  take law-text, like text
+  like text
+
+  host dir, project-of(name, from)
+  law-fs/write-file-sync(law-path/join(dir, <code/law.tree>), law-text)
+  back dir
+
+task read-text
+  take file, like text
+  like text
+
+  back law-fs/read-file-sync(file, <utf8>)
+
+task all-laws
+  like list, like library-law
+
+  save laws, make list
+  walk library-names(root)
+    take name
+    sift library-law(root, name)
+      case some
+        laws/push value
+      case none
+        save laws, laws
+  back laws
+
+host fixture, law-path/join(root, <test/assurance/library>)
+host restated-fixture, law-path/join(root, <test/call/knit-fixture/restated>)
+
+task instances-of
+  take project, like text
+  take required, like list, like text
+  like list, like law-instance
+
+  host reader, make-role-reader(project)
+  back check-instances(make(instance-ask, bind(project, project), bind(required, required), bind(laws, all-laws()), bind(role-of, face-role-reader(reader)), bind(lean-of, face-lean-reader(reader))))
+
+task three-laws
+  like list, like text
+
+  back make list(<ownership>, <isolation>, <deleted-stays-gone>)
+
+task two-laws
+  like list, like text
+
+  back make list(<ownership>, <isolation>)
+
+task one-law
+  like list, like text
+
+  back make list(<isolation>)
+
+# the instance of the law named, or a refusal standing in when there is none
+task instance-named
+  take instances, like list, like law-instance
+  take name, like text
+  like law-instance
+
+  walk instances
+    take one
+    fork test, is-equal(one/law, name)
+      hold
+        back one
+  back make(law-instance, bind(law, name), bind(ok, false))
+
+# the library's law of that name, or an empty one standing in when it has none
+task law-named
+  take name, like text
+  like library-law
+
+  sift library-law(root, name)
+    case some
+      back value
+    case none
+      back make(library-law, bind(name, <>), bind(template, <>), bind(file, <>), bind(text, <>), bind(params, make list))
+
+task has-law
+  take name, like text
+  like boolean
+
+  sift library-law(root, name)
+    case some
+      back true
+    case none
+      back false
+
+task problem-text
+  take instance, like law-instance
+  like text
+
+  sift instance/problem
+    case some
+      back value
+    case none
+      back <>
+
+task english-text
+  take instance, like law-instance
+  like text
+
+  sift instance/english
+    case some
+      back value
+    case none
+      back <>
+
+# the fill's name for a hole, `<>` when there is none
+task fill-of
+  take instance, like law-instance
+  take hole, like text
+  like text
+
+  sift instance/fill
+    case some
+      back law-fill-at(value, hole)
+    case none
+      back <>
+
+task all-ok
+  take instances, like list, like law-instance
+  like boolean
+
+  walk instances
+    take one
+    fork test, not(one/ok)
+      hold
+        back false
+  back true
+
+host good, project-of(<good>, fixture)
+host good-text, read-text(law-path/join(good, <code/law.tree>))
+host correct, instances-of(good, three-laws())
+host restated, project-of(<restated>, restated-fixture)
+host restated-instances, instances-of(restated, two-laws())
+
+test <the library holds the three state laws of the MVP>
+  host library, library-names(root)
+  want hold, contains(library, <deleted-stays-gone>)
+  want hold, contains(library, <isolation>)
+  want hold, contains(library, <ownership>)
+
+test <a library law is a template named for it, whose holes are the app's forms and its task>
+  host iso, law-named(<isolation>)
+  want hold, is-equal(iso/template, <isolation-law>)
+  want hold, is-equal(iso/params/join(<,>), <state,natural,rank,person,view>)
+
+test <ownership is generic over the step task, the two view laws over the view task>
+  want hold, contains(law-named(<ownership>)/params, <step>)
+  want hold, contains(law-named(<deleted-stays-gone>)/params, <view>)
+
+test <a name the library lacks is no law>
+  want hold, has-law(<isolation>)
+  want hold, not(has-law(<no-such-law>))
+
+test <the fixture is sealed: sealing it again changes nothing>
+  want hold, is-equal(sealed(good-text, all-laws()), good-text)
+  want hold, is-equal(seal(good, all-laws())/length, 0)
+
+test <what the model writes is the text above the marker>
+  host own, own-text(good-text)
+  want hold, not(text-contains(own, read-library-mark()))
+  want hold, text-contains(own, <fuse isolation-law>)
+  want hold, not(text-contains(own, <tree isolation-law>))
+
+test <A CORRECT INSTANCE PASSES: each of the three laws is the library statement filled with the app's names>
+  want hold, all-ok(correct)
+  want hold, is-equal(correct/length, 3)
+  want hold, is-equal(fill-of(instance-named(correct, <isolation>), <view>), <view>)
+  want hold, is-equal(fill-of(instance-named(correct, <ownership>), <step>), <step>)
+
+test <its law reads in English from the library statement>
+  host pattern, make pattern, <<owned holds of \(person with id i and rank r\) and \(the view of s>>
+  want hold, matches(pattern, english-text(instance-named(correct, <isolation>)))
+
+test <an edit below the marker is undone by the seal>
+  host tampered, project-with(<tampered>, fixture, text-replace(good-text, <      call \{view\}>, <      call \{view\}\n        read s>))
+  host changed, seal(tampered, all-laws())
+  want hold, is-equal(changed/join(<,>), <code/law.tree>)
+  want hold, is-equal(read-text(law-path/join(tampered, <code/law.tree>)), good-text)
+
+test <A PROJECT WHOSE ISOLATION RESTATES DELETE IS REFUSED: a claim written by hand under the law's name is no instance, and the model is told how to state it>
+  host own-r, restated-instances/0
+  host iso-r, restated-instances/1
+  host said, problem-text(iso-r)
+  want hold, not(iso-r/ok)
+  want hold, text-contains(said, <`rule isolation` is written by hand>)
+  want hold, text-contains(said, <fuse isolation-law\n  bind state, \<your state\>>)
+  want hold, not(own-r/ok)
+
+test <a template of the library's name written by hand is refused>
+  host text, read-text(law-path/join(restated, <code/law.tree>))
+  host rule-start, index-of(text, <rule isolation\n>)
+  host rule-end, index-of(text, <task isolation\n>)
+  host lines, make list
+  lines/push <{substring(text, 0, rule-start)}{substring(text, rule-end)}>
+  lines/push <tree isolation-law>
+  lines/push <  hook fuse>
+  walk split(trim-end(substring(text, rule-start, rule-end)), <\n>)
+    take one
+    lines/push <    {one}>
+  lines/push <>
+  lines/push <fuse isolation-law>
+  lines/push <>
+  host own-template, project-with(<own-template>, restated-fixture, lines/join(<\n>))
+  host iso, instances-of(own-template, one-law())/0
+  want hold, not(iso/ok)
+  want hold, text-contains(problem-text(iso), <`tree isolation-law` is written by hand>)
+
+test <a hole bound to something that is not the app's own (a task beside the law) is refused>
+  host stated, <fuse isolation-law\n  bind state, shelf\n  bind natural, natural\n  bind rank, rank\n  bind person, person\n  bind view, view>
+  host beside, <fuse isolation-law\n  bind state, shelf\n  bind natural, natural\n  bind rank, rank\n  bind person, person\n  bind view, show-nothing>
+  host foreign, project-with(<foreign>, fixture, <{text-replace(own-text(good-text), stated, beside)}\ntask show-nothing\n  take s, like shelf\n  take p, like person\n  like shelf\n  back make bare\n>)
+  host iso, instances-of(foreign, one-law())/0
+  want hold, not(iso/ok)
+  want hold, text-contains(problem-text(iso), <`bind view, show-nothing`>)
+  want hold, text-contains(problem-text(iso), <is not>)
+
+test <a fuse that leaves a hole out is refused, naming it>
+  host partial, project-with(<partial>, fixture, text-replace(own-text(good-text), <fuse isolation-law\n  bind state, shelf\n>, <fuse isolation-law\n>))
+  host iso, instances-of(partial, one-law())/0
+  want hold, not(iso/ok)
+  want hold, text-contains(problem-text(iso), <leaves out state>)
+
+test <a law fused twice is refused>
+  host twice, project-with(<twice>, fixture, <{own-text(good-text)}\nfuse isolation-law\n  bind state, shelf\n  bind natural, natural\n  bind rank, rank\n  bind person, person\n  bind view, view\n>)
+  want hold, text-contains(problem-text(instances-of(twice, one-law())/0), <fused 2 times>)
+
+test <a law not stated at all is refused with the fuse to write>
+  host unstated, project-with(<unstated>, restated-fixture, <# nothing yet\n>)
+  want hold, text-contains(problem-text(instances-of(unstated, one-law())/0), <isolation is not stated>)
+
+test <a law the library lacks is refused by name>
+  host made-up, instances-of(good, make(list, <made-up>))/0
+  want hold, text-contains(problem-text(made-up), <no law named made-up in the law library>)
+
+# ---- the gate on the instances ----
+
+task holding
+  like hold-read
+
+  host summary, law-json/parse(<<{"files": 2, "failed": [], "open": [], "total": 2, "proven": 2, "fresh": [], "ledger": {"native": [], "axioms": [], "unending": [], "roaming": []}, "kernel": {"proven": 10, "commands": 0, "declined": 0, "reasons": []}}>>)
+  back make(hold-read, bind(holds, true), bind(summary, make(some, summary)), bind(problems, make list), bind(stray, 0))
+
+task law-of
+  take name, like text
+  like law-sentence
+
+  back make(law-sentence, bind(name, name), bind(kind, <claim>), bind(text, make(some, <{name} in words.>)), bind(words, make list))
+
+task gate-with
+  take instances, like list, like law-instance
+
+  back gate-of(make(gate-ask, bind(hold, holding()), bind(laws, make(list, law-of(<ownership>), law-of(<isolation>))), bind(required, two-laws()), bind(lean, false), bind(instances, make(some, instances))))
+
+test <the gate fails on a law that is not the library's, naming it, even when term hold holds>
+  host instances, make list
+  instances/push make(law-instance, bind(law, <ownership>), bind(ok, true))
+  instances/push restated-instances/1
+  host gated, gate-with(instances)
+  want hold, not(gated/ok)
+  want hold, starts-with(gated/reasons/0, <isolation is not the law library's isolation: `rule isolation` is written by hand>)
+
+test <and passes when every named law is an instance>
+  want hold, gate-with(correct)/ok
+
+test <the first message carries each named law's library text and the fuse to write>
+  host laws, make list
+  laws/push law-named(<isolation>)
+  host first, first-message(make(first-ask, bind(spec, <s>), bind(required, one-law()), bind(library, make(some, laws))))
+  want hold, text-contains(first, <tree isolation-law>)
+  want hold, text-contains(first, <fuse isolation-law\n  bind state, \<your state\>>)
+  want hold, text-contains(first, <task isolation>)

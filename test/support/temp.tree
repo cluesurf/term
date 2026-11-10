@@ -28,11 +28,31 @@ bind temp-owner-of
   case node
     text <<(new RegExp("^" + $prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\d+)-[A-Za-z0-9]{6}$").exec($entry)?.[1] ?? "")>>
 
-bind temp-alive
+bind temp-number
+  take pid, like text
+  like number
+  case node
+    text <Number($pid)>
+
+# the host's code of a raised exception, the empty text when it has none
+bind temp-cause-code
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.code ?? "")>
+
+# whether process `pid` runs: a signal 0 reaches it, or it is there and not ours to signal
+task temp-alive
   take pid, like text
   like boolean
-  case node
-    text <(() =\> \{ try \{ process.kill(Number($pid), 0); return true \} catch (cause) \{ return cause.code === "EPERM" \} \})()>
+
+  fork
+    mark unsafe
+    temp-process/kill(temp-number(pid), 0)
+    back true
+  halt take
+    take cause
+    back is-equal(temp-cause-code(cause), <EPERM>)
 
 bind temp-keeps
   take seed, like number

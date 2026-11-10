@@ -46,7 +46,7 @@ task ordered
 
   back is-equal(out, is-maximum(get(inputs, 0), get(inputs, 1)))
 
-test <in-range(x, lo, hi) is (x >= lo and x <= hi)>
+test <in-range(x, lo, hi) is (x \>= lo and x \<= hi)>
   host found, synthesize-pred(3, in-range, 6, 2, 3)
   want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<x>, <lo>, <hi>)), <(x \>= lo and x \<= hi)>))
 
@@ -54,11 +54,11 @@ test <in-range takes four counterexamples to find>
   host found, synthesize-pred(3, in-range, 6, 2, 3)
   want hold, is-equal(found/counterexamples/length, 4)
 
-test <is-nonneg(x) is x >= 0>
+test <is-nonneg(x) is x \>= 0>
   host found, synthesize-pred(1, is-nonneg, 6, 2, 3)
   want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<x>)), <x \>= 0>))
 
-test <ordered(a, b) is a <= b>
+test <ordered(a, b) is a \<= b>
   host found, synthesize-pred(2, ordered, 6, 2, 3)
   want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<a>, <b>)), <a \<= b>))
 

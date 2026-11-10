@@ -10,6 +10,15 @@
 load @term/base/list
   find contains
 
+load @term/base/time
+  find now, name compiling-clock
+
+load @term/base/environment
+  find variable, name compiling-variable
+  find has-variable, name compiling-has-variable
+  find set-variable, name compiling-set-variable
+  find remove-variable, name compiling-remove-variable
+
 dock load
   load <@term/make/code/compile/compile>, name compiling-driver
   load <@term/make/code/resolve>, name compiling-resolve
@@ -27,6 +36,7 @@ dock load
   load <@term/make/code/check/resolve>, name compiling-resolver
   load <@term/make/code/check/infer>, name compiling-infer
   load <node:path>, name compiling-path
+  load <node:fs>, name compiling-fs
 
 # `file` is the exact path a load asks for. `answer` is the file it comes back as, <> that same path, for a suite whose
 # modules answer under another name (`@app/x` as `x.tree`).
@@ -158,16 +168,119 @@ form front-end-outcome
   link messages, like list, like text
   link program, like dynamic
 
-# the driver's options for a choice, each left out when empty: the compiler tells an env given from none (T-0495)
-bind compiling-options
+# whether a host value counts as given: a function, a record, a list, true. void and false do not
+bind compiling-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the driver reads its options by property, so the named values become a plain object
+bind compiling-object
+  take named, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($named)>
+
+# the driver's options for a choice, each left out when empty: the compiler tells an env given from none (T-0495). void
+# when the choice gives none, as a suite with no choice
+task compiling-options
   take choice, like compile-choice
   take resolver, like dynamic
   take lean, like dynamic
   take role, like dynamic
   take deck, like dynamic
   like dynamic
-  case node
-    text <(() =\> \{ const given = \{\}; const entries = [...($choice.entry !== "" ? [$choice.entry] : []), ...$choice.entries]; if ($lean) given.leanOf = $lean; if ($role) given.roleOf = $role; if ($deck) given.deckOf = $deck; if ($resolver) given.resolve = $resolver; if ($choice.env !== "") given.env = $choice.env; if (entries.length \> 0) given.entryPoints = entries; if ($choice.library) given.library = true; if ($choice.optimize === false) given.optimize = false; if ($choice.treeShake !== "") given.treeShake = $choice.treeShake === "true"; if ($choice.roll) given.roll = true; if ($choice.cover) given.cover = true; if ($choice.exposeTwins) given.exposeTwins = true; if ($choice.cache) given.cache = $choice.cache; if ($choice.twins) given.twins = $choice.twins; if ($choice.modules) given.modules = $choice.modules; return Object.keys(given).length === 0 ? undefined : given \})()>
+
+  save given, like hash, like text, like dynamic
+    make hash
+  save count, 0
+  save entries, make list
+  fork test, is-unequal(choice/entry, <>)
+    hold
+      entries/push(choice/entry)
+  walk choice/entries
+    take one, like text
+    entries/push(one)
+  fork test, compiling-given(lean)
+    hold
+      save key, <leanOf>
+      save given/{key}, lean
+      save count, add(count, 1)
+  fork test, compiling-given(role)
+    hold
+      save key, <roleOf>
+      save given/{key}, role
+      save count, add(count, 1)
+  fork test, compiling-given(deck)
+    hold
+      save key, <deckOf>
+      save given/{key}, deck
+      save count, add(count, 1)
+  fork test, compiling-given(resolver)
+    hold
+      save key, <resolve>
+      save given/{key}, resolver
+      save count, add(count, 1)
+  fork test, is-unequal(choice/env, <>)
+    hold
+      save key, <env>
+      save given/{key}, choice/env
+      save count, add(count, 1)
+  fork test, is-above(entries/length, 0)
+    hold
+      save key, <entryPoints>
+      save given/{key}, entries
+      save count, add(count, 1)
+  fork test, choice/library
+    hold
+      save key, <library>
+      save given/{key}, true
+      save count, add(count, 1)
+  fork test, not(choice/optimize)
+    hold
+      save key, <optimize>
+      save given/{key}, false
+      save count, add(count, 1)
+  fork test, is-unequal(choice/tree-shake, <>)
+    hold
+      save key, <treeShake>
+      save given/{key}, is-equal(choice/tree-shake, <true>)
+      save count, add(count, 1)
+  fork test, choice/roll
+    hold
+      save key, <roll>
+      save given/{key}, true
+      save count, add(count, 1)
+  fork test, choice/cover
+    hold
+      save key, <cover>
+      save given/{key}, true
+      save count, add(count, 1)
+  fork test, choice/expose-twins
+    hold
+      save key, <exposeTwins>
+      save given/{key}, true
+      save count, add(count, 1)
+  fork test, compiling-given(choice/cache)
+    hold
+      save key, <cache>
+      save given/{key}, choice/cache
+      save count, add(count, 1)
+  fork test, compiling-given(choice/twins)
+    hold
+      save key, <twins>
+      save given/{key}, choice/twins
+      save count, add(count, 1)
+  fork test, compiling-given(choice/modules)
+    hold
+      save key, <modules>
+      save given/{key}, choice/modules
+      save count, add(count, 1)
+  fork test, is-equal(count, 0)
+    hold
+      back void
+  back compiling-object(given)
 
 bind compiling-no-resolver
   take seed, like number
@@ -193,19 +306,79 @@ bind compiling-one-role
   case node
     text <(() =\> $role)>
 
-bind compiling-with-files
+# the resolver below asked for a path, void when there is none
+bind compiling-ask-below
+  take below, like dynamic
+  take path, like text
+  take from, like dynamic
+  take how, like dynamic
+  like dynamic
+  case node
+    text <$below?.($path, $from, $how)>
+
+# the first match of `pattern` in the text replaced by `into`
+bind compiling-replace-first
+  take whole, like text
+  take pattern, like text
+  take into, like text
+  like text
+  case node
+    text <$whole.replace(new RegExp($pattern), $into)>
+
+# what a resolver answers for a load: the file it comes back as and its text
+form compiling-found
+  link file, like text
+  link text, like text
+
+# a resolver that answers each of `files` by its exact path, and asks `below` for any other. `below` itself when there
+# are none
+task compiling-with-files
   take files, like list, like compiling-source
   take below, like dynamic
   like dynamic
-  case node
-    text <($files.length === 0 ? $below : (path, from, how) =\> \{ const found = $files.find(one =\> one.file === path); return found ? \{ file: found.answer || found.file, text: found.text \} : $below?.(path, from, how) \})>
 
-bind compiling-with-rewrites
+  fork test, is-equal(files/length, 0)
+    hold
+      back below
+  save answering
+    task
+      take path, like text
+      take from, like dynamic
+      take how, like dynamic
+      like dynamic
+      walk files
+        take one, like compiling-source
+        fork test, is-equal(one/file, path)
+          hold
+            save named, one/answer
+            fork test, is-equal(named, <>)
+              hold
+                save named, one/file
+            back make(compiling-found, bind(file, named), bind(text, one/text))
+      back compiling-ask-below(below, path, from, how)
+  back answering
+
+# a resolver that rewrites a path by each of `rewrites` in order, then asks `below`. `below` itself when there are none
+task compiling-with-rewrites
   take rewrites, like list, like compiling-rewrite
   take below, like dynamic
   like dynamic
-  case node
-    text <($rewrites.length === 0 ? $below : (path, from, how) =\> $below?.($rewrites.reduce((at, one) =\> at.replace(new RegExp(one.pattern), one.into), path), from, how))>
+
+  fork test, is-equal(rewrites/length, 0)
+    hold
+      back below
+  save rewriting
+    task
+      take path, like text
+      take from, like dynamic
+      take how, like dynamic
+      like dynamic
+      save at, path
+      walk rewrites
+        take one, like compiling-rewrite
+        save at, compiling-replace-first(at, one/pattern, one/into)
+      back compiling-ask-below(below, at, from, how)
+  back rewriting
 
 bind compiling-maybe
   take value, like text
@@ -220,17 +393,63 @@ bind compiling-field
   case node
     text <$result[$name]>
 
-# The driver's compile, timed, with the budget set around it and the value it found put back, also when the compile
-# raises. The compile is synchronous, so no other test can see the value. If the Term driver of item 0707 awaits, this
-# stops being safe and 0707 passes the budget another way (decision 106).
-bind compiling-around
-  take budget, like text
-  take now, like dynamic
+# the driver's answer and the milliseconds around its compile only
+form compiling-timed
+  link result, like dynamic
+  link ms, like number
+
+# the message of a host exception, for a raise that passes it on
+bind compiling-cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# the driver's compile, timed
+task compiling-timed-compile
   take source, like compiling-source
   take options, like dynamic
-  like dynamic
-  case node
-    text <(() =\> \{ const before = process.env.TERM_PROOF_BUDGET; if ($budget !== "") process.env.TERM_PROOF_BUDGET = $budget; try \{ const started = Date.now(); const result = $now($source, $options); return \{ result, ms: Date.now() - started \} \} finally \{ if (before === undefined) delete process.env.TERM_PROOF_BUDGET; else process.env.TERM_PROOF_BUDGET = before \} \})()>
+  like compiling-timed
+
+  host started, compiling-clock()
+  host result, compiling-driver/compile(source, options)
+  back make(compiling-timed, bind(result, result), bind(ms, subtract(compiling-clock(), started)))
+
+# The driver's compile, timed, with the budget set around it and the value it found put back, also when the compile
+# raises: then the raise passes on as a failure with the compile's message. The compile is synchronous, so no other test
+# can see the value. If the Term driver of item 0707 awaits, this stops being safe and 0707 passes the budget another way
+# (decision 106).
+task compiling-around
+  take budget, like text
+  take source, like compiling-source
+  take options, like dynamic
+  like compiling-timed
+
+  fork test, is-equal(budget, <>)
+    hold
+      back compiling-timed-compile(source, options)
+  host had, compiling-has-variable(<TERM_PROOF_BUDGET>)
+  host before, compiling-variable(<TERM_PROOF_BUDGET>)
+  compiling-set-variable(<TERM_PROOF_BUDGET>, budget)
+  save timed, make(compiling-timed, bind(result, void), bind(ms, 0))
+  save raised, false
+  save message, <>
+  fork
+    mark unsafe
+    save timed, compiling-timed-compile(source, options)
+  halt take
+    take cause
+    save raised, true
+    save message, compiling-cause-message(cause)
+  fork test, had
+    hold
+      compiling-set-variable(<TERM_PROOF_BUDGET>, before)
+    miss
+      compiling-remove-variable(<TERM_PROOF_BUDGET>)
+  fork test, raised
+    hold
+      halt <{message}>
+  back timed
 
 bind compiling-result
   take around, like dynamic
@@ -274,11 +493,58 @@ bind compiling-messages
   case node
     text <($result.diagnostics ?? []).map(d =\> d.message ?? "")>
 
-bind compiling-notes
+# a host value, or the empty text when it has none
+bind compiling-or-empty
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value ?? "")>
+
+bind compiling-or-zero
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value ?? 0)>
+
+bind compiling-or-none
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <($value ?? [])>
+
+# where a diagnostic or a marker starts, from 0, and 0 for one with no span
+bind compiling-line-of
+  take spanned, like dynamic
+  like number
+  case node
+    text <($spanned.span?.start?.line ?? 0)>
+
+bind compiling-column-of
+  take spanned, like dynamic
+  like number
+  case node
+    text <($spanned.span?.start?.column ?? 0)>
+
+# the driver's diagnostics with their places
+task compiling-notes-of
+  take found, like dynamic
+  like list, like compile-note
+
+  host notes, make list
+  walk compiling-or-none(found)
+    take one, like dynamic
+    host markers, make list
+    walk compiling-or-none(one/markers)
+      take marker, like dynamic
+      markers/push(make(compile-marker, bind(line, compiling-line-of(marker)), bind(label, compiling-or-empty(marker/label))))
+    notes/push(make(compile-note, bind(name, compiling-or-empty(one/name)), bind(message, compiling-or-empty(one/message)), bind(file, compiling-or-empty(one/file)), bind(line, compiling-line-of(one)), bind(column, compiling-column-of(one)), bind(hint, compiling-or-empty(one/hint)), bind(severity, compiling-or-empty(one/severity)), bind(code, compiling-or-zero(one/code)), bind(markers, markers)))
+  back notes
+
+task compiling-notes
   take result, like dynamic
   like list, like compile-note
-  case node
-    text <($result.diagnostics ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", file: d.file ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, hint: d.hint ?? "", severity: d.severity ?? "", code: d.code ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
+
+  back compiling-notes-of(compiling-diagnostics(result))
 
 bind compiling-warnings
   take result, like dynamic
@@ -292,11 +558,11 @@ bind compiling-warning-messages
   case node
     text <($result.warnings ?? []).map(d =\> d.message ?? "")>
 
-bind compiling-warning-notes
+task compiling-warning-notes
   take result, like dynamic
   like list, like compile-note
-  case node
-    text <($result.warnings ?? []).map(d =\> (\{ name: d.name ?? "", message: d.message ?? "", file: d.file ?? "", line: d.span?.start?.line ?? 0, column: d.span?.start?.column ?? 0, hint: d.hint ?? "", severity: d.severity ?? "", code: d.code ?? 0, markers: (d.markers ?? []).map(m =\> (\{ line: m.span?.start?.line ?? 0, label: m.label ?? "" \})) \}))>
+
+  back compiling-notes-of(compiling-warning-diagnostics(result))
 
 bind compiling-diagnostics
   take result, like dynamic
@@ -392,14 +658,6 @@ task compiling-options-of
       save deck, compiling-deck/project-deck-of()
   back compiling-options(choice, compiling-with-rewrites(choice/rewrites, compiling-with-files(choice/files, below)), lean, role, deck)
 
-# the driver's compile, a task so the budget can stand around it
-task compiling-now
-  take source, like compiling-source
-  take options, like dynamic
-  like dynamic
-
-  back compiling-driver/compile(source, options)
-
 # compile a program, read longhand under the name `suite.tree`
 task compile-text
   take source, like text
@@ -413,7 +671,7 @@ task compile-text
   take choice, like compile-choice
   like compile-outcome
 
-  host around, compiling-around(choice/budget, compiling-now, make(compiling-source, bind(file, choice/file), bind(text, source)), compiling-options-of(choice))
+  host around, compiling-around(choice/budget, make(compiling-source, bind(file, choice/file), bind(text, source)), compiling-options-of(choice))
   host result, compiling-result(around)
   host names, compiling-names(result)
   host messages, compiling-messages(result)
@@ -423,13 +681,35 @@ task compile-text
   host tally, make(obligation-tally, bind(total, compiling-total(result)), bind(proven, compiling-proven(result)), bind(failed, compiling-failed(result)), bind(kinds, compiling-kinds(result)))
   back make(compile-outcome, bind(ok, compiling-ok(result)), bind(names, names), bind(messages, messages), bind(notes, notes), bind(diagnostics, compiling-diagnostics(result)), bind(warning-diagnostics, compiling-warning-diagnostics(result)), bind(warnings, warnings), bind(warning-messages, compiling-warning-messages(result)), bind(warning-notes, compiling-warning-notes(result)), bind(obligations, tally), bind(open-claims, open-claims), bind(program, compiling-program(result)), bind(emitted, compiling-emitted(result)), bind(ms, compiling-ms(around)), bind(roll, compiling-field(result, <roll>)), bind(wake, compiling-field(result, <wake>)), bind(twins, compiling-field(result, <twins>)), bind(cover, compiling-field(result, <cover>)), bind(css, compiling-field(result, <css>)), bind(modules, compiling-field(result, <modules>)))
 
-# the errors of the two checks, in order, warnings left out, as one result compiling-names and compiling-messages read
-bind compiling-errors
-  take first, like dynamic
-  take second, like dynamic
+# a diagnostic's severity word, whether the driver gave a word or a variant
+bind compiling-severity-word
+  take found, like dynamic
   like dynamic
   case node
-    text <(\{ diagnostics: [...($first ?? []), ...($second ?? [])].filter(d =\> (d.severity?.form ?? d.severity) !== "warning") \})>
+    text <($found.severity?.form ?? $found.severity)>
+
+# diagnostics, as a result compiling-names and compiling-messages read
+form compiling-error-list
+  link diagnostics, like list, like dynamic
+
+# the errors of the two checks, in order, warnings left out, as one result compiling-names and compiling-messages read
+task compiling-errors
+  take first, like dynamic
+  take second, like dynamic
+  like compiling-error-list
+
+  host kept, make list
+  walk compiling-or-none(first)
+    take one, like dynamic
+    fork test, is-unequal(compiling-severity-word(one), <warning>)
+      hold
+        kept/push(one)
+  walk compiling-or-none(second)
+    take one, like dynamic
+    fork test, is-unequal(compiling-severity-word(one), <warning>)
+      hold
+        kept/push(one)
+  back make(compiling-error-list, bind(diagnostics, kept))
 
 # the messages of a parse or a mill that failed, joined, for the raise
 task compiling-failure
@@ -516,11 +796,19 @@ task emit-text
       back compiling-typescript/emit-type-script(outcome/program)
   halt <no emitter of this name>
 
-bind compiling-runtime-reader
-  take seed, like number
+# the reader the native prelude reads a runtime file through: its text, void when there is no such file
+task compiling-runtime-reader
   like dynamic
-  case node
-    text <(path =\> \{ const fs = process.getBuiltinModule("node:fs"); return fs.existsSync(path) ? fs.readFileSync(path, "utf8") : undefined \})>
+
+  save reading
+    task
+      take path, like text
+      like dynamic
+      fork test, compiling-fs/exists-sync(path)
+        hold
+          back compiling-fs/read-file-sync(path, <utf8>)
+      back void
+  back reading
 
 # the native runtime a compiled program needs on an env, <> for one that was refused
 task prelude-text
@@ -531,7 +819,7 @@ task prelude-text
   fork test, not(outcome/ok)
     hold
       back <>
-  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader(0))
+  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader())
 
 # the same, held to what `code`, the program's emitted text, reaches
 task prelude-text
@@ -543,7 +831,7 @@ task prelude-text
   fork test, not(outcome/ok)
     hold
       back <>
-  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader(0), code)
+  back compiling-native/native-prelude(outcome/program, env, compiling-runtime-reader(), code)
 
 # the top-level statements of a compiled program, empty for one that was refused
 task statements-of

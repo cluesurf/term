@@ -1,0 +1,504 @@
+# `term knit`'s system prompt and tools (call/work/knit/project-frame.tree), its request (speaker.tree `body-of`) and
+# the raw-HTTP client it goes through (message-stream.tree), ported from test/call/knit.ts "the system prompt and
+# tools" and "the request, and the raw-HTTP client" (item term-self-host-001-1127, decision 1142).
+#
+# A local server stands in for the API: the stream cut into 7-byte chunks (mid-line, mid-character), an overload then
+# success, a refusal that is not retried, and a stream that breaks after it started. The request and the message are
+# the API's own records, snake_case on the wire, so they are host values read from JSON.
+
+load @term/call/work/knit/project-frame
+  find package-root
+  find system-of
+  find knit-tools
+
+load @term/call/work/knit/speaker
+  find body-ask
+  find body-of
+
+load @term/call/work/knit/message-stream
+  find apply-stream-event
+  find stream-message
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/text
+  find contains, name text-contains
+
+load ../support/temp
+  find remove-at-exit
+
+dock load
+  load <node:fs>, name stream-fs
+  load <node:path>, name stream-path
+  load <node:http>, name stream-http
+  load <node:events>, name stream-events
+  load <node:stream/consumers>, name stream-consumers
+  load <node:timers/promises>, name stream-timers
+  load <global:JSON>, name stream-json
+  load <global:Buffer>, name stream-buffer
+
+host root, package-root()
+
+form stream-folder-options
+  link recursive, like boolean
+
+# ---- the system prompt and tools ----
+
+# the guides a person names come from TERM_KNIT_CONTEXT (the repository keeps none): two files in a folder of this test
+task context-dir
+  like text
+
+  host knit-test, stream-path/join(root, <tmp/knit-test>)
+  stream-fs/mkdir-sync(knit-test, make(stream-folder-options, bind(recursive, true)))
+  back remove-at-exit(stream-fs/mkdtemp-sync(stream-path/join(knit-test, <context->)))
+
+host guides, context-dir()
+host guide-one, stream-path/join(guides, <proof-guide.md>)
+host guide-two, stream-path/join(guides, <demo-traps.md>)
+
+# the variable as it was, so each test leaves it as it found it
+form context-was
+  link held, like boolean
+  link value, like text
+
+task name-guides
+  like context-was
+
+  host was, make(context-was, bind(held, has-variable(<TERM_KNIT_CONTEXT>)), bind(value, variable-of(<TERM_KNIT_CONTEXT>)))
+  stream-fs/write-file-sync(guide-one, <# the proof guide, as a person names it\n>)
+  stream-fs/write-file-sync(guide-two, <# the traps, as a person names them\n>)
+  set-variable(<TERM_KNIT_CONTEXT>, <{guide-one}{stream-path/delimiter}{guide-two}>)
+  back was
+
+task restore-guides
+  take was, like context-was
+  like void
+
+  fork test, was/held
+    hold
+      set-variable(<TERM_KNIT_CONTEXT>, was/value)
+    miss
+      remove-variable(<TERM_KNIT_CONTEXT>)
+
+bind stream-tool-closed
+  take tool, like dynamic
+  like boolean
+  case node
+    text <(($tool).input_schema.additionalProperties === false)>
+
+test <the system prompt carries the syntax, the guides TERM_KNIT_CONTEXT names, and the example>
+  host was, name-guides()
+  host system, system-of(root, true)
+  restore-guides(was)
+  # the original matched each part's last path segment: `law.tree` for the example
+  want hold, text-contains(system, <AGENTS.md>)
+  want hold, text-contains(system, <proof-guide.md>)
+  want hold, text-contains(system, <the proof guide, as a person names it>)
+  want hold, text-contains(system, <demo-traps.md>)
+  want hold, text-contains(system, <law.tree>)
+
+test <without TERM_KNIT_CONTEXT the system prompt holds the syntax and no guide>
+  host was, name-guides()
+  remove-variable(<TERM_KNIT_CONTEXT>)
+  host bare, system-of(root, true)
+  restore-guides(was)
+  want hold, text-contains(bare, <AGENTS.md>)
+  want hold, not(text-contains(bare, <proof-guide.md>))
+
+test <the system prompt is the same bytes every time, so it caches>
+  host was, name-guides()
+  host system, system-of(root, true)
+  host again, system-of(root, true)
+  restore-guides(was)
+  want hold, is-equal(again, system)
+
+test <without the example it is shorter and has no example>
+  host was, name-guides()
+  host system, system-of(root, true)
+  host short, system-of(root, false)
+  restore-guides(was)
+  want hold, not(text-contains(short, <EXAMPLE>))
+  want hold, is-below(short/length, system/length)
+
+test <every tool takes an object with no other properties>
+  take tool, like dynamic
+    walk knit-tools()
+  want hold, stream-tool-closed(tool)
+
+# ---- the request ----
+
+bind stream-json-field
+  take record, like dynamic
+  take name, like text
+  like text
+  case node
+    text <String(JSON.stringify(($record)[$name]))>
+
+bind stream-has-field
+  take record, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($name in ($record))>
+
+bind stream-body-tools
+  take body, like dynamic
+  like list, like dynamic
+  case node
+    text <($body).tools>
+
+bind stream-is-strict
+  take tool, like dynamic
+  like boolean
+  case node
+    text <(($tool).strict === true)>
+
+host asked-body, body-of(make(body-ask, bind(model, <claude-opus-5-5>), bind(effort, <high>), bind(max-tokens, 64000), bind(system, <S>), bind(tools, knit-tools()), bind(messages, stream-json/parse(<<[{"role": "user", "content": "hi"}]>>))))
+
+test <the request thinks adaptively at the effort asked, with no budget and no temperature>
+  host body, asked-body/body
+  want hold, is-equal(stream-json-field(body, <thinking>), <<{"type":"adaptive"}>>)
+  want hold, is-equal(stream-json-field(body, <output_config>), <<{"effort":"high"}>>)
+  want hold, not(stream-has-field(body, <temperature>))
+
+test <the system prompt and the conversation are cached for an hour>
+  host body, asked-body/body
+  want hold, text-contains(stream-json-field(body, <system>), <<"ttl":"1h">>)
+  want hold, is-equal(stream-json-field(body, <cache_control>), <<{"type":"ephemeral","ttl":"1h"}>>)
+
+test <every tool is strict>
+  take tool, like dynamic
+    walk stream-body-tools(asked-body/body)
+  want hold, stream-is-strict(tool)
+
+test <Opus 5.5 asks for the server-side refusal fallback, with its beta>
+  want hold, is-equal(stream-json-field(asked-body/body, <fallbacks>), <<"default">>)
+  want hold, is-equal(asked-body/betas/join(<,>), <server-side-fallback-2026-07-01>)
+
+test <a model without the fallback sends neither>
+  host plain, body-of(make(body-ask, bind(model, <claude-sonnet-5-5>), bind(effort, <low>), bind(max-tokens, 1), bind(system, <>), bind(tools, stream-json/parse(<<[]>>)), bind(messages, stream-json/parse(<<[]>>))))
+  want hold, not(stream-has-field(plain/body, <fallbacks>))
+
+# ---- the stream ----
+
+# a stream shaped as the Messages API sends it: a thinking block with its signature, text, a tool call whose input
+# comes in pieces, and the final usage on message_delta
+task events-of
+  like list, like dynamic
+
+  host lines, make list
+  lines/push <<{"type": "message_start", "message": {"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5", "content": [], "stop_reason": null, "usage": {"input_tokens": 10, "cache_read_input_tokens": 2000, "cache_creation_input_tokens": 300, "output_tokens": 1}}}>>
+  lines/push <<{"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": "", "signature": ""}}>>
+  lines/push <<{"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "let me "}}>>
+  lines/push <<{"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "think"}}>>
+  lines/push <<{"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "SIG"}}>>
+  lines/push <<{"type": "content_block_stop", "index": 0}>>
+  lines/push <<{"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}}>>
+  lines/push <<{"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "Writing ü"}}>>
+  lines/push <<{"type": "content_block_stop", "index": 1}>>
+  lines/push <<{"type": "content_block_start", "index": 2, "content_block": {"type": "tool_use", "id": "tu_1", "name": "write_file", "input": {}}}>>
+  lines/push <<{"type": "content_block_delta", "index": 2, "delta": {"type": "input_json_delta", "partial_json": "{\"path\":\"code/a.tree\","}}>>
+  lines/push <<{"type": "content_block_delta", "index": 2, "delta": {"type": "input_json_delta", "partial_json": "\"content\":\"task x\\n\"}"}}>>
+  lines/push <<{"type": "content_block_stop", "index": 2}>>
+  lines/push <<{"type": "ping"}>>
+  lines/push <<{"type": "message_delta", "delta": {"stop_reason": "tool_use", "stop_sequence": null}, "usage": {"output_tokens": 420}}>>
+  lines/push <<{"type": "message_stop"}>>
+  save events, make list
+  walk lines
+    take line
+    events/push stream-json/parse(line)
+  back events
+
+bind stream-event-type
+  take event, like dynamic
+  like text
+  case node
+    text <String(($event).type)>
+
+task sse-of
+  take events, like list, like dynamic
+  like text
+
+  save parts, make list
+  walk events
+    take event, like dynamic
+    parts/push <event: {stream-event-type(event)}\ndata: {stream-json/stringify(event)}\n\n>
+  back parts/join(<>)
+
+host events, events-of()
+host sse, sse-of(events)
+
+task no-pieces
+  like hash, like text, like text
+
+  back make hash
+
+# every event applied to one message, as the client applies them
+task applied-of
+  take events, like list, like dynamic
+  like dynamic
+
+  host message, stream-json/parse(<<{"content": [], "usage": {}}>>)
+  save pieces, no-pieces()
+  walk events
+    take event, like dynamic
+    save pieces, apply-stream-event(message, event, pieces)
+  back message
+
+host applied, applied-of(events)
+
+host whole-content, <<[{"type":"thinking","thinking":"let me think","signature":"SIG"},{"type":"text","text":"Writing ü"},{"type":"tool_use","id":"tu_1","name":"write_file","input":{"path":"code/a.tree","content":"task x\n"}}]>>
+
+bind stream-usage-number
+  take message, like dynamic
+  take name, like text
+  like number
+  case node
+    text <Number(($message).usage?.[$name])>
+
+test <the stream builds the whole message: thinking with its signature, text, the tool input parsed, the final usage>
+  want hold, is-equal(stream-json-field(applied, <content>), whole-content)
+  want hold, is-equal(stream-json-field(applied, <stop_reason>), <<"tool_use">>)
+  want hold, is-equal(stream-usage-number(applied, <output_tokens>), 420)
+  want hold, is-equal(stream-usage-number(applied, <cache_read_input_tokens>), 2000)
+
+# ---- the local server ----
+
+# one request the server heard
+form heard-request
+  link key, like text
+  link version, like text
+  link beta, like text
+  link streamed, like boolean
+
+form stream-server
+  mark shared
+  link mode, like text
+  link overloads, like number
+  link asked, like list, like heard-request
+  link server, like dynamic
+
+bind stream-header
+  take request, like dynamic
+  take name, like text
+  like text
+  case node
+    text <String(($request).headers[$name] ?? "")>
+
+bind stream-asks-stream
+  take body, like dynamic
+  like boolean
+  case node
+    text <(($body).stream === true)>
+
+bind stream-answer
+  take response, like dynamic
+  take status, like number
+  take headers, like dynamic
+  take body, like text
+  like void
+  case node
+    text <($response).writeHead($status, $headers).end($body)>
+
+bind stream-port
+  take server, like dynamic
+  like number
+  case node
+    text <($server).address().port>
+
+# the record stream-message takes, as the original's caller wrote it
+bind stream-ask
+  take key, like text
+  take body, like dynamic
+  take betas, like list, like text
+  take base, like text
+  take pause, like dynamic
+  take again, like boolean
+  like dynamic
+  case node
+    text <<({ apiKey: $key, body: $body, betas: $betas, baseUrl: $base, wait: $pause, retryBroken: $again })>>
+
+host state, make(stream-server, bind(mode, <ok>), bind(overloads, 0), bind(asked, make list), bind(server, stream-json/parse(<<null>>)))
+
+task answer-request
+  take request, like dynamic
+  take response, like dynamic
+  like void
+  mark async
+
+  host text, wait stream-consumers/text(request)
+  host body, stream-json/parse(text)
+  state/asked/push make(heard-request, bind(key, stream-header(request, <x-api-key>)), bind(version, stream-header(request, <anthropic-version>)), bind(beta, stream-header(request, <anthropic-beta>)), bind(streamed, stream-asks-stream(body)))
+  fork test, is-equal(state/mode, <overload>)
+    hold
+      host first, is-equal(state/overloads, 0)
+      save state/overloads, add(state/overloads, 1)
+      fork test, first
+        hold
+          stream-answer(response, 529, make(list, <content-type>, <application/json>, <retry-after>, <0>), <<{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}>>)
+          back
+  fork test, is-equal(state/mode, <bad>)
+    hold
+      stream-answer(response, 400, make(list, <content-type>, <application/json>), <<{"type":"error","error":{"type":"invalid_request_error","message":"no"}}>>)
+      back
+  response/write-head(200, make list(<content-type>, <text/event-stream>))
+  save sent, sse
+  fork test, is-equal(state/mode, <broken>)
+    hold
+      save sent, sse/slice(0, sse/index-of(<content_block_start>))
+  host bytes, stream-buffer/from(sent)
+  save at, 0
+  walk test
+    hook test, is-below(at, bytes/length)
+    hook hold
+      response/write(bytes/subarray(at, add(at, 7)))
+      host slept, wait stream-timers/set-timeout(0)
+      save at, add(at, 7)
+  response/end()
+
+# the server, listening at a free port of 127.0.0.1, and its base URL
+task open-server
+  like text
+  mark async
+
+  host server, stream-http/create-server(answer-request)
+  save state/server, server
+  server/listen(0, <127.0.0.1>)
+  host heard, wait stream-events/once(server, <listening>)
+  back <http://127.0.0.1:{stream-port(server)}/v1>
+
+task close-server
+  like void
+  mark async
+
+  host server, state/server
+  server/close-all-connections()
+  server/close()
+  host closed, wait stream-events/once(server, <close>)
+
+task no-betas
+  like list, like text
+
+  back make list
+
+task no-wait
+  take ms, like number
+  like void
+  mark async
+
+  save waited, ms
+
+# what one streamed request answered: the message, or the failure it threw
+form stream-outcome
+  link failed, like boolean
+  link message, like dynamic
+  link said, like text
+  link status, like number
+  link billed-input, like number
+  link broken-count, like number
+
+bind stream-failure-text
+  take problem, like dynamic
+  like text
+  case node
+    text <String(($problem)?.message ?? "")>
+
+bind stream-failure-status
+  take problem, like dynamic
+  like number
+  case node
+    text <Number(($problem)?.status ?? 0)>
+
+bind stream-failure-input
+  take problem, like dynamic
+  like number
+  case node
+    text <Number(($problem)?.usage?.input_tokens ?? -1)>
+
+bind stream-failure-broken
+  take problem, like dynamic
+  like number
+  case node
+    text <Number(($problem)?.brokenUsage?.length ?? -1)>
+
+bind stream-nothing-here
+  like dynamic
+  case node
+    text <undefined>
+
+task stream-outcome-of
+  take input, like dynamic
+  like stream-outcome
+  mark async
+
+  fork
+    mark unsafe
+    host message, stream-message(input)
+    back make(stream-outcome, bind(failed, false), bind(message, message), bind(said, <>), bind(status, 0), bind(billed-input, -1), bind(broken-count, -1))
+  halt take
+    take cause
+    back make(stream-outcome, bind(failed, true), bind(message, stream-nothing-here()), bind(said, stream-failure-text(cause)), bind(status, stream-failure-status(cause)), bind(billed-input, stream-failure-input(cause)), bind(broken-count, stream-failure-broken(cause)))
+
+task request-with
+  take mode, like text
+  take base, like text
+  take betas, like list, like text
+  take again, like boolean
+  like stream-outcome
+  mark async
+
+  save state/mode, mode
+  save state/overloads, 0
+  state/asked/splice(0, state/asked/length)
+  back stream-outcome-of(stream-ask(<k>, stream-json/parse(<<{"model": "m", "messages": []}>>), betas, base, no-wait, again))
+
+test <a stream cut into 7-byte pieces reads to the same message>
+  host base, open-server()
+  host streamed, request-with(<ok>, base, make(list, <b-1>, <b-2>), true)
+  close-server()
+  want hold, not(streamed/failed)
+  want hold, is-equal(stream-json-field(streamed/message, <content>), stream-json-field(applied, <content>))
+  want hold, is-equal(stream-usage-number(streamed/message, <output_tokens>), 420)
+
+test <the request carries the key, the version, the betas joined, and stream: true>
+  host base, open-server()
+  host streamed, request-with(<ok>, base, make(list, <b-1>, <b-2>), true)
+  host heard, state/asked/0
+  close-server()
+  want hold, is-equal(heard/key, <k>)
+  want hold, is-equal(heard/version, <2023-06-01>)
+  want hold, is-equal(heard/beta, <b-1,b-2>)
+  want hold, heard/streamed
+
+test <an overload is retried, and the retry reads the message>
+  host base, open-server()
+  host retried, request-with(<overload>, base, no-betas(), true)
+  host count, state/asked/length
+  close-server()
+  want hold, is-equal(count, 2)
+  want hold, not(retried/failed)
+  want hold, is-equal(stream-json-field(retried/message, <stop_reason>), <<"tool_use">>)
+
+test <a 400 is thrown at once with the API message, never retried>
+  host base, open-server()
+  host refused, request-with(<bad>, base, no-betas(), true)
+  host count, state/asked/length
+  close-server()
+  want hold, is-equal(count, 1)
+  want hold, refused/failed
+  want hold, is-equal(refused/status, 400)
+  want hold, text-contains(refused/said, <invalid_request_error>)
+
+test <a stream that broke after it started is thrown with what it was billed, not retried, under retryBroken: false>
+  host base, open-server()
+  host broken, request-with(<broken>, base, no-betas(), false)
+  host count, state/asked/length
+  close-server()
+  want hold, is-equal(count, 1)
+  want hold, broken/failed
+  want hold, is-equal(broken/billed-input, 10)
+  want hold, is-equal(broken/broken-count, 1)

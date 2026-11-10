@@ -1,0 +1,637 @@
+# `term knit`'s prove loop end to end, with a scripted model and the real `term hold` (call/work/knit/prove-loop.tree
+# `knit-loop`), and the command itself, ported from test/call/knit.ts "the loop, end to end" and "the command" (item
+# term-self-host-001-1127, decision 1142).
+#
+# Round 1 writes run-4-no-example's project (test/call/knit-fixture/restated), which holds under term hold and is
+# refused by the instance check with the fuse to write. Round 2 writes the library fixture (test/assurance/library),
+# which holds with each law an instance. Then the cap, a stream that broke partway, a model that never calls a tool,
+# and an answer cut off at max_tokens, each a run of its own. Every run's folder is under tmp/knit-test, removed when the
+# suite ends. The conversation is the API's own record, so a turn's blocks and the messages are host values.
+
+load @term/call/work/knit/prove-loop
+  find knit-input
+  find knit-loop
+  find loop-answer
+  find round-row
+
+load @term/call/work/knit/run-report
+  find knit-result
+
+load @term/call/work/knit/speaker
+  find speaker
+  find turn
+
+load @term/call/work/knit/spend
+  find limits
+  find ceiling-price
+
+load @term/call/work/knit/gate
+  find law-sentence
+
+load @term/call/work/knit/run-report
+  find report-of
+
+load @term/call/work/knit/law-library
+  find own-text
+  find read-library-mark
+
+load @term/call/work/knit/project-frame
+  find package-root
+  find line-of
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find index-of
+  find split
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/test/self
+  find self-command
+
+load ../support/temp
+  find remove-at-exit
+
+dock load
+  load <node:fs>, name loop-fs
+  load <node:path>, name loop-path
+  load <global:JSON>, name loop-json
+
+host root, package-root()
+host line, line-of(root)
+host required, make list(<ownership>, <isolation>)
+
+form loop-folder-options
+  link recursive, like boolean
+
+task work-dir
+  like text
+
+  host dir, loop-path/join(root, <tmp/knit-test>)
+  loop-fs/mkdir-sync(dir, make(loop-folder-options, bind(recursive, true)))
+  back dir
+
+# a folder of this suite under tmp/knit-test, removed when the suite ends
+task run-dir
+  take prefix, like text
+  like text
+
+  back remove-at-exit(loop-fs/mkdtemp-sync(loop-path/join(work-dir(), prefix)))
+
+task read-text
+  take file, like text
+  like text
+
+  back loop-fs/read-file-sync(file, <utf8>)
+
+# `Math.abs(a - b) < 1e-9`
+task near
+  take a, like float
+  take b, like float
+  like boolean
+
+  back and(is-below(subtract(a, b), 0.000000001), is-below(subtract(b, a), 0.000000001))
+
+# ---- the scripted model ----
+
+bind script-text-block
+  take text, like text
+  like dynamic
+  case node
+    text <<({ type: "text", text: $text })>>
+
+bind script-use-block
+  take id, like text
+  take name, like text
+  take input, like dynamic
+  like dynamic
+  case node
+    text <<({ type: "tool_use", id: $id, name: $name, input: $input })>>
+
+bind script-file-input
+  take path, like text
+  take content, like text
+  like dynamic
+  case node
+    text <<({ path: $path, content: $content })>>
+
+bind script-no-input
+  like dynamic
+  case node
+    text <<({})>>
+
+bind script-messages-json
+  take asked, like dynamic
+  like text
+  case node
+    text <JSON.stringify(($asked).messages)>
+
+# `JSON.stringify(list[index] ?? '')` of a list held as JSON
+bind script-item-json
+  take json, like text
+  take index, like number
+  like text
+  case node
+    text <JSON.stringify(JSON.parse($json)[$index] ?? "")>
+
+# the original's `KnitRequest`: a request that failed for good, with the usage of the attempts that broke partway
+# host native: the loop reads `broken` off a host Error (prove-loop.tree failure-broken), and a raised Term form does not carry it there
+bind script-raise-request
+  take message, like text
+  take broken, like dynamic
+  like void
+  case node
+    text <<(() => { throw Object.assign(new Error($message), { broken: $broken }) })()>>
+
+bind script-role
+  take message, like dynamic
+  like text
+  case node
+    text <String(($message).role)>
+
+bind script-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+form tool-ids
+  mark shared
+  link next, like number
+
+host ids, make(tool-ids, bind(next, 0))
+
+task use
+  take name, like text
+  take input, like dynamic
+  like dynamic
+
+  save ids/next, add(ids/next, 1)
+  back script-use-block(<t{ids/next}>, name, input)
+
+task turn-of
+  take content, like list, like dynamic
+  take usage, like text
+  take stop-reason, like text
+  like turn
+
+  back make(turn, bind(content, content), bind(usage, loop-json/parse(usage)), bind(stop-reason, stop-reason), bind(model, <claude-opus-5-5>), bind(fell-back, false))
+
+host plain-usage, <<{"input_tokens": 1000, "output_tokens": 500}>>
+
+# the turns a scripted model answers in order, the last again once they run out, and every conversation it was asked
+form script
+  mark shared
+  link turns, like list, like turn
+  link at, like number
+  link seen, like list, like text
+
+task scripted
+  take held, like script
+  like speaker
+
+  save ask
+    task
+      take asked, like dynamic
+      like turn
+      mark async
+      held/seen/push script-messages-json(asked)
+      save index, subtract(held/turns/length, 1)
+      fork test, is-below(held/at, held/turns/length)
+        hold
+          save index, held/at
+      save held/at, add(held/at, 1)
+      back held/turns/{index}
+  back make(speaker, bind(model, <claude-opus-5-5>), bind(ask, ask))
+
+task script-of
+  take turns, like list, like turn
+  like script
+
+  back make(script, bind(turns, turns), bind(at, 0), bind(seen, make list))
+
+task quiet
+  take said, like text
+  like void
+
+  save ignored, said
+
+task input-of
+  take name, like text
+  take out, like text
+  take lean, like boolean
+  take run-limits, like limits
+  like knit-input
+
+  back make(knit-input, bind(root, root), bind(spec, <only the owner of a note, or an admin, can delete it>), bind(name, name), bind(out, out), bind(required, required), bind(limits, run-limits), bind(lean, lean), bind(example, true), bind(model, <claude-opus-5-5>), bind(max-tokens, 1000), bind(line, line))
+
+task limits-of
+  take rounds, like number
+  take turns, like number
+  take cap, like float
+  like limits
+
+  back make(limits, bind(rounds, rounds), bind(turns, turns), bind(minutes, 10), bind(cap, cap))
+
+# Lean 4's path, TERM_LEAN else the PATH, the empty text when there is none. Not a task of no input answering a
+# boolean: `term test` collects such a task as a test of its own
+task lean-binary
+  like text
+  mark async
+
+  back find-tool(<lean>)
+
+# ---- the scripted run, made once ----
+
+form scripted-run
+  link answer, like loop-answer
+  link seen, like list, like text
+  link out, like text
+  link lean, like boolean
+
+form loop-cases
+  mark shared
+  link runs, like list, like scripted-run
+
+host cases, make(loop-cases, bind(runs, make list))
+
+task file-blocks
+  take folder, like text
+  take own, like boolean
+  like list, like dynamic
+
+  save blocks, make list
+  walk make list(<model.tree>, <law.tree>)
+    take name
+    save text, read-text(loop-path/join(folder, <code>, name))
+    fork test, own
+      hold
+        save text, own-text(text)
+    blocks/push use(<write_file>, script-file-input(<code/{name}>, text))
+  back blocks
+
+task make-scripted-run
+  like scripted-run
+  mark async
+
+  host lean, is-unequal(lean-binary(), <>)
+  host out, run-dir(<loop->)
+  host first, file-blocks(loop-path/join(root, <test/call/knit-fixture/restated>), false)
+  host second, file-blocks(loop-path/join(root, <test/assurance/library>), true)
+  save one, make list
+  one/push script-text-block(<A first try.>)
+  walk first
+    take block, like dynamic
+    one/push block
+  one/push use(<write_file>, script-file-input(<deck.tree>, <x>))
+  one/push use(<hold>, script-no-input())
+  save two, make list
+  walk second
+    take block, like dynamic
+    two/push block
+  two/push use(<laws>, script-no-input())
+  two/push use(<hold>, script-no-input())
+  save three, make list
+  three/push script-text-block(<never asked>)
+  save turns, make list
+  turns/push turn-of(one, plain-usage, <tool_use>)
+  turns/push turn-of(two, plain-usage, <tool_use>)
+  turns/push turn-of(three, plain-usage, <end_turn>)
+  host held, script-of(turns)
+  host answer, knit-loop(input-of(<scripted>, out, lean, limits-of(5, 6, 25.0)), scripted(held), quiet)
+  back make(scripted-run, bind(answer, answer), bind(seen, held/seen), bind(out, out), bind(lean, lean))
+
+task the-run
+  like scripted-run
+  mark async
+
+  fork test, is-above(cases/runs/length, 0)
+    hold
+      back cases/runs/0
+  host made, make-scripted-run()
+  cases/runs/push made
+  back made
+
+# the seen conversation's item, as JSON, `""` when there is none
+task first-results
+  take run, like scripted-run
+  like text
+
+  fork test, is-below(run/seen/length, 2)
+    hold
+      back <"">
+  back script-item-json(run/seen/1, 2)
+
+task law-named
+  take laws, like list, like law-sentence
+  take name, like text
+  like law-sentence
+
+  walk laws
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  back make(law-sentence, bind(name, name), bind(kind, <none>), bind(words, make list))
+
+task law-text
+  take law, like law-sentence
+  like text
+
+  sift law/text
+    case some
+      back value
+    case none
+      back <>
+
+task any-typescript
+  take files, like list, like text
+  like boolean
+
+  walk files
+    take file
+    fork test, ends-with(file, <.ts>)
+      hold
+        back true
+  back false
+
+task user-count
+  take messages, like list, like dynamic
+  like number
+
+  save users, 0
+  walk messages
+    take message, like dynamic
+    fork test, is-equal(script-role(message), <user>)
+      hold
+        save users, add(users, 1)
+  back users
+
+# whether a reason of the round's gate names the instance
+task names-instance
+  take row, like round-row
+  like boolean
+
+  sift row/gate
+    case some
+      walk value
+        take reason
+        fork test, text-contains(reason, <not the law library's isolation>)
+          hold
+            back true
+      back false
+    case none
+      back false
+
+# every named law an instance: the count, or -1 when one is not
+task instance-count
+  take run, like knit-result
+  like number
+
+  sift run/instances
+    case some
+      walk value
+        take one
+        fork test, not(one/ok)
+          hold
+            back -1
+      back value/length
+    case none
+      back 0
+
+test <the scripted run holds in two rounds and two requests>
+  host r, the-run()/answer/result
+  want hold, is-equal(r/verdict, <holds>)
+  want hold, is-equal(r/rounds, 2)
+  want hold, is-equal(r/turns, 2)
+
+test <the spend is the usage priced>
+  host r, the-run()/answer/result
+  # (2 * (1000 * 4 + 500 * 20)) / 1e6
+  want hold, near(r/spend/dollars, 0.028)
+
+test <round 1: the restated project HOLDS under term hold, and the instance check refuses it, telling the model how to state the law>
+  host told, first-results(the-run())
+  want hold, text-contains(told, <term hold: HOLDS.>)
+  want hold, text-contains(told, <isolation is not the law library's isolation: `rule isolation` is written by hand>)
+  want hold, text-contains(told, <fuse isolation-law>)
+
+test <round 1 is in the transcript as holding under term hold and failing the gate on the instance>
+  host row, the-run()/answer/transcript/rounds/0
+  want hold, row/holds
+  want hold, names-instance(row)
+
+test <a write outside code/ was refused to the model and not made>
+  host run, the-run()
+  want hold, text-contains(first-results(run), <only files under code/ may be written>)
+  want hold, starts-with(read-text(loop-path/join(run/out, <project/deck.tree>)), <deck @knit/>)
+
+test <every tool use had its result in the next message>
+  host run, the-run()
+  want hold, is-equal(subtract(split(run/seen/1, <"tool_result">)/length, 1), 4)
+
+test <the run ends with each named law an instance of the library>
+  want hold, is-equal(instance-count(the-run()/answer/result), 2)
+
+test <the project's law file is sealed: the library's text below the marker>
+  host run, the-run()
+  host sealed-law, read-text(loop-path/join(run/out, <project/code/law.tree>))
+  host mark, read-library-mark()
+  host at, index-of(sealed-law, mark)
+  want hold, text-contains(sealed-law, <{mark}\n\n# LAW>)
+  want hold, is-above(index-of(sealed-law, <tree ownership-law>), at)
+  want hold, is-above(index-of(sealed-law, <tree isolation-law>), at)
+  want hold, is-above(index-of(sealed-law, <tree deleted-stays-gone-law>), at)
+
+test <the laws are the renderer's English from the Term form>
+  host r, the-run()/answer/result
+  host own, law-named(r/laws, <ownership>)
+  host iso, law-named(r/laws, <isolation>)
+  want hold, is-unequal(law-text(own), <>)
+  want hold, is-unequal(law-text(iso), <>)
+  want hold, is-equal(own/kind, <claim>)
+  want hold, is-equal(iso/kind, <claim>)
+
+test <the report names both laws in words and the spend>
+  host r, the-run()/answer/result
+  host page, report-of(r)
+  want hold, text-contains(page, <ownership  holds\n    {law-text(law-named(r/laws, <ownership>))}>)
+  want hold, text-contains(page, <isolation  holds\n    {law-text(law-named(r/laws, <isolation>))}>)
+  want hold, text-contains(page, <spent: $0.0280 of a $25.00 cap>)
+
+test <the report says each law is the library's, and with what fill>
+  host page, report-of(the-run()/answer/result)
+  want hold, text-contains(page, <the law library's isolation (@term/site/law/isolation.tree), filled with state shelf, natural natural, rank rank, person person, view view>)
+
+bind loop-report-page
+  take summary, like dynamic
+  like text
+  case node
+    text <String(($summary)?.report?.page ?? "")>
+
+test <term hold --report reports the two laws the loop named in laws.tree, and the run's report carries its page>
+  host run, the-run()
+  host r, run/answer/result
+  save printed, <>
+  sift r/summary
+    case some
+      save printed, loop-report-page(value)
+    case none
+      save printed, <>
+  want hold, is-unequal(printed, <>)
+  want hold, text-contains(printed, <ownership>)
+  want hold, text-contains(printed, <isolation>)
+  want hold, text-contains(report-of(r), <term hold --report:>)
+  want hold, text-contains(read-text(loop-path/join(run/out, <project/laws.tree>)), <host rule, \<isolation\>>)
+
+test <Lean 4 re-checked both laws, and the report counts the claims it checked>
+  host run, the-run()
+  fork test, not(run/lean)
+    hold
+      skip <the Lean re-check in the loop: no Lean at TERM_LEAN or on the PATH>
+  host r, run/answer/result
+  want hold, is-equal(r/gate/lean, <checked>)
+  want hold, matches(make(pattern, <<re-checked in Lean 4: \d+ of \d+>>), report-of(r))
+
+test <the TypeScript was emitted>
+  want hold, any-typescript(the-run()/answer/result/emitted)
+
+test <the transcript has a line per turn and per round>
+  host transcript, the-run()/answer/transcript
+  want hold, is-equal(transcript/turns/length, 2)
+  want hold, is-equal(transcript/rounds/length, 2)
+  want hold, transcript/rounds/1/holds
+
+# ---- the runs of their own ----
+
+test <the cap stops a run before a request that could pass it, and the run spent no more than the cap>
+  save content, make list
+  content/push use(<laws>, script-no-input())
+  save turns, make list
+  turns/push turn-of(content, <<{"input_tokens": 100000, "output_tokens": 20000}>>, <tool_use>)
+  host dear, knit-loop(input-of(<dear>, run-dir(<dear->), false, limits-of(50, 50, 1.0)), scripted(script-of(turns)), quiet)
+  want hold, starts-with(dear/result/stop, <Stopped at the spend cap>)
+  want hold, not(is-above(dear/result/spend/dollars, 1.0))
+
+form flaky-state
+  mark shared
+  link broke, like boolean
+
+# a model whose first answer breaks partway, billed a million input tokens, and whose second ends the turn
+task flaky-speaker
+  take held, like flaky-state
+  like speaker
+
+  save ask
+    task
+      take asked, like dynamic
+      like turn
+      mark async
+      fork test, not(held/broke)
+        hold
+          save held/broke, true
+          host billed, loop-json/parse(<<[{"input_tokens": 1000000}]>>)
+          script-raise-request(<the stream ended before the message did>, billed)
+      save content, make list
+      content/push script-text-block(<ok>)
+      back turn-of(content, plain-usage, <end_turn>)
+  back make(speaker, bind(model, <claude-opus-5-5>), bind(ask, ask))
+
+test <a broken stream is counted at the dearest input rate and asked again>
+  host flaky, knit-loop(input-of(<flaky>, run-dir(<flaky->), false, limits-of(5, 2, 25.0)), flaky-speaker(make(flaky-state, bind(broke, false))), quiet)
+  want hold, is-equal(flaky/result/turns, 2)
+  # CEILING.input + (1000 * 4 + 500 * 20) / 1e6
+  want hold, near(flaky/result/spend/dollars, add(ceiling-price()/input, 0.014))
+  want hold, is-equal(flaky/transcript/turns/0/stop, <error>)
+
+test <a model that writes nothing is nudged and stopped at the turn limit>
+  save content, make list
+  content/push script-text-block(<thinking aloud>)
+  save turns, make list
+  turns/push turn-of(content, plain-usage, <end_turn>)
+  host idle, knit-loop(input-of(<idle>, run-dir(<idle->), false, limits-of(5, 3, 25.0)), scripted(script-of(turns)), quiet)
+  want hold, is-equal(idle/result/turns, 3)
+  want hold, text-contains(idle/result/stop, <3 requests>)
+  want hold, is-equal(user-count(idle/messages), 4)
+
+test <a call in an answer cut off at max_tokens is not run, and is answered so>
+  host out, run-dir(<cut->)
+  save content, make list
+  content/push use(<write_file>, script-file-input(<code/law.tree>, <task x>))
+  save turns, make list
+  turns/push turn-of(content, plain-usage, <max_tokens>)
+  host cut, knit-loop(input-of(<cut>, out, false, limits-of(5, 1, 25.0)), scripted(script-of(turns)), quiet)
+  host last, cut/messages/{subtract(cut/messages/length, 1)}
+  want hold, not(loop-fs/exists-sync(loop-path/join(out, <project/code/law.tree>)))
+  want hold, text-contains(script-json(last), <cut off at the output limit>)
+
+# ---- the command ----
+
+# `term` with these arguments, from tmp/knit-test, ANTHROPIC_API_KEY taken out of its environment when `keyless`
+task term-knit
+  take arguments, like list, like text
+  take keyless, like boolean
+  like run-result
+  mark async
+
+  save command, make list
+  fork test, keyless
+    hold
+      command/push <-u>
+      command/push <ANTHROPIC_API_KEY>
+  walk self-command()
+    take part, like text
+    command/push part
+  walk arguments
+    take part, like text
+    command/push part
+  fork test, keyless
+    hold
+      back run(<env>, command, bind(directory, work-dir()))
+  back run(command/0, command/slice(1), bind(directory, work-dir()))
+
+bind loop-pid
+  like text
+  case node
+    text <String(process.pid)>
+
+# the error text with every run of white space read as one space: the renderer wraps it
+bind loop-spaced
+  take text, like text
+  like text
+  case node
+    text <$text.replace(/\s+/g, " ")>
+
+test <term knit with no spec is a usage error, exit 2>
+  host bare, term-knit(make(list, <knit>), false)
+  want hold, is-equal(bare/code, 2)
+  want hold, text-contains(bare/error, <There is no spec>)
+
+test <a --law the library lacks is a usage error before any request, naming the laws it has>
+  host made-up, term-knit(make(list, <knit>, <only the owner can delete a note>, <--law>, <made-up>, <--name>, <made-up>, <--out>, loop-path/join(work-dir(), <made-up-{loop-pid()}>)), false)
+  want hold, is-equal(made-up/code, 2)
+  want hold, text-contains(made-up/error, <no law named made-up>)
+  want hold, text-contains(made-up/error, <isolation>)
+
+test <term knit without a key stops before any request, naming the zone>
+  host keyless, term-knit(make(list, <knit>, <only the owner can delete a note>, <--name>, <keyless>, <--out>, loop-path/join(work-dir(), <keyless-{loop-pid()}>)), true)
+  host said, loop-spaced(keyless/error)
+  want hold, is-unequal(keyless/code, 0)
+  want hold, text-contains(said, <ANTHROPIC_API_KEY is not set>)
+  want hold, text-contains(said, <zone load \<zone\> -- term knit>)
+
+test <term starts with no key and lists knit>
+  host help, term-knit(make(list, <--hint>), true)
+  want hold, is-equal(help/code, 0)
+  want hold, text-contains(help/output, <term knit>)

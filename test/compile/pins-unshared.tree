@@ -5,8 +5,8 @@ note <extendForms shares no pin and no field default>
 # two places. The census is task/term/shared-nodes.ts, docked by its package path (decision 121), over the program
 # `compile(..., { optimize: false })` answers, built the way the census builds a corpus file: with the resolver, role and
 # lean rules of the deck its file stands in. A unit is a virtual file of deck/make's `code/` (nothing is written there),
-# a lean deck. The original read its first unit from tmp/self-host/probe-0037/extend-pin.tree and moved each `bind`
-# under its `like`: that text is held here as it read after the move.
+# a lean deck. The original reads its first unit from pins-unshared-fixture/extend-pin.tree, the pin under its `like`:
+# that text is held here as the fixture reads.
 
 load ../support/compiling
   find project-path

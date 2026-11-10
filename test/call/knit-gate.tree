@@ -1,0 +1,267 @@
+# What `term knit` reads from `term hold`, the gate a run must pass, and which files the model may write
+# (call/work/knit/hold-reading.tree and gate.tree), ported from test/call/knit.ts "reading term hold", "the gate" and
+# "what a model may write" (item term-self-host-001-1127, decision 1142). A summary is the host value `term hold
+# --json` prints, read here from JSON.
+
+load @term/call/work/knit/hold-reading
+  find hold-read
+  find hold-problem
+  find read-hold
+
+load @term/call/work/knit/gate
+  find law-sentence
+  find gate-ask
+  find gate-of
+  find code-path
+  find feedback-ask
+  find feedback-of
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <global:JSON>, name gate-json
+  load <global:Object>, name gate-object
+
+# ---- reading term hold ----
+
+# captured from `term hold --log json --json` on test/assurance/twin/isolation (2026-10-21), the summary trimmed
+task refused-text
+  like text
+
+  host lines, make list
+  lines/push <<{"glyph":"info","verb":"hold","subject":"~/x/broken","counts":{"files":1},"facts":["term 2.7.4"],"kind":"open"}>>
+  lines/push <<{"glyph":"failed","verb":"prove","subject":"The proof of `isolation` does not check against its claim, so it proves nothing: type mismatch:","code":"unverified-proof","message":"expected ((owned ((person w) (rank doer))) shown)\nfound    ((owned doer) shown)","fields":{"file":"code/law.tree:543:1","next":"the type the claim states is printed over the type the proof builds. Change the proof, or the claim"},"kind":"problem"}>>
+  lines/push <<{>>
+  lines/push <<  "files": 1,>>
+  lines/push <<  "failed": ["code/law.tree"],>>
+  lines/push <<  "open": [],>>
+  lines/push <<  "total": 0,>>
+  lines/push <<  "proven": 0,>>
+  lines/push <<  "fresh": [],>>
+  lines/push <<  "ledger": { "native": [], "axioms": [], "unending": [], "roaming": [] },>>
+  lines/push <<  "kernel": { "proven": 0, "commands": 0, "declined": 0, "reasons": [] }>>
+  lines/push <<}>>
+  lines/push <<{"glyph":"info","verb":"trust","subject":"What the proofs rest on and nothing here proves","kind":"step"}>>
+  lines/push <<{"glyph":"failed","verb":"hold","subject":"Does not hold","counts":{"files_do_not_hold":1},"kind":"close"}>>
+  back lines/join(<\n>)
+
+host refused, read-hold(refused-text(), 1)
+
+task first-problem
+  take read, like hold-read
+  like hold-problem
+
+  back read/problems/0
+
+task text-or-empty
+  take value, like maybe, like text
+  like text
+
+  sift value
+    case some
+      back value
+    case none
+      back <>
+
+# the summary a reader holds, as JSON text, `<>` when it read none
+task summary-json
+  take read, like hold-read
+  like text
+
+  sift read/summary
+    case some
+      back gate-json/stringify(value)
+    case none
+      back <>
+
+# one line of the project, by its place: only the refusal's line is known
+task law-line
+  take at, like text
+  like maybe, like text
+
+  fork test, is-equal(at, <code/law.tree:543:1>)
+    hold
+      back make(some, <task isolation>)
+  back make none
+
+task no-line
+  take at, like text
+  like maybe, like text
+
+  back make none
+
+task problems-of
+  take count, like number
+  like list, like hold-problem
+
+  save problems, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      problems/push make(hold-problem, bind(subject, <p{at}>), bind(detail, make list))
+      save at, add(at, 1)
+  back problems
+
+test <a refusal reads as not holding>
+  want hold, not(refused/holds)
+
+test <its one problem, with subject, code and place, and the closing item is no problem>
+  want hold, is-equal(refused/problems/length, 1)
+  host problem, first-problem(refused)
+  want hold, is-equal(text-or-empty(problem/code), <unverified-proof>)
+  want hold, is-equal(text-or-empty(problem/at), <code/law.tree:543:1>)
+
+test <the problem keeps the expected and found types and the next step>
+  host problem, first-problem(refused)
+  want hold, is-equal(problem/detail/length, 3)
+  want hold, starts-with(problem/detail/2, <next: >)
+
+test <the summary is read from its block>
+  host summary, gate-json/parse(summary-json(refused))
+  want hold, is-equal(gate-json/stringify(summary/failed), <<["code/law.tree"]>>)
+  want hold, is-equal(gate-json/stringify(summary/ledger/axioms), <<[]>>)
+
+test <no line was stray>
+  want hold, is-equal(refused/stray, 0)
+
+test <a stray line is counted, never fatal, and exit 0 holds>
+  host odd, read-hold(<not json\n\{"kind":"close","glyph":"done"\}\n>, 0)
+  want hold, odd/holds
+  want hold, is-equal(odd/stray, 1)
+  want hold, is-equal(odd/problems/length, 0)
+  want hold, is-equal(summary-json(odd), <>)
+
+test <the model is told the verdict, the problem, its source line and the next step>
+  host feedback, feedback-of(refused, make(feedback-ask, bind(line-at, law-line)))
+  want hold, feedback/includes(<DOES NOT HOLD. 1 problem.>)
+  want hold, feedback/includes(<at code/law.tree:543:1: task isolation>)
+  want hold, feedback/includes(<next: the type>)
+
+test <at most twelve problems are fed back, and the rest counted>
+  host many, make(hold-read, bind(holds, false), bind(problems, problems-of(20)), bind(stray, 0))
+  host told, feedback-of(many, make(feedback-ask, bind(line-at, no-line)))
+  want hold, told/includes(<8 more problems not shown>)
+  want hold, not(told/includes(<- p12>))
+
+# ---- the gate ----
+
+# the summary of a project that holds, with `over`'s fields put over it (the original's `holding(over)`)
+task summary-over
+  take over, like text
+  like dynamic
+
+  host base, gate-json/parse(<<{"files": 2, "failed": [], "open": [], "total": 2, "proven": 2, "fresh": [], "ledger": {"native": [], "axioms": [], "unending": [], "roaming": []}, "kernel": {"proven": 10, "commands": 0, "declined": 0, "reasons": []}}>>)
+  back gate-object/assign(base, gate-json/parse(over))
+
+task holding
+  take over, like text
+  take holds, like boolean
+  like hold-read
+
+  host summary, summary-over(over)
+  back make(hold-read, bind(holds, holds), bind(summary, make(some, summary)), bind(problems, make list), bind(stray, 0))
+
+task law-of
+  take name, like text
+  take kind, like text
+  like law-sentence
+
+  back make(law-sentence, bind(name, name), bind(kind, kind), bind(text, make(some, <{name} in words.>)), bind(words, make list))
+
+task both-laws
+  like list, like law-sentence
+
+  back make list(law-of(<ownership>, <claim>), law-of(<isolation>, <claim>))
+
+host required, make list(<ownership>, <isolation>)
+
+task gate-for
+  take hold, like hold-read
+  take laws, like list, like law-sentence
+  take lean, like boolean
+
+  back gate-of(make(gate-ask, bind(hold, hold), bind(laws, laws), bind(required, required), bind(lean, lean)))
+
+test <a project that holds with both laws as claims passes>
+  want hold, gate-for(holding(<<{}>>, true), both-laws(), false)/ok
+
+test <a missing law fails it by name>
+  host gated, gate-for(holding(<<{}>>, true), make(list, law-of(<ownership>, <claim>)), false)
+  want hold, gated/reasons/includes(<there is no law named isolation>)
+
+test <a theorem in place of a claim fails it>
+  host gated, gate-for(holding(<<{}>>, true), make(list, law-of(<ownership>, <claim>), law-of(<isolation>, <theorem>)), false)
+  want hold, not(gated/ok)
+
+test <an axiom anywhere fails it>
+  host gated, gate-for(holding(<<{"ledger": {"native": [], "axioms": ["code/law.tree trust-me"], "unending": [], "roaming": []}}>>, true), both-laws(), false)
+  want hold, not(gated/ok)
+
+test <a hold that does not hold fails it>
+  host gated, gate-for(holding(<<{}>>, false), both-laws(), false)
+  want hold, not(gated/ok)
+
+test <under --lean, both laws checked by Lean pass>
+  host over, <<{"lean": {"missing": false, "ok": true, "claims": [{"name": "ownership", "file": "code/law.tree", "verdict": "checked", "axioms": []}, {"name": "isolation", "file": "code/law.tree", "verdict": "checked", "axioms": []}]}}>>
+  host gated, gate-for(holding(over, true), both-laws(), true)
+  want hold, is-equal(gated/lean, <checked>)
+
+test <a law Lean refuses fails it, named>
+  host over, <<{"lean": {"missing": false, "ok": false, "claims": [{"name": "ownership", "file": "code/law.tree", "verdict": "checked", "axioms": []}, {"name": "isolation", "file": "code/law.tree", "verdict": "refused", "axioms": []}]}}>>
+  host gated, gate-for(holding(over, true), both-laws(), true)
+  want hold, not(gated/ok)
+  want hold, is-equal(gated/lean, <failed>)
+  host joined, gated/reasons/join(<,>)
+  want hold, joined/includes(<isolation>)
+
+test <no Lean on the machine fails it>
+  host gated, gate-for(holding(<<{"lean": {"missing": true, "ok": false, "claims": []}}>>, true), both-laws(), true)
+  want hold, not(gated/ok)
+
+test <any claim Lean declines fails the gate through the exit, and the report names it>
+  host over, <<{"lean": {"missing": false, "ok": false, "claims": [{"name": "ownership", "file": "code/law.tree", "verdict": "checked", "axioms": []}, {"name": "isolation", "file": "code/law.tree", "verdict": "checked", "axioms": []}, {"name": "safe-text", "file": "code/law.tree", "verdict": "declined", "axioms": []}]}}>>
+  host gated, gate-for(holding(over, false), both-laws(), true)
+  want hold, not(gated/ok)
+  want hold, is-equal(gated/reasons/0, <term hold --lean --report does not exit 0>)
+  want hold, is-above(gated/notes/length, 0)
+  want hold, gated/notes/0/includes(<safe-text (declined)>)
+
+test <a law the report's row says does not hold fails it>
+  host over, <<{"report": {"page": "", "holds": false, "top": "", "laws": [{"name": "isolation", "holds": false, "why": "a diagnostic inside view"}]}}>>
+  host gated, gate-for(holding(over, true), both-laws(), false)
+  want hold, not(gated/ok)
+  host joined, gated/reasons/join(<,>)
+  want hold, joined/includes(<isolation does not hold: a diagnostic inside view>)
+
+test <a term hold with no --lean yet passes on its own verdict and says Lean was unavailable>
+  host gated, gate-for(holding(<<{}>>, true), both-laws(), true)
+  want hold, gated/ok
+  want hold, is-equal(gated/lean, <unavailable>)
+
+# ---- what a model may write ----
+
+test <code/law.tree may be written>
+  want hold, code-path(</p>, <code/law.tree>)/ok
+
+test <a nested .tree under code/ may be written>
+  want hold, code-path(</p>, <code/a/b.tree>)/ok
+
+test <deck.tree may not>
+  want hold, not(code-path(</p>, <deck.tree>)/ok)
+
+test <a path climbing out may not>
+  want hold, not(code-path(</p>, <code/../../etc/x.tree>)/ok)
+
+test <an absolute path may not>
+  want hold, not(code-path(</p>, </p/code/x.tree>)/ok)
+
+test <a file that is not .tree may not>
+  want hold, not(code-path(</p>, <code/x.ts>)/ok)
+
+test <an empty path may not>
+  want hold, not(code-path(</p>, <>)/ok)

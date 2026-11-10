@@ -1,6 +1,6 @@
-# The file test/call/report-apart.tree runs twice at once through meet.sh: side `a` on node, side `b` on rust. Side a
+# The file test/call/report-apart.tree runs this file twice at once: side `a` on node, side `b` on rust. Side a
 # reports its first test, says so with `a.here` in REPORT_MEET, and its second test then reads the pipe `gate`, which
-# meet.sh writes once side b has ended. Side b skips the first test, so a report side a reads that holds a skip is one
+# report-apart.tree writes once side b has ended. Side b skips the first test, so a report side a reads that holds a skip is one
 # side b wrote.
 
 load @term/base/environment

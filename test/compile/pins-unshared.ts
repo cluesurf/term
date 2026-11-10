@@ -67,12 +67,12 @@ form upload-huge
     bind note, <Huge>
 `
 
-// probe-0037/extend-pin.tree writes its `bind` beside `like`, where the mill reads a call of `form`. The pin belongs under
-// the `like` it pins, so the unit indents it there, and nothing else of the probe changes
+// probe-0037's minimal input, kept beside this suite (item 0970). The probe wrote its `bind` beside `like`, where the
+// mill reads a call of `form`: the fixture holds the pin under the `like` it pins, and nothing else of the probe changed
 const probe = readFileSync(
-  join(TERM, 'tmp/self-host/probe-0037/extend-pin.tree'),
+  join(import.meta.dirname, 'pins-unshared-fixture/extend-pin.tree'),
   'utf8',
-).replace(/^ {2}bind /gm, '    bind ')
+)
 
 const units = [
   {

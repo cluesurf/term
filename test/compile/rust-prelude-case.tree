@@ -31,7 +31,7 @@ load @term/base/text
 dock load
   load <@term/make/code/compile/native>, name native-module
 
-host docked, <dock load\n  load \<global:json\>, name host-json\n\ntask shown\n  take n, like number\n  like text\n  send back\n    call host-json/stringify\n      read n\n>
+host docked, <dock load\n  load \<global:JSON\>, name host-json\n\ntask shown\n  take n, like number\n  like text\n  send back\n    call host-json/stringify\n      read n\n>
 
 # the stdlib's json, whose native module docks <global:json>, beside the host's JSON
 host both, <load @term/base/json\n  find from-number\n  find stringify\n\ndock load\n  load \<global:JSON\>, name host-json\n\ntask shown\n  take n, like number\n  like text\n  send back\n    call host-json/stringify\n      read n\n\ntask both\n  take n, like number\n  like text\n  save a, shown(n)\n  save b\n    call stringify\n      call from-number\n        read n\n  send back, text \<\{a\}\{b\}\>\n>
@@ -75,7 +75,7 @@ task mods
         save count, add(count, 1)
   back count
 
-test <a dock of \<global:JSON\> alone takes no shim>
+test <a dock of global:JSON alone takes no shim>
   host out, built(docked, make list(<shown>))
   want hold, out/ok
   want hold, is-equal(mods(out), 0)

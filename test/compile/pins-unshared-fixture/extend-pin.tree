@@ -1,0 +1,7 @@
+# minimal input: an exception form pins `note`, and the pin is one field-value object at two places (extend pins and the record's pins)
+load @term/base/exception
+  find exception
+
+form invalid
+  like exception
+    bind note, <Invalid>

@@ -39,11 +39,18 @@ bind saving-folder-options
   case node
     text <<({ recursive: true, force: true })>>
 
-bind saving-is-link
+# whether the place is a symbolic link, false when nothing is there
+task saving-is-link
   take place, like text
   like boolean
-  case node
-    text <<(() => { try { return process.getBuiltinModule("node:fs").lstatSync($place).isSymbolicLink() } catch { return false } })()>>
+
+  fork
+    mark unsafe
+    host stat, saving-file/lstat-sync(place)
+    back stat/is-symbolic-link()
+  halt take
+    take cause
+    back false
 
 host saving-variables, make list(<HOME>, <TERM_STORE>, <TERM_TRUST_DIR>)
 host saving-own-text, <zone base, machine 7\n>

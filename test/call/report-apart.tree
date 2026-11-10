@@ -1,8 +1,21 @@
 # One test file run by two `term test` at once, on two envs, each reads only the report its own child wrote (item 1021).
 # The runner named one report file per test file and emptied it at each start, so a second env's start emptied what the
 # first env's child had written, and the first then read the second's verdicts as its own (deck/call/code/work/testing/
-# report-running.tree). The fixture's meet.sh runs test/meet.tree on node and, while that child still runs, on rust.
-# Side b skips the first test, so side a reading a skip is side a reading side b's report.
+# report-running.tree). The fixture's test/meet.tree runs on node as side a and, once side a has reported its first test,
+# on rust as side b, whose runner starts while side a's child still runs. Side a's second test reads the pipe `gate`,
+# written here once side b has ended, so side a ends after side b. Side b skips the first test, so side a reading a skip
+# is side a reading side b's report. Item term-self-host-001-1134 moved this from the fixture's meet.sh into Term.
+
+load @term/test/self
+  find self-command
+  find run-self
+
+load @term/base/process
+  find child
+
+load @term/base/process/child
+  find start
+  find wait, name wait-child
 
 load @term/base/process/run
   find run
@@ -11,26 +24,115 @@ load @term/base/process/run
 load @term/base/process/tool
   find find-tool
 
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/clock
+  find sleep
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
 load @term/base/text
   find contains
 
 host fixture, <test/call/report-apart-fixture>
 
-# the run prints on either stream
-task said
-  take ran, like run-result
-  like text
+# side a as it ends: `ended` once its child has exited, and what it came to
+form side-end
+  mark shared
+  link ended, like boolean
+  link result, like run-result
 
-  back <{ran/output}{ran/error}>
+# the arguments of one side's `term test` over the fixture's meet.tree
+task side-arguments
+  take env, like text
+  like list, like text
+
+  back make(list, <test>, <test/meet.tree>, <--env>, env, <--color>, <never>, <--no-motion>)
+
+# what one side is handed: the meeting folder and its side
+task side-environment
+  take meet, like text
+  take side, like text
+  like hash, like text, like text
+
+  save environment
+    make hash
+      save <REPORT_MEET>, meet
+      save <REPORT_SIDE>, side
+  back environment
+
+# wait for side a's child to end, and say so in `end`
+task watch
+  take child, like child
+  take end, like side-end
+  like void
+  mark async
+
+  save result, wait-child(child)
+  save end/result, result
+  save end/ended, true
+
+# whether side a has reached its second test, looking every 100 ms, `left` more times, and giving up at once when side a
+# has ended without reaching it
+task reached
+  take meet, like text
+  take end, like side-end
+  take left, like number
+  like boolean
+  mark async
+
+  fork test, file-exists(<{meet}/a.here>)
+    hold
+      back true
+  fork test, or(end/ended, is-below(left, 1))
+    hold
+      back false
+  sleep(100)
+  back reached(meet, end, subtract(left, 1))
+
+# side a's end, waiting every 100 ms until it has come
+task ended
+  take end, like side-end
+  like run-result
+  mark async
+
+  fork test, end/ended
+    hold
+      back end/result
+  sleep(100)
+  back ended(end)
 
 test <the same file on node and on rust at once reads only its own report>
   fork test, is-equal(find-tool(<rustc>), <>)
     hold
       skip <rustc is not installed>
-  save arguments, make list(<meet.sh>)
-  save ran, run(<sh>, arguments, bind(directory, fixture), bind(limit, 600000))
-  want hold, is-equal(ran/code, 0)
-  want hold, contains(said(ran), <a exit 0>)
-  want hold, contains(said(ran), <b exit 0>)
-  want hold, contains(said(ran), <a: 2 tests · 2 passed>)
-  want hold, contains(said(ran), <b: 2 tests · 1 passed · 1 skipped>)
+  save meet, temp-folder(<report-meet->)
+  save made, run(<mkfifo>, make(list, <{meet}/gate>))
+  want hold, is-equal(made/code, 0)
+  save command, self-command()
+  save a-arguments, make list
+  save at, 0
+  walk command
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        a-arguments/push(part)
+    save at, add(at, 1)
+  walk side-arguments(<node>)
+    take part, like text
+    a-arguments/push(part)
+  save side-a, start(command/0, a-arguments, bind(directory, fixture), bind(environment, side-environment(meet, <a>)))
+  save end, make(side-end, bind(ended, false), bind(result, make(run-result, bind(code, -1), bind(output, <>), bind(error, <>), bind(signal, 0))))
+  tick watch(side-a, end)
+  save here, reached(meet, end, 3000)
+  want hold, here
+  save side-b, run-self(side-arguments(<rust>), fixture, 600000, side-environment(meet, <b>))
+  write-file(<{meet}/gate>, <open\n>)
+  save a-ended, ended(end)
+  want hold, is-equal(a-ended/code, 0)
+  want hold, is-equal(side-b/code, 0)
+  want hold, contains(<{a-ended/output}{a-ended/error}>, <2 tests · 2 passed>)
+  want hold, contains(<{side-b/output}{side-b/error}>, <2 tests · 1 passed · 1 skipped>)
