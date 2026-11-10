@@ -1,0 +1,80 @@
+note <the store's folders: under the home, the old folders read while they are the only ones, a file by its hash prefix>
+
+# Ported from store.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. The original
+# held code/package/store.ts, a face whose logic is code/package/file-store.tree: this holds that module itself. Each
+# case runs in a home of its own, so what exists on this machine decides nothing: `in-home` makes a temporary home, makes
+# the folders a case names under it, points HOME at it, reads the store's folders, and puts HOME back, as the original's
+# `beforeEach` and `afterEach` did.
+
+load ../code/package/file-store
+  find get-store-root
+  find get-tree-dir
+  find get-file-path
+
+load @term/base/environment
+  find variable
+  find set-variable
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find join, name path-join
+
+# what one case read in its own home
+form home-read
+  link home, like text
+  link root, like text
+  link tree, like text
+  link file, like text
+
+# the store's folders read in a fresh home holding each of `made`, the file path of `hash` among them
+task in-home
+  take made, like list, like text
+  take hash, like text
+  like home-read
+
+  save before, variable(<HOME>)
+  save home, temp-folder(<term-store->)
+  set-variable(<HOME>, home)
+  walk made
+    take one, like text
+    make-folder(path-join(home, one))
+  save read, make(home-read, bind(home, home), bind(root, get-store-root()), bind(tree, get-tree-dir()), bind(file, get-file-path(hash)))
+  set-variable(<HOME>, before)
+  back read
+
+test <getFilePath: uses 2-char prefix for directory sharding>
+  host none, make list
+  host read, in-home(none, <a1b2c3d4e5f6>)
+  want hold, is-equal(read/file, path-join(path-join(read/tree, <a1>), <a1b2c3d4e5f6>))
+
+test <getFilePath: uses correct prefix for different hashes>
+  host none, make list
+  host read, in-home(none, <ff0011223344>)
+  want hold, is-equal(read/file, path-join(path-join(read/tree, <ff>), <ff0011223344>))
+
+test <getStoreRoot: is ~/.base/@term/code on a machine with nothing yet>
+  host none, make list
+  host read, in-home(none, <>)
+  want hold, is-equal(read/root, path-join(read/home, <.base/@term/code>))
+
+test <getStoreRoot: reads the folder from before 2026-10-05 while the CLI has not moved it yet>
+  host read, in-home(make(list, <.base/@cluesurf/term>), <>)
+  want hold, is-equal(read/root, path-join(read/home, <.base/@cluesurf/term>))
+
+test <getStoreRoot: prefers the new folder once it exists>
+  host read, in-home(make(list, <.base/@cluesurf/term>, <.base/@term/code>), <>)
+  want hold, is-equal(read/root, path-join(read/home, <.base/@term/code>))
+
+test <getStoreRoot: reads the folder from before 2026-08-30 when it is the only one>
+  host read, in-home(make(list, <.base/term>), <>)
+  want hold, is-equal(read/root, path-join(read/home, <.base/term>))
+
+test <getTreeDir: is tree/ under store root>
+  host none, make list
+  host read, in-home(none, <>)
+  want hold, is-equal(read/tree, path-join(path-join(read/home, <.base/@term/code>), <tree>))

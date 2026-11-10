@@ -1,0 +1,75 @@
+note <inside sift x / case c, x/field reads and writes case c of x's own form>
+
+# Ported from arm-write.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. Until 2026-10-05
+# the field was looked up by the label alone, so with node.tree's expression and view node both declaring `call`,
+# `value/background` inside `case call` over an expression was refused as no field of the view node's case, and the
+# emitter held the subject in an alias it then wrote around. A rewriting pass is written this way (check/pending.tree).
+# Each module is read lean over the stdlib under the node env, as a library. The original then called its tasks on host
+# records: here a `run` task beside the same module makes each record in Term and answers what the task did, on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find index-of
+  find substring
+  find contains, name text-contains
+
+# `node` declares `call` first with a `value` field, and `shape`, declared after it, has a `call` with others
+host module-text, <form node\n  case call\n    link value, like text\n  case other\n\nform shape\n  case call\n    link name, like text\n    link quiet\n      like boolean\n      need false\n  case dot\n    link size, like number\n\ntask hush\n  take one, like shape\n  like shape\n\n  sift one\n    case call\n      save one/quiet, true\n      save one/name, \<\{one/name\}!\>\n      back one\n    case dot\n      save one/size, add(one/size, 1)\n      back one\n>
+
+# an arm that declares a name its case has as a field: the field local and the arm's own `let` were two `const`s of one
+# name in one block
+host own-text, <load @term/base/list\n  find list\n\nform gather\n  case call\n    link names, like list, like text\n  case other\n\ntask fresh-names\n  take one, like gather\n  like number\n\n  sift one\n    case call\n      save names, make list\n      push(names, \<a\>)\n      push(names, \<b\>)\n      back names/length\n    case other\n      back 0\n>
+
+task lean-choice
+  take file, like text
+  take library, like boolean
+  like compile-choice
+
+  back make(compile-choice, bind(file, file), bind(stdlib, <node>), bind(env, <node>), bind(library, library), bind(lean, true))
+
+# a module with a run task whose body is `body`, answering its text, run on node
+task run-of
+  take module, like text
+  take name, like text
+  take body, like text
+  like text
+
+  host folder, temp-folder(<arm-write->)
+  host program, <{module}\ntask run\n  like text\n\n{body}>
+  host ran, run-text(program, <typescript>, folder, name, lean-choice(<arm-write.tree>, false))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a write to the matched case builds>
+  host out, compile-text(module-text, lean-choice(<arm-write.tree>, true))
+  want hold, out/ok
+
+test <the subject is matched by its own name, so the write is narrowed>
+  host out, compile-text(module-text, lean-choice(<arm-write.tree>, true))
+  host at, index-of(out/emitted, <function hush>)
+  host body, substring(out/emitted, at, add(at, 300))
+  want hold, is-above(at, -1)
+  want hold, and(text-contains(body, <if (one.form === "call")>), not(text-contains(body, <__at>)))
+
+test <the fields of the case are written>
+  host body, <  save called, hush(make(call, bind(name, \<go\>)))\n  sift called\n    case call\n      fork test, is-equal(quiet, true)\n        hold\n          back \<quiet \{name\}\>\n      back \<loud \{name\}\>\n    case dot\n      back \<dot\>\n>
+  want hold, is-equal(run-of(module-text, <call>, body), <quiet go!>)
+
+test <in the other case too>
+  host body, <  save dotted, hush(make(dot, bind(size, 2)))\n  sift dotted\n    case dot\n      back \<\{size\}\>\n    case call\n      back \<call\>\n>
+  want hold, is-equal(run-of(module-text, <dot>, body), <3>)
+
+test <an arm declaring a name its case has loads, and reads its own>
+  host body, <  back \<\{fresh-names(make(call, bind(names, make list(\<x\>))))\}\>\n>
+  want hold, is-equal(run-of(own-text, <own>, body), <2>)

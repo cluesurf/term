@@ -1,0 +1,169 @@
+note <the text runtime is shaken by method: a module carries the methods it names, what those call, and their helpers>
+
+# Ported from text-shake.ts by statement (item term-self-host-001-0655), one test per `ok` in its order. The text
+# runtime is shaken by method (compile/typescript.ts `textPrelude`, the subject this suite docks, decision 106): a module
+# carries the methods its code names, the methods those call, and the helpers any of them mention. Every method reached
+# from all of them is the whole runtime as written, so splitting it loses nothing, and a module that only trims carries
+# `trim` and its two whitespace patterns alone. The original ran a shaken runtime through esbuild and a function made of its text:
+# here it runs under node with tsx's loader, printing the answer. The bundle test hands esbuild the same ask.
+
+load ../support/running
+  find running-node
+
+load ../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains
+  find substring
+  find starts-with
+  find index-of
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/typescript>, name shake-typescript
+  load <esbuild>, name shake-esbuild
+
+form transform-ask
+  link loader, like text
+  link tree-shaking, like boolean
+  link format, like text
+
+form transformed
+  link code, like text
+
+host word, make pattern, <<^\w+$>>
+
+# the name of each line that starts with `lead` and then a word and a `(`, in order, as `^<lead>(\w+)\(` matches it
+task names-of
+  take code, like text
+  take lead, like text
+  like list, like text
+
+  save out, make list
+  walk lines-of(code)
+    take line, like text
+    fork test, starts-with(line, lead)
+      hold
+        save open, index-of(line, <(>)
+        fork test, is-above(open, lead/length)
+          hold
+            save name, substring(line, lead/length, open)
+            fork test, matches(word, name)
+              hold
+                out/push(name)
+  back out
+
+task functions-of
+  take code, like text
+  like list, like text
+
+  back names-of(code, <function __termText_>)
+
+task methods
+  like list, like text
+
+  back names-of(shake-typescript/TEXT_PRELUDE, <  >)
+
+task shaken
+  take code, like text
+  like text
+
+  back shake-typescript/textPrelude(code)
+
+# every method of the runtime named once, so every method is reached
+task every
+  like text
+
+  save calls, make list
+  walk methods()
+    take name, like text
+    calls/push(<__termText_{name}(x)>)
+  back shaken(calls/join(<\n>))
+
+# what a TypeScript text prints run under node with tsx's loader
+task printed
+  take code, like text
+  like text
+
+  save folder, temp-folder(<term-text-shake->)
+  save file, <{folder}/shaken.ts>
+  write-file(file, code)
+  save result, run(running-node(0), make list(<--import>, <tsx>, file))
+  fork test, is-unequal(result/code, 0)
+    hold
+      back <exit {result/code}: {result/error}>
+  back result/output
+
+test <every method named gives every method, as a function>
+  host found, functions-of(every())
+  host wanted, methods()
+  want hold, is-equal(found/join(<|>), wanted/join(<|>))
+
+test <the runtime has its methods>
+  host found, methods()
+  want hold, is-above(found/length, 25)
+
+test <and no object left to call through>
+  host all, every()
+  want hold, not(contains(all, <__termText.>))
+  want hold, not(contains(all, <const __termText =>))
+
+test <a trim carries trim>
+  host found, functions-of(shaken(<const said = __termText_trim(who)>))
+  want hold, is-equal(found/join(<|>), <trim>)
+
+test <and the whitespace it strips>
+  host trim, shaken(<const said = __termText_trim(who)>)
+  want hold, contains(trim, <const __termWhite =>)
+  want hold, contains(trim, <__termWhiteStart>)
+  want hold, contains(trim, <__termWhiteEnd>)
+
+test <marked pure, so a bundle that drops trim drops them>
+  want hold, contains(shaken(<const said = __termText_trim(who)>), <const __termWhiteStart = /* @__PURE__ */ (() =\> new RegExp>)
+
+test <and no surrogate cache, which trim never reads>
+  want hold, not(contains(shaken(<const said = __termText_trim(who)>), <__termSurrogate>))
+
+test <a method keeps what it calls: charCodeAt reads charAt>
+  host found, functions-of(shaken(<__termText_charCodeAt(s, 1)>))
+  want hold, is-equal(found/join(<|>), <charAt|charCodeAt>)
+
+test <and the surrogate cache charAt reads>
+  want hold, contains(shaken(<__termText_charCodeAt(s, 1)>), <const __termSurrogate =>)
+
+test <and none of the whitespace>
+  want hold, not(contains(shaken(<__termText_charCodeAt(s, 1)>), <__termWhite>))
+
+test <the shaken runtime still runs, counting code points>
+  host at, shaken(<__termText_charCodeAt(s, 1)>)
+  want hold, is-equal(printed(<{at}\nprocess.stdout.write(String(__termText_charCodeAt("a𝄞b", 1)))\n>), <119070>)
+
+# every method together, each called, so a method whose split lost a line fails here rather than in a program
+test <the whole runtime runs>
+  host all, every()
+  want hold, is-equal(printed(<{all}\nprocess.stdout.write([__termText_length("a𝄞b"), __termText_trim("  x "), __termText_substring("a𝄞bc", 1, 3), __termText_padStart("7", 3, "0"), __termText_compare("a", "b"), __termText_indexOf("a𝄞b", "b")].join("|"))\n>), <3|x|𝄞b|007|-1|2>)
+
+# a bundle keeps only what its program reaches: trim's whitespace patterns go with trim
+test <a bundler drops trim and its patterns when nothing calls trim>
+  host trim, shaken(<const said = __termText_trim(who)>)
+  host ask, make(transform-ask, bind(loader, <ts>), bind(tree-shaking, true), bind(format, <esm>))
+  host done, like transformed
+    call shake-esbuild/transformSync(<{trim}\nexport const unused = 1>, ask)
+  want hold, not(contains(done/code, <RegExp>))
+  want hold, not(contains(done/code, <__termText_trim>))

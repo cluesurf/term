@@ -1,0 +1,174 @@
+note <a build worker that runs out of memory fails only its own unit: the big file reported, the other 15 built, no fatal heap death>
+
+# Ported from worker-heap.ts by statement (item term-self-host-001-0605), one test per `ok` in its order.
+# note/project/term/compiler/decision/005-prover-memory-bounded-by-problem.md, part 2: a 16-file project, the size at
+# which `term make` builds its units across the worker pool, with one file far bigger than the rest, built with each
+# worker's heap held to TERM_WORKER_HEAP_MB. That file is reported `out-of-memory`, the other 15 build, and the process
+# ends on its own with a non-zero exit (never 134, V8's fatal heap death, which the main thread compiling the unit again
+# gave). The build stores into a store of its own (TERM_CACHE_HOME), never the machine's: that store is shared and keyed
+# by content, so once any run had stored the probe's units a later run reused them, started no pool and exited 0 (item
+# 0447). The one build is the `term` under test (@term/test/self), run once by the first test and kept in `heap-now`.
+# WORKER_HEAP_TEST_MB and WORKER_HEAP_TEST_TASKS move the heap and the big file's size, as in the original.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable, name variable-of
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find replace-matches
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/list
+  find push
+
+# host value: a text of digits as a number
+bind as-number
+  take text, like text
+  like number
+  case node
+    text <Number($text)>
+
+form heap-state
+  mark shared
+  link made, like boolean
+  link project, like text
+  link code, like number
+  link signal, like number
+  link out, like text
+  link flat, like text
+
+host heap-now, make(heap-state, bind(made, false), bind(project, <>), bind(code, -1), bind(signal, -1), bind(out, <>), bind(flat, <>))
+
+# small enough that the big file's compile cannot fit, big enough for a small file's
+task heap-mb
+  like text
+
+  save given, variable-of(<WORKER_HEAP_TEST_MB>)
+  fork test, is-equal(given, <>)
+    hold
+      back <256>
+  back given
+
+# tasks in the big file: its parse and check grow with it, far past the heap
+task big-tasks
+  like number
+
+  save given, variable-of(<WORKER_HEAP_TEST_TASKS>)
+  fork test, is-equal(given, <>)
+    hold
+      back 40000
+  back as-number(given)
+
+task task-text
+  take name, like text
+  take value, like number
+  like text
+
+  back <task {name}\n  like number\n  send back\n    call add\n      code {value}\n      code 1\n\n>
+
+task the-build
+  like heap-state
+  mark async
+
+  fork test, heap-now/made
+    hold
+      back heap-now
+  save heap-now/made, true
+  save project, temp-folder(<term-worker-heap->)
+  save heap-now/project, project
+  make-folder(<{project}/code>)
+  write-file(<{project}/deck.tree>, <deck @probe/heap\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  save i, 0
+  walk test
+    hook test, is-below(i, 15)
+    hook hold
+      write-file(<{project}/code/small-{i}.tree>, task-text(<small-{i}>, i))
+      save i, add(i, 1)
+  save big, make list
+  save n, 0
+  save count, big-tasks()
+  walk test
+    hook test, is-below(n, count)
+    hook hold
+      big/push(task-text(<big-{n}>, n))
+      save n, add(n, 1)
+  write-file(<{project}/code/big.tree>, big/join(<>))
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+      save <TERM_WORKER_HEAP_MB>, heap-mb()
+      save <TERM_CACHE_HOME>, temp-folder(<term-worker-heap-store->)
+  save ran, run-self(make(list, <make>), project, 900000, environment)
+  save heap-now/code, ran/code
+  save heap-now/signal, ran/signal
+  save heap-now/out, <{ran/output}{ran/error}>
+  # the report wraps long lines, so a phrase is looked for with its spaces and line breaks made one space
+  save heap-now/flat, replace-matches(make(pattern, <<\s+>>), heap-now/out, < >)
+  back heap-now
+
+test <the build ends on its own (no signal, no timeout)>
+  save state, the-build()
+  want hold, is-equal(state/signal, 0)
+
+test <the build exits non-zero>
+  save state, the-build()
+  want hold, is-unequal(state/code, 0)
+
+test <the build never dies of a fatal heap (exit 134)>
+  save state, the-build()
+  want hold, is-unequal(state/code, 134)
+
+test <the units were built across the worker pool>
+  save state, the-build()
+  want hold, text-contains(state/out, <units in parallel>)
+
+test <the big file is reported out of memory>
+  save state, the-build()
+  want hold, matches(make(pattern, <<out of memory at its \d+ MB heap limit out-of-memory file code/big\.tree>>), state/flat)
+
+test <the limit and the remedy are named>
+  save state, the-build()
+  want hold, text-contains(state/flat, <{heap-mb()} MB heap limit>)
+  want hold, text-contains(state/flat, <raise TERM_WORKER_HEAP_MB>)
+
+test <no small file is reported out of memory>
+  save state, the-build()
+  want hold, not(matches(make(pattern, <<out-of-memory file code/small-\d+\.tree>>), state/flat))
+
+test <exactly one unit is reported out of memory>
+  save state, the-build()
+  want hold, is-equal(find-matches(make(pattern, <ran out of memory at its>), state/flat)/length, 1)
+
+test <the other 15 files are built>
+  save state, the-build()
+  save built, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, 15)
+    hook hold
+      fork test, file-exists(<{state/project}/host/code/small-{i}.ts>)
+        hold
+          save built, add(built, 1)
+      save i, add(i, 1)
+  want hold, is-equal(built, 15)
+
+test <the big file is not built>
+  save state, the-build()
+  want hold, not(file-exists(<{state/project}/host/code/big.ts>))

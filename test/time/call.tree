@@ -1,0 +1,249 @@
+note <`term time`: a project's time-* tasks found and run, a baseline saved and compared, a regression gated, and --cpu and --memory profiling the tasks themselves>
+
+# Ported from call.ts by statement (item term-self-host-001-0683), one test per `ok` the original prints on a pass, in
+# its order. The original called the `term time` handler in its own process with process.exit trapped, so an exit was a
+# recorded code. Here `term time` runs as a child in the project, the `term` under test (@term/test/self), and an exit is
+# the child's own code. Its two `ok`s that print only on a failure ("run + save did not exit", "empty project fails")
+# are held in the tests they guard: the first test wants the save to exit 0. A trivial `time-noop` task keeps each run
+# short. The --cpu and --memory profilers of @term/make are docked as the subject (decision 106).
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/test/self
+  find run-self
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+
+load ../support/judging
+  find make-record
+  find read-at
+  find read-field
+
+dock load
+  load <@term/make/code/time/cpu>, name cpu-module
+  load <@term/make/code/time/memory>, name memory-module
+  load <@term/call/code/make>, name make-module
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind is-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "number")>
+
+bind message-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+host source, <task time-noop\n  send back, code 1\n>
+
+# how long one `term time` may take
+host run-limit, 600000
+
+task write-text
+  take path, like text
+  take text, like text
+  like void
+
+  dock-file/write-file-sync(path, text)
+
+task make-project
+  take text, like text
+  like text
+
+  save root, dock-file/realpath-sync(temp-folder(<seed-time->))
+  write-text(dock-path/join(root, <bench.tree>), text)
+  back root
+
+task time-folder
+  take root, like text
+  like text
+
+  back dock-path/join(root, <.base/@term/code>, <time>)
+
+# the names in a folder, none when it is not there
+task names-in
+  take folder, like text
+  like list, like text
+
+  save out, make list
+  fork test, dock-file/exists-sync(folder)
+    hold
+      walk dock-file/readdir-sync(folder)
+        take name, like text
+        out/push(name)
+  back out
+
+# `term time` in the project, with `flags`, answering its exit code
+task time-in
+  take root, like text
+  take flags, like list, like text
+  like number
+  mark async
+
+  save arguments, make(list, <time>)
+  walk flags
+    take flag, like text
+    arguments/push(flag)
+  back run-self(arguments, root, run-limit)/code
+
+# ---- the command ----
+
+form time-runs
+  mark shared
+  link done, like boolean
+  link save-code, like number
+  link baseline, like dynamic
+  link history, like list, like text
+  link saved-code, like number
+  link compared-code, like number
+  link gate-code, like number
+  link empty-code, like number
+
+host runs-now, make(time-runs, bind(done, false), bind(save-code, -1), bind(baseline, make-record(make list)), bind(history, make list), bind(saved-code, -1), bind(compared-code, -1), bind(gate-code, -1), bind(empty-code, -1))
+
+task the-runs
+  like time-runs
+  mark async
+
+  fork test, runs-now/done
+    hold
+      back runs-now
+  save runs-now/done, true
+  # discovery + run: the `time-*` task is found and run, and a baseline JSON is saved the comparison can read back
+  save first, make-project(source)
+  save runs-now/save-code, time-in(first, make(list, <--save>, <base>, <--json>))
+  save baseline-file, dock-path/join(time-folder(first), <base.json>)
+  fork test, dock-file/exists-sync(baseline-file)
+    hold
+      save runs-now/baseline, parsed-json(dock-file/read-file-sync(baseline-file, <utf-8>))
+  save runs-now/history, names-in(dock-path/join(time-folder(first), <history>))
+  # save, then compare a fresh run against it: no regression, since the gate is generous
+  save second, make-project(source)
+  save runs-now/saved-code, time-in(second, make(list, <--save>, <base>))
+  save runs-now/compared-code, time-in(second, make(list, <--compare>, <base>, <--fail-on-regression>, <1000>))
+  # a planted baseline that is absurdly fast reads the run as a large regression, past a tight gate
+  save third, make-project(source)
+  dock-file/mkdir-sync(time-folder(third), make-record(make(list, <recursive>, true)))
+  write-text(dock-path/join(time-folder(third), <tight.json>), <\{"results":[\{"name":"time-noop","mean_ns":1\}]\}>)
+  save runs-now/gate-code, time-in(third, make(list, <--compare>, <tight>, <--fail-on-regression>, <5>))
+  # a project with no `time-*` task fails clearly rather than reporting an empty success
+  save fourth, dock-file/realpath-sync(temp-folder(<seed-time->))
+  write-text(dock-path/join(fourth, <plain.tree>), <task helper\n  take n, like number\n  send back, read n\n>)
+  save runs-now/empty-code, time-in(fourth, make list)
+  back runs-now
+
+# the names of a baseline's results
+task result-names
+  take baseline, like dynamic
+  like list, like text
+
+  save out, make list
+  save results, read-field(baseline, <results>)
+  fork test, is-unequal(results, void)
+    hold
+      walk results
+        take one, like dynamic
+        out/push(one/name)
+  back out
+
+test <save wrote a baseline with the discovered benchmark>
+  save got, the-runs()
+  save names, result-names(got/baseline)
+  want hold, and(is-equal(got/save-code, 0), and(is-equal(names/length, 1), is-equal(names/0, <time-noop>)))
+
+test <baseline records a numeric mean>
+  save mean, read-field(read-at(read-field(the-runs()/baseline, <results>), 0), <mean_ns>)
+  want hold, and(is-number(mean), is-minimum(mean, 0))
+
+test <save also appended a history entry>
+  save history, the-runs()/history
+  want hold, and(is-equal(history/length, 1), ends-with(history/0, <.json>))
+
+test <save then compare round-trips cleanly>
+  save got, the-runs()
+  want hold, and(is-equal(got/saved-code, 0), is-equal(got/compared-code, 0))
+
+test <gate exits non-zero on a regression past the threshold>
+  want hold, is-equal(the-runs()/gate-code, 1)
+
+test <empty project exits non-zero>
+  want hold, is-equal(the-runs()/empty-code, 1)
+
+# ---- --cpu and --memory ----
+
+host spin, <task spin-sum\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      save total, add(total, i)\n  send back, read total\n\ntask time-spin\n  like number\n  send back, spin-sum(5000)\n>
+
+host keep, <load @term/base/list\n  find list\n  find push\n\nhost kept, make list\n  like list, like text\n\ntask time-fill\n  like number\n  walk size\n    bind base, code 0\n    bind head, code 200000\n    hook next\n      take site, name i\n      push kept, \<row \{i\}\>\n  send back, code 0\n>
+
+form profiles
+  mark shared
+  link done, like boolean
+  link hottest, like text
+  link left, like list, like text
+  link refused, like text
+  link grown, like number
+
+host profiles-now, make(profiles, bind(done, false), bind(hottest, <>), bind(left, make list), bind(refused, <>), bind(grown, 0))
+
+# what profiling a file with no `time-*` task raised, or the empty text
+task cpu-refusal
+  take root, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    wait cpu-module/runCpuProfile(make-record(make(list, <text>, <task noop\n  send back, code 1\n>, <file>, <bench.tree>, <root>, root, <name>, <bench>)))
+    back <>
+  halt take
+    take cause
+    back message-of(cause)
+
+task the-profiles
+  like profiles
+  mark async
+
+  fork test, profiles-now/done
+    hold
+      back profiles-now
+  save profiles-now/done, true
+  save root, make-project(<>)
+  save result, wait cpu-module/runCpuProfile(make-record(make(list, <text>, spin, <file>, <bench.tree>, <root>, root, <name>, <bench>, <top>, 5, <spend>, 300)))
+  save frames, read-field(result, <frames>)
+  fork test, is-above(frames/length, 0)
+    hold
+      save profiles-now/hottest, read-at(frames, 0)/name
+  save profiles-now/left, names-in(dock-path/join(root, <.base/@term/code/tmp>))
+  save profiles-now/refused, cpu-refusal(root)
+  save resolve, make-module/projectResolver(root, <node>, root)
+  save memory, wait memory-module/runMemoryProfile(make-record(make(list, <text>, keep, <file>, <bench.tree>, <root>, root, <name>, <bench>, <resolve>, resolve)))
+  save profiles-now/grown, subtract(memory/heapUsedAfterBytes, memory/heapUsedBeforeBytes)
+  back profiles-now
+
+# the simplifier may inline `spin-sum` into `time-spin`, so the hottest frame is one or the other, never a loader's
+test <`--cpu` runs the `time-*` tasks, so their work is the hottest frame>
+  save hottest, the-profiles()/hottest
+  want hold, or(is-equal(hottest, <spinSum>), is-equal(hottest, <timeSpin>))
+
+test <and leaves no scratch folder behind>
+  want hold, is-equal(the-profiles()/left/length, 0)
+
+test <a file with no `time-*` task is refused, not profiled empty>
+  want hold, text-contains(the-profiles()/refused, <no `time-*` task to profile>)
+
+# a task that fills a module-level list keeps what it put there
+test <`--memory` runs the `time-*` tasks, so what they keep is counted>
+  want hold, is-above(the-profiles()/grown, 4000000)

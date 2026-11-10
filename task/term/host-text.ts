@@ -3,12 +3,15 @@
 // It was tmp/self-host/suite-host-text.mjs. Item term-self-host-001-0882 made it permanent, with the same rule and words.
 //
 //   pnpm term:host-text [path-prefix ...]          report, one line per file with anything to say, then the totals
-//   pnpm term:host-text --fail [path-prefix ...]   exit 1 when a named suite holds a refused bind or a fact table. A batch runs this
+//   pnpm term:host-text --fail [path-prefix ...]   exit 1 when a named suite holds a refused bind or a fact table, or a test/support
+//                                                  helper holds a refused bind (supportRefused above 0). A batch runs this
 //   pnpm term:host-text --items                    the refused files mapped to their SUITE batch (finding/suite-batches.json)
 //   pnpm term:host-text --list <path>              every bind of one file with its verdict
 //   pnpm term:host-text --ratchet                  exit 1 when the counts pass note/project/term/self-host/host-text.json (shrink only)
 //   pnpm term:host-text --commit                   rewrite that baseline, refused if any count rose
 //   --root <dir>                                   read another Term root's test/ (a fixture), and never the baseline
+// A path-prefix is relative to the Term root, or absolute inside it (read as its relative form). A prefix outside the
+// root, or one that matches no .tree file, exits 2 naming it, never a clean read of 0 suites (item 1190).
 //
 // A bind body is judged alone, one per `case <env>`:
 //   call      one expression, at most 200 characters, no arrow: the host need the rule allows
@@ -18,10 +21,11 @@
 //             (decision 113 says what each covers)
 // A file is also refused for a fact table: a test whose hold repeats the test's own title as a literal, reading a lookup, which is
 // what makes every test read green without an assertion in it, or for running text as JavaScript (new Function, eval, node -e).
-// test/support is reported apart. Item 0707 owns it, and its binds do not hold a suite.
-// task/term/floor.ts prints the totals as one line, and gate 0152 (task/gates.md) requires refused 0, arrow 0, facts 0.
+// test/support is reported apart, as supportRefused: its binds do not hold a suite, and --fail refuses one above 0 (item 0898).
+// task/term/floor.ts prints the totals as one line, and gate 0152 (task/gates.md) requires refused 0, arrow 0, facts 0,
+// supportRefused 0.
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { TERM_ROOT, parentRoot } from './root'
 
@@ -200,17 +204,27 @@ const isSuite = (r: Row): boolean => !isSupport(r) && r.tests > 0
 const held = (r: Row): boolean => isSuite(r) && (r.refused > 0 || r.facts > 0 || r.runs)
 
 // every suite under the Term root's test/ and each package's test/, the rows with anything to say, and their totals
-export const scan = ({ term, prefixes }: { term: string; prefixes: ReadonlyArray<string> }): { rows: Array<Row>; total: Total } => {
+// `matched` counts the .tree files each prefix took, so a filter that takes none fails instead of reading clean (item 1190)
+export const scan = ({
+  term,
+  prefixes,
+}: {
+  term: string
+  prefixes: ReadonlyArray<string>
+}): { rows: Array<Row>; total: Total; matched: Map<string, number> } => {
   const roots = [join(term, 'test')]
   if (existsSync(join(term, 'deck'))) {
     for (const d of readdirSync(join(term, 'deck'))) if (existsSync(join(term, 'deck', d, 'test'))) roots.push(join(term, 'deck', d, 'test'))
   }
   const rows: Array<Row> = []
+  const matched = new Map<string, number>(prefixes.map(p => [p, 0]))
   for (const root of roots) {
     if (!existsSync(root)) continue
     for (const file of walk(root)) {
       const rel = relative(term, file)
-      if (prefixes.length && !prefixes.some(p => rel.startsWith(p))) continue
+      const took = prefixes.filter(p => rel.startsWith(p))
+      if (prefixes.length && !took.length) continue
+      for (const p of took) matched.set(p, (matched.get(p) as number) + 1)
       const row = measure({ term, file })
       if (row.binds.length || row.facts || row.runs) rows.push(row)
     }
@@ -232,7 +246,16 @@ export const scan = ({ term, prefixes }: { term: string; prefixes: ReadonlyArray
     supportHost: sum(support, 'host'),
     supportRefused: sum(support, 'refused'),
   }
-  return { rows, total }
+  return { rows, total, matched }
+}
+
+// a prefix as the scan reads it: relative to the Term root. An absolute path inside the root becomes its relative form,
+// one outside it is refused, since it can match no file the scan walks (trap T-0646)
+export const prefixOf = ({ term, given }: { term: string; given: string }): string | null => {
+  if (!isAbsolute(given)) return given
+  const rel = relative(term, given)
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null
+  return rel
 }
 
 const main = (): void => {
@@ -241,8 +264,20 @@ const main = (): void => {
   const listAt = args.indexOf('--list')
   const rootAt = args.indexOf('--root')
   const term = rootAt >= 0 ? resolve(args[rootAt + 1] as string) : TERM
-  const prefixes = args.filter((a, at) => !a.startsWith('--') && (listAt < 0 || at !== listAt + 1) && (rootAt < 0 || at !== rootAt + 1))
-  const { rows, total } = scan({ term, prefixes })
+  const given = args.filter((a, at) => !a.startsWith('--') && (listAt < 0 || at !== listAt + 1) && (rootAt < 0 || at !== rootAt + 1))
+  const outside = given.filter(g => prefixOf({ term, given: g }) === null)
+  if (outside.length) {
+    console.error(`HOST TEXT: path outside the Term root ${term}, it matches no suite: ${outside.join(' ')}`)
+    process.exit(2)
+  }
+  const prefixes = given.map(g => prefixOf({ term, given: g }) as string)
+  const { rows, total, matched } = scan({ term, prefixes })
+  // a filter that matches nothing would read 0 suites and print clean, which proves nothing (item 1190)
+  const empty = prefixes.filter(p => matched.get(p) === 0)
+  if (empty.length) {
+    console.error(`HOST TEXT: filter matches no .tree file under test/ or deck/<pkg>/test/: ${empty.join(' ')}`)
+    process.exit(2)
+  }
   const suites = rows.filter(isSuite)
 
   if (listAt >= 0) {
@@ -273,10 +308,19 @@ const main = (): void => {
 
   if (has('--fail')) {
     const bad = suites.filter(held)
+    // a support helper holds no suite, but its refused binds are host logic all the same (item 0898)
+    const support = rows.filter(r => isSupport(r) && r.refused > 0)
     if (bad.length) {
       console.error(`HOST TEXT: ${bad.length} suite files hold logic in a bind (decision 113): ${bad.map(r => r.file).join(' ')}`)
       process.exitCode = 1
-    } else console.log('HOST TEXT: clean')
+    }
+    if (support.length) {
+      console.error(
+        `HOST TEXT: supportRefused ${total.supportRefused}, ${support.length} support files hold logic in a bind (decision 113): ${support.map(r => r.file).join(' ')}`,
+      )
+      process.exitCode = 1
+    }
+    if (!bad.length && !support.length) console.log('HOST TEXT: clean')
   }
   if ((has('--ratchet') || has('--commit')) && rootAt < 0) {
     const was = existsSync(BASELINE()) ? (JSON.parse(readFileSync(BASELINE(), 'utf8')) as Record<string, number>) : null

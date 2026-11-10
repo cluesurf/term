@@ -105,6 +105,11 @@ load @term/call/work/hook/usage
   find nearest-command
   find command-guess
 
+# the routes in the plain form the help and the refusal read (work/hook/route.tree, item term-self-host-001-1118)
+load @term/call/work/hook/parsing
+  find plain-routes
+  find plain-takes
+
 dock load
   load <node:os>, name host-os
   load <node:path>, name host-path
@@ -420,7 +425,7 @@ task suggest
   take routes, like list, like dock-route
   take word, like text
   like text
-  back nearest-command(make command-guess, name(<term>), routes(routes), word(word))
+  back nearest-command(make command-guess, name(<term>), routes(plain-routes(routes)), word(word))
 
 # Wrong command-line usage (section 18): a failed item saying what was not understood, a `next` field with what to
 # run, exit 2, in the shape every booted program refuses in (work/hook/usage.tree). `lines` are the item's message
@@ -524,7 +529,7 @@ task show-help
     hold
       save name, routes/0/path
       save usage, routes/0/note
-  log help-text(name, usage, globals-of(routes), commands-of(routes), bare)
+  log help-text(name, usage, plain-takes(globals-of(routes)), plain-routes(commands-of(routes)), bare)
 
 # Start a run: the words after `node line.js`, read the way line.ts read them around yargs
 task start-line

@@ -126,6 +126,16 @@ bind seek-finding-item
   case node
     text <<((result, finding) => { const glyph = $fails ? "failed" : "warning"; if (finding.kind === "dependency") { const fields = [$output.field("package", `${finding.node.name} ${finding.node.version}`)]; if (finding.node.path.length > 1) fields.push($output.field("via", finding.node.path.join(" › "))); fields.push($output.field("link", finding.advisory.url)); fields.push(finding.fixVersion ? $output.field("fix", `upgrade to ${finding.fixVersion}`) : $output.field("why", "no known safe upgrade")); return { glyph, kind: "problem", verb: "audit", subject: finding.advisory.title, facts: [finding.severity, finding.advisory.id], fields } } return { glyph, kind: "problem", verb: "check", subject: finding.message.charAt(0).toUpperCase() + finding.message.slice(1), facts: [finding.severity, finding.ruleId], fields: [$output.location(`${finding.at.file}:${finding.at.line}:${finding.at.column}`), ...(finding.trace ?? []).map((step) => ({ ...$output.field(step.label, `${step.file}:${step.line}:${step.column}`), location: true }))], place: { path: finding.at.file, line: finding.at.line, column: finding.at.column } } })($result, $finding)>>
 
+# what `term seek` is asked: the root and the hook's flags, as inspect-verbs.tree's `seek` makes it. Kept here, beside
+# call-seek, so the verb finds it (term-self-host-001-0775, as 1084 and 1092 moved the asks into their callees)
+form seek-ask
+  link root, like text
+  link audit, like boolean
+  link code, like boolean
+  link sarif, like text
+  link format, like text
+  link fix, like boolean
+
 form seek-open
   link verb, like text
   link root, like text
@@ -185,7 +195,7 @@ form seek-close-next
   link next, like text
 
 task call-seek
-  take input, like dynamic
+  take input, like seek-ask
   like void
 
   save root, input/root
@@ -226,7 +236,7 @@ task call-seek
 # rules over the project's own `.tree` sources. Reports as items, JSON, or SARIF, and with `--fix` rewrites the manifest
 # to safe versions
 task run-audit
-  take input, like dynamic
+  take input, like seek-ask
   like void
   mark private
 

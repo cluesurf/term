@@ -7,7 +7,7 @@ import {
   parsePackage,
   resolveLoad,
   storePath,
-} from '@term/make/code/deck/resolve'
+} from '@term/make/code/package-paths'
 
 let pass = 0
 let fail = 0

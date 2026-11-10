@@ -1,0 +1,95 @@
+note <the csv module reads and writes RFC 4180 text when compiled and run on node>
+
+# Ported from test/stdlib/csv.ts by statement (item term-self-host-001-0640), one test per `eq` in its order. The
+# original compiled deck/base/code/csv.tree as the entry over the stdlib on node and called its exports; here the suite
+# loads the same module, so term test compiles it under the node env and each test calls it. Quoted fields, delimiters
+# and line breaks inside quotes, doubled quotes, CRLF and bare CR records, TSV by delimiter, a roundtrip, and a quote
+# left open raising csv-mismatch at the opening quote.
+
+load @term/base/csv
+  find parse
+  find parse-with
+  find stringify
+  find stringify-with
+
+# the raised value as the host holds it, to read the exception's own fields
+# host value: a caught exception types as exception, its form and its fields (under link) are read off the host object
+bind raised-of
+  take cause, like dynamic
+  like dynamic
+  case node
+    text <$cause>
+
+test <simple rows>
+  want hold, is-equal(parse(<a,b,c\nd,e,f>), make(list, make(list, <a>, <b>, <c>), make(list, <d>, <e>, <f>)))
+
+test <trailing newline adds no empty row>
+  want hold, is-equal(parse(<a,b\n>), make(list, make(list, <a>, <b>)))
+
+test <empty fields survive>
+  want hold, is-equal(parse(<a,,c>), make(list, make(list, <a>, <>, <c>)))
+
+test <quoted field with delimiter>
+  want hold, is-equal(parse(<a,"b,c",d>), make(list, make(list, <a>, <b,c>, <d>)))
+
+test <quoted field with newline>
+  want hold, is-equal(parse(<a,"b\nc",d>), make(list, make(list, <a>, <b\nc>, <d>)))
+
+test <doubled quote is a literal quote>
+  want hold, is-equal(parse(<a,"say ""hi""",b>), make(list, make(list, <a>, <say "hi">, <b>)))
+
+test <CRLF records>
+  want hold, is-equal(parse(<a,b\r\nc,d>), make(list, make(list, <a>, <b>), make(list, <c>, <d>)))
+
+test <bare CR records>
+  want hold, is-equal(parse(<a,b\rc,d>), make(list, make(list, <a>, <b>), make(list, <c>, <d>)))
+
+test <TSV via delimiter>
+  want hold, is-equal(parse-with(<a\tb\nc\td>, <\t>), make(list, make(list, <a>, <b>), make(list, <c>, <d>)))
+
+test <quoted empty field at record end>
+  want hold, is-equal(parse(<a,"">), make(list, make(list, <a>, <>)))
+
+test <stringify plain>
+  want hold, is-equal(stringify(make(list, make(list, <a>, <b>), make(list, <c>, <d>))), <a,b\nc,d>)
+
+test <stringify quotes only when needed>
+  want hold, is-equal(stringify(make(list, make(list, <a,x>, <plain>, <say "hi">, <line\nbreak>))), <"a,x",plain,"say ""hi""","line\nbreak">)
+
+test <stringify TSV>
+  want hold, is-equal(stringify-with(make(list, make(list, <a>, <b>), make(list, <c>, <d>)), <\t>), <a\tb\nc\td>)
+
+# roundtrip: anything stringify writes, parse reads back exactly
+test <roundtrip>
+  save rows, make(list, make(list, <name>, <note>), make(list, <ada>, <says "hello", then\nleaves>), make(list, <>, <trailing>))
+  want hold, is-equal(parse(stringify(rows)), rows)
+
+# a quote left open is refused at the quote, not read as one row holding the rest of the text (guides: library/formats,
+# 2026-10-04). The original's two checks read one refusal: its form, and an `at` of 2 in its JSON
+task open-quote-form
+  like text
+
+  fork
+    mark unsafe
+    save rows, parse(<a,"b\nc,d>)
+    back <no raise>
+  halt take
+    take cause
+    back raised-of(cause)/form
+
+task open-quote-at
+  like number
+
+  fork
+    mark unsafe
+    save rows, parse(<a,"b\nc,d>)
+    back -1
+  halt take
+    take cause
+    back raised-of(cause)/link/at
+
+test <an open quote raises csv-mismatch>
+  want hold, is-equal(open-quote-form(), <csv-mismatch>)
+
+test <at the opening quote>
+  want hold, is-equal(open-quote-at(), 2)

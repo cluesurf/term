@@ -1,0 +1,93 @@
+note <In a lean file a call-shaped part naming both a parameter of the callee and a task is refused as label-or-call>
+
+# Ported from lean-label-or-call.ts by statement (item term-self-host-001-0617). `greet(name(<x>))`, whose head is a
+# parameter of the callee AND names a task in scope, read as a call and ran as the label: it answered `x` where the
+# writer meant `named` (term-compiler-0044). It is refused as `label-or-call`, naming both readings (term/compiler
+# decision 009). The label spelling `name <x>` and the call spelling `call name(<x>)` each mean one thing, and a
+# call-shaped label whose head names nothing callable builds as before. Each output that builds is run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+host head, <task name\n  take x, like text\n  like text\n  back \<named\>\n\ntask greet\n  take name, like text\n  like text\n  back name\n>
+
+task built
+  take program, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, </gate/code/label.tree>), bind(lean, true)))
+
+task with-head
+  take run, like text
+  like text
+
+  back <{head}\n{run}>
+
+# what `run` answered, as JSON
+task answer-of
+  take program, like text
+  like text
+
+  save folder, temp-folder(<term-label-or-call->)
+  back typescript-answer(built(program), <process.stdout.write(JSON.stringify(run()))>, folder, <out>)
+
+# the call-shaped part naming both the parameter and the task
+host both, <task run\n  like text\n  back greet(name(\<x\>))\n>
+
+task label-or-call-error
+  take out, like compile-outcome
+  like boolean
+
+  walk out/notes
+    take one
+    fork test, and(is-equal(one/name, <label-or-call>), is-equal(one/severity, <error>))
+      hold
+        back true
+  back false
+
+task names-all
+  take out, like compile-outcome
+  like boolean
+
+  walk out/messages
+    take message, like text
+    fork test, and(and(text-contains(message, <"name(\<x\>)" under "greet">), text-contains(message, <argument "name">)), and(text-contains(message, <task "name">), and(text-contains(message, <name \<x\>>), text-contains(message, <call name(\<x\>)>))))
+      hold
+        back true
+  back false
+
+test <greet(name(\<x\>)) is refused>
+  want hold, not(built(with-head(both))/ok)
+
+test <as label-or-call, an error>
+  host out, built(with-head(both))
+  want hold, not(out/ok)
+  want hold, label-or-call-error(out)
+
+test <naming the argument, the task and both spellings>
+  host out, built(with-head(both))
+  want hold, not(out/ok)
+  want hold, names-all(out)
+
+# the call, written so
+test <greet(call name(\<x\>)) answers named>
+  want hold, is-equal(answer-of(with-head(<task run\n  like text\n  back greet(call name(\<x\>))\n>)), <"named">)
+
+# the label, written so
+test <greet / name \<x\> answers x with no diagnostic>
+  want hold, is-equal(answer-of(with-head(<task run\n  like text\n  save said\n    greet\n      name \<x\>\n  back said\n>)), <"x">)
+
+# a call-shaped label whose head names nothing callable is unchanged
+test <greet(who(\<x\>)) with no task who answers x>
+  want hold, is-equal(answer-of(<task greet\n  take who, like text\n  like text\n  back who\n\ntask run\n  like text\n  back greet(who(\<x\>))\n>), <"x">)

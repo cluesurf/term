@@ -1,0 +1,54 @@
+# THE PLAIN ROUTE FORM a console's command line is read against (decision 138 rule 1 of
+# term/self-host/change/001-finish-self-host): a route, its takes, a literal of text, number or flag, and lists of text.
+# No dynamic, nothing of the compiler's: the parse (work/hook/route-parsing.tree), the usage refusal (work/hook/usage.tree)
+# and the help (work/help.tree) read only this, so they hold on every backend. On node the routes are still the
+# compiler's `dock-route` records a run entry hands in, and work/hook/parsing.tree turns them into this form (`plain-routes`).
+#
+# Every field is written, none is left out: an absent text is the empty text, an absent flag false, an absent list the
+# empty list, so a reader never asks whether a field is there.
+
+load @term/base/maybe
+  find maybe
+
+# a command: its word, its note, its takes, the task it binds (the empty text when it binds none) with that task's
+# parameter names, its subcommands
+form route
+  link path, like text
+  link note, like text
+  link takes, like list, like route-take
+  link task-name, like text
+  # the bound task's parameter names, in order. `params-given` is false for a route compiled before they were
+  # recorded, and then its takes are handed in their own order
+  link params, like list, like text
+  link params-given, like boolean
+  # `mark pass` on the command: every word after its path goes to its one list slot untouched
+  link passes, like boolean
+  link children, like list, like route
+
+# a flag or a slot of a command. `kind` is its own type's kind (`boolean`, `number`, `float`, `string`, `array`, `named`
+# and the rest, the empty text when it has none). A maybe take (`like maybe, like number`) is `optional`, and
+# `item-kind` is its item's kind, the empty text for any other take
+form route-take
+  link name, like text
+  link kind, like text
+  link item-kind, like text
+  link optional, like boolean
+  link required, like boolean
+  link short, like text
+  link aliases, like list, like text
+  link masked, like boolean
+  link note, like text
+  link fallback, like maybe, like route-literal
+  link variadic, like boolean
+  link positional, like boolean
+  link passes, like boolean
+  link choices, like list, like text
+
+# a take's default
+form route-literal
+  case literal-text
+    link value, like text
+  case literal-number
+    link value, like number
+  case literal-flag
+    link value, like boolean

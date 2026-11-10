@@ -1,0 +1,34 @@
+note <not(...) as a lean argument of a method call is the negation, never a label>
+
+# Ported from lean-not-argument.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. The mill
+# folds a bare `not` head to `!`, and check/lean-nest.ts folded the binary builtins the same way but not `not`, so under a
+# callee with no parameters on record the label stayed: "This call has no parameters on record, so its properties (not)
+# name nothing". Found by deck/test/code/abstraction-refinement.tree (2026-10-05). The program is read lean over the
+# stdlib under the node env, built and then run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host main-text, <load @term/base/list\n  find list\n\ntask flips\n  take x, like boolean\n  take y, like number\n  like list, like boolean\n\n  host bits, make list\n  bits/push(not(x))\n  bits/push(not(is-equal(y, 0)))\n  bits/push(and(not(x), true))\n\n  back bits\n\ntask run\n  like text\n\n  host bits, flips(true, 3)\n\n  back join(bits, \<,\>)\n>
+
+task lean-choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <run>), bind(lean, true))
+
+test <not(...) under a method call builds>
+  host out, compile-text(main-text, lean-choice())
+  want hold, out/ok
+
+test <each one negates: false, true, false>
+  host folder, temp-folder(<lean-not-argument->)
+  host ran, run-text(main-text, <typescript>, folder, <flips>, lean-choice())
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <false,true,false>)

@@ -70,17 +70,12 @@ export const FLOOR_F1_FILES: ReadonlyArray<{ path: string; reason: string }> = [
   {
     path: 'deck/make/code/engine/backend/runtime.ts',
     reason:
-      'the RT value library every program the engine TypeScript backend emits imports by path (engine/backend/typescript-text.tree:467)',
+      'the RT value library the text of the engine TypeScript backend runs against, handed in by test/engine/backend/compiled.ts (compile-for-run in engine/backend/typescript-text.tree)',
   },
   {
     path: 'deck/make/code/view/reactive.ts',
     reason:
-      'the signal runtime every emitted view imports by path (view/compile.tree:488); its export shape is a contract with emitted code',
-  },
-  {
-    path: 'deck/make/code/dev/client.ts',
-    reason:
-      'the browser half of term dev: devClient returns browser JavaScript embedding applyHmr, served at /@seed/client.mjs by deck/call/code/dev/server.ts',
+      'the signal runtime test/zone/run.ts and test/zone/run.tree load by path; its export shape is a contract with them',
   },
 ]
 

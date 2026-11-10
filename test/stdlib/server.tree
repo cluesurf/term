@@ -1,0 +1,173 @@
+note <network/server boots, hands each request to the Term handler, writes its response and headers, and serves it over TLS too>
+
+# Ported from test/stdlib/server.ts by statement (item term-self-host-001-0680), one test per `eq` in its order. The
+# original compiled a program that starts a `network/server` over the stdlib on node, made real requests to it with
+# node's http and https, and read the answers; here the suite holds the same handler and starts the server itself, and
+# the requests go through the stdlib's own client (`network/http` fetch). Both stay on 127.0.0.1, on ports of their own
+# beside the original's 8742 and 8743. The HTTPS half serves a self-signed certificate openssl makes, so the client is
+# told to accept it for those requests alone (NODE_TLS_REJECT_UNAUTHORIZED, as the original's rejectUnauthorized false),
+# and it is the test's own skip without openssl.
+
+load @term/base/network/server
+  find start
+  find stop
+  find server
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-ok
+  find make-status
+  find with-header
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/network/response
+  find http-response
+
+load @term/base/hash
+  find get
+
+load @term/base/maybe
+  find unwrap-or
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/environment
+  find set-variable
+  find remove-variable
+
+host plain-port, 18742
+host secure-port, 18743
+
+# the shared request handler: root greets, /echo echoes the path with a custom header, anything else is a 404
+task route
+  take req, like request
+  like response
+
+  fork test, is-equal(req/path, </>)
+    hold
+      back make-ok(<root>)
+  fork test, is-equal(req/path, </echo>)
+    hold
+      back with-header(make-ok(req/path), <x-seed>, <ok>)
+  back make-status(404)
+
+# a header of an answer, or <> when it sent none
+task header-of
+  take answer, like http-response
+  take name, like text
+  like text
+
+  back unwrap-or(get(answer/headers, name), <>)
+
+# a GET over TLS that accepts the self-signed test certificate
+task secure-fetch
+  mark async
+  take path, like text
+  like http-response
+
+  set-variable(<NODE_TLS_REJECT_UNAUTHORIZED>, <0>)
+  save answer, fetch(<https://127.0.0.1:{secure-port}{path}>)
+  remove-variable(<NODE_TLS_REJECT_UNAUTHORIZED>)
+  back answer
+
+# the answers, asked once: a server's close waits on the client's kept-alive connections, so a second start on the same
+# port in the same run finds it still taken. Each server is started, asked and stopped once, and every test reads it
+form asked
+  mark shared
+  link plain-done, like boolean
+  link plain, like list, like http-response
+  link secure-done, like boolean
+  link secure, like list, like http-response
+
+host now, make(asked, bind(plain-done, false), bind(plain, make list), bind(secure-done, false), bind(secure, make list))
+
+# the three plain answers, /, /echo and /nope, read while one server runs
+task plain-answers
+  mark async
+  like list, like http-response
+
+  fork test, now/plain-done
+    hold
+      back now/plain
+  save running, start(plain-port, <127.0.0.1>, route)
+  now/plain/push(fetch(<http://127.0.0.1:{plain-port}/>))
+  now/plain/push(fetch(<http://127.0.0.1:{plain-port}/echo>))
+  now/plain/push(fetch(<http://127.0.0.1:{plain-port}/nope>))
+  stop(running)
+  save now/plain-done, true
+  back now/plain
+
+# the TLS answer: a self-signed certificate for localhost, the same handler served with it, one GET of /echo
+task secure-answer
+  mark async
+  like http-response
+
+  fork test, now/secure-done
+    hold
+      back now/secure/0
+  save folder, temp-folder(<term-cert->)
+  save key-file, <{folder}/key.pem>
+  save cert-file, <{folder}/cert.pem>
+  save made, run(<openssl>, make(list, <req>, <-x509>, <-newkey>, <rsa:2048>, <-keyout>, key-file, <-out>, cert-file, <-days>, <1>, <-nodes>, <-subj>, </CN=localhost>))
+  save running, start(secure-port, <127.0.0.1>, route, true, read-file(cert-file), read-file(key-file))
+  now/secure/push(secure-fetch(</echo>))
+  stop(running)
+  save now/secure-done, true
+  back now/secure/0
+
+test <GET / returns 200>
+  save answers, plain-answers()
+  want hold, is-equal(answers/0/status, 200)
+
+test <GET / runs the root branch of the handler>
+  save answers, plain-answers()
+  want hold, is-equal(answers/0/body, <root>)
+
+test <GET /echo echoes the parsed request path>
+  save answers, plain-answers()
+  want hold, is-equal(answers/1/body, </echo>)
+
+test <GET /echo carries the handler-set header>
+  save answers, plain-answers()
+  want hold, is-equal(header-of(answers/1, <x-seed>), <ok>)
+
+test <GET /nope routes to the 404 branch>
+  save answers, plain-answers()
+  want hold, is-equal(answers/2/status, 404)
+
+# HTTPS: the same handler served over TLS from a self-signed cert, skipped if openssl is not installed
+test <HTTPS GET returns 200>
+  fork test, is-equal(find-tool(<openssl>), <>)
+    hold
+      skip <openssl is not installed>
+  save tls, secure-answer()
+  want hold, is-equal(tls/status, 200)
+
+test <HTTPS echoes the parsed request path>
+  fork test, is-equal(find-tool(<openssl>), <>)
+    hold
+      skip <openssl is not installed>
+  save tls, secure-answer()
+  want hold, is-equal(tls/body, </echo>)
+
+test <HTTPS carries the handler-set header>
+  fork test, is-equal(find-tool(<openssl>), <>)
+    hold
+      skip <openssl is not installed>
+  save tls, secure-answer()
+  want hold, is-equal(header-of(tls, <x-seed>), <ok>)

@@ -165,6 +165,10 @@ form swift-facts
   link variant-fields, like hash, like text, like list, like text
   # by form and case, `rope/leaf`
   link case-field-names, like hash, like text, like list, like text
+  # each case's declared fields with their types, by `form/case` and by the case name alone (the last form's where two
+  # name a case alike), for the empty value of a field a construction leaves out (item term-self-host-001-1126)
+  link case-fields, like hash, like text, like list, like record-field
+  link variant-case-fields, like hash, like text, like list, like record-field
   link record-fields, like hash, like text, like list, like record-field
   # every form of the program by name, which a lowered `inspect` walks, and the walkers it wrote, by key
   # (backend-shapes.tree `inspect-kind-of`, swift-names.tree `swift-inspect-of`)
@@ -2755,15 +2759,51 @@ task emit-record
       # leading-dot construction: Swift infers the enum or struct type from context
       fork test, facts/variant-set/has(record-name)
         hold
-          save labelled, make list
+          save owner-name, named-of(node-type)
+          # the fields in the case's declared order, a left-out (`need false`) field its type's empty value, as a struct's
+          # is below: Swift has no default for an associated value, and `make(pin)` with its maybe field left out was
+          # `.pin`, which swiftc refuses (item term-self-host-001-1126)
+          save declared, make list
+          save case-key, <{owner-name}/{record-name}>
+          fork test, facts/case-fields/has(case-key)
+            hold
+              save declared, facts/case-fields/get(case-key)
+            miss
+              fork test, facts/variant-case-fields/has(record-name)
+                hold
+                  save declared, facts/variant-case-fields/get(record-name)
+          save given, make hash
           walk record-fields
             take field
-            fork test, facts/field-lists/has(<{record-name}/{field/name}>)
+            save given/{field/name}, field/value
+          save placed, make list
+          save labelled, make list
+          walk declared
+            take one
+            fork test, given/has(one/name)
               hold
-                push(labelled, <{camel(field/name)}: {owned-value(field/value, field-scope, st, facts)}>)
+                push(placed, one/name)
+                save value, given/get(one/name)
+                fork test, facts/field-lists/has(<{record-name}/{one/name}>)
+                  hold
+                    push(labelled, <{camel(one/name)}: {owned-value(value, field-scope, st, facts)}>)
+                  miss
+                    push(labelled, <{camel(one/name)}: {emit-expr(value, field-scope, st, facts)}>)
               miss
-                push(labelled, <{camel(field/name)}: {emit-expr(field/value, field-scope, st, facts)}>)
-          save owner-name, named-of(node-type)
+                fork test, facts/field-lists/has(<{record-name}/{one/name}>)
+                  hold
+                    push(labelled, <{camel(one/name)}: []>)
+                  miss
+                    push(labelled, <{camel(one/name)}: {empty-of(make(some, one/type))}>)
+          walk record-fields
+            take field
+            fork test, not(has-text(placed, field/name))
+              hold
+                fork test, facts/field-lists/has(<{record-name}/{field/name}>)
+                  hold
+                    push(labelled, <{camel(field/name)}: {owned-value(field/value, field-scope, st, facts)}>)
+                  miss
+                    push(labelled, <{camel(field/name)}: {emit-expr(field/value, field-scope, st, facts)}>)
           # a case held by node class builds its node: in the spare a match kept, else new
           fork test, facts/node-cases/has(record-name)
             hold

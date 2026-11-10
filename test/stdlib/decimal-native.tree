@@ -1,0 +1,31 @@
+note <the exact decimal answers sums, division and rounding exactly on every backend>
+
+# Ported from test/stdlib/decimal-native.ts by statement (item term-self-host-001-0680): its one ok per backend is one
+# walked test, each backend a case of it. The exact decimal (deck/base/code/decimal.tree): sums that a float gets wrong,
+# and since 2026-10-05 division and rounding by each of the seven modes, ties and negative quotients included, then a
+# division by zero raising. The decimal built on Swift from that day too: the native gate skipped it for a Swift bignum
+# gap that termbig.swift had already closed. The program and its answers, worked by hand, are the original's own, its
+# cases written out. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <load @term/base/decimal\n  find big-decimal\n  find make-big-decimal\n  find decimal-add\n  find decimal-subtract\n  find decimal-multiply\n  find decimal-divide\n  find decimal-round\n  find rounding\n\nload @term/base/list\n  find list\n  find join\n\ntask by-zero\n  like text\n  fork\n    mark unsafe\n    save never, decimal-divide(make-big-decimal(\<1\>), make-big-decimal(\<0\>), 2, make(half-even))\n    back text(never)\n  halt take\n    take problem\n    back \<raised\>\n\ntask run\n  like text\n  save out, make list\n  push(out, text(decimal-add(make-big-decimal(\<0.1\>), make-big-decimal(\<0.2\>))))\n  push(out, text(decimal-multiply(make-big-decimal(\<1.1\>), make-big-decimal(\<1.1\>))))\n  push(out, text(decimal-subtract(make-big-decimal(\<1\>), make-big-decimal(\<0.9\>))))\n  push(out, text(decimal-divide(make-big-decimal(\<1\>), make-big-decimal(\<3\>), 5, make(half-even))))\n  push(out, text(decimal-divide(make-big-decimal(\<2\>), make-big-decimal(\<3\>), 2, make(half-even))))\n  push(out, text(decimal-divide(make-big-decimal(\<2\>), make-big-decimal(\<3\>), 2, make(down))))\n  push(out, text(decimal-divide(make-big-decimal(\<2\>), make-big-decimal(\<3\>), 2, make(floor))))\n  push(out, text(decimal-divide(make-big-decimal(\<2\>), make-big-decimal(\<3\>), 2, make(ceiling))))\n  push(out, text(decimal-divide(make-big-decimal(\<-2\>), make-big-decimal(\<3\>), 2, make(floor))))\n  push(out, text(decimal-divide(make-big-decimal(\<-2\>), make-big-decimal(\<3\>), 2, make(ceiling))))\n  push(out, text(decimal-divide(make-big-decimal(\<-2\>), make-big-decimal(\<3\>), 2, make(up))))\n  push(out, text(decimal-divide(make-big-decimal(\<10\>), make-big-decimal(\<4\>), 0, make(half-even))))\n  push(out, text(decimal-divide(make-big-decimal(\<10\>), make-big-decimal(\<4\>), 0, make(half-up))))\n  push(out, text(decimal-divide(make-big-decimal(\<10\>), make-big-decimal(\<4\>), 0, make(half-down))))\n  push(out, text(decimal-divide(make-big-decimal(\<14\>), make-big-decimal(\<4\>), 0, make(half-even))))\n  push(out, text(decimal-divide(make-big-decimal(\<1.5\>), make-big-decimal(\<0.25\>), 3, make(half-even))))\n  push(out, text(decimal-round(make-big-decimal(\<2.345\>), 2, make(half-even))))\n  push(out, text(decimal-round(make-big-decimal(\<2.355\>), 2, make(half-even))))\n  push(out, text(decimal-round(make-big-decimal(\<2.345\>), 2, make(half-up))))\n  push(out, text(decimal-round(make-big-decimal(\<-2.345\>), 2, make(half-up))))\n  push(out, text(decimal-round(make-big-decimal(\<-2.345\>), 2, make(half-down))))\n  push(out, text(decimal-round(make-big-decimal(\<2.3\>), 3, make(half-even))))\n  push(out, text(decimal-divide(make-big-decimal(\<123456789012345678901234567890\>), make-big-decimal(\<7\>), 4, make(half-even))))\n  push(out, by-zero())\n  back join(out, \<|\>)\n>
+
+# each case's answer worked by hand, in the program's order, then the division by zero
+host expected, <0.3|1.21|0.1|0.33333|0.67|0.66|0.66|0.67|-0.67|-0.66|-0.67|2|3|2|4|6.000|2.34|2.36|2.35|-2.35|-2.34|2.300|17636684144620811271604938270.0000|raised>
+
+test <decimal sums, division and rounding answer exactly>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-decimal->)
+  host ran, run-text(program, backend, folder, <decimal>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

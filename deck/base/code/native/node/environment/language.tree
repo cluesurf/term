@@ -5,8 +5,9 @@ load @term/base/environment/language
 load @term/base/text
   find split
 
+# the locale comes from Intl alone (the locale shim). No `node:os`: nothing here read it, and its dock put a Node
+# builtin into every program reaching the environment API, the browser compiler's bundle among them (item 1170)
 dock load
-  load <node:os>, name os
   load <global:locale>, name tongue
 
 task read-locale

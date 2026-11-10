@@ -1,0 +1,60 @@
+note <an arm binding a field named like its own subject reads that field by the name, paths included>
+
+# Ported from arm-subject-field.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. Until
+# 2026-10-05 the subject stayed narrowed beside the field, so `value/shown()` was read as a field `shown` of the subject's
+# `whole` case, which has none, and the call was refused ("this function expects 1 arguments, found 0"):
+# engine/backend/typescript-text.tree's `value/text()` on a big integer literal. The module is read lean over the stdlib
+# under the node env, as a library. The original then called its tasks on host records: here a `run` task beside the
+# same module makes each record in Term and answers what the task did, run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host module-text, <form box\n  link count, like number\n\n  task shown\n    take self\n    like text\n\n    back \<box \{self/count\}\>\n\nform literal\n  case small, like number\n  case whole, like box\n\nform shape\n  case integer\n    link value, like literal\n  case other\n\ntask show\n  take node, like shape\n  like text\n\n  sift node\n    case integer\n      sift value\n        case small\n          back \<small \{value\}\>\n        case whole\n          save written, value/shown()\n          back written\n    case other\n      back \<other\>\n\ntask count-of\n  take value, like literal\n  like number\n\n  sift value\n    case small\n      back value\n    case whole\n      back value/count\n>
+
+task lean-choice
+  take library, like boolean
+  like compile-choice
+
+  back make(compile-choice, bind(file, <arm-subject-field.tree>), bind(stdlib, <node>), bind(env, <node>), bind(library, library), bind(lean, true))
+
+# the module with a run task whose body is `body`, answering its text, run on node
+task run-of
+  take name, like text
+  take body, like text
+  like text
+
+  host folder, temp-folder(<arm-subject-field->)
+  host program, <{module-text}\ntask run\n  like text\n\n{body}>
+  host ran, run-text(program, <typescript>, folder, name, lean-choice(false))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a path off a field named like the subject builds>
+  host out, compile-text(module-text, lean-choice(true))
+  want hold, out/ok
+
+test <a method called on the field answers>
+  host body, <  save b\n    make box\n      bind count, 7\n  save node\n    make integer\n      bind value, make(whole, b)\n  back show(node)\n>
+  want hold, is-equal(run-of(<whole>, body), <box 7>)
+
+test <the bare field reads as before>
+  host body, <  save node\n    make integer\n      bind value, make(small, 3)\n  back show(node)\n>
+  want hold, is-equal(run-of(<small>, body), <small 3>)
+
+test <a field read off the field is its own>
+  host body, <  save b\n    make box\n      bind count, 9\n  back \<\{count-of(make(whole, b))\}\>\n>
+  want hold, is-equal(run-of(<count-whole>, body), <9>)
+
+test <and the payload case reads its value>
+  host body, <  back \<\{count-of(make(small, 4))\}\>\n>
+  want hold, is-equal(run-of(<count-small>, body), <4>)

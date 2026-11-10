@@ -8,6 +8,15 @@
 # (no name in source), so all `mask` / `instance` statements are kept and seed the search; the same for `native` /
 # `bind` / `dock` (platform surface and side effects). Only `function` and `record-type` definitions are ever pruned.
 #
+# A NATIVE SHIM IS LINKED WHOLE. A binding module (a file with a `dock load` of a host module, such as
+# native/<env>/file/blocking.tree) links its shim (native/<env>/file/runtime/blocking.<ext>) as one piece, and the shim
+# builds the records the module finds (`StatRaw` for `stat-raw`) with no Term statement constructing them. So a program
+# that reached none of the module's tasks pruned the form while the shim still named it, and rust, swift and kotlin did
+# not build (item term-self-host-001-1143). `binding-finds` answers the names such a module finds that are forms or form
+# cases (a shim builds records, it never calls a Term task), and only for a binding module under a `native/` folder (a
+# file elsewhere that docks <node:os> or <global:process> has no shim building Term records). The gate adds them to the
+# roots: derived from what the bindings already say, no list kept by hand (items 1144 and 1148, option 4).
+#
 # It is ON by default for the optimized merged build (compile.ts `treeShake`) and off in per-module and editor builds,
 # held by test/compile/shake-differential.ts (compile with and without it, the entry's emitted code identical). Every
 # layer of shaking what a program ships is in note/project/term/compiler/runtime-shaking.md.
@@ -19,11 +28,18 @@
 load @term/base/list
   find list
 
+load @term/base/text
+  find contains
+
 load ../compile/node
   find statement
+  find native-kind
 
 load ../compile/node-reach
   find reach-statements
+
+load ../compile/import-scope
+  find file-scope
 
 # the definitions of one name: a name may have several (overloads, a form's cases, a method's bare name)
 form named-definitions
@@ -117,6 +133,94 @@ task name-of-definition
       back name
     miss
       back <>
+
+# whether a `dock load` loads a host module (a shim), not a host type
+task docks-host-module
+  take kind, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case type
+      back false
+    miss
+      back true
+
+# the binding modules of the program: the files under a `native/` folder that dock a host module, whose shim is
+# native/<env>/<path>/runtime/<name>.<ext>
+task binding-files
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save files, make hash
+  walk program
+    take one
+    sift one
+      case native
+        save hosted, true
+        sift kind
+          case some
+            link written-kind
+            save hosted, docks-host-module(written-kind)
+          case none
+            save hosted, true
+        fork test, hosted
+          hold
+            sift span/file
+              case some
+                link docked-file
+                fork test, contains(docked-file, </native/>)
+                  hold
+                    save files/{docked-file}, true
+              case none
+                turn next
+      miss
+        turn next
+  back files
+
+# the names of the program's forms and of their cases
+task form-names
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save names, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        save names/{name}, true
+        walk variants
+          take variant
+          save names/{variant/name}, true
+      miss
+        turn next
+  back names
+
+# Every form or form case a binding module finds, each once in the order first met: the records its shim may build with
+# no Term statement naming them. A found task is never one: a shim builds records and calls no Term task. The gate adds
+# them to the roots
+task binding-finds
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  like list, like text
+
+  save files, binding-files(program)
+  save forms, form-names(program)
+  save seen, make hash
+  save out, make list
+  walk scopes
+    take scope
+    fork test, files/has(scope/file)
+      hold
+        walk scope/finds
+          take found
+          fork test, and(forms/has(found/name), not(seen/has(found/name)))
+            hold
+              save seen/{found/name}, true
+              push(out, found/name)
+  back out
 
 # Return a program holding only the reachable `function` / `record-type` definitions, and every statement that is
 # neither, starting from `roots`

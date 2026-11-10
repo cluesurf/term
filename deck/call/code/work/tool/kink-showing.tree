@@ -124,6 +124,13 @@ form kink-close
   link verdict, like text
   link next, like text
 
+# what `term show kink` is asked: the root, the name or code it looks up (a host value, absent for the whole catalog),
+# and --back json. Kept here, beside show-kink, so show-command.tree finds it (term-self-host-001-0775)
+form kink-ask
+  link root, like text
+  link query, like dynamic
+  link json, like boolean
+
 # every entry, the compiler's in catalog order and then the lint findings by code
 task kink-catalog
   like list, like kink
@@ -157,7 +164,7 @@ task kink-names
   back out
 
 task show-kink
-  take input, like dynamic
+  take input, like kink-ask
   like void
 
   save json, is-equal(input/json, true)

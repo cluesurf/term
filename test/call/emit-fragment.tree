@@ -1,0 +1,95 @@
+note <term make --emit wgsl and --emit hvm: the numeric fragment emits, a construct outside it is refused by name and place>
+
+# Ported from emit-fragment.ts by statement (item term-self-host-001-0603), one test per `ok` in its order, the
+# original's loop over the two targets written out, wgsl then hvm. call/code/emit.ts, 2026-10-05: a construct outside
+# the fragment is REFUSED, naming the construct and its place, with nothing written. Until then neither target had a
+# command, and their emitters wrote a SEED-UNSUPPORTED marker into the output in the construct's place. Each run is the
+# `term` under test (@term/test/self) in one project in a temporary folder, made once by the first test.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+form fragment-state
+  mark shared
+  link root, like text
+
+host fragment-now, make(fragment-state, bind(root, <>))
+
+task the-project
+  like text
+
+  fork test, is-unequal(fragment-now/root, <>)
+    hold
+      back fragment-now/root
+  save root, temp-folder(<term-emit-fragment->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, <deck @probe/emit-fragment\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  # inside both fragments: numbers, a branch, recursion
+  write-file(<{root}/code/fib.tree>, <task fib\n  take n, like number\n  like number\n  fork test, is-below(n, 2)\n    hold\n      back n\n    miss\n      back add(fib(subtract(n, 1)), fib(subtract(n, 2)))\n>)
+  # text, outside both
+  write-file(<{root}/code/greet.tree>, <task greet\n  take n, like number\n  like text\n  back \<hello \{n\}\>\n>)
+  save fragment-now/root, root
+  back root
+
+# the program, with no construct marked in place of code: a marker is `0 /* ... */` in WGSL and a header line in HVM
+task emits-fib
+  take target, like text
+  like boolean
+  mark async
+
+  save root, the-project()
+  save fib, run-self(make(list,<make>, <--emit>, target, <code/fib.tree>), root, 600000)
+  save marked, matches(make(pattern, <<0 /\*|SEED-UNSUPPORTED on>>), fib/output)
+  back and(is-equal(fib/code, 0), and(matches(make(pattern, <fib>), fib/output), not(marked)))
+
+task refuses-greet
+  take target, like text
+  like boolean
+  mark async
+
+  save root, the-project()
+  save greet, run-self(make(list,<make>, <--emit>, target, <code/greet.tree>, <--out>, <greet.{target}>), root, 600000)
+  save outside, matches(make(pattern, <outside what (WGSL|HVM) lowers>), greet/error)
+  save placed, matches(make(pattern, <<greet\.tree:4>>), greet/error)
+  back and(is-equal(greet/code, 1), and(outside, and(placed, not(file-exists(<{root}/greet.{target}>)))))
+
+task refuses-run
+  take target, like text
+  like boolean
+  mark async
+
+  save root, the-project()
+  save ran, run-self(make(list,<make>, <--emit>, target, <code/fib.tree>, <--run>), root, 600000)
+  back and(is-equal(ran/code, 2), matches(make(pattern, <emitted as source>), ran/error))
+
+test <wgsl: a numeric, recursive program emits>
+  want hold, emits-fib(<wgsl>)
+
+test <wgsl: text is refused, naming the construct and its line, and nothing is written>
+  want hold, refuses-greet(<wgsl>)
+
+test <wgsl: --run is refused as usage, the target is emitted as source>
+  want hold, refuses-run(<wgsl>)
+
+test <hvm: a numeric, recursive program emits>
+  want hold, emits-fib(<hvm>)
+
+test <hvm: text is refused, naming the construct and its line, and nothing is written>
+  want hold, refuses-greet(<hvm>)
+
+test <hvm: --run is refused as usage, the target is emitted as source>
+  want hold, refuses-run(<hvm>)

@@ -15,29 +15,12 @@ load @term/call/work/home
 load @term/base/maybe
   find maybe
 
+# call-roll and the two forms it takes, roll-whole-ask without `--diff` and roll-diff-ask with it, which live beside
+# it (term-self-host-001-0775, as 1084 and 1092 moved the asks into their callees)
 load @term/call/work/roll/roll-command
   find call-roll
-
-# what `call-roll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
-# base-verbs.tree declares a `show-ask` of its own
-form roll-whole-ask
-  link root, like text
-  link kind, like text
-  link json, like boolean
-  link private, like boolean
-  link host, like text
-  link path, like boolean
-
-# what `call-roll` takes with `--diff`: it tests `diff !== undefined`, so the field is only there when given (the take
-# is a maybe, decision cli-in-term/008 part 1: `--diff ""` is given)
-form roll-diff-ask
-  link root, like text
-  link kind, like text
-  link json, like boolean
-  link private, like boolean
-  link host, like text
-  link path, like boolean
-  link diff, like text
+  find roll-whole-ask
+  find roll-diff-ask
 
 # The hook passes a take to the parameter of its own name, else to the one at its position, so these stand in the
 # hook's order (kind, json, private, host, path, diff, back): `json-out`, `only-private`, `only-host` and `show-path`

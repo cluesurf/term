@@ -1,0 +1,35 @@
+note <A method call inside a text's interpolation is called, a field path there still reads the field>
+
+# Ported from interpolated-call.ts by statement (item term-self-host-001-0617). `<value {n/text()}>` on a big integer:
+# outside a text `n/text()` is the method call, and inside one the bridge read any single word holding a `/` as a PATH
+# (compile/mint-bridge.ts, `textExpression`), so the call was dropped in silence: TypeScript emitted `${n.text}`, the
+# method itself, and the message read "value undefined". Found by the engine/data/trit port (2026-10-04). Each case is
+# built with its native prelude AND run on node, one call printed per test.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+host source, <load @term/base/integer/big\n  find big-integer\n  find big-from-number\n\nform point\n  link x, like number\n  link label, like text\n\ntask shown\n  like text\n  save n, big-from-number(42)\n  send back, text \<value \{n/text()\} here\>\n\ntask field\n  like text\n  save p\n    make point\n      bind x, code 3\n      bind label, text \<a\>\n  send back, text \<at \{p/x\} named \{p/label\}\>\n>
+
+task answer-of
+  take call, like text
+  like text
+
+  save out, compile-text(source, make(compile-choice, bind(file, </gate/code/interpolated-call.tree>), bind(stdlib, <node>)))
+  save folder, temp-folder(<term-interpolated-call->)
+  back typescript-answer(out, <process.stdout.write(String({call}))>, folder, <module>, prelude-text(out, <node>))
+
+test <a method call in an interpolation is called>
+  want hold, is-equal(answer-of(<shown()>), <value 42 here>)
+
+test <a field path in an interpolation still reads the field>
+  want hold, is-equal(answer-of(<field()>), <at 3 named a>)

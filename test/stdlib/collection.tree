@@ -1,0 +1,62 @@
+note <the hash, set and range collections answer keys, values, set algebra and a range's list on node>
+
+# Ported from test/stdlib/collection.ts by statement (item term-self-host-001-0640), one test per `expect` in its order.
+# The original compiled three small programs over the stdlib on node (a hash of two entries, two sets of three numbers,
+# a range of 0 to 5) and called their tasks; here the suite holds the same tasks and calls them, so term test compiles
+# them under the node env. Each list is compared whole, in its order, as the original's JSON compare did.
+
+load @term/base/hash
+  find hash
+
+load @term/base/set
+  find set
+
+load @term/base/range
+  find range
+
+# the original's `build`: a hash of a to 1 and b to 2
+task built-hash
+  like hash, like text, like number
+
+  save h, make hash
+  h/set(<a>, 1)
+  h/set(<b>, 2)
+  back h
+
+# the original's `set-a` and `set-b`: 1 2 3 and 2 3 4
+task set-of
+  take first, like number
+  like set, like number
+
+  save s, make(set, bind(items, make hash))
+  s/insert(first)
+  s/insert(add(first, 1))
+  s/insert(add(first, 2))
+  back s
+
+test <hash: keys lists every key>
+  save h, built-hash()
+  want hold, is-equal(h/keys(), make(list, <a>, <b>))
+
+test <hash: values lists every value>
+  save h, built-hash()
+  want hold, is-equal(h/values(), make(list, 1, 2))
+
+test <set: union merges both sides>
+  save a, set-of(1)
+  save joined, a/union(set-of(2))
+  want hold, is-equal(joined/to-list(), make(list, 1, 2, 3, 4))
+
+test <set: intersect keeps shared items>
+  save a, set-of(1)
+  save shared, a/intersect(set-of(2))
+  want hold, is-equal(shared/to-list(), make(list, 2, 3))
+
+test <set: difference keeps only the left-only items>
+  save a, set-of(1)
+  save left, a/difference(set-of(2))
+  want hold, is-equal(left/to-list(), make(list, 1))
+
+test <range: to-list expands the range (end exclusive)>
+  save r, make(range, bind(start, 0), bind(end, 5), bind(step, 1))
+  want hold, is-equal(r/to-list(), make(list, 0, 1, 2, 3, 4))

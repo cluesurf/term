@@ -1,0 +1,168 @@
+note <term mold and the other CLI verbs on a data file, through the term under test>
+
+# Ported from mold.ts by statement (item term-self-host-001-0617). What a person types is what is tested: every form of
+# `mold` on the fixtures, `look` listing keys, `form --check` accepting the canonical fixtures, `lint` reporting a broken
+# one. The original ran the built host/line.js, and this runs the `term` that `term test` was started by, from the suite's
+# root. A JSON answer is read with @term/base/json.
+
+load ../support/compiling
+  find file-text
+
+load @term/test/self
+  find run-self
+  find run-self-with-input
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/json
+  find parse, name json-parse
+  find get-field
+  find field-number
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixtures, <deck/host/test/fixture>
+
+task at
+  take name, like text
+  like text
+
+  back <{fixtures}/{name}>
+
+task fixture
+  take name, like text
+  like text
+
+  back file-text(at(name))
+
+host data-reads, make pattern, <<The data reads>>
+
+# ---- mold ----
+
+test <mold prints the long form>
+  host run, run-self(make(list, <mold>, at(<basic.tree>)))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.tree>))
+
+test <mold reads the compact form>
+  host run, run-self(make(list, <mold>, at(<basic.line>)))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.tree>))
+
+test <mold --pack prints the compact form>
+  host run, run-self(make(list, <mold>, at(<basic.tree>), <--pack>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.line>))
+
+test <mold --json prints JSON>
+  host run, run-self(make(list, <mold>, at(<basic.tree>), <--json>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.json>))
+
+test <mold --tree reads JSON>
+  host run, run-self(make(list, <mold>, at(<basic.json>), <--tree>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.tree>))
+
+test <a .json file is read as JSON without the flag>
+  host run, run-self(make(list, <mold>, at(<basic.json>)))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.tree>))
+
+test <mold expands anchors by default>
+  host run, run-self(make(list, <mold>, at(<anchors.tree>)))
+  want hold, is-equal(run/code, 0)
+  want hold, text-contains(run/output, <host env, \<prod\>>)
+  want hold, not(text-contains(run/output, <fuse>))
+
+test <mold --trees keeps them>
+  host run, run-self(make(list, <mold>, at(<anchors.tree>), <--trees>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<anchors.tree>))
+
+test <mold --trees --pack packs them>
+  host run, run-self(make(list, <mold>, at(<anchors.tree>), <--trees>, <--pack>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<anchors.line>))
+
+test <mold --check exits 1 on a broken file>
+  host run, run-self(make(list, <mold>, at(<bad/twice.tree>), <--check>))
+  want hold, is-equal(run/code, 1)
+  want hold, text-contains(run/error, <given twice>)
+
+# no data on stdout, and on stderr only the run's own items, closing on the verdict (the terminal output standard)
+test <mold --check writes no data on a clean file, and says it reads>
+  host run, run-self(make(list, <mold>, at(<basic.tree>), <--check>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, <>)
+  want hold, matches(data-reads, run/error)
+
+test <mold --lines expands a stream>
+  host run, run-self(make(list, <mold>, at(<stream.line>), <--lines>))
+  want hold, is-equal(run/code, 0)
+  want hold, text-contains(run/output, <host prod-service\n    host config\n      host env, \<prod\>>)
+  want hold, text-contains(run/output, <host b, 123456>)
+
+test <mold reads stdin>
+  host run, run-self-with-input(make(list, <mold>, <--lines>), <m(h(name,\<foo\>))\nm(h(name,\<bar\>))\n>)
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, <mesh\n  host name, \<foo\>\nmesh\n  host name, \<bar\>\n>)
+
+test <mold --json --keep leaves keys alone>
+  host run, run-self(make(list, <mold>, at(<basic.tree>), <--json>, <--keep>))
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, fixture(<basic.json>))
+
+test <mold --json turns a kebab key snake>
+  host run, run-self-with-input(make(list, <mold>, <--json>), <host retry-after, 3\n>)
+  want hold, is-equal(run/code, 0)
+  want hold, is-equal(run/output, <\{"retry_after":3\}\n>)
+
+# ---- look ----
+
+# the keys are the data, on stdout, and the count is the closing item's, on stderr
+test <look lists the keys of a data file>
+  host run, run-self(make(list, <look>, at(<basic.tree>)))
+  want hold, is-equal(run/code, 0)
+  want hold, text-contains(run/output, <x/y/z>)
+  want hold, text-contains(run/error, <13 keys>)
+
+test <look --json prints the value>
+  host run, run-self(make(list, <look>, at(<basic.tree>), <--json>))
+  want hold, is-equal(run/code, 0)
+  host value, json-parse(run/output)
+  want hold, is-equal(field-number(get-field(get-field(value, <x>), <y>), <z>), 123)
+
+test <look --csv prints a row per key>
+  host run, run-self(make(list, <look>, at(<basic.tree>), <--csv>))
+  want hold, is-equal(run/code, 0)
+  want hold, starts-with(run/output, <path,kind,value\n>)
+  want hold, text-contains(run/output, <x/w,text,\<foo\>>)
+
+# ---- form ----
+
+test <form --check accepts the canonical fixtures>
+  host run, run-self(make(list, <form>, at(<basic.tree>), at(<anchors.tree>), at(<basic.line>), <--check>))
+  want hold, is-equal(run/code, 0)
+
+test <form refuses a broken data file and says why>
+  host run, run-self(make(list, <form>, at(<bad/twice.tree>), <--check>))
+  want hold, is-equal(run/code, 1)
+  want hold, text-contains(run/error, <given twice>)
+  want hold, text-contains(run/error, <could not be read>)
+
+# ---- lint ----
+
+test <lint reports the grammar on a broken data file>
+  host run, run-self(make(list, <lint>, at(<bad/twice.tree>)))
+  want hold, is-equal(run/code, 1)
+  want hold, text-contains(run/error, <given twice>)
+  want hold, text-contains(run/error, <data-grammar>)
+
+test <lint is clean on a canonical data file>
+  host run, run-self(make(list, <lint>, at(<basic.tree>)))
+  want hold, is-equal(run/code, 0)

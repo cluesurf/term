@@ -1,0 +1,162 @@
+note <the browser app compiles onto the page's document, bundles to one module, and its button updates its label>
+
+# Ported from browser.ts by statement (item term-self-host-001-0646), one test per `ok` in its order. The app is
+# deck/site/code/test/site/app.tree: it compiles through the project under the browser env, as the original compiled
+# it, and its emitted TypeScript is read for the real document binding. That TypeScript and an entry mounting the app on
+# `document.body` are bundled by esbuild, as the original bundled them, and the bundle and an index.html are written to
+# deck/site/host/web, the runnable browser artifacts. The original ran the bundle against a DOM stub of its own JavaScript.
+# Here the same app is mounted on the in-memory dom instead (its dom and view modules pinned to `native/memory`, as
+# the counter suite beside it pins them), built and run once on node through test/support/running: its run task answers the
+# root's tag, the button's tag, and the label's text before and after the button is clicked.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+  find project-path
+  find file-text
+
+load ../support/running
+  find run-text
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/path
+  find join, name path-join
+
+host app-file, <deck/site/code/test/site/app.tree>
+
+# where the runnable browser artifacts go, as the original wrote them
+host web, <deck/site/host/web>
+
+host page-shape, make pattern, <<const page = document\b>>
+host element-shape, make pattern, <<\.createElement\(>>
+host append-shape, make pattern, <<\.appendChild\(>>
+host shadow-shape, make pattern, <<const document = \w>>
+
+host entry-text, <import \{ mountApp \} from './app'\nmountApp(\{ handle: document.body \})\n>
+
+host page-text, <\<!doctype html\>\n\<html\>\n  \<head\>\<meta charset="utf-8" /\>\<title\>Seed app\</title\>\</head\>\n  \<body\>\n    \<script type="module" src="./app.js"\>\</script\>\n  \</body\>\n\</html\>\n>
+
+# the app mounted on a body of the in-memory dom: the root's tag, the button's tag, the label before and after a click
+host program, <load @term/site/test/site/app\n  find mount-app\n\nload @term/site/dom/dom\n  find view\n\nload @term/site/dom/native/memory/dom\n  find create-element\n  find child-at\n  find fire\n\ntask tag-of\n  take node, like view\n  like text\n\n  back node/handle/tag\n\ntask text-of\n  take node, like view\n  like text\n\n  back node/handle/text\n\ntask run\n  like text\n\n  save body, create-element(\<body\>)\n  mount-app(body)\n  save root, child-at(body, 0)\n  save button, child-at(root, 0)\n  save label, child-at(root, 1)\n  save before, text-of(label)\n  fire(button, \<click\>)\n  save after, text-of(label)\n  back \<\{tag-of(root)\}|\{tag-of(button)\}|\{before\}|\{after\}\>\n>
+
+host memory-choice, make(compile-choice, bind(file, <app-run.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/memory/$1>)))))
+
+host out, compile-text(file-text(app-file), make(compile-choice, bind(file, project-path(<.>, app-file)), bind(project, <.>), bind(project-env, <browser>)))
+
+# the answers, made once: `bundled` whether esbuild wrote a bundle that is not empty, `artifacts` whether both browser
+# files are there, `parts` what the in-memory run answered, `reason` why a step did not go
+form answers
+  mark shared
+  link done, like boolean
+  link bundled, like boolean
+  link artifacts, like boolean
+  link parts, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(bundled, false), bind(artifacts, false), bind(parts, make list), bind(reason, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-zone-browser->)
+  fork test, out/ok
+    hold
+      # lay out the bundle inputs: the compiled app and an entry that mounts it onto the body
+      write-file(path-join(folder, <app.ts>), out/emitted)
+      write-file(path-join(folder, <entry.ts>), entry-text)
+      save bundle, path-join(folder, <bundle.mjs>)
+      save esbuild, path-join(term-root(), <node_modules/.bin/esbuild>)
+      save made, run(esbuild, make list(path-join(folder, <entry.ts>), <--bundle>, <--format=esm>, <--outfile={bundle}>))
+      fork test, is-equal(made/code, 0)
+        hold
+          save code, read-file(bundle)
+          save now/bundled, is-above(code/length, 0)
+          make-folder(web)
+          write-file(path-join(web, <app.js>), code)
+          write-file(path-join(web, <index.html>), page-text)
+          save now/artifacts, and(file-exists(path-join(web, <index.html>)), file-exists(path-join(web, <app.js>)))
+        miss
+          save now/reason, <esbuild exit {made/code}: {made/error}>
+  host ran, run-text(program, <typescript>, folder, <app>, memory-choice)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/parts, text-split(trim(ran/output), <|>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# what the in-memory run answered at `at`, <> when it did not run
+task part-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <app compiles against the browser DOM (bind)>
+  want hold, out/ok
+
+# sanity-check the emit drives the real DOM through bind, not a shadowed or undefined global
+test <emits a real document binding (const page = document)>
+  want hold, matches(page-shape, out/emitted)
+
+test <emits native createElement>
+  want hold, matches(element-shape, out/emitted)
+
+test <emits native appendChild>
+  want hold, matches(append-shape, out/emitted)
+
+test <does not shadow the document global>
+  want hold, not(matches(shadow-shape, out/emitted))
+
+test <bundles to a single browser module>
+  want hold, the-answers()/bundled
+
+test <app mounts a root element>
+  want hold, is-equal(part-at(0), <div>)
+
+test <renders a button>
+  want hold, is-equal(part-at(1), <button>)
+
+test <label starts as the initial signal value>
+  want hold, is-equal(part-at(2), <ready>)
+
+test <clicking reactively updates the label node>
+  want hold, is-equal(part-at(3), <clicked>)
+
+test <emits browser artifacts (index.html + app.js)>
+  want hold, the-answers()/artifacts

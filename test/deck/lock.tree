@@ -4,7 +4,7 @@ note <Lockfile tests>
 # compares JSON texts, so a wanted value here is its JSON text, keys in the same order.
 
 dock load
-  load <@term/make/code/deck/lock>, name deck-lock
+  load <@term/make/code/lockfile>, name deck-lock
 
 host sample, <base \<0.0.1\>\n\nload @termsurf/wolf\n  mark \<*\>\n  lock \<0.0.1\>\n\nlink \<@termsurf/wolf:0.0.1\>\n  hash \<sha512-abc\>\n  load @termsurf/note\n    mark \<0.0.1\>\n>
 

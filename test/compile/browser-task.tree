@@ -1,0 +1,72 @@
+note <@term/base/task in a page: compiled for the browser env, run under node with nothing of node reached>
+
+# Ported from browser-task.ts by statement (item term-self-host-001-0612), term-stdlib-parity-0006, gap 230 of the
+# guides. The program is compiled for the `browser` env over the project, so `native/{platform}/job` is
+# native/browser/job.tree and its runtime runtime/job.ts, which uses no `node:` module, and it runs under node with the
+# browser's prelude. Held: two jobs interleave at their waits and finish in the order their waits end, a gather answers in
+# source order, and a cancelled job's wait raises `outage` as on every other backend. A module with no browser native
+# (network/server, file/directory) is refused at the load, naming the module and the env.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host head, <load @term/base/task\n  find spawn\n  find gather\n  find handle\n\nload @term/base/clock\n  find delay\n\nload @term/base/list\n  find list\n\nload @term/base/exception\n  find outage\n>
+
+host body, <\ntask order\n  mark async\n  like text\n  save done, make list\n  save works, make list\n  call works/push\n    task a\n      mark async\n      like text\n      call delay(60)\n      call done/push(\<a\>)\n      back \<a\>\n  call works/push\n    task b\n      mark async\n      like text\n      call delay(10)\n      call done/push(\<b\>)\n      back \<b\>\n  save results, gather(works)\n  back \<\{done/0\}\{done/1\} \{results/0\}\{results/1\}\>\n\ntask cancelled\n  mark async\n  like text\n  save job\n    call spawn\n      task work\n        mark async\n        like text\n        call delay(200)\n        back \<late\>\n  call job/cancel()\n  save answer, \<none\>\n  fork\n    mark unsafe\n    save answer\n      call wait\n        read job\n        wait true\n  halt take\n    take problem\n    save answer, problem/form\n  back answer\n\ntask run\n  mark async\n  like text\n  save one, order()\n  save two, cancelled()\n  back \<\{one\} \{two\}\>\n>
+
+host main, <Promise.resolve(run()).then(text =\> process.stdout.write(String(text)))>
+
+host node-reached, make pattern, <<from ['"]node:|new AsyncLocalStorage>>
+
+# over the project at the suite's root, for the browser
+task built
+  take program, like text
+  take name, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <{name}.tree>), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+test <the browser build reaches no node module>
+  host out, built(<{head}{body}>, <task>)
+  want hold, out/ok
+  host written, <{prelude-text(out, <browser>, out/emitted)}\n{out/emitted}>
+  want hold, not(matches(node-reached, written))
+
+test <jobs interleave, a gather answers in order, and a cancelled job raises outage>
+  host out, built(<{head}{body}>, <task>)
+  host folder, temp-folder(<term-browser-task->)
+  host said, typescript-answer(out, main, folder, <task>, prelude-text(out, <browser>, out/emitted))
+  want hold, is-equal(said, <ba ab outage>)
+
+test <@term/base/network/server is refused for the browser at its load, by name>
+  host out, built(<load @term/base/network/server\n  find serve\n\ntask run\n  like text\n  back \<x\>\n>, <server>)
+  host reason, join(out/messages, < | >)
+  want hold, not(out/ok)
+  want hold, text-contains(reason, <network/server>)
+  want hold, text-contains(reason, <browser>)
+
+test <@term/base/file/directory is refused for the browser at its load, by name>
+  host out, built(<load @term/base/file/directory\n  find exists\n\ntask run\n  like text\n  back \<x\>\n>, <directory>)
+  host reason, join(out/messages, < | >)
+  want hold, not(out/ok)
+  want hold, text-contains(reason, <file/directory>)
+  want hold, text-contains(reason, <browser>)

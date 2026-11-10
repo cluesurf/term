@@ -1,0 +1,208 @@
+note <the face component contract: every platform implementation takes its generic's props, and each env reaches its own>
+
+# Ported from face-contract.ts by statement (item term-self-host-001-0622), one test per `ok` in its order, its loops
+# over two and three envs written out. Native-dom-0009, 0011: a component the author writes once has a GENERIC
+# implementation (`face/code/component/native/<name>.tree`) and may have one per platform rung (`native/toolkit/...`).
+# The contract is the generic one's props: every platform implementation must take exactly the same names, in the same
+# order, at the same types. The suite docks its subject, deck/call/code/face-contract.ts (decision 106), and the project
+# build. It also holds the resolution the contract exists for, and an app's own shadow (native-dom-0025), written under
+# the Term root's tmp/ as the original wrote it, so the project resolver finds @term/face, and removed at exit.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+
+load @term/base/test/temp
+  find remove-at-exit
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find list, name folder-list
+  find exists, name folder-exists
+  find make, name folder-make
+
+load @term/base/json
+  find stringify
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains
+  find ends-with
+
+dock load
+  load <@term/call/code/face-contract>, name face-contract
+  load <@term/call/code/make>, name face-make
+  load <node:fs>, name face-fs
+
+host native, project-path(<.>, <deck/face/code/component/native>)
+
+host program, <load @term/face/code/component/switch\n  find switch\n\nload @term/face/code/logic/disclosure\n  find make-disclosure\n\nload @term/site/code/dom/dom\n  find view\n  find create-element\n\ntask main\n  save root\n    call create-element\n      bind tag, text \<main\>\n  save wifi\n    call make-disclosure\n      bind start, false\n  call switch\n    read root\n    text \<\>\n    read wifi\n>
+
+host generic, <view gauge\n  take host, like view\n  take value, like number\n  take label, like text\n>
+
+# face's switch contract: its host, class and control, and the `label` that names it (native-accessibility-0002)
+host contract-props, <  take host, like view\n  take class, like text\n  take control, like signal boolean\n  take\n    label\n    like text\n    fall \<\>>
+
+# the platform implementations of face, every `.tree` of each rung folder
+task implementations
+  like list, like text
+
+  save out, make list
+  walk folder-list(native)
+    take rung, like text
+    fork test, folder-exists(<{native}/{rung}>)
+      hold
+        walk folder-list(<{native}/{rung}>)
+          take file, like text
+          fork test, ends-with(file, <.tree>)
+            hold
+              out/push(file)
+  back out
+
+task props-json
+  take file, like text
+  take text, like text
+  like text
+
+  back stringify(face-contract/propsOf(file, text, <gauge>))
+
+task built
+  take root, like text
+  take env, like text
+  take entry, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, entry), bind(project, root), bind(project-env, env), bind(env, env)))
+
+task root-built
+  take env, like text
+  like compile-outcome
+
+  back built(<.>, env, project-path(<.>, <tmp/face-contract.tree>))
+
+# the app that shadows face's switch, made once in this process under the Term root's tmp/
+form shadow-app
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(shadow-app, bind(held, make hash))
+
+task shadow-text
+  take props, like text
+  like text
+
+  back <load @term/site/code/view/render\n  find make-element\nload @term/site/code/dom/dom\n  find view\nload @term/face/code/logic/disclosure\n  find disclosure-open\n  find toggle-disclosure\n\nview switch\n{props}\n  node switch\n    bind data-slot, text \<app-switch\>\n    hook click\n      call toggle-disclosure\n        bind self, read control\n>
+
+task app
+  like text
+
+  save key, <app>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  folder-make(project-path(<.>, <tmp>))
+  save folder, remove-at-exit(face-fs/mkdtempSync(project-path(<.>, <tmp/face-shadow-app->)))
+  folder-make(<{folder}/code/component/native/toolkit>)
+  write-file(<{folder}/deck.tree>, <deck @app/face-shadow\n>)
+  write-file(<{folder}/code/component/native/toolkit/switch.tree>, shadow-text(contract-props))
+  save kept/held/{key}, folder
+  back folder
+
+task app-built
+  take env, like text
+  like compile-outcome
+
+  save root, app()
+  back built(root, env, <{root}/main.tree>)
+
+task app-findings
+  like dynamic
+
+  back face-contract/contractFindings(native, <{app()}/code/component/native>)
+
+test <at least one component has a platform implementation>
+  host found, implementations()
+  want hold, is-above(found/length, 0)
+
+test <every one of face's platform implementations takes exactly its contract>
+  host findings, face-contract/contractFindings(native)
+  want hold, is-equal(findings/length, 0)
+
+# the negative control: an implementation that drops a prop, and one that renames one, must not pass
+test <control: dropping a prop breaks the contract>
+  want hold, is-unequal(props-json(<dropped.tree>, <view gauge\n  take host, like view\n  take value, like number\n>), props-json(<generic.tree>, generic))
+
+test <control: renaming a prop breaks the contract>
+  want hold, is-unequal(props-json(<renamed.tree>, <view gauge\n  take host, like view\n  take amount, like number\n  take label, like text\n>), props-json(<generic.tree>, generic))
+
+test <control: retyping a prop breaks the contract>
+  want hold, is-unequal(props-json(<retyped.tree>, <view gauge\n  take host, like view\n  take value, like text\n  take label, like text\n>), props-json(<generic.tree>, generic))
+
+# resolution: the same program reaches a different implementation per platform, without naming one
+test <browser builds the program>
+  want hold, root-built(<browser>)/ok
+
+test <browser reaches the generic switch (a button with a thumb part)>
+  want hold, contains(root-built(<browser>)/emitted, <switch-thumb>)
+
+test <macos builds the program>
+  want hold, root-built(<macos>)/ok
+
+test <macos reaches the toolkit switch (one platform control)>
+  host code, root-built(<macos>)/emitted
+  want hold, not(contains(code, <switch-thumb>))
+  want hold, contains(code, <"switch">)
+
+# AN APP SHADOWS ONE (native-dom-0025): an app with its own `code/component/native/toolkit/switch.tree` gets it on
+# macOS, iOS and Android, face's generic still serves the web, and the app's shadow is held to the same contract
+test <app shadow: macos builds>
+  want hold, app-built(<macos>)/ok
+
+test <app shadow: macos reaches the app's switch>
+  want hold, contains(app-built(<macos>)/emitted, <app-switch>)
+
+test <app shadow: android builds>
+  want hold, app-built(<android>)/ok
+
+test <app shadow: android reaches the app's switch>
+  want hold, contains(app-built(<android>)/emitted, <app-switch>)
+
+test <app shadow: browser builds>
+  want hold, app-built(<browser>)/ok
+
+test <app shadow: browser reaches face's generic switch>
+  host code, app-built(<browser>)/emitted
+  want hold, contains(code, <switch-thumb>)
+  want hold, not(contains(code, <app-switch>))
+
+test <app shadow: the app's switch takes exactly the contract>
+  host findings, app-findings()
+  want hold, is-equal(findings/length, 0)
+
+# a shadow that drops `class` is a finding, naming the app's file
+test <app shadow: one that drops a prop is a contract finding, naming the app's file>
+  write-file(<{app()}/code/component/native/toolkit/switch.tree>, shadow-text(<  take host, like view\n  take control, like signal boolean>))
+  host dropped, app-findings()
+  want hold, is-equal(dropped/length, 1)
+  host file, dropped/0/file
+  want hold, contains(file, <face-shadow-app>)
+
+# and `term make` on the app fails on it, not only this test
+test <app shadow: term make on the app fails on the broken shadow>
+  host made, face-make/compileProject(app())
+  want hold, is-above(made/failed, 0)
+  want hold, contains(stringify(made/errors), <shadows face's switch>)
+
+# a shadow of a component face has no generic for shadows nothing
+test <app shadow: one of a component face does not have is a finding>
+  write-file(<{app()}/code/component/native/toolkit/switch.tree>, shadow-text(contract-props))
+  write-file(<{app()}/code/component/native/toolkit/dial.tree>, <view dial\n  take host, like view\n>)
+  host orphan, app-findings()
+  want hold, is-equal(orphan/length, 1)
+  want hold, is-equal(orphan/0/component, <dial>)

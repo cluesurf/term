@@ -1,0 +1,110 @@
+note <A member read off a dock load module is the host's own spelling when it holds no dash>
+
+# Ported from dock-member-snake.ts by statement (item term-self-host-001-0613). The kebab-to-camel conversion dropped
+# the underscores of an UPPER_SNAKE member, so `hunt-module/HUNT_FUZZ_CHILD` emitted `huntModule.HUNTFUZZCHILD`:
+# undefined at run time, and the build was clean (term-compiler-0033). A kebab member (`read-word`) is still converted.
+# The program docks a real host module written to a temp folder, and one main prints what each task answered.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text/util
+  find join
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host host-module, <export const HUNT_FUZZ_CHILD = "__child"\nexport const FOO = "foo"\nexport const snake_case_member = 7\nexport function readWord() \{ return "word" \}\nexport function MAKE_IT() \{ return "made" \}\n>
+
+host underscores-kept, make pattern, <<\.HUNT_FUZZ_CHILD\b>>
+
+# the program over a host module written at `host`
+task program-of
+  take host, like text
+  like text
+
+  back <dock load\n  load \<file://{host}\>, name hunt-module\n\ntask child\n  like text\n  send back, read hunt-module/HUNT_FUZZ_CHILD\n\ntask foo\n  like text\n  send back, read hunt-module/FOO\n\ntask snake\n  like number\n  send back, read hunt-module/snake_case_member\n\ntask word\n  like text\n  send back\n    call hunt-module/read-word\n\ntask made\n  like text\n  send back\n    call hunt-module/MAKE_IT\n>
+
+form snake-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(snake-answers, bind(held, make hash))
+
+task host-path
+  like text
+
+  save key, <host>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-dock-member->)
+  save path, <{folder}/host.mjs>
+  write-file(path, host-module)
+  save kept/held/{key}, path
+  back path
+
+task built
+  like compile-outcome
+
+  back compile-text(program-of(host-path()), make(compile-choice, bind(file, <main.tree>), bind(closed, true)))
+
+# what the five tasks answered, in order, joined by |
+task printed
+  like text
+
+  save key, <printed>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-dock-member->)
+  save said, typescript-answer(built(), <process.stdout.write([child(), foo(), snake(), word(), made()].join("|"))>, folder, <module>)
+  save kept/held/{key}, said
+  back said
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <a dock module read by UPPER_SNAKE members compiles>
+  want hold, built()/ok
+
+test <the member keeps its underscores>
+  want hold, matches(underscores-kept, built()/emitted)
+
+test <HUNT_FUZZ_CHILD reads the host value>
+  want hold, is-equal(answer(0), <__child>)
+
+test <FOO reads the host value>
+  want hold, is-equal(answer(1), <foo>)
+
+test <a snake_case member reads the host value>
+  want hold, is-equal(answer(2), <7>)
+
+test <a kebab member is still converted (read-word is readWord)>
+  want hold, is-equal(answer(3), <word>)
+
+test <an UPPER_SNAKE callee is called as written>
+  want hold, is-equal(answer(4), <made>)

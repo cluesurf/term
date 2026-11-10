@@ -1,0 +1,246 @@
+note <the counted-increment proof, held both ways: the loops it must prove, and for every rule a loop it must not>
+
+# Ported from range.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. A wrong proof drops an
+# overflow check that should fire. Each program is compiled unoptimized and its `+` and `-` nodes read against the proven
+# increments, their `type` and `span` fields left out of the walk as the original left them. The original's `count` and
+# `minus` walked with a set of the nodes seen, so a node reached twice counted once: here the nodes of the walk are kept
+# distinct by identity, which counts the same. Its `subtractionsAndSums` and `subtractions` walked with no such set, and
+# so does `on-counter` and `differences` here. ir/facts/range is the subject (decision 106).
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../../support/walking
+  find nodes-of
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/ir/facts/range>, name range-facts
+
+# host value: whether the fact set holds the node itself, by identity
+bind set-holds
+  take facts, like dynamic
+  take node, like dynamic
+  like boolean
+  case node
+    text <$facts.has($node)>
+
+# host value: the nodes of a list each once, by identity, in their first order
+bind distinct
+  take items, like list, like dynamic
+  like list, like dynamic
+  case node
+    text <[...new Set($items)]>
+
+# a program compiled unoptimized, halting on a refusal with its messages
+task built-of
+  take text, like text
+  like compile-outcome
+
+  host built, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+  fork test, not(built/ok)
+    hold
+      save said, <compile failed>
+      walk built/messages
+        take message, like text
+        save said, <{said} | {message}>
+      halt <{said}>
+  back built
+
+# the binary nodes of `op` in a program, each once
+task binaries
+  take built, like compile-outcome
+  take op, like text
+  like list, like dynamic
+
+  host found, make list
+  walk distinct(nodes-of(built/program, <binary>))
+    take node, like dynamic
+    fork test, is-equal(node/op, op)
+      hold
+        found/push(node)
+  back found
+
+# how many of the binary nodes of `op` are proven
+task proven-of
+  take built, like compile-outcome
+  take op, like text
+  like number
+
+  host proven, range-facts/proven-increments(built/program)
+  save hits, 0
+  walk binaries(built, op)
+    take node, like dynamic
+    fork test, set-holds(proven, node)
+      hold
+        save hits, add(hits, 1)
+  back hits
+
+task adds-of
+  take built, like compile-outcome
+  like number
+
+  back binaries(built, <+>)/length
+
+# whether each `+` or `-` on the counter `i` is proven, in walk order
+task on-counter
+  take text, like text
+  like list, like boolean
+
+  host built, built-of(text)
+  host proven, range-facts/proven-increments(built/program)
+  host out, make list
+  walk nodes-of(built/program, <binary>)
+    take node, like dynamic
+    fork test, and(or(is-equal(node/op, <+>), is-equal(node/op, <->)), and(is-equal(node/left/form, <variable>), is-equal(node/left/name, <i>)))
+      hold
+        out/push(set-holds(proven, node))
+  back out
+
+# whether each subtraction of a program is proven, in walk order
+task differences
+  take text, like text
+  like list, like boolean
+
+  host built, built-of(text)
+  host proven, range-facts/proven-increments(built/program)
+  host out, make list
+  walk nodes-of(built/program, <binary>)
+    take node, like dynamic
+    fork test, is-equal(node/op, <->)
+      hold
+        out/push(set-holds(proven, node))
+  back out
+
+task all-true
+  take values, like list, like boolean
+  like boolean
+
+  walk values
+    take value, like boolean
+    fork test, not(value)
+      hold
+        back false
+  back true
+
+task all-false
+  take values, like list, like boolean
+  like boolean
+
+  walk values
+    take value, like boolean
+    fork test, value
+      hold
+        back false
+  back true
+
+# whether the last of the values holds, as the original's `slice(-1).every(Boolean)`: true when there are none
+task last-holds
+  take values, like list, like boolean
+  like boolean
+
+  fork test, is-equal(values/length, 0)
+    hold
+      back true
+  back values/{subtract(values/length, 1)}
+
+# a task around a body, summing into `sum`
+task total-of
+  take body, like text
+  like text
+
+  back <task total\n  take n, like number\n  like number\n  save sum, code 0\n{body}\n  send back, read sum\n>
+
+# a non-strict comparison against a literal: `i >= 0` counting down, `i <= 5` counting up
+task countdown
+  take cond, like text
+  take bound, like text
+  take step, like text
+  take by, like text, fall <1>
+  like list, like boolean
+
+  back on-counter(<task total\n  take n, like number\n  like number\n  save sum, code 0\n  save i, read n\n  walk test\n    hook test\n      call {cond}\n        read i\n        {bound}\n    hook hold\n      save sum\n        call add\n          read sum\n          code 1\n      save i\n        call {step}\n          read i\n          code {by}\n  send back, read sum\n>)
+
+# 1. a counted walk: its increment is proven, and the sum it feeds is not
+host walk-body, <  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      save sum\n        call add\n          read sum\n          read i>
+
+test <a walk size increment is proven>
+  want hold, is-equal(proven-of(built-of(total-of(walk-body)), <+>), 1)
+
+test <the sum inside the walk is not>
+  want hold, is-equal(adds-of(built-of(total-of(walk-body))), 2)
+
+test <Rust writes the proven step as a plain +>
+  host rust, emit-text(built-of(total-of(walk-body)), <rust>)
+  want hold, matches(make(pattern, <<\bi (\+= 1|= i \+ 1)>>), rust)
+  want hold, matches(make(pattern, <<checked_add\(sum, i\)>>), rust)
+
+# 2. a hand-written `walk test` of the same shape is proven too
+test <a walk test with i \< n and one i = i + 1 is proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1>)), <+>), 1)
+
+# 3. counterexample: `<=` lets i reach the bound, and i + 1 may then be past it
+test <i \<= n is NOT proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save i, code 0\n  walk test\n    hook test\n      call is-maximum\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 1>)), <+>), 0)
+
+# 4. counterexample: a second write inside the loop moves i after the test
+test <a loop that writes i twice is NOT proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save i\n        call add\n          read i\n          code 5\n      save i\n        call add\n          read i\n          code 1>)), <+>), 0)
+
+# 5. counterexample: the step inside a nested walk runs many times per test of the outer condition (only the inner k step)
+test <a step inside a nested loop is NOT proven for the outer counter>
+  want hold, is-equal(proven-of(built-of(total-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      walk size\n        bind base, code 0\n        bind head, code 3\n        hook next\n          take site, name k\n          save i\n            call add\n              read i\n              code 1>)), <+>), 1)
+
+# 6. counterexample: a closure that writes the counter
+test <a counter some closure writes is NOT proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save i, code 0\n  host bump\n    task\n      save i\n        call add\n          read i\n          code 7\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      call bump\n      save i\n        call add\n          read i\n          code 1>)), <+>), 0)
+
+# 7. the other side of the condition: `high = high - 1` under `low < high` is proven
+test <a decrement of the big side of `low \< high` is proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save low, code 0\n  save high, read n\n  walk test\n    hook test\n      call is-below\n        read low\n        read high\n    hook hold\n      save high\n        call subtract\n          read high\n          code 1>)), <->), 1)
+
+# 8. counterexample: decrementing the SMALL side can go below the minimum
+test <a decrement of the small side is NOT proven>
+  want hold, is-equal(proven-of(built-of(total-of(<  save low, code 0\n  walk test\n    hook test\n      call is-below\n        read low\n        read n\n    hook hold\n      save low\n        call subtract\n          read low\n          code 1>)), <->), 0)
+
+# 9. a read of `i + 1` before the step is proven, and the same read AFTER the step is not
+test <`i + 1` read before the step is proven, and the one after it is not>
+  host built, built-of(total-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save sum\n        call add\n          read sum\n          call add\n            read i\n            code 1\n      save i\n        call add\n          read i\n          code 1\n      save sum\n        call add\n          read sum\n          call add\n            read i\n            code 1>))
+  want hold, is-equal(proven-of(built, <+>), 2)
+  want hold, is-equal(adds-of(built), 5)
+
+test <`i - 1` under `i \>= 0` is proven>
+  want hold, all-true(countdown(<is-minimum>, <code 0>, <subtract>))
+
+test <`i + 1` under `i \<= 5` is proven>
+  want hold, last-holds(countdown(<is-maximum>, <code 5>, <add>))
+
+test <`i - 1` under `i \>= n`, a name, is NOT proven>
+  want hold, all-false(countdown(<is-minimum>, <read n>, <subtract>))
+
+test <`i - 2` under `i \>= 0` is NOT proven>
+  want hold, all-false(countdown(<is-minimum>, <code 0>, <subtract>, <2>))
+
+# a counter from 2, and a local made from it and only grown: each minus 1 is proven
+test <`i - 1` and `k - 1` from locals that only grow from 2 are proven>
+  host sieve, differences(total-of(<  walk size\n    bind base, code 2\n    bind head, read n\n    hook next\n      take site, name i\n      save k\n        call add\n          read i\n          read i\n      save k\n        call add\n          read k\n          read i\n      save sum\n        call add\n          call subtract\n            read i\n            code 1\n          call subtract\n            read k\n            code 1>))
+  want hold, is-equal(sieve/length, 2)
+  want hold, all-true(sieve)
+
+# a parameter minus 1 is NOT: a caller may pass the minimum
+test <a parameter minus 1 is NOT proven>
+  want hold, all-false(differences(total-of(<  save sum\n    call subtract\n      read n\n      code 1>)))
+
+# a local given a parameter's value is NOT
+test <a local given a parameter is NOT proven>
+  want hold, all-false(differences(total-of(<  save m, read n\n  save sum\n    call subtract\n      read m\n      code 1>)))
+
+# a local also given a difference is NOT: it can fall below 0
+test <a local that is also written by a subtraction is NOT proven>
+  want hold, all-false(differences(total-of(<  save m, code 5\n  save m\n    call subtract\n      read m\n      code 9\n  save sum\n    call subtract\n      read m\n      code 1>)))

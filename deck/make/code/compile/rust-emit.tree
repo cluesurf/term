@@ -4045,11 +4045,20 @@ task emit-closure
       link closure-async
       link closure-span
       link closure-type
+      # a closure with no task slot to take its type from (saved in a let, or boxed at a `dynamic` place) spells each
+      # parameter its source declares, as the slot it meets later spells it, else rustc cannot type it (E0282, or `str`
+      # off a `has` read, E0277; term-self-host-001-1109). One holding a generic letter stays bare
+      save slot-typed, is-equal(kind-of(st/value-slot), <function>)
       save names, make list
       save param-names, make hash
       walk closure-params
         take param
-        push(names, vname(param/name))
+        save written, vname(param/name)
+        save letters, collect-vars(param/type)
+        fork test, and(and(not(slot-typed), is-unequal(kind-of(param/type), <>)), is-equal(letters/length, 0))
+          hold
+            save written, <{written}: {spell(param/type, facts)}>
+        push(names, written)
         param-names/set(param/name, true)
       save params, join-texts(names, <, >)
       save mutated, flag-set(reassigned(closure-body))
@@ -4144,6 +4153,14 @@ task emit-closure
       save st/current-result, chosen
       save st/closure-depth, add(st/closure-depth, 1)
       save outer-locals, copy-flags(st/local-names)
+      # the closure's own lets are locals of its body: a task value saved in one and handed to a slot whose raising
+      # differs gets the slot's adapter, as a task's own local does (E0271, term-self-host-001-1110)
+      save previous-locals, st/local-names
+      save body-locals, copy-flags(st/local-names)
+      walk let-names(closure-body)
+        take name
+        body-locals/set(name, true)
+      save st/local-names, body-locals
       save lines, make list
       walk shadows
         take one
@@ -4154,19 +4171,31 @@ task emit-closure
         fork test, is-unequal(line, <>)
           hold
             push(lines, line)
-      # a raising closure falling off its end still answers `Ok`
-      fork test, closure-raising
+      # a raising closure falling off its end still answers `Ok`. One declared `dynamic` or `unknown` answers the boxed
+      # unit there, as a bare `send back` does in emit-return, and so does an async one, whose future spells that
+      # answer (E0271 expected the async block to resolve to `Rc<dyn Any>`, term-self-host-001-1111). A sync one that
+      # does not raise spells no answer, so it stays as it was
+      save closure-last, <>
+      sift last-statement(closure-body)
+        case some
+          link known-last
+          save closure-last, statement-form(known-last)
+        case none
+          save nothing, 0
+      save falls-off, not(or(is-equal(closure-last, <return>), is-equal(closure-last, <throw>)))
+      save fall-kind, kind-of(st/current-result)
+      save fall-value, <()>
+      fork test, or(is-equal(fall-kind, <dynamic>), is-equal(fall-kind, <unknown>))
         hold
-          save closure-last, <>
-          sift last-statement(closure-body)
-            case some
-              link known-last
-              save closure-last, statement-form(known-last)
-            case none
-              save nothing, 0
-          fork test, not(or(is-equal(closure-last, <return>), is-equal(closure-last, <throw>)))
+          save fall-value, <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
+      fork test, and(closure-raising, falls-off)
+        hold
+          push(lines, <std::result::Result::Ok({fall-value})>)
+        miss
+          fork test, and(and(closure-async, falls-off), is-unequal(fall-value, <()>))
             hold
-              push(lines, <std::result::Result::Ok(())>)
+              push(lines, fall-value)
+      save st/local-names, previous-locals
       save body, join-texts(lines, < >)
       save closure-output, st/current-result
       save st/closure-depth, subtract(st/closure-depth, 1)
@@ -6407,6 +6436,12 @@ task emit-return
           link known
           save has-value, true
           save is-member, is-form(known, <member>)
+          # a closure sent back goes in the task's declared result, so a result that raises makes it a raising closure
+          # (`Result` answers), as a closure into a raising argument slot is (term-self-host-001-1101)
+          save outer-slot, st/value-slot
+          fork test, and(is-form(known, <closure>), is-equal(kind-of(st/current-result), <function>))
+            hold
+              save st/value-slot, st/current-result
           # an owned list local leaves whole: the Vec itself from a fresh task, otherwise into the shared cell
           save known-name, variable-name-of(known)
           save owned-out, and(and(is-unequal(known-name, <>), st/owned-names/has(known-name)), is-equal(st/closure-depth, 0))
@@ -6446,6 +6481,7 @@ task emit-return
                     miss
                       save rendered, emit-expr(known, st, facts)
                   save value, bare(box-unknown(st/current-result, known, rendered, facts))
+          save st/value-slot, outer-slot
           # the gradual boundary: an unknown-typed value returned at a declared form type downcasts
           sift known
             case await
@@ -6661,6 +6697,11 @@ task emit-guard
       fork test, and(is-unequal(kind-of(st/current-result), <>), is-unequal(kind-of(st/current-result), <unit>))
         hold
           save result, spell(st/current-result, facts)
+      # a task answering a fresh list answers the `Vec` itself (its signature's `plain-result`), so the body's answer
+      # is that `Vec` too, never the shared cell `spell` writes (term-self-host-001-1101)
+      fork test, and(and(st/emitting-fresh, is-equal(kind-of(st/current-result), <array>)), is-equal(st/closure-depth, 0))
+        hold
+          save result, <Vec\<{spell-element(st/current-result, facts)}\>>
       save outer-raising, st/current-raising
       save st/guard-depth, add(st/guard-depth, 1)
       save outer-active, st/guard-active
@@ -6679,6 +6720,11 @@ task emit-guard
       fork test, outer-raising
         hold
           save returned, <return std::result::Result::Ok(value)>
+      # inside an outer guard a `return` leaves the outer body's closure or async block, not the task, so the answer
+      # goes on as that body's `Ok(Some(v))` (term-self-host-001-1101)
+      fork test, is-above(st/guard-depth, 0)
+        hold
+          save returned, <return std::result::Result::Ok(Some(value))>
       # the caught value is bound only where the handler reads it
       save handler, <std::result::Result::Err(_) =\> \{\}>
       sift guard-catch

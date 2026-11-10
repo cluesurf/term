@@ -1,0 +1,39 @@
+note <a parameter named like its own form, with a result of that form, builds and runs>
+
+# Ported from form-parameter.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. A task is a
+# pi type to the kernel, so its result type sits under its parameters' binders, and the result's `box` found the
+# PARAMETER where it named the form: `kernel: type mismatch: expected box, found box`. The ir/net port met it as
+# `take net, like net` (2026-10-04). check/elaborate.ts `kindsApart` keeps the form apart on the kernel's copy. Each
+# program is longhand and loads nothing, compiled with no options as the original did, and run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+# the result is the form the parameter is named after, the second keeps a parameter of another name beside it, and the
+# third reads the parameter as a value inside, so a rename that reached values would break it
+host box-text, <form box\n  link size, like number\n\ntask grow\n  take box, like box\n  take by, like number\n  like box\n  save next, read box\n  save next/size, call add, read(box/size), read by\n  send back, read next\n\ntask size-of\n  take box, like box\n  like number\n  send back, read box/size\n\ntask make-box\n  take size, like number\n  like box\n  send back\n    make box\n      bind size, read size\n\ntask run\n  like number\n  send back, call size-of, call(grow, call(make-box, code 2), code 3)\n>
+
+# a genuine mismatch: a parameter named like the form, answering a number where the form is declared
+host wrong-text, <form box\n  link size, like number\n\ntask bad\n  take box, like box\n  like box\n  send back, read box/size\n>
+
+test <a task whose parameter shares its form name, returning that form, builds>
+  host out, compile-text(box-text, make(compile-choice, bind(file, </gate/code/form-parameter.tree>)))
+  want hold, out/ok
+
+test <and runs: grow(box 2, by 3) has size 5>
+  host folder, temp-folder(<form-parameter->)
+  host ran, run-text(box-text, <typescript>, folder, <grow>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <5>)
+
+test <a real mismatch beside the same names is still refused>
+  host out, compile-text(wrong-text, make(compile-choice, bind(file, </gate/code/form-parameter-wrong.tree>)))
+  want hold, refused-as(out, <type-mismatch>)

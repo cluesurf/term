@@ -85,6 +85,7 @@ load ./release
 load ../cask-generate/bridge
   find generate-bridge
   find bridge-ask
+  find bridge-report
 
 # the self lane's port of update.ts, since term-cli-in-term-0068. Its ask is found under a name of its own: ./release's
 # `stamp-ask` is the runtime version's
@@ -399,7 +400,7 @@ task generate-and-report
   report-bridge(generate-bridge(asked))
 
 task report-bridge
-  take generated, like dynamic
+  take generated, like bridge-report
   like void
 
   save refused, generated/refused/length

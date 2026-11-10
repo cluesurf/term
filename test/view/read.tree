@@ -1,0 +1,656 @@
+note <the view reader: a real document reads into the forms, every bound the dialect claims is refused by name, and a document lowers, lists its queries and routes by role>
+
+# Ported from read.ts by statement (item term-self-host-001-0645), one test per `ok` in its order, each `refuses` call
+# of the original one test of its own (`refuses <what>`), and its loop over three spellings of one call a pair of tests
+# per spelling. See note/project/term/view/ and deck/mill/code/tree/view/. The parser, the view reader
+# (compile/view), the host reader, the render runtime's names, the role file reader of @cluesurf/deck.tree, the
+# compiler and the template collector are the subject, docked as the original imported them (decision 106). A record
+# the original read with `?.` is read here by its path, so a field that is not there fails its test as the original's
+# did. A pattern of literal characters is the text it spells, read with `text-contains`.
+
+load ../support/judging
+  find truth
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+
+dock load
+  load <@term/make/code/parser/tree>, name view-parser
+  load <@term/make/code/compile/view>, name view-reader
+  load <@term/make/code/compile/host>, name host-reader
+  load <@term/make/code/compile/render-names>, name render-names
+  load <@term/make/code/compile/compile>, name view-compiling
+  load <@term/make/code/compile/template>, name view-templates
+  load <@cluesurf/deck.tree>, name role-reader
+
+form view-source
+  link file, like text
+  link text, like text
+
+form role-text
+  link text, like text
+  link root, like text
+
+form role-ask
+  link file-path, like text
+  link config, like dynamic
+
+form view-options
+  link role-of, like dynamic
+  link optimize, like boolean
+
+form template-options
+  link templates, like dynamic
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+# the render runtime's name of the counted walk's range task, asked for: render-names.tree exports a task where
+# render-names.ts held a constant
+host integers, render-names/render-names()/integers
+
+# a document parsed and read, or the parse that refused it
+task read-page
+  take text, like text
+  like dynamic
+
+  save parsed, view-parser/parse(make(view-source, bind(file, <page.tree>), bind(text, text)))
+  fork test, truth(parsed/ok)
+    hold
+      back view-reader/read-view(parsed/tree, <page.tree>)
+  back parsed
+
+# every message of a refusal, joined
+task said-of
+  take result, like dynamic
+  like text
+
+  save messages, make list
+  walk result/diagnostics
+    take one, like dynamic
+    messages/push(one/message)
+  back messages/join(< \| >)
+
+# a message names the thing it refuses
+task refuses
+  take text, like text
+  take word, like text
+  like boolean
+
+  save result, read-page(text)
+  back and(not(truth(result/ok)), text-contains(said-of(result), word))
+
+# whether any message of a refusal holds `word`
+task any-saying
+  take result, like dynamic
+  take word, like text
+  like boolean
+
+  walk result/diagnostics
+    take one, like dynamic
+    fork test, text-contains(one/message, word)
+      hold
+        back true
+  back false
+
+# the name of each of `items`, joined by commas
+task names-of
+  take items, like dynamic
+  like text
+
+  save names, make list
+  walk items
+    take one, like dynamic
+    names/push(one/name)
+  back names/join(<,>)
+
+task no-attributes
+  take body, like dynamic
+  like boolean
+
+  walk body
+    take node, like dynamic
+    fork test, and(is-equal(node/form, <element>), is-unequal(node/attributes/length, 0))
+      hold
+        back false
+  back true
+
+# whether every node of `body` is of the form `form`, or none is when `none`
+task every-form
+  take body, like dynamic
+  take form, like text
+  take none, like boolean
+  like boolean
+
+  walk body
+    take node, like dynamic
+    fork test, is-equal(is-equal(node/form, form), none)
+      hold
+        back false
+  back true
+
+host document, <\nload @view/text\n  find heading\n  find item\n\nload @view/sound\n  find phoneme-chart, name chart\n\nhost slug, like text\nhost title, text \<How Quenya sounds\>\nhost show-audio, true\nhost row-cap, 20\n\nfind language\n  task \<select:language\>\n  hold is-equal\n    read self/slug\n    read slug\n\nfind vowel\n  task \<filter:phoneme\>\n  meet and\n    hold is-equal\n      read self/kind\n      text \<vowel\>\n    meet not\n      hold is-equal\n        read self/status\n        text \<archived\>\n  sort fall, read self/frequency\n  sort rise, read self/symbol\n  size 50\n\nview page\n  take theme, like text\n  view text/heading\n    bind rank, 1\n    bind text\n      call titlecase\n        read title\n  view sound/phoneme-chart\n    bind language, read language\n  walk list, read vowel\n    hook next\n      take site, name sound\n      view text/item\n        bind term, read sound/symbol\n  fork test\n    hook test\n      read show-audio\n    hook hold\n      text \<has audio\>\n    hook miss\n      text \<no audio\>\n>
+
+host result, read-page(document)
+host file, result/file
+host body, file/view/0/node
+
+# ---- a whole document reads ----
+
+test <a whole document reads>
+  want hold, truth(result/ok)
+
+test <both loads read>
+  want hold, is-equal(file/load/length, 2)
+
+test <an aliased find reads>
+  want hold, is-equal(file/load/1/find/0/alias, <chart>)
+
+test <four hosts read>
+  want hold, is-equal(file/host/length, 4)
+
+test <a host parameter carries a type>
+  want hold, is-equal(file/host/0/like/name, <text>)
+
+test <a host constant carries a value>
+  want hold, is-equal(file/host/1/bond/form, <text>)
+
+test <a boolean host reads>
+  want hold, is-equal(file/host/2/bond/form, <wave>)
+
+test <a number host reads>
+  want hold, is-equal(file/host/3/bond/form, <mark>)
+
+test <two finds read>
+  want hold, is-equal(file/find/length, 2)
+
+test <a query id reads as text>
+  want hold, is-equal(file/find/0/task, <select:language>)
+
+test <a bare hold is its own field>
+  want hold, is-equal(file/find/0/hold/length, 1)
+
+test <a hold takes positional arguments>
+  want hold, is-equal(file/find/0/hold/0/slot/length, 2)
+
+test <a meet reads its mode>
+  want hold, is-equal(file/find/1/meet/mode, <and>)
+
+test <a meet nests>
+  want hold, is-equal(file/find/1/meet/meet/0/mode, <not>)
+
+test <two sorts read in order>
+  want hold, is-equal(file/find/1/sort/length, 2)
+
+test <a sort reads its direction>
+  want hold, is-equal(file/find/1/sort/0/way, <fall>)
+
+test <a sort reads its key>
+  want hold, is-equal(file/find/1/sort/0/road/step/join(</>), <self/frequency>)
+
+test <a size reads>
+  want hold, is-equal(file/find/1/size, 50)
+
+test <one view reads>
+  want hold, is-equal(file/view/length, 1)
+
+test <a take reads with its type>
+  want hold, is-equal(file/view/0/take/0/like/name, <text>)
+
+test <a take is named apart from the file scope>
+  want hold, is-equal(file/view/0/take/0/name, <theme>)
+
+test <a component use reads>
+  want hold, is-equal(body/0/form, <view>)
+
+test <a component name keeps its scope>
+  want hold, is-equal(body/0/form, <view>)
+  want hold, is-equal(body/0/value/name, <text/heading>)
+
+test <a call reads as a value>
+  want hold, is-equal(body/0/form, <view>)
+  want hold, is-equal(body/0/value/bind/1/bond/form, <call>)
+
+test <a walk reads>
+  want hold, is-equal(body/2/form, <walk>)
+
+test <a walk binds its item>
+  want hold, is-equal(body/2/form, <walk>)
+  want hold, is-equal(body/2/value/next/0/site, <sound>)
+
+test <a fork reads>
+  want hold, is-equal(body/3/form, <fork>)
+
+test <a fork reads three hooks>
+  want hold, is-equal(body/3/form, <fork>)
+  want hold, is-equal(body/3/value/hook/length, 3)
+
+# ---- every bound is refused, and the message names it ----
+
+test <refuses a task at statement level>
+  want hold, refuses(<task main\n  take a\n>, <task>)
+
+test <refuses a dock>
+  want hold, refuses(<dock load\n  load \<node:fs\>\n>, <dock>)
+
+test <refuses a save>
+  want hold, refuses(<save total, code 1\n>, <save>)
+
+test <refuses a form declaration>
+  want hold, refuses(<form thing\n  link a, like text\n>, <form>)
+
+test <refuses a relative load>
+  want hold, refuses(<load ./secret\n  find thing\n>, <file path>)
+
+test <refuses an unknown statement head>
+  want hold, refuses(<wibble page\n>, <not a statement of a document>)
+
+test <refuses a walk test>
+  want hold, refuses(<view page\n  walk test\n    hook next\n      text \<x\>\n>, <no end of its own>)
+
+test <refuses a fork case>
+  want hold, refuses(<view page\n  fork case, read x\n    case one\n>, <declares none>)
+
+test <refuses an event handler>
+  want hold, refuses(<view page\n  view text/item\n    seed click, read go\n>, <event handler>)
+
+test <refuses a find with no query>
+  want hold, refuses(<find vowel\n  size 10\n>, <names no query>)
+
+test <refuses a meet not with two children>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  meet not\n    hold is-equal\n      read self/a\n    hold is-equal\n      read self/b\n>, <exactly one child>)
+
+test <refuses a bad sort direction>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  sort sideways, read self/a\n>, <rise or fall>)
+
+test <refuses a bad meet mode>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  meet perhaps\n    hold is-equal\n      read self/a\n>, <and, or, or not>)
+
+test <refuses a duplicate name>
+  want hold, refuses(<host slug, text \<a\>\nhost slug, text \<b\>\n>, <already declared>)
+
+test <refuses mixed positional and named arguments>
+  want hold, refuses(<find v\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/a\n    bind other, text \<b\>\n>, <mixes positional and named>)
+
+test <refuses a body head that is not a node>
+  want hold, refuses(<view page\n  wibble x\n>, <not part of a document body>)
+
+# every word a document cannot say gets its own sentence, because "unknown head" is correct and useless
+test <refuses a note>
+  want hold, refuses(<note async\n>, <carries no metadata>)
+
+test <refuses a wait>
+  want hold, refuses(<wait true\n>, <nothing a document writes is asynchronous>)
+
+test <refuses a roll>
+  want hold, refuses(<roll metric\n>, <declares nothing for the hive>)
+
+test <refuses a tell>
+  want hold, refuses(<tell @deck/form\n>, <decides nothing about what a customer is told>)
+
+test <refuses a rule>
+  want hold, refuses(<rule a-thing\n>, <declares no theorem>)
+
+test <refuses a line>
+  want hold, refuses(<line thing\n>, <is not a command>)
+
+test <refuses a mask>
+  want hold, refuses(<mask thing\n>, <cannot declare a trait>)
+
+test <refuses a halt>
+  want hold, refuses(<halt \<boom\>\n>, <cannot raise>)
+
+test <refuses a bear>
+  want hold, refuses(<bear ./x\n>, <cannot re-export>)
+
+test <refuses a take that shadows a host>
+  want hold, refuses(<host slug, like text\nview page\n  take slug, like text\n>, <two answers>)
+
+# ---- every read resolves ----
+
+test <refuses a filter reading another query>
+  want hold, refuses(<find a\n  task \<select:language\>\n  hold is-equal\n    read self/x\n    text \<y\>\nfind b\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/k\n    read a\n>, <is a join>)
+
+test <refuses a filter reading an undeclared name>
+  want hold, refuses(<find b\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/k\n    read nowhere\n>, <not in scope in a filter>)
+
+test <refuses a sort on something other than self>
+  want hold, refuses(<find b\n  task \<filter:phoneme\>\n  sort rise, read other/k\n>, <a field of `self`>)
+
+test <refuses a body reading an undeclared name>
+  want hold, refuses(<view page\n  view text/item\n    bind text, read nowhere\n>, <not in scope in "page">)
+
+test <refuses a body reading self>
+  want hold, refuses(<view page\n  view text/item\n    bind text, read self/x\n>, <names the record under test inside a filter>)
+
+test <refuses a walk item read outside its walk>
+  want hold, refuses(<host list-of, like text\nview page\n  walk list, read list-of\n    hook next\n      take site, name one\n      text \<x\>\n  view text/item\n    bind text, read one\n>, <not in scope in "page">)
+
+# ---- the lowering: a document becomes a zone Statement per view ----
+
+host program, view-reader/lower-view(file)
+host zone, program/0
+host zone-body, zone/body
+
+test <one zone statement per view>
+  want hold, is-equal(program/length, 1)
+
+test <the zone keeps the view name>
+  want hold, is-equal(zone/form, <view>)
+  want hold, is-equal(zone/name, <page>)
+
+# a `take`, then every name the host supplies: the typed `host` parameter and the two query results
+test <the zone takes the mount host, its parameter, and its resolved queries>
+  want hold, is-equal(zone/form, <view>)
+  want hold, is-equal(names-of(zone/params), <host,theme,slug,language,vowel>)
+
+test <a component use lowers to an element>
+  want hold, is-equal(zone-body/0/form, <element>)
+
+test <an element never carries an attribute or an event>
+  want hold, no-attributes(zone-body)
+
+test <a bind lowers to a prop>
+  want hold, is-equal(zone-body/0/form, <element>)
+  want hold, is-equal(zone-body/0/props/0/name, <rank>)
+
+test <a host constant folds into its use site>
+  want hold, is-equal(zone-body/0/form, <element>)
+  want hold, is-equal(zone-body/0/props/1/value/form, <call>)
+  want hold, is-equal(zone-body/0/props/1/value/args/0/form, <string>)
+
+test <a walk lowers with its item bound>
+  want hold, is-equal(zone-body/2/form, <walk>)
+  want hold, is-equal(zone-body/2/item, <sound>)
+
+test <a fork lowers to one branch and an otherwise>
+  want hold, is-equal(zone-body/3/form, <fork>)
+  want hold, is-equal(zone-body/3/branches/length, 1)
+  want hold, not(is-void(zone-body/3/otherwise))
+
+test <the lowering emits no computed local>
+  want hold, every-form(zone-body, <save>, true)
+
+# ---- the query manifest ----
+# Written in the `host` dialect, because a manifest is data. It carries what a RESOLVER needs and nothing a renderer
+# could act on. See note/project/term/view/03-find.md.
+
+host manifest, view-reader/view-manifest(file, <page/quenya>)
+
+test <the manifest names its module>
+  want hold, text-contains(manifest, <host module, \<page/quenya\>>)
+
+test <it lists the holes the host must fill>
+  want hold, text-contains(manifest, <list hole>)
+  want hold, text-contains(manifest, <host name, \<slug\>>)
+
+test <it carries the hole type>
+  want hold, text-contains(manifest, <host like, \<text\>>)
+
+test <it lists every query with its id>
+  want hold, text-contains(manifest, <host task, \<filter:phoneme\>>)
+  want hold, text-contains(manifest, <host task, \<select:language\>>)
+
+test <it carries the result cap>
+  want hold, text-contains(manifest, <host size, 50>)
+
+test <it carries the meet mode>
+  want hold, text-contains(manifest, <host mode, \<and\>>)
+
+test <it carries a predicate and its operands>
+  want hold, text-contains(manifest, <host name, \<is-equal\>>)
+  want hold, text-contains(manifest, <host road, \<self/kind\>>)
+
+test <it carries the sort order>
+  want hold, text-contains(manifest, <host way, \<fall\>>)
+  want hold, text-contains(manifest, <host road, \<self/frequency\>>)
+
+test <it lists every component placed>
+  want hold, text-contains(manifest, <list view>)
+  want hold, text-contains(manifest, <\<sound/phoneme-chart\>>)
+
+test <it lists every operator applied>
+  want hold, text-contains(manifest, <list call>)
+  want hold, text-contains(manifest, <\<titlecase\>>)
+
+test <it lists every package loaded>
+  want hold, text-contains(manifest, <list load>)
+  want hold, text-contains(manifest, <\<@view/sound\>>)
+
+# the original's `list call[\s\S]*<range task>`: the range task named anywhere after the first `list call`
+test <it does not list the synthesized range>
+  save at, index-of(manifest, <list call>)
+  save listed, false
+  fork test, is-above(at, -1)
+    hold
+      save listed, text-contains(substring(manifest, at, manifest/length), <\<{integers}\>>)
+  want hold, not(listed)
+
+# The manifest IS the host dialect, so the host's own READER takes it back, not merely the tree parser. That is the
+# assertion that matters: it is written by `writeLong`, so a value holding a brace, a newline or a tab escapes the way
+# the reader expects. Building the text by hand escaped three characters of the eight and this came back broken.
+test <the manifest reads back through the host reader>
+  want hold, truth(host-reader/read-data-text(make(view-source, bind(file, <find.tree>), bind(text, manifest)))/ok)
+
+host awkward, read-page(<host title, text \<a \\\{brace\\\} a \\n newline and a \\t tab\>\nview page\n  view text/item\n    bind t, read title\n>)
+
+test <a document with an awkward value reads>
+  want hold, truth(awkward/ok)
+
+test <and its manifest still reads back>
+  host rough, view-reader/view-manifest(awkward/file, <page/awkward>)
+  want hold, truth(host-reader/read-data-text(make(view-source, bind(file, <m.tree>), bind(text, rough)))/ok)
+
+# a record reference is collected apart from a plain text, because a reference is what delete protection walks
+host referenced, read-page(<\nview page\n  view text/item\n    bind term, code \<quenya-a\>\n    bind note, text \<not a mark\>\n>)
+
+test <a record reference reads>
+  want hold, truth(referenced/ok)
+
+test <a record mark is listed>
+  want hold, text-contains(view-reader/view-manifest(referenced/file, <page/ref>), <list mark\n  \<quenya-a\>>)
+
+test <a plain text is not a mark>
+  want hold, not(text-contains(view-reader/view-manifest(referenced/file, <page/ref>), <\<not a mark\>>))
+
+# ---- the role routes a file to this reader, end to end ----
+# A project's `role.tree` decides which mill reads a file. Content cannot decide, because a document and a program
+# share the words `load` and `host`. See note/project/term/view/06-mill.md.
+
+host role-source, <\nrole view\n  take @/page/**/*.tree\n  take @/view/**/*.tree\n\nrole code\n  take @/code/**/*.tree\n>
+
+host config, role-reader/parse-role-file(make(role-text, bind(text, role-source), bind(root, </app>)))
+
+# the role of a path, handed to the compiler as its `roleOf`
+task role-of
+  take path, like text
+  like dynamic
+
+  back role-reader/match-role(make(role-ask, bind(file-path, path), bind(config, config)))
+
+task compiled
+  take file, like text
+  take text, like text
+  like dynamic
+
+  back view-compiling/compile(make(view-source, bind(file, file), bind(text, text)), make(view-options, bind(role-of, role-of), bind(optimize, false)))
+
+test <a role file routes a page to view>
+  want hold, is-equal(role-of(</app/page/quenya.tree>), <view>)
+
+test <a role file routes a fragment to view>
+  want hold, is-equal(role-of(</app/view/row.tree>), <view>)
+
+test <a role file routes code to code>
+  want hold, is-equal(role-of(</app/code/tool.tree>), <code>)
+
+host built, compiled(</app/page/quenya.tree>, <\nhost title, text \<Vowels\>\n\nview page\n  view text/heading\n    bind text, read title\n>)
+
+test <a view-role file compiles through the reader>
+  want hold, truth(built/ok)
+
+test <it compiles to exactly one zone statement>
+  want hold, truth(built/ok)
+  want hold, is-equal(built/program/length, 1)
+  want hold, is-equal(built/program/0/form, <view>)
+
+# Both roles read `view`, because a component is one concept. What differs is AUTHORITY: a component may hold state, a
+# document may not, and the role of the FILE is what decides. That is the security model, and it is why a document
+# cannot define a component even though it uses the same word.
+host stateful, <\nview counter\n  take host\n  save count, code 0\n  view div\n    text \<hello\>\n>
+
+host as-document, compiled(</app/page/counter.tree>, stateful)
+
+test <a document may not hold state>
+  want hold, not(truth(as-document/ok))
+
+test <and is told why, by name>
+  want hold, not(truth(as-document/ok))
+  want hold, any-saying(as-document, <cannot hold state>)
+
+test <the same word in the code role is not refused for holding state>
+  host as-component, compiled(</app/code/counter.tree>, stateful)
+  want hold, or(truth(as-component/ok), not(any-saying(as-component, <cannot hold state>)))
+
+# ---- the three spellings of one call ----
+# `call f(a)`, `call f, a` and the stacked form are one call. A parenthesis after the callee holds the CALLEE's own
+# children, so the paren form nests its arguments under `f` rather than beside it, and a reader that only looks beside
+# it calls with none. That is the hole the comma rule's correction named in the code role on 2026-08-30, and it was
+# here too.
+
+# the one argument count of the call a spelling's first bind holds, -1 when it holds no call
+task call-arguments
+  take one, like dynamic
+  like number
+
+  save bond, one/file/view/0/node/0
+  fork test, is-unequal(bond/form, <view>)
+    hold
+      back -1
+  save value, bond/value/bind/0/bond
+  fork test, is-unequal(value/form, <call>)
+    hold
+      back -1
+  back add(value/value/slot/length, value/value/bind/length)
+
+host commas, read-page(<host vp, text \<x\>\nview page\n  view t/i\n    bind s, call titlecase, read vp\n>)
+host parens, read-page(<host vp, text \<x\>\nview page\n  view t/i\n    bind s, call titlecase(read vp)\n>)
+host stacked, read-page(<host vp, text \<x\>\nview page\n  view t/i\n    bind s\n      call titlecase\n        read vp\n>)
+
+test <a call written with commas reads>
+  want hold, truth(commas/ok)
+
+test <and carries its one argument (commas)>
+  want hold, is-equal(call-arguments(commas), 1)
+
+test <a call written with parens reads>
+  want hold, truth(parens/ok)
+
+test <and carries its one argument (parens)>
+  want hold, is-equal(call-arguments(parens), 1)
+
+test <a call written with stacked reads>
+  want hold, truth(stacked/ok)
+
+test <and carries its one argument (stacked)>
+  want hold, is-equal(call-arguments(stacked), 1)
+
+# ---- a counted walk ----
+# `walk size` normalises into a `walk list` over `list-integers(base, head)`, because `view-walk` carries only a list
+# walk and adding a counted one would touch every pass that reads a walk. `list-integers` is a render-runtime task, and
+# its name is read from compile/render-names here as everywhere. Read and lowered directly rather than through
+# `compile`, because a bare compile has no resolver to load the render runtime. A real build auto-loads that runtime
+# for any module holding a zone.
+
+host counted, read-page(<\nhost total, like text\n\nview page\n  walk size\n    bind base, 0\n    bind head, 100\n    hook next\n      take site, name step\n      view text/item\n        bind rank, read step\n  walk size, read total\n    hook next\n      take site, name n\n      view text/item\n        bind rank, read n\n>)
+host counted-body, view-reader/lower-view(counted/file)/0/body
+
+test <a counted walk reads>
+  want hold, truth(counted/ok)
+
+test <both counted walks lower to a walk>
+  want hold, is-equal(counted-body/length, 2)
+  want hold, every-form(counted-body, <walk>, false)
+
+test <a counted walk iterates a range call>
+  want hold, is-equal(counted-body/0/form, <walk>)
+  want hold, is-equal(counted-body/0/iterable/form, <call>)
+  want hold, is-equal(counted-body/0/iterable/callee/form, <variable>)
+  want hold, is-equal(counted-body/0/iterable/callee/name, integers)
+
+test <its bounds are the base and the head>
+  want hold, is-equal(counted-body/0/form, <walk>)
+  want hold, is-equal(counted-body/0/iterable/form, <call>)
+  want hold, is-equal(counted-body/0/iterable/args/0/form, <integer>)
+  want hold, is-equal(counted-body/0/iterable/args/0/value, 0)
+  want hold, is-equal(counted-body/0/iterable/args/1/form, <integer>)
+  want hold, is-equal(counted-body/0/iterable/args/1/value, 100)
+
+test <the short form counts from zero>
+  want hold, is-equal(counted-body/1/form, <walk>)
+  want hold, is-equal(counted-body/1/iterable/form, <call>)
+  want hold, is-equal(counted-body/1/iterable/args/0/form, <integer>)
+  want hold, is-equal(counted-body/1/iterable/args/0/value, 0)
+
+test <a counted walk binds its item>
+  want hold, is-equal(counted-body/0/form, <walk>)
+  want hold, is-equal(counted-body/0/item, <step>)
+
+test <refuses a counted walk with no bound>
+  want hold, refuses(<view page\n  walk size\n    hook next\n      text \<x\>\n>, <names how far it counts>)
+
+# ---- a macro from another module ----
+# A repository publishes macros and a document fuses them. `checkView` merges the module graph's templates with the
+# file's own, so a `fuse` of an imported macro expands. Without that the fuse expanded to NOTHING and the document
+# silently rendered less than it said, which is the worst shape a bug can take here.
+
+host elsewhere, view-parser/parse(make(view-source, bind(file, <view/row.tree>), bind(text, <tree shared-row\n  take n, like text\n  hook fuse\n    view text/item\n      bind t, text \<\{n\}\>\n>)))
+host fused, make(view-source, bind(file, </app/page/p.tree>), bind(text, <view page\n  fuse shared-row\n    bind n, \<a\>\n>))
+
+test <without the graph the imported macro is REFUSED, not silently dropped>
+  want hold, truth(elsewhere/ok)
+  host without, view-reader/check-view(fused)
+  want hold, not(truth(without/ok))
+  want hold, any-saying(without, <is not a macro this document can reach>)
+
+test <with it the macro body stands where the fuse was>
+  want hold, truth(elsewhere/ok)
+  host with, view-reader/check-view(fused, make(template-options, bind(templates, view-templates/collect-templates(elsewhere/tree))))
+  want hold, truth(with/ok)
+  want hold, is-equal(with/file/view/0/node/length, 1)
+
+# ---- macros expand before the reader ever sees them ----
+# `tree` and `fuse` are surface syntax. compile/template expands them on the parse tree, so by the time the reader
+# runs the macros are gone and their bodies stand where each `fuse` was. A parameter substitutes as `{name}`, never as
+# `read name`. The wrong spelling does not fail: it expands to a read of the bound group's head, which is a variable
+# that does not exist. Measured, see note/project/term/view/02-macro.md.
+
+host expanded, compiled(</app/page/macro.tree>, <\ntree sound-row\n  take symbol, like text\n  hook fuse\n    view text/item\n      bind term, text \<\{symbol\}\>\n\nview page\n  fuse sound-row\n    bind symbol, \<a\>\n  fuse sound-row\n    bind symbol, \<e\>\n>)
+host expanded-body, expanded/program/0/body
+
+test <a document with a macro compiles>
+  want hold, truth(expanded/ok)
+
+test <two fuses expand to two nodes>
+  want hold, is-equal(expanded-body/length, 2)
+
+test <an expanded node is the macro body>
+  want hold, is-equal(expanded-body/0/form, <element>)
+
+test <a macro parameter is substituted>
+  want hold, is-equal(expanded-body/0/form, <element>)
+  want hold, is-equal(expanded-body/0/props/0/value/form, <string>)
+  want hold, is-equal(expanded-body/0/props/0/value/value, <a>)
+
+test <each fuse gets its own argument>
+  want hold, is-equal(expanded-body/1/form, <element>)
+  want hold, is-equal(expanded-body/1/props/0/value/form, <string>)
+  want hold, is-equal(expanded-body/1/props/0/value/value, <e>)
+
+test <the reader never sees a tree or a fuse>
+  want hold, every-form(expanded-body, <element>, false)

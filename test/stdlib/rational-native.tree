@@ -1,0 +1,31 @@
+note <the exact rational answers fractions exactly on every backend, past the edge of a whole number too>
+
+# Ported from test/stdlib/rational-native.ts by statement (item term-self-host-001-0680): its one ok per backend is one
+# walked test, each backend a case of it. The exact rational (deck/base/code/rational.tree), on big integers since
+# 2026-10-05: the sums and products a fraction is for, and terms past the edge of a whole number, which stopped the
+# program while they were `number`s, then a division by zero raising. The program and its answers are the original's
+# own, its cases written out: the answers past i64 are the reduced fractions the original worked by BigInt from
+# 2^62 - 1 (4611686018427387903). A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <load @term/base/rational\n  find rational\n  find make-rational\n  find make-big-rational\n  find rational-text\n\nload @term/base/integer/big\n  find make-big-integer\n\nload @term/base/list\n  find list\n  find join\n\n# a fraction of two whole numbers written as text, so either may be past 2^53\ntask big\n  take numerator, like text\n  take denominator, like text\n  like rational\n  back make-big-rational(make-big-integer(numerator), make-big-integer(denominator))\n\ntask by-zero\n  like text\n  fork\n    mark unsafe\n    save never, divide(make-rational(1, 2), make-rational(0, 3))\n    back rational-text(never)\n  halt take\n    take problem\n    back \<raised\>\n\ntask run\n  like text\n  save out, make list\n  push(out, rational-text(add(make-rational(1, 2), make-rational(1, 3))))\n  push(out, rational-text(subtract(make-rational(1, 3), make-rational(1, 2))))\n  push(out, rational-text(divide(make-rational(3, 4), make-rational(-9, 8))))\n  push(out, rational-text(make-rational(10, -4)))\n  push(out, rational-text(multiply(big(\<4611686018427387903\>, \<3\>), big(\<4611686018427387903\>, \<5\>))))\n  push(out, rational-text(add(big(\<4611686018427387903\>, \<7\>), big(\<4611686018427387903\>, \<11\>))))\n  push(out, rational-text(multiply(multiply(big(\<4611686018427387903\>, \<1\>), big(\<4611686018427387903\>, \<1\>)), big(\<4611686018427387903\>, \<4611686018427387903\>))))\n  push(out, by-zero())\n  back join(out, \<|\>)\n>
+
+# 1/2 + 1/3, 1/3 - 1/2, 3/4 over -9/8, 10/-4 reduced, then the three past i64, then the division by zero
+host expected, <5/6|-1/6|-2/3|-5/2|7089215977519551319079180309210245803/5|83010348331692982254/77|21267647932558653957237540927630737409|raised>
+
+test <fractions answer exactly, past the edge of a whole number too>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-rational->)
+  host ran, run-text(program, backend, folder, <rational>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

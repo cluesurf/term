@@ -1,0 +1,70 @@
+note <The inliner's hygiene at a match arm: a forwarder to a native member is never inlined where an arm binds its name>
+
+# Ported from inline-capture.ts by statement (item term-self-host-001-0616), ir/simplify.ts `boundNames`. A forwarder
+# whose target is a member of a native module, `time/uptime`, inlined where an arm binds a field of the same name, read
+# the field: the call became `time.uptime()` on a number. Each arm binds its case's fields by their own names (or by its
+# `link` lines), and an arm over a caught exception binds every shared field, so those names block the inlining as a
+# `let` does. Found 2026-10-04 on Swift and Kotlin (note/project/term/stdlib/regex-engine.md, "Found on the way"). This
+# holds it on TypeScript, at run time, on both arm kinds: one main prints the type and value each task answered.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/text/number
+  find parse-float
+
+host source, <load @term/base/exception\n  find absence\n\ndock load\n  load \<node:os\>, name time\n\n# a forwarder to a member of the native module named `time`\ntask up-for\n  like number\n  send back\n    call time/uptime\n\nform stamp\n  case dated\n    link time, like number\n  case blank\n\n# an ordinary union's arm binds `time` by its own name\ntask stamped\n  like number\n  save s\n    make dated\n      bind time, code 5\n  fork case, read s\n    case dated\n      send back\n        call add\n          read time\n          call up-for\n    case blank\n      send back, code 0\n\ntask fail-now\n  like number\n  halt absence\n    bind thing, text \<clock\>\n\n# an arm over a caught exception binds every shared field, `time` among them\ntask caught-up\n  like number\n  fork\n    mark unsafe\n    send back, call fail-now\n  halt take\n    take problem\n    fork case, read problem\n      case absence\n        send back\n          call add\n            call up-for\n            fork test\n              hook test\n                call is-above\n                  read time\n                  code 0\n              hook hold\n                code 1\n              hook miss\n                code 0\n>
+
+# stamped() then caughtUp(): each one's type, or `raised`, and its value or message, joined by |
+host main, <const said = []\nfor (const call of [() =\> stamped(), () =\> caughtUp()]) \{\n  try \{\n    const value = call()\n    said.push(typeof value, String(value))\n  \} catch (error) \{\n    said.push("raised", error instanceof Error ? error.message : String(error))\n  \}\n\}\nprocess.stdout.write(said.join("|"))\n>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, project-path(<.>, <test/compile/inline-capture.tree>)), bind(stdlib, <node>), bind(env, <node>)))
+
+form capture-answers
+  mark shared
+  link held, like hash, like text, like list, like text
+
+host kept, make(capture-answers, bind(held, make hash))
+
+task answers
+  like list, like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-inline-capture->)
+  save parts, text-split(typescript-answer(built(), main, folder, <p>), <|>)
+  fork test, is-unequal(parts/length, 4)
+    hold
+      save parts, make list(<none>, <0>, <none>, <0>)
+  save kept/held/{key}, parts
+  back parts
+
+test <the program compiles>
+  want hold, built()/ok
+
+test <a union arm binding `time` still calls the module>
+  host said, answers()
+  want hold, is-equal(said/0, <number>)
+  want hold, is-above(parse-float(said/1), 5)
+
+test <an exception arm binding `time` still calls the module>
+  host said, answers()
+  want hold, is-equal(said/2, <number>)
+  want hold, is-above(parse-float(said/3), 1)

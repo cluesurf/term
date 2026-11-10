@@ -1,0 +1,80 @@
+note <an empty list in a generic task is typed by the task's own parameter>
+
+# Ported from empty-generic.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. The kernel
+# typed an empty list's element as a fresh meta made knowing no binder, so it could never be solved to the task's own
+# `t`, and the task was refused as `kernel: type mismatch: expected (Array t), found (Array ?0)`. Found by the
+# engine/data/array port (2026-10-04). check/elaborate.ts lowers the element type the surface checker inferred, and where
+# the checker left it open (a `host` binding is generalized) uses a contextual meta applied to the enclosing generics.
+# Each program is longhand and loads nothing. The original called one task of each built module: here a `run` task
+# beside it calls that task, built and run on node, so a refusal fails the test with its reason.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+# what `program` answers through a run task that calls its task `entry`, else why it did not run
+task answer-of
+  take program, like text
+  take entry, like text
+  like text
+
+  host folder, temp-folder(<empty-generic->)
+  host whole, <{program}\ntask run\n  like number\n  send back, call {entry}\n>
+  host ran, run-text(whole, <typescript>, folder, entry)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+# a generic union case holding the empty list, `body` the two spellings of engine/data/array's `empty`
+task tree-text
+  take body, like text
+  like text
+
+  back <form tree\n  head t\n  case leaf\n    link items\n      like list\n        like t\n  case node\n    link left, like tree t\n\ntask empty-tree\n  head t\n  like tree t\n{body}\ntask leaf-count\n  like number\n  save e, call empty-tree\n  send back, code 1\n>
+
+# the smallest case: a generic task answering an empty list
+test <a generic task returns an empty list>
+  host program, <task no-items\n  head t\n  like list\n    like t\n  send back\n    make list\n\ntask count-none\n  like number\n  save none, call no-items\n  send back, read none/length\n>
+  want hold, is-equal(answer-of(program, <count-none>), <0>)
+
+# an empty list stored in a generic record, then grown: the shape the array port needs
+test <an empty list inside a generic record, then pushed to>
+  host program, <form bag\n  head t\n  link items\n    like list\n      like t\n\ntask empty-bag\n  head t\n  like bag t\n  save none\n    make list\n  send back\n    make bag\n      bind items, read none\n\ntask filled\n  like number\n  save b, call empty-bag\n  save xs, read b/items\n  call xs/push, code 7\n  send back, read xs/length\n>
+  want hold, is-equal(answer-of(program, <filled>), <1>)
+
+# the same empty list bound with `host` first, the spelling `term lint --fix` gives it (L004)
+test <an empty list bound with host, then stored in a generic record>
+  host program, <form bag\n  head t\n  link items\n    like list\n      like t\n\ntask empty-bag\n  head t\n  like bag t\n  host none, make list\n  send back\n    make bag\n      bind items, read none\n\ntask count-empty\n  like number\n  save b, call empty-bag\n  send back, read b/items/length\n>
+  want hold, is-equal(answer-of(program, <count-empty>), <0>)
+
+test <an empty list straight into a generic union case>
+  host program, tree-text(<  send back\n    make leaf\n      bind items, make list\n>)
+  want hold, is-equal(answer-of(program, <leaf-count>), <1>)
+
+test <an empty list bound with host, then into a generic union case>
+  host program, tree-text(<  host none, make list\n  send back\n    make leaf\n      bind items, read none\n>)
+  want hold, is-equal(answer-of(program, <leaf-count>), <1>)
+
+# A fresh list a generic value is pushed into, and never read back by type: its element is the generic form. The push
+# pinned the element only for a ground value, so the element fell through to `number` and engine/data/array's
+# `to-array` emitted `const stack: number[]` holding vectors, a tsc error only the type shows (2026-10-04)
+test <a generic value pushed into a fresh list types its element>
+  host program, <form pile\n  head t\n  case leaf\n    link items, like list, like t\n  case branch\n    link left, like pile t\n\ntask count-piles\n  head t\n  take v, like pile t\n  like number\n  save stack\n    make list\n  call stack/push\n    read v\n  send back, read stack/length\n>
+  host out, compile-text(program, make(compile-choice, bind(file, </gate/code/push-generic.tree>)))
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <const stack: Pile\<T\>[] =>)
+
+# a non-generic empty list still builds, typed by its declared element
+test <a non-generic empty list is unchanged>
+  host program, <task names\n  like list\n    like text\n  send back\n    make list\n\ntask size\n  like number\n  save n, call names\n  send back, read n/length\n>
+  want hold, is-equal(answer-of(program, <size>), <0>)

@@ -1,0 +1,38 @@
+note <a make hash key that is not a word: a text or a computed key in the literal, on every backend>
+
+# Ported from hash-text-key.ts by statement (item term-self-host-001-0655), its backend loop one walked test, each
+# backend a case of it. Decisions-2026-10.md, D14: `save a, code 1` under `make hash` keys the entry by the word, and
+# the `save` grammar took no text there, so a key with a space, a capital or a leading digit could not be written in the
+# literal at all. Under `make hash` alone a `save` whose first part is any value is that key (mill: save/mine.tree
+# `save-key`), a text literal or a computed key. Everywhere else `save` still binds a name, so a text first in a task
+# body is refused as before. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <task run\n  like text\n\n  save which, \<b\>\n  save table\n    make hash\n      save plain, 1\n      save \<Two words\>, 2\n      save \<3rd\>, 3\n      save \<\{which\}c\>, 4\n  back \<\{table/get(\<plain\>)\} \{table/get(\<Two words\>)\} \{table/get(\<3rd\>)\} \{table/get(\<bc\>)\} \{table/size\}\>\n>
+
+host expected, <1 2 3 4 4>
+
+test <a word, a text and a computed key in one literal>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-hash-key->)
+  host ran, run-text(program, backend, folder, <keys>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)
+
+test <outside make hash, save with a text first is still refused>
+  host out, compile-text(<task run\n  like number\n\n  save \<x\>, 1\n  back 1\n>, make(compile-choice, bind(file, <outside.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, not(out/ok)

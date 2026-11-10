@@ -1,0 +1,92 @@
+note <the agent-facing CLI: term scan answers structured JSON and an exit code, term mind remembers and recalls a fact>
+
+# Ported from verifier.ts by statement (item term-self-host-001-0605), one test per `expect` in its order. The `term`
+# under test (@term/test/self) runs in a temporary workspace, so the CLI's root is that folder, and the tests read its
+# JSON output and exit codes. The workspace is made once by the first test, and the remembered fact is written once,
+# before the first test that recalls it.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+# host value: a JSON text read
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# host value: whether a diagnostic's code is a number and its span has a start
+bind is-structured
+  take one, like dynamic
+  like boolean
+  case node
+    text <(typeof $one?.code === "number" && !!$one?.span?.start)>
+
+form verifier-state
+  mark shared
+  link root, like text
+  link remembered, like boolean
+
+host verifier-now, make(verifier-state, bind(root, <>), bind(remembered, false))
+
+task workspace
+  like text
+
+  fork test, is-unequal(verifier-now/root, <>)
+    hold
+      back verifier-now/root
+  save root, temp-folder(<seed-cli->)
+  write-file(<{root}/good.tree>, <task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n>)
+  write-file(<{root}/bad.tree>, <task wrong\n  take b, like boolean\n  like number\n  send back\n    call add\n      read b\n      code 1\n>)
+  save verifier-now/root, root
+  back root
+
+# `term mind` told one fact, once
+task remembered
+  like text
+  mark async
+
+  save root, workspace()
+  fork test, not(verifier-now/remembered)
+    hold
+      save verifier-now/remembered, true
+      run-self(make(list, <mind>, <The kernel is the type authority.>, <--kind>, <decision>), root, 600000)
+  back root
+
+# scan: a clean file is ok, exit 0, no diagnostics
+test <scan: clean file -\> ok:true, exit 0, no diagnostics>
+  save good, run-self(make(list, <scan>, <good.tree>, <--back>, <json>), workspace(), 600000)
+  save json, parsed-json(trim(good/output))
+  want hold, and(is-equal(good/code, 0), and(is-equal(json/ok, true), is-equal(json/diagnostics/length, 0)))
+
+# scan: a type error fails, exit 1, with a structured diagnostic (code + name + span)
+test <scan: type error -\> ok:false, exit 1, structured diagnostic>
+  save bad, run-self(make(list, <scan>, <bad.tree>, <--back>, <json>), workspace(), 600000)
+  save json, parsed-json(trim(bad/output))
+  want hold, and(is-equal(bad/code, 1), is-equal(json/ok, false))
+  want hold, and(is-equal(json/diagnostics/0/name, <type-mismatch>), is-structured(json/diagnostics/0))
+
+# mind: remember then recall, and write the store under .base/@term/code/memory
+test <mind: remembers a fact and recalls it by query>
+  save root, remembered()
+  save recall, run-self(make(list, <mind>, <--find>, <kernel>, <--back>, <json>), root, 600000)
+  save json, parsed-json(trim(recall/output))
+  want hold, and(is-equal(json/ok, true), and(is-equal(json/facts/length, 1), is-equal(json/facts/0/kind, <decision>)))
+
+test <mind: writes the store under .base/@term/code/memory>
+  save root, remembered()
+  save index, <{root}/.base/@term/code/memory/index.md>
+  want hold, file-exists(index)
+  want hold, text-contains(read-file(index), <Memory>)

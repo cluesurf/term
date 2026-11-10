@@ -1,0 +1,53 @@
+note <A computed path segment is its whole value, on a read and on an assignment target>
+
+# Ported from computed-key.ts by statement (item term-self-host-001-0612). `grid/{multiply(i, 2)}` read and wrote
+# `grid[multiply]` until 2026-10-05: the segment was its first word as a variable, and the word named a task, so every
+# check took it as a value and the call went missing in silence (found pairing parser/diagnostic.tree). Fails without
+# compile/mint-bridge.ts `dynamicPath` reading the group and `save` sending a braced target through it. The program is
+# compiled as a lean library for node, and each run test prints one call's answer from its emitted TypeScript.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture, <load @term/base/list\n  find list\n  find get\n\ntask four-zeros\n  like list, like number\n\n  save grid, make list\n  push(grid, 0)\n  push(grid, 0)\n  push(grid, 0)\n  push(grid, 0)\n  back grid\n\n# writes 7 at 2i through a call, reads it back through the same call\ntask by-call\n  take i, like number\n  like number\n\n  save grid, four-zeros()\n  save grid/\{multiply(i, 2)\}, 7\n  back read(grid/\{multiply(i, 2)\})\n\n# the same through a plain variable, which always worked\ntask by-name\n  take i, like number\n  like number\n\n  save grid, four-zeros()\n  save grid/\{i\}, 5\n  back read(grid/\{i\})\n\n# a call nested in the call\ntask by-nested\n  take i, like number\n  like number\n\n  save grid, four-zeros()\n  save grid/\{add(multiply(i, 2), 1)\}, 9\n  back get(grid, 3)\n>
+
+host by-task, make pattern, <<\[multiply\]|grid, multiply\b|\[add\]>>
+
+task built
+  like compile-outcome
+
+  back compile-text(fixture, make(compile-choice, bind(file, <computed-key.tree>), bind(stdlib, <node>), bind(library, true), bind(lean, true)))
+
+# what the emitted module answers for one call
+task answer-of
+  take call, like text
+  like text
+
+  save folder, temp-folder(<term-computed-key->)
+  back typescript-answer(built(), <process.stdout.write(String({call}))>, folder, <computed-key>)
+
+test <no segment indexes by a task>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(by-task, out/emitted))
+
+test <a call as the key writes and reads the place it computes>
+  want hold, is-equal(answer-of(<byCall(1)>), <7>)
+
+test <a variable as the key still does>
+  want hold, is-equal(answer-of(<byName(3)>), <5>)
+
+test <a nested call as the key does>
+  want hold, is-equal(answer-of(<byNested(1)>), <9>)

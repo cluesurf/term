@@ -1,0 +1,166 @@
+note <Supervision trees restart by OTP's protocol, and the build refuses a tree whose limits mean nothing>
+
+# Ported from supervisor.ts by statement (item term-self-host-001-0619). deck/base/code/supervisor.tree compiled to
+# TypeScript and run, and the build's refusals, which are what Term adds over OTP: a tree whose limits mean nothing, and a
+# transient worker that can never restart, both fail before anything runs (note/project/term/research/beam-otp-lessons.md,
+# design 4). Each program is compiled over the node stdlib and run on node through typescript-answer, its native prelude
+# ahead of it: one main awaits run and prints its answer, or the form and thing of what it raised, as JSON. The
+# original's builders of a counting worker and of a program are the tasks `counting` and `program`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/reading
+  find first-with
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host head, <load @term/base/code/supervisor\n  find make-supervisor\n  find supervise\n\nload @term/base/code/exception\n  find conflict\n\nload @term/base/code/list\n  find join\n>
+
+# a transient worker that raises every time: two restarts in the window, then the supervisor stops and escalates
+host crash-loop, <{head}\ntask run\n  note async\n  like text\n  save children\n    make list\n  call children/push\n    make worker\n      bind name, text \<flaky\>\n      bind restart\n        make transient\n      bind work\n        task flaky\n          like text\n          halt conflict\n            bind thing, text \<flaky\>\n  save tree\n    call make-supervisor\n      text \<root\>\n      make one-for-one\n      code 2\n      code 10000\n      read children\n  send back\n    call supervise\n      read tree\n      wait true\n>
+
+# a nested supervisor allowed no restarts, around a worker that always fails: it stops and raises, its parent sees a
+# failed child, restarts it once, sees it fail again, and stops too, naming itself
+host nested, <{head}\ntask run\n  note async\n  like text\n  save inner\n    make list\n  call inner/push\n    make worker\n      bind name, text \<deep\>\n      bind restart\n        make transient\n      bind work\n        task deep\n          like text\n          halt conflict\n            bind thing, text \<deep\>\n  save children\n    make list\n  call children/push\n    make nested\n      bind tree\n        call make-supervisor\n          text \<inner\>\n          make one-for-one\n          code 0\n          code 10000\n          read inner\n  save tree\n    call make-supervisor\n      text \<outer\>\n      make one-for-one\n      code 1\n      code 10000\n      read children\n  send back\n    call supervise\n      read tree\n      wait true\n>
+
+# a restart limit below zero means nothing: `make-supervisor` owes `intensity >= 0`
+host negative, <{head}\ntask run\n  like text\n  save children\n    make list\n  save tree\n    call make-supervisor\n      text \<root\>\n      make one-for-one\n      code -1\n      code 10000\n      read children\n  send back, read tree/name\n>
+
+# a transient worker whose work cannot raise: it can never restart, so it is a temporary under a misleading name
+host dead-transient, <{head}\ntask run\n  note async\n  like text\n  save children\n    make list\n  call children/push\n    make worker\n      bind name, text \<calm\>\n      bind restart\n        make transient\n      bind work\n        task calm\n          like text\n          send back, text \<calm\>\n  save tree\n    call make-supervisor\n      text \<root\>\n      make one-for-one\n      code 1\n      code 10000\n      read children\n  send back\n    call supervise\n      read tree\n      wait true\n>
+
+# a two-level tree for the roll: inner allows 2 restarts, outer 3, so inner's workers can restart 2 × (3 + 1) = 8 times
+# before outer stops
+host rolled, <{head}\ntask run\n  like text\n  save inner\n    make list\n  call inner/push\n    make worker\n      bind name, text \<deep\>\n      bind restart\n        make permanent\n      bind work\n        task deep\n          like text\n          send back, text \<deep\>\n  save children\n    make list\n  call children/push\n    make nested\n      bind tree\n        call make-supervisor\n          text \<inner\>\n          make one-for-one\n          code 2\n          code 5000\n          read inner\n  save tree\n    call make-supervisor\n      text \<outer\>\n      make rest-for-one\n      code 3\n      code 10000\n      read children\n  send back, read tree/name\n>
+
+host limit-words, make pattern, <<have|unproven|refuted>>
+host transient-word, make pattern, <<transient>>
+
+# awaits run, then prints its answer, or the form and thing of what it raised
+host main, <run().then(value =\> process.stdout.write(JSON.stringify(\{ value \})), error =\> process.stdout.write(JSON.stringify(\{ form: error?.form, thing: error?.link?.thing \})))\n>
+
+# a worker under `restart`, counting its runs in `<name>-runs`, raising until `fails` runs have happened
+task counting
+  take name, like text
+  take restart, like text
+  take fails, like number
+  like text
+
+  back <  call children/push\n    make worker\n      bind name, text \<{name}\>\n      bind restart\n        make {restart}\n      bind work\n        task {name}\n          like text\n          call {name}-runs/push\n            text \<{name}\>\n          fork test\n            hook test\n              call is-maximum\n                read {name}-runs/length\n                code {fails}\n            hook hold\n              halt conflict\n                bind thing, text \<{name}\>\n          send back, text \<{name}\>\n>
+
+# a supervisor of `strategy` and `intensity` over the workers in `body`, answering its own end and each list's runs
+task program
+  take strategy, like text
+  take intensity, like number
+  take body, like text
+  take lists, like list, like text
+  like text
+
+  save saves, <>
+  save joins, <>
+  walk lists
+    take list-name, like text
+    save saves, <{saves}  save {list-name}-runs\n    make list\n>
+    save joins, <{joins}        call join\n          read {list-name}-runs\n          text \<\>\n>
+  back <{head}\ntask run\n  note async\n  like text\n{saves}  save children\n    make list\n{body}  save tree\n    call make-supervisor\n      text \<root\>\n      make {strategy}\n      code {intensity}\n      code 10000\n      read children\n  save ended\n    call supervise\n      read tree\n      wait true\n  send back\n    call join\n      make list\n        read ended\n{joins}      text \<,\>\n>
+
+task compiled
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>)))
+
+# the build's refusal, its names and then its messages, <built> when it builds
+task refusal
+  take source, like text
+  like text
+
+  host out, compiled(source)
+  fork test, out/ok
+    hold
+      back <built>
+  back <{join(out/names, < | >)} | {join(out/messages, < | >)}>
+
+# what run answered or raised, as JSON, or why it did not run
+task outcome
+  take name, like text
+  take source, like text
+  like text
+
+  host out, compiled(source)
+  save folder, temp-folder(<term-supervisor->)
+  back typescript-answer(out, main, folder, name, prelude-text(out, <node>))
+
+# a supervision tree of the rolled program, by its name
+task tree-named
+  take name, like text
+  like dynamic
+
+  host out, compile-text(rolled, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(roll, true)))
+  fork test, not(and(out/ok, truth(out/roll)))
+    hold
+      back void
+  back first-with(read-field(out/roll, <supervision>), <name>, name)
+
+test <the roll lists each supervisor with its strategy, limits and children>
+  host outer, tree-named(<outer>)
+  host inner, tree-named(<inner>)
+  want hold, is-equal(read-field(outer, <strategy>), <rest-for-one>)
+  want hold, is-equal(read-field(outer, <intensity>), 3)
+  want hold, is-equal(read-field(outer, <period>), 10000)
+  want hold, is-equal(read-field(read-field(outer, <nested>), <0>), <inner>)
+  want hold, is-equal(read-field(inner, <worker>), 1)
+
+test <and the worst case: a nested limit times one more than each limit above it>
+  host outer, tree-named(<outer>)
+  host inner, tree-named(<inner>)
+  want hold, is-equal(read-field(inner, <worst>), 8)
+  want hold, is-equal(read-field(inner, <under>), <outer>)
+  want hold, is-equal(read-field(outer, <worst>), 3)
+
+test <a crash loop past the intensity stops the supervisor with overload>
+  want hold, is-equal(outcome(<crash-loop>, crash-loop), <\{"form":"overload","thing":"root"\}>)
+
+test <a temporary child that returns is not restarted, and the supervisor ends>
+  want hold, is-equal(outcome(<temporary>, program(<one-for-one>, 3, counting(<a>, <temporary>, 0), make(list, <a>))), <\{"value":"root,a"\}>)
+
+test <a transient child is restarted while it raises, and not once it returns>
+  want hold, is-equal(outcome(<transient-recovers>, program(<one-for-one>, 3, counting(<a>, <transient>, 2), make(list, <a>))), <\{"value":"root,aaa"\}>)
+
+# one-for-all: `b` fails once, which restarts `a` too, so `a` runs twice though it never failed
+test <one-for-all restarts the sibling of the child that failed>
+  want hold, is-equal(outcome(<one-for-all>, program(<one-for-all>, 3, <{counting(<a>, <transient>, 0)}{counting(<b>, <transient>, 1)}>, make(list, <a>, <b>))), <\{"value":"root,aa,bb"\}>)
+
+# one-for-one: the same failure restarts only `b`
+test <one-for-one restarts only the child that failed>
+  want hold, is-equal(outcome(<one-for-one>, program(<one-for-one>, 3, <{counting(<a>, <transient>, 0)}{counting(<b>, <transient>, 1)}>, make(list, <a>, <b>))), <\{"value":"root,a,bb"\}>)
+
+test <a nested supervisor that stops escalates to its parent, which stops too>
+  want hold, is-equal(outcome(<nested>, nested), <\{"form":"overload","thing":"outer"\}>)
+
+test <a negative restart limit fails the build>
+  host said, refusal(negative)
+  want hold, and(is-unequal(said, <built>), matches(limit-words, said))
+
+test <a transient worker whose work cannot raise fails the build>
+  host said, refusal(dead-transient)
+  want hold, and(is-unequal(said, <built>), matches(transient-word, said))

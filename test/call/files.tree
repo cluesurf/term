@@ -1,0 +1,242 @@
+note <the .tree files a command walks leave shelved drafts, link/, host/ and node_modules/ out, a named file is taken, and roles are per package>
+
+# Ported from files.ts by statement (item term-self-host-001-0603), one test per `ok` in its order. collectTreeFiles
+# (deck/call/code/files.ts) is what `term form`, `term lint`, `term time` and `term hold` walk with, and it did not honour
+# either way this codebase shelves a file: `term form deck --check` reported 33 files it could not parse, 32 of them
+# shelved drafts. It also walked into `link/`, where `term link` puts a dependency's source. A file named explicitly is
+# still taken, draft or not. isRoleFileText (deck/call/code/manifest-name.ts) tells a role file by its content, and
+# projectRoleOf (deck/call/code/role-of.ts) finds `base/role.tree` by default, resolves a declared role directory as every
+# Term path resolves, and reads a role file per package. All three are the subject (decision 106), each over a project in
+# a temporary folder.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find substring
+
+dock load
+  load <@term/call/code/files>, name files-module
+  load <@term/call/code/manifest-name>, name files-manifest
+  load <@term/call/code/role-of>, name files-role
+  load <node:fs>, name files-file
+  load <node:path>, name files-path
+
+bind files-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# host value: a role answer as text, `null` for none
+bind role-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+host probe-text, <task probe\n  like number\n  send back, code 1\n>
+
+# a file under a folder, its folders made
+task put
+  take root, like text
+  take name, like text
+  take text, like text
+  like text
+
+  save full, files-path/join(root, name)
+  files-file/mkdir-sync(files-path/dirname(full), files-folder-options(0))
+  files-file/write-file-sync(full, text)
+  back full
+
+form files-state
+  mark shared
+  link root, like text
+
+host files-now, make(files-state, bind(root, <>))
+
+task the-root
+  like text
+
+  fork test, is-unequal(files-now/root, <>)
+    hold
+      back files-now/root
+  save root, temp-folder(<term-files->)
+  put(root, <code/plain.tree>, probe-text)
+  put(root, <code/shelved.tree>, <mark draft\n\nthis is not Term at all\n>)
+  put(root, <code/shelved-old.tree>, <note draft\n\nthis is not Term at all either\n>)
+  put(root, <code/deep/draft.tree>, <>)
+  put(root, <code/deep/inside.tree>, probe-text)
+  put(root, <code/deep/further/down.tree>, probe-text)
+  put(root, <link/@term/other/borrowed.tree>, probe-text)
+  put(root, <host/emitted.tree>, probe-text)
+  put(root, <node_modules/dep/thing.tree>, probe-text)
+  save files-now/root, root
+  back root
+
+# the walked files, relative to the root
+task walked
+  like list, like text
+  mark async
+
+  save root, the-root()
+  save none, make list
+  save out, make list
+  walk wait files-module/collect-tree-files(none, root)
+    take file, like text
+    out/push(substring(file, add(root/length, 1)))
+  back out
+
+# whether any walked file starts with `prefix`
+task any-under
+  take prefix, like text
+  like boolean
+  mark async
+
+  walk walked()
+    take file, like text
+    fork test, starts-with(file, prefix)
+      hold
+        back true
+  back false
+
+# the files collected when one is named
+task named
+  take name, like text
+  like list, like text
+  mark async
+
+  save root, the-root()
+  back wait files-module/collect-tree-files(make(list, name), root)
+
+test <an ordinary file is collected>
+  want hold, contains(walked(), <code/plain.tree>)
+
+test <a file declaring `mark draft` is not>
+  want hold, not(contains(walked(), <code/shelved.tree>))
+
+test <nor one declaring `note draft`, the old spelling>
+  want hold, not(contains(walked(), <code/shelved-old.tree>))
+
+test <a directory holding `draft.tree` takes itself and everything under it out>
+  want hold, not(any-under(<code/deep/>))
+
+test <`link/` is another package's source and is left alone>
+  want hold, not(any-under(<link/>))
+
+test <host/ and node_modules/ are left alone, as before>
+  want hold, and(not(any-under(<host/>)), not(any-under(<node_modules/>)))
+
+test <so exactly one file is collected here>
+  want hold, is-equal(walked()/length, 1)
+
+# naming a file is a direct request
+test <a shelved file named explicitly is still collected>
+  save found, named(<code/shelved.tree>)
+  want hold, is-equal(found/length, 1)
+  want hold, ends-with(found/0, <code/shelved.tree>)
+
+test <and so is a file inside a shelved directory>
+  want hold, is-equal(named(<code/deep/inside.tree>)/length, 1)
+
+# a role file is not code, told by its content
+test <a `role \<name\>` with `take` globs reads as a role file>
+  want hold, files-manifest/is-role-file-text(<role site\n  take @/code/route/**/*.tree\n>, <anything.tree>)
+
+test <whatever it is called>
+  want hold, files-manifest/is-role-file-text(<role call\n  take @/code/line/**/*.tree\n>, <base.tree>)
+
+# a manifest writes `role ./base/role` as a field under `deck`, not a top-level statement with `take` children
+test <a manifest naming a role directory is not one>
+  want hold, not(files-manifest/is-role-file-text(<deck @term/thing\n  code \<0.0.1\>\n  role ./role\n>, <deck.tree>))
+
+test <ordinary code is not one>
+  want hold, not(files-manifest/is-role-file-text(<task role\n  like void\n  send back\n>, <role.tree>))
+
+# where a role file lives: `base/role.tree` by default, a declared directory resolving `<dir>/base.tree`
+form role-state
+  mark shared
+  link root, like text
+  link declared, like text
+  link outer, like text
+
+host role-now, make(role-state, bind(root, <>), bind(declared, <>), bind(outer, <>))
+
+task role-root
+  like text
+
+  fork test, is-unequal(role-now/root, <>)
+    hold
+      back role-now/root
+  save root, temp-folder(<term-role->)
+  put(root, <deck.tree>, <deck @term/probe\n  code \<0.0.1\>\n>)
+  put(root, <base/role.tree>, <role site\n  take @/code/route/**/*.tree\n>)
+  put(root, <code/route/one.tree>, <task t\n>)
+  put(root, <code/other.tree>, <task t\n>)
+  save role-now/root, root
+  back root
+
+task declared-root
+  like text
+
+  fork test, is-unequal(role-now/declared, <>)
+    hold
+      back role-now/declared
+  save root, temp-folder(<term-role-declared->)
+  put(root, <deck.tree>, <deck @term/probe\n  code \<0.0.1\>\n  role ./elsewhere\n>)
+  put(root, <elsewhere/base.tree>, <role call\n  take @/code/**/*.tree\n>)
+  put(root, <code/one.tree>, <task t\n>)
+  save role-now/declared, root
+  back root
+
+# a project whose code/ is `code`, holding a nested package with its own role file
+task outer-root
+  like text
+
+  fork test, is-unequal(role-now/outer, <>)
+    hold
+      back role-now/outer
+  save root, temp-folder(<term-pkg-role->)
+  put(root, <deck.tree>, <deck @term/outer\n  code \<0.0.1\>\n>)
+  put(root, <base/role.tree>, <role code\n  take @/code/**/*.tree\n>)
+  put(root, <code/mine.tree>, <task t\n>)
+  put(root, <deck/inner/deck.tree>, <deck @term/inner\n  code \<0.0.1\>\n>)
+  put(root, <deck/inner/base/role.tree>, <role site\n  take @/code/route/**/*.tree\n>)
+  put(root, <deck/inner/code/route/page.tree>, <task t\n>)
+  put(root, <deck/inner/code/other.tree>, <task t\n>)
+  save role-now/outer, root
+  back root
+
+# the role a project gives one of its files, as text
+task role-in
+  take root, like text
+  take file, like text
+  like text
+
+  save role-of, files-role/project-role-of(root)
+  back role-text(role-of(files-path/join(root, file)))
+
+test <`base/role.tree` is found with no `role` line in the manifest>
+  want hold, is-equal(role-in(role-root(), <code/route/one.tree>), <site>)
+
+test <and a file no rule matches has no role>
+  want hold, is-equal(role-in(role-root(), <code/other.tree>), <null>)
+
+test <`role ./elsewhere` resolves `elsewhere/base.tree`, not only `elsewhere/role.tree`>
+  want hold, is-equal(role-in(declared-root(), <code/one.tree>), <call>)
+
+# a role file is per package: a dependency's files get its own rules, and `@` is that package's root
+test <a nested package's file gets ITS OWN role, not the root project's>
+  want hold, is-equal(role-in(outer-root(), <deck/inner/code/route/page.tree>), <site>)
+
+test <and a file its own role file does not match has none, rather than falling back to the root's>
+  want hold, is-equal(role-in(outer-root(), <deck/inner/code/other.tree>), <null>)
+
+test <the root project's own files still get the root's roles>
+  want hold, is-equal(role-in(outer-root(), <code/mine.tree>), <code>)

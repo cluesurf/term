@@ -1,0 +1,137 @@
+note <the language server's editor features over a real typed program, and its diagnostic backdating>
+
+# Ported from lsp.ts by statement (item term-self-host-001-0587), one test per `ok` in its order: semantic tokens, inlay
+# hints, hover, the symbol index, and then a server that does not publish again for a re-check that changed nothing.
+# @term/flow's analyze, symbols and server are the subject (decision 106). The program is read once, and each
+# backdating test drives a fresh server through the same three messages.
+
+dock load
+  load <@term/flow/code/analyze>, name flow-analyze
+  load <@term/flow/code/symbols>, name flow-symbols
+  load <@term/flow/code/server>, name flow-server
+
+form flow-source
+  link file, like text
+  link text, like text
+
+host source-text, <task add-them\n  take a, like number\n  take b, like number\n  like number\n  save total\n    call add\n      read a\n      read b\n  send back, read total\n>
+
+host analyzed, flow-analyze/analyze(make(flow-source, bind(file, <t.tree>), bind(text, source-text)))
+host program, analyzed/program
+host index, flow-symbols/build-index(program)
+
+bind is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# the lines an inlay hint request asks about
+bind hint-range
+  take first, like number
+  take last, like number
+  like dynamic
+  case node
+    text <(\{ start: \{ line: $first \}, end: \{ line: $last \} \})>
+
+bind cursor
+  take line, like number
+  take character, like number
+  like dynamic
+  case node
+    text <(\{ line: $line, character: $character \})>
+
+bind new-server
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.LanguageServer()>
+
+bind message
+  take method, like text
+  take params, like dynamic
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", method: $method, params: $params \})>
+
+bind open-params
+  take uri, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ textDocument: \{ uri: $uri, text: $text \} \})>
+
+bind change-params
+  take uri, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ textDocument: \{ uri: $uri \}, contentChanges: [\{ text: $text \}] \})>
+
+# what the server sent back for each of the three messages
+form backdating
+  link opened, like list, like dynamic
+  link same, like list, like dynamic
+  link changed, like list, like dynamic
+
+# open a file with an error, send the same text again, then a fixed text
+task backdated
+  like backdating
+  mark async
+
+  host server, new-server(flow-server)
+  host uri, <bd.tree>
+  host bad, <task f\n  like number\n  send back\n    read nope\n>
+  host good, <task f\n  like number\n  send back, code 1\n>
+  save opened, wait server/dispatch(message(<textDocument/didOpen>, open-params(uri, bad)))
+  save same, wait server/dispatch(message(<textDocument/didChange>, change-params(uri, bad)))
+  save changed, wait server/dispatch(message(<textDocument/didChange>, change-params(uri, good)))
+  back make(backdating, bind(opened, opened), bind(same, same), bind(changed, changed))
+
+# whether any reply publishes diagnostics
+task publishes
+  take out, like list, like dynamic
+  like boolean
+
+  walk out
+    take one, like dynamic
+    fork test, is-equal(one/method, <textDocument/publishDiagnostics>)
+      hold
+        back true
+  back false
+
+test <buildIndex records the function definition>
+  want hold, or(index/definitions/has(<add-them>), is-above(index/functions/length, 0))
+
+test <semanticTokens emits a non-empty token stream>
+  want hold, is-above(flow-server/semantic-tokens(source-text, index)/data/length, 0)
+
+# semantic token data is groups of 5 ints (delta line, delta char, length, type, modifiers)
+test <semanticTokens data is a multiple of 5 (well-formed)>
+  want hold, is-equal(modulo(flow-server/semantic-tokens(source-text, index)/data/length, 5), 0)
+
+# inlay hints suggest the inferred type for the untyped `save total`
+test <inlayHints suggests a type for an untyped binding>
+  want hold, is-above(flow-server/inlay-hints(program, source-text,hint-range(0, 100))/length, 0)
+
+# hover over `read a` (line 6, the `a`) reports its type
+test <hoverAt reports a type under the cursor>
+  want hold, is-given(flow-analyze/hover-at(program, cursor(6, 11)))
+
+test <the index records references (for go-to-definition / rename)>
+  want hold, is-above(index/references/length, 0)
+
+test <the index records a function signature (for signature help)>
+  want hold, index/signatures/has(<add-them>)
+
+test <the index records function scopes (for document symbols)>
+  want hold, is-above(index/scopes/length, 0)
+
+test <didOpen publishes diagnostics>
+  want hold, publishes(backdated()/opened)
+
+test <a re-check with identical text is backdated (no re-publish)>
+  want hold, is-equal(backdated()/same/length, 0)
+
+test <a real change re-publishes (diagnostics cleared)>
+  want hold, publishes(backdated()/changed)

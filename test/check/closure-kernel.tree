@@ -1,0 +1,81 @@
+note <a pure task that answers, saves or holds a closure is checked by the kernel, which infers no bare function>
+
+# Ported from closure-kernel.ts by statement (item term-self-host-001-0608), one test per `ok` in its order: each case
+# builds, and then runs. The elaborator lowered every closure to a bare lambda, so such a task failed the build with
+# "kernel: cannot infer a bare function" (local-store.tree's rooted-object-store, term-cli-in-term-0083). A closure is now
+# annotated with the pi type its written parameters and result give it (check/elaborating-terms.tree `closure-term`,
+# term-compiler-0055). Each program is longhand and loads nothing, so it compiles with a resolver that finds nothing, and
+# runs on node through test/support/running.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host adder-text, <task make-adder\n  take n, like number\n  like task\n    take x, like number\n    like number\n  save adder\n    task\n      take x, like number\n      like number\n      send back\n        call add\n          read x\n          read n\n  send back, read adder\n\ntask run\n  like number\n  save f, call make-adder(code 2)\n  send back\n    call f\n      code 3\n>
+
+host one-text, <task make-one\n  like task\n    take x, like number\n    like number\n  save one\n    task\n      take x, like number\n      like number\n      send back, read x\n  send back, read one\n\ntask run\n  like number\n  save f, call make-one()\n  send back\n    call f\n      code 3\n>
+
+host store-text, <form store\n  link has\n    like task\n      take x, like number\n      like boolean\n\ntask make-store\n  take n, like number\n  like store\n  save has-it\n    task\n      take x, like number\n      like boolean\n      send back\n        call is-above\n          read x\n          read n\n  send back\n    make store\n      bind has, read has-it\n\ntask run\n  like boolean\n  save s, call make-store(code 2)\n  send back\n    call s/has\n      code 3\n>
+
+host direct-text, <task make-adder\n  take n, like number\n  like task\n    take x, like number\n    like number\n  send back\n    task\n      take x, like number\n      like number\n      send back\n        call add\n          read x\n          read n\n\ntask run\n  like number\n  save f, call make-adder(code 2)\n  send back\n    call f\n      code 3\n>
+
+# the program loads nothing, so no load is answered
+task closed-choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <main.tree>), bind(closed, true))
+
+# what a compile said: built, else its messages joined
+task said
+  take source, like text
+  like text
+
+  save out, compile-text(source, closed-choice())
+  fork test, out/ok
+    hold
+      back <built>
+  back out/messages/join(< | >)
+
+# what the program's run task answered on node, else why it did not run
+task answer-of
+  take source, like text
+  take name, like text
+  like text
+
+  host folder, temp-folder(<closure-kernel->)
+  host ran, run-text(source, <typescript>, folder, name, closed-choice())
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a closure over a parameter, saved and answered>
+  want hold, is-equal(said(adder-text), <built>)
+
+test <a closure over a parameter, saved and answered: and it runs>
+  want hold, is-equal(answer-of(adder-text, <adder>), <5>)
+
+test <a closure of no capture, saved and answered>
+  want hold, is-equal(said(one-text), <built>)
+
+test <a closure of no capture, saved and answered: and it runs>
+  want hold, is-equal(answer-of(one-text, <one>), <3>)
+
+test <a record of closures, as rooted-object-store makes>
+  want hold, is-equal(said(store-text), <built>)
+
+test <a record of closures, as rooted-object-store makes: and it runs>
+  want hold, is-equal(answer-of(store-text, <store>), <true>)
+
+test <a closure answered directly, checked against the result type>
+  want hold, is-equal(said(direct-text), <built>)
+
+test <a closure answered directly, checked against the result type: and it runs>
+  want hold, is-equal(answer-of(direct-text, <direct>), <5>)

@@ -21,13 +21,13 @@
   ],
   "main": "./make/extension.js",
   "scripts": {
-    "build": "node build.mjs",
+    "build": "node ../../host/line.js boot build.tree -- build",
     "dock": "vsce login cluesurf",
     "make": "vsce package --no-dependencies --out make/term-code.vsix",
     "bind": "code --install-extension make/term-code.vsix --force",
     "toss": "code --uninstall-extension cluesurf.term-code",
     "host": "vsce publish --no-dependencies",
-    "vscode:prepublish": "node build.mjs",
+    "vscode:prepublish": "node ../../host/line.js boot build.tree -- build",
     "view": "resvg --width 1024 view/term.svg view/term.png"
   },
   "contributes": {

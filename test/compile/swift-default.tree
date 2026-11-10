@@ -1,0 +1,87 @@
+note <an input's fall is Swift's own default where Swift can evaluate it, else an optional the body fills>
+
+# Ported from swift-default.ts by statement (item term-self-host-001-0620), one test per `ok` in its order.
+# compile/swift-emit.tree `swift-default`: a literal as written, and any other expression Swift can evaluate as a
+# default, so Swift calling a Term task may leave the input out as a Term call may. Swift refuses `try` and `await` in
+# a default and evaluates it without the other arguments, so a default that calls a raising or waiting task, or reads
+# another input, makes the input optional (`= nil`) and the body fills it (`body-default-text`). swiftc's step is
+# skipped without swiftc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find match-group
+
+host program, <task base\n  like number\n  back 40\n\ntask risky\n  like number\n  halt \<no\>\n\ntask scale\n  take n, like number, fall base()\n  take by, like number, fall 2\n  like number\n  back add(n, by)\n\ntask careful\n  take n, like number, fall risky()\n  like number\n  back n\n\ntask twice\n  take n, like number\n  take m, like number, fall n\n  like number\n  back add(n, m)\n\ntask later\n  mark async\n  like number\n  back 7\n\ntask slow\n  mark async\n  take n, like number, fall later()\n  like number\n  back add(n, 1)\n>
+
+host call-default, make pattern, <<n: Int = base\(\)>>
+host literal-default, make pattern, <<by: Int = 2>>
+host n-filled, make pattern, <<n: \(Int\)\? = nil>>
+host m-filled, make pattern, <<m: \(Int\)\? = nil>>
+
+task swift
+  like text
+
+  back emit-text(compile-text(program, make(compile-choice, bind(file, </tmp/swift-default.tree>), bind(stdlib, <swift>), bind(env, <swift>))), <swift>)
+
+# the inputs of a task's declaration, up to the arrow, since a default may hold parentheses of its own
+task signature
+  take name, like text
+  like text
+
+  save out, <>
+  walk find-matches(make(pattern, <func {name}\\((.*)\\)( async)?( throws)? -\>>), swift())
+    take found, like pattern-match
+    save group, match-group(found, 1)
+    save out, group/unwrap-or(<>)
+  back out
+
+test <a call as a default is Swift's default>
+  want hold, matches(call-default, signature(<scale>))
+
+test <a literal still is>
+  want hold, matches(literal-default, signature(<scale>))
+
+# the rest are optional inputs the body fills: Swift allows no `try` or `await` in a default, and no other input
+test <a default that calls a raising task is filled in the body>
+  want hold, matches(n-filled, signature(<careful>))
+
+test <so is one that reads another input>
+  want hold, matches(m-filled, signature(<twice>))
+
+test <and one that waits, in an asynchronous task>
+  want hold, matches(n-filled, signature(<slow>))
+
+# Swift itself leaves the input out
+test <Swift calls each task with the defaulted inputs left out: 42, 5 + 5 and 7 + 1>
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      skip <swiftc not installed>
+  host folder, temp-folder(<swift-default->)
+  host main, <{folder}/main.swift>
+  write-file(main, <import Foundation\n{swift()}\nprint("\\(scale()) \\(twice(n: 5)) \\(await slow())", terminator: "")\n>)
+  want hold, is-equal(run-tool(make(list, <swiftc>, <-o>, <{folder}/run>, main)), <>)
+  host ran, run(<{folder}/run>, make list)
+  want hold, is-equal(ran/output, <42 10 8>)

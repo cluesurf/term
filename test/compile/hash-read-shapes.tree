@@ -1,0 +1,42 @@
+note <a plain segment and an index read on a hash read the key, on every backend>
+
+# Ported from hash-read-shapes.ts by statement (item term-self-host-001-0655), one walked test per case of its table,
+# each backend a case of it. The two hash READ shapes item 0054 left (term-self-host-001-0426): a plain segment read on a
+# hash (`m/alpha`) reads the key "alpha", as the plain segment written writes it since 0054, and an index read on a
+# hash (`m/{k}`) reads the key `k`, as `m/get(k)` does. Until 2026-10-29 the first was a property read on TypeScript and
+# named no member natively, and the second emitted a list read: TypeScript stopped, rustc could not index a TermMap. A
+# call on the hash (`m/get(k)`, `m/has(k)`) stays the method. A backend whose toolchain is not installed is the case's
+# own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host segment, <load @term/base/list\n  find list\n\ntask counted\n  take m, like hash, like text, like number\n  like text\n  back \<\{m/alpha\}:\{m/beta\}\>\n\ntask run\n  like text\n  save m, make hash\n  save m/alpha, 3\n  m/set(\<beta\>, 4)\n  back counted(m)\n>
+
+host index, <load @term/base/list\n  find list\n\ntask looked\n  take m, like hash, like text, like number\n  take k, like text\n  like number\n  back m/\{k\}\n\ntask run\n  like text\n  save m, make hash\n  save k, \<beta\>\n  save m/\{k\}, 5\n  m/set(\<gamma\>, 6)\n  back \<\{looked(m, k)\}:\{looked(m, \<gamma\>)\}:\{m/has(k)\}\>\n>
+
+test <a plain segment read on a hash reads that key>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-hash-read->)
+  host ran, run-text(segment, backend, folder, <hash-segment>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <3:4>)
+
+test <an index read on a hash reads the key the index holds>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-hash-read->)
+  host ran, run-text(index, backend, folder, <hash-index>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <5:6:true>)

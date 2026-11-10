@@ -30,10 +30,14 @@ load ../parser/diagnostic
 
 load ../compile/node
   find statement
+  find type
+  find view-node
+  find expression-type
 
 load ../compile/view-lower
-  find lower-views
+  find lower-views-typed
   find runtime-bound
+  find view-walk-key
 
 dock load
   load <@term/make/code/check/infer>, name views-infer
@@ -125,10 +129,125 @@ task inside-views
         back true
   back false
 
+# each walk's item type as the main check found it, by view-walk-key, from this file's views in the checked program:
+# the element of the walk's iterable as that check wrote it on the iterable. A type holding a variable, a task,
+# `unknown` or `dynamic` is left out, and its walk's item stays as the lowering gave it before (term-self-host-001-1095,
+# ruled in 1108)
+task walk-item-types
+  take checked, like list, like statement
+  take file, like text
+  like hash, like text, like type
+
+  save out, make hash
+  walk checked
+    take one
+    sift one
+      case view
+        sift span/file
+          case some
+            link view-file
+            fork test, is-equal(view-file, file)
+              hold
+                save out, gather-item-types(body, span, name, out)
+          case none
+            turn next
+      miss
+        turn next
+  back out
+
+# the walks under these nodes of the view `view-name`, in an element's children, a fork's branches and otherwise, and a
+# walk's own body
+task gather-item-types
+  take nodes, like list, like view-node
+  take view-span, like span
+  take view-name, like text
+  take found, like hash, like text, like type
+  like hash, like text, like type
+  mark private
+
+  save out, found
+  walk nodes
+    take member
+    sift member
+      case element
+        save out, gather-item-types(children, view-span, view-name, out)
+      case fork
+        walk branches
+          take branch
+          save out, gather-item-types(branch/body, view-span, view-name, out)
+        # walked where it is, never handed to a call, which would write an empty list into the program (traps T003)
+        save others, make list
+        walk otherwise
+          take other
+          push(others, other)
+        save out, gather-item-types(others, view-span, view-name, out)
+      case walk
+        sift expression-type(iterable)
+          case some
+            link walked-type
+            sift walked-type
+              case array
+                fork test, is-plain-type(element)
+                  hold
+                    save key, view-walk-key(view-span, view-name, span)
+                    save out/{key}, element
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        save out, gather-item-types(body, view-span, view-name, out)
+      miss
+        save nothing, 0
+  back out
+
+# a type the lowering may write on a parameter as it stands: no variable, task, `unknown` or `dynamic` anywhere in it
+task is-plain-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case array
+      back is-plain-type(element)
+    case map
+      back and(is-plain-type(key), is-plain-type(value))
+    case named
+      # `need false` lists, copied where they are read
+      save type-args, make list
+      walk args
+        take type-arg
+        push(type-args, type-arg)
+      walk type-args
+        take one-arg
+        fork test, not(is-plain-type(one-arg))
+          hold
+            back false
+      save index-args, make list
+      walk value-args
+        take index-arg
+        push(index-args, index-arg)
+      back is-equal(index-args/length, 0)
+    case number
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case unit
+      back true
+    case bytes
+      back true
+    miss
+      back false
+
 # the copy's views lowered and checked, the errors inside a component of this file. The surface pass's first, and when
-# it has none, the kernel's
+# it has none, the kernel's. A walk's item in the copy takes the type the main check found for it (`checked`, the
+# program that check annotated), so the lowered code is checked with the types the component was checked with
 task check-lowered-views
   take copy, like list, like statement
+  take checked, like list, like statement
   take file, like text
   take merged, like boolean
   take runtime, like hash, like text, like text
@@ -158,7 +277,7 @@ task check-lowered-views
         bind name, entry/first
         bind bound, entry/second
     push(bound, made)
-  save lowered, lower-views(copy, bound)
+  save lowered, lower-views-typed(copy, bound, walk-item-types(checked, file))
 
   save surface, make list
   walk as-diagnostics(views-infer/check(lowered, file, merged))

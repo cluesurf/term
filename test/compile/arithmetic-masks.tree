@@ -1,0 +1,130 @@
+note <one arithmetic vocabulary through masks: add and the rest call a wearing form's own task, on every backend>
+
+# SHELVED until the compile under live host/line.js agrees with the TypeScript one (item term-self-host-001-0653, its
+# log entry of 2026-11-10): there `total`'s `add(a, b)` under `need addition` is emitted as a bare `add(a, b)` and the
+# TypeScript run stops `add is not defined`, where deck/make's TypeScript compile emits `traitArgAdditionT.add(a, b)`.
+# The money, big and others cases fail on typescript only, rust, swift and kotlin pass. A fail-first test never goes
+# live: take this mark out when the two agree.
+mark draft
+
+# Ported from arithmetic-masks.ts by statement (item term-self-host-001-0653), its four runs per backend each a walked
+# test, each backend a case of it, then its two refusals. Decisions-2026-10.md, D5: `add`, `subtract`, `multiply` and
+# `divide` on a form that wears `addition` (and the rest, @term/base/arithmetic) call the form's own task, and in a task
+# bounded by `need addition` they call whatever the caller hands it. `like self` in a mask is the form wearing it. Before
+# this, an operator on a form was refused as `arithmetic operand: expected number`. A form of the test's own and
+# @term/base's `big-integer`, generic and direct. Kotlin, which has no `Self`, casts a `like self` result back to the
+# receiver's type. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/reading
+  find any-holding
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find substring
+
+load @term/base/pattern
+  find pattern
+  find pattern-match
+  find rewrite-matches
+
+# a form of its own, wearing `addition` from the stdlib, added generically and directly; numbers still add as numbers
+host money, <load @term/base/arithmetic\n  find addition\n\nform money\n  link cents, like number\n  wear addition\n    task add\n      take self\n      take other, like money\n      like money\n      back make money, bind cents, add(self/cents, other/cents)\n\ntask total\n  head t, need addition\n  take a, like t\n  take b, like t\n  like t\n  back add(a, b)\n\ntask run\n  like text\n  save x, make money, bind cents, 3\n  save y, make money, bind cents, 4\n  save s, total(x, y)\n  save d, add(x, y)\n  back \<\{s/cents\} \{d/cents\} \{add(2, 5)\}\>\n>
+
+# the stdlib's big integers, each operator on them, and the generic task over them
+host big, <load @term/base/integer/big\n  find big-integer\n  find make-big-integer\n\nload @term/base/arithmetic\n  find addition\n\ntask total\n  head t, need addition\n  take a, like t\n  take b, like t\n  like t\n  back add(a, b)\n\ntask run\n  like text\n  save a, make-big-integer(\<123456789012345678901234567890\>)\n  save b, make-big-integer(\<987654321098765432109876543210\>)\n  save sum, add(a, b)\n  save difference, subtract(a, b)\n  save product, multiply(make-big-integer(\<99999999999999999999\>), make-big-integer(\<3\>))\n  save quotient, divide(make-big-integer(\<1000000000000000000000\>), make-big-integer(\<7\>))\n  save generic, total(a, b)\n  back \<\{sum/text()\} \{difference/text()\} \{product/text()\} \{quotient/text()\} \{generic/text()\}\>\n>
+
+host big-expected, <1111111110111111111011111111100 -864197532086419753208641975320 299999999999999999997 142857142857142857142 1111111110111111111011111111100>
+
+# rationals, complex numbers and decimals, through the same words, the generic task over rationals, and the name a
+# rational had before (`plus`), kept one release
+host others, <load @term/base/rational\n  find rational\n  find make-rational\n  find rational-text\n  find plus\n\nload @term/base/complex\n  find complex\n  find make-complex\n\nload @term/base/decimal\n  find big-decimal\n  find make-big-decimal\n\nload @term/base/arithmetic\n  find addition\n\ntask total\n  head t, need addition\n  take a, like t\n  take b, like t\n  like t\n  back add(a, b)\n\ntask run\n  like text\n  save half, make-rational(1, 2)\n  save third, make-rational(1, 3)\n  save z, multiply(make-complex(1.0, 2.0), make-complex(3.0, 4.0))\n  save money, add(make-big-decimal(\<0.1\>), make-big-decimal(\<0.2\>))\n  save cost, multiply(make-big-decimal(\<1.5\>), make-big-decimal(\<2.25\>))\n  back \<\{rational-text(add(half, third))\} \{rational-text(subtract(half, third))\} \{rational-text(multiply(half, third))\} \{rational-text(divide(half, third))\} \{rational-text(negate(half))\} \{rational-text(total(half, third))\} \{rational-text(plus(half, third))\} \{z/real\} \{z/imaginary\} \{money/text()\} \{cost/text()\}\>\n>
+
+host others-expected, <5/6 1/6 1/6 3/2 -1/2 5/6 5/6 -5 10 0.3 3.375>
+
+# a raise through a mask's task, inside a task bounded by the mask, caught by its caller: dividing a rational by zero
+# raises `defect`, and every backend must hand it to the guard, never end the program
+host raise, <load @term/base/rational\n  find rational\n  find make-rational\n  find rational-text\n\nload @term/base/arithmetic\n  find division\n\ntask ratio\n  head t, need division\n  take a, like t\n  take b, like t\n  like t\n  back divide(a, b)\n\ntask run\n  like text\n  fork\n    mark unsafe\n    save never, ratio(make-rational(1, 2), make-rational(0, 3))\n    back rational-text(never)\n  halt take\n    take problem\n    back \<caught\>\n>
+
+# a whole number a float printed with its `.0`, as Kotlin and Swift print `-5.0`
+host float-zero, make pattern, <<(-?\d+)\.0\b>>
+
+task without-zero
+  take match, like pattern-match
+  like text
+
+  back substring(match/text, 0, subtract(match/text/length, 2))
+
+task built
+  take text, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+test <a form wearing addition is added directly and by a bounded task>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-arithmetic-masks->)
+  host ran, run-text(money, backend, folder, <money>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <7 7 7>)
+
+test <big integers take add, subtract, multiply and divide, and the bounded task>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-arithmetic-masks->)
+  host ran, run-text(big, backend, folder, <big>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, big-expected)
+
+# a float prints its own way on each backend (`-5.0` on Kotlin and Swift), so the two parts are read as numbers
+test <rationals, complex numbers and decimals take the same words, and plus still answers>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-arithmetic-masks->)
+  host ran, run-text(others, backend, folder, <others>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(rewrite-matches(float-zero, ran/output, without-zero), others-expected)
+
+test <a raise through a mask in a bounded task reaches the caller's guard>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-arithmetic-masks->)
+  host ran, run-text(raise, backend, folder, <raise>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <caught>)
+
+# a form that wears no arithmetic mask is refused as before, naming the number it is not
+test <a form that wears no mask is not added>
+  host out, built(<form point\n  link x, like number\n\ntask run\n  like point\n  save p, make point, bind x, 1\n  back add(p, p)\n>, <refused.tree>)
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <expected number>)
+
+# `like self` is the wearer: a task taking another form where the mask says self is refused
+test <a worn task must take the wearer where the mask says like self>
+  host out, built(<load @term/base/arithmetic\n  find addition\n\nform money\n  link cents, like number\n  wear addition\n    task add\n      take self\n      take other, like number\n      like money\n      back self\n>, <self.tree>)
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <wears "addition">)

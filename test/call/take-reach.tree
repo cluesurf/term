@@ -1,0 +1,112 @@
+note <take-reach: a take a wrapper task receives and passes nowhere is dropped, and the check names it>
+
+# Ported from take-reach.ts by statement (item term-self-host-001-0605), one test per `expect` in its order. Decision
+# cli-in-term/013 part 2, task/term/take-reach.ts (the subject): a fixture console with one wrapper that passes every
+# take on, one that reads a take and drops another, one whose verb never reads what it is handed, and a take no parameter
+# receives. The check runs as its own process under tsx from the Term root, as cli-drift's caller runs it, over the
+# fixture written to a temporary folder once, by the first test. Each `expect` compared JSON, so each test compares the
+# lines it read joined, or the count.
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+  find contains, name text-contains
+
+# host value: a JSON text read, an empty list for the empty text
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text === "" ? "[]" : $text)>
+
+host source, <task keep\n  take value, like text\n  like text\n  send back, read value\n\n# a verb that reads both of its takes\ntask ship\n  take file, like text\n  take out, like text\n  like text\n  save first\n    call keep\n      read file\n  send back\n    call keep\n      read out\n\n# a wrapper that passes every take on: nothing dropped\ntask ship-project\n  take file, like text\n  take out, like text\n  like text\n  send back\n    call ship\n      read file\n      read out\n\n# a wrapper that takes out and passes it nowhere, the make-project shape\ntask pack-project\n  take file, like text\n  take out, like text\n  like text\n  send back\n    call keep\n      read file\n\n# a verb handed out that never reads it\ntask half\n  take file, like text\n  take out, like text\n  like text\n  send back\n    call keep\n      read file\n\n# a wrapper that passes both on, verbatim, to a verb that drops one: the check reads the program before the\n# simplifier inlines such a forwarder, so the drop is named against the verb\ntask half-project\n  take file, like text\n  take out, like text\n  like text\n  send back\n    call half\n      read file\n      read out\n\nhook tool\n  hook ship\n    take file\n    take out\n    task ship-project\n  hook pack\n    take file\n    take out\n    task pack-project\n  hook half\n    take file\n    take out\n    take extra\n    task half-project\n>
+
+form reach-state
+  mark shared
+  link file, like text
+
+host reach-now, make(reach-state, bind(file, <>))
+
+task fixture
+  like text
+
+  fork test, is-unequal(reach-now/file, <>)
+    hold
+      back reach-now/file
+  save file, <{temp-folder(<take-reach->)}/base.tree>
+  write-file(file, source)
+  save reach-now/file, file
+  back file
+
+# the check under tsx with these arguments, from the Term root
+task check
+  take arguments, like list, like text
+  like run-result
+  mark async
+
+  save root, term-root()
+  save argument-list, make(list, <{root}/node_modules/tsx/dist/cli.mjs>, <{root}/task/term/take-reach.ts>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  back run(<node>, argument-list, bind(directory, root))
+
+# the `dropped: ` lines of what the check printed
+task dropped-of
+  take output, like text
+  like list, like text
+
+  save out, make list
+  walk text-split(output, <\n>)
+    take line, like text
+    fork test, starts-with(line, <dropped: >)
+      hold
+        out/push(line)
+  back out
+
+test <the commands read>
+  save routes, check(make(list, <--file>, fixture(), <--routes>))
+  save read, make list
+  walk parsed-json(routes/output)
+    take command, like dynamic
+    read/push(<{command/path}:{command/task}>)
+  want hold, is-equal(read/join(<,>), <ship:ship-project,pack:pack-project,half:half-project>)
+
+test <the drops>
+  save checked, check(make(list, <--file>, fixture()))
+  save lines, dropped-of(checked/output)
+  want hold, is-equal(lines/join(<\n>), <dropped: pack --out (pack-project never reads it)\ndropped: half --out (half never reads it)\ndropped: half --extra (half-project has no parameter for it)>)
+
+test <the passing wrapper drops nothing>
+  save checked, check(make(list, <--file>, fixture()))
+  save found, 0
+  walk dropped-of(checked/output)
+    take line, like text
+    fork test, text-contains(line, < ship >)
+      hold
+        save found, add(found, 1)
+  want hold, is-equal(found, 0)
+
+test <the count>
+  save checked, check(make(list, <--file>, fixture()))
+  want hold, text-contains(checked/output, <take-reach: 3 dropped>)
+
+test <exit 1 on a drop>
+  save checked, check(make(list, <--file>, fixture()))
+  want hold, is-equal(checked/code, 1)

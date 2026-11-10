@@ -1,0 +1,75 @@
+note <A need false field typed maybe T is f?: T on TypeScript, read and written as a maybe by Term code>
+
+# Ported from maybe-field.ts by statement (item term-self-host-001-0617), D10 (decided 2026-10-05): a `need false`
+# field typed `maybe T` is `f?: T` on TypeScript and `maybe T` everywhere else. Held here on TypeScript, end to end with
+# TypeScript callers on the other side of the boundary: the emitted type is `hint?: string`, Term code READS it as a
+# maybe, a construction WRITES the value inside the maybe and leaves the field out for none, and an assignment writes the
+# same way, and a case arm binds the field as a maybe. A plain `need false` field (`count`) keeps its empty value. The
+# program is compiled as a lean library for node, and each run test prints one call of a TypeScript caller.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <load @term/base/maybe\n  find maybe\n\nform note\n  link body, like text\n  link hint\n    like maybe, like text\n    need false\n  link count\n    like number\n    need false\n\nform shape\n  case mark\n    link label\n      like maybe, like text\n      need false\n\ntask hint-of\n  take value, like note\n  like text\n\n  sift value/hint\n    case some\n      link written\n      back written\n    case none\n      back \<none\>\n\ntask count-of\n  take value, like note\n  like number\n\n  back value/count\n\ntask with-hint\n  take written, like text\n  like note\n\n  back\n    make note\n      bind body, \<b\>\n      bind hint, make some(written)\n\ntask without-hint\n  like note\n\n  back\n    make note\n      bind body, \<b\>\n\ntask set-hint\n  take value, like note\n  take written, like text\n  like note\n\n  save value/hint, make some(written)\n  back value\n\ntask label-of\n  take value, like shape\n  like text\n\n  sift value\n    case mark\n      sift label\n        case some\n          link written\n          back written\n        case none\n          back \<unlabelled\>\n>
+
+host hint-optional, make pattern, <<hint\?: string\b>>
+host label-optional, make pattern, <<label\?: string\b>>
+host maybe-typed, make pattern, <<hint\?: Maybe|label\?: Maybe>>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <maybe-field.tree>), bind(stdlib, <node>), bind(library, true), bind(lean, true)))
+
+# what one call of a TypeScript caller answers, as text
+task answer-of
+  take call, like text
+  like text
+
+  save folder, temp-folder(<term-maybe-field->)
+  back typescript-answer(built(), <process.stdout.write(String({call}))>, folder, <module>)
+
+test <the emitted field is the value type, optional>
+  host out, built()
+  want hold, out/ok
+  want hold, matches(hint-optional, out/emitted)
+  want hold, matches(label-optional, out/emitted)
+
+test <no field is typed as a Maybe>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(maybe-typed, out/emitted))
+
+# a TypeScript caller's records, written the TypeScript way
+test <a caller that set the field is read as some>
+  want hold, is-equal(answer-of(<hintOf(\{ body: "b", hint: "look" \})>), <look>)
+
+test <a caller that left it out is read as none>
+  want hold, is-equal(answer-of(<hintOf(\{ body: "b" \})>), <none>)
+
+test <a plain need false field left out is its empty value, as it is natively>
+  want hold, is-equal(answer-of(<countOf(\{ body: "b" \})>), <0>)
+
+test <a construction writes the value inside the maybe>
+  want hold, is-equal(answer-of(<withHint("here").hint>), <here>)
+
+test <and leaves the field absent for none>
+  want hold, is-equal(answer-of(<withoutHint().hint>), <undefined>)
+
+test <an assignment writes the value inside the maybe>
+  want hold, is-equal(answer-of(<setHint(\{ body: "b" \}, "later").hint>), <later>)
+
+test <a case arm binds the field as a maybe>
+  want hold, is-equal(answer-of(<labelOf(\{ form: "mark", label: "x" \}) + "," + labelOf(\{ form: "mark" \})>), <x,unlabelled>)

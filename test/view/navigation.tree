@@ -1,0 +1,111 @@
+note <the navigation contract on a host with no address bar: its own stack, how often the route signal woke, and the parameters a pattern reads>
+
+# Ported from navigation.ts by statement (item term-self-host-001-0644), one test per `ok` in its order
+# (native-navigation-0001, deck/site/code/view/navigation.tree). A native app has no address bar: the abstract page
+# answers `/` and mirrors nothing, so the history is the contract's own stack and nothing else. The program makes a run
+# of moves and answers the current path after each, how often an effect reading the route signal woke, and the route
+# parameters a pattern reads out of a path, joined by `|`. The page module reads as the abstract page, as the original's
+# resolver pinned it, and the program is built and run once on node through test/support/running. Where the original
+# asserted the parts only once the program compiled, a run that did not go reads an empty part here, so those tests
+# fail beside the first.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+host program, <load @term/site/code/view/navigation\n  find start-navigation\n  find navigate\n  find navigate-replace\n  find navigate-back\n  find current-path\n  find route-signal\n  find route-param\n\nload @term/site/code/view/reactive\n  find make-effect\n  find read-signal\n\nload @term/base/code/list\n  find list\n\nform wakes\n  mark shared\n  link count, like number\n\nhost woken\n  make wakes\n    bind count, code 0\n\ntask run\n  like text\n  save said\n    make list\n  call start-navigation\n  call said/push\n    call current-path\n  # an effect reading the route signal: it runs once now and once per move\n  call make-effect\n    task watch\n      save seen\n        call read-signal\n          bind self\n            call route-signal\n      save woken/count\n        call add\n          read woken/count\n          code 1\n  call navigate\n    text \</a\>\n  call said/push\n    call current-path\n  call navigate\n    text \</b\>\n  call said/push\n    call current-path\n  save first-back\n    call navigate-back\n  call said/push\n    text \<\{\{first-back\}\}\>\n  call said/push\n    call current-path\n  call navigate-replace\n    text \</c\>\n  call said/push\n    call current-path\n  save second-back\n    call navigate-back\n  call said/push\n    text \<\{\{second-back\}\}\>\n  call said/push\n    call current-path\n  save third-back\n    call navigate-back\n  call said/push\n    text \<\{\{third-back\}\}\>\n  call said/push\n    call current-path\n  call said/push\n    text \<\{\{woken/count\}\}\>\n  call said/push\n    call route-param\n      text \</posts/:id\>\n      text \</posts/42\>\n      text \<id\>\n  call said/push\n    call route-param\n      text \</users/:user/posts/:post\>\n      text \</users/ana/posts/7\>\n      text \<user\>\n  call said/push\n    call route-param\n      text \</posts/:id\>\n      text \</posts\>\n      text \<id\>\n  send back\n    call said/join\n      text \<|\>\n>
+
+# the host with no address: the abstract page, as a native app gets it, in place of the node page's server request
+host page-choice, make(compile-choice, bind(file, <navigation.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<dom/native/\{platform\}/page$>>), bind(into, <dom/native/page>)))))
+
+host out, compile-text(program, page-choice)
+
+# the run, made once: `state` how it went, `said` the parts of its last line
+form held-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link said, like list, like text
+
+host held, make(held-run, bind(done, false), bind(state, <>), bind(said, make list))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  host folder, temp-folder(<term-navigation->)
+  host ran, run-text(program, <typescript>, folder, <navigation>, page-choice)
+  save held/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save held/state, <ran>
+      save lines, text-split(trim(ran/output), <\n>)
+      save held/said, text-split(lines/{subtract(lines/length, 1)}, <|>)
+  save held/done, true
+  back held
+
+# the part of the last line at `at`, <none> when there is no such part, so a run that did not go fails every part
+task part
+  take at, like number
+  like text
+  mark async
+
+  save said, the-run()/said
+  fork test, is-below(at, said/length)
+    hold
+      back said/{at}
+  back <none>
+
+test <a program driving the contract compiles>
+  want hold, out/ok
+
+test <it runs>
+  want hold, is-equal(the-run()/state, <ran>)
+
+test <it starts at the host's path, / with no address>
+  want hold, is-equal(part(0), </>)
+
+test <navigate goes to /a, then /b>
+  want hold, is-equal(part(1), </a>)
+  want hold, is-equal(part(2), </b>)
+
+test <back from /b is /a>
+  want hold, is-equal(part(3), <true>)
+  want hold, is-equal(part(4), </a>)
+
+test <replace takes /a's place with /c, keeping the depth>
+  want hold, is-equal(part(5), </c>)
+
+test <back from /c is the start, since /c replaced /a>
+  want hold, is-equal(part(6), <true>)
+  want hold, is-equal(part(7), </>)
+
+test <back at the first is refused and stays put>
+  want hold, is-equal(part(8), <false>)
+  want hold, is-equal(part(9), </>)
+
+test <an effect on the route signal woke once at first and once per move: 1 + 5>
+  want hold, is-equal(part(10), <6>)
+
+test <a pattern reads its :id out of a path>
+  want hold, is-equal(part(11), <42>)
+
+test <a pattern with two parameters reads the one asked for>
+  want hold, is-equal(part(12), <ana>)
+
+test <a path shorter than the pattern reads empty>
+  want hold, is-equal(part(13), <>)

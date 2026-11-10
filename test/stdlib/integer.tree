@@ -1,0 +1,290 @@
+note <the sized integers, floats, big integers and decimals of the stdlib wrap, check, saturate and stop as they should on node>
+
+# Ported from test/stdlib/integer.ts by statement (item term-self-host-001-0640), one test per `eq` in its order. The
+# original compiled each module (integer/8, 16, 32, unsigned, 64, float/32, float/64, integer/big, decimal) as the entry
+# over the stdlib on node and called its exports; here the suite loads the same modules, so term test compiles them under
+# the node env and each test calls them. Two differences, both in the Mapping of the item's proof:
+# - the original read a big integer's and a decimal's arithmetic through the form's own tasks (bigIntegerMultiply,
+#   bigDecimalAdd). A suite's `multiply(a, b)` on a wearing form is the shape the arithmetic-masks suite of test/compile holds
+#   shelved, so these call the module's free tasks (big-multiply, decimal-add), which call the same bignum dock
+# - an integer STOP is a __TermStop that no Term guard catches (D15 d), so the two i64 bounds run in a child through
+#   run-text, which reads the stop the child printed, its name and its lead word, as the original's stoppedAt did
+
+load @term/base/integer/8
+  find i8-add
+  find i8-minimum-value
+  find i8-maximum-value
+  find i8-checked-add
+  find i8-saturating-add
+  find i8-negate
+  find to-i8
+
+load @term/base/integer/16
+  find i16-add
+  find i16-multiply
+
+load @term/base/integer/32
+  find i32-add
+  find i32-saturating-add
+  find i32-checked-add
+
+load @term/base/integer/unsigned
+  find u8-add
+  find u8-maximum-value
+  find u8-saturating-add
+  find u16-add
+  find u32-maximum-value
+  find u8-is-negative
+  find to-u8
+  find to-u16
+  find to-u32
+
+load @term/base/integer/64
+  find i64-add
+  find i64-negate
+  find u64-minimum-value
+
+load @term/base/float/32
+  find f32-add
+  find f32-multiply
+
+load @term/base/float/64
+  find f64-add
+  find f64-divide
+
+load @term/base/integer/big
+  find make-big-integer
+  find big-multiply
+  find big-divide
+  find big-compare
+
+load @term/base/decimal
+  find make-big-decimal
+  find decimal-add
+  find decimal-subtract
+  find decimal-multiply
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+# the raised value as the host holds it, to read the exception's own form
+# host value: a caught exception types as exception, its form is read off the host object
+bind raised-of
+  take cause, like dynamic
+  like dynamic
+  case node
+    text <$cause>
+
+# a checked result as text: <none>, or <some> and its value
+task shown
+  take m, like maybe, like number
+  like text
+
+  sift m
+    case some
+      link found
+      back <some {found}>
+    case none
+      back <none>
+
+# the form of the exception converting a number to a width raises, or <none> when it answers
+task raised-to-i8
+  take value, like number
+  like text
+
+  fork
+    mark unsafe
+    save kept, to-i8(value)
+    back <none>
+  halt take
+    take cause
+    back raised-of(cause)/form
+
+task raised-to-u8
+  take value, like number
+  like text
+
+  fork
+    mark unsafe
+    save kept, to-u8(value)
+    back <none>
+  halt take
+    take cause
+    back raised-of(cause)/form
+
+task raised-to-u32
+  take value, like number
+  like text
+
+  fork
+    mark unsafe
+    save kept, to-u32(value)
+    back <none>
+  halt take
+    take cause
+    back raised-of(cause)/form
+
+# a program whose run reads one i64 bound, run on node: it stops before it answers
+task bound-run
+  take bound, like text
+  like text
+
+  save folder, temp-folder(<term-integer->)
+  save program, <load @term/base/integer/64\n  find {bound}\n\ntask run\n  like text\n  back \<\{{bound}()\}\>\n>
+  save ran, run-text(program, <typescript>, folder, bound)
+  back <{ran/state} {ran/reason}>
+
+test <i8 add wraps (100 + 50 = -106)>
+  want hold, is-equal(i8-add(100, 50), -106)
+
+test <i8 add wraps negative (-100 + -50 = 106)>
+  want hold, is-equal(i8-add(-100, -50), 106)
+
+test <i8 add in range (10 + 20 = 30)>
+  want hold, is-equal(i8-add(10, 20), 30)
+
+test <i8 bounds (-128 .. 127)>
+  want hold, is-equal(i8-minimum-value(), -128)
+  want hold, is-equal(i8-maximum-value(), 127)
+
+test <i8 checked add overflows to none>
+  want hold, is-equal(shown(i8-checked-add(100, 50)), <none>)
+
+test <i8 checked add in range>
+  want hold, is-equal(shown(i8-checked-add(10, 20)), <some 30>)
+
+test <i8 saturating add clamps to max>
+  want hold, is-equal(i8-saturating-add(100, 50), 127)
+
+test <i8 negate of min is min (two-complement)>
+  want hold, is-equal(i8-negate(-128), -128)
+
+test <to-i8 keeps -128>
+  want hold, is-equal(to-i8(-128), -128)
+
+test <to-i8 stops below -128 with shortage>
+  want hold, is-equal(raised-to-i8(-129), <shortage>)
+
+test <to-i8 stops past 127 with excess>
+  want hold, is-equal(raised-to-i8(128), <excess>)
+
+test <i16 add wraps (32767 + 1)>
+  want hold, is-equal(i16-add(32767, 1), -32768)
+
+test <i16 multiply wraps (200 * 200)>
+  want hold, is-equal(i16-multiply(200, 200), -25536)
+
+test <i32 add wraps (2147483647 + 1)>
+  want hold, is-equal(i32-add(2147483647, 1), -2147483648)
+
+test <i32 saturating add clamps>
+  want hold, is-equal(i32-saturating-add(2147483647, 1), 2147483647)
+
+test <i32 checked add overflows to none>
+  want hold, is-equal(shown(i32-checked-add(2147483647, 1)), <none>)
+
+test <u8 add wraps (255 + 1 = 0)>
+  want hold, is-equal(u8-add(255, 1), 0)
+
+test <u8 maximum is 255>
+  want hold, is-equal(u8-maximum-value(), 255)
+
+test <u8 saturating add clamps to 255>
+  want hold, is-equal(u8-saturating-add(255, 10), 255)
+
+test <u16 add wraps (65535 + 2 = 1)>
+  want hold, is-equal(u16-add(65535, 2), 1)
+
+test <u32 maximum is 4294967295>
+  want hold, is-equal(u32-maximum-value(), 4294967295)
+
+test <u8 is-negative is always false>
+  want hold, not(u8-is-negative(200))
+
+# `to-u8` and its kin check where `-from-number` wraps (D12): the value itself, or a stop naming the width
+test <to-u8 keeps a value that fits>
+  want hold, is-equal(to-u8(200), 200)
+
+test <to-u8 stops past 255 with excess>
+  want hold, is-equal(raised-to-u8(256), <excess>)
+
+test <to-u8 stops below 0 with shortage>
+  want hold, is-equal(raised-to-u8(-1), <shortage>)
+
+test <to-u16 keeps 65535>
+  want hold, is-equal(to-u16(65535), 65535)
+
+test <to-u32 stops past 4294967295>
+  want hold, is-equal(raised-to-u32(4294967296), <excess>)
+
+# 64-bit: the native platform integer (no masking)
+test <i64 add (native)>
+  want hold, is-equal(i64-add(1000000000, 2000000000), 3000000000)
+
+test <i64 negate>
+  want hold, is-equal(i64-negate(42), -42)
+
+# -2^63 is past 2^53, so on TypeScript the bound STOPS with `shortage` (integer/64.tree, guides: library/numbers)
+test <i64 minimum bound stops below 2^53>
+  save said, bound-run(<i64-minimum-value>)
+  want hold, contains(said, <failed>)
+  want hold, contains(said, <__TermStop: shortage:>)
+
+test <i64 maximum bound stops past 2^53>
+  save said, bound-run(<i64-maximum-value>)
+  want hold, contains(said, <failed>)
+  want hold, contains(said, <__TermStop: shortage:>)
+
+test <u64 minimum is 0>
+  want hold, is-equal(u64-minimum-value(), 0)
+
+# floats: f32 rounds every result to single precision; f64 is the native double. Each expected value is node's own
+# Math.fround of the double result, as the original computed it
+test <f32 add rounds to single precision>
+  want hold, is-equal(f32-add(0.1, 0.2), 0.30000001192092896)
+
+test <f32 multiply rounds>
+  want hold, is-equal(f32-multiply(1.1, 1.1), 1.2100000381469727)
+
+test <f64 add is the native double>
+  want hold, is-equal(f64-add(0.1, 0.2), 0.30000000000000004)
+
+test <f64 divide is the native double>
+  want hold, is-equal(f64-divide(1, 4), 0.25)
+
+# arbitrary-precision integers via native bignum (BigInt on node). Each expected text is node's own BigInt result
+host big-a, make-big-integer(<123456789012345678901234567890>)
+host big-b, make-big-integer(<987654321>)
+
+test <big-integer exact multiply (30-digit x 9-digit)>
+  save product, big-multiply(big-a, big-b)
+  want hold, is-equal(product/text(), <121932631124828532112482853211126352690>)
+
+test <big-integer divide truncates>
+  save quotient, big-divide(big-a, big-b)
+  want hold, is-equal(quotient/text(), <124999998873437499901>)
+
+test <big-integer compare a > b>
+  want hold, is-equal(big-compare(big-a, big-b), 1)
+
+# arbitrary-precision decimals (exact base-10, no binary float rounding) via a BigInt-scaled fixed-point
+test <decimal 0.1 + 0.2 = 0.3 exactly (no 0.30000000000000004)>
+  save sum, decimal-add(make-big-decimal(<0.1>), make-big-decimal(<0.2>))
+  want hold, is-equal(sum/text(), <0.3>)
+
+test <decimal 1.00 - 0.99 = 0.01>
+  save difference, decimal-subtract(make-big-decimal(<1.00>), make-big-decimal(<0.99>))
+  want hold, is-equal(difference/text(), <0.01>)
+
+test <decimal 2.5 * 4 = 10.0 (scales add)>
+  save product, decimal-multiply(make-big-decimal(<2.5>), make-big-decimal(<4>))
+  want hold, is-equal(product/text(), <10.0>)

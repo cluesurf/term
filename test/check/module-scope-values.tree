@@ -1,0 +1,118 @@
+note <a task passed as a value binds by import as a call does, and a host bind two files define is split by file as a task is>
+
+# Ported from module-scope-values.ts by statement (item term-self-host-001-0609), one test per `ok` in its order: each
+# case of the original's `check` is two tests, that it compiles and that its `run` answers what it should
+# (term-compiler-0038, term-compiler-0039). A name is scoped to its module (module-scope.tree holds the rest). Both
+# stopped the CLI ports from loading each other: work/context/emission.tree passes read-runtime as a value beside
+# work/cask/toolchain.tree's read-runtime, and work/context/app-scope.tree and work/cask/host-value.tree each bind
+# `refuse`. Each case is a package of `@app/<name>` modules answered by their paths and nothing else, and runs on node
+# through test/support/running.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host main, <load @app/a\n  find go\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back, \<\{go()\} \{other()\}\>\n>
+
+host reader-b, <task reader\n  take file, like text\n  like text\n  send back, text \<b\>\n\ntask other\n  like text\n  send back\n    call reader\n      text \<x\>\n>
+
+# a package of `@app/<name>` modules, and a main file loading some of them, which loads nothing else
+task package-of
+  take a, like text
+  take b, like text
+  like compile-choice
+
+  save files, make list
+  files/push(make(compiling-source, bind(file, <@app/a>), bind(text, a), bind(answer, <a.tree>)))
+  files/push(make(compiling-source, bind(file, <@app/b>), bind(text, b), bind(answer, <b.tree>)))
+  back make(compile-choice, bind(file, <main.tree>), bind(closed, true), bind(files, files))
+
+task compiles
+  take a, like text
+  take b, like text
+  take entry, like text
+  like boolean
+
+  back compile-text(entry, package-of(a, b))/ok
+
+# what the package's `run` answered on node, else why it did not run
+task runs
+  take a, like text
+  take b, like text
+  take entry, like text
+  like text
+  mark async
+
+  host folder, temp-folder(<term-module-scope-values->)
+  host ran, run-text(entry, <typescript>, folder, <main>, package-of(a, b))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+# a task passed as a VALUE where some form has a field of its name: two files defining `reader` split it by file, and
+# the value reference in `bind reader, read reader` was left as written (the name matched a field, which only a match
+# arm makes a local) and failed as an unknown name
+host field-a, <form ask\n  link reader, like dynamic\n\ntask reader\n  take file, like text\n  like text\n  mark private\n  send back, text \<a\>\n\ntask go\n  like text\n  save asked\n    make ask\n      bind reader, read reader\n  send back, call asked/reader(text \<x\>)\n>
+
+# and with no field of the name anywhere
+host value-a, <task reader\n  take file, like text\n  like text\n  send back, text \<a\>\n\ntask apply\n  take f, like task\n    take file, like text\n    like text\n  like text\n  send back, call f(text \<x\>)\n\ntask go\n  like text\n  send back, call apply(read reader)\n>
+
+# inside a match arm the variant's field IS a local by its own name, so a split task of that name is not what the arm's
+# reference means
+host arm-a, <form shape\n  case box\n    link reader, like text\n  case none\n\ntask reader\n  take file, like text\n  like text\n  send back, text \<a\>\n\ntask go\n  like text\n  save s\n    make box\n      bind reader, text \<field\>\n  sift s\n    case box\n      send back, read reader\n    case none\n      send back, call reader(text \<x\>)\n  send back, call reader(text \<x\>)\n>
+
+# a host BIND is scoped to its module like a task: two files each binding `refuse`, at one and at two arguments
+host refuse-a, <bind refuse\n  take message, like text\n  like text\n  case node\n    text \<("one:" + $message)\>\n\ntask go\n  like text\n  send back\n    call refuse\n      text \<a\>\n>
+host refuse-b, <bind refuse\n  take message, like text\n  take failure, like text\n  like text\n  case node\n    text \<("two:" + $message + $failure)\>\n\ntask other\n  like text\n  send back\n    call refuse\n      text \<b\>\n      text \<c\>\n>
+
+# the same arity: told apart only by file
+host tag-a, <bind tag\n  take message, like text\n  like text\n  case node\n    text \<("a:" + $message)\>\n\ntask go\n  like text\n  send back\n    call tag\n      text \<x\>\n>
+host tag-b, <bind tag\n  take message, like text\n  like text\n  case node\n    text \<("b:" + $message)\>\n\ntask other\n  like text\n  send back\n    call tag\n      text \<y\>\n>
+
+# a file that imports a bind by name from a module calls that module's, beside another module's bind of the name
+host bare-tag-a, <bind tag\n  take message, like text\n  like text\n  case node\n    text \<("a:" + $message)\>\n>
+host tag-main, <load @app/a\n  find tag\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back, \<\{tag(\<x\>)\} \{other()\}\>\n>
+
+test <a task passed as a value binds by import where a form has a field of its name>
+  want hold, compiles(field-a, reader-b, main)
+
+test <a task passed as a value binds by import where a form has a field of its name: runs>
+  want hold, is-equal(runs(field-a, reader-b, main), <a b>)
+
+test <a task passed as a value binds by import>
+  want hold, compiles(value-a, reader-b, main)
+
+test <a task passed as a value binds by import: runs>
+  want hold, is-equal(runs(value-a, reader-b, main), <a b>)
+
+test <a match arm's field stays the local it names, beside a split task of its name>
+  want hold, compiles(arm-a, reader-b, main)
+
+test <a match arm's field stays the local it names, beside a split task of its name: runs>
+  want hold, is-equal(runs(arm-a, reader-b, main), <field b>)
+
+test <two files binding one name at two arities each call their own>
+  want hold, compiles(refuse-a, refuse-b, main)
+
+test <two files binding one name at two arities each call their own: runs>
+  want hold, is-equal(runs(refuse-a, refuse-b, main), <one:a two:bc>)
+
+test <two files binding one name at one arity each call their own>
+  want hold, compiles(tag-a, tag-b, main)
+
+test <two files binding one name at one arity each call their own: runs>
+  want hold, is-equal(runs(tag-a, tag-b, main), <a:x b:y>)
+
+test <an imported bind is the module's it was found in>
+  want hold, compiles(bare-tag-a, tag-b, tag-main)
+
+test <an imported bind is the module's it was found in: runs>
+  want hold, is-equal(runs(bare-tag-a, tag-b, tag-main), <a:x b:y>)

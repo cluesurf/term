@@ -1,0 +1,3 @@
+deck @fixture/shim-found-form
+  head <A program that reads a file through file/blocking and never stats one, for test/compile/shim-found-form.tree>
+  mark <0.0.0>

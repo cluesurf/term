@@ -13,8 +13,10 @@ load @term/base/text
   find to-lower-case
   find to-upper-case
 
-load @term/make/compile/node
-  find dock-route
+# the plain route form, so the refusal loads nothing from @term/make (decision 138 rule 1 of
+# term/self-host/change/001-finish-self-host, item term-self-host-001-1118)
+load @term/call/work/hook/route
+  find route
 
 load @term/call/work/output/printer
   find set-output
@@ -37,7 +39,7 @@ form usage-ask
 # a word that names no command, among the commands of a console
 form command-guess
   link name, like text
-  link routes, like list, like dock-route
+  link routes, like list, like route
   link word, like text
 
 form usage-opening

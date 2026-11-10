@@ -1,0 +1,152 @@
+note <three shapes a generated grammar table has, built by the CLI itself on a small lean package, merged and separate>
+
+# Ported from table-shapes.ts by statement (item term-self-host-001-0620), its loop over the two modes written out, one
+# test per `ok` per mode in its order. Mesh grammar/v4, 2026-10-13:
+# 1. A LONG LITERAL IS ONE ITEM PER LINE (compile/ts-emit.tree `join-items`). An array, Map or record whose one-line form
+#    passes 1,000 characters is broken per item: tsgo's source-map writer is quadratic in line length. A short literal
+#    keeps its exact one-line spelling.
+# 2. A LEAN CONSTRUCTION OF A FORM SPLIT BY FILE (check/scope.ts `rewrite`): `pair feature(<a>), value <b>` of the
+#    package's own `pair`, in a file that also loads @term/base/list, was `the name "pair" is not defined`.
+# 3. A TOP-LEVEL VALUE NAMED LIKE A FORM, in a hold (check/elaborate.ts `kindsApart`): `size(non-finite)` in a
+#    `want hold` found the form on the kernel's copy.
+# The package is written to a temp folder per mode and built by the `term` under test, once per mode in this process.
+
+load ../support/reading
+  find lines-of
+
+load @term/test/self
+  find run-self
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/file/directory
+  find make, name folder-make
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains
+
+host deck-text, <deck @gate/table-shapes\n  mark \<0.0.1\>\n  link @term/base, mark \<0.0.x\>\n  test ./test\n>
+
+host role-text, <load @term/code\n  find code\n\nrole code\n  mark lean\n  take @/code/**/*.tree\n>
+
+host shape-head, <load @term/base/list\n  find list\n\nform row\n  link name, like text\n  link tags, like list, like text\n\nform pair\n  link feature, like text\n  link value, like text\n\nform non-finite\n  link key, like text\n\nhost short\n  like list\n    like text\n  \<a\>\n  \<b\>\n\nhost rows\n  like list\n    like row\n>
+
+host shape-tail, <\nhost non-finite\n  like list\n    like non-finite\n  non-finite key \<a\>\n  non-finite key \<b\>\n>
+
+host use-text, <load ./shape\n  find pair\n\nload @term/base/list\n  find list\n  find push\n\ntask pairs\n  like list, like pair\n  save made\n    make list\n  call push\n    bind list, read made\n    bind item\n      pair feature(\<class\>), value \<stem\>\n  back made\n>
+
+host test-text, <load ../code/shape\n  find non-finite\n\nload @term/base/list\n  find size\n\ntest two-rows\n  want hold\n    is-equal size(non-finite), 2\n>
+
+# the table's module: its head, a row per line for 200 rows, then the value named like a form
+task shape-text
+  like text
+
+  save lines, make list
+  save digits, make(list, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+  save tens, make(list, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+  walk tens
+    take ten, like number
+    walk digits
+      take digit, like number
+      save i, add(multiply(ten, 10), digit)
+      lines/push(<  row name(\<row-{i}\>), tags \<t{i}\>>)
+  back <{shape-head}{lines/join(<\n>)}\n{shape-tail}>
+
+# what one build answered: the exit code, what it said, and the folder it built in
+form table-build
+  link code, like number
+  link said, like text
+  link folder, like text
+
+form table-builds
+  mark shared
+  link held, like hash, like text, like table-build
+
+host kept, make(table-builds, bind(held, make hash))
+
+# the package written to a temp folder and built with `term make <mode>`, once per mode
+task built
+  take mode, like text
+  like table-build
+  mark async
+
+  fork test, kept/held/has(mode)
+    hold
+      back kept/held/{mode}
+  save folder, temp-folder(<term-table-shapes->)
+  folder-make(<{folder}/base>)
+  folder-make(<{folder}/code>)
+  folder-make(<{folder}/test>)
+  write-file(<{folder}/deck.tree>, deck-text)
+  write-file(<{folder}/base/role.tree>, role-text)
+  write-file(<{folder}/code/shape.tree>, shape-text())
+  write-file(<{folder}/code/use.tree>, use-text)
+  write-file(<{folder}/test/shape.tree>, test-text)
+  save result, run-self(make(list, <make>, mode, <--plain>, <--color>, <never>), folder)
+  save made, make(table-build, bind(code, result/code), bind(said, <{result/output}{result/error}>), bind(folder, folder))
+  save kept/held/{mode}, made
+  back made
+
+# the emitted table module the mode wrote: the shape module merged, its unit separate
+task units
+  take mode, like text
+  like text
+  mark async
+
+  save made, built(mode)
+  fork test, is-equal(mode, <--separate>)
+    hold
+      back read-file(<{made/folder}/host/.unit/_gate_table-shapes_code_shape.ts>)
+  back read-file(<{made/folder}/host/code/shape.ts>)
+
+task longest-line
+  take text, like text
+  like number
+
+  save most, 0
+  walk lines-of(text)
+    take line, like text
+    fork test, is-above(line/length, most)
+      hold
+        save most, line/length
+  back most
+
+test <--merged: the package builds>
+  host made, built(<--merged>)
+  want hold, is-equal(made/code, 0)
+
+test <--merged: no line of the 200-row table passes 1,000 characters>
+  host text, units(<--merged>)
+  want hold, not(is-above(longest-line(text), 1000))
+
+test <--merged: one row per line>
+  host text, units(<--merged>)
+  want hold, contains(text, <\n\{ name: "row-1", tags: ["t1"] \},\n>)
+
+test <--merged: a short list keeps its one-line spelling>
+  host text, units(<--merged>)
+  want hold, contains(text, <= ["a", "b"]>)
+
+test <--separate: the package builds>
+  host made, built(<--separate>)
+  want hold, is-equal(made/code, 0)
+
+test <--separate: no line of the 200-row table passes 1,000 characters>
+  host text, units(<--separate>)
+  want hold, not(is-above(longest-line(text), 1000))
+
+test <--separate: one row per line>
+  host text, units(<--separate>)
+  want hold, contains(text, <\n\{ name: "row-1", tags: ["t1"] \},\n>)
+
+test <--separate: a short list keeps its one-line spelling>
+  host text, units(<--separate>)
+  want hold, contains(text, <= ["a", "b"]>)

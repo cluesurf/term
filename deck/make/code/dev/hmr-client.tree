@@ -1,0 +1,215 @@
+# The dev HMR client (Tier 3). The browser half of term dev, served at `/@seed/client.mjs`: it opens an SSE connection,
+# and on each message either full-reloads or hot-applies an update (re-import the changed module cache-busted, then run
+# the boundary's accept callback). `apply-hmr` is that decision over an injected environment, so a test drives it
+# without a DOM. See note/project/term/research/repo/vite/04-websocket-protocol.md and 07-hmr-api.md.
+#
+# The Term port of the old TypeScript client (term-self-host-001-0732, decisions 132 and 135). The browser
+# script is TEXT, written here line by line as plain JavaScript that names no module, so no bundler helper (esbuild's
+# __name) or prelude reaches the page. The original spliced its own compiled applyHmr into the script, so the page ran
+# whatever the bundler made of it. The two copies of the decision, the script's and `apply-hmr`, are held equal by the
+# item's proof. Host calls on the environment are one-expression binds (decision 132 point 1).
+
+load @term/base/list
+  find list
+  find join
+
+# one update the dev server pushes: re-import `accepted` cache-busted by `timestamp`, then run `boundary`'s accept
+form hmr-change
+  link boundary, like text
+  link accepted, like text
+  link timestamp, like number
+
+# the messages the dev server pushes, tagged on `type` as they cross the wire
+form hmr-message
+  mark tag, name type
+  case connected
+  case full-reload
+  case update
+    link updates, like list, like hmr-change
+  # a recompile error: show an overlay and keep the app running on its last-good code (no reload, state preserved)
+  case error
+    link errors, like list, like text
+
+# what the client needs from its environment (the browser provides these, a test provides fakes). `reimport` answers a
+# promise of the fresh module, `accept-of` and `dispose-of` the callbacks a boundary registered, if any
+form hmr-environment
+  link reload, like dynamic
+  link reimport, like dynamic
+  link accept-of, like dynamic
+  link dispose-of, like dynamic, need false
+  link show-error, like dynamic, need false
+  link clear-error, like dynamic, need false
+  link log, like dynamic
+
+# ---- the host calls on the environment ----
+
+bind hmr-client-log
+  take hmr-client-env, like dynamic
+  take hmr-client-message, like text
+  case node
+    text <$hmr-client-env.log($hmr-client-message)>
+
+bind hmr-client-reload
+  take hmr-client-env, like dynamic
+  case node
+    text <$hmr-client-env.reload()>
+
+bind hmr-client-show-error
+  take hmr-client-env, like dynamic
+  take hmr-client-errors, like list, like text
+  case node
+    text <$hmr-client-env.showError?.($hmr-client-errors)>
+
+bind hmr-client-clear-error
+  take hmr-client-env, like dynamic
+  case node
+    text <$hmr-client-env.clearError?.()>
+
+bind hmr-client-dispose-of
+  take hmr-client-env, like dynamic
+  take hmr-client-boundary, like text
+  like dynamic
+  case node
+    text <$hmr-client-env.disposeOf?.($hmr-client-boundary)>
+
+bind hmr-client-reimport
+  take hmr-client-env, like dynamic
+  take hmr-client-url, like text
+  take hmr-client-stamp, like number
+  like dynamic
+  case node
+    text <(await $hmr-client-env.reimport($hmr-client-url, $hmr-client-stamp))>
+
+bind hmr-client-accept-of
+  take hmr-client-env, like dynamic
+  take hmr-client-boundary, like text
+  like dynamic
+  case node
+    text <$hmr-client-env.acceptOf($hmr-client-boundary)>
+
+# a callback a boundary registered is there (the original's `if (callback)`)
+bind hmr-client-is-set
+  take hmr-client-value, like dynamic
+  like boolean
+  case node
+    text <Boolean($hmr-client-value)>
+
+bind hmr-client-call
+  take hmr-client-callback, like dynamic
+  case node
+    text <$hmr-client-callback()>
+
+bind hmr-client-call-with
+  take hmr-client-callback, like dynamic
+  take hmr-client-value, like dynamic
+  case node
+    text <$hmr-client-callback($hmr-client-value)>
+
+# the HMR url as a JavaScript string literal
+bind hmr-client-quote
+  take hmr-client-url, like text
+  like text
+  case node
+    text <JSON.stringify($hmr-client-url)>
+
+# ---- the decision ----
+
+# apply one HMR message. Pure control flow over the injected environment, so it is testable headlessly
+task apply-hmr
+  take message, like hmr-message
+  take environment, like hmr-environment
+  mark async
+
+  sift message
+    case connected
+      hmr-client-log(environment, <term hmr connected>)
+    # a recompile error: keep the app running (no reload) and show the overlay; the next good update clears it
+    case error
+      link errors
+      hmr-client-show-error(environment, errors)
+    case full-reload
+      hmr-client-reload(environment)
+    case update
+      link updates
+      # a successful update clears any error overlay left from a previous failed build
+      hmr-client-clear-error(environment)
+      walk updates
+        take change, like hmr-change
+        # snapshot and tear down the OLD module before it is replaced, so its state survives into the fresh one
+        save dispose, hmr-client-dispose-of(environment, change/boundary)
+        fork test, hmr-client-is-set(dispose)
+          hold
+            hmr-client-call(dispose)
+        save fresh, hmr-client-reimport(environment, change/accepted, change/timestamp)
+        save accept, hmr-client-accept-of(environment, change/boundary)
+        # no boundary callback: fall back to a reload
+        fork test, hmr-client-is-set(accept)
+          hold
+            hmr-client-call-with(accept, fresh)
+          miss
+            hmr-client-reload(environment)
+
+# ---- the browser script ----
+
+# The browser client source: a small module that wires SSE to `applyHmr` with a real environment, and exposes a tiny
+# hot registry (`window.__seedHot(url)`) that compiled boundary modules use to register an accept callback. Its
+# applyHmr is `apply-hmr` above, written in JavaScript
+task dev-client
+  take hmr-url, like text
+  like text
+
+  save lines, make list
+  push(lines, <<// term dev client (generated)>>)
+  push(lines, <<const registry = new Map()>>)
+  push(lines, <<window.__seedHot = (url) => {>>)
+  push(lines, <<  let entry = registry.get(url)>>)
+  push(lines, <<  if (!entry) { entry = { accept: undefined, data: {} }; registry.set(url, entry) }>>)
+  push(lines, <<  return {>>)
+  push(lines, <<    get data() { return entry.data },>>)
+  push(lines, <<    accept(callback) { entry.accept = callback },>>)
+  push(lines, <<    dispose(callback) { entry.dispose = callback },>>)
+  push(lines, <<    invalidate() { location.reload() },>>)
+  push(lines, <<  }>>)
+  push(lines, <<}>>)
+  push(lines, <<async function applyHmr(message, environment) {>>)
+  push(lines, <<  if (message.type === 'connected') {>>)
+  push(lines, <<    environment.log('term hmr connected')>>)
+  push(lines, <<    return>>)
+  push(lines, <<  }>>)
+  push(lines, <<  if (message.type === 'error') {>>)
+  push(lines, <<    environment.showError?.(message.errors)>>)
+  push(lines, <<    return>>)
+  push(lines, <<  }>>)
+  push(lines, <<  if (message.type === 'full-reload') {>>)
+  push(lines, <<    environment.reload()>>)
+  push(lines, <<    return>>)
+  push(lines, <<  }>>)
+  push(lines, <<  environment.clearError?.()>>)
+  push(lines, <<  for (const update of message.updates) {>>)
+  push(lines, <<    const dispose = environment.disposeOf?.(update.boundary)>>)
+  push(lines, <<    if (dispose) {>>)
+  push(lines, <<      dispose()>>)
+  push(lines, <<    }>>)
+  push(lines, <<    const fresh = await environment.reimport(update.accepted, update.timestamp)>>)
+  push(lines, <<    const accept = environment.acceptOf(update.boundary)>>)
+  push(lines, <<    if (accept) {>>)
+  push(lines, <<      accept(fresh)>>)
+  push(lines, <<    } else {>>)
+  push(lines, <<      environment.reload()>>)
+  push(lines, <<    }>>)
+  push(lines, <<  }>>)
+  push(lines, <<}>>)
+  push(lines, <<const environment = {>>)
+  push(lines, <<  reload: () => location.reload(),>>)
+  push(lines, <<  reimport: (url, t) => import(url.split('?')[0] + '?t=' + t),>>)
+  push(lines, <<  acceptOf: (boundary) => registry.get(boundary)?.accept,>>)
+  push(lines, <<  disposeOf: (boundary) => {>>)
+  push(lines, <<    const entry = registry.get(boundary)>>)
+  push(lines, <<    return entry && entry.dispose ? () => entry.dispose(entry.data) : undefined>>)
+  push(lines, <<  },>>)
+  push(lines, <<  log: (message) => console.log('[term]', message),>>)
+  push(lines, <<}>>)
+  push(lines, <const source = new EventSource({hmr-client-quote(hmr-url)})>)
+  push(lines, <<source.onmessage = (event) => applyHmr(JSON.parse(event.data), environment)>>)
+  push(lines, <>)
+  back join(lines, <\n>)

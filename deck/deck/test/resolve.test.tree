@@ -1,0 +1,59 @@
+note <a resolution is written as a lockfile: each deck with its version and its links>
+
+# Ported from resolve.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. The original
+# held code/package/resolve.ts, a face whose logic is code/package/resolution.tree: this holds that module itself, so the
+# resolution is its own hash of `resolved-deck` records. The face's `toEqual` on a version is a compare of each part
+# here, since the version is version.tree's `code`, whose prerelease and build the face drops when they are empty.
+
+load ../code/package/resolution
+  find resolution
+  find resolved-deck
+  find build-lockfile
+
+load ../code/package/lockfile-shape
+  find lock-entry
+
+load ../code/version
+  find parse-code
+
+# the place of the deck named `name` in the lockfile's decks, -1 when it is not there
+task place-of
+  take decks, like list, like lock-entry
+  take name, like text
+  like number
+
+  save at, -1
+  save index, 0
+  walk decks
+    take deck, like lock-entry
+    fork test, is-equal(deck/name, name)
+      hold
+        save at, index
+    save index, add(index, 1)
+  back at
+
+test <buildLockfile: converts resolution map to lockfile>
+  host seed-links, make hash
+  seed-links/set(<@cluesurf/base>, <1.0.0>)
+  host base-links, make hash
+  host decks, make hash
+  decks/set(<@cluesurf/seed@1.2.3>, make(resolved-deck, bind(name, <@cluesurf/seed>), bind(code, parse-code(<1.2.3>)), bind(hash, <sha512-abc>), bind(site, <https://registry.npmjs.org/@cluesurf/seed.tree/-/seed.tree-1.2.3.tgz>), bind(link, seed-links)))
+  decks/set(<@cluesurf/base@1.0.0>, make(resolved-deck, bind(name, <@cluesurf/base>), bind(code, parse-code(<1.0.0>)), bind(hash, <sha512-def>), bind(site, <https://registry.npmjs.org/@cluesurf/base.tree/-/base.tree-1.0.0.tgz>), bind(link, base-links)))
+  host lockfile, build-lockfile(make(resolution, bind(decks, decks)))
+  want hold, is-equal(lockfile/version, 1)
+  want hold, is-equal(lockfile/decks/length, 2)
+  host seed-at, place-of(lockfile/decks, <@cluesurf/seed>)
+  want hold, is-above(seed-at, -1)
+  host seed, lockfile/decks/{seed-at}
+  want hold, is-equal(seed/code/major, 1)
+  want hold, is-equal(seed/code/minor, 2)
+  want hold, is-equal(seed/code/patch, 3)
+  want hold, is-equal(seed/code/prerelease, <>)
+  want hold, is-equal(seed/code/build, <>)
+  want hold, is-equal(seed/link/length, 1)
+  want hold, is-equal(seed/link/0/name, <@cluesurf/base>)
+  want hold, is-equal(seed/link/0/code, <1.0.0>)
+  host base-at, place-of(lockfile/decks, <@cluesurf/base>)
+  want hold, is-above(base-at, -1)
+  host base, lockfile/decks/{base-at}
+  want hold, is-equal(base/link/length, 0)

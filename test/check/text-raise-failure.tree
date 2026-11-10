@@ -1,0 +1,130 @@
+note <a raise written `halt <text>` raises `failure` even where nothing loads @term/base/exception>
+
+# Ported from text-raise-failure.ts by statement (item term-self-host-001-0609), one test per `ok` in its order (item
+# term-self-host-001-0315). The build holds no `failure` form there, and until then the raise was invisible: a caller's
+# `halt failure` bound was refused as "nothing it calls raises failure", and a handler's `case failure` compiled to
+# `problem === "failure"` (never true) with its locals unbound, and no diagnostic. Each program is lean, a library, and
+# loads nothing. The original called the handler program's `told` and `run` from TypeScript: here a run task of a
+# second file loads that program as `@app/caught` and answers both, built and run once on node through
+# test/support/running. A `run` that answered undefined is written `undefined` there.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find refused-saying
+
+load ../support/reading
+  find any-holding
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+host refuse, <task refuse\n  take note, like text\n\n  halt \<\{note\}\>\n>
+
+# the caller declares what its callee raises
+host bound, <{refuse}\ntask run\n  take note, like text\n  like number\n  halt failure\n\n  refuse(note)\n  back 1\n>
+
+# a bound the body does not reach is still refused
+host wide, <task run\n  take note, like text\n  like number\n  halt failure\n\n  back 1\n>
+
+# a handler over the caught value, one arm renaming the first shared field, one selecting `note`
+host caught, <{refuse}\ntask run\n  take note, like text\n  like text\n\n  fork\n    mark unsafe\n    refuse(note)\n  halt take\n    take problem\n    sift problem\n      case failure\n        link said\n        back said\n  back \<none\>\n\ntask told\n  take note, like text\n  like text\n\n  fork\n    mark unsafe\n    refuse(note)\n  halt take\n    take problem\n    sift problem\n      case failure\n        link note\n        back \<caught \{note\}\>\n  back \<none\>\n>
+
+# an arm naming what the guarded body cannot raise
+host stray, <{refuse}\nform absence\n  link thing, like text\n\ntask run\n  take note, like text\n  like text\n\n  fork\n    mark unsafe\n    refuse(note)\n  halt take\n    take problem\n    sift problem\n      case failure\n        back \<failure\>\n      case absence\n        back \<absence\>\n  back \<none\>\n>
+
+# a run task answering the handler program's `told(<boom>)`, then its `run(<boom>)`
+host caught-run, <load @app/caught\n  find told\n  find run, name caught-run\n\ntask run\n  like text\n\n  back \<\{told(\<boom\>)\}|\{caught-run(\<boom\>)\}\>\n>
+
+host said-shape, make pattern, <<const said = problem\.\w+>>
+
+task lean-choice
+  take file, like text
+  like compile-choice
+
+  back make(compile-choice, bind(file, file), bind(lean, true), bind(library, true), bind(closed, true))
+
+host caught-out, compile-text(caught, lean-choice(<caught.tree>))
+
+# what the run task answered, made once: `parts` told's answer and run's, `reason` why it did not run
+form answers
+  mark shared
+  link done, like boolean
+  link parts, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(parts, make list), bind(reason, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save files, make list
+  files/push(make(compiling-source, bind(file, <@app/caught>), bind(text, caught), bind(answer, <caught.tree>)))
+  save choice, make(compile-choice, bind(file, <main.tree>), bind(lean, true), bind(library, true), bind(closed, true), bind(files, files))
+  host folder, temp-folder(<term-text-raise->)
+  host ran, run-text(caught-run, <typescript>, folder, <caught>, choice)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/parts, text-split(ran/output, <|>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# what the run task answered at `at`, <> when it did not run
+task part-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <a caller may declare halt failure for a callee's text raise>
+  want hold, compile-text(bound, lean-choice(<bound.tree>))/ok
+
+test <a halt failure bound nothing reaches is still refused>
+  want hold, refused-saying(compile-text(wide, lean-choice(<wide.tree>)), <raise-bound>, <nothing it calls raises "failure">)
+
+test <a handler sifting a text raise compiles>
+  want hold, caught-out/ok
+
+test <the arm tests what was raised>
+  want hold, text-contains(caught-out/emitted, <problem.form === "failure">)
+
+test <the arm never compares the caught value with text>
+  want hold, not(text-contains(caught-out/emitted, <problem === "failure">))
+
+test <the renaming arm binds its local>
+  want hold, matches(said-shape, caught-out/emitted)
+
+test <the raise reaches the arm and its field binds>
+  want hold, is-equal(part-at(0), <caught boom>)
+
+test <the renaming arm returns a text, never undefined>
+  want hold, is-equal(the-answers()/parts/length, 2)
+  want hold, is-unequal(part-at(1), <undefined>)
+
+test <an arm the guarded body cannot raise is refused>
+  host out, compile-text(stray, lean-choice(<stray.tree>))
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <"absence" is not something the guarded body can raise>)

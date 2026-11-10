@@ -1,0 +1,18 @@
+note <The widened mill: a form, a make, a make list, a walk, a member read and a host constant, compiled and run>
+
+# Ported from data.ts by statement (item term-self-host-001-0613). The program is compiled longhand with the
+# compiler's own resolver, as the original did, and run on node: its `run` sums the x of two points.
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host source, <form point\n  link x, like u64\n  link y, like u64\n\ntask sum-x-coords\n  take items\n  save total, code 0\n  walk list, read items\n    hook next\n      take site, name item\n      save total\n        call add\n          read total\n          read item/x\n  send back total\n\ntask run\n  host points\n    make list\n      make point\n        bind x, code 3\n        bind y, code 0\n      make point\n        bind x, code 4\n        bind y, code 0\n  send back\n    call sum-x-coords\n      read points\n>
+
+test <run() sums x coords>
+  host folder, temp-folder(<seed-data->)
+  host ran, run-text(source, <typescript>, folder, <data>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <7>)

@@ -1,0 +1,215 @@
+note <Rust moves the last of several reads of a name when every earlier one was a clone, and never past a borrow or a loop>
+
+# Ported from rust-moves.ts by statement (item term-self-host-001-0619). Rust moves the last of several reads of a name
+# in one statement when every earlier one there was a clone, and holds a form the program clones as one `Rc` around its
+# payload (rust.ts, `manyMoves`, `payloads`; backend.ts, `lastReads`). Held both ways: List's `tail` moves its third
+# call's lists, and a statement whose earlier read is a borrow, and a read inside a loop, keep their clones, since a move
+# there would meet a live borrow (E0505) or the next turn's read (E0382). Each program is compiled for Rust over the
+# stdlib and its emitted text, the native prelude ahead of it, built by rustc as a library: find-tool, then skip. The
+# prelude is test/support's `prelude-text`, whose reader reads the runtime files, where the original's read none.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+  find project-path
+  find file-text
+
+load ../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find starts-with, name text-starts-with
+
+load @term/base/text/util
+  find join
+
+host chain, <form chain\n  case end\n  case link\n    link value, like number\n    link next, like chain\n\ntask peek\n  take c, like chain\n  like number\n  fork case, read c\n    case end\n      send back, code 0\n    case link\n      send back, read value\n\ntask keep\n  take c, like chain\n  take n, like number\n  like chain\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      send back\n        make link\n          bind value, read n\n          bind next, read c\n  send back, read c\n>
+
+# an earlier read that is a BORROW: `peek` only reads its chain, so it takes it as `&`, and the last read after it must
+# clone, or the move would meet the live borrow
+host borrowed-text, <{chain}\ntask use\n  take c, like chain\n  like chain\n  send back\n    call keep\n      read c\n      call peek(read(c))\n>
+
+# the borrow FIRST, the read by value last: `wrap(peek(&c), c)` would move `c` while `&c` is still an argument
+host borrow-first-text, <{chain}\ntask wrap\n  take n, like number\n  take c, like chain\n  like chain\n  send back\n    make link\n      bind value, read n\n      bind next, read c\n\ntask use\n  take c, like chain\n  like chain\n  send back\n    call wrap\n      call peek(read(c))\n      read c\n>
+
+# a read inside a loop: the next turn reads it again, so no read there is last
+host looped-text, <{chain}\ntask use\n  take c, like chain\n  like number\n  save total, code 0\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 3\n    hook hold\n      save total\n        call add\n          read total\n          call peek(call keep(read(c), call peek(call keep(read(c), code 1))))\n      save i\n        call add\n          read i\n          code 1\n  send back, read total\n>
+
+# a closure that names an outer text only inside a `{{...}}`, the text read again after the closure: the `move` closure
+# must take a clone, or the read after it is E0382 (item 0489, the cask dispatch's watch starters, where rust-names.tree
+# used-names never looked into a template's values). Both shapes: a plain body, and a guarded one whose handler names it
+host follows, <task follow\n  take handler\n    like task\n      take value, like text\n  like number\n  call handler\n    text \<x\>\n  send back, code 1\n\ntask note\n  take t, like text\n  like number\n  send back, code 0\n>
+
+host capture-plain, <{follows}\ntask start\n  take watch, like text\n  like text\n  save drop\n    call follow\n      task heard\n        take value, like text\n        call note\n          text \<a/\{\{watch\}\}/\{\{value\}\}\>\n  send back, text \<\{\{watch\}\}/\{\{drop\}\}\>\n>
+
+host capture-guarded, <{follows}\ntask start\n  take watch, like text\n  like text\n  save drop\n    call follow\n      task heard\n        take value, like text\n        fork\n          mark unsafe\n          call note\n            text \<a/\{\{watch\}\}/\{\{value\}\}\>\n        halt take\n          take problem\n          call note\n            text \<b/\{\{watch\}\}\>\n  send back, text \<\{\{watch\}\}/\{\{drop\}\}\>\n>
+
+host one-rc, make pattern, <<Link\(std::rc::Rc<ChainLink>\)>>
+host chain-link, make pattern, <<struct ChainLink \{ value: i64, next: Chain \}>>
+host third-moves, make pattern, <<tail\(rest\(z\), x, y\)>>
+host earlier-clone, make pattern, <<tail\(rest\(x\.clone\(\)\), y\.clone\(\), z\.clone\(\)\)>>
+host keep-moved, make pattern, <<keep\(c,[ ]>>
+host wrap-clones, make pattern, <<wrap\(peek\(&c\), c\.clone\(\)\)>>
+host watch-cloned, make pattern, <<let watch = watch\.clone\(\);>>
+
+form moves-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(moves-answers, bind(held, make hash))
+host folder, temp-folder(<term-rust-moves->)
+
+# the program compiled for Rust from its entry, its native prelude ahead of the emitted text, once per label
+task rust-of
+  take label, like text
+  like text
+
+  fork test, kept/held/has(label)
+    hold
+      back kept/held/{label}
+  save file, <main.tree>
+  save entry, <use>
+  save text, <>
+  fork test, is-equal(label, <list>)
+    hold
+      save file, <mark/list/term.tree>
+      save entry, <list-runs>
+      save text, file-text(project-path(<.>, file))
+  fork test, is-equal(label, <borrowed>)
+    hold
+      save text, borrowed-text
+  fork test, is-equal(label, <borrow-first>)
+    hold
+      save text, borrow-first-text
+  fork test, is-equal(label, <looped>)
+    hold
+      save text, looped-text
+  fork test, is-equal(label, <plain>)
+    hold
+      save entry, <start>
+      save text, capture-plain
+  fork test, is-equal(label, <guarded>)
+    hold
+      save entry, <start>
+      save text, capture-guarded
+  host out, compile-text(text, make(compile-choice, bind(file, file), bind(stdlib, <rust>), bind(env, <rust>), bind(entry, entry)))
+  save emitted, <>
+  fork test, out/ok
+    hold
+      save emitted, <{prelude-text(out, <rust>)}\n{emit-text(out, <rust>)}>
+  save kept/held/{label}, emitted
+  back emitted
+
+# rustc's error lines building the program as a library, <> when it builds: a move it cannot make is E0382 or E0505
+task rustc-errors
+  take label, like text
+  like text
+
+  save text, rust-of(label)
+  fork test, is-equal(text, <>)
+    hold
+      back <not compiled>
+  save path, <{folder}/{label}.rs>
+  write-file(path, text)
+  save said, run(<rustc>, make(list, <--edition>, <2021>, <--crate-type>, <lib>, <-A>, <warnings>, <-o>, <{folder}/lib{label}.rlib>, path))
+  fork test, is-equal(said/code, 0)
+    hold
+      back <>
+  save errors, make list
+  walk lines-of(said/error)
+    take line, like text
+    fork test, text-starts-with(line, <error>)
+      hold
+        errors/push(line)
+  fork test, is-equal(errors/length, 0)
+    hold
+      back <exit {said/code}>
+  back join(errors, < | >)
+
+# 1. List: the payload behind one `Rc`, and `tail`'s third call moving each list at its last read
+test <list: a cloned form holds its payload in one Rc>
+  want hold, matches(one-rc, rust-of(<list>))
+  want hold, matches(chain-link, rust-of(<list>))
+
+test <list: the third call moves z, x and y>
+  want hold, matches(third-moves, rust-of(<list>))
+
+test <list: the earlier calls still clone>
+  want hold, matches(earlier-clone, rust-of(<list>))
+
+test <list: rustc builds it>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<list>), <>)
+
+# 2. a read beside a borrow, and a read after one
+test <a read beside a borrow of its name keeps its clone>
+  host emitted, rust-of(<borrowed>)
+  want hold, is-unequal(emitted, <>)
+  want hold, not(matches(keep-moved, emitted))
+
+test <rustc builds it: a read beside a borrow>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<borrowed>), <>)
+
+test <a read after a borrow of its name keeps its clone>
+  want hold, matches(wrap-clones, rust-of(<borrow-first>))
+
+test <rustc builds it: a read after a borrow>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<borrow-first>), <>)
+
+# 3. a read inside a loop
+test <a read inside a loop is never moved>
+  host emitted, rust-of(<looped>)
+  want hold, is-unequal(emitted, <>)
+  want hold, not(matches(keep-moved, emitted))
+
+test <rustc builds it: a read inside a loop>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<looped>), <>)
+
+# 4. a closure naming a text only in a template
+test <a closure naming a text only in a template clones it (plain)>
+  want hold, matches(watch-cloned, rust-of(<plain>))
+
+test <rustc builds it (plain)>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<plain>), <>)
+
+test <a closure naming a text only in a template clones it (guarded)>
+  want hold, matches(watch-cloned, rust-of(<guarded>))
+
+test <rustc builds it (guarded)>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(rustc-errors(<guarded>), <>)

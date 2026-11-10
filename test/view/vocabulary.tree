@@ -1,0 +1,124 @@
+note <every word of the view vocabulary placed in one page draws its element and its style words, its children directly inside it>
+
+# Ported from vocabulary.ts by statement (item term-self-host-001-0645), one test per `ok` in its order
+# (view-vocabulary-0004, note/project/term/view/11-vocabulary.md). Every word face did not have before (text, stack,
+# image, spacer, divider, frame, scroll) is placed in one page, compiled through the project under the node env with its
+# dom and view modules pinned to the in-memory platform, as the original's resolver pinned them, then built and run once
+# on node through test/support/running, and the serialized tree read back. A pattern of the original that holds only
+# literal characters is the text it spells, read with `text-contains`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+host program, <load @term/site/code/dom/native/memory/dom\n  find view\n  find create-element\n  find serialize\n\nload @term/face/code/component/stack\n  find stack\nload @term/face/code/component/text\n  find text\nload @term/face/code/component/spacer\n  find spacer\nload @term/face/code/component/divider\n  find divider\nload @term/face/code/component/image\n  find image\nload @term/face/code/component/frame\n  find frame\nload @term/face/code/component/scroll\n  find scroll\n\nview page\n  take host, like view\n  view stack\n    bind direction, text \<row\>\n    bind gap, code 12\n    bind align, text \<center\>\n    bind justify, text \<between\>\n    view text\n      bind content, text \<Title\>\n      bind level, code 1\n    view text\n      bind content, text \<Home\>\n      bind link, text \</home\>\n    view text\n      bind content, text \<plain\>\n    view spacer\n    view divider\n    view image\n      bind source, text \<a.png\>\n      bind text, text \<A dot\>\n      bind fit, text \<cover\>\n    view frame\n      bind width, code 200\n      bind max-height, code 50\n      view text\n        bind content, text \<framed\>\n    view scroll\n      view text\n        bind content, text \<inside\>\n\ntask run\n  like text\n  save root\n    call create-element\n      text \<main\>\n  call page\n    read root\n  send back\n    call serialize\n      read root\n>
+
+# the dom is the memory host, so the tree can be read back
+host memory-choice, make(compile-choice, bind(file, <page.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<dom/native/\{platform\}/(dom|view)$>>), bind(into, <dom/native/memory/$1>)))))
+
+host out, compile-text(program, memory-choice)
+
+host frame-child, make pattern, <<data-slot="frame"[^>]*[>][<]span data-slot="text"[>]framed[<]/span[>][<]/div[>]>>
+
+# the tree the page drew, made once: `tree` the serialized page, `state` how the run went
+form answers
+  mark shared
+  link done, like boolean
+  link state, like text
+  link tree, like text
+
+host now, make(answers, bind(done, false), bind(state, <>), bind(tree, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-vocabulary->)
+  host ran, run-text(program, <typescript>, folder, <page>, memory-choice)
+  save now/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/state, <ran>
+      save now/tree, trim(ran/output)
+  save now/done, true
+  back now
+
+task tree
+  like text
+  mark async
+
+  back the-answers()/tree
+
+task has
+  take part, like text
+  like boolean
+  mark async
+
+  back text-contains(tree(), part)
+
+test <a page placing every new word compiles>
+  want hold, out/ok
+
+test <it runs>
+  want hold, is-equal(the-answers()/state, <ran>)
+
+test <stack: a flex div with the layout model as style words>
+  want hold, has(<data-slot="stack">)
+  want hold, has(<flex-direction: row>)
+  want hold, has(<gap: 12px>)
+  want hold, has(<align-items: center>)
+  want hold, has(<justify-content: space-between>)
+
+test <text with level 1 is an h1>
+  want hold, has(<\<h1 data-slot="text"\>Title\</h1\>>)
+
+test <text with a link is an a with its href>
+  want hold, has(<\<a data-slot="text" href="/home"\>Home\</a\>>)
+
+test <text with neither is a span>
+  want hold, has(<\<span data-slot="text"\>plain\</span\>>)
+
+test <spacer is a div that grows, out of the accessibility tree>
+  want hold, has(<\<div data-slot="spacer" style="flex-grow: 1" aria-hidden="true"\>\</div\>>)
+
+test <divider is an hr>
+  want hold, has(<\<hr data-slot="divider"\>\</hr\>>)
+
+test <image is an img with its source, its words and its fit>
+  want hold, has(<\<img data-slot="image">)
+  want hold, has(<src="a.png">)
+  want hold, has(<alt="A dot">)
+  want hold, has(<object-fit: cover>)
+
+test <frame sets only the bounds it was given>
+  want hold, has(<data-slot="frame">)
+  want hold, has(<width: 200px; >)
+  want hold, has(<max-height: 50px; >)
+  want hold, not(has(<min-width>))
+
+test <frame holds its child directly>
+  want hold, matches(frame-child, tree())
+
+test <scroll is a scroll element that overflows on its own>
+  want hold, has(<\<scroll data-slot="scroll" style="display: block; overflow-y: auto"\>\<span data-slot="text"\>inside\</span\>\</scroll\>>)
+
+test <no seed-fragment sits between a component and its children>
+  want hold, not(has(<seed-fragment>))

@@ -28,10 +28,12 @@ load @term/base/text
   find trim-start
   find trim-end
 
-load @term/make/compile/node
-  find dock-route
-  find dock-take
-  find type
+# the plain route form, so the help loads nothing from @term/make (decision 138 rule 1 of
+# term/self-host/change/001-finish-self-host, item term-self-host-001-1118)
+load @term/call/work/hook/route
+  find route
+  find route-take
+  find route-literal
 
 load @term/base/maybe
   find maybe
@@ -318,9 +320,9 @@ task lay-out
 
 # the command of this name among these
 task command-named
-  take routes, like list, like dock-route
+  take routes, like list, like route
   take token, like text
-  like maybe, like dock-route
+  like maybe, like route
   walk routes
     take one
     fork test, is-equal(one/path, token)
@@ -330,7 +332,7 @@ task command-named
 
 # a slot as a usage line writes it: `<file>` when required, `[file]` when not, `[paths..]` for the rest of the words
 task slot-word
-  take one, like dock-take
+  take one, like route-take
   like text
   save word, one/name
   fork test, one/variadic
@@ -343,7 +345,7 @@ task slot-word
 
 # a command as its usage line and the Commands list write it: its path, then its slots
 task command-words
-  take route, like dock-route
+  take route, like route
   like text
   save words, route/path
   walk route/takes
@@ -355,7 +357,7 @@ task command-words
 
 # a take's flag column: its short letter, its name, then its long aliases (yargs puts the one-letter switch first)
 task switch-words
-  take one, like dock-take
+  take one, like route-take
   like text
   save words, <>
   fork test, is-unequal(one/short, <>)
@@ -371,48 +373,40 @@ task switch-words
     save words, <{words}, --{alias}>
   back words
 
-# a plain type as yargs tagged it
+# a plain type's kind as yargs tagged it
 task plain-tag
-  take given, like type
+  take kind, like text
   like text
-  sift given
-    case boolean
+  fork test, is-equal(kind, <boolean>)
+    hold
       back <[boolean]>
-    case string
+  fork test, is-equal(kind, <string>)
+    hold
       back <[string]>
-    case number
+  fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+    hold
       back <[number]>
-    case float
-      back <[number]>
-    case array
+  fork test, is-equal(kind, <array>)
+    hold
       back <[array]>
-    miss
-      back <>
+  back <>
 
-# a take's type as yargs tagged it; a maybe take by its item (decision cli-in-term/008: `--runs` is `[number]`)
+# a take's type as yargs tagged it; a maybe take by its item (decision cli-in-term/008: `--runs` is `[number]`), and
+# any other named type not at all
 task type-tag
-  take given, like type
+  take one, like route-take
   like text
-  sift given
-    case named
-      fork test, and(is-equal(name, <maybe>), is-above(args/length, 0))
-        hold
-          back plain-tag(args/0)
-      back <>
-    miss
-      back plain-tag(given)
+  fork test, one/optional
+    hold
+      back plain-tag(one/item-kind)
+  back plain-tag(one/kind)
 
 # yargs' tags: the type, required, the choices, the default
 task tag-words
-  take one, like dock-take
+  take one, like route-take
   like text
   save tags, make list
-  save tag, <>
-  sift one/type
-    case some
-      save tag, type-tag(value)
-    case none
-      save tag, <>
+  save tag, type-tag(one)
   fork test, is-unequal(tag, <>)
     hold
       tags/push tag
@@ -435,13 +429,13 @@ task tag-words
   sift one/fallback
     case some
       sift value
-        case text
+        case literal-text
           link given
           tags/push <[default: "{given}"]>
-        case number
+        case literal-number
           link amount
           tags/push <[default: {amount}]>
-        case flag
+        case literal-flag
           link on
           tags/push <[default: {on}]>
     case none
@@ -465,7 +459,7 @@ task tag-words
 task push-group
   take rows, like list, like help-row
   take title, like text
-  take takes, like list, like dock-take
+  take takes, like list, like route-take
   take notes, like list, like text
   take positional, like boolean
   take width, like number
@@ -520,7 +514,7 @@ task push-group
 task push-commands
   take rows, like list, like help-row
   take prefix, like text
-  take commands, like list, like dock-route
+  take commands, like list, like route
   take width, like number
   like list, like help-row
   save texts, make list
@@ -548,7 +542,7 @@ task push-commands
 
 # is a take of this name in the list already?
 task has-named
-  take takes, like list, like dock-take
+  take takes, like list, like route-take
   take name, like text
   like boolean
   walk takes
@@ -560,9 +554,9 @@ task has-named
 
 # the last take of this name; the list holds one
 task last-named
-  take takes, like list, like dock-take
+  take takes, like list, like route-take
   take name, like text
-  like dock-take
+  like route-take
   save found, takes/0
   walk takes
     take one
@@ -576,8 +570,8 @@ task last-named
 task help-text
   take name, like text
   take usage, like text
-  take globals, like list, like dock-take
-  take commands, like list, like dock-route
+  take globals, like list, like route-take
+  take commands, like list, like route
   take bare, like list, like text
   like text
   save width, help-width(80)

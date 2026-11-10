@@ -1,0 +1,60 @@
+note <the calendar, date and timezone modules answer as they should when compiled and run on node>
+
+# Ported from test/stdlib/datetime.ts by statement (item term-self-host-001-0640), one test per `eq` in its order. The
+# original compiled each module as the entry over the stdlib on node and called its exports; here the suite loads the
+# same modules from the stdlib, so term test compiles them under the node env and the tests call them. The two instants
+# are the original's Date.UTC values: Jun 23 2026 12:00Z (summer time in the EU and the US) and Jan 15 2026 12:00Z.
+
+load @term/base/calendar
+  find make-utc
+  find format
+  find parse
+  find year
+  find day
+  find add-days
+
+load @term/base/date
+  find current-year
+  find now-text
+
+load @term/base/timezone
+  find offset-hours
+  find local-parts
+
+load @term/base/text
+  find ends-with
+
+host summer, 1782216000000
+host winter, 1768478400000
+
+test <calendar format/parse round-trips>
+  save built, make-utc(2026, 6, 23, 12, 34, 56)
+  want hold, is-equal(parse(format(built)), built)
+
+test <calendar year of a built instant>
+  want hold, is-equal(year(make-utc(2026, 6, 23, 12, 34, 56)), 2026)
+
+test <calendar add-days crosses a month>
+  want hold, is-equal(day(add-days(make-utc(2026, 1, 31, 0, 0, 0), 1)), 1)
+
+test <date current-year is a sane recent year>
+  want hold, is-minimum(current-year(), 2025)
+
+test <date now-text ends with Z (ISO UTC)>
+  want hold, ends-with(now-text(), <Z>)
+
+test <timezone Tokyo is +9h>
+  want hold, is-equal(offset-hours(summer, <Asia/Tokyo>), 9)
+
+test <timezone Paris is +1h in winter, +2h in summer (DST)>
+  want hold, is-equal(offset-hours(winter, <Europe/Paris>), 1)
+  want hold, is-equal(offset-hours(summer, <Europe/Paris>), 2)
+
+test <timezone New York is -4h in summer (DST)>
+  want hold, is-equal(offset-hours(summer, <America/New_York>), -4)
+
+test <timezone UTC offset is 0>
+  want hold, is-equal(offset-hours(summer, <UTC>), 0)
+
+test <timezone local wall-clock hour (12:00Z + 2 = 14:00 Paris)>
+  want hold, is-equal(local-parts(summer, <Europe/Paris>)/hour, 14)

@@ -1,0 +1,38 @@
+note <wait true makes a task async and a call awaited, compiled to native async and await, then run>
+
+# Ported from async.ts by statement (item term-self-host-001-0612). The three emit checks read the TypeScript, and the
+# last runs the program on node and reads what its async `run` resolved to.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+host source, <task fetch-answer\n  wait true\n  send back, code 42\n\ntask run\n  wait true\n  send back\n    call fetch-answer\n      wait true\n>
+
+test <emits async function>
+  host out, compile-text(source, make(compile-choice, bind(file, <async.tree>)))
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <async function fetchAnswer>)
+
+test <emits Promise return>
+  host out, compile-text(source, make(compile-choice, bind(file, <async.tree>)))
+  want hold, text-contains(out/emitted, <Promise\<number\>>)
+
+test <emits await>
+  host out, compile-text(source, make(compile-choice, bind(file, <async.tree>)))
+  want hold, text-contains(out/emitted, <await fetchAnswer()>)
+
+test <async run() resolves to 42>
+  host folder, temp-folder(<seed-async->)
+  host ran, run-text(source, <typescript>, folder, <async>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <42>)

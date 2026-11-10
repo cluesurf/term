@@ -1,0 +1,1316 @@
+note <the terminal output library's unit cases the mockup cards cannot reach, part 1: wrapping at every width, the format edges, display width, OSC 8 links, the environment, live frames, the problem cap, nesting, the exit codes and what a run shows>
+
+# Ported from test/item/unit.ts by statement (item term-self-host-001-0670), its lines 1 to 1305: every section before
+# section 20 (`--plain`), one test per `ok` or `same` in its order. The part after it is a suite of its own beside this
+# one, reading the same helpers from ./unit-support. The library is the subject, loaded as the Term modules it is
+# (deck/call/code/work/item), the same code the original reached through its compiled port. An `ok` inside the
+# original's loop over five widths and two charsets is one walked test here, each width and charset a case of it,
+# labeled `40` or `40 ascii`: the original printed one line per width and charset, so the cases are its lines. The same
+# for its loop over the five widths alone. Every drawing of the loop is made once, at the top, and read by the tests.
+# A `same` over a list of values of different kinds is one test holding each value. A pattern of literal characters is
+# the text it spells, and the OSC 8 targets are read off the painted text by its escape, not by a pattern.
+
+load ./unit-support
+  find mockup-standard
+  find room-of
+  find clock-at
+  find http-status
+  find tally-of
+  find field-of
+  find at-location
+  find texts-of
+  find spans-text
+  find within-width
+  find at-body-column
+  find holds-whole
+  find any-line-holding
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with, name text-starts-with
+  find ends-with, name text-ends-with
+  find trim
+  find trim-end
+  find pad-right
+  find substring
+  find char-count
+  find index-of
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/call/work/item/layout
+  find room
+  find line
+  find line-text
+  find blank-line
+  find repeat-text
+
+load @term/call/work/item/event
+  find event
+  find plain-subject
+  find frame
+  find frame-line
+  find frame-mark
+  find location
+  find tally
+  find item-field
+
+load @term/call/work/item/item
+  find draw-item
+
+load @term/call/work/item/measure
+  find measure-text
+
+load @term/call/work/item/format
+  find format-duration
+  find format-size
+
+load @term/call/work/item/paint
+  find make-palette
+  find paint-lines
+
+load @term/call/work/item/standard
+  find standard
+
+load @term/call/work/item/setting
+  find env-entry
+  find style
+  find decide-style
+
+load @term/call/work/item/live
+  find region
+  find frame-plan
+  find place-item
+  find plan-frame
+  find write-frame
+  find is-progress-due
+
+load @term/call/work/item/run
+  find run-options
+  find session
+  find make-options
+  find open-session
+  find step-session
+  find fail-session
+  find closing-glyph
+  find exit-code
+  find close-session
+  find worst-glyph
+  find is-shown
+  find arrange-problems
+  find make-crash
+
+load @term/call/work/item/emit
+  find nest-lines
+
+load @term/call/work/item/service
+  find make-service-opening
+
+host mockups, mockup-standard()
+host widths, make list(40, 44, 60, 80, 120)
+
+# ---- section 21: the wrapping cases, at every width ----
+
+task make-url
+  like text
+
+  back substring(pad-right(<https://ledger.internal.shape.dev/accounts/acct_7Q2/entries?from=2026-09-30&to=x>, 70, <x>), 0, 70)
+
+task make-place
+  like text
+
+  back substring(<packages/geometry/src/shapes/polygons/regular/hexagons/large.tree:14:12>, 0, 70)
+
+# 100 words, the eight below in turn
+task make-words
+  like text
+
+  save cycle, make list(<ledger>, <entry>, <for>, <invoice>, <was>, <missing>, <when>, <reconciling>)
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, 100)
+    hook hold
+      save index, modulo(at, 8)
+      save word, cycle/{index}
+      fork test, is-equal(at, 0)
+        hold
+          save out, word
+        miss
+          save out, <{out} {word}>
+      save at, add(at, 1)
+  back out
+
+# a long stack: the error, four frames in a library, one in the user's code, then 24 in the runtime
+task make-stack
+  like list, like text
+
+  save out, make list
+  out/push(<TypeError: Cannot read properties of undefined (reading 'id') while reconciling the nightly ledger pass for acct_7Q2>)
+  save at, 0
+  walk test
+    hook test, is-below(at, 4)
+    hook hold
+      out/push(<    at async Worker.step{at} (node_modules/bullmq/dist/worker-with-a-long-file-name.js:{add(400, at)}:3)>)
+      save at, add(at, 1)
+  out/push(<    at reconcile (services/payments/reconciler/src/jobs/reconcile-invoice-against-the-ledger.ts:118:22)>)
+  save at, 0
+  walk test
+    hook test, is-below(at, 24)
+    hook hold
+      out/push(<    at async Promise.all (index {at}) node:internal/process/task_queues:95:5>)
+      save at, add(at, 1)
+  back out
+
+host url, make-url()
+host hash, <9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08>
+host place, make-place()
+host words, make-words()
+host stack, make-stack()
+host source, <payments-reconciler>
+
+test <the 70-character URL is 70 characters>
+  want hold, is-equal(char-count(url), 70)
+
+test <the 64-character hash is 64 characters>
+  want hold, is-equal(char-count(hash), 64)
+
+test <the 70-character location is 70 characters>
+  want hold, is-equal(char-count(place), 70)
+
+test <the message is 100 words>
+  want hold, is-equal(text-split(words, < >)/length, 100)
+
+# the six items of the loop, drawn in one width and charset, each as its lines' text
+form drawn-mode
+  link mode, like text
+  link width, like number
+  link ascii, like boolean
+  link url, like list, like text
+  link hash, like list, like text
+  link place, like list, like text
+  link message, like list, like text
+  link stack, like list, like text
+  link tagged, like list, like text
+
+task draw-mode
+  take width, like number
+  take ascii, like boolean
+  like drawn-mode
+
+  save one, room-of(width, ascii)
+  save mode, <{width}>
+  fork test, ascii
+    hold
+      save mode, <{width} ascii>
+  save url-item, make(event, bind(glyph, <done>), bind(kind, <request>), bind(verb, <GET>), bind(subject, plain-subject(url)), bind(clock, clock-at(<14:02:07.412>)), bind(duration, 48), bind(status, http-status(200)), bind(bytes, 1200))
+  save hash-item, make(event, bind(glyph, <done>), bind(verb, <fetch>), bind(subject, plain-subject(<blob>)), bind(clock, clock-at(<14:02:07.412>)), bind(fields, make list(field-of(<digest>, hash))))
+  save place-item, make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<There is no task named multipy>)), bind(clock, clock-at(<14:42:00.300>)), bind(fields, make list(at-location(place))))
+  save message-item, make(event, bind(glyph, <failed>), bind(verb, <job>), bind(subject, plain-subject(<invoice 99231>)), bind(clock, clock-at(<14:02:08.120>)), bind(message, make list(words)))
+  save stack-item, make(event, bind(glyph, <failed>), bind(verb, <email>), bind(subject, plain-subject(<Unhandled rejection>)), bind(clock, clock-at(<14:42:12.300>)), bind(quote, stack))
+  save tagged-item, make(event, bind(glyph, <done>), bind(kind, <job>), bind(verb, <job>), bind(subject, plain-subject(<invoice 99231>)), bind(source, source), bind(clock, clock-at(<14:02:08.120>)), bind(duration, 2400))
+  back make(drawn-mode, bind(mode, mode), bind(width, width), bind(ascii, ascii), bind(url, texts-of(draw-item(url-item, one, true))), bind(hash, texts-of(draw-item(hash-item, one, true))), bind(place, texts-of(draw-item(place-item, one, true))), bind(message, texts-of(draw-item(message-item, one, true))), bind(stack, texts-of(draw-item(stack-item, one, true))), bind(tagged, texts-of(draw-item(tagged-item, one, true))))
+
+# every width, each in Unicode then in ASCII, as the original's loop
+task draw-modes
+  like list, like drawn-mode
+
+  save out, make list
+  walk widths
+    take width, like number
+    out/push(draw-mode(width, false))
+    out/push(draw-mode(width, true))
+  back out
+
+host drawings, draw-modes()
+
+task mode-names
+  like list, like text
+
+  save out, make list
+  walk drawings
+    take one, like drawn-mode
+    out/push(one/mode)
+  back out
+
+host modes, mode-names()
+
+# the drawings of one mode
+task drawn
+  take mode, like text
+  like drawn-mode
+
+  walk drawings
+    take one, like drawn-mode
+    fork test, is-equal(one/mode, mode)
+      hold
+        back one
+  back drawings/0
+
+# the lines of the location that are a piece of it, but the one naming the key, end in `/`, the last piece aside
+task breaks-after-slash
+  take texts, like list, like text
+  like boolean
+
+  save under, make list
+  walk texts
+    take one, like text
+    save bare, trim(one)
+    fork test, and(is-unequal(bare, <>), and(text-contains(place, bare), not(text-starts-with(bare, <at>))))
+      hold
+        under/push(one)
+  save at, 0
+  walk under
+    take one, like text
+    fork test, and(is-below(at, subtract(under/length, 1)), not(text-ends-with(trim-end(one), </>)))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# the source as the second fact of the facts line, after the clock (section 6)
+task tag-of
+  take one, like drawn-mode
+  like text
+
+  save separator, < · >
+  fork test, one/ascii
+    hold
+      save separator, < . >
+  save facts, text-split(trim(one/tagged/1), separator)
+  fork test, is-above(facts/length, 1)
+    hold
+      back facts/1
+  back <>
+
+task tag-truncated
+  take one, like drawn-mode
+  like boolean
+
+  save tag, tag-of(one)
+  save ellipsis, <…>
+  fork test, one/ascii
+    hold
+      save ellipsis, <...>
+  back and(not(is-above(measure-text(tag), 12)), and(text-contains(tag, ellipsis), text-starts-with(tag, <pay>)))
+
+test <URL subject: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/url, one/width)
+
+test <URL subject: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/url)
+
+test <URL subject: no character lost>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/url, url)
+
+test <URL subject: never broken inside ://>
+  take mode, like text
+    walk modes
+  want hold, any-line-holding(drawn(mode)/url, <https://>)
+
+test <64-character hash: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/hash, one/width)
+
+test <64-character hash: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/hash)
+
+test <64-character hash: no character lost>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/hash, hash)
+
+test <70-character location: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/place, one/width)
+
+test <70-character location: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/place)
+
+test <70-character location: printed in full>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/place, place)
+
+test <70-character location: breaks only after />
+  take mode, like text
+    walk modes
+  want hold, breaks-after-slash(drawn(mode)/place)
+
+test <100-word message: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/message, one/width)
+
+test <100-word message: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/message)
+
+test <100-word message: every word, in order>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/message, words)
+
+test <long stack: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/stack, one/width)
+
+test <long stack: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/stack)
+
+test <long stack: the top frame kept>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/stack, <at async Worker.step0>)
+
+test <long stack: the first frame in the user's code kept>
+  take mode, like text
+    walk modes
+  want hold, holds-whole(drawn(mode)/stack, <reconcile-invoice-against-the-ledger.ts:118:22>)
+
+test <long stack: the rest counted>
+  take mode, like text
+    walk modes
+  want hold, any-line-holding(drawn(mode)/stack, <27 more frames>)
+
+test <source over 12 cells: every line within the width>
+  take mode, like text
+    walk modes
+  save one, drawn(mode)
+  want hold, within-width(one/tagged, one/width)
+
+test <source over 12 cells: every line after the title at column 2>
+  take mode, like text
+    walk modes
+  want hold, at-body-column(drawn(mode)/tagged)
+
+# the source is the second fact, right after the clock (section 6), never a tag on the title
+test <source over 12 cells: middle-truncated to 12>
+  take mode, like text
+    walk modes
+  want hold, tag-truncated(drawn(mode))
+
+test <source over 12 cells: never on the title>
+  take mode, like text
+    walk modes
+  want hold, not(text-contains(drawn(mode)/tagged/0, <pay>))
+
+# the opening item of a service lists a truncated source in full (section 11)
+test <a source over 12 cells is listed in full by the opening item>
+  save one, room-of(80)
+  save opening, make-service-opening(<dev>, <~/shape>, clock-at(<14:02:04.990>), <term 2.5.22>, <PDT, UTC−7>, make(list, <api>, source), one)
+  want hold, holds-whole(texts-of(draw-item(opening, one, true)), source)
+
+# ---- section 6: the format edges ----
+
+task duration-text
+  take milliseconds, like number
+  like text
+
+  back spans-text(format-duration(milliseconds, mockups, <text>))
+
+task size-text
+  take bytes, like number
+  like text
+
+  back spans-text(format-size(bytes, mockups))
+
+test <999 ms stays milliseconds, the unit attached (D44)>
+  want hold, is-equal(duration-text(999), <999ms>)
+
+test <1000 ms is 1.00 s>
+  want hold, is-equal(duration-text(1000), <1.00s>)
+
+test <4 ms>
+  want hold, is-equal(duration-text(4), <4ms>)
+
+test <2900 ms is 2.90 s>
+  want hold, is-equal(duration-text(2900), <2.90s>)
+
+test <24100 ms is 24.1 s>
+  want hold, is-equal(duration-text(24100), <24.1s>)
+
+test <59.9 s>
+  want hold, is-equal(duration-text(59900), <59.9s>)
+
+test <59.99 s rounds to a minute, not to 60.0 s>
+  want hold, is-equal(duration-text(59990), <1m 00s>)
+
+test <60 s is 1m 00s>
+  want hold, is-equal(duration-text(60000), <1m 00s>)
+
+test <2m 05s>
+  want hold, is-equal(duration-text(125000), <2m 05s>)
+
+test <10h 12m>
+  want hold, is-equal(duration-text(36720000), <10h 12m>)
+
+test <0 ms>
+  want hold, is-equal(duration-text(0), <0ms>)
+
+test <84 B>
+  want hold, is-equal(size-text(84), <84 B>)
+
+test <99.9 kB>
+  want hold, is-equal(size-text(99900), <99.9 kB>)
+
+test <99.96 kB rounds to 100 kB, not 100.0 kB>
+  want hold, is-equal(size-text(99960), <100 kB>)
+
+test <100 kB>
+  want hold, is-equal(size-text(100000), <100 kB>)
+
+test <3.1 kB>
+  want hold, is-equal(size-text(3100), <3.1 kB>)
+
+test <18.4 MB>
+  want hold, is-equal(size-text(18400000), <18.4 MB>)
+
+test <212 MB>
+  want hold, is-equal(size-text(212000000), <212 MB>)
+
+test <999.96 kB rounds up a unit, not to 1000 kB>
+  want hold, is-equal(size-text(999960), <1.0 MB>)
+
+test <0 B>
+  want hold, is-equal(size-text(0), <0 B>)
+
+# ---- section 8: width by grapheme cluster and East Asian width ----
+
+# the characters a text cannot show: the zero-width joiner, a combining acute, the emoji variation selector and the
+# zero-width space
+host joiner, rune-to-text(8205)
+host acute, rune-to-text(769)
+host emoji-form, rune-to-text(65039)
+host zero-width, rune-to-text(8203)
+host family, <👨{joiner}👩{joiner}👧>
+
+test <ASCII is one cell a character>
+  want hold, is-equal(measure-text(<area.tree>), 9)
+
+test <CJK is two cells a character>
+  want hold, is-equal(measure-text(<漢字かな>), 8)
+
+test <a ZWJ family is one cluster of two cells>
+  want hold, is-equal(measure-text(family), 2)
+
+test <a flag is one cluster of two cells>
+  want hold, is-equal(measure-text(<🇯🇵>), 2)
+
+test <a combining mark adds no cell>
+  want hold, is-equal(measure-text(<e{acute}te{acute}>), 3)
+
+test <a variation selector makes a text symbol an emoji of two cells>
+  want hold, is-equal(measure-text(<❤{emoji-form}>), 2)
+
+test <a zero-width space takes no cell>
+  want hold, is-equal(measure-text(<a{zero-width}b>), 2)
+
+form drawn-wide
+  link width, like number
+  link lines, like list, like text
+
+task draw-wides
+  like list, like drawn-wide
+
+  save out, make list
+  walk widths
+    take width, like number
+    save one, room-of(width)
+    save wide, make(event, bind(glyph, <done>), bind(verb, <build>), bind(subject, plain-subject(repeat-text(<漢字>, 30))), bind(clock, clock-at(<14:42:00.410>)), bind(message, make list(repeat-text(<{family} e{acute} >, 20))))
+    out/push(make(drawn-wide, bind(width, width), bind(lines, texts-of(draw-item(wide, one, true)))))
+  back out
+
+host wides, draw-wides()
+
+task wide-at
+  take width, like number
+  like drawn-wide
+
+  walk wides
+    take one, like drawn-wide
+    fork test, is-equal(one/width, width)
+      hold
+        back one
+  back wides/0
+
+test <wide and combining text: every line within the width>
+  take width, like number
+    walk widths
+  want hold, within-width(wide-at(width)/lines, width)
+
+test <wide and combining text: every line after the title at column 2>
+  take width, like number
+    walk widths
+  want hold, at-body-column(wide-at(width)/lines)
+
+# a tab in a code frame expands to the file's tab width, so the span lands under the right cells (section 7)
+task tab-frame-lines
+  like list, like text
+
+  save marks, make list(make(frame-mark, bind(line, 3), bind(column, 7), bind(length, 2), bind(label, <here>)))
+  save lines, make list(make(frame-line, bind(number, 3), bind(value, <\tback 漢字(side)>)))
+  save framed, make(frame, bind(lines, lines), bind(marks, marks), bind(tab-width, 4))
+  save item, make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<x>)), bind(clock, clock-at(<14:42:00.300>)), bind(frames, make list(framed)))
+  back texts-of(draw-item(item, room-of(80), true))
+
+host tab-lines, tab-frame-lines()
+
+task first-holding
+  take texts, like list, like text
+  take word, like text
+  like text
+
+  walk texts
+    take one, like text
+    fork test, text-contains(one, word)
+      hold
+        back one
+  back <>
+
+host tab-source, first-holding(tab-lines, <back>)
+host tab-mark, first-holding(tab-lines, <━>)
+
+# column 7 in characters is `漢`: a tab of 4 cells, then `back `, so 9 cells into the source
+test <a tab expands to the file tab width and the mark lands under the wide character>
+  want hold, is-equal(index-of(tab-mark, <━>), index-of(tab-source, <漢>))
+
+test <a mark under a wide character is two cells a character>
+  want hold, is-equal(subtract(text-split(tab-mark, <━>)/length, 1), 4)
+
+# ---- section 8: OSC 8 links ----
+
+host linked, make-palette(<truecolor>, <dark>, true)
+host unlinked, make-palette(<truecolor>, <dark>, false)
+host digits, make pattern, <<^\d+$>>
+
+# the text of a piece of painted output up to its first ESC or BEL
+task before-escape
+  take value, like text
+  like text
+
+  save cut, char-count(value)
+  walk make list(<\e>, rune-to-text(7))
+    take stop, like text
+    save at, index-of(value, stop)
+    fork test, and(not(is-below(at, 0)), is-below(at, cut))
+      hold
+        save cut, at
+  back substring(value, 0, cut)
+
+# each OSC 8 link the painted text opens, `ESC ]8;id=<n>;<target>`: its id when `ids`, else its target. A closing
+# `ESC ]8;;` names no id, and an opening with no target is not one
+task link-parts
+  take painted, like text
+  take ids, like boolean
+  like list, like text
+
+  save out, make list
+  save first, true
+  walk text-split(painted, <\e]8;id=>)
+    take piece, like text
+    fork test, first
+      hold
+        save first, false
+      miss
+        save cut, index-of(piece, <;>)
+        fork test, is-above(cut, 0)
+          hold
+            save id, substring(piece, 0, cut)
+            save target, before-escape(substring(piece, add(cut, 1)))
+            fork test, matches(digits, id)
+              hold
+                fork test, ids
+                  hold
+                    out/push(id)
+                  miss
+                    fork test, is-unequal(target, <>)
+                      hold
+                        out/push(target)
+  back out
+
+task link-targets
+  take painted, like text
+  like list, like text
+
+  back link-parts(painted, false)
+
+host link-room, room-of(80)
+host link-lines, draw-item(make(event, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, plain-subject(<http://localhost:4000>)), bind(clock, clock-at(<14:02:05.730>)), bind(fields, make list(field-of(<network>, <http://192.168.1.24:4000>)))), link-room, true)
+
+test <a URL subject and a URL field are links>
+  want hold, is-equal(link-targets(paint-lines(link-lines, linked, mockups)), make list(<http://localhost:4000>, <http://192.168.1.24:4000>))
+
+test <no link is emitted when the palette has none>
+  want hold, is-equal(link-targets(paint-lines(link-lines, unlinked, mockups))/length, 0)
+
+test <no escape at all without color>
+  want hold, not(text-contains(paint-lines(link-lines, make-palette(<none>, <unknown>, true), mockups), <\e>))
+
+host plain-room, room-of(80)
+host link-problem, make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<There is no task named multipy>)), bind(clock, clock-at(<14:42:00.300>)), bind(fields, make list(at-location(<code/area.tree:14:12>))))
+
+# the room with a root, so a relative location is linked under it
+task rooted-room
+  like room
+
+  save one, plain-room
+  save one/root, </home/me/shape>
+  back one
+
+host rooted, rooted-room()
+
+# the problem at an absolute location
+task absolute-problem
+  like event
+
+  save one, link-problem
+  save one/fields, make list(at-location(</etc/shape/area.tree:3>))
+  back one
+
+test <a location is not linked without a root>
+  want hold, is-equal(link-targets(paint-lines(draw-item(link-problem, plain-room, true), linked, mockups))/length, 0)
+
+test <a location is linked to its file under the root, without its line and column>
+  want hold, is-equal(link-targets(paint-lines(draw-item(link-problem, rooted, true), linked, mockups)), make list(<file:///home/me/shape/code/area.tree>))
+
+test <an absolute location is linked as it is>
+  want hold, is-equal(link-targets(paint-lines(draw-item(absolute-problem(), rooted, true), linked, mockups)), make list(<file:///etc/shape/area.tree>))
+
+test <a phrase holding a URL is not one link>
+  save phrase, make(event, bind(glyph, <info>), bind(verb, <note>), bind(subject, plain-subject(<see https://x.dev for more>)), bind(clock, clock-at(<14:42:00.300>)))
+  want hold, is-equal(link-targets(paint-lines(draw-item(phrase, link-room, true), linked, mockups))/length, 0)
+
+# whether every text of the list is the one given
+task all-are
+  take texts, like list, like text
+  take wanted, like text
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, is-unequal(one, wanted)
+      hold
+        back false
+  back true
+
+test <a URL wrapped over lines is one link on every line, with one id>
+  save wrapped, draw-item(make(event, bind(glyph, <done>), bind(kind, <request>), bind(verb, <GET>), bind(subject, plain-subject(url)), bind(clock, clock-at(<14:02:07.412>))), room-of(40), true)
+  save painted, paint-lines(wrapped, linked, mockups)
+  save ids, link-parts(painted, true)
+  want hold, not(is-below(ids/length, 2))
+  want hold, all-are(ids, ids/0)
+  want hold, all-are(link-targets(painted), url)
+
+# ---- section 17: the environment ----
+
+task entry
+  take name, like text
+  take value, like text
+  like env-entry
+
+  back make(env-entry, bind(name, name), bind(value, value))
+
+task style-of
+  take variables, like list, like env-entry
+  take terminal, like boolean
+  take flag, like text, fall <auto>
+  take platform, like text, fall <darwin>
+  like style
+
+  back decide-style(variables, terminal, flag, platform, mockups)
+
+# a UTF-8 locale, alone and with one or two variables more
+task utf
+  like list, like env-entry
+
+  back make list(entry(<LANG>, <en_US.UTF-8>))
+
+task utf-with
+  take name, like text
+  take value, like text
+  like list, like env-entry
+
+  back make(list, entry(<LANG>, <en_US.UTF-8>), entry(name, value))
+
+task utf-with-two
+  take name, like text
+  take value, like text
+  take other, like text
+  take other-value, like text
+  like list, like env-entry
+
+  back make(list, entry(<LANG>, <en_US.UTF-8>), entry(name, value), entry(other, other-value))
+
+test <a terminal: 16 colors, live, Unicode>
+  save one, style-of(utf(), true)
+  want hold, is-equal(one/depth, <ansi>)
+  want hold, is-equal(one/live, true)
+  want hold, is-equal(one/ascii, false)
+
+test <COLORTERM=truecolor: 24-bit>
+  want hold, is-equal(style-of(utf-with(<COLORTERM>, <truecolor>), true)/depth, <truecolor>)
+
+test <COLORTERM=24bit: 24-bit>
+  want hold, is-equal(style-of(utf-with(<COLORTERM>, <24bit>), true)/depth, <truecolor>)
+
+test <a pipe: no color, no live region>
+  save one, style-of(utf(), false)
+  want hold, is-equal(one/depth, <none>)
+  want hold, is-equal(one/live, false)
+
+test <NO_COLOR: no color on a terminal>
+  want hold, is-equal(style-of(utf-with(<NO_COLOR>, <1>), true)/depth, <none>)
+
+test <NO_COLOR empty is not set (no-color.org)>
+  want hold, is-equal(style-of(utf-with(<NO_COLOR>, <>), true)/depth, <ansi>)
+
+test <FORCE_COLOR: color in a pipe, still no live region>
+  save one, style-of(utf-with(<FORCE_COLOR>, <1>), false)
+  want hold, is-equal(one/depth, <ansi>)
+  want hold, is-equal(one/live, false)
+
+test <FORCE_COLOR beats NO_COLOR>
+  want hold, is-equal(style-of(utf-with-two(<FORCE_COLOR>, <1>, <NO_COLOR>, <1>), true)/depth, <ansi>)
+
+test <FORCE_COLOR=0 turns color off>
+  want hold, is-equal(style-of(utf-with(<FORCE_COLOR>, <0>), true)/depth, <none>)
+
+test <FORCE_COLOR=false turns color off>
+  want hold, is-equal(style-of(utf-with(<FORCE_COLOR>, <false>), true)/depth, <none>)
+
+test <--color never beats FORCE_COLOR>
+  want hold, is-equal(style-of(utf-with(<FORCE_COLOR>, <1>), true, <never>)/depth, <none>)
+
+test <--color always colors a pipe>
+  want hold, is-equal(style-of(utf(), false, <always>)/depth, <ansi>)
+
+test <TERM=dumb: ASCII and no live region>
+  save one, style-of(utf-with(<TERM>, <dumb>), true)
+  want hold, is-equal(one/ascii, true)
+  want hold, is-equal(one/live, false)
+
+test <no locale at all is POSIX, which is ASCII>
+  want hold, is-equal(style-of(make(list), true)/ascii, true)
+
+test <LANG=C is ASCII>
+  want hold, is-equal(style-of(make(list, entry(<LANG>, <C>)), true)/ascii, true)
+
+test <LC_ALL decides before LANG>
+  want hold, is-equal(style-of(make(list, entry(<LC_ALL>, <C>), entry(<LANG>, <en_US.UTF-8>)), true)/ascii, true)
+
+test <LC_CTYPE=UTF-8 is Unicode>
+  want hold, is-equal(style-of(make(list, entry(<LC_CTYPE>, <UTF-8>)), true)/ascii, false)
+
+test <Windows is Unicode without a locale>
+  want hold, is-equal(style-of(make(list), true, <auto>, <windows>)/ascii, false)
+
+test <Windows under TERM=dumb is ASCII>
+  want hold, is-equal(style-of(make(list, entry(<TERM>, <dumb>)), true, <auto>, <windows>)/ascii, true)
+
+test <CI set: annotations>
+  want hold, is-equal(style-of(utf-with(<CI>, <true>), false)/annotate, true)
+
+test <CI=0: no annotations>
+  want hold, is-equal(style-of(utf-with(<CI>, <0>), false)/annotate, false)
+
+test <COLORFGBG=15;0 is a dark background>
+  want hold, is-equal(style-of(utf-with(<COLORFGBG>, <15;0>), true)/theme, <dark>)
+
+test <COLORFGBG=0;15 is a light background>
+  want hold, is-equal(style-of(utf-with(<COLORFGBG>, <0;15>), true)/theme, <light>)
+
+test <COLORFGBG unreadable is unknown>
+  want hold, is-equal(style-of(utf-with(<COLORFGBG>, <x>), true)/theme, <unknown>)
+
+test <a terminal known to link: links>
+  want hold, is-equal(style-of(utf-with(<TERM_PROGRAM>, <iTerm.app>), true)/links, true)
+
+test <an unknown terminal: no links>
+  want hold, is-equal(style-of(utf(), true)/links, false)
+
+test <a known terminal behind a pipe: no links>
+  want hold, is-equal(style-of(utf-with(<TERM_PROGRAM>, <iTerm.app>), false)/links, false)
+
+test <FORCE_HYPERLINK=1 links a pipe>
+  want hold, is-equal(style-of(utf-with(<FORCE_HYPERLINK>, <1>), false)/links, true)
+
+test <FORCE_HYPERLINK=0 unlinks a known terminal>
+  want hold, is-equal(style-of(utf-with-two(<TERM_PROGRAM>, <iTerm.app>, <FORCE_HYPERLINK>, <0>), true)/links, false)
+
+# ---- section 10: live frames ----
+
+host live-room, room-of(80)
+host rust-build, make(event, bind(glyph, <running>), bind(kind, <progress>), bind(verb, <build>), bind(subject, plain-subject(<rust>)), bind(clock, clock-at(<14:42:02.900>)), bind(duration, 2900), bind(tallies, make list(tally-of(31, <files>, <>, 46))), bind(done, 31), bind(total, 46))
+host swift-build, make(event, bind(glyph, <running>), bind(kind, <progress>), bind(verb, <build>), bind(subject, plain-subject(<swift>)), bind(clock, clock-at(<14:42:02.900>)), bind(duration, 2900), bind(done, 12), bind(total, 46))
+host empty-region, make(region, bind(items, make list), bind(height, 0), bind(drawn-at, -1), bind(turn, 0))
+host both-running, place-item(place-item(empty-region, rust-build), swift-build)
+
+host first-frame, plan-frame(both-running, make(list), 1000, false, true, live-room, true)
+host soon-frame, plan-frame(first-frame/region, make(list), 1050, false, true, live-room, true)
+host forced-frame, plan-frame(first-frame/region, make(list), 1050, true, true, live-room, true)
+host later-frame, plan-frame(first-frame/region, make(list), 1100, false, true, live-room, true)
+host still-frame, plan-frame(plan-frame(both-running, make(list), 1000, false, false, live-room, true)/region, make(list), 1100, false, false, live-room, true)
+
+# the first character of the first line of a frame
+task first-glyph
+  take one, like frame-plan
+  like text
+
+  back substring(texts-of(one/lines)/0, 0, 1)
+
+test <a first frame draws>
+  want hold, and(first-frame/draw, is-above(first-frame/lines/length, 0))
+
+test <a running item has a bar>
+  want hold, or(any-line-holding(texts-of(first-frame/lines), <━>), any-line-holding(texts-of(first-frame/lines), <─>))
+
+test <a frame inside 100 ms of the last waits>
+  want hold, not(soon-frame/draw)
+
+test <a frame that waits writes nothing>
+  want hold, is-equal(write-frame(soon-frame, first-frame/region/height, linked, mockups), <>)
+
+test <a forced frame draws inside the limit>
+  want hold, forced-frame/draw
+
+test <a frame 100 ms later draws>
+  want hold, later-frame/draw
+
+test <the spinner turns with motion>
+  want hold, is-unequal(first-glyph(first-frame), first-glyph(later-frame))
+
+test <without motion the spinner is a static ◐>
+  want hold, text-starts-with(texts-of(still-frame/lines)/0, <◐>)
+
+test <a frame moves up over the last one and clears below>
+  save height, first-frame/region/height
+  want hold, text-starts-with(write-frame(later-frame, height, linked, mockups), <\e[{height}A\r\e[J>)
+
+# swift finishes below a running rust: it keeps its place; then rust finishes and both commit, in order
+task finished
+  take one, like event
+  take took, like number
+  like event
+
+  save next, one
+  save next/glyph, <done>
+  save next/kind, <step>
+  save next/duration, took
+  save next/done, -1
+  save next/total, -1
+  back next
+
+host below-frame, plan-frame(place-item(later-frame/region, finished(swift-build, 3100)), make(list), 1200, true, true, live-room, true)
+host settled-frame, plan-frame(place-item(below-frame/region, finished(rust-build, 4000)), make(list), 1300, true, true, live-room, true)
+
+# the lines of a list that start at column 0: the items' titles
+task titles-of
+  take texts, like list, like text
+  like list, like text
+
+  save out, make list
+  walk texts
+    take one, like text
+    fork test, not(text-starts-with(one, < >))
+      hold
+        out/push(one)
+  back out
+
+test <an item finishing below a running one keeps its place>
+  want hold, is-equal(below-frame/committed/length, 0)
+  want hold, is-equal(below-frame/region/items/length, 2)
+
+test <and takes its final glyph where it stands>
+  save found, false
+  walk texts-of(below-frame/lines)
+    take one, like text
+    fork test, text-starts-with(one, <✓ build swift>)
+      hold
+        save found, true
+  want hold, found
+
+test <when the top finishes the finished items commit, in declaration order>
+  want hold, is-equal(titles-of(texts-of(settled-frame/committed)), make list(<✓ build rust>, <✓ build swift>))
+
+test <a finished item drops its bar>
+  want hold, not(any-line-holding(texts-of(settled-frame/committed), <━>))
+
+test <the region is then empty>
+  want hold, is-equal(settled-frame/region/items/length, 0)
+
+test <no terminal: no progress item before 10 s>
+  want hold, is-equal(is-progress-due(0, -1, 9999, mockups), false)
+
+test <no terminal: the first progress item at 10 s>
+  want hold, is-equal(is-progress-due(0, -1, 10000, mockups), true)
+
+test <no terminal: the next not before 10 s after the last>
+  want hold, is-equal(is-progress-due(0, 10000, 19999, mockups), false)
+
+test <no terminal: and then again>
+  want hold, is-equal(is-progress-due(0, 10000, 20000, mockups), true)
+
+# ---- section 12: the problem cap, hidden problems, the crash ----
+
+host problem-room, room-of(80)
+
+# 25 problems over five files, each file's lines out of order
+task scattered-problems
+  like list, like event
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, 25)
+    hook hold
+      save path, <code/{rune-to-text(subtract(122, modulo(at, 5)))}.tree>
+      save where, make(location, bind(path, path), bind(line, subtract(25, at)), bind(column, 1))
+      out/push(make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<problem {at}>)), bind(clock, clock-at(<14:42:00.300>)), bind(place, where)))
+      save at, add(at, 1)
+  back out
+
+# 2026-10-04: a build with 12 errors and 36 warnings showed 20 warnings and cut every error, because the sort was by
+# place alone. An error now sorts before a warning wherever it is, so the cap never cuts one first
+task mixed-problems
+  like list, like event
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, 25)
+    hook hold
+      save glyph, <warning>
+      fork test, not(is-below(at, 22))
+        hold
+          save glyph, <failed>
+      save where, make(location, bind(path, <code/{rune-to-text(add(97, at))}.tree>), bind(line, 1), bind(column, 1))
+      out/push(make(event, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<problem {at}>)), bind(clock, clock-at(<14:42:00.300>)), bind(place, where)))
+      save at, add(at, 1)
+  back out
+
+host arranged, arrange-problems(scattered-problems(), mockups, problem-room)
+host mixed, mixed-problems()
+host capped, arrange-problems(mixed, mockups, problem-room)
+
+# whether the first 20 problems are in order by path, then by line: the original sorted them and found them unchanged
+task out-of-place
+  take before, like event
+  take after, like event
+  like boolean
+
+  save order, from-texts(before/place/path, after/place/path)
+  sift order
+    case less
+      back false
+    case greater
+      back true
+    case equal
+      back is-above(before/place/line, after/place/line)
+
+task sorted-by-place
+  take problems, like list, like event
+  like boolean
+
+  save at, 1
+  walk test
+    hook test, is-below(at, 20)
+    hook hold
+      save previous, subtract(at, 1)
+      fork test, out-of-place(problems/{previous}, problems/{at})
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+test <25 problems print as 20 and a summary>
+  want hold, is-equal(arranged/length, 21)
+
+test <problems sort by path, then line>
+  want hold, sorted-by-place(arranged)
+
+test <the summary says how many more, with the flag that shows all>
+  save summary, arranged/20
+  want hold, is-equal(summary/glyph, <info>)
+  want hold, is-equal(spans-text(summary/subject), <… 5 more problems>)
+  want hold, is-equal(summary/facts, make list(<--all>))
+
+test <errors sort before warnings, so the cap keeps every error>
+  save shown, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, 3)
+    hook hold
+      save one, capped/{at}
+      shown/push(<{one/glyph} {one/place/path}>)
+      save at, add(at, 1)
+  want hold, is-equal(shown, make list(<failed code/w.tree>, <failed code/x.tree>, <failed code/y.tree>))
+
+test <and the warnings follow by path>
+  want hold, is-equal(capped/3/place/path, <code/a.tree>)
+
+# the standard with no cap on problems
+task uncapped
+  like standard
+
+  save one, mockups
+  save one/caps/problems, 0
+  back one
+
+test <a cap below 1 shows every problem, which is what --all sets>
+  want hold, is-equal(arrange-problems(mixed, uncapped(), problem-room)/length, 25)
+
+host cause, make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<There is no task named multipy>)), bind(clock, clock-at(<14:42:00.300>)), bind(id, <a>), bind(place, make(location, bind(path, <code/a.tree>), bind(line, 1), bind(column, 1))))
+
+# the cause, then three problems it caused
+task cause-and-effects
+  like list, like event
+
+  save out, make list(cause)
+  walk make list(1, 2, 3)
+    take at, like number
+    out/push(make(event, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, plain-subject(<follows {at}>)), bind(clock, clock-at(<14:42:00.300>)), bind(cause, <a>), bind(place, make(location, bind(path, <code/a.tree>), bind(line, add(at, 1)), bind(column, 1)))))
+  back out
+
+host hidden, arrange-problems(cause-and-effects(), mockups, problem-room)
+
+test <a problem caused by an earlier one is hidden>
+  want hold, is-equal(hidden/length, 1)
+
+test <and its cause gains `3 hidden`>
+  save counts, make list
+  walk hidden/0/tallies
+    take one, like tally
+    counts/push(<{one/amount} {one/noun}>)
+  want hold, is-equal(counts, make list(<3 hidden>))
+
+test <the original event is not changed>
+  want hold, is-equal(cause/tallies/length, 0)
+
+host crash, make-crash(<prove>, <Term crashed while checking code/area.tree>, <kernel/unify>, <.term/crash.log>, clock-at(<14:42:00.205>), mockups)
+host stack-line, make pattern, <<\bat .*:\d+:\d+\)>>
+
+test <a crash exits 70, names where and its log>
+  save keys, make list
+  walk crash/fields
+    take one, like item-field
+    keys/push(one/key)
+  want hold, is-equal(crash/status/value, 70)
+  want hold, is-equal(keys, make list(<in>, <log>))
+
+test <a crash prints no stack trace>
+  save traced, false
+  walk texts-of(draw-item(crash, problem-room, true))
+    take one, like text
+    fork test, matches(stack-line, one)
+      hold
+        save traced, true
+  want hold, not(traced)
+
+# ---- section 15: a run inside another run is indented two cells a level, its items children of the item before ----
+
+host nest-room, room-of(80)
+host booted, draw-item(make(event, bind(glyph, <done>), bind(verb, <boot>), bind(subject, plain-subject(<zone built>)), bind(clock, clock-at(<14:42:00.300>)), bind(duration, 1340)), nest-room, true)
+
+# the item, a blank line, and the item again
+task twice-booted
+  like list, like line
+
+  save out, make list
+  walk booted
+    take one, like line
+    out/push(one)
+  out/push(blank-line())
+  walk booted
+    take one, like line
+    out/push(one)
+  back out
+
+host nested, texts-of(nest-lines(twice-booted(), 1, true, nest-room))
+
+# the body column (2) a level, and no elbow (the user's choice, 2026-10-05)
+test <a nested run opens two cells in, as a child of the item before it>
+  want hold, is-equal(nested/0, <  ✓ boot zone built>)
+
+test <and its facts sit two past that>
+  want hold, is-equal(nested/1, <  {line-text(booted/1)}>)
+
+test <blank lines are dropped, so it reads as one block>
+  want hold, is-equal(nested/length, multiply(booted/length, 2))
+
+test <the first line is drawn as any other>
+  want hold, is-equal(texts-of(nest-lines(booted, 1, false, nest-room))/0, nested/0)
+
+test <two levels deep is two cells more>
+  want hold, is-equal(texts-of(nest-lines(booted, 2, true, nest-room))/0, <    ✓ boot zone built>)
+
+test <no arrow in Unicode or ASCII: the indent is the nesting>
+  want hold, not(any-line-holding(nested, <⇒>))
+  want hold, not(any-line-holding(texts-of(nest-lines(booted, 1, true, room-of(80, true))), <=\>>))
+
+# the last two lines of a quoted item, drawn in a room
+task quote-tail
+  take one, like room
+  like list, like text
+
+  save quoted, texts-of(draw-item(make(event, bind(glyph, <info>), bind(verb, <log>), bind(subject, plain-subject(<demo>)), bind(clock, clock-at(<14:42:00.300>)), bind(quote, make(list, <hello from term>, <this is more text>))), one, true))
+  save last, subtract(quoted/length, 1)
+  save before, subtract(quoted/length, 2)
+  back make(list, quoted/{before}, quoted/{last})
+
+# a quote's text lines up under its first line's, in ASCII too, where the arrow is two cells
+test <a quote is `⇒` then the text, and the rest under the text>
+  want hold, is-equal(quote-tail(nest-room), make list(<  ⇒ hello from term>, <    this is more text>))
+
+test <and in ASCII `=\>`, the rest still under the text>
+  want hold, is-equal(quote-tail(room-of(80, true)), make list(<  =\> hello from term>, <     this is more text>))
+
+# ---- section 4 and 18: the worst glyph and the exit codes ----
+
+host run-room, room-of(80)
+
+# a run that saw an item of each glyph, then failed as `failure` when there is one
+task run-of
+  take glyphs, like list, like text
+  take strict, like boolean, fall false
+  take failure, like text, fall <>
+  like session
+
+  save options, make-options()
+  save options/strict, strict
+  save one, open-session(<make>, options)
+  walk glyphs
+    take glyph, like text
+    save one, step-session(one, make(event, bind(glyph, glyph), bind(verb, <build>), bind(subject, plain-subject(<x>)), bind(clock, clock-at(<14:42:00.300>))), run-room, true)/session
+  fork test, is-unequal(failure, <>)
+    hold
+      back fail-session(one, failure)
+  back one
+
+# the worst glyph of the first one, two, three ... of the glyphs in order
+task worst-of-each
+  take glyphs, like list, like text
+  like list, like text
+
+  save out, make list
+  save at, 0
+  walk glyphs
+    take glyph, like text
+    save some, make list
+    save k, 0
+    walk test
+      hook test, not(is-above(k, at))
+      hook hold
+        some/push(make(event, bind(glyph, glyphs/{k})))
+        save k, add(k, 1)
+    out/push(worst-glyph(some, mockups))
+    save at, add(at, 1)
+  back out
+
+host ranked, make list(<info>, <skipped>, <done>, <running>, <warning>, <failed>)
+
+test <the worst glyph ranks ✗ › ▲ › ◐ › ✓ › ○ › ·>
+  want hold, is-equal(worst-of-each(ranked), ranked)
+
+test <a change glyph never decides the run>
+  want hold, is-equal(worst-glyph(make(list, make(event, bind(glyph, <done>)), make(event, bind(glyph, <added>)), make(event, bind(glyph, <removed>))), mockups), <done>)
+
+test <success: ✓, exit 0>
+  save one, run-of(make list(<done>))
+  want hold, is-equal(closing-glyph(one, mockups), <done>)
+  want hold, is-equal(exit-code(one, mockups), 0)
+
+test <warnings allowed: ▲, exit 0>
+  save one, run-of(make(list, <done>, <warning>))
+  want hold, is-equal(closing-glyph(one, mockups), <warning>)
+  want hold, is-equal(exit-code(one, mockups), 0)
+
+test <--strict: a warning fails, ✗, exit 1>
+  save one, run-of(make(list, <warning>), true)
+  want hold, is-equal(closing-glyph(one, mockups), <failed>)
+  want hold, is-equal(exit-code(one, mockups), 1)
+
+test <a problem: ✗, exit 1>
+  save one, run-of(make(list, <done>, <failed>))
+  want hold, is-equal(closing-glyph(one, mockups), <failed>)
+  want hold, is-equal(exit-code(one, mockups), 1)
+
+test <wrong usage: exit 2>
+  want hold, is-equal(exit-code(run-of(make(list), false, <usage>), mockups), 2)
+
+test <a missing toolchain: exit 3>
+  want hold, is-equal(exit-code(run-of(make(list), false, <environment>), mockups), 3)
+
+test <a bug in the tool: exit 70>
+  want hold, is-equal(exit-code(run-of(make(list, <done>), false, <bug>), mockups), 70)
+
+test <Ctrl-C: ○, exit 130, even after a failure>
+  save one, run-of(make(list, <failed>), false, <interrupted>)
+  want hold, is-equal(closing-glyph(one, mockups), <skipped>)
+  want hold, is-equal(exit-code(one, mockups), 130)
+
+test <the closing item carries the exit>
+  save closing, make(event, bind(subject, plain-subject(<Build failed>)), bind(clock, clock-at(<14:42:00.302>)))
+  want hold, is-equal(close-session(run-of(make list(<failed>)), closing, room-of(80))/exit, 1)
+
+# the run's options with one flag set
+task options-with
+  take flag, like text
+  like run-options
+
+  save one, make-options()
+  fork test, is-equal(flag, <quiet>)
+    hold
+      save one/quiet, true
+  fork test, is-equal(flag, <verbose>)
+    hold
+      save one/verbose, true
+  fork test, is-equal(flag, <trace>)
+    hold
+      save one/trace, true
+  back one
+
+test <--quiet keeps a failed item>
+  want hold, is-equal(is-shown(make(event, bind(glyph, <failed>)), options-with(<quiet>)), true)
+
+test <--quiet drops a done item>
+  want hold, is-equal(is-shown(make(event, bind(glyph, <done>)), options-with(<quiet>)), false)
+
+test <a debug item needs --verbose>
+  want hold, is-equal(is-shown(make(event, bind(level, <debug>)), make-options()), false)
+  want hold, is-equal(is-shown(make(event, bind(level, <debug>)), options-with(<verbose>)), true)
+
+test <a trace item needs --trace>
+  want hold, is-equal(is-shown(make(event, bind(level, <trace>)), options-with(<verbose>)), false)
+  want hold, is-equal(is-shown(make(event, bind(level, <trace>)), options-with(<trace>)), true)

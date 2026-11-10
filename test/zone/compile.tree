@@ -1,0 +1,108 @@
+note <a counter view compiles onto the render runtime, and clicked on the in-memory dom its count goes up>
+
+# Ported from compile.ts by statement (item term-self-host-001-0646), one test per `ok` in its order. The counter view
+# compiles through the project under the node env, its dom and view modules pinned to the in-memory platform, as the
+# original's `pinned` resolver did: a load of `native/{platform}/dom` or `view` is rewritten to `native/memory`. Its
+# emitted TypeScript is read for the view's shape, then the program is built and run once on node through
+# test/support/running, and its `run` task answers the mounted tree before any click, after one, and after three.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+host program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find child-at\n  find fire\n  find serialize\n\ntask count-text\n  take count, like signal\n  like text\n  save n\n    call read-signal\n      bind self, read count\n  send back, text \<\{n\}\>\n\ntask bump\n  take count, like signal\n  save n\n    call read-signal\n      bind self, read count\n  call write-signal\n    bind self, read count\n    bind value\n      call add\n        read n\n        code 1\n\nview counter\n  take host, like view\n  save count\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call bump\n        read count\n    read\n      call count-text\n        read count\n\ntask click\n  take root, like view\n  call fire\n    call child-at\n      read root\n      code 0\n    text \<click\>\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call counter\n    read root\n  save before\n    call serialize\n      read root\n  call click\n    read root\n  save once\n    call serialize\n      read root\n  call click\n    read root\n  call click\n    read root\n  save thrice\n    call serialize\n      read root\n  send back, text \<\{before\}|\{once\}|\{thrice\}\>\n>
+
+# the count before any click, after one, and after three, each the whole mounted tree
+host want, make list(<\<main\>\<button\>0\</button\>\</main\>>, <\<main\>\<button\>1\</button\>\</main\>>, <\<main\>\<button\>3\</button\>\</main\>>)
+
+host component-shape, make pattern, <<export function counter\(host>>
+host signal-shape, make pattern, <<makeSignal\(>>
+host click-shape, make pattern, <<attachEvent\([^\n]*"click">>
+host dynamic-shape, make pattern, <<makeDynamicText\(\(\) =[>]>>
+
+# the dom and view modules on the in-memory platform, so the program runs under node with no browser
+host memory-choice, make(compile-choice, bind(file, <counter.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/memory/$1>)))))
+
+host out, compile-text(program, memory-choice)
+
+# the program's answer, run once: `parts` before, once and thrice, `state` and `reason` how the run went
+form answers
+  mark shared
+  link done, like boolean
+  link state, like text
+  link reason, like text
+  link parts, like list, like text
+
+host now, make(answers, bind(done, false), bind(state, <>), bind(reason, <>), bind(parts, make list))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-zone-compile->)
+  host ran, run-text(program, <typescript>, folder, <counter>, memory-choice)
+  save now/state, ran/state
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/parts, text-split(trim(ran/output), <|>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# what the run answered at `at`, <> when it did not run
+task part-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <the counter view compiles>
+  want hold, out/ok
+
+test <emits the view as a component function>
+  want hold, matches(component-shape, out/emitted)
+
+test <emits the signal on the render runtime>
+  want hold, matches(signal-shape, out/emitted)
+
+test <emits the click handler as an event>
+  want hold, matches(click-shape, out/emitted)
+
+test <emits the count as a reactive text node>
+  want hold, matches(dynamic-shape, out/emitted)
+
+test <the program runs>
+  want hold, is-equal(the-answers()/state, <ran>)
+
+test <initial state>
+  want hold, is-equal(part-at(0), want/0)
+
+test <after one click>
+  want hold, is-equal(part-at(1), want/1)
+
+test <after three clicks>
+  want hold, is-equal(part-at(2), want/2)

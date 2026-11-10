@@ -2091,6 +2091,8 @@ task emit-swift
   save variant-set, make hash
   save variant-fields, make hash
   save case-field-names, make hash
+  save case-fields, make hash
+  save variant-case-fields, make hash
   save shared-names, make list
   save record-fields, make hash
   save exception-flags, make hash
@@ -2161,6 +2163,8 @@ task emit-swift
           save variant-fields/{variant/name}, names
           save case-key, <{name}/{variant/name}>
           save case-field-names/{case-key}, names
+          save case-fields/{case-key}, variant-record-fields(variant)
+          save variant-case-fields/{variant/name}, variant-record-fields(variant)
         fork test, shared
           hold
             push(shared-names, name)
@@ -2451,6 +2455,8 @@ task emit-swift
       bind variant-set, variant-set
       bind variant-fields, variant-fields
       bind case-field-names, case-field-names
+      bind case-fields, case-fields
+      bind variant-case-fields, variant-case-fields
       bind record-fields, record-fields
       bind inspect-forms, inspect-forms(program)
       bind inspect-walkers, inspect-walkers

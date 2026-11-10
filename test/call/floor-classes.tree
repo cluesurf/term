@@ -158,8 +158,8 @@ task floor-bare
 
   save home, temp-folder(<floor-classes->)
   floor-do(home, <git>, <init -q>)
-  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/make/code/dev {floor-t}/deck/call/code {floor-t}/test/call {floor-t}/task/term deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
-  floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/deck/make/code/dev/client.ts {floor-t}/test/call/kept.ts>)
+  floor-do(home, <mkdir>, <-p {floor-t}/deck/make/code/engine/backend {floor-t}/deck/make/code/view {floor-t}/deck/call/code {floor-t}/test/call {floor-t}/task/term deck/zone/test note/project/term/self-host/change/001-finish-self-host tmp>)
+  floor-do(home, <touch>, <{floor-t}/deck/make/code/engine/backend/runtime.ts {floor-t}/deck/make/code/view/reactive.ts {floor-t}/test/call/kept.ts>)
   floor-write(<{home}/{floor-checklist}>, floor-items(item-state))
   back home
 

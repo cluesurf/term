@@ -1,0 +1,463 @@
+note <a name belongs to the module that defines it, and reaches another module only through load and find>
+
+# Ported from module-scope.ts by statement (item term-self-host-001-0609), one test per `ok` in its order
+# (note/project/term/module-scope/readme.md). These are the cases the one flat program used to get wrong, each built as
+# a small package of `@app/<name>` modules answered by their paths: two definitions of one name in two files, and a file
+# that imports one of them. A package that places a component or raises an exception also reaches the real packages of
+# the project under the node env, as the original's fallback to `projectResolver` did.
+#
+# The original imported a built module and called its tasks from TypeScript. Here a case that calls the main file's
+# `run` alone runs it on node through test/support/running, and a case that calls other tasks runs a second file that
+# loads the main file as `@app/main` and answers each call, joined by `|`. The original's count of the `frontDir`
+# exports of the module is the count of them its emitted TypeScript exports, and its call of each by its arity is the
+# second file's call of `front-dir` with no argument and with one. A pattern of the original that holds only literal
+# characters is the text it spells, read with `text-contains`.
+#
+#   module-scope-0002  tasks of DIFFERENT signatures across files are bound by import, not chosen as global overloads
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+# a package of `@app/<name>` modules, given as a name and then its text, and a main file loading some of them. With
+# `open`, a load no module answers goes on to the real packages of the project under the node env
+task package
+  take parts, like list, like text
+  take open, like boolean
+  like compile-choice
+
+  save files, make list
+  save name, <>
+  save named, false
+  walk parts
+    take part, like text
+    fork test, named
+      hold
+        files/push(make(compiling-source, bind(file, <@app/{name}>), bind(text, part), bind(answer, <{name}.tree>)))
+        save named, false
+      miss
+        save name, part
+        save named, true
+  fork test, open
+    hold
+      back make(compile-choice, bind(file, <main.tree>), bind(files, files), bind(project, <.>), bind(project-env, <node>))
+  back make(compile-choice, bind(file, <main.tree>), bind(closed, true), bind(files, files))
+
+task built
+  take parts, like list, like text
+  take main, like text
+  like dynamic
+
+  back compile-text(main, package(parts, false))
+
+# whether the build compiled and its TypeScript holds `word`
+task built-holding
+  take out, like dynamic
+  take word, like text
+  like boolean
+
+  fork test, not(out/ok)
+    hold
+      back false
+  back text-contains(out/emitted, word)
+
+# whether the build was refused, or its TypeScript does not hold `word`
+task refused-or-without
+  take out, like dynamic
+  take word, like text
+  like boolean
+
+  fork test, not(out/ok)
+    hold
+      back true
+  back not(text-contains(out/emitted, word))
+
+# what a program answered on node, else why it did not run, run once per key
+form run-cache
+  mark shared
+  link answers, like hash, like text, like text
+
+host cache, make(run-cache, bind(answers, make hash))
+
+task answer-of
+  take key, like text
+  take source, like text
+  take choice, like compile-choice
+  like text
+  mark async
+
+  fork test, cache/answers/has(key)
+    hold
+      back cache/answers/get(key)
+  host folder, temp-folder(<term-module-scope->)
+  host ran, run-text(source, <typescript>, folder, key, choice)
+  save said, <{ran/state} at {ran/stage}: {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save said, ran/output
+  cache/answers/set(key, said)
+  back said
+
+# what the main file's `run` answered
+task main-answer
+  take key, like text
+  take parts, like list, like text
+  take main, like text
+  take open, like boolean
+  like text
+  mark async
+
+  back answer-of(key, main, package(parts, open))
+
+# the answer of a second file that loads the main file as `@app/main`, split at `|`
+task through-main
+  take key, like text
+  take parts, like list, like text
+  take main, like text
+  take caller, like text
+  like list, like text
+  mark async
+
+  save all, make list
+  walk parts
+    take part, like text
+    all/push(part)
+  all/push(<main>)
+  all/push(main)
+  back text-split(answer-of(key, caller, package(all, false)), <|>)
+
+# two modules define `pick` at DIFFERENT parameter types: over text, and over numbers
+host pick-text, <task pick\n  take x, like text\n  like text\n  send back, text \<text\>\n>
+host pick-number, <task pick\n  take x, like number\n  like text\n  send back, text \<number\>\n>
+host number-other, <{pick-number}\ntask other\n  like text\n  send back, text \<o\>\n>
+
+# main imports the text one and calls it with text: it is the text one
+host text-call, <load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n>
+
+# main imports the TEXT one and calls it with a NUMBER. The flat program chose the number one by type, a module main
+# never imported; bound by import, it is the text one, and a number does not fit it
+host number-call, <load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      code 3\n>
+
+# two modules define `pick` at DIFFERENT arities
+host pick-one, <task pick\n  take x, like text\n  like text\n  send back, text \<one\>\n>
+host pick-two, <task pick\n  take x, like text\n  take y, like text\n  like text\n  send back, text \<two\>\n>
+
+# main imports the one-parameter pick and calls it with two arguments: refused against the imported one, never the
+# other module's two-parameter pick, which the flat program's arity overloading reached
+host two-call, <load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n      text \<y\>\n>
+
+# a call whose file imports the name from NEITHER, where only one module's definitions take its arity: it still binds to
+# that one, as it always has, until the strict step (module-scope-0006) refuses an unimported reference
+host unimported-call, <load @app/a\n  find other\n\nload @app/b\n  find another\n\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n      text \<y\>\n>
+
+# a task passed as a VALUE is bound by its file's import too
+host value-call, <load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask apply\n  take f\n    like task\n      take x, like text\n      like text\n  like text\n  send back\n    call f\n      text \<x\>\n\ntask run\n  like text\n  send back\n    call apply\n      read pick\n>
+
+# the entry file defines `pick` itself, and so does a module it loads for something else: the entry's keeps its name,
+# which is what its exported API is called
+host entry-pick, <load @app/b\n  find other\n\n{pick-text}\ntask run\n  like text\n  send back\n    call pick\n      text \<x\>\n\ntask run-other\n  like text\n  send back, call other\n>
+host other-pick, <{pick-number}\ntask other\n  like text\n  send back, call pick(code 1)\n>
+
+# module-scope-0003: two FORMS of one name in two files, each with fields of its own and a method of its own
+host point-a, <form point\n  link x, like number\n  link y, like number\n  task total\n    take self, like point\n    like number\n    send back\n      call add\n        read self/x\n        read self/y\n>
+host point-b, <form point\n  link lat, like text\n  link long, like text\n  task total\n    take self, like point\n    like text\n    send back\n      read self/lat\n>
+# c builds b's point, so b's form is in the program beside a's
+host point-c, <load @app/b\n  find point\n\ntask place\n  like text\n  save p\n    make point\n      bind lat, text \<north\>\n      bind long, text \<west\>\n  send back, read p/lat\n>
+
+host both-points, <load @app/a\n  find point\n\nload @app/c\n  find place\n\ntask run\n  like number\n  save p\n    make point\n      bind x, code 1\n      bind y, code 2\n  send back, read p/x\n\ntask run-place\n  like text\n  send back, call place\n>
+host point-method, <load @app/a\n  find point\n\nload @app/c\n  find place\n\ntask run\n  like number\n  save p\n    make point\n      bind x, code 1\n      bind y, code 2\n  send back\n    call total\n      read p\n\ntask run-place\n  like text\n  send back, call place\n>
+host two-definers, <load @app/a\n  find point\n\nload @app/b\n  find point\n\ntask run\n  like text\n  save p\n    make point\n      bind lat, text \<n\>\n      bind long, text \<w\>\n  send back, read p/lat\n>
+host unimported-form, <load @app/c\n  find place\n\nload @app/a\n  find other\n\ntask run\n  take p, like point\n  like number\n  send back, code 1\n\ntask run-place\n  like text\n  send back, call place\n>
+host point-other, <{point-a}\ntask other\n  like number\n  send back, code 1\n>
+
+# module-scope-0004: two COMPONENTS of one name in two files, each drawing its own element
+host badge-a, <load @term/site/code/dom/dom\n  find view\n\nview badge\n  take host, like view\n  view span\n    text \<a\>\n>
+host badge-b, <load @term/site/code/dom/dom\n  find view\n\nview badge\n  take host, like view\n  view em\n    text \<b\>\n>
+# d places b's badge, so b's component is in the program beside a's
+host badge-d, <load @term/site/code/dom/dom\n  find view\n\nload @app/b\n  find badge\n\nview card\n  take host, like view\n  view badge\n>
+host badge-page, <load @term/site/code/dom/dom\n  find view\n\nload @app/a\n  find badge\n\nload @app/d\n  find card\n\nview page\n  take host, like view\n  view badge\n  view card\n>
+
+# module-scope-0005: ONE NAME, TWO KINDS, told apart by where it stands. A task `point` and a form `point`, each from
+# its own module, both imported with a plain `find` and no alias
+host task-point, <task point\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      code 10\n>
+host form-point, <form point\n  link x, like number\n  link total, like number\n  task sum\n    take self, like point\n    like number\n    send back\n      read self/x\n>
+host two-kinds, <load @app/t\n  find point\n\nload @app/f\n  find point\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 1\n      bind total, code 5\n  send back\n    call point\n      read p/x\n>
+
+# a top-level task named like a FIELD and like a METHOD of a form, from a module the file never imported for it
+host total-task, <task total\n  take n, like number\n  like number\n  send back, code 99\n\ntask sum\n  take n, like number\n  like number\n  send back, code 98\n>
+# `read p/total` reads the field, whatever task some other module calls `total`
+host field-read, <load @app/f\n  find point\n\nload @app/g\n  find other\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 1\n      bind total, code 5\n  send back, read p/total\n>
+host total-other, <{total-task}\ntask other\n  like number\n  send back\n    call total\n      code 1\n>
+# `call sum, read p` on a point is the form's own method, not a same-named top-level task of another module
+# (native-dom-0036: a top-level task shadowed every same-named method)
+host method-call, <load @app/f\n  find point\n\nload @app/g\n  find other\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 7\n      bind total, code 5\n  send back\n    call sum\n      read p\n>
+host sum-other, <{total-task}\ntask other\n  like number\n  send back\n    call sum\n      code 1\n>
+
+# a record matched under its OWN name binds its fields in the arm, and a field named like a task of the file is the field
+# there: `case mark / link start / read start` beside a top-level `task start` (deck/base/code/native/node/clock/measurement.tree)
+host own-arm, <form mark\n  link start, like number\n\ntask start\n  like mark\n  send back\n    make mark\n      bind start, code 3\n\ntask since\n  take m, like mark\n  like number\n  fork case, read m\n    case mark\n      link start\n      send back\n        call subtract\n          code 10\n          read start\n>
+
+# a `host` VALUE in one module and a TASK of the same name in another (terminal-target-0003: the terminal host's `host
+# focus` beside the memory dom's `task focus`). Both reached the output as declarations of one name, and the bundle
+# refused to load. `read level/n` is the value and `call level` the task, so each keeps its own
+host gauge, <form gauge\n  mark shared\n  link n, like number\n\nhost level\n  make gauge\n    bind n, code 4\n\ntask read-level\n  like number\n  send back, read level/n\n>
+host level-task, <task level\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 100\n>
+host level-call, <load @app/v\n  find read-level\n\nload @app/t\n  find level\n\ntask run\n  like number\n  send back\n    call add\n      call read-level\n      call level\n        code 1\n>
+host level-declared, make pattern, <<(const|let|var|function) level\b>>
+host level-value, make pattern, <<level__value\d*\.n|levelValue\d*\.n>>
+
+# the ENTRY file's task keeps its name beside another module's task of the same name at another arity. An abstract
+# module's signature (no body, as deck/site/code/base/native/db.tree declares `run`) is not split by file, so the two were
+# mangled by arity, and the entry's `run` was emitted as `run0`: its host found no `run` to call (terminal-target-0005)
+host run-signature, <task run\n  take sql, like text\n  take params, like text\n  like text\n>
+host signature-call, <load @app/sig\n  find run\n\ntask run\n  like text\n  send back, text \<done\>\n\ntask other\n  like text\n  send back\n    call run\n      text \<a\>\n      text \<b\>\n>
+
+# an import ALIAS of a name the file also defines. `find measure, name module-measure` is rewritten to the imported name
+# before binding, so the file's own `measure` took it and the call was checked against the wrong task: the float port's
+# `find to-number, name decimal-to-number` bound to its own `to-number` (self-hosting, 2026-10-04). Each output is run,
+# so an inlined call is held to its answer rather than its spelling
+host measure-module, <task measure\n  take x, like number\n  like text\n  send back, text \<module\>\n>
+host measure-alias, <load @app/m\n  find measure, name module-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like text\n  send back, text \<own\>\n\ntask run\n  like text\n  send back\n    call module-measure\n      code 3\n\ntask mine\n  like text\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n>
+
+# and the same where the imported name is a native BINDING, as the stdlib's `bind to-number` is: a `bind` is not split by
+# file the way a task is, so it needed its own pass (bindAliasedNatives)
+host measure-native, <bind measure\n  take x, like number\n  like number\n  case node\n    text \<($x + 100)\>\n>
+host native-alias, <load @app/n\n  find measure, name native-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like number\n  send back, code 7\n\ntask run\n  like number\n  send back\n    call native-measure\n      code 3\n\ntask mine\n  like number\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n>
+
+# a run task answering the main file's `run` and `mine`
+host run-and-mine, <load @app/main\n  find run, name main-run\n  find mine\n\ntask run\n  like text\n  send back, \<\{main-run()\}|\{mine()\}\>\n>
+
+# a LOCAL named like the aliased task's own name never captures the alias: `find root, name project-root` then `save
+# root, call project-root`. applyAliases renames the reference to `root` at mill time, so the local took it: the
+# TypeScript was `const root = root()` (a TDZ ReferenceError, every verb of the Term console, term-compiler-0032), and
+# with the local saved first a later `call project-root` was refused as not callable (it has type text)
+host root-module, <task root\n  like text\n  send back, text \<here\>\n>
+host root-local, <load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, call project-root\n  send back, read root\n>
+host root-later, <load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, text \<x\>\n  save other, call project-root\n  send back, read other\n>
+
+# two tasks of one name told apart only by ARITY, both in the entry, nothing calling them: the arity pass names them
+# `front-dir__0` and `front-dir__1`, and the entry's roots held only `front-dir`, so both were left out of the module,
+# silently (term-cli-in-term-0060's front-dir, term-compiler-0036)
+host front-dir, <task front-dir\n  like text\n  send back, text \<none\>\n\ntask front-dir\n  take home, like text\n  like text\n  send back, text \<\{home\}/front\>\n\ntask other\n  like text\n  send back, text \<o\>\n>
+host front-exports, make pattern, <<export (function|const) frontDir\w*\b>>
+host front-calls, <load @app/main\n  find front-dir\n\ntask run\n  like text\n  send back, \<\{front-dir()\}|\{front-dir(\<h\>)\}\>\n>
+
+# an alias keeps two same-named FORMS apart: `element` from one module, `find element, name chart-element` from another.
+# The bridge dropped the alias on a `make` and a `like`, and form binding reached a bare name through every find of it,
+# so both spellings bound to the form merged last and `make element, bind name` failed as needing `size` (guides:
+# language/modules, 2026-10-04)
+host page-element, <form element\n  link name, like text\n>
+host chart-element, <form element\n  link size, like number\n>
+host element-main, <load @app/page\n  find element\n\nload @app/chart\n  find element, name chart-element\n\ntask title\n  like text\n  save e\n    make element\n      bind name, text \<title\>\n  send back, read e/name\n\ntask bar\n  take c, like chart-element\n  like number\n  send back, read c/size\n\ntask run\n  like number\n  save c\n    make chart-element\n      bind size, code 3\n  send back\n    call bar\n      read c\n>
+host title-and-run, <load @app/main\n  find title\n  find run, name main-run\n\ntask run\n  like text\n  send back, \<\{title()\}|\{main-run()\}\>\n>
+
+# two same-named TASKS from two modules in one file, one under an alias: `json`'s and `csv`'s `parse`, `time`'s and
+# `clock`'s `now`. The guides said the build refused it as `duplicate-definition`; on 2026-10-04 it built, each name
+# reaching its own module, and this holds it
+host json-parse, <task parse\n  take text, like text\n  like text\n  send back, text \<json\>\n>
+host csv-parse, <task parse\n  take text, like text\n  like text\n  send back, text \<csv\>\n>
+host parse-main, <load @app/json\n  find parse\n\nload @app/csv\n  find parse, name parse-csv\n\ntask both\n  like text\n  send back, \<\{parse(\<a\>)\}\{parse-csv(\<b\>)\}\>\n>
+host both-call, <load @app/main\n  find both\n\ntask run\n  like text\n  send back, call both\n>
+
+# an exception form named like another form's case is renamed apart (`clash__form`), and so are its raises. The arm of
+# a match over the caught exception was not, so it named nothing, and its fields were unknown names: that is how
+# check/pattern-literal.tree's `case pattern-mismatch` failed once parser/diagnostic.tree's case of the name was in the
+# program (2026-10-05). Main imports the case's form too: an arm still means the exception it imports by name
+host fault, <load @term/base/exception\n  find exception\n\nform clash\n  like exception\n    bind note, \<Clashed\>\n    link at, like number\n\ntask fail-it\n  like number\n  halt clash\n    bind at, code 7\n>
+host names, <form label\n  mark text\n  case clash\n  case other\n>
+host fault-main, <load @app/fault\n  find clash\n  find fail-it\n\nload @app/names\n  find label\n\ntask run\n  like number\n  fork\n    mark unsafe\n    call fail-it\n    send back, code 0\n  halt take\n    take error\n    sift error\n      case clash\n        send back, read at\n    send back, code -1\n>
+
+# a module's internal call binds inside that module: b finds `join`, a METHOD of l's `bag`, and calls it as a task. The
+# entry defines a task `join` of its own, which keeps the bare name, and b's call reached it ("join" takes 1 argument).
+# browser/posix-path.tree's `join` took posix.tree's calls to @term/base/list's `join` (term-compiler-0053)
+host bag, <form bag\n  link items, like list, like text\n  task join\n    take self\n    take separator, like text\n    like text\n    send back, \<\{self/items/length\}\{separator\}\>\n>
+host glue, <load @app/l\n  find bag\n  find join\n\ntask glue\n  take b, like bag\n  like text\n  send back\n    call join\n      read b\n      text \</\>\n>
+host join-main, <load @app/b\n  find glue\n\nload @app/l\n  find bag\n\ntask join\n  take paths, like list, like text\n  like text\n  save b\n    make bag\n      bind items, read paths\n  save g, call glue(read b)\n  send back, \<[\{g\}]\>\n>
+host join-call, <load @app/main\n  find join, name main-join\n\ntask run\n  like text\n  save paths\n    make list\n      text \<a\>\n      text \<b\>\n  send back\n    call main-join\n      read paths\n>
+
+test <a call binds to the definition its file imported>
+  want hold, built-holding(built(make(list, <a>, pick-text, <b>, number-other), text-call), <"text">)
+
+test <a call never reaches a same-named task of another type its file did not import>
+  want hold, refused-or-without(built(make(list, <a>, pick-text, <b>, number-other), number-call), <"number">)
+
+test <the argument that does not fit the imported one is refused>
+  want hold, not(built(make(list, <a>, pick-text, <b>, number-other), number-call)/ok)
+
+test <a call with an arity only the unimported module takes does not reach it>
+  want hold, refused-or-without(built(make(list, <a>, pick-one, <b>, <{pick-two}\ntask other\n  like text\n  send back, text \<o\>\n>), two-call), <"two">)
+
+test <an unimported call that only one module's arity takes still binds to it>
+  want hold, built-holding(built(make(list, <a>, <{pick-one}\ntask other\n  like text\n  send back, text \<o\>\n>, <b>, <{pick-two}\ntask another\n  like text\n  send back, text \<p\>\n>), unimported-call), <"two">)
+
+test <a task passed as a value is the one its file imported>
+  host out, built(make(list, <a>, pick-text, <b>, number-other), value-call)
+  want hold, out/ok
+  want hold, refused-or-without(out, <"number">)
+
+test <the entry file's own definition keeps its name>
+  want hold, built-holding(built(make(list, <b>, other-pick), entry-pick), <export function pick(>)
+
+test <and the other module's call reaches its own>
+  want hold, built-holding(built(make(list, <b>, other-pick), entry-pick), <"number">)
+
+test <two forms of one name in two files compile side by side, each importer building its own>
+  want hold, built(make(list, <a>, point-a, <b>, point-b, <c>, point-c), both-points)/ok
+
+test <a form's method follows its own form>
+  want hold, built(make(list, <a>, point-a, <b>, point-b, <c>, point-c), point-method)/ok
+
+test <a form imported from two definers is the one merged last, as the flat program had it>
+  want hold, built(make(list, <a>, point-a, <b>, point-b), two-definers)/ok
+
+test <an unimported form reference still builds, as the flat program built it>
+  want hold, built(make(list, <a>, point-other, <b>, point-b, <c>, point-c), unimported-form)/ok
+
+test <two components of one name in two files compile side by side>
+  want hold, compile-text(badge-page, package(make(list, <a>, badge-a, <b>, badge-b, <d>, badge-d), true))/ok
+
+# page places a's badge (a span), card places b's (an em): both elements are drawn
+test <each placement draws the component its file imported>
+  host out, compile-text(badge-page, package(make(list, <a>, badge-a, <b>, badge-b, <d>, badge-d), true))
+  want hold, built-holding(out, <"span">)
+  want hold, built-holding(out, <"em">)
+
+test <a task and a form of one name, both imported plainly, compile with no alias>
+  want hold, built(make(list, <t>, task-point, <f>, form-point), two-kinds)/ok
+
+test <`call point` is the task and `make point` / `like point` the form>
+  host out, built(make(list, <t>, task-point, <f>, form-point), two-kinds)
+  want hold, or(built-holding(out, <+ 10>), built-holding(out, <10)>))
+
+test <a field read is the field, not a same-named task of another module>
+  host out, built(make(list, <f>, form-point, <g>, total-other), field-read)
+  want hold, out/ok
+  want hold, refused-or-without(out, <99>)
+
+test <a method call on a value is its form's method, not a same-named task of another module>
+  host out, built(make(list, <f>, form-point, <g>, sum-other), method-call)
+  want hold, out/ok
+  want hold, refused-or-without(out, <98>)
+
+test <a field bound by a record's own arm is the field, not a same-named task>
+  host none, make list
+  want hold, built(none, own-arm)/ok
+
+test <a host value and a same-named task of another module compile side by side>
+  want hold, built(make(list, <v>, gauge, <t>, level-task), level-call)/ok
+
+# at most once: the optimizer may inline the task, and two is what the collision produced
+test <the output never declares the name twice: the value has its own>
+  host out, built(make(list, <v>, gauge, <t>, level-task), level-call)
+  want hold, out/ok
+  want hold, is-below(find-matches(level-declared, out/emitted)/length, 2)
+
+test <the value reference still reads the host>
+  host out, built(make(list, <v>, gauge, <t>, level-task), level-call)
+  want hold, out/ok
+  want hold, matches(level-value, out/emitted)
+
+test <an entry task and an imported signature of one name at two arities compile>
+  want hold, built(make(list, <sig>, run-signature), signature-call)/ok
+
+test <the entry's task keeps its own name>
+  want hold, built-holding(built(make(list, <sig>, run-signature), signature-call), <function run()>)
+
+test <the other arity is still told apart>
+  host out, built(make(list, <sig>, run-signature), signature-call)
+  want hold, out/ok
+  want hold, refused-or-without(out, <function run(sql>)
+
+test <an aliased import of a name the file defines compiles>
+  want hold, built(make(list, <m>, measure-module), measure-alias)/ok
+
+test <the alias reaches the imported task>
+  want hold, is-equal(through-main(<measure>, make(list, <m>, measure-module), measure-alias, run-and-mine)/0, <module>)
+
+test <the bare name is still the file's own>
+  want hold, is-equal(through-main(<measure>, make(list, <m>, measure-module), measure-alias, run-and-mine)/1, <own>)
+
+test <an aliased import of a native binding the file names a task compiles>
+  want hold, built(make(list, <n>, measure-native), native-alias)/ok
+
+test <the alias reaches the native binding>
+  want hold, is-equal(through-main(<native>, make(list, <n>, measure-native), native-alias, run-and-mine)/0, <103>)
+
+test <the bare name is still the file's own task>
+  want hold, is-equal(through-main(<native>, make(list, <n>, measure-native), native-alias, run-and-mine)/1, <7>)
+
+test <a local named like the aliased task, saved from the alias, compiles>
+  want hold, built(make(list, <r>, root-module), root-local)/ok
+
+test <the local holds the import's answer>
+  want hold, is-equal(main-answer(<root-local>, make(list, <r>, root-module), root-local, false), <here>)
+
+test <an alias called after a local of the imported name exists is still the task>
+  want hold, built(make(list, <r>, root-module), root-later)/ok
+
+test <the later call reaches the import>
+  want hold, is-equal(main-answer(<root-later>, make(list, <r>, root-module), root-later, false), <here>)
+
+test <an entry's two arities of one name compile>
+  host none, make list
+  want hold, built(none, front-dir)/ok
+
+test <both arities are in the module>
+  host none, make list
+  host out, built(none, front-dir)
+  want hold, out/ok
+  want hold, is-equal(find-matches(front-exports, out/emitted)/length, 2)
+
+test <and each answers its own body>
+  host none, make list
+  host answers, sort(through-main(<front>, none, front-dir, front-calls), from-texts)
+  want hold, is-equal(answers/join(<,>), <h/front,none>)
+
+test <an alias keeps two same-named forms apart, in a `make` and in a `like`>
+  want hold, built(make(list, <page>, page-element, <chart>, chart-element), element-main)/ok
+
+test <the bare name builds the first module's form>
+  want hold, is-equal(through-main(<element>, make(list, <page>, page-element, <chart>, chart-element), element-main, title-and-run)/0, <title>)
+
+test <the alias builds and takes the second's>
+  want hold, is-equal(through-main(<element>, make(list, <page>, page-element, <chart>, chart-element), element-main, title-and-run)/1, <3>)
+
+test <one file loads two same-named tasks, one under an alias>
+  want hold, built(make(list, <json>, json-parse, <csv>, csv-parse), parse-main)/ok
+
+test <each name reaches its own module>
+  want hold, is-equal(through-main(<parse>, make(list, <json>, json-parse, <csv>, csv-parse), parse-main, both-call)/0, <jsoncsv>)
+
+test <an arm over a caught exception reaches a form renamed apart from a case>
+  want hold, compile-text(fault-main, package(make(list, <fault>, fault, <names>, names), true))/ok
+
+test <the arm catches it and reads its field>
+  want hold, is-equal(main-answer(<fault>, make(list, <fault>, fault, <names>, names), fault-main, true), <7>)
+
+test <a loaded module's call to a method it imported is not taken by the entry's task of the name>
+  want hold, built(make(list, <l>, bag, <b>, glue), join-main)/ok
+
+test <the entry's task calls the module, and the module its method>
+  want hold, is-equal(through-main(<join>, make(list, <l>, bag, <b>, glue), join-main, join-call)/0, <[2/]>)

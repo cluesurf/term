@@ -1,0 +1,138 @@
+note <A dock load alias and a task of one name in one file are two things, told apart by where the name stands>
+
+# Ported from dock-alias-task.ts by statement (item term-self-host-001-0613), term/compiler decision 007: the root of a
+# path reaches the dock module, a call or a bare value the task. On TypeScript the dock's local `const resolveModule: any
+# = __dock_resolveModule` sat beside `function resolveModule`, and `resolve-module/basename(file)` read `.basename` off
+# the TASK: undefined at run time, the build clean (term-compiler-0043, term-cli-in-term-0100). Each output is checked
+# as text on every backend and run on TypeScript, one main printing the three calls' answers.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture, <dock load\n  load \<node:path\>, name resolve-module\n\ntask resolve-module\n  take file, like text\n  like text\n  back resolve-module/basename(file)\n\ntask by-call\n  like text\n  back resolve-module(\<a/b.txt\>)\n\ntask by-value\n  take pick\n    like task\n      take file, like text\n      like text\n  like text\n  back pick(\<a/b.txt\>)\n\ntask as-value\n  like text\n  back by-value(resolve-module)\n>
+
+host task-named, make pattern, <<function resolveModule\(>>
+host dock-bound, make pattern, <<const __dockAny_resolveModule: any = __dock_resolveModule>>
+host task-const, make pattern, <<const resolveModule\b>>
+host read-off-dock, make pattern, <<__dockAny_resolveModule\.basename\(file\)>>
+host plain-local, make pattern, <<const nodePath: any = __dock_nodePath>>
+host plain-read, make pattern, <<nodePath\.basename\(file\)>>
+host rust-read, make pattern, <<\bresolve_module::basename\(>>
+host rust-wrong, make pattern, <<resolve_module__task::>>
+host swift-read, make pattern, <<[^_]\bresolveModule\.basename\(>>
+host kotlin-read, make pattern, <<[^:_]\bresolveModule\.basename\(>>
+host apple-wrong, make pattern, <<resolveModule__task\.basename|::resolveModule__task>>
+
+# lean, with the compiler's own resolver, on the driver's env <> or a native one
+task built
+  take env, like text
+  like compile-outcome
+
+  back compile-text(fixture, make(compile-choice, bind(file, </gate/code/alias.tree>), bind(lean, true), bind(env, env)))
+
+form alias-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(alias-answers, bind(held, make hash))
+
+# what the three calls answered, joined by |, made once
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-dock-alias->)
+  save said, typescript-answer(built(<>), <process.stdout.write([resolveModule("a/b.txt"), byCall(), asValue()].join("|"))>, folder, <module>)
+  save kept/held/{key}, said
+  back said
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <a dock alias named like a task of its file builds>
+  want hold, built(<>)/ok
+
+test <the task keeps its name>
+  want hold, matches(task-named, built(<>)/emitted)
+
+test <the dock is bound under a name the task cannot take>
+  want hold, matches(dock-bound, built(<>)/emitted)
+
+test <no const of the task name>
+  host out, built(<>)
+  want hold, out/ok
+  want hold, not(matches(task-const, out/emitted))
+
+test <the path read is off the dock>
+  want hold, matches(read-off-dock, built(<>)/emitted)
+
+test <the output loads>
+  host said, printed()
+  want hold, not(starts-with(said, <exit >))
+  want hold, not(starts-with(said, <refused:>))
+
+test <the task reads the dock: resolve-module(\<a/b.txt\>) is b.txt>
+  want hold, is-equal(answer(0), <b.txt>)
+
+test <a call of the task answers b.txt>
+  want hold, is-equal(answer(1), <b.txt>)
+
+test <the task passed as a value answers b.txt>
+  want hold, is-equal(answer(2), <b.txt>)
+
+# no clash: the output is as before, the dock bound under its own name
+test <with no clash the dock keeps its own local>
+  host plain, compile-text(<dock load\n  load \<node:path\>, name node-path\n\ntask base-of\n  take file, like text\n  like text\n  back node-path/basename(file)\n>, make(compile-choice, bind(file, </gate/code/alias.tree>), bind(lean, true)))
+  want hold, plain/ok
+  want hold, matches(plain-local, plain/emitted)
+  want hold, matches(plain-read, plain/emitted)
+
+# the native backends: the path root is the dock's spelling, never the task's
+test <rust: the path read is off the dock>
+  host out, built(<rust>)
+  want hold, out/ok
+  host emitted, emit-text(out, <rust>)
+  want hold, matches(rust-read, emitted)
+  want hold, not(matches(rust-wrong, emitted))
+
+test <swift: the path read is off the dock>
+  host out, built(<swift>)
+  want hold, out/ok
+  host emitted, emit-text(out, <swift>)
+  want hold, matches(swift-read, emitted)
+  want hold, not(matches(apple-wrong, emitted))
+
+test <kotlin: the path read is off the dock>
+  host out, built(<kotlin>)
+  want hold, out/ok
+  host emitted, emit-text(out, <kotlin>)
+  want hold, matches(kotlin-read, emitted)
+  want hold, not(matches(apple-wrong, emitted))

@@ -1,0 +1,77 @@
+note <the render stack compiles, and a mounted text node tracks the signal it reads>
+
+# Ported from render.ts by statement (item term-self-host-001-0646), one test per `ok` in its order. The demo is
+# deck/site/code/test/site/ssr-demo.tree: first it compiles alone through the project under the node env with the
+# optimizer off, as the original compiled it. The original then called `create-element`, `build-counter` and
+# `write-signal` of the built module from TypeScript and read the root's first child: here a run task does the same on
+# the node dom and answers the child's text before and after the write, built and run once on node through
+# test/support/running. Each test reads one of the two.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find project-path
+  find file-text
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+host demo-file, <deck/site/code/test/site/ssr-demo.tree>
+
+# a run task answering the mounted text, then the text after the signal is written
+host program, <load @term/site/test/site/ssr-demo\n  find build-counter\n\nload @term/site/view/reactive\n  find write-signal\n\nload @term/site/dom/dom\n  find view\n  find create-element\n\ntask text-of\n  take node, like view\n  like text\n\n  back node/handle/text\n\ntask first-text\n  take root, like view\n  like text\n\n  back text-of(root/handle/children/0)\n\ntask run\n  like text\n\n  save root, create-element(\<root\>)\n  save count, build-counter(root)\n  save mounted, first-text(root)\n  write-signal(count, \<42\>)\n  save written, first-text(root)\n  back \<\{mounted\}|\{written\}\>\n>
+
+# the answers, made once: `parts` the text before and after the write, `reason` why the program did not run
+form answers
+  mark shared
+  link done, like boolean
+  link parts, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(parts, make list), bind(reason, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-zone-render->)
+  host ran, run-text(program, <typescript>, folder, <render>)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/parts, text-split(trim(ran/output), <|>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# the text the run read at `at`, <> when the program did not run
+task part-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <the .tree render stack compiles to TypeScript>
+  host out, compile-text(file-text(demo-file), make(compile-choice, bind(file, project-path(<.>, demo-file)), bind(project, <.>), bind(project-env, <node>), bind(optimize, false)))
+  want hold, out/ok
+
+test <component mounts a reactive text node>
+  want hold, is-equal(part-at(0), <0>)
+
+test <writing the signal updates the exact DOM node>
+  want hold, is-equal(part-at(1), <42>)

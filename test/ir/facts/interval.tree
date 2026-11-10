@@ -1,0 +1,322 @@
+note <the interval proof, held both ways: the operations it must prove, and for every rule an operation it must not>
+
+# Ported from interval.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. A wrong proof drops
+# an overflow check that should fire. Each case names one multiplication by a literal of its own and asks whether that
+# node is proven: the program is compiled with the stdlib under the node env and `main` its entry, stamped as the
+# TypeScript emitter stamps it (decision 056), and every node asked on that stamped program, its `type` and `span`
+# fields left out of the walk as the original left them. compile/proven is the subject (decision 106).
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../../support/walking
+  find nodes-of
+
+load @term/base/text
+  find replace, name text-replace
+
+dock load
+  load <@term/make/code/compile/proven>, name proven-module
+
+# host value: whether the fact set holds the node itself, by identity
+bind set-holds
+  take facts, like dynamic
+  take node, like dynamic
+  like boolean
+  case node
+    text <$facts.has($node)>
+
+# host value: a literal's value as a number, as the original's `Number(value)` read it
+bind number-of
+  take value, like dynamic
+  like number
+  case node
+    text <Number($value)>
+
+# whether a binary node is the one asked about: `op` by the literal `by`, or with `divisor` its right variable
+task is-asked
+  take node, like dynamic
+  take by, like number
+  take op, like text
+  take divisor, like text
+  like boolean
+
+  fork test, is-unequal(node/op, op)
+    hold
+      back false
+  fork test, is-unequal(divisor, <>)
+    hold
+      back and(is-equal(node/right/form, <variable>), is-equal(node/right/name, divisor))
+  back and(is-equal(node/right/form, <integer>), is-equal(number-of(node/right/value), by))
+
+# <true> when every `*` by the literal `by` in the program is proven, <false> when one is not, <none> when there is none.
+# `op` and `divisor` ask instead about every `/` or `%` whose divisor is the variable `divisor`
+task proven
+  take text, like text
+  take by, like number
+  take op, like text, fall <*>
+  take divisor, like text, fall <>
+  like text
+
+  host built, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <main>)))
+  fork test, not(built/ok)
+    hold
+      save said, <compile failed>
+      walk built/messages
+        take message, like text
+        save said, <{said} | {message}>
+      halt <{said}>
+  host facts, proven-module/proven-arithmetic(built/program)
+  save found, 0
+  save every, true
+  walk nodes-of(facts/program, <binary>)
+    take node, like dynamic
+    fork test, is-asked(node, by, op, divisor)
+      hold
+        save found, add(found, 1)
+        fork test, not(set-holds(facts, node))
+          hold
+            save every, false
+  fork test, is-equal(found, 0)
+    hold
+      back <none>
+  back <{every}>
+
+host lists, <load @term/base/list\n  find list\n  find push\n>
+
+# a record owning a list, built by `make-bag` from `item` and rewritten through its path by `body`
+task bag
+  take item, like text
+  take body, like text
+  take extra, like text, fall <>
+  take arg, like text, fall <read k>
+  like text
+
+  back <{lists}\nform bag\n  link id, like number\n  link xs, like list, like number\n\ntask make-bag\n  take k, like number\n  like bag\n  save xs\n    make list\n  walk size\n    bind base, code 0\n    bind head, code 8\n    hook next\n      take site, name i\n      call push\n        bind list, read xs\n        bind item\n{item}\n{extra}\n  send back\n    make bag\n      bind id, read k\n      bind xs, read xs\n\ntask main\n  take n, like number\n  like number\n  save total, code 0\n  save bs\n    make list\n  walk size\n    bind base, code 0\n    bind head, code 10\n    hook next\n      take site, name k\n      call push\n        bind list, read bs\n        bind item\n          call make-bag\n            {arg}\n{body}\n  send back, read total\n>
+
+host mod-item, <          call modulo\n            call add\n              read k\n              read i\n            code 1000>
+
+# every slot of the bag rewritten as `(old * by + i) % 1000`, then added up
+task rewrite
+  take by, like number
+  take extra-write, like text, fall <>
+  like text
+
+  back <  walk size\n    bind base, code 0\n    bind head, code 10\n    hook next\n      take site, name k\n      walk size\n        bind base, code 0\n        bind head, code 8\n        hook next\n          take site, name i\n          host old, read bs/\{k\}/xs/\{i\}\n          save bs/\{k\}/xs/\{i\}\n            call modulo\n              call add\n                call multiply\n                  read old\n                  code {by}\n                read i\n              code 1000\n{extra-write}\n          save total\n            call add\n              read total\n              read bs/\{k\}/xs/\{i\}>
+
+# 1. the elements of an owned list are what is put in: remainders by 1000, so `old * 31` is bounded
+test <an owned list written with remainders bounds its slots>
+  want hold, is-equal(proven(bag(mod-item, rewrite(31)), 31), <true>)
+
+# 2. the same list also given a parameter through its path: its slots are unknown
+test <a slot written with a parameter is unknown>
+  want hold, is-equal(proven(bag(mod-item, rewrite(37, <          save bs/\{k\}/xs/\{i\}, read n>)), 37), <false>)
+
+# 3. the owned local pushed with a parameter before it is stored: `make-bag` is passed `n`, the entry's own parameter,
+# which anything outside may give, so its slots are unknown
+test <a push of an unknown parameter onto the stored local is unknown>
+  want hold, is-equal(proven(bag(mod-item, rewrite(41), <  call push\n    bind list, read xs\n    bind item, read k>, <read n>), 41), <false>)
+
+# 3b. the same push, `make-bag` passed only main's counter from 0 to 9: the parameter is the hull of its arguments
+test <a push of a parameter whose every argument is bounded is bounded>
+  want hold, is-equal(proven(bag(mod-item, rewrite(43), <  call push\n    bind list, read xs\n    bind item, read k>), 43), <true>)
+
+task main-of
+  take body, like text
+  like text
+
+  back <{lists}\ntask main\n  take n, like number\n  like number\n  save out, code 0\n{body}\n  send back, read out\n>
+
+# 4. a counter under a literal bound: after the loop it is at most 8, and 8 * m fits where 9 * m does not
+host m, 1001000000000000
+
+test <a counted loop bounds its counter>
+  want hold, is-equal(proven(main-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 8\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  save out\n    call multiply\n      read i\n      code {m}>), m), <true>)
+
+# 5. the same counter stepped twice in the loop: it reaches 9, so the condition bounds nothing
+test <a counter stepped twice is not bounded by its condition>
+  want hold, is-equal(proven(main-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 8\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n      save i\n        call add\n          read i\n          code 1\n  save out\n    call multiply\n      read i\n      code {m}>), m), <false>)
+
+# 6. a counter under a parameter's bound: unknown
+test <a counter bounded by a parameter is unknown>
+  want hold, is-equal(proven(main-of(<  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      save out\n        call multiply\n          read i\n          code 3>), 3), <false>)
+
+# 7. a local doubled every turn of a bounded loop: it grows past every round of the fixpoint, so it is widened
+test <a local doubled in a loop is widened to unknown>
+  want hold, is-equal(proven(main-of(<  save s, code 1\n  walk size\n    bind base, code 0\n    bind head, code 100\n    hook next\n      take site, name i\n      save s\n        call multiply\n          read s\n          code 2\n  save out, read s>), 2), <false>)
+
+# 8. a remainder by 1000 times 10^12 fits, times 10^14 does not
+task rem
+  take by, like number
+  like text
+
+  back main-of(<  save r\n    call modulo\n      read n\n      code 1000\n  save out\n    call multiply\n      read r\n      code {by}>)
+
+test <a remainder times 10^12 fits>
+  want hold, is-equal(proven(rem(1000000000000), 1000000000000), <true>)
+
+test <a remainder times 10^14 does not>
+  want hold, is-equal(proven(rem(100000000000000), 100000000000000), <false>)
+
+# 9. a parameter times a literal: unknown
+test <a parameter is unknown>
+  want hold, is-equal(proven(main-of(<  save out\n    call multiply\n      read n\n      code 5>), 5), <false>)
+
+# 10. a task outside the public surface: its parameter is the hull of what it is passed. 5 * 10^15 fits, and passed the
+# entry's parameter as well it does not. A loop, so the simplifier neither inlines the task nor folds its product
+host big, 1000000000000000
+
+task scaled
+  take also, like text
+  like text
+
+  back <task scale\n  take x, like number\n  like number\n  save y, code 0\n  walk size\n    bind base, code 0\n    bind head, code 2\n    hook next\n      take site, name i\n      save y, read x\n  send back\n    call multiply\n      read y\n      code {big}\n\ntask main\n  take n, like number\n  like number\n  host a, call scale(code 3)\n  host b, call scale(code 5)\n{also}\n  send back\n    call add\n      read a\n      read b\n>
+
+test <a parameter passed only literals is their hull>
+  want hold, is-equal(proven(scaled(<>), big), <true>)
+
+test <a parameter also passed the entry's parameter is unknown>
+  want hold, is-equal(proven(scaled(<  host c, call scale(read n)>), big), <false>)
+
+# 10b. the same task also handed on as a value: whoever holds it may pass anything, so `x` is unknown
+test <a parameter of a task passed as a value is unknown>
+  host text, text-replace(scaled(<  host c\n    call twice\n      read scale\n      read n>), <task main>, <task twice\n  take f\n    like task\n      take v, like number\n      like number\n  take v, like number\n  like number\n  send back\n    call f\n      read v\n\ntask main>)
+  want hold, is-equal(proven(text, big), <false>)
+
+# 11. the entry itself, called again from inside with a literal: anything outside may call it, so `n` stays unknown
+test <the entry's parameter is unknown however it calls itself>
+  want hold, is-equal(proven(<task main\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-equal\n        read n\n        code 0\n    hook hold\n      send back, code 0\n  host inner, call main(code 0)\n  send back\n    call add\n      read inner\n      call multiply\n        read n\n        code 7\n>, 7), <false>)
+
+# 12. a step by an amount that is not negative, `k = k + i` under `k <= 100` with `i` in [1, 10]: k is at most 110
+task step-by
+  take amount, like text
+  take by, like number
+  like text
+
+  back main-of(<  walk size\n    bind base, code 1\n    bind head, code 10\n    hook next\n      take site, name i\n      save d\n        call subtract\n          read i\n          code 5\n      save k\n        call add\n          read i\n          read i\n      walk test\n        hook test\n          call is-maximum\n            read k\n            code 100\n        hook hold\n          save k\n            call add\n              read k\n              read {amount}\n      save out\n        call multiply\n          read k\n          code {by}>)
+
+test <a step by an amount that is not negative is bounded by its condition>
+  want hold, is-equal(proven(step-by(<i>, 10000000000000), 10000000000000), <true>)
+
+test <a step by an amount that may be negative is not>
+  want hold, is-equal(proven(step-by(<d>, 10000000000001), 10000000000001), <false>)
+
+# 13. a quotient and a remainder by a parameter whose every argument excludes zero cannot fail, and one also passed 0 can
+task divided
+  take second, like number
+  take first, like number, fall 4
+  like text
+
+  back <task split\n  take x, like number\n  take d, like number\n  like number\n  save q, code 0\n  walk size\n    bind base, code 0\n    bind head, code 2\n    hook next\n      take site, name i\n      save q\n        call add\n          call divide\n            read x\n            read d\n          call modulo\n            read x\n            read d\n  send back, read q\n\ntask main\n  take n, like number\n  like number\n  host a, call split(read(n), code {first})\n  host b, call split(read(n), code {second})\n  send back\n    call add\n      read a\n      read b\n>
+
+test <a quotient by a divisor that excludes zero is proven>
+  want hold, is-equal(proven(divided(7), 0, </>, <d>), <true>)
+
+test <a remainder by a divisor that excludes zero is proven>
+  want hold, is-equal(proven(divided(7), 0, <%>, <d>), <true>)
+
+test <a quotient by a divisor that may be zero is not>
+  want hold, is-equal(proven(divided(0), 0, </>, <d>), <false>)
+
+test <a remainder by a divisor that may be zero is not>
+  want hold, is-equal(proven(divided(0), 0, <%>, <d>), <false>)
+
+# d in [-2, -1] excludes zero, but the minimum divided by -1 overflows and the dividend is the entry's own
+test <a quotient of an unknown by a divisor that may be -1 is not>
+  want hold, is-equal(proven(divided(-1, -2), 0, </>, <d>), <false>)
+
+# 14. branch facts. The entry's own `n`, unknown, after two branches that leave when it is outside [0, 100]
+task early
+  take low, like boolean
+  take by, like number
+  like text
+
+  save first, <>
+  fork test, low
+    hold
+      save first, <  fork test\n    hook test\n      call is-below\n        read n\n        code 0\n    hook hold\n      send back, code 0\n>
+  back <task main\n  take n, like number\n  like number\n{first}  fork test\n    hook test\n      call is-above\n        read n\n        code 100\n    hook hold\n      send back, code 0\n  send back\n    call multiply\n      read n\n      code {by}\n>
+
+test <a name past two branches that leave outside [0, 100] is bounded>
+  want hold, is-equal(proven(early(true, 10000000000000), 10000000000000), <true>)
+
+test <one branch bounds one side only>
+  want hold, is-equal(proven(early(false, 10000000000001), 10000000000001), <false>)
+
+# a recursion that stops at a column: `c` is 0, or `c + 1` where `c` is not `stop`, so it settles at [0, stop]
+task columns
+  take stop, like number
+  like text
+
+  back <task depth\n  take c, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, code 2\n    hook next\n      take site, name i\n      save total\n        call add\n          read total\n          read i\n  fork test\n    hook test\n      call is-equal\n        read c\n        code {stop}\n    hook hold\n      send back\n        call multiply\n          read c\n          code 1001000000000000\n  send back\n    call add\n      call multiply\n        read c\n        code 1001000000000000\n      call depth\n        call add\n          read c\n          code 1\n\ntask main\n  take n, like number\n  like number\n  send back, call depth(code 0)\n>
+
+test <a recursion that stops at column 7 bounds its column>
+  want hold, is-equal(proven(columns(7), 1001000000000000), <true>)
+
+test <one that stops at column 9 does not fit>
+  want hold, is-equal(proven(columns(9), 1001000000000000), <false>)
+
+# a name tested and then assigned: the test says nothing about what it holds afterwards
+test <a name assigned after its test is not narrowed by it>
+  want hold, is-equal(proven(main-of(<  save x, code 5\n  fork test\n    hook test\n      call is-below\n        read x\n        code 10\n    hook hold\n      save x, read n\n      save out\n        call multiply\n          read x\n          code 1000000000000000>), 1000000000000000), <false>)
+
+# 15. a plain record's number field: the hull of what every construction gives it and every path write puts in it
+task boxes
+  take third, like text
+  take write, like text, fall <>
+  like text
+
+  back <form box\n  link size, like number\n\ntask area\n  take b, like box\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, code 2\n    hook next\n      take site, name i\n      save total\n        call multiply\n          read b/size\n          code {big}\n  send back, read total\n\ntask main\n  take n, like number\n  like number\n  save a\n    make box\n      bind size, code 3\n  save c\n    make box\n      bind size, {third}\n{write}\n  send back\n    call add\n      call area(read(a))\n      call area(read(c))\n>
+
+test <a field given only 3 and 5 is their hull>
+  want hold, is-equal(proven(boxes(<code 5>), big), <true>)
+
+test <a field also given the entry's parameter is unknown>
+  want hold, is-equal(proven(boxes(<read n>), big), <false>)
+
+test <a field written through a path with the entry's parameter is unknown>
+  want hold, is-equal(proven(boxes(<code 5>, <  save a/size, read n>), big), <false>)
+
+# 16. what a task answers: the hull of its returns. `pick` answers 3 or 5, `echo` its argument, `grow` its own answer plus
+# one, which climbs every round of the fixpoint and is widened
+task answers
+  take callee, like text
+  like text
+
+  back <task pick\n  take x, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read x\n        code 0\n    hook hold\n      send back, code 3\n  send back, code 5\n\ntask echo\n  take x, like number\n  like number\n  send back, read x\n\ntask grow\n  take x, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read x\n        code 1\n    hook hold\n      send back, code 0\n  send back\n    call add\n      call grow\n        call subtract\n          read x\n          code 1\n      code 1\n\ntask main\n  take n, like number\n  like number\n  host got, call {callee}(read(n))\n  send back\n    call multiply\n      read got\n      code {big}\n>
+
+test <a task answering 3 or 5 is their hull>
+  want hold, is-equal(proven(answers(<pick>), big), <true>)
+
+test <a task answering its unknown argument is unknown>
+  want hold, is-equal(proven(answers(<echo>), big), <false>)
+
+test <a task answering its own answer plus one is widened>
+  want hold, is-equal(proven(answers(<grow>), big), <false>)
+
+# 17. flow: a value at its own point. `x` clamped into [0, 500] by two branches that each assign it (AWFY's Bounce)
+task clamp
+  take both, like boolean
+  take by, like number
+  like text
+
+  save second, <>
+  fork test, both
+    hold
+      save second, <  fork test\n    hook test\n      call is-below\n        read x\n        code 0\n    hook hold\n      save x, code 0\n>
+  back main-of(<  save x\n    call add\n      read n\n      code 0\n  fork test\n    hook test\n      call is-above\n        read x\n        code 500\n    hook hold\n      save x, code 500\n{second}  save out\n    call multiply\n      read x\n      code {by}>)
+
+test <a value clamped by two assigning branches is bounded after them>
+  want hold, is-equal(proven(clamp(true, 10000000000000), 10000000000000), <true>)
+
+test <one clamped on one side only is not>
+  want hold, is-equal(proven(clamp(false, 10000000000001), 10000000000001), <false>)
+
+# a counter under a large literal leaves its loop bounded: the loop widens, then narrows back to `i <= 1000`
+test <a counter under i \< 1000 leaves its loop at most 1000>
+  want hold, is-equal(proven(main-of(<  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 1000\n    hook hold\n      save i\n        call add\n          read i\n          code 1\n  save out\n    call multiply\n      read i\n      code 9000000000000>), 9000000000000), <true>)
+
+# a guard's handler may follow any prefix of its body, so a name the body assigns is unknown there
+test <a handler sees a name its body assigned as unknown>
+  want hold, is-equal(proven(main-of(<  save x, code 1\n  fork\n    mark unsafe\n    save x, read n\n    save out, code 0\n  halt take\n    take problem\n    save out\n      call multiply\n        read x\n        code 7000000000000>), 7000000000000), <false>)

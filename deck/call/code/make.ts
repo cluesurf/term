@@ -78,7 +78,7 @@ import {
   siblingResolver,
   resolvePackagePath,
 } from '@term/make/code/resolve'
-import { packageRest } from '@term/make/code/deck/resolve'
+import { packageRest } from '@term/make/code/package-paths'
 import { renderDiagnostic } from '@term/call/code/report'
 import { declaresDraft } from '@term/call/code/draft'
 import {

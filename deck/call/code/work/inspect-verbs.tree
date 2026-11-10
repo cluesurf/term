@@ -42,6 +42,7 @@ load @term/call/work/inspect/viewing
 
 load @term/call/work/tool/seek-command
   find call-seek
+  find seek-ask
 
 load @term/call/work/inspect/molding
   find call-mold
@@ -52,14 +53,6 @@ dock load
   # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
   load <global:process>, name host-process
   load <global:JSON>, name host-json
-
-form seek-ask
-  link root, like text
-  link audit, like boolean
-  link code, like boolean
-  link sarif, like text
-  link format, like text
-  link fix, like boolean
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
 # argv.<x>). The argument is always a local, so the text may read it twice. Named for this file (a bind of one name

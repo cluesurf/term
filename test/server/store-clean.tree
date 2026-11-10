@@ -1,0 +1,597 @@
+note <the language server on the build's engine: no keystroke turns a session, a dirty file writes nothing to the store, one graph per package root>
+
+# Ported from store-clean.ts by statement (item term-self-host-001-0677), one test per `ok` in its order (decision 098,
+# item 0413). The server is driven through its ports with the messages an editor sends. @term/flow's language-server
+# and request-loop, and call's build-graph and compile-store, are the subject (decision 106). Each section of the
+# original is one sequence, each `ok` reading what the steps before it left, so each section is made once in a shared
+# form and each test reads its part. The machine store of the run is a temporary folder, set before any request reads it.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find set-variable
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find empty-list
+  find set-field
+  find read-field
+  find read-at
+  find truth
+
+load @term/base/text
+  find contains, name text-contains
+
+load ../support/reading
+  find any-holding
+  find count-with
+
+dock load
+  load <@term/flow/code/language-server>, name flow-server
+  load <@term/flow/code/request-loop>, name flow-loop
+  load <@term/call/code/work/build/build-graph>, name build-graph
+  load <@term/call/code/work/cache/compile-store>, name compile-store
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+  load <node:zlib>, name dock-zlib
+
+bind is-folder
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+# host value: a stored entry may be packed, and gzip's first two bytes say so
+bind is-packed
+  take bytes, like dynamic
+  like boolean
+  case node
+    text <($bytes[0] === 0x1f && $bytes[1] === 0x8b)>
+
+bind bytes-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+# the turns of the session of the graph a root has, -1 when it has none
+bind turns-of
+  take record, like dynamic
+  take root, like text
+  like number
+  case node
+    text <($record.graphs.get($root)?.graph.session.turns ?? -1)>
+
+bind graph-roots
+  take record, like dynamic
+  like list, like text
+  case node
+    text <[...$record.graphs.keys()].sort()>
+
+bind sorted
+  take items, like list, like text
+  like list, like text
+  case node
+    text <[...$items].sort()>
+
+# the units a document request built, 0 when it built none
+bind built-count
+  take reply, like dynamic
+  like number
+  case node
+    text <($reply.answer.result?.built?.length ?? 0)>
+
+# the scratch folder of this run, by its real path, with the machine store under it
+task scratch-folder
+  like text
+
+  host folder, dock-file/realpath-sync(temp-folder(<term-store-clean->))
+  set-variable(<TERM_CACHE_HOME>, dock-path/join(folder, <home>))
+  back folder
+
+host scratch, scratch-folder()
+
+form counter
+  mark shared
+  link next, like number
+
+host ids, make(counter, bind(next, 1))
+
+task next-id
+  like number
+
+  save id, ids/next
+  save ids/next, add(id, 1)
+  back id
+
+task write-text
+  take path, like text
+  take text, like text
+  like void
+
+  dock-file/write-file-sync(path, text)
+
+task uri-of
+  take path, like text
+  like text
+
+  back file-uri(dock-url/pathToFileURL(path))
+
+# a message the server is sent, as JSON-RPC 2.0
+task deliver
+  take record, like dynamic
+  take message, like dynamic
+  like list, like dynamic
+  mark async
+
+  set-field(message, <jsonrpc>, <2.0>)
+  back wait flow-loop/dispatch(record, message)
+
+task notice
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <method>, method, <params>, params))
+
+task request
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <id>, next-id(), <method>, method, <params>, params))
+
+task document
+  take uri, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+
+task open-params
+  take uri, like text
+  take text, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <languageId>, <tree>, <version>, 1, <text>, text))))
+
+task change-params
+  take uri, like text
+  take version, like number
+  take text, like text
+  like dynamic
+
+  save changes, empty-list()
+  changes/push(make-record(make(list, <text>, text)))
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <version>, version)), <contentChanges>, changes))
+
+task created-params
+  take uri, like text
+  like dynamic
+
+  save changes, empty-list()
+  changes/push(make-record(make(list, <uri>, uri, <type>, 1)))
+  back make-record(make(list, <changes>, changes))
+
+# a server, initialized with the capabilities of a client that pulls diagnostics, and watches files when `watching`
+task serve
+  take watching, like boolean
+  like dynamic
+  mark async
+
+  host record, flow-server/make-language-server(empty-record())
+  save capabilities, make-record(make(list, <textDocument>, make-record(make(list, <diagnostic>, empty-record()))))
+  fork test, watching
+    hold
+      set-field(capabilities, <workspace>, make-record(make(list, <didChangeWatchedFiles>, make-record(make(list, <dynamicRegistration>, true)))))
+  deliver(record, request(<initialize>, make-record(make(list, <capabilities>, capabilities))))
+  back record
+
+task change
+  take record, like dynamic
+  take uri, like text
+  take version, like number
+  take text, like text
+  like void
+  mark async
+
+  deliver(record, notice(<textDocument/didChange>, change-params(uri, version, text)))
+
+task open
+  take record, like dynamic
+  take uri, like text
+  take text, like text
+  like void
+  mark async
+
+  deliver(record, notice(<textDocument/didOpen>, open-params(uri, text)))
+
+# the term diagnostics a pull answers
+task pull
+  take record, like dynamic
+  take uri, like text
+  like list, like dynamic
+  mark async
+
+  save answer, deliver(record, request(<textDocument/diagnostic>, document(uri)))
+  save items, empty-list()
+  walk answer
+    take one, like dynamic
+    save result, read-field(one, <result>)
+    fork test, truth(result)
+      hold
+        save found, read-field(result, <items>)
+        fork test, truth(found)
+          hold
+            walk found
+              take item, like dynamic
+              fork test, is-equal(read-field(item, <source>), <term>)
+                hold
+                  items/push(item)
+        back items
+  back items
+
+task error-count
+  take items, like list, like dynamic
+  like number
+
+  back count-with(items, <severity>, 1)
+
+task package-at
+  take name, like text
+  like text
+
+  save root, dock-path/join(scratch, name)
+  dock-file/mkdir-sync(dock-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  write-text(dock-path/join(root, <deck.tree>), <deck @test/{name}\n  mark \<0.0.0\>\n>)
+  back root
+
+# every file under a folder
+task files-under
+  take folder, like text
+  like list, like text
+
+  save out, make list
+  fork test, not(truth(dock-file/exists-sync(folder)))
+    hold
+      back out
+  walk dock-file/readdir-sync(folder)
+    take name, like text
+    save at, dock-path/join(folder, name)
+    fork test, is-folder(dock-file/stat-sync(at))
+      hold
+        walk files-under(at)
+          take inner, like text
+          out/push(inner)
+      miss
+        out/push(at)
+  back out
+
+task stored-text
+  take file, like text
+  like text
+
+  save bytes, dock-file/read-file-sync(file)
+  fork test, is-packed(bytes)
+    hold
+      back bytes-text(dock-zlib/gunzip-sync(bytes))
+  back bytes-text(bytes)
+
+# the store files that hold a text: the machine store and the package's own
+task holding
+  take root, like text
+  take marker, like text
+  like list, like text
+
+  save out, make list
+  save files, files-under(dock-path/join(scratch, <home>))
+  walk files-under(dock-path/join(root, <.base>))
+    take file, like text
+    files/push(file)
+  walk files
+    take file, like text
+    fork test, text-contains(stored-text(file), marker)
+      hold
+        out/push(file)
+  back out
+
+# whether a client that registers watchers was asked for `**/*.tree` events
+task asks-for-trees
+  take sent, like list, like dynamic
+  like boolean
+
+  walk sent
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <method>), <client/registerCapability>)
+      hold
+        save first, read-at(read-field(read-field(one, <params>), <registrations>), 0)
+        fork test, is-equal(read-field(first, <method>), <workspace/didChangeWatchedFiles>)
+          hold
+            save watcher, read-at(read-field(read-field(first, <registerOptions>), <watchers>), 0)
+            fork test, is-equal(read-field(watcher, <globPattern>), <**/*.tree>)
+              hold
+                back true
+  back false
+
+# ---- turns ----
+
+form turns-run
+  mark shared
+  link done, like boolean
+  link registered, like boolean
+  link before, like number
+  link after, like number
+  link once, like number
+  link load-errors, like number
+
+host turns-now, make(turns-run, bind(done, false), bind(registered, false), bind(before, -1), bind(after, -1), bind(once, -1), bind(load-errors, -1))
+
+task bench-text
+  take n, like number
+  like text
+
+  back <task bench-count\n  like number\n  send back, code {n}\n>
+
+task the-turns
+  like turns-run
+  mark async
+
+  fork test, turns-now/done
+    hold
+      back turns-now
+  save turns-now/done, true
+  save root, package-at(<turns>)
+  save file, dock-path/join(root, <code>, <edit.tree>)
+  write-text(file, bench-text(0))
+  save uri, uri-of(file)
+  save record, serve(true)
+  save turns-now/registered, asks-for-trees(deliver(record, notice(<initialized>, empty-record())))
+  open(record, uri, bench-text(0))
+  pull(record, uri)
+  save turns-now/before, turns-of(record, root)
+  save n, 1
+  walk test
+    hook test, is-below(n, 1001)
+    hook hold
+      change(record, uri, add(n, 1), bench-text(n))
+      pull(record, uri)
+      save n, add(n, 1)
+  save turns-now/after, turns-of(record, root)
+  # a file created on disk, then one more keystroke: one turn
+  save made, dock-path/join(root, <code>, <made.tree>)
+  write-text(made, <task made-one\n  like number\n  send back, code 1\n>)
+  deliver(record, notice(<workspace/didChangeWatchedFiles>, created-params(uri-of(made))))
+  change(record, uri, 2000, bench-text(2000))
+  pull(record, uri)
+  change(record, uri, 2001, bench-text(2001))
+  pull(record, uri)
+  save turns-now/once, turns-of(record, root)
+  # the created file is read: a load of it builds
+  change(record, uri, 2002, <load ./made\n  find made-one\n\ntask use-made\n  like number\n  send back, call made-one\n>)
+  save turns-now/load-errors, error-count(pull(record, uri))
+  back turns-now
+
+test <turns: a client that registers watchers is asked for **/*.tree events>
+  want hold, the-turns()/registered
+
+test <turns: 1,000 keystrokes with no file event turn the session 0 times>
+  save got, the-turns()
+  want hold, and(is-equal(got/before, 0), is-equal(got/after, 0))
+
+test <turns: one created-file event turns the session once>
+  want hold, is-equal(the-turns()/once, 1)
+
+test <turns: after the turn a load of the created file builds>
+  want hold, is-equal(the-turns()/load-errors, 0)
+
+# ---- store ----
+
+form store-run
+  mark shared
+  link done, like boolean
+  link dirty, like list, like text
+  link clean, like list, like text
+  link saved, like list, like text
+
+host store-now, make(store-run, bind(done, false), bind(dirty, make list), bind(clean, make list), bind(saved, make list))
+
+host store-marker, <store-clean-marker>
+
+task store-text
+  take n, like number
+  like text
+
+  back <task {store-marker}-{n}\n  like number\n  send back, code {n}\n>
+
+task the-store
+  like store-run
+  mark async
+
+  fork test, store-now/done
+    hold
+      back store-now
+  save store-now/done, true
+  save root, package-at(<store>)
+  save file, dock-path/join(root, <code>, <dirty.tree>)
+  write-text(file, store-text(0))
+  save uri, uri-of(file)
+  save record, serve(true)
+  open(record, uri, store-text(0))
+  pull(record, uri)
+  save n, 1
+  walk test
+    hook test, is-below(n, 21)
+    hook hold
+      change(record, uri, add(n, 1), store-text(n))
+      pull(record, uri)
+      save n, add(n, 1)
+  save store-now/dirty, holding(root, <{store-marker}-20>)
+  save store-now/clean, holding(root, <{store-marker}-0>)
+  # saved: the disk holds the text, and the next request writes its unit
+  write-text(file, store-text(20))
+  deliver(record, notice(<textDocument/didSave>, document(uri)))
+  pull(record, uri)
+  save store-now/saved, holding(root, <{store-marker}-20>)
+  back store-now
+
+test <store: a dirty file's keystrokes write no unit, mill or scan entry>
+  want hold, is-equal(the-store()/dirty/length, 0)
+
+test <store: the clean open wrote its unit>
+  want hold, is-above(the-store()/clean/length, 0)
+
+test <store: the request after the save writes the unit>
+  want hold, any-holding(the-store()/saved, </unit/>)
+
+# ---- a held unit and a project request (item term-self-host-001-0530) ----
+
+form held-run
+  mark shared
+  link done, like boolean
+  link looked-built, like number
+  link looked-stored, like number
+  link built, like number
+  link reused, like number
+  link took, like list, like text
+  link shared-built, like number
+  link shared-stored, like number
+
+host held-now, make(held-run, bind(done, false), bind(looked-built, -1), bind(looked-stored, -1), bind(built, -1), bind(reused, -1), bind(took, make list), bind(shared-built, -1), bind(shared-stored, -1))
+
+host held-marker, <held-unit-marker>
+
+task held-text
+  take n, like number
+  like text
+
+  back <task {held-marker}-{n}\n  like number\n  send back, code {n}\n>
+
+task ask
+  take mode, like text
+  take at, like text
+  like dynamic
+
+  back make-record(make(list, <mode>, mode, <file>, at, <platform>, <node>))
+
+task the-held
+  like held-run
+
+  fork test, held-now/done
+    hold
+      back held-now
+  save held-now/done, true
+  save root, package-at(<held>)
+  save file, dock-path/join(root, <code>, <held.tree>)
+  save other, dock-path/join(root, <code>, <other.tree>)
+  write-text(file, held-text(0))
+  write-text(other, <task other-one\n  like number\n  send back, code 1\n>)
+  # a cap of one answer: the document's unit is gone from the memo by the time the project request wants it
+  save graph, build-graph/make-build-graph(root, 1)
+  save store, compile-store/project-cache(root)
+  build-graph/build-request(graph, ask(<project>, <>), store)
+  build-graph/set-overlay(graph, file, held-text(1))
+  save held-now/looked-built, built-count(build-graph/build-request(graph, ask(<document>, file), store))
+  save held-now/looked-stored, holding(root, <{held-marker}-1>)/length
+  write-text(file, held-text(1))
+  build-graph/drop-overlay(graph, file)
+  save built, build-graph/build-request(graph, ask(<project>, <>), store)/build
+  save held-now/built, built/built
+  save held-now/reused, built/reused
+  save held-now/took, holding(root, <{held-marker}-1>)
+  # three unsaved documents, two loading the third, under the cap: each unit is built once, none written
+  save dep, dock-path/join(root, <code>, <dep.tree>)
+  save first, dock-path/join(root, <code>, <first.tree>)
+  save second, dock-path/join(root, <code>, <second.tree>)
+  build-graph/set-overlay(graph, dep, <task {held-marker}-dep\n  take n, like number\n  like number\n  send back, read n\n>)
+  build-graph/set-overlay(graph, first, <load ./dep\n  find {held-marker}-dep\n\ntask use-first\n  like number\n  send back\n    call {held-marker}-dep\n      code 1\n>)
+  build-graph/set-overlay(graph, second, <load ./dep\n  find {held-marker}-dep\n\ntask use-second\n  like number\n  send back\n    call {held-marker}-dep\n      code 2\n>)
+  save count, 0
+  walk make(list, dep, first, second)
+    take at, like text
+    save count, add(count, built-count(build-graph/build-request(graph, ask(<document>, at), store)))
+  save held-now/shared-built, count
+  save held-now/shared-stored, holding(root, <{held-marker}-dep>)/length
+  back held-now
+
+test <held: the dirty unit is built by the document request>
+  want hold, is-above(the-held()/looked-built, 0)
+
+test <held: and the store does not take it>
+  want hold, is-equal(the-held()/looked-stored, 0)
+
+test <held: the project request after the save reads it from the store and builds nothing>
+  want hold, is-equal(the-held()/built, 0)
+
+test <held: the store took it>
+  want hold, any-holding(the-held()/took, </unit/>)
+
+test <held: unsaved documents sharing an unsaved load build each unit once under a cap>
+  want hold, is-equal(the-held()/shared-built, 3)
+
+test <held: and the store takes none of them>
+  want hold, is-equal(the-held()/shared-stored, 0)
+
+# ---- roots ----
+
+form roots-run
+  mark shared
+  link done, like boolean
+  link roots, like list, like text
+  link expected, like list, like text
+  link answers, like list, like number
+  link loose, like text
+
+host roots-now, make(roots-run, bind(done, false), bind(roots, make list), bind(expected, make list), bind(answers, make list), bind(loose, <>))
+
+task the-roots
+  like roots-run
+  mark async
+
+  fork test, roots-now/done
+    hold
+      back roots-now
+  save roots-now/done, true
+  save one, package-at(<first>)
+  save two, package-at(<second>)
+  save loose, dock-path/join(scratch, <loose>)
+  dock-file/mkdir-sync(loose)
+  save roots-now/loose, loose
+  save record, serve(true)
+  save files, make(list, dock-path/join(one, <code>, <a.tree>), dock-path/join(two, <code>, <b.tree>), dock-path/join(loose, <c.tree>))
+  save texts, make(list, <task in-first\n  like number\n  send back, code 1\n>, <task in-second\n  like number\n  send back, call not-defined-anywhere\n>, <load @term/base/text\n  find trim\n\ntask outside\n  like text\n  send back\n    call trim\n      text \< x \>\n>)
+  save at, 0
+  walk files
+    take file, like text
+    save text, texts/{at}
+    write-text(file, text)
+    save uri, uri-of(file)
+    open(record, uri, text)
+    roots-now/answers/push(error-count(pull(record, uri)))
+    save at, add(at, 1)
+  save roots-now/roots, graph-roots(record)
+  save roots-now/expected, sorted(make(list, one, two, loose))
+  back roots-now
+
+test <roots: one graph per package root, and the loose file its folder>
+  save got, the-roots()
+  want hold, is-equal(got/roots, got/expected)
+
+test <roots: the first package builds clean>
+  want hold, is-equal(the-roots()/answers/0, 0)
+
+test <roots: the second package reports its own error>
+  want hold, is-above(the-roots()/answers/1, 0)
+
+test <roots: a file outside every package builds against the stdlib>
+  want hold, is-equal(the-roots()/answers/2, 0)
+
+test <roots: nothing is written into the loose folder>
+  want hold, not(truth(dock-file/exists-sync(dock-path/join(the-roots()/loose, <.base>))))

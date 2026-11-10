@@ -1,0 +1,119 @@
+note <face's switch, slider, select, dialog and scroll painted into the terminal's cell grid and driven by keys>
+
+# Ported from terminal-words.ts by statement (item term-self-host-001-0684), one walked test per `ok` in its order, each
+# backend a case of it, as the original's loop gave one line per backend (deck/site/code/dom/native/terminal/paint.tree
+# and input.tree). The controls are built by their generic implementations from plain elements. Each screen is the
+# original's, worked out by hand from the cell grid column of note/project/term/view/11-vocabulary.md: a toggle `[ ]` or
+# `[x]` with its label, a range a bar of 10 cells and its value, a choice its label and `▾`, a dialog a bordered box over
+# its title and content, a scroll a column of what it holds. Its dom and view modules are pinned to the terminal host, as
+# the original's resolver pinned them, and the program (its template as it reads at run time, a 24 by 10 screen, the six
+# presses written out) is built and run once per backend through test/support/running, the run kept for the tests after
+# it. A backend whose toolchain is not installed is each case's own skip. Where the original asserted the paints only
+# once the program ran, a run that did not go reads an empty paint here, so those cases fail beside the first.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split, name text-split
+
+host program, <load @term/site/code/view/reactive\n  find make-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/terminal/dom\n  find create-element\n  find paint-screen\n  find press-key\n\nload @term/face/component/switch\n  find switch\n\nload @term/face/component/slider\n  find slider\n\nload @term/face/component/select\n  find select\n\nload @term/face/component/dialog\n  find dialog\n\nload @term/face/component/scroll\n  find scroll\n\nload @term/face/logic/disclosure\n  find make-disclosure\n\nload @term/face/logic/range\n  find make-range\n\nload @term/base/code/list\n  find list\n  find push\n\ntask make-sizes\n  like list\n    like text\n  save out\n    make list\n  call push\n    bind list, read out\n    bind item, text \<small\>\n  call push\n    bind list, read out\n    bind item, text \<medium\>\n  call push\n    bind list, read out\n    bind item, text \<large\>\n  send back, read out\n\n# what the dialog holds, built into the host it is handed\ntask fill-notice\n  take host, like view\n  call append\n    read host\n    call make-text\n      text \<ok\>\n\nview panel\n  take host, like view\n  save wifi\n    call make-disclosure\n      bind start, false\n  save volume\n    call make-range\n      bind start, code 40.0\n  save size\n    call make-signal\n      bind value, text \<medium\>\n  save notice\n    call make-disclosure\n      bind start, true\n  view div\n    bind style, text \<display: flex; flex-direction: column\>\n    view switch\n      bind class, text \<\>\n      bind control, read wifi\n      bind label, text \<wifi\>\n    view slider\n      bind class, text \<\>\n      bind control, read volume\n      bind min, code 0.0\n      bind max, code 100.0\n      bind step, code 10.0\n      bind label, text \<volume\>\n    view select\n      bind class, text \<\>\n      bind control, read size\n      bind options, call make-sizes\n      bind label, text \<size\>\n    view dialog\n      bind class, text \<\>\n      bind control, read notice\n      bind title, text \<Saved\>\n      bind content, read fill-notice\n    view scroll\n      view p\n        text \<one\>\n      view p\n        text \<two\>\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call panel\n    read root\n  save before\n    call paint-screen\n      read root\n      code 24\n      code 10\n  call press-key\n    read root\n    text \<tab\>\n  call press-key\n    read root\n    text \<space\>\n  call press-key\n    read root\n    text \<tab\>\n  call press-key\n    read root\n    text \<right\>\n  call press-key\n    read root\n    text \<tab\>\n  call press-key\n    read root\n    text \<right\>\n  save after\n    call paint-screen\n      read root\n      code 24\n      code 10\n  send back, text \<\{before\}|\{after\}\>\n>
+
+# the dialog is a box across the column's 24 cells: its corners, 22 cells of edge, and inside them the title and the
+# content, the right edge after the padding of blanks
+host box, <┌──────────────────────┐\n│Saved                 │\n│ok                    │\n└──────────────────────┘>
+
+# nothing focused: the toggle off, the range at 40 of 0 to 100 (4 cells of 10), the choice at `medium`
+host before, <[ ] wifi\n[####------] 40\n[medium ▾]\n{box}\none\ntwo\n>
+
+# tab and space flip the toggle on, tab and right step the range by 10, to 50, tab and right move the choice to the
+# option after `medium`, `large`, which keeps focus
+host after, <[x] wifi\n[#####-----] 50\n\>large ▾\<\n{box}\none\ntwo\n>
+
+# the dom and view modules read as the terminal host's, whatever env compiles them
+host terminal-choice, make(compile-choice, bind(file, <words.tree>), bind(project, <.>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/terminal/$1>)))))
+
+# each backend's run, made once: `names` the backends run so far, `runs` their runs in the same order
+form held-runs
+  mark shared
+  link names, like list, like text
+  link runs, like list, like ran-program
+
+host held, make(held-runs, bind(names, make list), bind(runs, make list))
+
+# the program built and run on a backend, once
+task ran-on
+  take backend, like text
+  like ran-program
+
+  save at, 0
+  walk held/names
+    take name, like text
+    fork test, is-equal(name, backend)
+      hold
+        back held/runs/{at}
+    save at, add(at, 1)
+  host folder, temp-folder(<term-terminal-words->)
+  host ran, run-text(program, backend, folder, <words>, terminal-choice)
+  push(held/names, backend)
+  push(held/runs, ran)
+  back ran
+
+# the paint of a backend's output at `at`, split on `|`, <> when it did not run
+task part-on
+  take backend, like text
+  take at, like number
+  like text
+
+  save ran, ran-on(backend)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      back <>
+  save parts, text-split(ran/output, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+# whether a backend's toolchain is missing, so its case is skipped
+task skipped-on
+  take backend, like text
+  like boolean
+
+  back is-equal(ran-on(backend)/state, <skipped>)
+
+test <face's controls compile, build and run against the terminal host>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran-on(backend)/state, <ran>)
+
+test <a toggle, a range, a choice, an open dialog and a scroll, drawn>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 0), before)
+
+test <space flips the toggle, right steps the range and moves the choice>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 1), after)

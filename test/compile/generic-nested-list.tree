@@ -1,0 +1,54 @@
+# A generic task over a list of lists (the stdlib's flatten, a `list of list of t`) handed a list of lists of numbers
+# built by pushing lists. term test builds a tree-shaken program, and there the generic parameter's inner lists must be
+# spelled as the caller's are: on Rust `fn flatten(lists: &[Vec<T>])` against `Vec<Rc<RefCell<Vec<i64>>>>` did not
+# build, on Swift `flatten<T>(lists: [[T]])` against `[SeedList<Int>]` did not (term-self-host-001-1149, 1150).
+
+load @term/base/list
+  find list
+  find flatten
+  find join
+
+task three
+  like list
+    like number
+  save out
+    make list
+  call out/push
+    code 1
+  call out/push
+    code 2
+  call out/push
+    code 3
+  send back, read out
+
+task two-threes
+  like list
+    like list
+      like number
+  save out
+    make list
+  call out/push
+    call three
+  call out/push
+    call three
+  send back, read out
+
+test <flatten of a saved list of pushed lists>
+  save nested
+    call two-threes
+  want hold
+    call is-equal
+      call join
+        call flatten
+          read nested
+        text <,>
+      text <1,2,3,1,2,3>
+
+test <flatten of a list of pushed lists handed straight in>
+  want hold
+    call is-equal
+      call join
+        call flatten
+          call two-threes
+        text <,>
+      text <1,2,3,1,2,3>

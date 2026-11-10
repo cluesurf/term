@@ -1,0 +1,169 @@
+note <workspace decks sort with each after the decks it links, and are found from the root or from inside one member>
+
+# Ported from workspace.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. The
+# original held code/package/workspace.ts, a face whose logic is code/package/workspace-finding.tree. The sort is that
+# module's own, held here with Term's manifests: it reads a manifest's links' names alone. Finding the workspaces reads
+# manifests through the grammars the face hands on, so it is docked, as the original imported it. The folders are made
+# once, as the original's `describe` made them, by the standard library's temp-folder (item 0985).
+
+load ../code/package/workspace-finding
+  find topological-sort
+
+load ../code/package/manifest-shape
+  find deck-manifest
+  find deck-link
+
+load ../code/version
+  find parse-code
+  find parse-code-hold
+
+load @term/base/list
+  find contains
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/test/temp
+  find temp-folder
+
+dock load
+  load <@term/deck/code/package/workspace>, name workspace-face
+  load <node:fs>, name workspace-file
+  load <node:path>, name workspace-path
+
+form root-input
+  link root, like text
+
+form folder-ask
+  link recursive, like boolean
+
+# host value: the keys of a map, in its order
+bind keys-of
+  take map, like dynamic
+  like list, like text
+  case node
+    text <[...$map.keys()]>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+# a manifest of @cluesurf/`name` at 1.0.0, linking each of `links` at 1.x.x
+task manifest-of
+  take name, like text
+  take links, like list, like text
+  like deck-manifest
+
+  save linked, make list
+  walk links
+    take one, like text
+    linked/push(make(deck-link, bind(name, one), bind(mark, parse-code-hold(<1.x.x>))))
+  back make(deck-manifest, bind(host, <cluesurf>), bind(name, name), bind(mark, parse-code(<1.0.0>)), bind(link, linked))
+
+# where `found` places `name`, -1 when it holds no such name
+task place-of
+  take found, like list, like text
+  take name, like text
+  like number
+
+  save at, -1
+  save index, 0
+  walk found
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        save at, index
+    save index, add(index, 1)
+  back at
+
+# a deck.tree naming `name` at 1.0.0, in `dir`
+task deck-in
+  take dir, like text
+  take name, like text
+
+  workspace-file/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  workspace-file/write-file-sync(workspace-path/join(dir, <deck.tree>), <deck {name}\n  mark \<1.0.0\>\n>)
+
+# a workspace of @alice/repo holding base and face, and face a nested deck of its own
+task workspace-folder
+  like text
+
+  save root, temp-folder(<term-workspace->)
+  save at, workspace-path/join(root, <repo>)
+  deck-in(at, <@alice/repo>)
+  deck-in(workspace-path/join(at, <deck>, <base>), <@alice/base>)
+  deck-in(workspace-path/join(at, <deck>, <face>), <@alice/face>)
+  deck-in(workspace-path/join(at, <deck>, <face>, <deck>, <inner>), <@alice/inner>)
+  back at
+
+host workspace, workspace-folder()
+
+task found-in
+  take root, like text
+  mark async
+  like dynamic
+
+  back wait workspace-face/find-workspaces(make(root-input, bind(root, root)))
+
+task sorted-keys
+  take found, like dynamic
+  like text
+
+  save keys, sort(keys-of(found), from-texts)
+  back keys/join(<,>)
+
+test <topologicalSort: sorts independent packages>
+  host none, make list
+  host workspaces, make hash
+  workspaces/set(<@cluesurf/a>, manifest-of(<a>, none))
+  workspaces/set(<@cluesurf/b>, manifest-of(<b>, none))
+  host sorted, topological-sort(workspaces)
+  want hold, is-equal(sorted/length, 2)
+  want hold, contains(sorted, <@cluesurf/a>)
+  want hold, contains(sorted, <@cluesurf/b>)
+
+test <topologicalSort: sorts dependent packages in correct order>
+  host none, make list
+  host workspaces, make hash
+  workspaces/set(<@cluesurf/app>, manifest-of(<app>, make(list, <@cluesurf/shared>)))
+  workspaces/set(<@cluesurf/shared>, manifest-of(<shared>, none))
+  host sorted, topological-sort(workspaces)
+  want hold, is-equal(sorted/join(<,>), <@cluesurf/shared,@cluesurf/app>)
+
+test <topologicalSort: handles diamond dependencies>
+  host none, make list
+  host workspaces, make hash
+  workspaces/set(<@cluesurf/app>, manifest-of(<app>, make(list, <@cluesurf/web>, <@cluesurf/api>)))
+  workspaces/set(<@cluesurf/web>, manifest-of(<web>, make(list, <@cluesurf/shared>)))
+  workspaces/set(<@cluesurf/api>, manifest-of(<api>, make(list, <@cluesurf/shared>)))
+  workspaces/set(<@cluesurf/shared>, manifest-of(<shared>, none))
+  host sorted, topological-sort(workspaces)
+  want hold, is-equal(sorted/length, 4)
+  host shared-at, place-of(sorted, <@cluesurf/shared>)
+  host web-at, place-of(sorted, <@cluesurf/web>)
+  host api-at, place-of(sorted, <@cluesurf/api>)
+  host app-at, place-of(sorted, <@cluesurf/app>)
+  want hold, is-below(shared-at, web-at)
+  want hold, is-below(shared-at, api-at)
+  want hold, is-below(web-at, app-at)
+  want hold, is-below(api-at, app-at)
+
+test <findWorkspaces: finds every member from the workspace root>
+  want hold, is-equal(sorted-keys(found-in(workspace)), <@alice/base,@alice/face>)
+
+test <findWorkspaces: finds the siblings from inside one member, so a link to one installs its source>
+  host found, found-in(workspace-path/join(workspace, <deck>, <face>))
+  host base, found/get(<@alice/base>)
+  want hold, not(is-void(base))
+  want hold, is-equal(base/dir, workspace-path/join(workspace, <deck>, <base>))
+  # and the member's own nested decks besides
+  want hold, is-equal(found/has(<@alice/inner>), true)
+
+test <findWorkspaces: does not take a `deck/` folder for a workspace when its parent holds no deck.tree>
+  host plain, workspace-path/join(workspace-path/dirname(workspace), <plain>)
+  deck-in(workspace-path/join(plain, <deck>, <solo>), <@alice/solo>)
+  deck-in(workspace-path/join(plain, <deck>, <other>), <@alice/other>)
+  want hold, is-equal(sorted-keys(found-in(workspace-path/join(plain, <deck>, <solo>))), <>)

@@ -1,0 +1,149 @@
+note <a test phrase that starts with a digit names a task that starts with a letter, in test-preprocess.ts and in its port alike>
+
+# Ported from test-slug.ts by statement (item term-self-host-001-0605), one test per `ok` in its order. The phrase
+# `2a + 3b + 1 is found` became `task 2a-3b-1-is-found`, emitted as an identifier esbuild refused with `Syntax error "a"`
+# and no pointer to the test (an affine-synthesis suite of @term/test, 2026-10-05). The slug now takes a leading `test-`,
+# in deck/call/code/test-preprocess.ts and in its port, deck/call/code/work/test-text.tree, both the subject (decision
+# 106). The port is compiled as it is written through the harness, its prelude and emit joined as task/port-build.ts
+# joins them, written to a temporary folder and imported, and held equal to the TypeScript over a set of phrases.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find prelude-text
+  find file-text
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/text
+  find split, name text-split
+
+dock load
+  load <@term/call/code/test-preprocess>, name slug-preprocess
+  load <esbuild>, name slug-esbuild
+  load <node:fs>, name slug-file
+  load <node:path>, name slug-path
+
+host phrases, make list(<2a + 3b + 1 is found>, <max holds>, <3>, <!!!>, <  9 lives  >, <a2 b3>, <0x1f is a number>, <Ünïcode 4 you>)
+
+# host value: the first label key of a preprocessed text, <> when it has none
+bind first-label
+  take done, like dynamic
+  like text
+  case node
+    text <([...$done.labels.keys()][0] ?? "")>
+
+# host value: the name a top-level `const <name> =` line declares, <> for any other line
+bind const-name
+  take line, like text
+  like text
+  case node
+    text <(/^const ([A-Za-z_$][\\w$]*) =/.exec($line)?.[1] ?? "")>
+
+# host value: the name a `declare const <name>:` line declares, <> for any other line
+bind declared-name
+  take line, like text
+  like text
+  case node
+    text <(/^declare const ([A-Za-z_$][\\w$]*)\\s*:/.exec($line)?.[1] ?? "")>
+
+# host value: a module imported from its absolute path
+bind imported
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <import(new URL(`file://$\{$path\}`).href)>
+
+form transform-ask
+  link loader, like text
+  link format, like text
+
+# the slug preprocess-tests gives a phrase
+task slug-of
+  take phrase, like text
+  like text
+
+  back first-label(slug-preprocess/preprocess-tests(<test \<{phrase}\>\n  want hold, true\n>))
+
+task preprocessed
+  like list, like text
+
+  save out, make list
+  walk phrases
+    take phrase, like text
+    out/push(slug-of(phrase))
+  back out
+
+# the port, compiled as it is written
+task built
+  like dynamic
+
+  back compile-text(file-text(<deck/call/code/work/test-text.tree>), make(compile-choice, bind(file, <test-text.tree>), bind(stdlib, <node>), bind(entry, <slugify>), bind(lean, true)))
+
+# the port's module: its prelude, then its emit without a `declare const` the prelude defines, imported
+task port-module
+  like dynamic
+  mark async
+
+  save out, built()
+  save prelude, prelude-text(out, <node>)
+  save defined, make list
+  walk text-split(prelude, <\n>)
+    take line, like text
+    save name, const-name(line)
+    fork test, is-unequal(name, <>)
+      hold
+        defined/push(name)
+  save kept, make list
+  walk text-split(out/emitted, <\n>)
+    take line, like text
+    save name, declared-name(line)
+    fork test, or(is-equal(name, <>), not(contains(defined, name)))
+      hold
+        kept/push(line)
+  save module, slug-path/join(temp-folder(<term-test-slug->), <module.mjs>)
+  save code, slug-esbuild/transform-sync(<{prelude}\n{kept/join(<\n>)}>, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))/code
+  slug-file/write-file-sync(module, code)
+  back imported(module)
+
+test <a phrase that starts with a digit names a task that starts with a letter>
+  save all, true
+  walk preprocessed()
+    take slug, like text
+    fork test, not(matches(make(pattern, <<^[a-z]>>), slug))
+      hold
+        save all, false
+  want hold, all
+
+test <`2a + 3b + 1 is found` is `test-2a-3b-1-is-found`>
+  want hold, is-equal(preprocessed()/0, <test-2a-3b-1-is-found>)
+
+test <a phrase that starts with a letter keeps its slug>
+  want hold, is-equal(preprocessed()/1, <max-holds>)
+
+test <test-text.tree builds>
+  want hold, built()/ok
+
+test <the port slugs every phrase as the TypeScript does>
+  fork test, not(built()/ok)
+    hold
+      skip <test-text.tree does not build>
+  save module, port-module()
+  save ported, make list
+  walk phrases
+    take phrase, like text
+    ported/push(module/slugify(phrase))
+  save slugs, preprocessed()
+  save left, ported/join(<|>)
+  save right, slugs/join(<|>)
+  want hold, is-equal(left, right)

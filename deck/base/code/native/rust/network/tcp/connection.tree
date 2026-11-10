@@ -1,4 +1,4 @@
-# rust TCP connection operations. Forwards to the linked tcp runtime shim, operating on the connection's tokio TcpStream handle. Internal: reached only through the public TCP API.
+# rust TCP connection operations. Forwards to the linked tcp runtime shim, operating on the connection's std TcpStream handle. Internal: reached only through the public TCP API.
 
 dock load
   load <global:tcp>, name tcp

@@ -16,7 +16,7 @@ The extension's identifier is `cluesurf.term-code`, and its client id is `term`,
 | highlighting inside fenced `tree` blocks in markdown | `text/mark.json` |
 | the marketplace icon | `view/tree.png`, drawn from `view/tree.svg` by `pnpm view` |
 | the `Tree` file icon theme, opt-in | `view/view.json` |
-| the client | `code/extension.ts`, bundled to `make/extension.js` |
+| the client | `code/extension.tree`, its port (`host/port/code/extension.ts`, written by `pnpm make:port` at the Term root) bundled to `make/extension.js` by `build.tree` |
 | the server | `code/main.ts`, bundled to `make/server.js` |
 
 The grammar names no keywords. Every head is colored by position, so a retired word (`wave`, `bust`, `send kink`, `mark async`) is not singled out. The coloring by meaning comes from the server's semantic tokens.
@@ -28,7 +28,8 @@ The grammar names no keywords. Every head is colored by position, so a retired w
 # pnpm-workspace.yaml, and without the flag pnpm installs that workspace instead
 # of this extension's own dependencies.
 pnpm install --ignore-workspace   # vscode-languageclient, esbuild, @vscode/vsce, types
-pnpm build                        # bundles make/extension.js + make/server.js
+pnpm build                        # build.tree: bundles make/extension.js + make/server.js
+                                  # (node ../../host/line.js boot build.tree -- build --watch to rebuild on change)
 ```
 
 Then open this folder in VS Code and press `F5` (Run Term Extension). A second "Extension Development Host" window opens with the extension loaded. Open any `.tree` file to see highlighting and live diagnostics.

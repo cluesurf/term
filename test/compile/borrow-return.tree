@@ -1,0 +1,92 @@
+note <a field returned off a walk item Rust holds by reference is cloned out, never moved>
+
+# Ported from borrow-return.ts by statement (item term-self-host-001-0653), one test per `ok` in its order. The walk
+# over a list it only reads binds each item as `&T` (rust.ts, the array walk's `byRef`), and `return one.ascii` moved
+# out of the borrow: rustc E0507, at 41 sites of the terminal output library's 23 modules on 2026-10-04 (`find-symbol`
+# in deck/call/code/work/item/layout.tree is the shape). The program is built with rustc and run. As in the original,
+# every test is skipped without rustc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <form symbol\n  link name, like text\n  link unicode, like text\n  link ascii, like text\n\ntask find-symbol\n  take symbols, like list, like symbol\n  take name, like text\n  take ascii, like boolean\n  like text\n  walk symbols\n    take one\n    fork test, is-equal(one/name, name)\n      hold\n        fork test, ascii\n          hold\n            back one/ascii\n        back one/unicode\n  back \<\>\n>
+
+host by-reference, make pattern, <<let one = __item;>>
+host ascii-cloned, make pattern, <<return one\.ascii\.clone\(\);>>
+host unicode-cloned, make pattern, <<return one\.unicode\.clone\(\);>>
+
+task rust
+  like text
+
+  save out, compile-text(source, make(compile-choice, bind(file, </gate/code/borrow.tree>), bind(lean, true), bind(env, <rust>)))
+  fork test, not(out/ok)
+    hold
+      back <>
+  back emit-text(out, <rust>)
+
+# the program beside a main of its own, built by rustc: <> when it built, else rustc's errors, the binary at `binary`
+form borrow-build
+  link errors, like text
+  link binary, like text
+
+task built
+  like borrow-build
+
+  save folder, temp-folder(<term-borrow-return->)
+  save main, <{folder}/main.rs>
+  write-file(main, <#![allow(dead_code, unused_mut)]\n{rust()}\nfn main() \{ let symbols = vec![Symbol \{ name: "more".to_string(), unicode: "…".to_string(), ascii: "...".to_string() \}]; println!("\{\}|\{\}|\{\}", find_symbol(&symbols, "more".to_string(), true), find_symbol(&symbols, "more".to_string(), false), find_symbol(&symbols, "none".to_string(), true)); \}\n>)
+  save errors, run-tool(make(list, <rustc>, <--edition>, <2021>, <-o>, <{folder}/main>, main))
+  back make(borrow-build, bind(errors, errors), bind(binary, <{folder}/main>))
+
+test <the walk holds the item by reference>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, matches(by-reference, rust())
+
+test <a returned field is cloned out of the borrow>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  host code, rust()
+  want hold, matches(ascii-cloned, code)
+  want hold, matches(unicode-cloned, code)
+
+test <rust: it builds>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, is-equal(built()/errors, <>)
+
+test <rust: it answers>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  host made, built()
+  want hold, is-equal(made/errors, <>)
+  host ran, run(made/binary, make list)
+  want hold, is-equal(trim(ran/output), <...|…|>)

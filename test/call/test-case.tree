@@ -1,0 +1,68 @@
+note <term test on controls: a false law passes only when the build refuses it for proof reasons as often as its header says>
+
+# Ported from test-case.ts by statement (item term-self-host-001-0605), one test per `ok` in its order. A file under a
+# package's `test/case/` states laws false on purpose, and passes only when the build refuses it, for proof reasons,
+# exactly as many times as its header says (`Expected: N`). Each project here holds one control, run as a person runs it,
+# by the `term` under test (@term/test/self). Every way a control can stop testing anything is held: a count that is
+# wrong, a false law the build accepts, a refusal for another reason (a typo), and no count at all.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <node:fs>, name case-file
+
+# false at a = 1: a >= 1 does not give a * a >= 2 a
+host false-law, <rule square-at-least-double\n  seat a, like integer\n  have a-is-at-least-one, is-minimum a, 1\n  show hold, is-minimum multiply(a, a), multiply(2, a)\n>
+
+form control-run
+  link code, like number
+  link out, like text
+
+# a project whose only file is one control, built and tested
+task control
+  take text, like text
+  like control-run
+  mark async
+
+  save root, case-file/realpath-sync(temp-folder(<test-case->))
+  make-folder(<{root}/code>)
+  make-folder(<{root}/test/case>)
+  write-file(<{root}/deck.tree>, <deck @probe/case\n  mark \<0.0.1\>\n>)
+  write-file(<{root}/test/case/square-control.tree>, text)
+  save ran, run-self(make(list, <test>, <--color>, <never>), root, 600000)
+  back make(control-run, bind(code, ran/code), bind(out, <{ran/output}{ran/error}>))
+
+test <a control refused as its header says passes>
+  save held, control(<# false on purpose. Expected: 1.\n\n{false-law}>)
+  want hold, is-equal(held/code, 0)
+  want hold, text-contains(held/out, <1 of 1 refused>)
+  want hold, text-contains(held/out, <1 control refused as expected>)
+
+test <one refused fewer times than its header says fails, and says both counts>
+  save short, control(<# false on purpose. Expected: 2.\n\n{false-law}>)
+  want hold, and(is-equal(short/code, 1), text-contains(short/out, <1 refused where its header expects 2>))
+
+test <a control whose law the build PROVES fails: a false law would have been accepted>
+  save accepted, control(<# false on purpose, except it is not. Expected: 1.\n\nrule square-at-least-double\n  seat a, like integer\n  have a-is-at-least-two, is-minimum a, 2\n  show hold, is-minimum multiply(a, a), multiply(2, a)\n>)
+  want hold, and(is-equal(accepted/code, 1), text-contains(accepted/out, <0 of 1 refused>))
+
+test <a control refused for another reason is broken, not passed>
+  save typo, control(<# false on purpose. Expected: 1.\n\nrule square-at-least-double\n  seat a, like integer\n  show hold, is-minimum multipy(a, a), multiply(2, a)\n>)
+  want hold, and(is-equal(typo/code, 1), text-contains(typo/out, <refused for another reason>))
+
+test <a control with no count is broken>
+  save uncounted, control(<# false on purpose.\n\n{false-law}>)
+  want hold, and(is-equal(uncounted/code, 1), text-contains(uncounted/out, <a control states no count>))

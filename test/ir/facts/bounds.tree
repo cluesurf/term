@@ -1,0 +1,439 @@
+note <the counted-loop bounds fact, held both ways: the loops it must guard, the loops it must not, and the TypeScript it drives>
+
+# Ported from bounds.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. A wrong guard runs a
+# copy of the loop with no bounds checks. Each program is compiled unoptimized and every `while` the fact guards read off
+# its statements, their `type` and `span` fields left out of the walk as the original left them. The loop with a lent
+# list resolves the stdlib through the driver's own stdlib resolver, as the original's did. ir/facts/bounds and the lend
+# facts of compile/backend are the subject (decision 106).
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../../support/walking
+  find nodes-of
+  find kind-of
+  find json-of
+
+load ../../support/judging
+  find truth
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find replace, name text-replace
+
+dock load
+  load <@term/make/code/ir/facts/bounds>, name bounds-facts
+  load <@term/make/code/compile/backend>, name backend-module
+  load <@term/make/code/resolve>, name resolve-module
+
+# host value: whether the fact map holds the node itself, by identity
+bind map-holds
+  take facts, like dynamic
+  take node, like dynamic
+  like boolean
+  case node
+    text <$facts.has($node)>
+
+# host value: the fact the map holds for the node
+bind map-get
+  take facts, like dynamic
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$facts.get($node)>
+
+# a program compiled unoptimized, halting on a refusal with its messages. `with-stdlib` resolves the stdlib
+task built-of
+  take text, like text
+  take with-stdlib, like boolean, fall false
+  like compile-outcome
+
+  save choice, make(compile-choice, bind(file, <main.tree>), bind(optimize, false))
+  fork test, with-stdlib
+    hold
+      save choice, make(compile-choice, bind(file, <main.tree>), bind(optimize, false), bind(resolver, resolve-module/stdlib-resolver()))
+  host built, compile-text(text, choice)
+  fork test, not(built/ok)
+    hold
+      save said, <compile failed>
+      walk built/messages
+        take message, like text
+        save said, <{said} | {message}>
+      halt <{said}>
+  back built
+
+# every guard the facts give the program's loops, in walk order
+task guards-in
+  take built, like compile-outcome
+  take facts, like dynamic
+  like list, like dynamic
+
+  host found, make list
+  walk nodes-of(built/program, <while>)
+    take node, like dynamic
+    fork test, map-holds(facts, node)
+      hold
+        found/push(map-get(facts, node))
+  back found
+
+# every guard the fact gives a program's loops
+task guards
+  take text, like text
+  like list, like dynamic
+
+  host built, built-of(text)
+  back guards-in(built, bounds-facts/bounded-loops(built/program))
+
+# the guards of a program, the lend facts handed to the fact
+task lent-guards-of
+  take text, like text
+  take with-stdlib, like boolean, fall false
+  like list, like dynamic
+
+  host built, built-of(text, with-stdlib)
+  back guards-in(built, bounds-facts/bounded-loops(built/program, backend-module/lent-lists(built/program)))
+
+# a check as the original's `show` wrote it: `<list>:<base><+ or nothing><offset>:<side>`
+task check-text
+  take check, like dynamic
+  like text
+
+  save base, <>
+  fork test, is-unequal(kind-of(check/base), <undefined>)
+    hold
+      save base, check/base
+  save sign, <>
+  fork test, not(is-below(check/offset, 0))
+    hold
+      save sign, <+>
+  back <{check/list}:{base}{sign}{check/offset}:{check/side}>
+
+# the guards as the original's `show` wrote them, JSON of a list of lists of check texts
+task show
+  take found, like list, like dynamic
+  like text
+
+  save out, <>
+  walk found
+    take guard, like dynamic
+    save one, <>
+    walk guard/checks
+      take check, like dynamic
+      fork test, is-equal(one, <>)
+        hold
+          save one, <"{check-text(check)}">
+        miss
+          save one, <{one},"{check-text(check)}">
+    fork test, is-equal(out, <>)
+      hold
+        save out, <[{one}]>
+      miss
+        save out, <{out},[{one}]>
+  back <[{out}]>
+
+# whether a check of the first guard has the side, the base and the offset given
+task first-has
+  take found, like list, like dynamic
+  take side, like text
+  take base, like text
+  take offset, like number
+  like boolean
+
+  fork test, is-equal(found/length, 0)
+    hold
+      back false
+  walk found/0/checks
+    take check, like dynamic
+    fork test, and(and(is-equal(check/side, side), is-equal(check/base, base)), is-equal(check/offset, offset))
+      hold
+        back true
+  back false
+
+# whether every check of the first guard is over the list given, false when there is no guard
+task first-all-over
+  take found, like list, like dynamic
+  take list, like text
+  like boolean
+
+  fork test, is-equal(found/length, 0)
+    hold
+      back false
+  walk found/0/checks
+    take check, like dynamic
+    fork test, is-unequal(check/list, list)
+      hold
+        back false
+  back true
+
+# how many fast copies the first guard has, -1 when it has none or there is no guard
+task first-fast
+  take found, like list, like dynamic
+  like number
+
+  fork test, is-equal(found/length, 0)
+    hold
+      back -1
+  fork test, not(truth(found/0/fast))
+    hold
+      back -1
+  back found/0/fast/length
+
+# whether no guard of the list checks a path
+task none-by-path
+  take found, like list, like dynamic
+  like boolean
+
+  walk found
+    take guard, like dynamic
+    walk guard/checks
+      take check, like dynamic
+      fork test, truth(check/path)
+        hold
+          back false
+  back true
+
+task holds
+  take shape, like text
+  take text, like text
+  like boolean
+
+  back matches(make(pattern, shape), text)
+
+# 1. the in-place reversal: `low` up, `high` down, a swap through both
+host flip-text, <task flip\n  take xs, like list, like number\n  take k, like number\n  save low, code 0\n  save high, read k\n  walk test\n    hook test\n      call is-below\n        read low\n        read high\n    hook hold\n      host t, read xs/\{low\}\n      save xs/\{low\}, read xs/\{high\}\n      save xs/\{high\}, read t\n      save low\n        call add\n          read low\n          code 1\n      save high\n        call subtract\n          read high\n          code 1\n>
+
+test <a reversal under low \< high is guarded>
+  want hold, is-equal(guards(flip-text)/length, 1)
+
+# the original's first reading, its four checks with the repeat dropped, or any guard asking low >= 0 and high below the
+# length of xs alone
+test <its guard asks low \>= 0 and high \< xs.length, nothing more>
+  host found, guards(flip-text)
+  host exact, is-equal(show(found), <[["xs:low+0:low","xs:high+0:high","xs:low+1:low"]]>)
+  host shaped, and(and(first-has(found, <low>, <low>, 0), first-has(found, <high>, <high>, 0)), first-all-over(found, <xs>))
+  want hold, or(exact, shaped)
+
+test <TypeScript writes the guarded copy with no checks beside the checked one>
+  host ts, emit-text(built-of(flip-text), <typescript>)
+  want hold, holds(<<if \(low >= 0 && high < xs\.length>>, ts)
+  want hold, holds(<<xs\[low\]!>>, ts)
+  want hold, holds(<<__termReadPast>>, ts)
+
+# 2. a copy loop over `i < n` with an alias `after = i + 1`
+host copy-text, <task shift\n  take xs, like list, like number\n  take n, like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      host after\n        call add\n          read i\n          code 1\n      save xs/\{i\}, read xs/\{after\}\n      save i\n        call add\n          read i\n          code 1\n>
+
+test <a shift through `after = i + 1` under i \< n is guarded>
+  want hold, is-equal(guards(copy-text)/length, 1)
+
+test <its highest index is n, the alias read at i + 1 = n - 1 + 1>
+  want hold, first-has(guards(copy-text), <high>, <n>, 0)
+
+# a counted loop over `i` with a body, `cond` its test
+task loop
+  take body, like text
+  take cond, like text, fall <is-below>
+  like text
+
+  back <task each\n  take xs, like list, like number\n  take ys, like list, like number\n  take n, like number\n  take j, like number\n  save i, code 0\n  walk test\n    hook test\n      call {cond}\n        read i\n        read n\n    hook hold\n{body}\n>
+
+host step, <      save i\n        call add\n          read i\n          code 1>
+
+# 3-8. what must NOT be guarded. An index the loop never writes is read once by the guard, which holds on every turn
+test <an index the loop never writes is guarded by its own value>
+  host found, guards(loop(<      save xs/\{j\}, code 1\n{step}>))
+  want hold, is-equal(found/length, 1)
+  want hold, first-has(found, <high>, <j>, 0)
+  want hold, first-all-over(found, <xs>)
+
+# `m` starts at 0, which the guard would read, and is moved to `j` during a turn: the next turn writes past the check
+test <an index the loop writes is NOT guarded>
+  host moving, text-replace(loop(<      save xs/\{m\}, code 1\n      save m, read j\n{step}>), <  save i, code 0>, <  save m, code 0\n  save i, code 0>)
+  want hold, is-equal(guards(moving)/length, 0)
+
+test <i \<= n is NOT guarded>
+  want hold, is-equal(guards(loop(<      save xs/\{i\}, code 1\n{step}>, <is-maximum>))/length, 0)
+
+test <a counter written twice is NOT guarded>
+  want hold, is-equal(guards(loop(<      save xs/\{i\}, code 1\n      save i\n        call add\n          read i\n          code 2\n{step}>))/length, 0)
+
+test <a read AFTER the step is NOT guarded>
+  want hold, is-equal(guards(loop(<{step}\n      save xs/\{i\}, code 1>))/length, 0)
+
+test <a list the loop rebinds is NOT guarded>
+  want hold, is-equal(guards(loop(<      save xs/\{i\}, code 1\n      save xs, read ys\n{step}>))/length, 0)
+
+test <a loop that calls a task is NOT guarded (the call could change the length)>
+  want hold, is-equal(guards(<task helper\n  take xs, like list, like number\n  like number\n  send back, code 0\n{loop(<      save xs/\{i\}, code 1\n      host z\n        call helper\n          read xs\n{step}>)}>)/length, 0)
+
+# 9. a call to a task that cannot reach a list (scalar parameters, no list inside) keeps the guard: spectral-norm's
+# `a-value`, called in the innermost loop
+test <a loop calling a scalar-only task IS guarded>
+  want hold, is-equal(guards(<task weight\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call add\n      read a\n      read b\n{loop(<      save xs/\{i\}\n        call weight\n          read i\n          read j\n{step}>)}>)/length, 1)
+
+# 10. a native module's function with scalar arguments (`fmath.sqrt`, what `square-root` inlines to) holds no list:
+# n-body's `energy` and `advance`. And a task that calls one is still a scalar task
+host native, <dock load\n  load \<global:fmath\>, name fmath\n\ntask root\n  take a, like number\n  like number\n  send back\n    call fmath/sqrt\n      read a\n>
+
+test <a loop calling a native function with scalar arguments IS guarded>
+  want hold, is-equal(guards(<{native}\n{loop(<      save xs/\{i\}\n        call fmath/sqrt\n          read j\n{step}>)}>)/length, 1)
+
+test <a loop calling a task that only calls a native function IS guarded>
+  want hold, is-equal(guards(<{native}\n{loop(<      save xs/\{i\}\n        call root\n          read j\n{step}>)}>)/length, 1)
+
+test <a native call passed the list is NOT guarded>
+  want hold, is-equal(guards(<dock load\n  load \<global:fmath\>, name fmath\n\n{loop(<      save xs/\{i\}\n        call fmath/sqrt\n          read xs\n{step}>)}>)/length, 0)
+
+# 11. the integer bound of a scalar task: the largest power of two below which no checked operation leaves the safe
+# integers, by interval arithmetic. spectral-norm's `a-value` (i + j, then ij * (ij + 1) / 2 + i + 1) is safe below 2^25.
+# The bound of `f`, as text, <none> when there is none
+task bound-of
+  take text, like text
+  like text
+
+  host bound, map-get(bounds-facts/integer-bounds(built-of(text)/program), <f>)
+  fork test, is-equal(kind-of(bound), <undefined>)
+    hold
+      back <none>
+  back <{bound}>
+
+host pair-sum, <task f\n  take i, like number\n  take j, like number\n  like number\n  save ij\n    call add\n      read i\n      read j\n  send back\n    call add\n      call divide\n        call multiply\n          read ij\n          call add\n            read ij\n            code 1\n        code 2\n      read i\n>
+
+test <a-value's arithmetic is safe below 2^25>
+  want hold, is-equal(bound-of(pair-sum), <33554432>)
+
+test <a cube is safe only below a smaller bound>
+  want hold, is-equal(bound-of(<task f\n  take i, like number\n  like number\n  send back\n    call multiply\n      call multiply\n        read i\n        read i\n      read i\n>), <131072>)
+
+test <a division by an argument, which can be 0, has NO bound>
+  want hold, is-equal(bound-of(<task f\n  take i, like number\n  take j, like number\n  like number\n  send back\n    call divide\n      read i\n      read j\n>), <none>)
+
+# 12. a counted loop calling such a task with its counter and a name it never writes runs the unchecked copy behind
+# `n <= L`, and with any other argument the call keeps its checks
+task caller
+  take args, like text
+  like list, like dynamic
+
+  back guards(<{pair-sum}\ntask g\n  take xs, like list, like number\n  take n, like number\n  take k, like number\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save xs/\{i\}\n        call f\n{args}\n      save i\n        call add\n          read i\n          code 1\n>)
+
+test <the counter and an unwritten name are bounded: the call runs unchecked behind i \>= 0, k in [0, 2^25), n \<= 2^25>
+  host counted, caller(<          read i\n          read k>)
+  want hold, is-equal(first-fast(counted), 1)
+  want hold, is-equal(json-of(counted/0/limits), <[\{"name":"i","low":true\},\{"name":"k","low":true\},\{"name":"n","high":33554432\},\{"name":"k","high":33554431\}]>)
+
+test <an argument of any other shape (i + 1) keeps the call checked>
+  want hold, is-equal(first-fast(caller(<          call add\n            read i\n            code 1\n          read k>)), -1)
+
+# 13. a task that takes a list LENT and writes its slots by bounded indexes (AWFY's Queens' `mark`): a counted loop
+# calling it runs its unchecked copy, the list needing no bound. One that pushes onto the list it is passed can change
+# the length, so the loop is not guarded at all
+task lent-guards
+  take task, like text
+  like list, like dynamic
+
+  back lent-guards-of(<{task}\n\ntask place\n  take xs, like list, like boolean\n  take n, like number\n  take c, like number\n  save r, code 0\n  walk test\n    hook test\n      call is-below\n        read r\n        read n\n    hook hold\n      call mark\n        read xs\n        read r\n        read c\n      save r\n        call add\n          read r\n          code 1\n>, true)
+
+test <a call writing a lent list by a bounded index runs unchecked, the list needing no bound>
+  want hold, is-equal(first-fast(lent-guards(<task mark\n  take xs, like list, like boolean\n  take r, like number\n  take c, like number\n  host at\n    call add\n      read c\n      read r\n  save xs/\{at\}, false>)), 1)
+
+test <a call that pushes onto the list it is passed leaves the loop unguarded>
+  want hold, is-equal(lent-guards(<load @term/base/list\n  find push\n\ntask mark\n  take xs, like list, like boolean\n  take r, like number\n  take c, like number\n  call push\n    bind list, read xs\n    bind item, false>)/length, 0)
+
+# a list reached through a path the loop holds still: `bs/{k}/xs/{i}` under a walk over `i`, `k` never written
+task bag-task
+  take inner, like text
+  take before, like text, fall <>
+  like text
+
+  back <form bag\n  link id, like number\n  link xs, like list, like number\n\ntask touch\n  take bs, like list, like bag\n  take k, like number\n{before}\n  save i, code 0\n  walk test\n    hook test\n      call is-below\n        read i\n        code 8\n    hook hold\n{inner}\n      save i\n        call add\n          read i\n          code 1>
+
+host rewrite, <      host old, read bs/\{k\}/xs/\{i\}\n      save bs/\{k\}/xs/\{i\}\n        call add\n          read old\n          code 1>
+
+# the place of the first check of a guard that holds a path, or else over `bs` on its high side, -1 when none
+task first-at
+  take checks, like list, like dynamic
+  take by-path, like boolean
+  like number
+
+  save at, 0
+  walk checks
+    take check, like dynamic
+    fork test, by-path
+      hold
+        fork test, truth(check/path)
+          hold
+            back at
+      miss
+        fork test, and(is-equal(check/list, <bs>), is-equal(check/side, <high>))
+          hold
+            back at
+    save at, add(at, 1)
+  back -1
+
+test <a list reached through a path is guarded, its prefix slot bounded first>
+  host found, guards(bag-task(rewrite))
+  want hold, is-equal(found/length, 1)
+  host checks, found/0/checks
+  save through, false
+  save low-k, false
+  save high-k, false
+  walk checks
+    take check, like dynamic
+    fork test, and(and(is-equal(check/list, <bs/\{k\}/xs>), truth(check/path)), and(is-equal(check/side, <high>), is-equal(check/offset, 7)))
+      hold
+        save through, true
+    fork test, and(and(is-equal(check/list, <bs>), is-equal(check/base, <k>)), is-equal(check/side, <low>))
+      hold
+        save low-k, true
+    fork test, and(and(is-equal(check/list, <bs>), is-equal(check/base, <k>)), is-equal(check/side, <high>))
+      hold
+        save high-k, true
+  want hold, through
+  want hold, low-k
+  want hold, high-k
+  want hold, is-above(first-at(checks, true), first-at(checks, false))
+
+test <a field written in the loop leaves a path unguarded>
+  want hold, is-equal(guards(bag-task(<{rewrite}\n      save bs/\{k\}/id, code 0>))/length, 0)
+
+# a task taking the list of bags lent could put another bag in the slot the path goes through. Built with the lend
+# facts, so the call is one the guard would otherwise allow (`swap-bag` must take `bs` lent, or this proves nothing)
+task handed-text
+  like text
+
+  back text-replace(bag-task(<{rewrite}\n      call swap-bag\n        read bs\n        read k>), <task touch>, <task swap-bag\n  take bs, like list, like bag\n  take k, like number\n  save bs/\{k\}\n    make bag\n      bind id, code 0\n      bind xs, read bs/0/xs\n\ntask touch>)
+
+# host value: whether the lend facts hold slot 0 of a task as lent
+bind lends-first
+  take lent, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($lent.get($name)?.has(0) === true)>
+
+test <the call takes the list lent, so only the path rule can refuse it>
+  host built, built-of(handed-text())
+  want hold, lends-first(backend-module/lent-lists(built/program), <swap-bag>)
+
+test <a call passed the list a path goes through leaves the path unguarded>
+  want hold, none-by-path(lent-guards-of(handed-text()))
+
+test <a path through a slot at the counter is a different list every turn: unguarded>
+  want hold, is-equal(guards(bag-task(<      host old, read bs/\{i\}/xs/0>))/length, 0)
+
+test <a path through a slot at a name the loop writes is unguarded>
+  want hold, is-equal(guards(bag-task(<      host old, read bs/\{j\}/xs/\{i\}\n      save j, code 0>, <  save j, read k>))/length, 0)
+
+# the TypeScript it drives: the guard reads the path's length once its prefix is checked, and the fast copy reads the path
+# ONCE, after the guard, then indexes the local (a record is a reference here) with no checks
+test <the TypeScript guard reads the path after its prefix, and the fast copy reads it once and indexes it unchecked>
+  host ts, emit-text(built-of(bag-task(rewrite)), <typescript>)
+  want hold, holds(<<if \(k >= 0 && k < bs\.length && i >= 0 && 7 < bs\[k\]!\.xs\.length\) \{\n\s*const __path0 = bs\[k\]!\.xs\n\s*while>>, ts)
+  want hold, text-contains(ts, <const old: number = __path0[i]!>)
+  want hold, text-contains(ts, <__path0[i] = >)

@@ -1,0 +1,290 @@
+note <Exceptions: a form like exception, halt of a form with binds, pins, fallbacks, named type arguments and bounds>
+
+# Ported from exception.ts by statement (item term-self-host-001-0616). Every program is compiled with a minimal stand-in
+# for the stdlib `exception` module ahead of it, so the test needs no resolver. The emit checks read the TypeScript, the
+# raise set checks read the roll, and the raise is run on node through typescript-answer: one main calls store(9) and
+# prints whether what it threw is an Error, then its form, note and the two props under link. The original's two `ok`s
+# that only a broken run reaches ("the raise throws" with nothing thrown, "the emitted module loads") are the run test's
+# own failure: a run that throws nothing or does not load prints no fields, and the four run tests fail on it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/reading
+  find first-with
+
+load ../support/walking
+  find json-without
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host stdlib, <form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\ntask exception-code\n  like text\n  send back, text \<kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr\>\n\ntask exception-time\n  like number\n  send back, code 7\n\nform excess\n  like exception\n    bind note, \<Too large\>\n    link thing, like text\n    link limit, like(number), need false\n    link actual, like(number), fall 0\n>
+
+# a raise of a stdlib exception, with a prop that falls back
+host raise, <task store\n  take size, like number\n  like number\n  halt excess\n    bind thing, text \<upload\>\n    bind limit, code 5\n  send back, read size\n>
+
+# a more specific exception, like excess, pinning thing and adding a prop
+host derived, <form upload-excess\n  like excess\n    bind note, \<Upload too large\>\n    bind thing, \<upload\>\n    link policy, like text\n\ntask store\n  like number\n  halt upload-excess\n    bind limit, code 5\n    bind policy, text \<avatar\>\n  send back, code 1\n>
+
+host pinned, <task store\n  halt excess\n    bind thing, text \<upload\>\n    bind note, text \<no\>\n>
+host unknown, <task store\n  halt excess\n    bind thing, text \<upload\>\n    bind size, code 1\n>
+host missing, <task store\n  halt excess\n    bind limit, code 5\n>
+host not-exception, <form point\n  link x, like number\n\ntask store\n  halt point\n    bind x, code 1\n>
+host no-note, <form quiet\n  like exception\n    link thing, like text\n>
+
+# named type arguments on a form with several parameters
+host named, <form foo\n  head a\n  head b\n  link note, like text\n  link left, like a\n  link right, like b\n\nform example\n  like foo\n    head a\n      link x, like text\n    head b, like number\n    bind note, \<Example\>\n\ntask use\n  like example\n  send back\n    make example\n      bind left\n        make example-left\n          bind x, text \<hi\>\n      bind right, code 3\n>
+
+host ambiguous, <form foo\n  head a\n  head b\n  link left, like a\n  link right, like b\n\nform example\n  like foo\n    link x, like text\n>
+
+# a bound: `halt <form>` lines with no children on the signature name what the task may raise. The original took
+# `halt kink` out of its text before compiling, so it is left out here
+host bounded, <task store\n  take size, like number\n  like number\n  halt excess\n  fork test\n    hook test\n      call is-above\n        read size\n        code 5\n    hook hold\n      halt excess\n        bind thing, text \<upload\>\n        bind limit, code 5\n  send back, read size\n>
+
+host absence, <form absence\n  like exception\n    bind note, \<Not found\>\n    link thing, like text\n>
+
+host beyond-body, <task store\n  take size, like number\n  like number\n  halt absence\n  halt excess\n    bind thing, text \<upload\>\n    bind limit, code 5\n  send back, read size\n\ntask outer\n  take size, like number\n  like number\n  halt absence\n  send back\n    call store\n      read size\n>
+
+host nothing-bound, <task store\n  take size, like number\n  like number\n  halt nothing\n  send back, read size\n>
+
+# the raise set of a call through a mask is the union over every implementation in the build
+host masked-body, <mask sizer\n  task measure\n    take self\n    like number\n\nform box\n  link n, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        read self/n\n\nform circle\n  link r, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      halt absence\n        bind thing, text \<radius\>\n\ntask describe\n  head t, need sizer\n  take x, like t\n  like number\n  send back\n    call measure\n      read x\n>
+
+# a task that calls into a dock load module raises failure, plus what its signature declares
+host native-body, <form failure\n  like exception\n    bind note, \<Something went wrong\>\n    link thing, like text\n\ndock load\n  load \<node:fs/promises\>, name fs\n\ntask read-file\n  note async\n  take path, like text\n  like text\n  halt absence\n  send back\n    call fs/read-file\n      read path\n      wait true\n\ntask load-config\n  note async\n  like text\n  send back\n    call read-file\n      text \<config.tree\>\n      wait true\n>
+
+host props, make pattern, <<link: \{ thing: "upload", limit: 5, actual: 0 \}>>
+
+# store(9) on node: whether the raise is an Error, then its form, note, link/limit and link/actual, joined by |
+host main, <let said = "none"\ntry \{\n  store(9)\n\} catch (error) \{\n  said = [error instanceof Error, error.form, error.note, error.link?.limit, error.link?.actual].join("|")\n\}\nprocess.stdout.write(said)\n>
+
+form exception-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(exception-answers, bind(held, make hash))
+
+# a program compiled after the stand-in stdlib
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(<{stdlib}\n{text}>, make(compile-choice, bind(file, <x.tree>)))
+
+task rolled
+  take text, like text
+  like compile-outcome
+
+  back compile-text(<{stdlib}\n{text}>, make(compile-choice, bind(file, <x.tree>), bind(roll, true)))
+
+# the refusal's messages joined by ` | `, empty for a program that compiled
+task said
+  take out, like compile-outcome
+  like text
+
+  fork test, out/ok
+    hold
+      back <>
+  back join(out/messages, < | >)
+
+task emitted
+  take text, like text
+  like text
+
+  host out, built(text)
+  fork test, out/ok
+    hold
+      back out/emitted
+  back <>
+
+# the raise set of a task in a rolled program, as JSON writes it, <none> when the program or the task has none
+task halts-of
+  take out, like compile-outcome
+  take name, like text
+  like text
+
+  fork test, not(and(out/ok, truth(out/roll)))
+    hold
+      back <none>
+  host found, first-with(out/roll/task, <name>, name)
+  fork test, not(truth(found))
+    hold
+      back <none>
+  back json-without(read-field(found, <halt>), make list(<none>))
+
+# what store(9) threw on node, once
+task thrown
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-exception->)
+  save answer, typescript-answer(built(raise), main, folder, <exception>)
+  save kept/held/{key}, answer
+  back answer
+
+task thrown-part
+  take at, like number
+  like text
+
+  save answer, thrown()
+  save parts, text-split(answer, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back answer
+
+test <a halt of an exception compiles>
+  want hold, built(raise)/ok
+
+# its Term frame added as it is thrown (term/hive decision 001)
+test <the raise throws the runtime class>
+  want hold, text-contains(emitted(raise), <throw __termRaised(new TermException(>)
+
+test <the class is emitted once>
+  want hold, is-equal(text-split(emitted(raise), <class TermException>)/length, 2)
+
+test <host is filled>
+  want hold, text-contains(emitted(raise), <host: "@local">)
+
+test <form is filled>
+  want hold, text-contains(emitted(raise), <form: "excess">)
+
+test <the note is pinned in>
+  want hold, text-contains(emitted(raise), <note: "Too large">)
+
+test <the occurrence is a call>
+  want hold, text-contains(emitted(raise), <code: exceptionCode()>)
+
+test <the props sit under link>
+  want hold, matches(props, emitted(raise))
+
+test <the thrown value is an Error>
+  want hold, is-equal(thrown-part(0), <true>)
+
+test <it carries form>
+  want hold, is-equal(thrown-part(1), <excess>)
+
+test <it carries the pinned note>
+  want hold, is-equal(thrown-part(2), <Too large>)
+
+test <it carries the props>
+  want hold, and(is-equal(thrown-part(3), <5>), is-equal(thrown-part(4), <0>))
+
+test <a derived exception compiles>
+  want hold, built(derived)/ok
+
+test <the derived note wins>
+  want hold, text-contains(emitted(derived), <note: "Upload too large">)
+
+test <the pinned thing is filled>
+  want hold, text-contains(emitted(derived), <thing: "upload">)
+
+test <the added prop is carried>
+  want hold, text-contains(emitted(derived), <policy: "avatar">)
+
+test <the derived props record is synthesized>
+  want hold, text-contains(emitted(derived), <interface UploadExcessLink>)
+
+test <giving a pinned field is refused>
+  host out, built(pinned)
+  want hold, and(not(out/ok), text-contains(said(out), <pinned>))
+
+test <an unknown prop is refused>
+  host out, built(unknown)
+  want hold, and(not(out/ok), text-contains(said(out), <no prop "size">))
+
+test <a missing required prop is refused>
+  host out, built(missing)
+  want hold, and(not(out/ok), text-contains(said(out), <needs "thing">))
+
+test <raising a plain form is refused>
+  host out, built(not-exception)
+  want hold, and(not(out/ok), text-contains(said(out), <not an exception>))
+
+test <an exception without a note is refused>
+  host out, built(no-note)
+  want hold, and(not(out/ok), text-contains(said(out), <pin its note>))
+
+test <named type arguments compile>
+  want hold, built(named)/ok
+
+test <the anonymous record is named after the field it types>
+  want hold, text-contains(emitted(named), <interface ExampleLeft>)
+
+test <the pin is added at construction>
+  want hold, text-contains(emitted(named), <note: "Example">)
+
+test <a bare link under a two-parameter base is refused>
+  host out, built(ambiguous)
+  want hold, and(not(out/ok), text-contains(said(out), <takes 2 type parameters>))
+
+test <a task bounded to what it raises compiles>
+  want hold, built(bounded)/ok
+
+test <the bound is not a raise>
+  host out, built(bounded)
+  want hold, and(out/ok, not(text-contains(out/emitted, <throw new TermException(new Excess(\{\}>)))
+
+test <the roll still infers the set>
+  host out, built(bounded)
+  want hold, and(out/ok, text-contains(out/emitted, <throw __termRaised(new TermException(>))
+
+test <a body that raises past its bound is refused>
+  want hold, not(built(<{absence}\n{beyond-body}>)/ok)
+
+test <the message names the task and the exception>
+  want hold, text-contains(said(built(<{absence}\n{beyond-body}>)), <"store" can raise excess, which its signature does not declare>)
+
+test <a bound is held through callees, with the path>
+  want hold, text-contains(said(built(<{absence}\n{beyond-body}>)), <"outer" can raise excess (through store)>)
+
+test <a bound naming no exception form is refused>
+  host out, built(nothing-bound)
+  want hold, and(not(out/ok), text-contains(said(out), <"nothing" is not an exception form>))
+
+test <a mask program compiles with a roll>
+  host out, rolled(<{absence}\n{masked-body}>)
+  want hold, and(out/ok, truth(out/roll))
+
+test <a call through a mask raises what any implementation raises>
+  want hold, text-contains(halts-of(rolled(<{absence}\n{masked-body}>), <describe>), <"absence">)
+
+test <the implementation that raises nothing stays empty>
+  want hold, is-equal(halts-of(rolled(<{absence}\n{masked-body}>), <box/measure>), <[]>)
+
+test <a native shim compiles with a roll>
+  host out, rolled(<{absence}\n{native-body}>)
+  want hold, and(out/ok, truth(out/roll))
+
+test <a native shim raises failure>
+  want hold, text-contains(halts-of(rolled(<{absence}\n{native-body}>), <read-file>), <"failure">)
+
+test <a native shim raises what its signature declares>
+  want hold, text-contains(halts-of(rolled(<{absence}\n{native-body}>), <read-file>), <"absence">)
+
+test <a caller of the shim inherits both>
+  want hold, is-equal(halts-of(rolled(<{absence}\n{native-body}>), <load-config>), <["absence","failure"]>)

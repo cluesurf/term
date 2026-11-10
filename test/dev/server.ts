@@ -3,8 +3,8 @@
 // change pushes an HMR message. Proves lazy serving + the SSE HMR plumbing end to end. Run: npx tsx test/dev/server.ts
 
 import { startDevServer } from '@term/call/code/dev/server'
-import { applyHmr } from '@term/make/code/dev/client'
-import type { HmrMessage } from '@term/make/code/dev/client'
+import { applyHmr } from '@term/make/code/dev/hmr-client'
+import type { HmrMessage } from '@term/make/code/dev/hmr-client'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as os from 'node:os'

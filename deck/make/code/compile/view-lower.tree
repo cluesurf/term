@@ -84,6 +84,11 @@ form lowering
   # the render runtime's names as the build bound them (D020), and `append` the same way
   link names, like render-names
   link append, like text
+  # each walk's item type as the main check found it, by view-walk-key, handed in by views-lowered's check (empty for
+  # the lowering the backends emit)
+  link item-types, like hash, like text, like type
+  # the view's own name, a part of each of its walks' keys
+  link view-name, like text
 
 # a render runtime name, and what the build called it once names were split by file (check/disambiguate.tree
 # bind-runtime). Declared here, where the lowering reads it, because disambiguate.tree loads this file
@@ -653,6 +658,45 @@ task element-of
     miss
       back make none
 
+# where a view walk stands, the key its item type is kept by: the file of its view (a nested node's span carries none,
+# only a statement's does), the view's name, and the walk's own line and column
+task view-walk-key
+  take view-span, like span
+  take view-name, like text
+  take at, like span
+  like text
+
+  save file, <>
+  sift view-span/file
+    case some
+      link known
+      save file, known
+    case none
+      save nothing, 0
+  back <{file}:{view-name}:{at/start/line}:{at/start/column}>
+
+# a walk item's type: what element-of gives, else the type the main check found for this walk (views-lowered hands
+# them in, so its lowered check agrees with the main one), else none, left to inference
+task walk-item-type
+  take iterable, like expression
+  take at, like span
+  take state, like lowering
+  like maybe, like type
+  mark private
+
+  save written, element-of(iterable, state)
+  sift written
+    case some
+      back written
+    case none
+      save nothing, 0
+  save key, view-walk-key(state/span, state/view-name, at)
+  fork test, state/item-types/has(key)
+    hold
+      save found, state/item-types/{key}
+      back make(some, found)
+  back make none
+
 # attach a node under `parent`: build + append, or lower control flow / slots / component calls (which mount
 # themselves).
 task attach
@@ -688,7 +732,7 @@ task attach
       save item-param
         make closure-param
           bind name, item
-          bind type, element-of(iterable, state)
+          bind type, walk-item-type(iterable, span, state)
       save item-params, make list
       push(item-params, item-param)
       save item-body, fragment-thunk(item-params, body, state)
@@ -745,6 +789,7 @@ task lower-view
   take components, like list, like component
   take bound-names, like render-names
   take bound-append, like text
+  take item-types, like hash, like text, like type
   like statement
   mark private
 
@@ -758,6 +803,8 @@ task lower-view
           bind counter, 0
           bind names, bound-names
           bind append, bound-append
+          bind item-types, item-types
+          bind view-name, name
       save slotted, has-slot(body)
       sift component-of(state, name)
         case some
@@ -836,6 +883,16 @@ task lower-views
   take bound, like list, like runtime-bound
   like list, like statement
 
+  save no-types, make hash
+  back lower-views-typed(program, bound, no-types)
+
+# the same, each walk's item typed as the main check found it where element-of gives none (views-lowered's check)
+task lower-views-typed
+  take program, like list, like statement
+  take bound, like list, like runtime-bound
+  take item-types, like hash, like text, like type
+  like list, like statement
+
   # the program-wide component registry. A view named after an HTML tag is not a component (it would be unreachable
   # as one anyway, since `view <tag>` renders the element), so `is-component` cleanly means "this is a component call"
   save components, make list
@@ -901,7 +958,7 @@ task lower-views
     take one
     sift one
       case view
-        push(out, lower-view(one, registry, bound-names, bound-append))
+        push(out, lower-view(one, registry, bound-names, bound-append, item-types))
       miss
         push(out, one)
   back out

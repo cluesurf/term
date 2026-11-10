@@ -1,0 +1,79 @@
+note <the ASCII text fact, held both ways: the texts it must prove ASCII, and for every rule a text it must not>
+
+# Ported from text.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. The backends read a text
+# proven ASCII by index, so a wrong proof reads a byte where a code point was asked for. Each program is compiled
+# unoptimized, the facts read over its statements, and every read of the variable inside the task looked up in them, its
+# `type` and `span` fields left out of the walk as the original left them. ir/facts/text is the subject (decision 106).
+
+load ../../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../../support/reading
+  find first-with-both
+
+load ../../support/walking
+  find nodes-of
+
+dock load
+  load <@term/make/code/ir/facts/text>, name text-facts
+
+# host value: whether the fact set holds the node itself, by identity
+bind set-holds
+  take facts, like dynamic
+  take node, like dynamic
+  like boolean
+  case node
+    text <$facts.has($node)>
+
+# whether every read of the variable `name` inside task `task` is proven ASCII
+task proven
+  take text, like text
+  take task, like text
+  take name, like text
+  like boolean
+
+  host built, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(optimize, false)))
+  fork test, not(built/ok)
+    hold
+      save said, <compile failed>
+      walk built/messages
+        take message, like text
+        save said, <{said} | {message}>
+      halt <{said}>
+  host facts, text-facts/ascii-texts(built/program)
+  host found, first-with-both(built/program, <form>, <function>, <name>, task)
+  save reads, 0
+  save every, true
+  walk nodes-of(found, <variable>)
+    take node, like dynamic
+    fork test, is-equal(node/name, name)
+      hold
+        save reads, add(reads, 1)
+        fork test, not(set-holds(facts, node))
+          hold
+            save every, false
+  back and(is-above(reads, 0), every)
+
+host reader, <task first\n  take s, like text\n  like text\n  send back\n    call s/char-at\n      code 0\n>
+
+test <a local made from an ASCII literal IS ASCII>
+  want hold, proven(<{reader}\ntask go\n  like text\n  save s, text \<hello\>\n  send back\n    call first\n      read s\n>, <go>, <s>)
+
+test <a local made from a literal with a character above 127 is NOT>
+  want hold, not(proven(<{reader}\ntask go\n  like text\n  save s, text \<héllo\>\n  send back\n    call first\n      read s\n>, <go>, <s>))
+
+test <a local later given a non-ASCII text is NOT>
+  want hold, not(proven(<{reader}\ntask go\n  like text\n  save s, text \<hello\>\n  save s, text \<wörld\>\n  send back\n    call first\n      read s\n>, <go>, <s>))
+
+test <a template of an ASCII text and a number IS>
+  want hold, proven(<{reader}\ntask go\n  take n, like number\n  like text\n  save s, text \<row \{n\}\>\n  save t, text \<\{s\}!\>\n  send back\n    call first\n      read t\n>, <go>, <t>)
+
+test <a parameter every caller passes ASCII IS>
+  want hold, proven(<{reader}\ntask go\n  like text\n  send back\n    call first\n      text \<abc\>\n>, <first>, <s>)
+
+test <a parameter one caller passes non-ASCII is NOT>
+  want hold, not(proven(<{reader}\ntask go\n  like text\n  save a\n    call first\n      text \<abc\>\n  send back\n    call first\n      text \<ñ\>\n>, <first>, <s>))
+
+test <a parameter of a task nothing calls is NOT (a caller the program cannot see)>
+  want hold, not(proven(reader, <first>, <s>))

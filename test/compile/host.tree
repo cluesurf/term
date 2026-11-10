@@ -1,0 +1,233 @@
+note <Term data, the host dialect: fixtures read, write back in both spellings, convert to JSON and back, bad ones say why>
+
+# Ported from host.ts by statement (item term-self-host-001-0622), one test per `ok` in its order, its loop over the bad
+# fixtures one walked test whose cases are the files of deck/host/test/fixture/bad. Every fixture reads, writes back
+# byte for byte in both spellings, converts to its JSON fixture and back; every bad fixture gives its message; anchors
+# expand and a cycle is refused. The suite docks its subject, compile/host.ts (decision 106). The original compared two
+# values by their JSON: so does this, through @term/base/json's stringify.
+
+load ../support/compiling
+  find file-text
+
+load @term/base/file/directory
+  find list, name folder-list
+
+load @term/base/json
+  find stringify
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains
+  find starts-with
+  find substring
+  find index-of
+
+dock load
+  load <@term/make/code/compile/host>, name data-host
+
+form host-source
+  link file, like text
+  link text, like text
+
+host fixtures, <deck/host/test/fixture>
+
+task fixture
+  take name, like text
+  like text
+
+  back file-text(<{fixtures}/{name}>)
+
+task source
+  take file, like text
+  take text, like text
+  like host-source
+
+  back make(host-source, bind(file, file), bind(text, text))
+
+# the data a text reads to, its `root` and its `trees`, or void when it was refused
+task read-data
+  take file, like text
+  take text, like text
+  like dynamic
+
+  save result, data-host/readDataText(source(file, text))
+  fork test, not(result/ok)
+    hold
+      back void
+  back result/data
+
+task json-of
+  take value, like dynamic
+  like text
+
+  back stringify(value)
+
+# the messages of a list of diagnostics, joined
+task messages-of
+  take diagnostics, like dynamic
+  like text
+
+  save out, make list
+  walk diagnostics
+    take one, like dynamic
+    save message, one/message
+    out/push(message)
+  back out/join(< | >)
+
+# what a bad fixture said: its read's refusal, else its expansion's, else <> when it was accepted
+task said-by
+  take name, like text
+  take text, like text
+  like text
+
+  save result, data-host/readDataText(source(name, text))
+  fork test, not(result/ok)
+    hold
+      back messages-of(result/diagnostics)
+  save expanded, data-host/expandData(result/data, name)
+  fork test, expanded/ok
+    hold
+      back <>
+  back messages-of(expanded/diagnostics)
+
+# the message a bad fixture's first line holds, less its `# `
+task wanted-by
+  take text, like text
+  like text
+
+  save line, substring(text, 0, index-of(text, <\n>))
+  fork test, starts-with(line, <# >)
+    hold
+      back substring(line, 2)
+  back line
+
+# every bad fixture but draft.tree, which shelves the folder from `term make`
+task bad-names
+  like list, like text
+
+  save out, make list
+  walk folder-list(<{fixtures}/bad>)
+    take name, like text
+    fork test, is-unequal(name, <draft.tree>)
+      hold
+        out/push(name)
+  back out
+
+# recognition
+test <the long form is recognised as data>
+  want hold, data-host/isDataFile(source(<b.tree>, fixture(<basic.tree>)))
+
+test <the compact form is recognised as data>
+  want hold, data-host/isDataFile(source(<b.line>, fixture(<basic.line>)))
+
+test <a code file of constants is not data>
+  want hold, not(data-host/isDataFile(source(<c.tree>, <host x, code 10\nhost y, text \<a\>\n>)))
+
+test <a task is not data>
+  want hold, not(data-host/isDataFile(source(<c.tree>, <task go\n  send back, code 1\n>)))
+
+# the basic example: long and compact read to the same value
+test <long and compact read to one value>
+  host long, read-data(<basic.tree>, fixture(<basic.tree>))
+  host compact, read-data(<basic.line>, fixture(<basic.line>))
+  want hold, is-equal(json-of(long/root), json-of(compact/root))
+
+# and write back byte for byte
+test <the long writer is canonical>
+  host long, read-data(<basic.tree>, fixture(<basic.tree>))
+  want hold, is-equal(data-host/writeLong(long/root), fixture(<basic.tree>))
+
+test <the compact writer is canonical>
+  host long, read-data(<basic.tree>, fixture(<basic.tree>))
+  want hold, is-equal(data-host/writeCompact(long/root), fixture(<basic.line>))
+
+# JSON both ways
+test <to JSON matches the fixture>
+  host long, read-data(<basic.tree>, fixture(<basic.tree>))
+  want hold, is-equal(<{data-host/toJson(long/root)}\n>, fixture(<basic.json>))
+
+test <from JSON reads back to the value>
+  host long, read-data(<basic.tree>, fixture(<basic.tree>))
+  host back, data-host/fromJson(fixture(<basic.json>))
+  want hold, is-equal(json-of(back), json-of(long/root))
+
+# key case at the boundary
+test <a kebab key is snake in JSON>
+  host keyed, read-data(<k.tree>, <host retry-after, 3\n>)
+  want hold, is-equal(data-host/toJson(keyed/root), <\{"retry_after":3\}>)
+
+test <and kebab again on the way back>
+  want hold, is-equal(data-host/writeLong(data-host/fromJson(<\{"retry_after":3\}>)), <host retry-after, 3\n>)
+
+test <keep leaves the key alone>
+  host keyed, read-data(<k.tree>, <host retry-after, 3\n>)
+  want hold, is-equal(data-host/toJson(keyed/root, true), <\{"retry-after":3\}>)
+
+# scalars
+test <scalars read>
+  host scalars, read-data(<s.tree>, <host a, -3.5\nhost b, true\nhost c, void\nhost d, \<a \\\<b\\\> \{c\}\>\nhost e, 0x1f\n>)
+  want hold, is-equal(data-host/toJson(scalars/root), <\{"a":-3.5,"b":true,"c":null,"d":"a \<b\> \{c\}","e":31\}>)
+
+# a text key from foreign JSON survives a round trip
+test <a foreign key is written as text>
+  want hold, is-equal(data-host/writeLong(data-host/fromJson(<\{"My Key":1\}>)), <host \<My Key\>, 1\n>)
+
+test <and reads back>
+  host written, data-host/writeLong(data-host/fromJson(<\{"My Key":1\}>))
+  host again, read-data(<f.tree>, written)
+  want hold, is-equal(data-host/toJson(again/root, true), <\{"My Key":1\}>)
+
+# anchors
+test <the anchor is read>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  want hold, anchors/trees/has(<service-config>)
+
+test <anchors expand>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  host expanded, data-host/expandData(anchors)
+  want hold, expanded/ok
+
+test <a fused map has the anchor entries>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  host expanded, data-host/expandData(anchors)
+  want hold, expanded/ok
+  host json, data-host/toJson(expanded/data)
+  want hold, contains(json, <"prod_service":\{"config":\{"env":"prod","retries":3,"version":6.8\}\}>)
+
+test <a key after the fuse wins>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  host expanded, data-host/expandData(anchors)
+  want hold, expanded/ok
+  host json, data-host/toJson(expanded/data)
+  want hold, contains(json, <"dev_service":\{"config":\{"env":"prod","retries":3,"version":7.23\}\}>)
+
+test <the anchor file writes back long>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  want hold, is-equal(data-host/writeLong(anchors/root, anchors/trees), fixture(<anchors.tree>))
+
+test <the anchor file writes back compact>
+  host anchors, read-data(<anchors.tree>, fixture(<anchors.tree>))
+  want hold, is-equal(data-host/writeCompact(anchors/root, anchors/trees), fixture(<anchors.line>))
+
+test <a cycle is refused>
+  host looped, read-data(<c.tree>, <tree a\n  fuse b\ntree b\n  fuse a\nhost x\n  fuse a\n>)
+  host cycled, data-host/expandData(looped)
+  want hold, not(cycled/ok)
+  want hold, contains(messages-of(cycled/diagnostics), <fuses itself>)
+
+# every bad fixture gives its message
+test <a bad fixture says its message>
+  take name, like text
+    walk bad-names()
+  host text, fixture(<bad/{name}>)
+  want hold, contains(said-by(name, text), wanted-by(text))
+
+# a stream: one form per line, anchors first
+test <a stream reads>
+  host stream, read-data(<stream.line>, fixture(<stream.line>))
+  host streamed, data-host/expandData(stream)
+  want hold, streamed/ok
+  host json, data-host/toJson(streamed/data)
+  want hold, contains(json, <"b":123456>)

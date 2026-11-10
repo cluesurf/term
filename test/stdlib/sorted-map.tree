@@ -1,0 +1,100 @@
+note <the sorted map answers what a map does after a long seeded churn, and orders texts by code point, on every backend>
+
+# Ported from test/stdlib/sorted-map.ts by statement (item term-self-host-001-0680): its one ok per backend is one walked
+# test, each backend a case of it. The sorted map is a B-tree written in Term (deck/base/code/sorted-map.tree,
+# 2026-10-05): 180,000 seeded puts and drops over 30,000 keys, enough to split, borrow and merge nodes at three depths,
+# answered with the length, every key in order, a lookup of each of the first hundred keys, and the least and greatest.
+# The reference replays the same draws here on a hash, as the original did on a JavaScript Map, and sorts its keys with
+# the stdlib's merge sort. Then the order of texts: code point order, which puts an astral character after every one
+# below it, where UTF-16 order would not. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/hash
+  find hash
+  find get
+
+load @term/base/list
+  find join
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+
+load @term/base/maybe
+  find unwrap-or
+
+load @term/base/text
+  find split
+
+# sized for the tree's degree, 64 (sorted-map.tree): two thirds of the keys are held at the end, about 20,000, which two
+# levels of at most 127 keys to a node cannot hold, so the churn splits, borrows and merges at three depths
+host operations, 180000
+host keys, 30000
+
+host program, <load @term/base/sorted-map\n  find sorted-map\n  find make-sorted-map\n\nload @term/base/ordering\n  find ordering\n  find from-numbers\n  find from-texts\n\nload @term/base/list\n  find list\n  find join\n\nload @term/base/maybe\n  find maybe\n  find unwrap-or\n\ntask churn\n  like text\n  save m, make-sorted-map(from-numbers)\n  save state, 12345\n  save i, 0\n  walk test\n    hook test, is-below(i, {operations})\n    hold\n      save state, modulo(multiply(state, 48271), 2147483647)\n      save key, modulo(state, {keys})\n      save state, modulo(multiply(state, 48271), 2147483647)\n      fork test, is-below(modulo(state, 3), 2)\n        hold\n          put(m, key, multiply(key, 7))\n        miss\n          drop(m, key)\n      save i, add(i, 1)\n  save shown, make list\n  walk keys(m)\n    take one\n    push(shown, \<\{one\}\>)\n  save found, make list\n  save j, 0\n  walk test\n    hook test, is-below(j, 100)\n    hold\n      push(found, \<\{unwrap-or(lookup(m, j), -1)\}\>)\n      save j, add(j, 1)\n  back \<\{length(m)\}|\{join(shown, \<,\>)\}|\{join(found, \<,\>)\}|\{unwrap-or(least(m), -1)\}|\{unwrap-or(greatest(m), -1)\}\>\n\ntask words\n  like text\n  save m, make-sorted-map(from-texts)\n  put(m, \<pear\>, 3)\n  put(m, \<𝄞\>, 9)\n  put(m, \<～\>, 4)\n  put(m, \<apple\>, 1)\n  drop(m, \<pear\>)\n  back join(keys(m), \<,\>)\n\ntask run\n  like text\n  back \<\{churn()\}#\{words()\}\>\n>
+
+# an empty map of numbers, for the reference
+task no-entries
+  like hash, like number, like number
+
+  back make hash
+
+# the same draws on a hash, its keys sorted: the reference answer for the churn. The words' order, as the original
+# wrote it, is held apart: a failing want over the whole long text with the astral character in it ran past ten
+# minutes on live host/line.js, where the same want over ASCII alone failed in seconds (sorted-set)
+task reference
+  like text
+
+  save map, no-entries()
+  save state, 12345
+  save i, 0
+  walk test
+    hook test, is-below(i, operations)
+    hold
+      save state, modulo(multiply(state, 48271), 2147483647)
+      save key, modulo(state, keys)
+      save state, modulo(multiply(state, 48271), 2147483647)
+      fork test, is-below(modulo(state, 3), 2)
+        hold
+          map/set(key, multiply(key, 7))
+        miss
+          save gone, map/remove(key)
+      save i, add(i, 1)
+  save least, -1
+  save greatest, -1
+  save shown, make list
+  walk sort(map/keys(), from-numbers)
+    take one, like number
+    fork test, is-equal(shown/length, 0)
+      hold
+        save least, one
+    save greatest, one
+    shown/push(<{one}>)
+  save found, make list
+  save j, 0
+  walk test
+    hook test, is-below(j, 100)
+    hold
+      found/push(<{unwrap-or(get(map, j), -1)}>)
+      save j, add(j, 1)
+  back <{map/length()}|{join(shown, <,>)}|{join(found, <,>)}|{least}|{greatest}>
+
+test <6,000 puts and drops answer what a Map does, and texts order by code point>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-sorted->)
+  host ran, run-text(program, backend, folder, <sorted>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  save parts, split(ran/output, <#>)
+  want hold, is-equal(parts/length, 2)
+  want hold, is-equal(parts/0, reference())
+  want hold, is-equal(parts/1, <apple,～,𝄞>)

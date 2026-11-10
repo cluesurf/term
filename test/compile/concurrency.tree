@@ -1,0 +1,253 @@
+note <Structured concurrency: spawn and wait, gather, and how a failure, a cancel and a timeout surface>
+
+# Ported from concurrency.ts by statement (item term-self-host-001-0613). The public task module (with its node runtime
+# shim) is compiled to TypeScript with the stdlib resolver and run, built on the async-closure lowering: the `work`
+# closures are async and the runtime awaits them. Each program runs in a child of its own under one driver, which
+# answers what `run` gave back with its type, or the form and link of what it raised, how long the run took, and, 500 ms
+# after it settled, how many unhandled rejections the process saw. The original ran every program in one process and
+# counted the rejections across all of them, so the two counting tests read every program's own count here.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/text/number
+  find parse-integer
+
+# runs `run`, and prints value|form|thing|waited|ms|unhandled: the value as `<type>:<value>`, or the raise's form and
+# its link's `thing` and `waited`
+host driver, <let unhandled = 0\nprocess.on("unhandledRejection", () =\> \{ unhandled++ \})\nconst start = Date.now()\nPromise.resolve().then(() =\> run()).then((value) =\> (\{ value: typeof value + ":" + String(value), form: "", thing: "", waited: "" \}), (e) =\> (\{ value: "", form: String(e?.form ?? ""), thing: String(e?.link?.thing ?? ""), waited: String(e?.link?.waited ?? "") \})).then((r) =\> \{\n  const ms = Date.now() - start\n  setTimeout(() =\> process.stdout.write([r.value, r.form, r.thing, r.waited, ms, unhandled].join("|")), 500)\n\})\n>
+
+# spawn a task, wait for its result
+host spawn-program, <load @term/base/code/task\n  find spawn\n\ntask run\n  note async\n  like text\n  save job\n    call spawn\n      task work\n        like text\n        send back\n          text \<hello-from-task\>\n  send back\n    call wait\n      read job\n      wait true\n>
+
+# gather two tasks: both complete before gather returns, results in source order, joined, AB
+host gather-program, <load @term/base/code/task\n  find gather\n\nload @term/base/code/list\n  find join\n\ntask run\n  note async\n  like text\n  save works\n    make list\n  call works/push\n    task a\n      like text\n      send back\n        text \<A\>\n  call works/push\n    task b\n      like text\n      send back\n        text \<B\>\n  save results\n    call gather\n      read works\n      wait true\n  send back\n    call join\n      read results\n      text \<\>\n>
+
+# the imports every failure case below shares
+host head, <load @term/base/code/task\n  find spawn\n  find gather\n\nload @term/base/code/clock\n  find sleep\n\nload @term/base/code/exception\n  find failure\n>
+
+# a job that sleeps, then answers
+task slow
+  take name, like text
+  take ms, like number
+  take value, like text
+  like text
+
+  back <  call works/push\n    task {name}\n      like text\n      call sleep\n        code {ms}\n        wait true\n      send back\n        text \<{value}\>\n>
+
+# a job that sleeps, then raises `failure` naming itself
+task raising
+  take name, like text
+  take ms, like number
+  like text
+
+  back <  call works/push\n    task {name}\n      like text\n      call sleep\n        code {ms}\n        wait true\n      halt failure\n        bind thing, text \<{name}\>\n>
+
+task gather-of
+  take jobs, like text
+  like text
+
+  back <{head}\ntask run\n  note async\n  like text\n  save works\n    make list\n{jobs}  save results\n    call gather\n      read works\n      wait true\n  send back\n    call results/at\n      code 0\n>
+
+host cancelled-program, <{head}\ntask run\n  note async\n  like text\n  save job\n    call spawn\n      task work\n        like text\n        call sleep\n          code 200\n          wait true\n        send back\n          text \<late\>\n  call cancel\n    read job\n  send back\n    call wait\n      read job\n      wait true\n>
+
+host timed-program, <{head}\ntask run\n  note async\n  like text\n  save job\n    call spawn\n      task work\n        like text\n        call sleep\n          code 400\n          wait true\n        send back\n          text \<late\>\n  send back\n    call wait-within\n      read job\n      code 50\n      wait true\n>
+
+# a cancelled job that raises afterwards: nobody is waiting, and nothing may surface. Before, an unawaited job that
+# raised was an unhandled rejection, which ends a node process
+host quiet-program, <{head}\ntask run\n  note async\n  like text\n  save job\n    call spawn\n      task work\n        like text\n        call sleep\n          code 30\n          wait true\n        halt failure\n          bind thing, text \<after-cancel\>\n  call cancel\n    read job\n  call sleep\n    code 120\n    wait true\n  send back\n    text \<quiet\>\n>
+
+# a task's result is typed: a number comes back a number, and arithmetic on it type-checks
+host typed-program, <load @term/base/code/task\n  find spawn\n\ntask run\n  note async\n  like number\n  save job\n    call spawn\n      task work\n        like number\n        send back, code 40\n  send back\n    call add\n      call wait\n        read job\n        wait true\n      code 2\n>
+
+# a channel carries a form with variants, received with a `fork case`
+task typed-channel
+  take cases, like text
+  like text
+
+  back <load @term/base/code/channel\n  find make-channel\n  find send\n  find receive\n\nform ping\n  case ask\n    link question, like text\n  case stop\n\ntask run\n  note async\n  like text\n  save gate\n    call make-channel\n  call send\n    read gate\n    make ask\n      bind question, text \<hello\>\n    wait true\n  save got\n    call receive\n      read gate\n      wait true\n  fork case, read got\n{cases}  send back, text \<none\>\n>
+
+host both-cases, <    case ask\n      send back, read question\n    case stop\n      send back, text \<stopped\>\n>
+
+host one-case, <    case ask\n      send back, read question\n>
+
+# a gatherer whose signature bounds what it raises, over work that raises `conflict`. The work's raise is re-raised by
+# the gather, so the bound must name it (design 3, typed exit reasons)
+task bounded
+  take bound, like text
+  like text
+
+  back <load @term/base/code/task\n  find gather\n\nload @term/base/code/exception\n  find conflict\n  find outage\n  find failure\n\ntask run\n  note async\n{bound}  like text\n  save works\n    make list\n  call works/push\n    task a\n      like text\n      halt conflict\n        bind thing, text \<a\>\n  save both\n    call gather\n      read works\n      wait true\n  send back\n    call both/at\n      code 0\n>
+
+host bound-without, <  halt outage\n>
+
+# `failure` too: `gather` reaches the `job-spawn` runtime shim, a native call, and a native call raises `failure` in
+# every program that holds the form, shaken or not (note/project/term/compiler/decision/001)
+host bound-with, <  halt outage\n  halt conflict\n  halt failure\n>
+
+task built
+  take program, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>)))
+
+# the build's refusal, each `name: message`, or <> when it builds
+task refusal
+  take program, like text
+  like text
+
+  save out, built(program)
+  fork test, out/ok
+    hold
+      back <>
+  save parts, make list
+  walk out/notes
+    take one
+    parts/push(<{one/name}: {one/message}>)
+  back join(parts, < | >)
+
+form run-answers
+  mark shared
+  link held, like hash, like text, like list, like text
+
+host kept, make(run-answers, bind(held, make hash))
+
+# what one program's run came to, by the driver's six fields, made once per name
+task outcome-of
+  take name, like text
+  take program, like text
+  like list, like text
+
+  fork test, kept/held/has(name)
+    hold
+      back kept/held/{name}
+  save out, built(program)
+  save folder, temp-folder(<seed-concurrency->)
+  save said, typescript-answer(out, driver, folder, name, prelude-text(out, <node>))
+  save parts, text-split(said, <|>)
+  fork test, is-unequal(parts/length, 6)
+    hold
+      save parts, make list(<{said}>, <>, <>, <>, <99999>, <99999>)
+  save kept/held/{name}, parts
+  back parts
+
+task ms-of
+  take parts, like list, like text
+  like number
+
+  back parse-integer(parts/4)
+
+task unhandled-of
+  take parts, like list, like text
+  like number
+
+  back parse-integer(parts/5)
+
+task fast
+  like list, like text
+
+  back outcome-of(<gather-fails-fast>, gather-of(<{slow(<a>, 400, <A>)}{raising(<b>, 0)}>))
+
+task order
+  like list, like text
+
+  back outcome-of(<gather-raises-the-failure>, gather-of(<{raising(<a>, 300)}{raising(<b>, 0)}>))
+
+task cancelled
+  like list, like text
+
+  back outcome-of(<cancelled>, cancelled-program)
+
+task timed
+  like list, like text
+
+  back outcome-of(<timed-out>, timed-program)
+
+task quiet
+  like list, like text
+
+  back outcome-of(<cancelled-then-raises>, quiet-program)
+
+test <spawn then wait returns the task result>
+  want hold, is-equal(outcome-of(<spawn>, spawn-program)/0, <string:hello-from-task>)
+
+test <gather runs tasks concurrently and joins all results>
+  want hold, is-equal(outcome-of(<gather>, gather-program)/0, <string:AB>)
+
+test <gather raises the failing job`s own exception>
+  host parts, fast()
+  want hold, is-equal(parts/1, <failure>)
+  want hold, is-equal(parts/2, <b>)
+
+test <and raises it when it happens, not after the slow job before it>
+  want hold, is-below(ms-of(fast()), 300)
+
+# the job FIRST in the list is still running when the second fails: the raise is the second's, not an outage for the
+# first, which is cancelled along the way
+test <gather raises the job that failed, not an outage for a sibling still running>
+  host parts, order()
+  want hold, is-equal(parts/1, <failure>)
+  want hold, is-equal(parts/2, <b>)
+
+test <waiting on a cancelled task raises outage>
+  want hold, is-equal(cancelled()/1, <outage>)
+
+test <and does not wait for the work it gave up on>
+  want hold, is-below(ms-of(cancelled()), 150)
+
+test <wait-within raises timeout with the time waited>
+  host parts, timed()
+  want hold, is-equal(parts/1, <timeout>)
+  want hold, is-equal(parts/3, <50>)
+
+test <and gives up at the limit>
+  want hold, is-below(ms-of(timed()), 300)
+
+test <a cancelled task that raises later surfaces nothing>
+  host parts, quiet()
+  want hold, is-equal(parts/0, <string:quiet>)
+  want hold, is-equal(unhandled-of(parts), 0)
+
+test <a task`s result is typed: a number waits back as a number>
+  want hold, is-equal(outcome-of(<typed-result>, typed-program)/0, <number:42>)
+
+test <a channel carries a form with variants, received by fork case>
+  want hold, is-equal(outcome-of(<typed-channel>, typed-channel(both-cases))/0, <string:hello>)
+
+test <a message variant the receiver has no case for fails the build>
+  host missing, refusal(typed-channel(one-case))
+  want hold, is-unequal(missing, <>)
+  want hold, text-contains(missing, <non-exhaustive>)
+  want hold, text-contains(missing, <stop>)
+
+test <a signature bound must name what its gathered work raises>
+  host short, refusal(bounded(bound-without))
+  want hold, is-unequal(short, <>)
+  want hold, text-contains(short, <conflict>)
+
+test <and builds once it does>
+  want hold, is-equal(refusal(bounded(bound-with)), <>)
+
+# the slow jobs the failures above left behind settle within the driver's 500 ms, and none of them may surface either
+test <no job left behind by a failure becomes an unhandled rejection>
+  want hold, is-equal(unhandled-of(fast()), 0)
+  want hold, is-equal(unhandled-of(order()), 0)
+  want hold, is-equal(unhandled-of(cancelled()), 0)
+  want hold, is-equal(unhandled-of(timed()), 0)
+  want hold, is-equal(unhandled-of(quiet()), 0)

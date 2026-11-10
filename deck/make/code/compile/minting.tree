@@ -34,7 +34,7 @@ load ../parser/diagnostic
   find diagnose
   find diagnostic-input
 
-load ../deck/resolve
+load ../package-paths
   find base-refusal
 
 load ./node

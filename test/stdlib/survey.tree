@@ -1,0 +1,132 @@
+note <every top-level stdlib module goes through the compiler, and the load-bearing ones compile>
+
+# Ported from survey.ts by statement (item term-self-host-001-0682), one test per `expect` in its order. It guards against
+# a compiler change that would break the standard library's public surface without a word: each top-level module of
+# deck/base/code compiles over the stdlib under the node env, and none crashes the compiler. It does not run them (many
+# hand off to a native implementation per env). The two counts are made once, by `the-survey`, since every test reads
+# the same pass over the folder. A core module shelved with `mark draft` is out of the build and is the test's own skip:
+# it is the one that exists and that `tree-files` (@term/test/corpus, the build's own shelving rule) leaves out.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/test/corpus
+  find tree-files
+
+load @term/base/file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find list, name list-folder
+
+load @term/base/text
+  find ends-with
+  find trim
+
+load @term/base/list
+  find contains
+
+host code-folder, <deck/base/code>
+
+# the one pass over the folder: how many modules crashed the compiler, how many compiled, and the files the build keeps
+form survey
+  mark shared
+  link done, like boolean
+  link crashed, like number
+  link built, like number
+  link kept, like list, like text
+
+host now, make(survey, bind(done, false), bind(crashed, 0), bind(built, 0), bind(kept, make list))
+
+# whether a module's text compiles over the stdlib under the node env, as the original's resolver had it (no env given
+# to the driver)
+task compiles
+  take file, like text
+  take text, like text
+  like boolean
+
+  back compile-text(text, make(compile-choice, bind(file, file), bind(stdlib, <node>)))/ok
+
+# compile every non-empty top-level module, a raise counted as a crash
+task the-survey
+  like survey
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save crashed, 0
+  save built, 0
+  walk list-folder(code-folder)
+    take name, like text
+    fork test, ends-with(name, <.tree>)
+      hold
+        save text, read-file(<{code-folder}/{name}>)
+        fork test, is-unequal(trim(text), <>)
+          hold
+            save good, false
+            save raised, false
+            fork
+              mark unsafe
+              save good, compiles(name, text)
+            halt take
+              take cause
+              save raised, true
+            fork test, raised
+              hold
+                save crashed, add(crashed, 1)
+              miss
+                fork test, good
+                  hold
+                    save built, add(built, 1)
+  save now/crashed, crashed
+  save now/built, built
+  save now/kept, tree-files(code-folder)
+  save now/done, true
+  back now
+
+# a core module that must compile alone: <yes>, <no>, <missing>, or <shelved> for one with `mark draft`
+task core-state
+  take name, like text
+  like text
+  mark async
+
+  save path, <{code-folder}/{name}>
+  fork test, not(file-exists(path))
+    hold
+      back <missing>
+  fork test, not(contains(the-survey()/kept, path))
+    hold
+      back <shelved>
+  save text, read-file(path)
+  fork test, is-equal(trim(text), <>)
+    hold
+      back <yes>
+  save good, false
+  fork
+    mark unsafe
+    save good, compiles(name, text)
+  halt take
+    take cause
+    back <no>
+  fork test, good
+    hold
+      back <yes>
+  back <no>
+
+test <no module crashes the compiler>
+  want hold, is-equal(the-survey()/crashed, 0)
+
+test <every non-empty core module compiles>
+  want hold, is-minimum(the-survey()/built, 58)
+
+test <core module compiles: each>
+  take name, like text
+    walk make list(<boolean.tree>, <maybe.tree>, <result.tree>, <pair.tree>, <list.tree>, <float.tree>, <file.tree>, <clock.tree>, <color.tree>, <console.tree>, <process.tree>, <exception.tree>, <hash.tree>, <range.tree>, <time.tree>, <log.tree>, <input.tree>, <command.tree>, <text.tree>, <date.tree>, <channel.tree>, <network.tree>, <socket.tree>, <task.tree>, <cryptography.tree>)
+  save state, core-state(name)
+  fork test, is-equal(state, <shelved>)
+    hold
+      skip <shelved with mark draft>
+  want hold, is-equal(state, <yes>)

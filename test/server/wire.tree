@@ -1,0 +1,469 @@
+note <the language server over its real wire: Content-Length framed JSON-RPC on a child's stdio, non-ASCII framing, a malformed and a cancelled request, a clean exit>
+
+# Ported from wire.ts by statement (item term-self-host-001-0678), one test per `ok` in its order, for each of the two
+# servers it starts: the source entry (deck/flow/code/main.ts under tsx) and the bundle the extension ships
+# (deck/flow/make/server.js under plain node, from its own folder), when it has been built. The bundle's tests skip
+# when it is not. The child is spawned as an editor starts it. Its output is read by a byte-accurate reader of the test's
+# own, so the test cannot share the bug it looks for: what the child writes is kept as bytes, and a wait reads every
+# whole frame off them by its Content-Length (bytes, not characters) until the answer it wants comes or its time is up.
+# Every message of one send goes in ONE write, so the server has to find the boundary between them itself. The
+# child's error stream is not read by any assertion, so it is not piped.
+
+load @term/base/clock
+  find now
+  find sleep
+
+load @term/base/text
+  find index-of
+  find substring
+  find trim
+  find to-lower-case
+  find split, name text-split
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find empty-list
+  find read-field
+
+dock load
+  load <node:child_process>, name dock-child
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+
+bind no-bytes
+  like dynamic
+  case node
+    text <Buffer.alloc(0)>
+
+bind text-bytes
+  take text, like text
+  like dynamic
+  case node
+    text <Buffer.from($text, "utf8")>
+
+bind joined-bytes
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind byte-count
+  take bytes, like dynamic
+  like number
+  case node
+    text <$bytes.length>
+
+bind byte-index
+  take bytes, like dynamic
+  take text, like text
+  like number
+  case node
+    text <$bytes.indexOf($text)>
+
+bind byte-slice
+  take bytes, like dynamic
+  take from, like number
+  take to, like number
+  like dynamic
+  case node
+    text <$bytes.subarray($from, $to)>
+
+bind ascii-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("ascii")>
+
+bind utf8-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind as-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind as-number
+  take text, like text
+  like number
+  case node
+    text <Number($text)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind null-value
+  like dynamic
+  case node
+    text <null>
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+bind node-path
+  like text
+  case node
+    text <process.execPath>
+
+bind working-folder
+  like text
+  case node
+    text <process.cwd()>
+
+# what the running child left: its output not yet read as frames, the messages read, and its end
+form wire-state
+  mark shared
+  link buffer, like dynamic
+  link received, like list, like dynamic
+  link ended, like boolean
+  link code, like dynamic
+
+host wire, make(wire-state, bind(buffer, no-bytes()), bind(received, empty-list()), bind(ended, false), bind(code, null-value()))
+
+# the child's output, kept as it comes
+task on-output
+  take chunk, like dynamic
+  like void
+
+  save wire/buffer, joined-bytes(make(list, wire/buffer, chunk))
+
+task on-exit
+  take code, like dynamic
+  like void
+
+  save wire/code, code
+  save wire/ended, true
+
+# the Content-Length of a frame's header
+task content-length
+  take header, like text
+  like number
+
+  save lower, to-lower-case(header)
+  save at, index-of(lower, <content-length:>)
+  fork test, is-below(at, 0)
+    hold
+      back -1
+  save rest, substring(header, add(at, 15), header/length)
+  back as-number(trim(text-split(rest, <\r\n>)/0))
+
+# every whole frame on the child's output, read into `received`, the rest kept
+task drain
+  like number
+
+  save count, 0
+  walk test
+    hook test, true
+    hook hold
+      save buffer, wire/buffer
+      save end, byte-index(buffer, <\r\n\r\n>)
+      fork test, is-below(end, 0)
+        hold
+          back count
+      save length, content-length(ascii-of(byte-slice(buffer, 0, end)))
+      save start, add(end, 4)
+      fork test, is-below(byte-count(buffer), add(start, length))
+        hold
+          back count
+      wire/received/push(parsed-json(utf8-of(byte-slice(buffer, start, add(start, length)))))
+      save wire/buffer, byte-slice(buffer, add(start, length), byte-count(buffer))
+      save count, add(count, 1)
+  back count
+
+# the answer to request `id`, one with no method, or void
+task answer-to
+  take id, like number
+  like dynamic
+
+  walk wire/received
+    take one, like dynamic
+    fork test, and(is-equal(read-field(one, <id>), id), is-absent(read-field(one, <method>)))
+      hold
+        back one
+  back void
+
+# the answer to request `id`, waiting for it at most `ms`
+task wait-answer
+  take id, like number
+  take ms, like number
+  like dynamic
+  mark async
+
+  save deadline, add(now(), ms)
+  walk test
+    hook test, true
+    hook hold
+      drain()
+      save seen, answer-to(id)
+      fork test, not(is-absent(seen))
+        hold
+          back seen
+      fork test, is-above(now(), deadline)
+        hold
+          back void
+      sleep(10)
+  back void
+
+# whether the child ended within `ms`
+task wait-exit
+  take ms, like number
+  like boolean
+  mark async
+
+  save deadline, add(now(), ms)
+  walk test
+    hook test, true
+    hook hold
+      fork test, wire/ended
+        hold
+          back true
+      fork test, is-above(now(), deadline)
+        hold
+          back false
+      sleep(10)
+  back false
+
+task frame
+  take message, like dynamic
+  like dynamic
+
+  save body, text-bytes(as-json(message))
+  back joined-bytes(make(list, text-bytes(<Content-Length: {byte-count(body)}\r\n\r\n>), body))
+
+# every message in ONE write
+task send-all
+  take child, like dynamic
+  take messages, like list, like dynamic
+  like void
+
+  save frames, empty-list()
+  walk messages
+    take one, like dynamic
+    frames/push(frame(one))
+  child/stdin/write(joined-bytes(frames))
+
+task request
+  take id, like number
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <jsonrpc>, <2.0>, <id>, id, <method>, method, <params>, params))
+
+task notice
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <jsonrpc>, <2.0>, <method>, method, <params>, params))
+
+task document
+  take uri, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+
+task error-code
+  take answer, like dynamic
+  like dynamic
+
+  back read-field(read-field(answer, <error>), <code>)
+
+# whether a documentSymbol answer holds `greet`
+task holds-greet
+  take answer, like dynamic
+  like boolean
+
+  save result, read-field(answer, <result>)
+  fork test, not(is-list(result))
+    hold
+      back false
+  walk result
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <name>), <greet>)
+      hold
+        back true
+  back false
+
+# what one session showed, a field per `ok`
+form session-run
+  mark shared
+  link done, like boolean
+  link initialized, like boolean
+  link framed, like boolean
+  link answered, like boolean
+  link invalid-params, like boolean
+  link still-answers, like boolean
+  link cancelled, like boolean
+  link clean-exit, like boolean
+
+task fresh-run
+  like session-run
+
+  back make(session-run, bind(done, false), bind(initialized, false), bind(framed, false), bind(answered, false), bind(invalid-params, false), bind(still-answers, false), bind(cancelled, false), bind(clean-exit, false))
+
+host source-now, fresh-run()
+host bundle-now, fresh-run()
+
+host bundle, dock-path/join(working-folder(), <deck/flow/make/server.js>)
+
+task session
+  take run, like session-run
+  take command, like text
+  take arguments, like list, like text
+  take folder, like text
+  like session-run
+  mark async
+
+  save wire/buffer, no-bytes()
+  save wire/received, empty-list()
+  save wire/ended, false
+  save wire/code, null-value()
+  save child, dock-child/spawn(command, arguments, make-record(make(list, <cwd>, folder, <stdio>, make(list, <pipe>, <pipe>, <ignore>))))
+  child/stdout/on(<data>, on-output)
+  child/on(<exit>, on-exit)
+  send-all(child, make(list, request(1, <initialize>, make-record(make(list, <capabilities>, empty-record())))))
+  save init, wait-answer(1, 60000)
+  save run/initialized, truth-of(read-field(read-field(init, <result>), <capabilities>))
+  send-all(child, make(list, notice(<initialized>, empty-record())))
+  # a document holding Greek, CJK and an emoji, and a request in the SAME write. The header counts bytes; a reader
+  # that counts characters reads past the first body into the second message and loses it
+  save uri, file-uri(dock-url/pathToFileURL(dock-path/join(working-folder(), <tmp/wire-probe.tree>)))
+  save text, <task greet\n  like text\n  send back, text \<λόγος 漢字 😀\>\n>
+  save opened, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <languageId>, <tree>, <version>, 1, <text>, text))))
+  send-all(child, make(list, notice(<textDocument/didOpen>, opened), request(2, <textDocument/documentSymbol>, document(uri))))
+  save run/framed, holds-greet(wait-answer(2, 60000))
+  # a request whose params are not what the method takes: answered with an error, and the process lives on
+  send-all(child, make(list, request(3, <textDocument/hover>, null-value())))
+  save broken, wait-answer(3, 20000)
+  save run/answered, not(is-absent(broken))
+  save run/invalid-params, is-equal(error-code(broken), -32602)
+  send-all(child, make(list, request(4, <textDocument/documentSymbol>, document(uri))))
+  save run/still-answers, not(is-absent(wait-answer(4, 20000)))
+  # a request cancelled before it is reached is answered RequestCancelled (-32800)
+  save position, make-record(make(list, <line>, 2, <character>, 20))
+  save hover, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, position))
+  send-all(child, make(list, request(5, <textDocument/hover>, hover), notice(<$/cancelRequest>, make-record(make(list, <id>, 5)))))
+  save run/cancelled, is-equal(error-code(wait-answer(5, 20000)), -32800)
+  send-all(child, make(list, make-record(make(list, <jsonrpc>, <2.0>, <id>, 6, <method>, <shutdown>))))
+  wait-answer(6, 20000)
+  send-all(child, make(list, notice(<exit>, empty-record())))
+  save ended, wait-exit(20000)
+  save run/clean-exit, and(ended, is-equal(wire/code, 0))
+  fork test, not(wire/ended)
+    hold
+      child/kill()
+  back run
+
+bind truth-of
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+task the-source
+  like session-run
+  mark async
+
+  fork test, source-now/done
+    hold
+      back source-now
+  save source-now/done, true
+  back session(source-now, <npx>, make(list, <tsx>, dock-path/join(working-folder(), <deck/flow/code/main.ts>)), working-folder())
+
+# started from the bundle's own folder, so nothing in the term workspace's node_modules is on its path by accident
+task the-bundle
+  like session-run
+  mark async
+
+  fork test, bundle-now/done
+    hold
+      back bundle-now
+  save bundle-now/done, true
+  back session(bundle-now, node-path(), make(list, bundle), dock-path/join(working-folder(), <deck/flow/make>))
+
+test <source: initialize answered over the wire>
+  want hold, the-source()/initialized
+
+test <source: framing, a non-ASCII body does not swallow the message after it>
+  want hold, the-source()/framed
+
+test <source: malformed request answered (not dropped)>
+  want hold, the-source()/answered
+
+test <source: malformed request answered InvalidParams>
+  want hold, the-source()/invalid-params
+
+test <source: after a malformed request the server still answers>
+  want hold, the-source()/still-answers
+
+test <source: a cancelled request answers -32800>
+  want hold, the-source()/cancelled
+
+test <source: exit after shutdown is code 0>
+  want hold, the-source()/clean-exit
+
+test <bundle: initialize answered over the wire>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/initialized
+
+test <bundle: framing, a non-ASCII body does not swallow the message after it>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/framed
+
+test <bundle: malformed request answered (not dropped)>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/answered
+
+test <bundle: malformed request answered InvalidParams>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/invalid-params
+
+test <bundle: after a malformed request the server still answers>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/still-answers
+
+test <bundle: a cancelled request answers -32800>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/cancelled
+
+test <bundle: exit after shutdown is code 0>
+  fork test, not(dock-file/existsSync(bundle))
+    hold
+      skip <deck/flow/make/server.js is not built (node build.mjs in deck/flow)>
+  want hold, the-bundle()/clean-exit

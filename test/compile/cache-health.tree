@@ -1,0 +1,197 @@
+note <every cache entry a separate build reads may be damaged: each is a miss, the same build, and written again whole>
+
+# Ported from cache-health.ts by statement (item term-self-host-001-0622), one test per `ok` in its order.
+# Note/project/term/incremental-best-in-class.md, step 14: every entry the build reads may be damaged, cut short by a
+# full disk, garbage from a bad sector, or a well-formed file of the wrong shape. Each is a miss, the build is the same
+# build, and the entry it writes afterwards is a good one. Every entry of every kind a separate build stores is damaged
+# in one of those three ways, and the project is built again from disk. compile/cache, call/cache-store and the project
+# build are the subject (decision 106). The story runs once, in order, and each test reads one of its facts.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/json
+  find parse, name json-parse
+  find stringify
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find ends-with
+  find split
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name health-file
+  load <node:path>, name health-path
+  load <node:zlib>, name health-zlib
+  load <global:Math>, name health-math
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+form health-story
+  link first, like dynamic
+  link kinds, like list, like text
+  link second, like dynamic
+  link same-output, like boolean
+  link readable, like number
+  link entries, like number
+  link third, like dynamic
+
+form health-told
+  mark shared
+  link held, like list, like health-story
+
+host told, make(health-told, bind(held, make list))
+
+task real-folder
+  take prefix, like text
+  like text
+
+  back health-file/realpath-sync(temp-folder(prefix))
+
+# every `.json.gz` under the store, as paths from it
+task entries-of
+  take store, like text
+  like list, like text
+
+  save out, make list
+  walk health-file/readdir-sync(store, make-record(make(list, <recursive>, true)))
+    take name, like text
+    fork test, ends-with(name, <.json.gz>)
+      hold
+        out/push(name)
+  back out
+
+# every module the build emitted, in name order
+task artifacts
+  take root, like text
+  like text
+
+  save folder, health-path/join(root, <host>, <.unit>)
+  save names, health-file/readdir-sync(folder)
+  save texts, make list
+  walk names/sort()
+    take name, like text
+    texts/push(health-file/read-file-sync(health-path/join(folder, name), <utf8>))
+  back texts/join(<\n>)
+
+task build
+  take root, like text
+  take store, like text
+  like dynamic
+
+  save cache, new-cache(cache-module, cache-store/disk-cache-store(store, <health>), <health>)
+  back project-module/compile-project-separate(root, cache, <node>, project-module/build-session(root))
+
+# a third cut short, a third garbage, a third a good file of the wrong shape
+task damage
+  take file, like text
+  take kind, like number
+  like void
+
+  save bytes, health-file/read-file-sync(file)
+  fork test, is-equal(kind, 0)
+    hold
+      save half, health-math/floor(divide(bytes/length, 2))
+      save cut, bytes/subarray(0, half)
+      health-file/write-file-sync(file, cut)
+      back
+  fork test, is-equal(kind, 1)
+    hold
+      health-file/write-file-sync(file, <not a cache entry>)
+      back
+  health-file/write-file-sync(file, health-zlib/gzip-sync(<\{\}>))
+
+# whether an entry reads back as a JSON value other than `{}`
+task readable
+  take file, like text
+  like boolean
+
+  fork
+    mark unsafe
+    save unzipped, health-zlib/gunzip-sync(health-file/read-file-sync(file))
+    save said, unzipped/to-string(<utf8>)
+    back is-unequal(stringify(json-parse(said)), <\{\}>)
+  halt take
+    take problem
+    back false
+
+task story
+  like health-story
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  save root, real-folder(<cache-health->)
+  save store, real-folder(<cache-health-store->)
+  health-file/mkdir-sync(health-path/join(root, <code>), make-record(make(list, <recursive>, true)))
+  health-file/write-file-sync(health-path/join(root, <deck.tree>), <deck @probe/health\n  mark \<0.0.1\>\n>)
+  health-file/write-file-sync(health-path/join(root, <code>, <helper.tree>), <load @term/base/text\n  find trim\n\ntask greet\n  take who, like text\n  like text\n  back trim(who)\n>)
+  health-file/write-file-sync(health-path/join(root, <code>, <base.tree>), <load ./helper\n  find greet\n\ntask main\n  like text\n  back greet(\< you \>)\n>)
+  save first, build(root, store)
+  save emitted, artifacts(root)
+  save entries, entries-of(store)
+  save kinds, make list
+  save at, 0
+  walk entries
+    take entry, like text
+    save parts, split(entry, health-path/sep)
+    kinds/push(parts/0)
+    damage(health-path/join(store, entry), at)
+    save at, add(at, 1)
+    fork test, is-equal(at, 3)
+      hold
+        save at, 0
+  save second, build(root, store)
+  save same-output, is-equal(artifacts(root), emitted)
+  save after, entries-of(store)
+  save readable-count, 0
+  walk after
+    take entry, like text
+    fork test, readable(health-path/join(store, entry))
+      hold
+        save readable-count, add(readable-count, 1)
+  save third, build(root, store)
+  save made, make(health-story, bind(first, first), bind(kinds, kinds), bind(second, second), bind(same-output, same-output), bind(readable, readable-count), bind(entries, after/length), bind(third, third))
+  told/held/push(made)
+  back made
+
+test <the first build builds>
+  want hold, is-equal(story()/first/failed, 0)
+
+test <it stored entries of the mill and the unit kinds>
+  host kinds, story()/kinds
+  want hold, kinds/includes(<mill>)
+  want hold, kinds/includes(<unit>)
+
+test <every entry damaged, the project still builds>
+  want hold, is-equal(story()/second/failed, 0)
+
+test <to the same output>
+  want hold, story()/same-output
+
+test <and it built every unit again, reading none of the damage>
+  host told-story, story()
+  want hold, is-equal(told-story/second/built, told-story/first/built)
+
+test <every damaged entry was written again, whole>
+  host told-story, story()
+  want hold, is-equal(told-story/readable, told-story/entries)
+
+test <and the build after that reads them>
+  host told-story, story()
+  want hold, is-equal(told-story/third/failed, 0)
+  want hold, is-equal(told-story/third/built, 0)

@@ -38,12 +38,10 @@ load ../package-paths
   find join-three
   find dirname-of
   find resolve-package-path
+  find package-rest
 
 load ../package-paths-disk
   find path-exists
-
-load ../deck/resolve
-  find package-rest
 
 load ./mill-files
   find grammar-file

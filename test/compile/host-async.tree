@@ -1,0 +1,123 @@
+note <A dock load line may say mark async: a call into it is awaited with no wait written>
+
+# Ported from host-async.ts by statement (item term-self-host-001-0616). Every function of a module docked `mark async`
+# returns a promise, so a call into it is awaited with no `wait` written, and makes its caller async, the same as a call
+# to an async task. Until 2026-10-05 the build could not be told, so every such call needed its own `wait`, and one left
+# without it handed the promise on (`deck.tree holds undefined characters`). A local of the module's name shadows it,
+# `tick` still starts the call without waiting, and any other word under the line is refused. L054 reports a `wait true`
+# it makes redundant: make/code/analyze is docked for it, as the lean-second suite beside this one does. A program run is
+# run-text on TypeScript over the project at the suite's root, its link root the same, and the emit checks read the
+# TypeScript the same compile emits, where the original read it back from the file the run wrote.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/analyze>, name analyze-module
+
+form file-and-text
+  link file, like text
+  link text, like text
+
+host docked, <dock load\n  load \<node:fs/promises\>, name fs-promise\n    mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, \<utf8\>)\n  back body/length\n\ntask run\n  like text\n  save size, read-length(\<deck.tree\>)\n  back \<\{size\}\>\n>
+
+# the same with the mark left out
+host unmarked, <dock load\n  load \<node:fs/promises\>, name fs-promise\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, \<utf8\>)\n  back body/length\n\ntask run\n  like text\n  save size, read-length(\<deck.tree\>)\n  back \<\{size\}\>\n>
+
+host ticked, <dock load\n  load \<node:fs/promises\>, name fs-promise\n    mark async\n\ntask run\n  like text\n  tick fs-promise/read-file(\<deck.tree\>, \<utf8\>)\n  back \<started\>\n>
+
+host digits, make pattern, <<^\d+$>>
+host reader-async, make pattern, <<async function readLength>>
+host run-async, make pattern, <<async function run>>
+host unwaited, make pattern, <<answers a promise, and nothing waits for it>>
+
+# what a program's `run` printed on TypeScript, or why it did not run
+task ran-output
+  take program, like text
+  like text
+
+  save folder, temp-folder(<host-async->)
+  save ran, run-text(program, <typescript>, folder, <host>, make(compile-choice, bind(project, <.>), bind(project-link, <.>)))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state}: {ran/reason}>
+
+task emitted-of
+  take program, like text
+  like text
+
+  back compile-text(program, make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>), bind(env, <node>)))/emitted
+
+# the messages of the lint findings of this code
+task lint-messages
+  take source, like text
+  take code, like text
+  like list, like text
+
+  host analysis, analyze-module/analyze(make(file-and-text, bind(file, <w.tree>), bind(text, source)))
+  save out, make list
+  walk analysis/lint()
+    take finding, like dynamic
+    fork test, is-equal(finding/code, code)
+      hold
+        out/push(finding/message)
+  back out
+
+test <a call into an async dock is awaited with no wait written>
+  host said, ran-output(docked)
+  want hold, matches(digits, said)
+  want hold, is-unequal(said, <0>)
+
+test <the call is written awaited>
+  want hold, text-contains(emitted-of(docked), <await fsPromise.readFile(path, "utf8")>)
+
+test <its caller becomes async, and the caller of that>
+  host emitted, emitted-of(docked)
+  want hold, matches(reader-async, emitted)
+  want hold, matches(run-async, emitted)
+
+# a `.../promises` module answers a promise from every function, so without the mark and without `wait` the call is
+# refused, where it used to hand the promise on and print `undefined` (term/compiler decision 004)
+test <without the mark the call is refused as missing-wait, not handed on>
+  want hold, matches(unwaited, ran-output(unmarked))
+
+test <tick starts a call into an async dock without waiting>
+  want hold, is-equal(ran-output(ticked), <started>)
+  want hold, not(text-contains(emitted-of(ticked), <await fsPromise>))
+
+test <another word under a load line is refused>
+  host other, compile-text(<dock load\n  load \<node:path\>, name path\n    mark stable\n\ntask run\n  like text\n  back path/join(\<a\>, \<b\>)\n>, make(compile-choice, bind(file, project-path(<.>, <tmp/host-async.tree>)), bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>)))
+  want hold, not(other/ok)
+  want hold, text-contains(join(other/messages, < | >), <`mark stable` under a `dock load` line is read by nothing>)
+
+test <L054 reports a wait true the mark makes redundant>
+  host said, join(lint-messages(<dock load\n  load \<node:fs/promises\>, name fs-promise\n    mark async\n\ntask run\n  like text\n  save body\n    call fs-promise/read-file\n      text \<deck.tree\>\n      text \<utf8\>\n      wait true\n  back body\n>, <L054>), < | >)
+  want hold, text-contains(said, <"fs-promise" is docked `mark async`>)
+
+# one function marked on its own (`find read-file` / `mark async`, decision 004): its `wait true` is redundant too
+test <L054 reports a wait true on a function marked async on its own>
+  host said, join(lint-messages(<dock load\n  load \<node:fs/promises\>, name fs-promise\n    find read-file\n      mark async\n\ntask run\n  like text\n  save body\n    call fs-promise/read-file\n      text \<deck.tree\>\n      text \<utf8\>\n      wait true\n  back body\n>, <L054>), < | >)
+  want hold, text-contains(said, <"fs-promise/read-file" is docked `mark async`>)

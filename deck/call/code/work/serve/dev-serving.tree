@@ -8,7 +8,7 @@
 # record every closure reads. Loaded: the module graph and HMR walk (make/dev/module-graph.tree, hmr.tree),
 # term/hash, and the boot lane's find-project-root (boot/entry-finding.tree, since term-cli-in-term-0213, once
 # module-graph.tree and hmr.tree imported the list `contains` they call). Docked: hono and its streaming,
-# @hono/node-server, esbuild (transformSync), compile/compile, make/dev/client.ts. The resolver and the role readers
+# @hono/node-server, esbuild (transformSync), compile/compile, make/dev/hmr-client. The resolver and the role readers
 # are the build lane's ports, the process's cache and parse memo the cache lane's (term-cli-in-term-0214).
 
 load @term/make/dev/module-graph
@@ -58,7 +58,7 @@ dock load
   load <esbuild>, name esbuild-module
   load <node:fs>, name node-file
   load <@term/make/code/compile/compile>, name compiling-module
-  load <@term/make/code/dev/client>, name client-module
+  load <@term/make/code/dev/hmr-client>, name client-module
 
 # ---- the host values Term has no word for ----
 

@@ -1,0 +1,81 @@
+note <the sorted set answers what a sorted set of numbers does after a long seeded churn, on every backend>
+
+# Ported from test/stdlib/sorted-set.ts by statement (item term-self-host-001-0680): its one ok per backend is one walked
+# test, each backend a case of it. The sorted set, over the sorted map's B-tree (deck/base/code/sorted-set.tree,
+# 2026-10-05): 180,000 seeded adds and removes over 30,000 values, then its ends and its order. Sized for the tree's
+# degree, 64: about 20,000 values are held at the end, three levels of nodes, where 500 was one leaf. The reference
+# replays the same draws here on a hash, as the original did on a JavaScript Set, and sorts what is left with the
+# stdlib's merge sort. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/hash
+  find hash
+
+load @term/base/list
+  find join
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+
+host operations, 180000
+host values, 30000
+
+host program, <load @term/base/sorted-set\n  find sorted-set\n  find make-sorted-set\n\nload @term/base/ordering\n  find ordering\n  find from-numbers\n\nload @term/base/list\n  find list\n  find join\n\nload @term/base/maybe\n  find maybe\n  find unwrap-or\n\ntask run\n  like text\n  save s, make-sorted-set(from-numbers)\n  save state, 777\n  save i, 0\n  save removed, 0\n  walk test\n    hook test, is-below(i, {operations})\n    hold\n      save state, modulo(multiply(state, 48271), 2147483647)\n      save value, modulo(state, {values})\n      save state, modulo(multiply(state, 48271), 2147483647)\n      fork test, is-below(modulo(state, 3), 2)\n        hold\n          insert(s, value)\n        miss\n          fork test, remove(s, value)\n            hold\n              save removed, add(removed, 1)\n      save i, add(i, 1)\n  save shown, make list\n  walk to-list(s)\n    take one\n    push(shown, \<\{one\}\>)\n  back \<\{length(s)\}|\{removed\}|\{has(s, 3)\}|\{unwrap-or(least(s), -1)\}|\{unwrap-or(greatest(s), -1)\}|\{join(shown, \<,\>)\}\>\n>
+
+# an empty set of numbers, for the reference
+task no-values
+  like hash, like number, like boolean
+
+  back make hash
+
+# the same draws on a hash, then sorted: the reference answer
+task reference
+  like text
+
+  save seen, no-values()
+  save state, 777
+  save removed, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, operations)
+    hold
+      save state, modulo(multiply(state, 48271), 2147483647)
+      save value, modulo(state, values)
+      save state, modulo(multiply(state, 48271), 2147483647)
+      fork test, is-below(modulo(state, 3), 2)
+        hold
+          seen/set(value, true)
+        miss
+          fork test, seen/remove(value)
+            hold
+              save removed, add(removed, 1)
+      save i, add(i, 1)
+  save least, -1
+  save greatest, -1
+  save shown, make list
+  walk sort(seen/keys(), from-numbers)
+    take one, like number
+    fork test, is-equal(shown/length, 0)
+      hold
+        save least, one
+    save greatest, one
+    shown/push(<{one}>)
+  back <{seen/length()}|{removed}|{seen/has(3)}|{least}|{greatest}|{join(shown, <,>)}>
+
+test <3,000 adds and removes answer what a sorted Set does>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-sorted-set->)
+  host ran, run-text(program, backend, folder, <sorted-set>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, reference())

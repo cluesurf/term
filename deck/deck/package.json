@@ -13,7 +13,7 @@
     "test:old": "tsx make/test",
     "test:fill": "tsx hack/look/test.ts",
     "host": "pnpm make && npm publish --access=public",
-    "make:read": "node task/make-read.mjs",
+    "make:read": "node ../../host/line.js boot task/make-read.tree -- write",
     "make:grammar": "pnpm --dir ../.. run term:grammar-bundle"
   },
   "prettier": "@cluesurf/wash/flow.json",

@@ -1,0 +1,16 @@
+note <A whole program that reads a file through file/blocking and never stats one>
+
+load @term/base/file/blocking
+  find read, name read-path
+
+load @term/base/console
+  find log
+
+load @term/base/text
+  find contains
+
+task go
+  like void
+
+  save text, read-path(<deck.tree>)
+  log(<shim-found-form {contains(text, <shim-found-form>)}>)

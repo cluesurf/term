@@ -1,0 +1,61 @@
+note <the repository address term host writes as org.opencontainers.image.source, with no credential kept>
+
+# Ported from git-source.test.ts by statement (item term-self-host-001-0625), one test per `it` (each row of its
+# `it.each` table a test of its own, in order). `gitSource` (call/code/host.ts) is the address that links a GHCR package
+# to its repository. It is written into a public manifest, so a credential in an https remote must never survive. It is
+# the subject, docked (decision 106). Each repository is a fresh `git init` in a temp folder, its origin set by git.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+dock load
+  load <@term/call/code/host>, name call-host
+
+# what gitSource answers for a folder, <> for undefined
+bind source-or-empty
+  take found, like dynamic
+  like text
+  case node
+    text <($found ?? "")>
+
+# a fresh repository, with `remote` as its origin unless it is <>
+task repository
+  take remote, like text
+  like text
+
+  host folder, temp-folder(<git-source->)
+  run(<git>, make list(<init>, <-q>, folder))
+  fork test, is-unequal(remote, <>)
+    hold
+      run(<git>, make list(<-C>, folder, <remote>, <add>, <origin>, remote))
+  back folder
+
+task source-of
+  take folder, like text
+  like text
+
+  back source-or-empty(call-host/git-source(folder))
+
+test <gitSource: reads git@github.com:cluesurf/zone.git as https://github.com/cluesurf/zone>
+  want hold, is-equal(source-of(repository(<git@github.com:cluesurf/zone.git>)), <https://github.com/cluesurf/zone>)
+
+test <gitSource: reads git@github.com:cluesurf/zone as https://github.com/cluesurf/zone>
+  want hold, is-equal(source-of(repository(<git@github.com:cluesurf/zone>)), <https://github.com/cluesurf/zone>)
+
+test <gitSource: reads ssh://git@github.com/cluesurf/zone.git as https://github.com/cluesurf/zone>
+  want hold, is-equal(source-of(repository(<ssh://git@github.com/cluesurf/zone.git>)), <https://github.com/cluesurf/zone>)
+
+test <gitSource: reads https://github.com/cluesurf/zone.git as https://github.com/cluesurf/zone>
+  want hold, is-equal(source-of(repository(<https://github.com/cluesurf/zone.git>)), <https://github.com/cluesurf/zone>)
+
+test <gitSource: reads https://x-access-token:ghp_secret@github.com/cluesurf/zone.git as https://github.com/cluesurf/zone>
+  want hold, is-equal(source-of(repository(<https://x-access-token:ghp_secret@github.com/cluesurf/zone.git>)), <https://github.com/cluesurf/zone>)
+
+test <gitSource: is undefined without an origin>
+  want hold, is-equal(source-of(repository(<>)), <>)
+
+test <gitSource: is undefined outside a repository>
+  want hold, is-equal(source-of(temp-folder(<git-source-none->)), <>)

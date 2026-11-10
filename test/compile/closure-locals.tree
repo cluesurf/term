@@ -1,0 +1,113 @@
+note <a closure's locals are typed and its writes to outer names are kept, on TypeScript and Swift>
+
+# Ported from closure-locals.ts by statement (item term-self-host-001-0653), one test per `ok` in its order.
+# Native-dom-0021: a list made inside a closure kept a raw inference variable, because the checker's final resolution
+# pass did not descend into closures: Swift spelled it `SeedList<Any>`, Kotlin `mutableListOf<Any>()`. 0047: the
+# optimizer's analysis of which names are never reassigned did not look inside closures either, so a closure's
+# `save total` of an outer `total` went unseen and the first value was propagated over the write. Native-text-0003: two
+# closures in one task that each `save` the same name each declare it. The program is run as TypeScript under node and
+# built and run with swiftc, skipped without swiftc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/running
+  find running-node
+  find run-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <load @term/base/code/list\n  find list\n\ntask count-names\n  take names\n    like list\n      like text\n  like number\n  send back, read names/length\n\ntask in-closure\n  take body\n    like task\n  call body\n\ntask run\n  like number\n  save total, code 0\n  call in-closure\n    task inner\n      save names\n        make list\n      call push\n        bind list, read names\n        bind item, text \<a\>\n      call push\n        bind list, read names\n        bind item, text \<b\>\n      save total\n        call count-names\n          read names\n  send back, read total\n>
+
+host siblings, <task in-closure\n  take body\n    like task\n  call body\n\ntask run\n  like number\n  save total, code 0\n  call in-closure\n    task first\n      save seen, code 3\n      save total\n        call add\n          read total\n          read seen\n  call in-closure\n    task second\n      save seen, code 4\n      save total\n        call add\n          read total\n          read seen\n  send back, read total\n>
+
+host literal-written, make pattern, <<\b\d+\s*=\s*countNames>>
+host swift-text-list, make pattern, <<SeedList<String>\(\[\]\)>>
+host swift-any-list, make pattern, <<SeedList<Any>\(\[\]\)>>
+
+task built
+  take text, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, <{env}.tree>), bind(project, <.>), bind(project-env, env), bind(env, env)))
+
+# what a program compiled for node prints for its run, under node with tsx's loader
+task node-answer
+  take out, like compile-outcome
+  like text
+
+  save folder, temp-folder(<term-closure-locals->)
+  save file, <{folder}/run.ts>
+  write-file(file, <{prelude-text(out, <node>, out/emitted)}\n{out/emitted}\nconsole.log(run())\n>)
+  save result, run(running-node(0), make list(<--import>, <tsx>, file))
+  back trim(<{result/output}{result/error}>)
+
+# TypeScript: the optimized program returns the value the closure wrote
+test <the program compiles>
+  want hold, built(program, <node>)/ok
+
+test <the closure writes the outer total, no literal on the left>
+  host out, built(program, <node>)
+  want hold, out/ok
+  want hold, not(matches(literal-written, out/emitted))
+
+test <typescript: run answers the 2 the closure wrote, not the stale 0>
+  want hold, is-equal(node-answer(built(program, <node>)), <2>)
+
+# Swift and Kotlin: the closure's list is typed, and the write is to the variable
+test <swift: the closure's list is SeedList<String>>
+  host out, built(program, <swift>)
+  want hold, out/ok
+  host swift, emit-text(out, <swift>)
+  want hold, matches(swift-text-list, swift)
+  want hold, not(matches(swift-any-list, swift))
+
+test <kotlin: the closure's list is mutableListOf<String>()>
+  host out, built(program, <swift>)
+  want hold, out/ok
+  host kotlin, emit-text(out, <kotlin>)
+  want hold, contains(kotlin, <mutableListOf\<String\>()>)
+  want hold, not(contains(kotlin, <mutableListOf\<Any\>()>))
+
+test <swift: it builds and answers 2>
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      skip <no swiftc>
+  host out, built(program, <swift>)
+  host swift, emit-text(out, <swift>)
+  host folder, temp-folder(<term-closure-locals->)
+  host file, <{folder}/run.swift>
+  write-file(file, <import Foundation\n{prelude-text(out, <swift>, swift)}\n{swift}\nprint(run())\n>)
+  want hold, is-equal(run-tool(make(list, <swiftc>, <-o>, <{folder}/run>, file)), <>)
+  host ran, run(<{folder}/run>, make list)
+  want hold, is-equal(trim(ran/output), <2>)
+
+# native-text-0003: two closures in one task that each `save` the same name. Each is its own scope, so each declares it
+test <two closures that each save the same name both compile>
+  want hold, built(siblings, <node>)/ok
+
+test <each closure's name is its own, and both still write the outer total: 3 + 4>
+  want hold, is-equal(node-answer(built(siblings, <node>)), <7>)

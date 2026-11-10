@@ -1,0 +1,77 @@
+note <emitted Kotlin, its runtime shims and the Android view host call no JDK 21 List method>
+
+# Ported from kotlin-android.ts by statement (item term-self-host-001-0622), its three fixtures one test each, its walk
+# over the shim folders one walked test whose cases are the `.kt` files of both. Codegen-performance-0001: Android
+# builds compile against android-36, where `removeLast()`, `removeFirst()`, `getFirst()` and `getLast()` bind to the
+# JDK 21 `java.util.List` methods, and those throw NoSuchMethodError on every device below API 35: Term's minimum is
+# 26. The emitter, the Kotlin runtime shims and the Android view host are all read, since any of them can write the
+# call.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+  find prelude-text
+  find file-text
+  find project-path
+
+load @term/base/file/directory
+  find list, name folder-list
+
+load @term/base/text
+  find ends-with
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host jdk21, make pattern, <<\.(removeLast|removeFirst|getFirst|getLast)\(\)>>
+
+# the native prelude and the emitted Kotlin of one fixture of meaning-native, <> when it did not build
+task kotlin-of
+  take fixture, like text
+  like text
+
+  save file, project-path(<.>, <test/compile/meaning-native/{fixture}.tree>)
+  save out, compile-text(file-text(file), make(compile-choice, bind(file, file), bind(stdlib, <kotlin>), bind(env, <kotlin>)))
+  fork test, not(out/ok)
+    hold
+      back <>
+  back <{prelude-text(out, <kotlin>)}\n{emit-text(out, <kotlin>)}>
+
+# every `.kt` file of the Kotlin runtime shims and the Android view host, as paths from the Term root
+task shim-files
+  like list, like text
+
+  save out, make list
+  walk make list(<deck/base/code/native/kotlin/runtime>, <deck/site/code/dom/native/toolkit/runtime>)
+    take folder, like text
+    walk folder-list(folder)
+      take name, like text
+      fork test, ends-with(name, <.kt>)
+        hold
+          out/push(<{folder}/{name}>)
+  back out
+
+test <lists: no JDK 21 List method in the emitted Kotlin>
+  host source, kotlin-of(<lists>)
+  want hold, is-unequal(source, <>)
+  want hold, not(matches(jdk21, source))
+
+test <count: no JDK 21 List method in the emitted Kotlin>
+  host source, kotlin-of(<count>)
+  want hold, is-unequal(source, <>)
+  want hold, not(matches(jdk21, source))
+
+test <text: no JDK 21 List method in the emitted Kotlin>
+  host source, kotlin-of(<text>)
+  want hold, is-unequal(source, <>)
+  want hold, not(matches(jdk21, source))
+
+test <no JDK 21 List method in a shim>
+  take path, like text
+    walk shim-files()
+  want hold, not(matches(jdk21, file-text(path)))

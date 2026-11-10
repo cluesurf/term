@@ -1,0 +1,213 @@
+note <the dependency and version verbs on a real project: each keeps code and boot in the manifest, and the project still builds>
+
+# Ported from deck-verbs.ts by statement (item term-self-host-001-0603), one test per `ok` in its order. `save`, `toss`,
+# `link` and `move` write the manifest, and each round-trips it through the manifest model, so a field the model does
+# not carry is deleted, silently. On its first run the original found `term toss @nothing` dropping `bear ./code` and
+# `boot ./code/boot`, and the install's `lock.tree` compiled as Term code. Both show only by running the verb and then
+# building, which is what this does. Each verb is the `term` under test (@term/test/self) in a project `term wake`
+# scaffolds in a temporary folder, with HOME redirected beside it, so `term link` never writes the real registry. The
+# manifest is read with the package manager's own reader (deck/deck/code/package/manifest.ts). The original's `save`
+# fetch went to the default registry and failed: here a `base` line in the project's manifest, written before `save`,
+# routes the @term scope to a closed port on 127.0.0.1, so the fetch fails and never leaves the machine. The steps build on one another, so
+# they run once, in order, by the first test.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/deck/code/package/manifest>, name verbs-manifest
+
+form manifest-ask
+  link text, like text
+
+# host value: whether a manifest's links name a package
+bind links-name
+  take manifest, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$manifest.link.some(one =\> one.name === $name)>
+
+# host value: a manifest field as text, `undefined` when it is not there
+bind field-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# what a manifest says of the fields every verb must keep
+form manifest-read
+  link code, like text
+  link boot, like text
+  link major, like number
+  link minor, like number
+  link patch, like number
+  link has-base, like boolean
+
+form verbs-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link home, like text
+  link woke, like boolean
+  link before, like manifest-read
+  link tossed, like text
+  link after-toss, like manifest-read
+  link toss-built, like text
+  link saved, like text
+  link after-save, like manifest-read
+  link after-undo, like manifest-read
+  link moved, like text
+  link bumped, like manifest-read
+  link moved-text, like text
+  link linked, like text
+  link link-built, like text
+
+task no-read
+  like manifest-read
+
+  back make(manifest-read, bind(code, <>), bind(boot, <>), bind(major, -1), bind(minor, -1), bind(patch, -1), bind(has-base, false))
+
+host verbs-now, make(verbs-state, bind(made, false), bind(root, <>), bind(home, <>), bind(woke, false), bind(before, no-read()), bind(tossed, <>), bind(after-toss, no-read()), bind(toss-built, <>), bind(saved, <>), bind(after-save, no-read()), bind(after-undo, no-read()), bind(moved, <>), bind(bumped, no-read()), bind(moved-text, <>), bind(linked, <>), bind(link-built, <>))
+
+# both streams: a verb reports its progress on stdout and its failures on stderr
+task term-in
+  take dir, like text
+  take arguments, like list, like text
+  like text
+  mark async
+
+  save environment
+    make hash
+      save <HOME>, verbs-now/home
+  save ran, run-self(arguments, dir, 120000, environment)
+  back <{ran/output}{ran/error}>
+
+# the manifest as the package manager reads it
+task manifest-of
+  take root, like text
+  like manifest-read
+
+  save read, verbs-manifest/parse-manifest(make(manifest-ask, bind(text, read-file(<{root}/deck.tree>))))
+  back make(manifest-read, bind(code, field-text(read/code)), bind(boot, field-text(read/boot)), bind(major, read/mark/major), bind(minor, read/mark/minor), bind(patch, read/mark/patch), bind(has-base, links-name(read, <@term/base>)))
+
+task the-steps
+  like verbs-state
+  mark async
+
+  fork test, verbs-now/made
+    hold
+      back verbs-now
+  save verbs-now/made, true
+  save box, temp-folder(<term-deck-verbs->)
+  save home, <{box}/home>
+  save verbs-now/home, home
+  make-folder(home)
+  term-in(box, make(list, <wake>, <demo>))
+  save root, <{box}/demo>
+  save verbs-now/root, root
+  save verbs-now/woke, file-exists(<{root}/deck.tree>)
+  fork test, not(verbs-now/woke)
+    hold
+      back verbs-now
+  save verbs-now/before, manifest-of(root)
+  # toss: a dependency that was never there, and the manifest should come back saying what it said
+  save verbs-now/tossed, term-in(root, make(list, <toss>, <@nothing>))
+  save verbs-now/after-toss, manifest-of(root)
+  save verbs-now/toss-built, term-in(root, make(list, <make>))
+  # save: the fetch fails, and the manifest is written before it either way. The @term scope routed to a closed
+  # loopback port first, so the fetch never leaves the machine
+  save manifest-text, read-file(<{root}/deck.tree>)
+  write-file(<{root}/deck.tree>, <{manifest-text}  base term, \<127.0.0.1:9/term\>\n>)
+  save verbs-now/saved, term-in(root, make(list, <save>, <@term/base>))
+  save verbs-now/after-save, manifest-of(root)
+  term-in(root, make(list, <toss>, <@term/base>))
+  save verbs-now/after-undo, manifest-of(root)
+  save verbs-now/moved, term-in(root, make(list, <move>, <mark>, <3>))
+  save verbs-now/bumped, manifest-of(root)
+  save verbs-now/moved-text, read-file(<{root}/deck.tree>)
+  save verbs-now/linked, term-in(root, make(list, <link>))
+  save verbs-now/link-built, term-in(root, make(list, <make>))
+  back verbs-now
+
+task keeps
+  take read, like manifest-read
+  like boolean
+  mark async
+
+  save state, the-steps()
+  back and(is-equal(read/code, state/before/code), is-equal(read/boot, state/before/boot))
+
+# the closing item of the terminal output standard: one file, the scaffold's code, since its deck.tree is a manifest
+task built-one
+  take said, like text
+  like boolean
+
+  back matches(make(pattern, <<\b1 file built\b>>), said)
+
+test <`wake` scaffolds a project to work on>
+  want hold, the-steps()/woke
+
+# the scaffold writes no `code` line (`./code` is the default code root), and starts at 0.0.1
+test <the scaffold declares an entry and a version, and no code root>
+  save state, the-steps()
+  want hold, and(is-unequal(state/before/boot, <undefined>), and(is-equal(state/before/patch, 1), is-equal(state/before/code, <undefined>)))
+
+test <`toss` answers>
+  want hold, matches(make(pattern, <Removed>), the-steps()/tossed)
+
+test <`toss` on an absent dependency keeps `code` and `boot`>
+  want hold, keeps(the-steps()/after-toss)
+
+test <the project still BUILDS after `toss`>
+  want hold, built-one(the-steps()/toss-built)
+
+test <`save` records the dependency>
+  want hold, the-steps()/after-save/has-base
+
+test <`save` keeps `code` and `boot`>
+  want hold, keeps(the-steps()/after-save)
+
+test <`toss` removes the dependency `save` added>
+  want hold, not(the-steps()/after-undo/has-base)
+
+# the next patch: the scaffold starts at 0.0.1 and moves to 0.0.2
+test <`move mark 3` moves the version to its next patch>
+  save state, the-steps()
+  want hold, is-equal(state/bumped/patch, add(state/before/patch, 1))
+  want hold, and(is-equal(state/bumped/major, state/before/major), is-equal(state/bumped/minor, state/before/minor))
+
+test <`move` keeps `code` and `boot`>
+  want hold, keeps(the-steps()/bumped)
+
+# `move` writes the version as `mark`, never in the old `code <...>` spelling
+test <`move` writes the version as `mark`>
+  save state, the-steps()
+  want hold, matches(make(pattern, <<(?m)^\s+mark <0\.0\.2>$>>), state/moved-text)
+  want hold, not(matches(make(pattern, <<(?m)^\s+code <>>), state/moved-text))
+
+# with no argument, `link` registers this working copy, under the redirected HOME
+test <`link` registers the package for development>
+  want hold, matches(make(pattern, <demo>), the-steps()/linked)
+
+test <`link` wrote into the redirected HOME and nowhere else>
+  save state, the-steps()
+  want hold, or(file-exists(<{state/home}/.base/@term/code/link>), file-exists(<{state/home}/.base/term/link>))
+
+test <the project still builds after `link`>
+  want hold, built-one(the-steps()/link-built)

@@ -1,0 +1,139 @@
+note <a view component builds dom through the render runtime, and its read, fork and walk stay reactive>
+
+# Ported from component.ts by statement (item term-self-host-001-0646), one test per `ok` in its order. Each zone
+# compiles alone through the project under the node env with the tree shake off, as the original compiled it, and its
+# emitted TypeScript is read for its shape. The original then called the built module's tasks from TypeScript and read
+# the mounted tree: here each zone's text is followed by a run task that does the same on the node dom and answers
+# what it read, built and run once on node through test/support/running. Two `ok` calls of the original stand only in
+# a `catch`, for a run that throws, and passed never: here a run that fails fails every test reading it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+load @term/base/list
+  find contains
+
+host source, <load @cluesurf/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find write-attribute\n  find attach-event\nload @cluesurf/site/code/dom/dom\n  find view\n  find append\nload @cluesurf/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nview label\n  take host, like view\n  take value\n  view div\n    seed role, text \<box\>\n    read\n      call read-signal\n        bind self, read value\n>
+
+# Stage B: control flow. `fork` lowers to `show` (conditional subtree), `walk` lowers to `render-each` (list rendering).
+host source-control, <load @cluesurf/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find show\n  find render-each\nload @cluesurf/site/code/dom/dom\n  find view\n  find append\n\nview gallery\n  take host, like view\n  take ready\n  take items\n  view ul\n    fork\n      hook test\n        read ready\n      hook hold\n        view li\n          text \<ready\>\n      hook miss\n        view li\n          text \<waiting\>\n    walk list, read items\n      hook next\n        take site, name row\n        view li\n          read\n            read row\n>
+
+# the label mounted on a root: its text node before and after the signal is written, then the div's `role`
+host label-program, <{source}\ntask child-of\n  take node, like view\n  like view\n\n  back node/handle/children/0\n\ntask text-of\n  take node, like view\n  like text\n\n  back node/handle/text\n\ntask mounted-text\n  take host, like view\n  like text\n\n  back text-of(child-of(child-of(host)))\n\ntask role-of\n  take node, like view\n  like text\n\n  save found, \<\>\n  walk node/handle/attributes\n    take entry\n    fork test, is-equal(entry/name, \<role\>)\n      hold\n        save found, entry/value\n  back found\n\ntask run\n  like text\n\n  save host, make-element(\<root\>)\n  save signal, make-signal(\<hello\>)\n  label(host, signal)\n  save before, mounted-text(host)\n  write-signal(signal, \<world\>)\n  save after, mounted-text(host)\n  save role, role-of(child-of(host))\n  back \<\{before\}|\{after\}|\{role\}\>\n>
+
+# the gallery mounted on a root, ready, over three items: every text node of the tree, depth-first, joined by commas
+host gallery-program, <{source-control}\ntask collect\n  take node, like view\n  take found, like list, like text\n\n  save handle, node/handle\n  fork test, is-unequal(handle/text, \<\>)\n    hold\n      found/push(handle/text)\n  walk handle/children\n    take child, like view\n    collect(child, found)\n\ntask run\n  like text\n\n  save host, make-element(\<root\>)\n  gallery(host, true, make list(\<a\>, \<b\>, \<c\>))\n  save found, make list\n  collect(host, found)\n  back found/join(\<,\>)\n>
+
+host component-shape, make pattern, <<export function label>>
+host element-shape, make pattern, <<makeElement\("div"\)>>
+host dynamic-shape, make pattern, <<makeDynamicText\(\(\) =[>]>>
+host show-shape, make pattern, <<show\(>>
+host each-shape, make pattern, <<renderEach\(>>
+
+# shaking off: the test drives the signal through `write-signal`, which the zone itself never calls
+host shake-off, make(compile-choice, bind(file, <zone.tree>), bind(project, <.>), bind(project-env, <node>), bind(tree-shake, <false>))
+
+host label-out, compile-text(source, shake-off)
+
+host control-out, compile-text(source-control, make(compile-choice, bind(file, <control.tree>), bind(project, <.>), bind(project-env, <node>), bind(tree-shake, <false>)))
+
+# the answers, made once: `label` the label run's three parts, `gallery` the gallery's text nodes
+form answers
+  mark shared
+  link done, like boolean
+  link label, like list, like text
+  link gallery, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(label, make list), bind(gallery, make list), bind(reason, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-zone-component->)
+  host label-ran, run-text(label-program, <typescript>, folder, <label>, shake-off)
+  fork test, is-equal(label-ran/state, <ran>)
+    hold
+      save now/label, text-split(trim(label-ran/output), <|>)
+    miss
+      save now/reason, <label: {label-ran/state} at {label-ran/stage}: {label-ran/reason}>
+  host gallery-ran, run-text(gallery-program, <typescript>, folder, <gallery>, shake-off)
+  fork test, is-equal(gallery-ran/state, <ran>)
+    hold
+      save now/gallery, text-split(trim(gallery-ran/output), <,>)
+    miss
+      save now/reason, <gallery: {gallery-ran/state} at {gallery-ran/stage}: {gallery-ran/reason}>
+  save now/done, true
+  back now
+
+# what the label run read at `at`, <> when it did not run
+task label-at
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-answers()/label
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+test <a zone compiles through resolve + infer + emit>
+  want hold, label-out/ok
+
+test <emits a component function>
+  want hold, matches(component-shape, label-out/emitted)
+
+test <emits a positional make-element call>
+  want hold, matches(element-shape, label-out/emitted)
+
+test <emits a reactive dynamic text node>
+  want hold, matches(dynamic-shape, label-out/emitted)
+
+test <the zone mounts a reactive text node>
+  want hold, is-equal(label-at(0), <hello>)
+
+test <writing the signal updates the mounted node (reactive)>
+  want hold, is-equal(label-at(1), <world>)
+
+test <an attribute is set on the element>
+  want hold, is-equal(label-at(2), <box>)
+
+test <a control-flow zone compiles>
+  want hold, control-out/ok
+
+test <fork lowers to a show call>
+  want hold, matches(show-shape, control-out/emitted)
+
+test <walk lowers to a render-each call>
+  want hold, matches(each-shape, control-out/emitted)
+
+test <show renders the active branch>
+  save found, the-answers()/gallery
+  want hold, contains(found, <ready>)
+  want hold, not(contains(found, <waiting>))
+
+test <each renders one node per item>
+  save found, the-answers()/gallery
+  want hold, contains(found, <a>)
+  want hold, contains(found, <b>)
+  want hold, contains(found, <c>)

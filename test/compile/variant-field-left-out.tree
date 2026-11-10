@@ -1,0 +1,34 @@
+note <a variant built without its need-false fields holds their empty values, on every backend>
+
+# Item term-self-host-001-1126. A case's `need false` field left out of its `make` took no value on Swift or Kotlin:
+# Swift emitted `.pin` for `make(pin)` (member 'pin(at:)' expects argument of type 'Maybe<Spot>') and `.pair(tag: "x")`
+# for `make(pair, bind(tag, x))` (missing argument for parameter 'at'), Kotlin the bare class `MarkPin` (no companion
+# object) and `MarkPair(tag = "x")` (no value passed for parameter 'at'). TypeScript and Rust were right, and a record
+# left out the same way was right on all four, since both natives fill a struct's left-out field with its type's empty
+# value. The fix fills a case's left-out fields the same way: a maybe field none, a list field empty, in the case's
+# declared order on Swift (`lead`, whose left-out field comes first). The inner sifts test `case some` first, so the
+# TypeScript leg does not depend on item 1123's none-first read.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host forms, <load @term/base/maybe\n  find maybe\n\nform spot\n  link line, like number\n\nform mark\n  case blank\n  case pin\n    link at\n      like maybe, like spot\n      need false\n  case pair\n    link tag, like text\n    link at\n      like maybe, like spot\n      need false\n  case lead\n    link at\n      like maybe, like spot\n      need false\n    link tag, like text\n  case bag\n    link items\n      like list, like number\n      need false\n\n>
+
+host reader, <task pin-line\n  take m, like mark\n  like number\n\n  sift m\n    case blank\n      back 9\n    case pin\n      link at\n      sift at\n        case some\n          link found\n          back found/line\n        case none\n          back 0\n    case pair\n      link at\n      sift at\n        case some\n          link found\n          back found/line\n        case none\n          back 5\n    case lead\n      link at\n      link tag\n      sift at\n        case some\n          link found\n          back found/line\n        case none\n          back add(tag/length, 20)\n    case bag\n      link items\n      back add(items/length, 40)\n\n>
+
+host run, <task run\n  like text\n\n  save bare, make(pin)\n  save held, make(pin, bind(at, make(some, make(spot, bind(line, 7)))))\n  save pair-bare, make(pair, bind(tag, \<x\>))\n  save pair-held, make(pair, bind(tag, \<x\>), bind(at, make(some, make(spot, bind(line, 3)))))\n  save lead-bare, make(lead, bind(tag, \<yy\>))\n  save bag-bare, make(bag)\n  save bag-held, make(bag, bind(items, make list(1, 2)))\n  back \<\{pin-line(bare)\} \{pin-line(held)\} \{pin-line(make(blank))\} \{pin-line(pair-bare)\} \{pin-line(pair-held)\} \{pin-line(lead-bare)\} \{pin-line(bag-bare)\} \{pin-line(bag-held)\}\>\n>
+
+test <a case's need-false fields left out hold none and an empty list>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<variant-field-left-out->)
+  host ran, run-text(<{forms}{reader}{run}>, backend, folder, <arm-field>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <0 7 9 5 3 22 40 42>)

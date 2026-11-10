@@ -1,0 +1,189 @@
+note <term view end to end: the built command against a real document on disk, its three modes and a document that does not read>
+
+# Ported from line.ts by statement (item term-self-host-001-0644), one test per `ok` in its order. The reader and the
+# manifest have their own suite. This proves the VERB is wired: the command exists, its three modes print what they
+# should, and a document which does not read exits non-zero with a span and a named message. Each run is the `term`
+# under test (@term/test/self) in a temporary folder holding the two documents, made once and kept in `view-now`.
+# `out` is the standard output alone when the run passed, both streams when it failed, and `all` both streams always.
+
+load @term/test/self
+  find run-self
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/json
+  find parse, name json-read
+  find get-field
+  find object-keys
+  find is-array
+
+load @term/base/list
+  find contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find trim-start
+  find starts-with
+
+host quenya, <\nhost title, text \<How Quenya sounds\>\n\nfind vowel\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/kind\n    text \<vowel\>\n  size 50\n\nview page\n  view text/heading\n    bind text\n      call titlecase\n        read title\n  view sound/chart\n    bind source, code \<quenya\>\n    bind rows, read vowel\n>
+
+host bad, <view page\n  task main\n>
+
+# one `term view` run: its exit code, `out` and `all` as the note says
+form view-run
+  link code, like number
+  link out, like text
+  link all, like text
+
+# the folder and the runs, each made once
+form view-state
+  mark shared
+  link ready, like boolean
+  link plain, like view-run
+  link manifest, like view-run
+  link json, like view-run
+  link bad, like view-run
+  link whole, like view-run
+
+task no-run
+  like view-run
+
+  back make(view-run, bind(code, 0), bind(out, <>), bind(all, <>))
+
+host view-now, make(view-state, bind(ready, false), bind(plain, no-run()), bind(manifest, no-run()), bind(json, no-run()), bind(bad, no-run()), bind(whole, no-run()))
+
+task run-view
+  take root, like text
+  take arguments, like list, like text
+  like view-run
+  mark async
+
+  save ran, run-self(arguments, root, 280000)
+  save all, <{ran/output}{ran/error}>
+  save out, all
+  fork test, is-equal(ran/code, 0)
+    hold
+      save out, ran/output
+  back make(view-run, bind(code, ran/code), bind(out, out), bind(all, all))
+
+task runs
+  like view-state
+  mark async
+
+  fork test, not(view-now/ready)
+    hold
+      save root, temp-folder(<term-view->)
+      make-folder(<{root}/page>)
+      write-file(<{root}/page/quenya.tree>, quenya)
+      write-file(<{root}/page/bad.tree>, bad)
+      save view-now/plain, run-view(root, make list(<view>, <page/quenya.tree>))
+      save view-now/manifest, run-view(root, make list(<view>, <page/quenya.tree>, <--find>))
+      save view-now/json, run-view(root, make list(<view>, <page/quenya.tree>, <-b>, <json>))
+      save view-now/bad, run-view(root, make list(<view>, <page/bad.tree>))
+      save view-now/whole, run-view(root, make list(<view>, <page>))
+      save view-now/ready, true
+  back view-now
+
+# the first document of the json run, an empty object when it does not parse to a list of one at least
+task first-document
+  take text, like text
+  like dynamic
+
+  save parsed, json-read(<null>)
+  fork
+    mark unsafe
+    save parsed, json-read(text)
+  halt take
+    take problem
+    save ignored, 0
+  fork test, is-array(parsed)
+    hold
+      fork test, is-above(parsed/length, 0)
+        hold
+          back parsed/0
+  back json-read(<\{\}>)
+
+host read-line, make pattern, <<(?m)^✓ read page/quenya\.tree$>>
+host view-line, make pattern, <<(?m)^ {2}view sound/chart, text/heading$>>
+host find-line, make pattern, <<(?m)^ {2}find filter:phoneme$>>
+host call-line, make pattern, <<(?m)^ {2}call titlecase$>>
+host node-line, make pattern, <<(?m)^ {2}node \d+$>>
+host deep-line, make pattern, <<(?m)^ {2}deep \d+$>>
+host bad-line, make pattern, <<"task" is not part of a document[\s\S]*?\bfile\s+page/bad\.tree:2:3\b>>
+
+test <the verb exists and a document reads>
+  save state, runs()
+  want hold, is-equal(state/plain/code, 0)
+
+# the EXACT line, not a substring: `includes` passed against `sound/chart>, <text/heading>, <text/item` when the command
+# was reading the serialized manifest with a pattern and getting the delimiters back with the names. Each is a field of
+# the document's `read` item, at the body column: `✓ read <file>` at column 0, each use a field two cells in
+test <it is a read item for the document>
+  save state, runs()
+  want hold, matches(read-line, state/plain/all)
+
+test <it prints every component placed, and only the names>
+  save state, runs()
+  want hold, matches(view-line, state/plain/all)
+
+test <it prints the query>
+  save state, runs()
+  want hold, matches(find-line, state/plain/all)
+
+test <it prints the operator>
+  save state, runs()
+  want hold, matches(call-line, state/plain/all)
+
+test <it prints the node count and depth>
+  save state, runs()
+  want hold, and(matches(node-line, state/plain/all), matches(deep-line, state/plain/all))
+
+test <--find prints the manifest>
+  save state, runs()
+  want hold, and(is-equal(state/manifest/code, 0), text-contains(state/manifest/out, <host task, \<filter:phoneme\>>))
+
+test <the manifest carries the record reference>
+  save state, runs()
+  want hold, and(text-contains(state/manifest/out, <list mark>), text-contains(state/manifest/out, <\<quenya\>>))
+
+test <--back json answers as json>
+  save state, runs()
+  want hold, and(is-equal(state/json/code, 0), starts-with(trim-start(state/json/out), <[>))
+
+test <the json carries the same lists>
+  save state, runs()
+  save first, first-document(state/json/out)
+  want hold, contains(object-keys(first), <call>)
+  save calls, get-field(first, <call>)
+  want hold, contains(calls, <titlecase>)
+
+test <the json leaves the manifest out>
+  save state, runs()
+  save first, first-document(state/json/out)
+  want hold, contains(object-keys(first), <view>)
+  want hold, not(contains(object-keys(first), <manifest>))
+
+test <a document that does not read exits non-zero>
+  save state, runs()
+  want hold, is-unequal(state/bad/code, 0)
+
+# a Problem item: the message as its subject, the line and column in its `file` field
+test <and says which word, with a line and column>
+  save state, runs()
+  want hold, matches(bad-line, state/bad/out)
+
+test <a directory reads every document in it>
+  save state, runs()
+  want hold, is-unequal(state/whole/code, 0)
+  want hold, and(text-contains(state/whole/out, <quenya.tree>), text-contains(state/whole/out, <bad.tree>))

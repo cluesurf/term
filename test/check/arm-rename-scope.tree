@@ -1,0 +1,49 @@
+note <after a renaming link, a case's later fields are in scope by their own names>
+
+# Ported from arm-rename-scope.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. check/arm.tree
+# says "a field past the last name keeps its own", as the type checker and every emitter read it, and check/resolve.ts
+# declared only the `link` names, so `case point / link label / back size` was "the name size is not defined" (found
+# porting check/text-forms, 2026-10-05). The module is read lean over the stdlib under the node env, as a library. The
+# original then called its tasks on a host record: here a `run` task beside the same module makes that record in Term
+# and answers what the task did, run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host module-text, <form shape\n  case point\n    link name, like text\n    link size, like number\n  case blank\n\ntask later-field\n  take value, like shape\n  like number\n\n  sift value\n    case point\n      link label\n      back size\n    case blank\n      back -1\n\ntask renamed-field\n  take value, like shape\n  like text\n\n  sift value\n    case point\n      link label\n      back label\n    case blank\n      back \<\>\n>
+
+task lean-choice
+  take library, like boolean
+  like compile-choice
+
+  back make(compile-choice, bind(file, <arm-rename.tree>), bind(stdlib, <node>), bind(env, <node>), bind(library, library), bind(lean, true))
+
+# the module with a run task that hands `call` a point named n of size 3, and answers it as text
+task run-of
+  take call, like text
+  like text
+
+  host folder, temp-folder(<arm-rename-scope->)
+  host program, <{module-text}\ntask run\n  like text\n\n  save point\n    make point\n      bind name, \<n\>\n      bind size, 3\n  back \<\{{call}(point)\}\>\n>
+  host ran, run-text(program, <typescript>, folder, call, lean-choice(false))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a later field is in scope after a rename>
+  host out, compile-text(module-text, lean-choice(true))
+  want hold, out/ok
+
+test <it reads the field>
+  want hold, is-equal(run-of(<later-field>), <3>)
+
+test <and the renamed field reads under its new name>
+  want hold, is-equal(run-of(<renamed-field>), <n>)

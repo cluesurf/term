@@ -1,0 +1,729 @@
+note <every unit key a cold pool build asks is built once: a cycle's import answer, a unit rules reach, and a cold @term/base>
+
+# Ported from unit-pool-once.ts by statement (item term-self-host-001-0685), one test per `ok` in its order (decision 088,
+# item 0477). A cycle's import answer (`<head>#unit`) had no owning job, so every importer the pool started together
+# missed it and built it. The head's own job now builds it, flagged answer-as-import, and every importer waits on it.
+#
+# Each build runs `term make` with an empty TERM_CACHE_HOME and every write into it traced, per thread, by a module handed
+# to node with --import (worker threads inherit it). The tracer is a fixture of the child, written to the scratch folder
+# as the original wrote it, and no logic of this suite. A unit key is the final name a stored answer is written or
+# renamed to, so a key written twice is a unit built twice. The corpora, in the original's order:
+#   (a) a project of 16 files: a two-file cycle imported by 14 files the pool starts together
+#   (d) a unit sixteen rule-stating files import (decision 093): its key with bodies built once, by its own job
+#   (c) a three-file cycle entered from each member and through an importer of each (decision 090), in this process
+#       against one store (make/compile/separate and compile/cache, the subject, decision 106)
+#   (b) a cold copy of @term/base built AS the standard library, three times
+# Each of (a), (d) and (b) writes every key once and counts as built exactly the distinct answers it stored (a refusal is
+# stored and never counted), and the copy's count is the same on every run. The original's titles carry counts of the
+# run (keys written, answers stored), which a test name cannot: the counts are in the assertions, the titles without them.
+# With two processors or fewer the pool does not start, and every test skips, as the original did.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find to-lower-case
+  find split, name text-split
+  find substring
+  find last-index-of
+  find replace-all, name text-replace
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+  find match-group
+
+load ../support/cli
+  find term-line
+  find term-root
+
+load ../support/judging
+  find make-record
+  find read-at
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/make>, name make-module
+  load <node:fs>, name dock-file
+  load <node:os>, name dock-os
+  load <node:path>, name dock-path
+  load <node:zlib>, name dock-zlib
+
+bind is-folder
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+bind bytes-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind as-number
+  take text, like text
+  like number
+  case node
+    text <Number($text)>
+
+bind sorted
+  take items, like list, like text
+  like list, like text
+  case node
+    text <[...$items].sort()>
+
+# the tracer: every write or rename into TERM_CACHE_HOME, with its thread, appended to TRACE_WRITES
+host tracer-text, <import fs from 'node:fs'\nimport \{ createRequire \} from 'node:module'\nimport \{ threadId \} from 'node:worker_threads'\n\nconst require = createRequire(import.meta.url)\nconst cjs = require('node:fs')\nconst home = process.env.TERM_CACHE_HOME\nconst log = process.env.TRACE_WRITES\nconst append = fs.appendFileSync.bind(fs)\nconst note = (op, path) =\> \{\n  const text = String(path)\n  if (home && log && text.startsWith(home)) append(log, threadId + ' ' + op + ' ' + text.slice(home.length + 1) + '\\n')\n\}\nfor (const target of [fs, cjs]) \{\n  for (const name of ['writeFileSync', 'renameSync', 'writeFile', 'rename']) \{\n    const original = target[name]\n    if (typeof original !== 'function' || original.__traced) continue\n    const wrapped = function (path, ...rest) \{\n      note(name, name.startsWith('rename') ? rest[0] : path)\n      return original.call(this, path, ...rest)\n    \}\n    wrapped.__traced = true\n    try \{\n      target[name] = wrapped\n    \} catch \{\}\n  \}\n\}\nrequire('node:module').syncBuiltinESMExports()\nfor (const name of ['writeFile', 'rename']) \{\n  const original = fs.promises[name]\n  fs.promises[name] = function (path, ...rest) \{\n    note('promises.' + name, name === 'rename' ? rest[0] : path)\n    return original.call(this, path, ...rest)\n  \}\n\}\n>
+
+task processor-count
+  like number
+
+  back dock-os/cpus()/length
+
+task write-text
+  take path, like text
+  take text, like text
+  like void
+
+  dock-file/writeFileSync(path, text)
+
+task make-folder
+  take path, like text
+  like void
+
+  dock-file/mkdirSync(path, make-record(make(list, <recursive>, true)))
+
+task scratch-folder
+  like text
+
+  save folder, dock-file/realpathSync(temp-folder(<term-unit-once->))
+  write-text(dock-path/join(folder, <trace-writes.mjs>), tracer-text)
+  back folder
+
+host scratch, scratch-folder()
+host tracer, dock-path/join(scratch, <trace-writes.mjs>)
+
+form counter
+  mark shared
+  link next, like number
+
+host logs, make(counter, bind(next, 1))
+
+# every file under a folder
+task files-under
+  take folder, like text
+  like list, like text
+
+  save out, make list
+  fork test, not(dock-file/existsSync(folder))
+    hold
+      back out
+  walk dock-file/readdirSync(folder)
+    take name, like text
+    save at, dock-path/join(folder, name)
+    fork test, is-folder(dock-file/statSync(at))
+      hold
+        walk files-under(at)
+          take inner, like text
+          out/push(inner)
+      miss
+        out/push(at)
+  back out
+
+# what one traced build showed: its exit, its output, the units it said it built (-1 when it said none), the unit keys
+# written more than once, and the answers its store holds, a refusal apart
+form traced-run
+  link code, like number
+  link out, like text
+  link built, like number
+  link twice, like list, like text
+  link answers, like number
+  link refused, like number
+
+host built-line, make pattern, <<([\d,]+) units? built>>
+
+# the units a build says it built, -1 when it says none
+task built-of
+  take out, like text
+  like number
+
+  sift find-match(built-line, out)
+    case some
+      link value
+      sift match-group(value, 1)
+        case some
+          link value
+          back as-number(text-replace(value, <,>, <>))
+        case none
+          back -1
+    case none
+      back -1
+
+# the keys of `keys` that occur more than once, each with its count
+task repeated
+  take keys, like list, like text
+  like list, like text
+
+  save out, make list
+  save previous, <>
+  save run, 0
+  walk sorted(keys)
+    take key, like text
+    fork test, is-equal(key, previous)
+      hold
+        save run, add(run, 1)
+      miss
+        fork test, is-above(run, 1)
+          hold
+            out/push(<{previous} x{run}>)
+        save previous, key
+        save run, 1
+  fork test, is-above(run, 1)
+    hold
+      out/push(<{previous} x{run}>)
+  back out
+
+# each unit key written: a temporary name renamed onto the key counts once, as a write of the key
+task written-keys
+  take log, like text
+  like list, like text
+
+  save keys, make list
+  walk text-split(dock-file/readFileSync(log, <utf8>), <\n>)
+    take line, like text
+    save parts, text-split(line, < >)
+    fork test, is-above(parts/length, 2)
+      hold
+        save op, parts/1
+        save path, parts/2
+        fork test, and(starts-with(path, <unit/>), ends-with(path, <.json.gz>))
+          hold
+            fork test, or(or(starts-with(op, <rename>), starts-with(op, <promises.rename>)), not(ends-with(path, <.tmp>)))
+              hold
+                keys/push(path)
+  back keys
+
+task traced
+  take root, like text
+  take home, like text
+  take stdlib, like text
+  take flags, like list, like text
+  like traced-run
+  mark async
+
+  save log, dock-path/join(scratch, <writes-{logs/next}.log>)
+  save logs/next, add(logs/next, 1)
+  write-text(log, <>)
+  save arguments, make(list, <--import>, tracer, term-line(), <make>, <--no-motion>, <--color>, <never>, <--plain>)
+  walk flags
+    take flag, like text
+    arguments/push(flag)
+  save environment
+    make hash
+      save <TERM_CACHE_HOME>, home
+      save <TRACE_WRITES>, log
+  fork test, is-unequal(stdlib, <>)
+    hold
+      save environment
+        make hash
+          save <TERM_CACHE_HOME>, home
+          save <TRACE_WRITES>, log
+          save <TERM_STDLIB>, stdlib
+  save ran, run(process-path(), arguments, bind(directory, root), bind(environment, environment))
+  save out, <{ran/output}\n{ran/error}>
+  save answers, 0
+  save refused, 0
+  walk files-under(dock-path/join(home, <unit>))
+    take file, like text
+    fork test, ends-with(file, <.json.gz>)
+      hold
+        save text, bytes-text(dock-zlib/gunzipSync(dock-file/readFileSync(file)))
+        # a name pointer (`surface:`) holds a key alone, an answer its stored entry. A trace pointer (`trace:` and the
+        # locators the unit's last build consulted, decision 103 item 4) is advisory, not an answer
+        fork test, and(not(is-below(text/length, 200)), not(starts-with(text, <\{"portable":"trace:>)))
+          hold
+            fork test, text-contains(text, <\{\\"diagnostics\\">)
+              hold
+                save refused, add(refused, 1)
+              miss
+                save answers, add(answers, 1)
+  back make(traced-run, bind(code, ran/code), bind(out, out), bind(built, built-of(out)), bind(twice, repeated(written-keys(log))), bind(answers, answers), bind(refused, refused))
+
+bind process-path
+  like text
+  case node
+    text <process.execPath>
+
+task reports-units
+  take run, like traced-run
+  like boolean
+
+  back is-unequal(run/built, -1)
+
+task built-is-stored
+  take run, like traced-run
+  like boolean
+
+  back and(is-unequal(run/built, -1), is-equal(run/built, run/answers))
+
+task said-pool
+  take run, like traced-run
+  take words, like list, like text
+  like boolean
+
+  save lower, to-lower-case(run/out)
+  walk words
+    take word, like text
+    fork test, text-contains(lower, word)
+      hold
+        back true
+  back false
+
+# ---- (a) a two-file cycle, imported by 14 files that start together once it is built ----
+
+form traced-once
+  mark shared
+  link done, like boolean
+  link run, like traced-run
+
+task empty-run
+  like traced-run
+
+  back make(traced-run, bind(code, -1), bind(out, <>), bind(built, -1), bind(twice, make list), bind(answers, 0), bind(refused, 0))
+
+host cycle-now, make(traced-once, bind(done, false), bind(run, empty-run()))
+
+task the-cycle
+  like traced-run
+  mark async
+
+  fork test, cycle-now/done
+    hold
+      back cycle-now/run
+  save cycle-now/done, true
+  save root, dock-path/join(scratch, <cycle>)
+  make-folder(dock-path/join(root, <code>, <cycle>))
+  write-text(dock-path/join(root, <deck.tree>), <deck @probe/unit-pool-once\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  write-text(dock-path/join(root, <code/cycle/a.tree>), <load ./b\n  find bee\n\ntask ay\n  take x, like number\n  like number\n  back bee(add(x, 1))\n>)
+  write-text(dock-path/join(root, <code/cycle/b.tree>), <load ./a\n  find ay\n\ntask bee\n  take x, like number\n  like number\n  back multiply(x, 2)\n>)
+  save n, 1
+  walk test
+    hook test, is-below(n, 15)
+    hook hold
+      write-text(dock-path/join(root, <code/use-{n}.tree>), <load ./cycle/a\n  find ay\n\ntask use-{n}\n  take x, like number\n  like number\n  back ay(add(x, {n}))\n>)
+      save n, add(n, 1)
+  save cycle-now/run, traced(root, dock-path/join(scratch, <cycle-home>), <>, make list)
+  back cycle-now/run
+
+test <cycle: the build exits 0>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-cycle()/code, 0)
+
+test <cycle: the pool ran>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, said-pool(the-cycle(), make(list, <pool>, <worker>))
+
+test <cycle: the build reports its units>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, reports-units(the-cycle())
+
+test <cycle: every unit key written once>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-cycle()/twice/length, 0)
+
+test <cycle: built is the distinct answers stored>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, built-is-stored(the-cycle())
+
+# ---- (d) a unit a rule reaches is built under proof by its own job (decision 093) ----
+# a shared form and sixteen files that each state a rule over it. The shared unit loads part of the standard library, so
+# every worker is started and idle by the time it is built
+
+host proof-now, make(traced-once, bind(done, false), bind(run, empty-run()))
+
+task the-proof
+  like traced-run
+  mark async
+
+  fork test, proof-now/done
+    hold
+      back proof-now/run
+  save proof-now/done, true
+  save root, dock-path/join(scratch, <proof>)
+  make-folder(dock-path/join(root, <code>))
+  write-text(dock-path/join(root, <deck.tree>), <deck @probe/unit-proof-once\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  write-text(dock-path/join(root, <code/shared.tree>), <load @term/base/text\n  find trim\n\nform token\n  head a\n  case mark\n    link value, like a\n>)
+  save n, 1
+  walk test
+    hook test, is-below(n, 17)
+    hook hold
+      write-text(dock-path/join(root, <code/keep-{n}.tree>), <load ./shared\n  find token\n\nrule keeps-{n}\n  head a\n  take x, like a\n  like token a\n\ntask keeps-{n}\n  take x\n  send back\n    make token/mark\n      bind value, read x\n>)
+      save n, add(n, 1)
+  save proof-now/run, traced(root, dock-path/join(scratch, <proof-home>), <>, make list)
+  back proof-now/run
+
+test <proof: the build exits 0>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-proof()/code, 0)
+
+test <proof: the pool ran>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, said-pool(the-proof(), make(list, <pool>, <worker>, <parallel>))
+
+test <proof: the build reports its units>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, reports-units(the-proof())
+
+test <proof: every unit key written once>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-proof()/twice/length, 0)
+
+test <proof: built is the distinct answers stored>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, built-is-stored(the-proof())
+
+# ---- (c) one cycle, one name, one key (decision 090) ----
+# a three-file cycle x -> y -> z -> x entered from each member, as the entry and through an importer of that member, in
+# process against one store. Every walk names the cycle by its sorted members, and the import answer the head builds
+# (answerAsImport) is the key every importer reads
+
+form enter-run
+  link ok, like boolean
+  link why, like text
+  link built, like list, like text
+  link seen, like list, like text
+
+task enter-root
+  like text
+
+  save root, dock-path/join(scratch, <enter>)
+  make-folder(dock-path/join(root, <code>))
+  write-text(dock-path/join(root, <deck.tree>), <deck @probe/unit-enter\n  mark \<0.0.1\>\n>)
+  walk make(list, <x>, <y>, <z>)
+    take m, like text
+    save n, <x>
+    fork test, is-equal(m, <x>)
+      hold
+        save n, <y>
+    fork test, is-equal(m, <y>)
+      hold
+        save n, <z>
+    write-text(dock-path/join(root, <code/{m}.tree>), <load ./{n}\n  find task-{n}\n\ntask task-{m}\n  take k, like number\n  like number\n  back k\n>)
+    write-text(dock-path/join(root, <code/i{m}.tree>), <load ./{m}\n  find task-{m}\n\ntask use-{m}\n  like number\n  back task-{m}(1)\n>)
+  back root
+
+host enter, enter-root()
+
+# a label without the folders up to `code/`, for each part of a cycle's label
+task short
+  take label, like text
+  like text
+
+  save parts, make list
+  walk text-split(label, <+>)
+    take one, like text
+    save at, last-index-of(one, </code/>)
+    fork test, is-below(at, 0)
+      hold
+        parts/push(one)
+      miss
+        parts/push(substring(one, add(at, 6)))
+  back text-join(parts, <+>)
+
+task module-path
+  take file, like text
+  like text
+
+  back <./{file}>
+
+task build-at
+  take cache, like dynamic
+  take name, like text
+  take as-import, like boolean
+  like enter-run
+
+  save file, dock-path/join(enter, <code>, <{name}.tree>)
+  save given, make-record(make(list, <file>, file, <text>, dock-file/readFileSync(file, <utf8>)))
+  save choice, make-record(make(list, <resolve>, make-module/projectResolver(enter), <cache>, cache, <modules>, module-path, <answerAsImport>, as-import))
+  save result, separate-module/compileSeparate(given, choice)
+  fork test, not(result/ok)
+    hold
+      save messages, make list
+      walk result/diagnostics
+        take one, like dynamic
+        messages/push(one/message)
+      back make(enter-run, bind(ok, false), bind(why, text-join(messages, < | >)), bind(built, make list), bind(seen, make list))
+  save built, make list
+  save seen, make list
+  walk result/built
+    take label, like text
+    built/push(short(label))
+    seen/push(short(label))
+  walk result/reused
+    take label, like text
+    seen/push(short(label))
+  back make(enter-run, bind(ok, true), bind(why, <>), bind(built, built), bind(seen, seen))
+
+form enter-all
+  mark shared
+  link done, like boolean
+  link starts, like list, like boolean
+  link names, like list, like text
+  link head-cycles, like number
+  link importers, like list, like boolean
+
+host enter-now, make(enter-all, bind(done, false), bind(starts, make list), bind(names, make list), bind(head-cycles, -1), bind(importers, make list))
+
+task the-entries
+  like enter-all
+
+  fork test, enter-now/done
+    hold
+      back enter-now
+  save enter-now/done, true
+  # one name, whichever member or importer the walk starts from, each on a store of its own
+  walk make(list, <x>, <y>, <z>, <ix>, <iy>, <iz>)
+    take name, like text
+    save one, build-at(new-cache(cache-module), name, false)
+    enter-now/starts/push(one/ok)
+    walk one/seen
+      take label, like text
+      fork test, and(text-contains(label, <+>), not(enter-now/names/includes(label)))
+        hold
+          enter-now/names/push(label)
+  # one key: the head's job builds the import answer, and an importer of every member then builds only itself
+  save shared, new-cache(cache-module)
+  save head, build-at(shared, <x>, true)
+  save cycles, 0
+  walk head/built
+    take label, like text
+    fork test, is-equal(label, <x.tree+y.tree+z.tree>)
+      hold
+        save cycles, add(cycles, 1)
+  save enter-now/head-cycles, cycles
+  walk make(list, <ix>, <iy>, <iz>)
+    take name, like text
+    save one, build-at(shared, name, false)
+    enter-now/importers/push(and(one/ok, and(is-equal(one/built/length, 1), is-equal(read-at(one/built, 0), <{name}.tree>))))
+  back enter-now
+
+test <enter at x: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/0
+
+test <enter at y: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/1
+
+test <enter at z: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/2
+
+test <enter at ix: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/3
+
+test <enter at iy: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/4
+
+test <enter at iz: builds>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/starts/5
+
+test <one name for the cycle from all six starts>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  save names, the-entries()/names
+  want hold, and(is-equal(names/length, 1), is-equal(read-at(names, 0), <x.tree+y.tree+z.tree>))
+
+test <the head x, asked answer-as-import, builds the cycle as entry and as import>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-entries()/head-cycles, 2)
+
+test <ix reads the head's import answer and builds only itself>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/importers/0
+
+test <iy reads the head's import answer and builds only itself>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/importers/1
+
+test <iz reads the head's import answer and builds only itself>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, the-entries()/importers/2
+
+# ---- (b) a cold copy of @term/base built as the standard library, three times, each on a fresh copy and an empty home ----
+
+host left-behind, make pattern, <<\/(\.build|target|node_modules)$>>
+
+# a native toolchain's own build cache (code/native/swift/.build is 1.1 GB) holds no .tree and is left behind
+task keep-copied
+  take from, like text
+  like boolean
+
+  back not(matches(left-behind, from))
+
+form base-runs
+  mark shared
+  link done, like boolean
+  link runs, like list, like traced-run
+
+host base-now, make(base-runs, bind(done, false), bind(runs, make list))
+
+task base-copy
+  take i, like number
+  like text
+
+  save source, dock-path/join(term-root(), <deck>, <base>)
+  save into, dock-path/join(scratch, <base-{i}>)
+  make-folder(dock-path/join(into, <host>))
+  walk make(list, <separate-worker.mjs>, <build-worker.mjs>)
+    take bundle, like text
+    dock-file/cpSync(dock-path/join(term-root(), <host>, bundle), dock-path/join(into, <host>, bundle))
+  save at, dock-path/join(into, <deck>, <base>)
+  make-folder(at)
+  walk make(list, <deck.tree>, <role.tree>, <role>, <code>, <test>, <test.tree>)
+    take part, like text
+    fork test, dock-file/existsSync(dock-path/join(source, part))
+      hold
+        dock-file/cpSync(dock-path/join(source, part), dock-path/join(at, part), make-record(make(list, <recursive>, true, <filter>, keep-copied)))
+  back dock-file/realpathSync(at)
+
+task the-bases
+  like list, like traced-run
+  mark async
+
+  fork test, base-now/done
+    hold
+      back base-now/runs
+  save base-now/done, true
+  save i, 1
+  walk test
+    hook test, is-below(i, 4)
+    hook hold
+      save root, base-copy(i)
+      base-now/runs/push(traced(root, dock-path/join(scratch, <base-{i}-home>), root, make(list, <--trees>)))
+      save i, add(i, 1)
+  back base-now/runs
+
+test <@term/base cold run 1: the build reports its units>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, reports-units(the-bases()/0)
+
+test <@term/base cold run 1: every unit key written once>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-bases()/0/twice/length, 0)
+
+test <@term/base cold run 1: built is the distinct answers stored>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, built-is-stored(the-bases()/0)
+
+test <@term/base cold run 2: the build reports its units>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, reports-units(the-bases()/1)
+
+test <@term/base cold run 2: every unit key written once>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-bases()/1/twice/length, 0)
+
+test <@term/base cold run 2: built is the distinct answers stored>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, built-is-stored(the-bases()/1)
+
+test <@term/base cold run 3: the build reports its units>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, reports-units(the-bases()/2)
+
+test <@term/base cold run 3: every unit key written once>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, is-equal(the-bases()/2/twice/length, 0)
+
+test <@term/base cold run 3: built is the distinct answers stored>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  want hold, built-is-stored(the-bases()/2)
+
+test <@term/base: the same count on every cold run>
+  fork test, is-below(processor-count(), 3)
+    hold
+      skip <the pool needs more than two processors>
+  save runs, the-bases()
+  save first, runs/0/built
+  want hold, and(is-unequal(first, -1), and(is-equal(runs/1/built, first), is-equal(runs/2/built, first)))

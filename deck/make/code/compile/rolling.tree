@@ -12,7 +12,7 @@
 #   - the raise sets come from the face (check/effects.ts is TypeScript), asked for the exceptions this port finds
 #   - the supervision walk keys its trees by the call that made each, which is node identity: the face hands in
 #     `same-node`, `===` on TypeScript, as compile/ts-emit's facts do. The walk is compile/node-children's reflective one
-#   - names sort by the host's own collation through deck/lock's `locale-compare`, as `localeCompare` did, and the
+#   - names sort by the host's own collation through lockfile.tree's `locale-compare`, as `localeCompare` did, and the
 #     raise sets and a deck's files by UTF-16 unit, as `sort()` with no comparator did
 #   - the regular expressions are written out by character. `\d` is ASCII digits, `\b` a word character meeting a
 #     non-word one or the end, and `$` the end of the text
@@ -68,7 +68,7 @@ load ../check/extend
   find exception-form
   find is-generic-exception
 
-load ../deck/lock
+load ../lockfile
   find locale-compare
 
 load ./main-entry

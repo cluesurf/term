@@ -1,0 +1,159 @@
+note <Named arguments, fall defaults, slot positional fields and parameters, and same-arity typed overloads>
+
+# Ported from slot.ts by statement (item term-self-host-001-0619). Each program is compiled longhand under `s.tree` with
+# no resolver. A program the original ran is run on node through typescript-answer: one main calls each task and prints
+# one JSON value a line, read by position. The original handed `optimize: false` to the slotted form's compile inside
+# its source, where the driver reads no option, so that compile is the default one here too.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+# named arguments in any order, and a default that fills in
+host named, <task scale\n  take value, like number\n  take by, like(number), fall 2\n  take shift, like(number), fall 0\n  like number\n  send back\n    call add\n      call multiply\n        read value\n        read by\n      read shift\n\ntask use-named\n  like number\n  send back\n    call scale\n      bind shift, code 1\n      bind value, code 5\n\ntask use-positional\n  like number\n  send back\n    call scale\n      code 5\n      code 3\n\ntask use-mixed\n  like number\n  send back\n    call scale\n      code 5\n      bind shift, code 4\n>
+
+host unknown, <task scale\n  take value, like number\n  like number\n  send back, read value\n\ntask use\n  like number\n  send back\n    call scale\n      bind amount, code 5\n>
+
+host gap, <task scale\n  take value, like number\n  take by, like number\n  take shift, like number\n  like number\n  send back, read value\n\ntask use\n  like number\n  send back\n    call scale\n      bind value, code 5\n      bind shift, code 1\n>
+
+# slot parameters are positional only
+host slot-task, <task pair\n  slot left, like number\n  slot right, like number\n  like number\n  send back\n    call add\n      read left\n      read right\n\ntask use\n  like number\n  send back\n    call pair\n      bind left, code 1\n      bind right, code 2\n>
+
+host slot-ok, <task pair\n  slot left, like number\n  slot right, like number\n  like number\n  send back\n    call add\n      read left\n      read right\n\ntask use\n  like number\n  send back\n    call pair\n      code 1\n      code 2\n>
+
+# slot fields on a form: positional make, in declaration order, with a fallback
+host slot-form, <form point\n  slot x, like number\n  slot y, like number\n  link label, like(text), fall text \<origin\>\n\ntask make-point\n  like point\n  send back\n    make point\n      code 3\n      code 4\n\ntask read-label\n  like text\n  save p\n    call make-point\n  send back\n    read p/label\n>
+
+host no-slots, <form point\n  link x, like number\n  link y, like number\n\ntask make-point\n  like point\n  send back\n    make point\n      code 3\n      code 4\n>
+
+host too-many, <form point\n  slot x, like number\n\ntask make-point\n  like point\n  send back\n    make point\n      code 3\n      code 4\n>
+
+# same-arity overloads chosen by type
+host overload, <task show\n  take value, like number\n  like text\n  send back, text \<number\>\n\ntask show\n  take value, like text\n  like text\n  send back, text \<text\>\n\ntask use-number\n  like text\n  send back\n    call show, code 1\n\ntask use-text\n  like text\n  send back\n    call show, text \<hi\>\n>
+
+host no-fit, <task show\n  take value, like number\n  like text\n  send back, text \<number\>\n\ntask show\n  take value, like text\n  like text\n  send back, text \<text\>\n\ntask use\n  like text\n  send back\n    call show, true\n>
+
+form slot-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(slot-answers, bind(held, make hash))
+
+task built
+  take source, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <s.tree>)))
+
+# the messages of a refused compile joined by ` | `, empty for one that compiled
+task said
+  take source, like text
+  like text
+
+  host out, built(source)
+  fork test, out/ok
+    hold
+      back <>
+  back join(out/messages, < | >)
+
+# what each call in `calls` answered, one JSON value a line, once per key
+task answers
+  take key, like text
+  take source, like text
+  take calls, like text
+  like text
+
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-slot->)
+  save main, <process.stdout.write([{calls}].map(value =\> JSON.stringify(value)).join("\\n"))\n>
+  save answer, typescript-answer(built(source), main, folder, key)
+  save kept/held/{key}, answer
+  back answer
+
+task named-at
+  take at, like number
+  like text
+
+  save parts, text-split(answers(<named>, named, <useNamed(), usePositional(), useMixed()>), <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+task overload-at
+  take at, like number
+  like text
+
+  save parts, text-split(answers(<overload>, overload, <useNumber(), useText()>), <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+test <named arguments compile>
+  want hold, built(named)/ok
+
+# the simplifier folds these calls to constants, so the order is proven by running them
+test <named call runs>
+  want hold, is-equal(named-at(0), <11>)
+
+test <positional call runs>
+  want hold, is-equal(named-at(1), <15>)
+
+test <mixed call runs>
+  want hold, is-equal(named-at(2), <14>)
+
+test <an unknown argument name is refused>
+  want hold, text-contains(said(unknown), <no parameter "amount">)
+
+test <an omitted middle parameter without a default is refused>
+  want hold, text-contains(said(gap), <needs "by">)
+
+test <naming a slot parameter is refused>
+  want hold, text-contains(said(slot-task), <is a slot of "pair">)
+
+test <slot parameters take positional arguments>
+  want hold, built(slot-ok)/ok
+
+test <a positional make of a slotted form compiles>
+  want hold, built(slot-form)/ok
+
+test <positional values land on the slots in order>
+  want hold, text-contains(built(slot-form)/emitted, <x: 3, y: 4>)
+
+test <the fallback field is filled>
+  want hold, text-contains(built(slot-form)/emitted, <label: "origin">)
+
+test <a positional make of a form without slots is refused>
+  want hold, text-contains(said(no-slots), <has no slots>)
+
+test <more values than slots is refused>
+  want hold, text-contains(said(too-many), <1 slot>)
+
+test <same-arity overloads compile>
+  want hold, built(overload)/ok
+
+test <the number overload is chosen>
+  want hold, is-equal(overload-at(0), <"number">)
+
+test <the text overload is chosen>
+  want hold, is-equal(overload-at(1), <"text">)
+
+test <an argument no overload takes is refused>
+  want hold, text-contains(said(no-fit), <no overload>)

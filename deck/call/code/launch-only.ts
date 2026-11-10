@@ -35,3 +35,26 @@ const NAMES = new Set(LAUNCH_ONLY)
 export function isLaunchOnly(name: string): boolean {
   return NAMES.has(name)
 }
+
+// PART of a variable can be launch-only too. NODE_OPTIONS stays in a key, since a flag in it can change what a compile
+// does (`--conditions` picks other package exports, `--import` and `--require` run code first, `--stack-size` moves
+// where a deep compile overflows), but its V8 heap sizes are left out: `--max-old-space-size` and
+// `--max-semi-space-size` say only how much memory the process may use, and a compile that fits writes the same bytes.
+// A queue check run under a heap cap made port-build a full rebuild, and the next make:line another (traps.md T-1015,
+// item term-self-host-001-1017). `--expose-gc` stays: nothing has shown that no compile reads `gc`.
+//
+// Answers the text a key holds for the variable, or undefined when nothing of it is left. A value holding a quote is
+// kept whole, since its words cannot be split safely on spaces. Only the `=<n>` spelling is a heap flag here: node
+// refuses `--max-old-space-size 6144` in NODE_OPTIONS before any script runs, so no build ever sees that one.
+
+const HEAP_FLAG = /^--max[-_](old|semi)[-_]space[-_]size=\d+$/
+
+export function buildValue({ name, value }: { name: string; value: string }): string | undefined {
+  if (name !== 'NODE_OPTIONS' || /["']/.test(value)) {
+    return value
+  }
+
+  const kept = value.split(/\s+/).filter((word) => word !== '' && !HEAP_FLAG.test(word))
+
+  return kept.length === 0 ? undefined : kept.join(' ')
+}

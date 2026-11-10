@@ -1,0 +1,144 @@
+note <A bind may say mark async: its host code answers a promise, and a call to it is waited like a call to an async task>
+
+# Ported from async-bind.ts by statement (item term-self-host-001-0612), decision 053 of change 001. Until 2026-10-28 a
+# bind could not say so, the promise was typed `like dynamic`, and a field read off it compiled to a read of the promise
+# (`term make --merged` stopped on "entries is not iterable", traps.md T-0334). This holds the waited read, the refused
+# unwaited read (a tick's job, a call outside every task), and the missing mark caught where the build can tell: a field
+# read off the promise of an unmarked bind whose text answers one by its shape (check/missing-wait.ts). A program run is
+# run-text on TypeScript over the project at the suite's root, its link root the same. The two emit checks read the
+# TypeScript the same compile emits, where the original read it back from the file the run wrote.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host answer, <form answer\n  link problems, like list, like text\n>
+
+# a bind whose host code answers a promise of an answer with two problems, marked or not, the mark where `where` says:
+# <none>, <before> its like or <after> it
+task answer-later
+  take where, like text
+  like text
+
+  save before, <>
+  save after, <>
+  fork test, is-equal(where, <before>)
+    hold
+      save before, <  mark async\n>
+  fork test, is-equal(where, <after>)
+    hold
+      save after, <  mark async\n>
+  back <{answer}\nbind answer-later\n{before}  like dynamic\n{after}  case node\n    text \<Promise.resolve(\\\{ problems: ["a", "b"] \\\})\>\n>
+
+# what a program's `run` printed on TypeScript, or why it did not run
+task ran-output
+  take program, like text
+  like text
+
+  save folder, temp-folder(<async-bind->)
+  save ran, run-text(program, <typescript>, folder, <bind>, make(compile-choice, bind(project, <.>), bind(project-link, <.>)))
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state}: {ran/reason}>
+
+# the refusals of a program that should not build, each `name: message`, warnings left out, or <BUILT>
+task refusals
+  take program, like text
+  like text
+
+  save out, compile-text(program, make(compile-choice, bind(file, project-path(<.>, <tmp/async-bind.tree>)), bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>), bind(lean, true)))
+  fork test, out/ok
+    hold
+      back <BUILT>
+  save parts, make list
+  walk out/notes
+    take one
+    fork test, is-unequal(one/severity, <warning>)
+      hold
+        parts/push(<{one/name}: {one/message}>)
+  back join(parts, < | >)
+
+host direct, <{answer-later(<before>)}\ntask count-problems\n  like number\n  save result, answer-later()\n  back result/problems/length\n\ntask run\n  like text\n  back \<\{count-problems()\}\>\n>
+
+host awaited-call, make pattern, <<await Promise\.resolve\(>>
+host counter-async, make pattern, <<async function countProblems>>
+host run-async, make pattern, <<async function run>>
+host outside-refusal, make pattern, <<async-outside-task|tick>>
+
+task direct-emitted
+  like text
+
+  save out, compile-text(direct, make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>), bind(env, <node>)))
+  back out/emitted
+
+# ---- a marked bind is waited like an async task ----
+
+test <a field read off a marked bind's answer reads the answer>
+  want hold, is-equal(ran-output(direct), <2>)
+
+test <the call is written awaited>
+  want hold, matches(awaited-call, direct-emitted())
+
+test <its caller becomes async, and the caller of that>
+  host emitted, direct-emitted()
+  want hold, matches(counter-async, emitted)
+  want hold, matches(run-async, emitted)
+
+test <`mark async` may follow the bind's like, as on a task>
+  want hold, is-equal(ran-output(<{answer-later(<after>)}\ntask run\n  like text\n  save result, answer-later()\n  back \<\{result/problems/length\}\>\n>), <2>)
+
+test <a plain task handing the marked bind's answer back is async, and its caller reads the answer (the T-0334 shape)>
+  want hold, is-equal(ran-output(<{answer-later(<before>)}\ntask start-answer\n  like dynamic\n  back answer-later()\n\ntask run\n  like text\n  save result, start-answer()\n  back \<\{result/problems/length\}\>\n>), <2>)
+
+test <a written wait on the call reads and means the same>
+  want hold, is-equal(ran-output(<{answer-later(<before>)}\ntask run\n  like text\n  save result\n    call answer-later\n      wait true\n  back \<\{result/problems/length\}\>\n>), <2>)
+
+test <a tick of a marked bind is its pending job, so a field of the answer read off it is refused>
+  host said, refusals(<load @term/base/task\n  find handle\n\n{answer-later(<before>)}\ntask run\n  like number\n  save job, tick answer-later()\n  back job/problems/length\n>)
+  want hold, text-contains(said, <"handle" has no field "problems">)
+
+test <outside every task an unticked call to a marked bind is refused, naming tick>
+  host said, refusals(<{answer-later(<before>)}\nhost found, answer-later()\n>)
+  want hold, matches(outside-refusal, said)
+  want hold, is-unequal(said, <BUILT>)
+
+# ---- the missing mark, caught where the build can tell ----
+
+test <a field read off an unmarked bind whose text answers a promise is refused as missing-wait>
+  host said, refusals(<{answer-later(<none>)}\ntask count-problems\n  like number\n  save result, answer-later()\n  back result/problems/length\n>)
+  want hold, text-contains(said, <missing-wait: "problems" is read off the promise>)
+
+test <and through a plain task that hands it back>
+  host said, refusals(<{answer-later(<none>)}\ntask start-answer\n  like dynamic\n  back answer-later()\n\ntask count-problems\n  like number\n  mark async\n  save result, start-answer()\n  back result/problems/length\n>)
+  want hold, text-contains(said, <missing-wait: "problems" is read off the promise>)
+
+test <a text ending in a .then chain is known to answer a promise>
+  host said, refusals(<{answer}\nbind answer-later\n  like dynamic\n  case node\n    text \<import("node:fs").then((m) =\\\> (\\\{ problems: [] \\\}))\>\n\ntask count-problems\n  like number\n  back answer-later()/problems/length\n>)
+  want hold, text-contains(said, <missing-wait>)
+
+test <an unmarked promise handed on as a value to more host code builds>
+  host said, refusals(<{answer-later(<none>)}\nbind settle-count\n  take promise, like dynamic\n  like dynamic\n  case node\n    text \<$promise.then((x) =\\\> x.problems.length)\>\n\ntask count-problems\n  like dynamic\n  mark async\n  save result, answer-later()\n  back wait settle-count(result)\n>)
+  want hold, is-equal(said, <BUILT>)
+
+test <a text whose shape does not say it answers a promise is the mark's to say (the stated gap)>
+  host said, refusals(<{answer}\nbind answer-later\n  take make-one, like dynamic\n  like dynamic\n  case node\n    text \<$make-one()\>\n\ntask count-problems\n  take make-one, like dynamic\n  like number\n  save result, answer-later(make-one)\n  back result/problems/length\n>)
+  want hold, is-equal(said, <BUILT>)

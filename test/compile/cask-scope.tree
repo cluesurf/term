@@ -1,0 +1,176 @@
+note <the cask scope matcher answers each way past a scope the same on TypeScript, Rust, Swift and Kotlin>
+
+# Ported from cask-scope.ts by statement (item term-self-host-001-0653). The scope matcher (app-scope,
+# deck/cask/code/scope.tree `in-scope`), on every backend a cask runs. Every answer below was worked out by hand from the
+# rules in that file's header, never from running it, and the cases are the ways past a scope that matter: `..`
+# climbing out, a name that only BEGINS with the scope's folder, a relative path, a home the platform could not give,
+# `*` against `**`. As the original did, one program holds every case and prints a 1 or a 0 for each, run once per
+# backend, and each case of each backend is a case of one walked test (27 by 4). A backend whose toolchain is not
+# installed is its cases' own skip.
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find replace-all
+  find substring
+
+host data, </data/app>
+host bundle, </app/res>
+host home, </home/p>
+
+# a Windows data directory, as the platform answers it
+host windows-data, <C:\\Users\\p\\AppData\\Roaming\\App>
+
+# value, patterns (one a line), kind, the home directory, the answer, why, and the data directory
+form scope-case
+  link value, like text
+  link patterns, like text
+  link kind, like text
+  link home, like text
+  link want, like boolean
+  link why, like text
+  link data, like text
+
+task case-of
+  take value, like text
+  take patterns, like text
+  take kind, like text
+  take home-folder, like text
+  take want, like boolean
+  take why, like text
+  take data-folder, like text, fall data
+  like scope-case
+
+  back make(scope-case, bind(value, value), bind(patterns, patterns), bind(kind, kind), bind(home, home-folder), bind(want, want), bind(why, why), bind(data, data-folder))
+
+task cases
+  like list, like scope-case
+
+  save out, make list
+  out/push(case-of(</data/app/notes.db>, <$data/**>, <path>, home, true, <a file in the data folder>))
+  out/push(case-of(</data/app>, <$data/**>, <path>, home, true, <`**` is zero folders too: the data folder itself>))
+  out/push(case-of(</data/app/../secret>, <$data/**>, <path>, home, false, <`..` folds to /data/secret, outside>))
+  out/push(case-of(</data/app/x/../../app/y>, <$data/**>, <path>, home, true, <folds to /data/app/y, inside again>))
+  out/push(case-of(</data/app/../../../../etc/passwd>, <$data/**>, <path>, home, false, <climbing past the root stays at the root: /etc/passwd>))
+  out/push(case-of(</data/appendix/x>, <$data/**>, <path>, home, false, <a folder whose name only begins with the data folder's>))
+  out/push(case-of(<data/app/x>, <$data/**>, <path>, home, false, <a relative path is never in scope>))
+  out/push(case-of(</home/p/Documents/a.txt>, <$home/Documents/*.txt>, <path>, home, true, <`*` within one name>))
+  out/push(case-of(</home/p/Documents/sub/a.txt>, <$home/Documents/*.txt>, <path>, home, false, <`*` never crosses a folder>))
+  out/push(case-of(</home/p/Documents/a.md>, <$home/Documents/*.txt>, <path>, home, false, <the wrong ending>))
+  out/push(case-of(</home/p/x.tar.gz>, <$home/*.gz>, <path>, home, true, <the ending after a dot inside the name>))
+  out/push(case-of(</home/p/ab>, <$home/a*b*>, <path>, home, true, <pieces may be empty: `a`, then `b`, then anything>))
+  out/push(case-of(</home/p/ba>, <$home/a*b*>, <path>, home, false, <the first piece must begin the name>))
+  out/push(case-of(</etc/passwd>, <$data/**\n$home/**>, <path>, home, false, <two patterns, neither matching>))
+  out/push(case-of(</home/p/notes/x>, <$data/**\n$home/notes/**>, <path>, home, true, <the second of two patterns>))
+  out/push(case-of(</a/b/c>, </a/**/c>, <path>, home, true, <`**` as one folder in the middle>))
+  out/push(case-of(</a/c>, </a/**/c>, <path>, home, true, <`**` as no folder in the middle>))
+  out/push(case-of(</a/b/d>, </a/**/c>, <path>, home, false, <the name after `**` must still match>))
+  out/push(case-of(</app/res/web/index.html>, <$bundle/web/*>, <path>, home, true, <the bundle variable>))
+  out/push(case-of(</x>, <$home/**>, <path>, <>, false, <a home the platform could not give leaves the pattern relative, matching nothing>))
+  out/push(case-of(<HOME>, <HOME\nLANG>, <name>, home, true, <a listed name>))
+  out/push(case-of(<PATH>, <HOME\nLANG>, <name>, home, false, <an unlisted name>))
+  out/push(case-of(<ANY>, <*>, <name>, home, true, <`*` is every name>))
+  out/push(case-of(<*>, <HOME>, <name>, home, false, <asking for every name needs `*` in the list>))
+  out/push(case-of(<C:\\Users\\p\\AppData\\Roaming\\App\\notes.db>, <$data/**>, <path>, home, true, <a Windows path in a Windows data directory>, windows-data))
+  out/push(case-of(<C:\\Users\\p\\AppData\\Roaming\\App\\..\\Other\\x>, <$data/**>, <path>, home, false, <a Windows `..` folds out of it>, windows-data))
+  out/push(case-of(<D:/Users/p/AppData/Roaming/App/x>, <$data/**>, <path>, home, false, <the same folders on another drive>, windows-data))
+  out/push(case-of(<C:relative\\x>, <$data/**>, <path>, home, false, <a drive with no root after it is relative>, windows-data))
+  back out
+
+# a value as a text literal: a backslash is written `\\`, a line break `\n`
+task literal
+  take value, like text
+  like text
+
+  back replace-all(replace-all(value, <\\>, <\\\\>), <\n>, <\\n>)
+
+# one case's call of in-scope, its answer appended to `out` as 1 or 0
+task call-text
+  take one, like scope-case
+  like text
+
+  back <  save answer\n    call in-scope\n      text \<{literal(one/value)}\>\n      text \<{literal(one/patterns)}\>\n      text \<{one/kind}\>\n      text \<{literal(one/data)}\>\n      text \<{bundle}\>\n      text \<{one/home}\>\n  fork test\n    hook test\n      read answer\n    hook hold\n      save out, text \<\{out\}1\>\n    hook miss\n      save out, text \<\{out\}0\>>
+
+task program
+  like text
+
+  save calls, make list
+  walk cases()
+    take one, like scope-case
+    calls/push(call-text(one))
+  back <load @term/cask/scope\n  find in-scope\n\ntask run\n  like text\n  save out, text \<\>\n{calls/join(<\n>)}\n  send back, read out\n>
+
+# each backend's run, made once: a backend's cases read its one run
+form scope-runs
+  mark shared
+  link held, like hash, like text, like ran-program
+
+host kept, make(scope-runs, bind(held, make hash))
+
+task ran-on
+  take backend, like text
+  like ran-program
+
+  fork test, kept/held/has(backend)
+    hold
+      back kept/held/{backend}
+  save folder, temp-folder(<term-cask-scope->)
+  save ran, run-text(program(), backend, folder, <scope>)
+  save kept/held/{backend}, ran
+  back ran
+
+# one case of one backend, by its label
+form scope-check
+  link backend, like text
+  link at, like number
+  link one, like scope-case
+
+form scope-checks
+  mark shared
+  link held, like hash, like text, like scope-check
+
+host checks, make(scope-checks, bind(held, make hash))
+
+# every backend's every case, labeled as the original named it, each label's case kept to be read back
+task labels
+  like list, like text
+
+  save out, make list
+  walk backends()
+    take backend, like text
+    save at, 0
+    walk cases()
+      take one, like scope-case
+      save side, <out>
+      fork test, one/want
+        hold
+          save side, <in>
+      save label, <{backend}: {one/value} against {replace-all(one/patterns, <\n>, < + >)}: {side}, {one/why}>
+      save checks/held/{label}, make(scope-check, bind(backend, backend), bind(at, at), bind(one, one))
+      out/push(label)
+      save at, add(at, 1)
+  back out
+
+test <the scope matcher answers by hand>
+  take label, like text
+    walk labels()
+  host check, checks/held/{label}
+  host ran, ran-on(check/backend)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  save wanted, <0>
+  fork test, check/one/want
+    hold
+      save wanted, <1>
+  want hold, is-equal(substring(ran/output, check/at, add(check/at, 1)), wanted)

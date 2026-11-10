@@ -1,0 +1,58 @@
+note <a text literal never closed is an error at the line that opened it, and a closed one compiles>
+
+# Ported from text-literal.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. Inside
+# `text <...>` the angles BALANCE, so a generic written as content (`Hmac<Sha256>`) survives. The cost is that one
+# unescaped `<`, a `s < 60` in a native body, opens a bracket that never closes, and the literal eats the rest of the
+# file. That used to compile "fine": every name declared after the bad line silently vanished, and the build reported
+# undefined names in a dozen OTHER files that imported them. The compiler is docked, as form-generics.test.tree docks
+# it.
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/compile/compile>, name literal-compiling
+
+form literal-source
+  link file, like text
+  link text, like text
+
+host open, <bind bad\n  take s, like number\n  like boolean\n  case node\n    text \<(function () \{ return s \< 60 \})()\>\n\ntask after-it\n  like text\n  send back\n    text \<still here\>\n>
+
+host closed, <bind good\n  take s, like number\n  like boolean\n  case node\n    text \<(function () \\\{ return s \\\< 60 \\\})()\>\n\ntask after-it\n  like text\n  send back\n    text \<still here\>\n>
+
+host balanced, <bind generic\n  like text\n  case node\n    text \<new Map\<string, number\>().size\>\n>
+
+task compiled
+  take file, like text
+  take text, like text
+  like dynamic
+
+  back literal-compiling/compile(make(literal-source, bind(file, file), bind(text, text)))
+
+test <an unclosed text literal: is an error rather than a file that quietly ends early>
+  want hold, is-equal(compiled(<bad.tree>, open)/ok, false)
+
+test <an unclosed text literal: points at the literal that opened, not at some later file>
+  host result, compiled(<bad.tree>, open)
+  save line, -1
+  fork test, is-equal(result/ok, false)
+    hold
+      save line, result/diagnostics/0/span/start/line
+  # spans count lines from 0, so line 4 is the fifth line, `text <...>`
+  want hold, is-equal(line, 4)
+
+test <an unclosed text literal: says what to do about it>
+  host result, compiled(<bad.tree>, open)
+  save hint, <>
+  fork test, is-equal(result/ok, false)
+    hold
+      save hint, result/diagnostics/0/hint
+  want hold, text-contains(hint, <never closed>)
+  want hold, text-contains(hint, <\\\<>)
+
+test <a text literal that is closed: compiles when the stray angle is escaped>
+  want hold, is-equal(compiled(<good.tree>, closed)/ok, true)
+
+test <a text literal that is closed: still allows balanced angles as content, which is why they balance>
+  want hold, is-equal(compiled(<generic.tree>, balanced)/ok, true)

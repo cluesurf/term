@@ -1,0 +1,71 @@
+note <Constant and copy propagation stop at a scope that rebinds a name>
+
+# Ported from simplify-arm-capture.ts by statement (item term-self-host-001-0619). `save at, span` copied `span`, and
+# inside an arm that binds its case's own `span` the copy read the arm's field: lint's no-redundant-conditional reported a
+# literal's span in place of the conditional's (ir/simplify.ts, found pairing lint/rule-check.tree, 2026-10-05). A
+# renaming `link` binds the listed fields under new names AND the rest under their own, which the simplifier did not know
+# either. The program is a lean library over the node stdlib, run on node through typescript-answer: one main prints
+# what each call answered, one JSON value a line. The original's "the program builds" `ok` is only reached when the
+# build fails, in place of the other three: here a refused build is typescript-answer's refusal, and all three fail on it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+host fixture, <form inner\n  case point\n    link value, like number\n    link span, like number\n  case blank\n\nform outer\n  case pair\n    link left, like inner\n    link span, like number\n\n# copies the outer span, then reads it inside an arm that binds the inner one, renaming only the first field\ntask outer-span\n  take o, like outer\n  like number\n\n  sift o\n    case pair\n      save at, span\n      sift left\n        case point\n          link kept\n          back at\n        case blank\n          back -1\n  back -2\n\n# a constant, read inside an arm that binds a field of the same name\ntask field-not-constant\n  take i, like inner\n  like number\n\n  save value, 5\n  save copy, value\n  sift i\n    case point\n      back value\n    case blank\n      back copy\n>
+
+# outerSpan of a pair whose inner point has its own span, then fieldNotConstant of a point and of a blank
+host main, <const said = []\nconst show = value =\> said.push(JSON.stringify(value))\nshow(outerSpan(\{ form: "pair", left: \{ form: "point", value: 1, span: 99 \}, span: 7 \}))\nshow(fieldNotConstant(\{ form: "point", value: 3, span: 0 \}))\nshow(fieldNotConstant(\{ form: "blank" \}))\nprocess.stdout.write(said.join("\\n"))\n>
+
+form arm-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(arm-answers, bind(held, make hash))
+
+task built
+  like compile-outcome
+
+  back compile-text(fixture, make(compile-choice, bind(file, <arm-capture.tree>), bind(stdlib, <node>), bind(library, true), bind(lean, true)))
+
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-arm-capture->)
+  save answer, typescript-answer(built(), main, folder, <arm-capture>)
+  save kept/held/{key}, answer
+  back answer
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <a copy read inside an arm is the copied value, not the arm field of its name>
+  want hold, is-equal(answer(0), <7>)
+
+test <a constant name an arm rebinds reads the arm field>
+  want hold, is-equal(answer(1), <3>)
+
+test <and outside such an arm the constant still propagates>
+  want hold, is-equal(answer(2), <5>)

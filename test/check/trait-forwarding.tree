@@ -1,0 +1,39 @@
+note <a bounded generic that forwards its dictionary to another bounded generic compiles and runs on a concrete type>
+
+# Ported from trait-forwarding.ts by statement (item term-self-host-001-0609), one test per `expect` in its order.
+# Regression for the kernel metavariable-scoping limitation noted in note/project/term/compiler/trait-dictionary-passing.md.
+# The program loads nothing, so it compiles with a resolver that finds nothing, as the original's `{}` did, and runs on
+# node through test/support/running. box: describe is 7, twice 14. circle: describe is 18, twice 36. run is 50.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <mask sizer\n  task measure\n    take self\n    like number\n\nform box\n  link n, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        read self/n\n\nform circle\n  link r, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        call add\n          read self/r\n          read self/r\n\ntask describe\n  head t, need sizer\n  take x, like t\n  like number\n  send back\n    call measure\n      read x\n\ntask twice\n  head t, need sizer\n  take x, like t\n  like number\n  send back\n    call add\n      call describe\n        read x\n      call describe\n        read x\n\ntask run\n  like number\n  save a\n    call twice\n      make box\n        bind n\n          code 7\n  save b\n    call twice\n      make circle\n        bind r\n          code 9\n  send back\n    call add\n      read a\n      read b\n>
+
+# the program loads nothing, so no load is answered
+host closed-choice, make(compile-choice, bind(file, <f.tree>), bind(closed, true))
+
+# what the program's run task answered on node, else why it did not run
+task answer
+  like text
+  mark async
+
+  host folder, temp-folder(<trait-fwd->)
+  host ran, run-text(program, <typescript>, folder, <f>, closed-choice)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <forwarding generic compiles>
+  want hold, compile-text(program, closed-choice)/ok
+
+test <concrete calls through a forwarding bounded generic run>
+  want hold, is-equal(answer(), <50>)

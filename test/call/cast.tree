@@ -1,0 +1,265 @@
+note <term cast refuses a boot that returns no fetch handler, and a good cast's Worker answers a request with the page>
+
+# Ported from cast.ts by statement (item term-self-host-001-0602), one test per `ok` in its order. Guides:
+# commands/cast, 2026-10-04: the Worker's default export is what `boot` returns, so a cast of an entry whose `boot`
+# returns nothing wrote a Worker with no `fetch`, with the same items and verdict as a good one, and the first request
+# was where it showed. Each cast is the `term` under test (@term/test/self) over the page application of commands/cast
+# in a temporary folder, with the last line of `boot` as given. The good cast's work/app.mjs is imported in this process
+# and its Worker handed a request object, never a network. Each cast is made once, by the first test that reads it.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find has-variable
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-match
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+# host value: a module imported from its absolute path
+bind imported
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <import(new URL(`file://$\{$path\}`).href)>
+
+# host value: what the module's boot answers for an empty url and port 0
+bind booted
+  take module, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <$module.boot("", 0)>
+
+# host value: whether the Worker exports a fetch task
+bind has-fetch
+  take worker, like dynamic
+  like boolean
+  case node
+    text <(typeof $worker?.fetch === "function")>
+
+# host value: the Worker's response to a request for its root page
+bind fetched
+  take worker, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <$worker.fetch(new Request("http://worker.test/"))>
+
+# host value: a response's body
+bind body-of
+  take response, like dynamic
+  like text
+  mark async
+  case node
+    text <$response.text()>
+
+# host value: a response's content type, <> when it has none
+bind content-type
+  take response, like dynamic
+  like text
+  case node
+    text <($response.headers.get("content-type") ?? "")>
+
+# host value: the content-hashed client bundle a page links, <> when it links none
+bind script-of
+  take html, like text
+  like text
+  case node
+    text <(/src="\\/base\\/(boot-[a-z]\{4\}-[a-z]\{4\}\\.js)"/.exec($html)?.[1] ?? "")>
+
+form cast-ran
+  link done, like boolean
+  link root, like text
+  link code, like number
+  link said, like text
+
+form worker-read
+  link app, like boolean
+  link fetch, like boolean
+  link status, like number
+  link type, like text
+  link html, like text
+  link bundled, like text
+
+form cast-state
+  mark shared
+  link nothing, like cast-ran
+  link number, like cast-ran
+  link handler, like cast-ran
+  link read, like boolean
+  link worker, like worker-read
+
+task no-cast
+  like cast-ran
+
+  back make(cast-ran, bind(done, false), bind(root, <>), bind(code, -1), bind(said, <>))
+
+host cast-now, make(cast-state, bind(nothing, no-cast()), bind(number, no-cast()), bind(handler, no-cast()), bind(read, false), bind(worker, make(worker-read, bind(app, false), bind(fetch, false), bind(status, 0), bind(type, <>), bind(html, <>), bind(bundled, <>))))
+
+# the page application on commands/cast, with the last line of `boot` as given
+task project
+  take last, like text
+  like text
+
+  save root, temp-folder(<term-cast->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, <deck shop\n  mark \<0.0.1\>\n  boot ./code/boot\n>)
+  write-file(<{root}/code/boot.tree>, <load @term/site/dom/dom\n  find view\n\nload @term/site/view/native/\{platform\}/host\n  find host\n\nload @term/site/http/http\n  find request\n  find response\n\nload @term/site/view/route-answer\n  find answer-nothing\n\nload @term/base/maybe\n  find maybe\n\nview home\n  take host, like view\n  view h1, \<Home\>\n\n# a route takes the request and answers nothing when it drew the page (term-site-framework-0006)\ntask route\n  take host, like view\n  take request, like request\n  like maybe, like response\n\n  home host\n  send back\n    call answer-nothing\n\ntask boot\n  take url, like text\n  take port, like u16\n\n  {last}\n>)
+  back root
+
+task cast-of
+  take last, like text
+  like cast-ran
+  mark async
+
+  save root, project(last)
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save ran, run-self(make(list, <cast>), root, 240000, environment)
+  back make(cast-ran, bind(done, true), bind(root, root), bind(code, ran/code), bind(said, <{ran/output}{ran/error}>))
+
+# a boot that returns nothing
+task cast-nothing
+  like cast-ran
+  mark async
+
+  fork test, not(cast-now/nothing/done)
+    hold
+      save cast-now/nothing, cast-of(<host(route, port)>)
+  back cast-now/nothing
+
+# a boot that returns a value that is not a handler
+task cast-number
+  like cast-ran
+  mark async
+
+  fork test, not(cast-now/number/done)
+    hold
+      save cast-now/number, cast-of(<back port>)
+  back cast-now/number
+
+# a boot that hands the handler back
+task cast-handler
+  like cast-ran
+  mark async
+
+  fork test, not(cast-now/handler/done)
+    hold
+      save cast-now/handler, cast-of(<back host(route, port)>)
+  back cast-now/handler
+
+# the good cast's Worker, imported and handed one request
+task the-worker
+  like worker-read
+  mark async
+
+  fork test, cast-now/read
+    hold
+      back cast-now/worker
+  save cast-now/read, true
+  save cast, cast-handler()
+  save app, <{cast/root}/work/app.mjs>
+  fork test, not(file-exists(app))
+    hold
+      back cast-now/worker
+  save cast-now/worker/app, true
+  save module, imported(app)
+  save worker, booted(module)
+  save cast-now/worker/fetch, has-fetch(worker)
+  fork test, cast-now/worker/fetch
+    hold
+      save response, fetched(worker)
+      save cast-now/worker/status, response/status
+      save cast-now/worker/type, content-type(response)
+      save cast-now/worker/html, body-of(response)
+  save cast-now/worker/bundled, read-file(app)
+  back cast-now/worker
+
+test <a `boot` that returns nothing is refused, exit 1>
+  save cast, cast-nothing()
+  want hold, is-equal(cast/code, 1)
+  want hold, matches(make(pattern, <<`boot` returns no fetch handler, so the Worker would have none>>), cast/said)
+
+test <the refusal says how to return the handler>
+  want hold, matches(make(pattern, <<back host\(route, port\)>>), cast-nothing()/said)
+
+test <and nothing is written>
+  save cast, cast-nothing()
+  want hold, not(file-exists(<{cast/root}/work/index.ts>))
+
+test <a `boot` that returns a number is refused the same way, exit 1>
+  save cast, cast-number()
+  want hold, and(is-equal(cast/code, 1), matches(make(pattern, <<`boot` returns no fetch handler>>), cast/said))
+
+test <`back host(route, port)` casts, exit 0>
+  save cast, cast-handler()
+  want hold, and(is-equal(cast/code, 0), matches(make(pattern, <Cast to a Cloudflare Worker>), cast/said))
+
+test <its Worker exports `fetch`>
+  save worker, the-worker()
+  want hold, and(worker/app, worker/fetch)
+
+test <and answers a request with the page>
+  save worker, the-worker()
+  fork test, not(worker/fetch)
+    hold
+      skip <its Worker exports no fetch>
+  want hold, and(is-equal(worker/status, 200), matches(make(pattern, <<text/html>>), worker/type))
+
+# `home host` alone in `route` was dropped by the mill (`home` is a word of the binding dialect), so the body was an
+# empty `<div></div>` (guides: commands/cast, applications/web, 2026-10-04)
+test <whose body holds the component `route` placed>
+  save worker, the-worker()
+  fork test, not(worker/fetch)
+    hold
+      skip <its Worker exports no fetch>
+  want hold, matches(make(pattern, <<<h1>Home</h1>>>), worker/html)
+
+# the Worker is a production build whatever its `process.env` says: no reload poller, no empty `?v=`
+test <and carries no development reload script or empty `?v=`, with NODE_ENV unset>
+  save worker, the-worker()
+  fork test, not(worker/fetch)
+    hold
+      skip <its Worker exports no fetch>
+  want hold, not(has-variable(<NODE_ENV>))
+  want hold, not(text-contains(worker/html, </base/__id>))
+  want hold, not(matches(make(pattern, <<\?v=">>), worker/html))
+
+# the client bundle is named by its content, from the manifest baked into the bundle, and that file is there. This
+# project has no stylesheet, so `look.css` has nothing to hash
+test <its client bundle link names a content-hashed file under build/>
+  save worker, the-worker()
+  fork test, not(worker/fetch)
+    hold
+      skip <its Worker exports no fetch>
+  save script, script-of(worker/html)
+  save cast, cast-handler()
+  want hold, and(is-unequal(script, <>), file-exists(<{cast/root}/build/{script}>))
+
+test <and work/app.mjs is minified>
+  save worker, the-worker()
+  fork test, not(worker/app)
+    hold
+      skip <no work/app.mjs>
+  want hold, is-below(text-split(worker/bundled, <\n>)/length, 40)
+  want hold, not(text-contains(worker/bundled, <// >))

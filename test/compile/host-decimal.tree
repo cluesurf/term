@@ -1,0 +1,95 @@
+note <a module-level host of a decimal literal is a float, and Swift declares no integer for it>
+
+# Ported from host-decimal.ts by statement (item term-self-host-001-0655). A module-level `host` of a decimal literal is
+# a DECIMAL. The bridge named its type `number`, from when that was the float's name, and `number` is the integer now:
+# `host limit, 5.0` was declared an integer, and Swift, which spells a binding's declared type, refused
+# `let limit: Int = 5.0`. TypeScript writes `number` for both and never showed it. Found by time/compare through swiftc
+# (self-hosting, 2026-10-04). The `let` types are read through node-json, the subject this suite docks (decision 106),
+# which writes a `need false` field at its default as absent. swiftc's step is skipped without swiftc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/node-json>, name node-json
+
+host program, <host limit, 5.0\nhost count, 5\n\ntask over\n  take x, like float\n  like boolean\n  back is-above(x, limit)\n\ntask many\n  take n, like number\n  like boolean\n  back is-above(n, count)\n>
+
+host typescript-number, make pattern, <<const limit: number\b>>
+host swift-integer, make pattern, <<limit: Int\b>>
+
+task built
+  take env, like text
+  like compile-outcome
+
+  save choice, make(compile-choice, bind(file, </gate/code/host.tree>), bind(lean, true), bind(entries, make list(<over>, <many>)))
+  fork test, is-equal(env, <swift>)
+    hold
+      save choice/env, <swift>
+  back compile-text(program, choice)
+
+# the node-json of a module `let`'s declared type, <none> without one, <absent> when the program holds no such let
+task let-type
+  take out, like compile-outcome
+  take name, like text
+  like text
+
+  save skip, make list
+  save found, <absent>
+  walk out/program
+    take one, like dynamic
+    fork test, is-equal(one/form, <let>)
+      hold
+        fork test, is-equal(one/name, name)
+          hold
+            save found, <none>
+            fork test, is-unequal(one/type, void)
+              hold
+                save found, node-json/typeJson(skip, one/type)
+  back found
+
+test <a decimal host is a float>
+  host out, built(<swift>)
+  want hold, out/ok
+  want hold, is-equal(let-type(out, <limit>), <\{"kind":"named","name":"float"\}>)
+
+test <an integer host is an integer>
+  want hold, is-equal(let-type(built(<swift>), <count>), <\{"kind":"named","name":"integer"\}>)
+
+test <TypeScript declares it a number, never an undefined `Decimal`>
+  host out, built(<node>)
+  want hold, out/ok
+  want hold, matches(typescript-number, out/emitted)
+
+test <Swift declares no integer for the decimal>
+  host out, built(<swift>)
+  want hold, out/ok
+  want hold, not(matches(swift-integer, emit-text(out, <swift>)))
+
+test <swiftc typechecks it>
+  fork test, is-equal(find-tool(<swiftc>), <>)
+    hold
+      skip <swiftc not installed>
+  host folder, temp-folder(<term-host-decimal->)
+  host file, <{folder}/main.swift>
+  write-file(file, emit-text(built(<swift>), <swift>))
+  want hold, is-equal(run-tool(make(list, <swiftc>, <-parse-as-library>, <-typecheck>, file)), <>)

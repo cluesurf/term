@@ -1,0 +1,695 @@
+note <the agent-facing verbs: scan fixes and --fix, typed holes, show kink, show name, roll --diff and self skill, each read as JSON>
+
+# Ported from agent.ts by statement (item term-self-host-001-0602), one test per `expect` in its order. Each verb is the
+# `term` under test (@term/test/self) in a temporary folder, its standard output read as the JSON an agent reads (an
+# answer that is no JSON reads as `unparsed`, as in the original). applyFixes (deck/make/code/fix.ts), diagnosticNames
+# and lintCatalog are called in this process (the subject, decision 106). Each of the original's six sections is a
+# sequence, so each runs once, by its first test, into a shared form, and each test reads its part.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find split, name text-split
+  find substring
+  find trim
+
+dock load
+  load <@term/make/code/fix>, name agent-fix
+  load <@term/make/code/parser/diagnostic>, name agent-diagnostic
+  load <@term/make/code/lint/lint>, name agent-lint
+  load <node:path>, name agent-path
+
+# host value: a JSON text read
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# host value: the original's `{ unparsed: text }` for an answer that is no JSON
+bind unparsed-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ unparsed: $text \})>
+
+form agent-answer
+  link data, like dynamic
+  link status, like number
+  link stdout, like text
+
+# the `term` under test in `dir`: its standard output and exit status, standard error left out as the original did
+task term-in
+  take arguments, like list, like text
+  take dir, like text
+  like agent-answer
+  mark async
+
+  save ran, run-self(arguments, dir, 600000)
+  back make(agent-answer, bind(data, 0), bind(status, ran/code), bind(stdout, ran/output))
+
+# the same, its standard output read as JSON
+task json-in
+  take arguments, like list, like text
+  take dir, like text
+  like agent-answer
+  mark async
+
+  save ran, term-in(arguments, dir)
+  save text, trim(ran/stdout)
+  save data, unparsed-of(text)
+  fork
+    mark unsafe
+    save data, parsed-json(text)
+  halt take
+    take problem
+    save ignored, 0
+  back make(agent-answer, bind(data, data), bind(status, ran/status), bind(stdout, ran/stdout))
+
+task put
+  take dir, like text
+  take file, like text
+  take text, like text
+  like void
+
+  save full, agent-path/join(dir, file)
+  make-folder(agent-path/dirname(full))
+  write-file(full, text)
+
+# one edit applied to a text by its span, as an agent applies a fix it picked
+task apply-edit
+  take text, like text
+  take edit, like dynamic
+  like text
+
+  save lines, text-split(text, <\n>)
+  save at, edit/span/start/line
+  save out, make list
+  save n, 0
+  walk lines
+    take line, like text
+    fork test, is-equal(n, at)
+      hold
+        out/push(<{substring(line, 0, edit/span/start/column)}{edit/text}{substring(line, edit/span/end/column)}>)
+      miss
+        out/push(line)
+    save n, add(n, 1)
+  back out/join(<\n>)
+
+form agent-state
+  mark shared
+  link dir, like text
+
+host agent-now, make(agent-state, bind(dir, <>))
+
+task work-dir
+  like text
+
+  fork test, is-equal(agent-now/dir, <>)
+    hold
+      save agent-now/dir, temp-folder(<term-agent->)
+  back agent-now/dir
+
+# ---- scan: fixes ----
+
+host typo-text, <task greet\n  take who, like text\n  like text\n\n  send back, read whom\n>
+
+form scan-state
+  mark shared
+  link made, like boolean
+  link near, like dynamic
+  link typo-file, like text
+  link sure-count, like number
+  link fixed, like dynamic
+  link after, like text
+  link guess, like text
+  link imports, like list, like text
+
+host scan-now, make(scan-state, bind(made, false), bind(near, 0), bind(typo-file, <>), bind(sure-count, -1), bind(fixed, 0), bind(after, <>), bind(guess, <>), bind(imports, make list))
+
+task the-scans
+  like scan-state
+  mark async
+
+  fork test, scan-now/made
+    hold
+      back scan-now
+  save scan-now/made, true
+  save dir, work-dir()
+  # a near spelling: a guess, on the name alone
+  put(dir, <typo.tree>, typo-text)
+  save typo, json-in(make(list, <scan>, <typo.tree>, <--back>, <json>), dir)
+  save scan-now/near, typo/data/diagnostics/0
+  save scan-now/typo-file, read-file(agent-path/join(dir, <typo.tree>))
+  # an old spelling: sure, and written by --fix
+  put(dir, <old.tree>, <task greet\n  take who, like text\n  like text\n  note private\n\n  send back, read who\n\ntask shout\n  take who, like text\n  like text\n  note deprecated\n\n  send back, read who\n>)
+  save old, json-in(make(list, <scan>, <old.tree>, <--back>, <json>), dir)
+  save sure, 0
+  walk old/data/diagnostics
+    take one, like dynamic
+    walk one/fixes
+      take fix, like dynamic
+      fork test, is-equal(fix/sure, true)
+        hold
+          save sure, add(sure, 1)
+  save scan-now/sure-count, sure
+  save fixed, json-in(make(list, <scan>, <old.tree>, <--fix>, <--back>, <json>), dir)
+  save scan-now/fixed, fixed/data
+  save scan-now/after, read-file(agent-path/join(dir, <old.tree>))
+  # a guess is never written
+  put(dir, <guess.tree>, typo-text)
+  term-in(make(list, <scan>, <guess.tree>, <--fix>, <--back>, <json>), dir)
+  save scan-now/guess, read-file(agent-path/join(dir, <guess.tree>))
+  # an import: one fix per module that exports the name
+  put(dir, <import.tree>, <task line-of\n  take words, like list, like text\n  like text\n\n  send back\n    call join\n      read words\n      text \< \>\n>)
+  save imported, json-in(make(list, <scan>, <import.tree>, <--back>, <json>), dir)
+  save titles, make list
+  walk imported/data/diagnostics/0/fixes
+    take fix, like dynamic
+    titles/push(<{fix/title}>)
+  save scan-now/imports, titles
+  back scan-now
+
+test <scan: an unknown name carries its near spelling as a fix>
+  save near, the-scans()/near
+  want hold, and(is-equal(<{near/name}>, <unknown-name>), is-equal(<{near/fixes/0/title}>, <Write "who">))
+
+test <scan: the near spelling is a guess, not sure>
+  want hold, is-equal(the-scans()/near/fixes/0/sure, false)
+
+test <scan: the edit spans the name alone and expects it>
+  save edit, the-scans()/near/fixes/0/edits/0
+  want hold, and(is-equal(<{edit/was}>, <whom>), is-equal(edit/span/start/column, 18))
+
+test <scan: the edit applied reads `read who`>
+  save state, the-scans()
+  want hold, text-contains(apply-edit(state/typo-file, state/near/fixes/0/edits/0), <send back, read who\n>)
+
+test <scan: `note private` and `note deprecated` each carry a sure fix>
+  want hold, is-equal(the-scans()/sure-count, 2)
+
+test <scan --fix: both sure fixes applied, and the file scanned again>
+  save fixed, the-scans()/fixed
+  want hold, and(is-equal(fixed/applied/length, 2), is-equal(fixed/ok, true))
+
+test <scan --fix: the file now says `mark`>
+  save after, the-scans()/after
+  want hold, and(text-contains(after, <  mark private\n>), text-contains(after, <  mark deprecated\n>))
+  want hold, not(text-contains(after, <note >))
+
+test <scan --fix: no sure fix is left>
+  save left, 0
+  walk the-scans()/fixed/diagnostics
+    take one, like dynamic
+    walk one/fixes
+      take fix, like dynamic
+      fork test, is-equal(fix/sure, true)
+        hold
+          save left, add(left, 1)
+  want hold, is-equal(left, 0)
+
+test <scan --fix: a guess is offered, never written>
+  want hold, text-contains(the-scans()/guess, <read whom>)
+
+test <scan: an unknown name a module exports is offered as an import>
+  save found, false
+  walk the-scans()/imports
+    take title, like text
+    fork test, starts-with(title, <Import join from @term/base/>)
+      hold
+        save found, true
+  want hold, found
+
+test <scan: an import from a platform module is not offered>
+  save found, false
+  walk the-scans()/imports
+    take title, like text
+    fork test, text-contains(title, </native/>)
+      hold
+        save found, true
+  want hold, not(found)
+
+# applying refuses an edit whose text moved, and an edit over another
+form fix-place
+  link line, like number
+  link column, like number
+
+form fix-span
+  link start, like fix-place
+  link end, like fix-place
+
+form fix-edit
+  link span, like fix-span
+  link text, like text
+  link was, like text
+
+form fix-offer
+  link title, like text
+  link sure, like boolean
+  link edits, like list, like fix-edit
+
+task first-word
+  like fix-span
+
+  back make(fix-span, bind(start, make(fix-place, bind(line, 0), bind(column, 0))), bind(end, make(fix-place, bind(line, 0), bind(column, 4))))
+
+task offer
+  take title, like text
+  take text, like text
+  take was, like text
+  like fix-offer
+
+  back make(fix-offer, bind(title, title), bind(sure, true), bind(edits, make(list, make(fix-edit, bind(span, first-word()), bind(text, text), bind(was, was)))))
+
+test <applyFixes: an edit whose span no longer holds `was` is refused>
+  save stale, agent-fix/apply-fixes(<task x\n>, make(list, offer(<a>, <form>, <form>)))
+  want hold, and(is-equal(stale/applied/length, 0), and(is-equal(stale/refused/length, 1), is-equal(<{stale/text}>, <task x\n>)))
+
+test <applyFixes: an edit over one already taken is refused whole>
+  save clash, agent-fix/apply-fixes(<task x\n>, make(list, offer(<a>, <form>, <task>), offer(<b>, <mask>, <task>)))
+  want hold, and(is-equal(clash/applied/length, 1), and(is-equal(clash/refused/length, 1), is-equal(<{clash/text}>, <form x\n>)))
+
+# ---- typed holes ----
+
+form hole-state
+  mark shared
+  link made, like boolean
+  link status, like number
+  link found, like dynamic
+  link titles, like list, like text
+  link fixed-ok, like dynamic
+  link free, like dynamic
+  link named-ok, like dynamic
+
+host hole-now, make(hole-state, bind(made, false), bind(status, -1), bind(found, 0), bind(titles, make list), bind(fixed-ok, false), bind(free, 0), bind(named-ok, false))
+
+task the-holes
+  like hole-state
+  mark async
+
+  fork test, hole-now/made
+    hold
+      back hole-now
+  save hole-now/made, true
+  save dir, work-dir()
+  put(dir, <hole.tree>, <task total\n  take count, like number\n  take label, like text\n  like number\n\n  save base, code 10\n  send back\n    call add\n      read count\n      read hole\n>)
+  save hole, json-in(make(list, <scan>, <hole.tree>, <--back>, <json>), dir)
+  save hole-now/status, hole/status
+  save found, hole/data/diagnostics/0
+  save hole-now/found, found
+  save titles, make list
+  walk found/fixes
+    take fix, like dynamic
+    titles/push(<{fix/title}>)
+  save hole-now/titles, titles
+  put(dir, <hole.tree>, apply-edit(read-file(agent-path/join(dir, <hole.tree>)), found/fixes/0/edits/0))
+  save hole-now/fixed-ok, json-in(make(list, <scan>, <hole.tree>, <--back>, <json>), dir)/data/ok
+  put(dir, <free.tree>, <task idle\n  save x, hole\n>)
+  save hole-now/free, json-in(make(list, <scan>, <free.tree>, <--back>, <json>), dir)/data
+  # a program that names something `hole` reads as it did
+  put(dir, <named.tree>, <task keep\n  take hole, like number\n  like number\n\n  send back, read hole\n>)
+  save hole-now/named-ok, json-in(make(list, <scan>, <named.tree>, <--back>, <json>), dir)/data/ok
+  back hole-now
+
+task has-title
+  take titles, like list, like text
+  take wanted, like text
+  like boolean
+
+  walk titles
+    take title, like text
+    fork test, is-equal(title, wanted)
+      hold
+        back true
+  back false
+
+test <hole: reported as typed-hole, an error>
+  save state, the-holes()
+  want hold, and(is-equal(state/status, 1), and(is-equal(<{state/found/name}>, <typed-hole>), is-equal(<{state/found/severity}>, <error>)))
+
+test <hole: the message names the type the place needs>
+  want hold, is-equal(<{the-holes()/found/message}>, <this hole needs a value of type number>)
+
+test <hole: every value in scope of that type is a fix, and nothing else>
+  save titles, the-holes()/titles
+  want hold, is-equal(titles/length, 2)
+  want hold, and(has-title(titles, <Write "base" (number)>), has-title(titles, <Write "count" (number)>))
+
+test <hole: the hint names the values and the tasks that return the type>
+  save hint, <{the-holes()/found/hint}>
+  want hold, and(matches(make(pattern, <base, count>), hint), matches(make(pattern, <Tasks that return it: total>), hint))
+
+test <hole: each fix replaces the word `hole`>
+  save all, true
+  walk the-holes()/found/fixes
+    take fix, like dynamic
+    fork test, is-unequal(<{fix/edits/0/was}>, <hole>)
+      hold
+        save all, false
+  want hold, all
+
+test <hole: a fix applied leaves a file that checks>
+  want hold, is-equal(the-holes()/fixed-ok, true)
+
+test <hole: one nothing decides says it can be any type>
+  want hold, is-equal(<{the-holes()/free/diagnostics/0/message}>, <this hole can be a value of any type>)
+
+test <hole: a parameter named `hole` is a parameter, not a hole>
+  want hold, is-equal(the-holes()/named-ok, true)
+
+# ---- show kink ----
+
+form kink-state
+  mark shared
+  link made, like boolean
+  link by-name, like dynamic
+  link printed, like dynamic
+  link number, like dynamic
+  link hex, like dynamic
+  link lint, like dynamic
+  link hole, like dynamic
+  link sure, like dynamic
+  link missing, like agent-answer
+  link all, like dynamic
+
+host kink-now, make(kink-state, bind(made, false), bind(by-name, 0), bind(printed, 0), bind(number, 0), bind(hex, 0), bind(lint, 0), bind(hole, 0), bind(sure, 0), bind(missing, make(agent-answer, bind(data, 0), bind(status, -1), bind(stdout, <>))), bind(all, 0))
+
+task kink-of
+  take word, like text
+  like dynamic
+  mark async
+
+  back json-in(make(list, <show>, <kink>, word, <--back>, <json>), work-dir())/data
+
+task the-kinks
+  like kink-state
+  mark async
+
+  fork test, kink-now/made
+    hold
+      back kink-now
+  save kink-now/made, true
+  save kink-now/by-name, kink-of(<type-mismatch>)
+  save kink-now/printed, kink-of(<0007>)
+  save kink-now/number, kink-of(<7>)
+  save kink-now/hex, kink-of(<0x7>)
+  save kink-now/lint, kink-of(<L019>)
+  save kink-now/hole, kink-of(<typed-hole>)
+  save kink-now/sure, kink-of(<note-private>)
+  save kink-now/missing, json-in(make(list, <show>, <kink>, <unknown-nam>, <--back>, <json>), work-dir())
+  save kink-now/all, json-in(make(list, <show>, <kink>, <--back>, <json>), work-dir())/data
+  back kink-now
+
+test <kink: by name>
+  save one, the-kinks()/by-name
+  want hold, and(is-equal(<{one/name}>, <type-mismatch>), and(is-equal(one/code, 7), is-equal(<{one/label}>, <0007>)))
+
+test <kink: by the code as printed, as JSON gives it, and in hexadecimal>
+  save state, the-kinks()
+  want hold, is-equal(<{state/printed/name}>, <type-mismatch>)
+  want hold, is-equal(<{state/number/name}>, <type-mismatch>)
+  want hold, is-equal(<{state/hex/name}>, <type-mismatch>)
+
+test <kink: a lint code>
+  save one, the-kinks()/lint
+  want hold, and(is-equal(<{one/kind}>, <lint>), is-equal(<{one/name}>, <max-line-length>))
+
+test <kink: says whether its fixes are sure or guesses>
+  save state, the-kinks()
+  want hold, and(is-equal(<{state/hole/fixes}>, <guess>), is-equal(<{state/sure/fixes}>, <sure>))
+
+test <kink: a miss fails and names the nearest>
+  save missing, the-kinks()/missing
+  want hold, and(is-equal(missing/status, 1), is-equal(<{missing/data/nearest}>, <unknown-name>))
+
+# whether the catalog holds a kink of this kind under this field's value
+task catalog-holds
+  take all, like dynamic
+  take kind, like text
+  take field, like text
+  take value, like text
+  like boolean
+
+  walk all
+    take one, like dynamic
+    fork test, and(is-equal(<{one/kind}>, kind), is-equal(<{one/{field}}>, value))
+      hold
+        back true
+  back false
+
+test <kink: the catalog holds every compiler diagnostic>
+  save all, the-kinks()/all
+  save every, true
+  walk agent-diagnostic/diagnostic-names()
+    take name, like text
+    fork test, not(catalog-holds(all, <compiler>, <name>, name))
+      hold
+        save every, false
+  want hold, every
+
+test <kink: the catalog holds every lint finding the driver reports>
+  save all, the-kinks()/all
+  save every, true
+  walk agent-lint/lint-catalog()
+    take rule, like dynamic
+    fork test, not(catalog-holds(all, <lint>, <code>, <{rule/code}>))
+      hold
+        save every, false
+  want hold, every
+
+# ---- show name ----
+
+form name-state
+  mark shared
+  link made, like boolean
+  link slice, like dynamic
+  link form, like dynamic
+  link small, like dynamic
+  link tiny, like dynamic
+  link nowhere, like number
+
+host name-now, make(name-state, bind(made, false), bind(slice, 0), bind(form, 0), bind(small, 0), bind(tiny, 0), bind(nowhere, -1))
+
+task the-names
+  like name-state
+  mark async
+
+  fork test, name-now/made
+    hold
+      back name-now
+  save name-now/made, true
+  save project, agent-path/join(work-dir(), <names>)
+  put(project, <deck.tree>, <deck @probe/names\nhead \<A probe for term show name\>\nmark \<0.0.0\>\n>)
+  put(project, <code/post.tree>, <load @term/base/text\n  find to-upper-case\n\n# one blog post\nform post\n  link title, like text\n  link body, like text\n\n# a title as written\ntask tidy\n  take title, like text\n  like text\n\n  send back, read title\n\n# the post with its title shouted\ntask shout-post\n  take given, like post\n  like post\n\n  send back\n    make post\n      bind title, call to-upper-case(call tidy(read given/title))\n      bind body, call nowhere-task(read given/body)\n>)
+  put(project, <code/page.tree>, <load ./post\n  find post\n  find shout-post\n\ntask front-page\n  take title, like text\n  like post\n\n  save draft\n    make post\n      bind title, read title\n      bind body, text \<\>\n  send back, call shout-post(read draft)\n>)
+  save name-now/slice, json-in(make(list, <show>, <name>, <shout-post>, <--back>, <json>), project)/data
+  save name-now/form, json-in(make(list, <show>, <name>, <post>, <--back>, <json>), project)/data
+  save name-now/small, json-in(make(list, <show>, <name>, <shout-post>, <--budget>, <40>, <--back>, <json>), project)/data
+  save name-now/tiny, json-in(make(list, <show>, <name>, <shout-post>, <--budget>, <1>, <--back>, <json>), project)/data
+  save name-now/nowhere, json-in(make(list, <show>, <name>, <no-such-name>, <--back>, <json>), project)/status
+  back name-now
+
+test <name: the definition, whole, with its doc comment>
+  save one, the-names()/slice/definitions/0
+  want hold, and(is-equal(<{one/place}>, <code/post.tree>), is-equal(one/line, 17))
+  want hold, and(is-equal(<{one/doc}>, <the post with its title shouted>), is-equal(<{one/shown}>, <whole>))
+
+test <name: the form its signature names>
+  save forms, the-names()/slice/forms
+  want hold, and(is-equal(forms/length, 1), is-equal(<{forms/0/name}>, <post>))
+
+test <name: every use in the project>
+  save uses, the-names()/slice/uses
+  want hold, is-equal(uses/length, 1)
+  want hold, and(is-equal(<{uses/0/in}>, <front-page>), is-equal(<{uses/0/place}>, <code/page.tree>))
+
+test <name: the heads of what it calls, through a load and in its own file>
+  save upper, false
+  save tidy, false
+  walk the-names()/slice/calls
+    take call, like dynamic
+    fork test, and(is-equal(<{call/name}>, <to-upper-case>), starts-with(<{call/place}>, <@term/base/>))
+      hold
+        save upper, true
+    fork test, is-equal(<{call/name}>, <tidy>)
+      hold
+        save tidy, true
+  want hold, and(upper, tidy)
+
+test <name: a call nothing defines is named, not dropped>
+  save unresolved, the-names()/slice/unresolved
+  want hold, and(is-equal(unresolved/length, 1), is-equal(<{unresolved/0}>, <nowhere-task>))
+
+test <name: a form is used where it is made and where a signature names it>
+  want hold, is-equal(the-names()/form/uses/length, 4)
+
+test <name: a small budget shows the head and counts what it left out>
+  save small, the-names()/small
+  want hold, and(is-equal(<{small/definitions/0/shown}>, <head>), is-equal(small/omitted/bodies, 1))
+  want hold, not(is-above(small/used, 40))
+
+test <name: a budget too small for the head still names the definition>
+  save one, the-names()/tiny/definitions/0
+  want hold, and(is-equal(<{one/shown}>, <place>), is-equal(<{one/place}>, <code/post.tree>))
+
+test <name: a name that exists nowhere fails>
+  want hold, is-equal(the-names()/nowhere, 1)
+
+# ---- roll --diff ----
+
+form roll-state
+  mark shared
+  link made, like boolean
+  link quiet, like agent-answer
+  link diff, like dynamic
+  link strict, like number
+  link absent, like number
+
+host roll-now, make(roll-state, bind(made, false), bind(quiet, make(agent-answer, bind(data, 0), bind(status, -1), bind(stdout, <>))), bind(diff, 0), bind(strict, -1), bind(absent, -1))
+
+task the-rolls
+  like roll-state
+  mark async
+
+  fork test, roll-now/made
+    hold
+      back roll-now
+  save roll-now/made, true
+  save project, agent-path/join(work-dir(), <rolls>)
+  put(project, <deck.tree>, <deck @probe/rolls\nhead \<A probe for term roll --diff\>\nmark \<0.0.0\>\n>)
+  put(project, <code/note.tree>, <# a note\ntask save-note\n  take text, like text\n  like text\n\n  send back, read text\n>)
+  save before, term-in(make(list, <roll>, <--json>), project)
+  write-file(agent-path/join(project, <before.json>), before/stdout)
+  save roll-now/quiet, json-in(make(list, <roll>, <--diff>, <before.json>, <--back>, <json>, <--strict>), project)
+  put(project, <code/note.tree>, <load @term/base/file\n  find write\n\n# a note, written to disk\ntask save-note\n  take text, like text\n  like text\n\n  call write\n    text \<note.txt\>\n    read text\n  send back, read text\n\n# a count\ntask count-words\n  take text, like text\n  like number\n\n  send back, text/length\n>)
+  save roll-now/diff, json-in(make(list, <roll>, <--diff>, <before.json>, <--back>, <json>), project)/data
+  save roll-now/strict, term-in(make(list, <roll>, <--diff>, <before.json>, <--strict>), project)/status
+  save roll-now/absent, json-in(make(list, <roll>, <--diff>, <no-such-ref-anywhere>, <--back>, <json>), project)/status
+  back roll-now
+
+task holds-text
+  take items, like dynamic
+  take wanted, like text
+  like boolean
+
+  walk items
+    take one, like dynamic
+    fork test, is-equal(<{one}>, wanted)
+      hold
+        back true
+  back false
+
+test <roll --diff: nothing changed, nothing listed, exit 0>
+  save quiet, the-rolls()/quiet
+  want hold, is-equal(quiet/status, 0)
+  want hold, and(is-equal(quiet/data/tasks/changed/length, 0), is-equal(quiet/data/decks/length, 0))
+
+test <roll --diff: a task that now writes a file gained node:fs/promises>
+  save changed, the-rolls()/diff/tasks/changed/0
+  want hold, and(is-equal(<{changed/name}>, <save-note>), holds-text(changed/reach/added, <node:fs/promises>))
+
+test <roll --diff: and what it now raises, and that it became async>
+  save changed, the-rolls()/diff/tasks/changed/0
+  want hold, and(holds-text(changed/halt/added, <failure>), is-equal(changed/async/after, true))
+
+test <roll --diff: a new task is listed with its reach>
+  save found, false
+  walk the-rolls()/diff/tasks/added
+    take one, like dynamic
+    fork test, and(is-equal(<{one/name}>, <count-words>), is-equal(one/reach/length, 0))
+      hold
+        save found, true
+  want hold, found
+
+test <roll --diff: a deck the project now loads is counted, not listed>
+  save decks, the-rolls()/diff/decks
+  want hold, is-equal(decks/length, 1)
+  want hold, and(is-equal(<{decks/0/host}>, <@term/base>), is-above(decks/0/tasks/added, 0))
+
+test <roll --diff: a gained native module fails --strict>
+  want hold, is-equal(the-rolls()/strict, 1)
+
+test <roll --diff: a ref this repository does not have is refused>
+  want hold, is-equal(the-rolls()/absent, 1)
+
+# ---- self skill ----
+
+form skill-state
+  mark shared
+  link made, like boolean
+  link first, like dynamic
+  link written, like boolean
+  link text, like text
+  link again, like dynamic
+  link kept, like agent-answer
+  link own, like text
+
+host skill-now, make(skill-state, bind(made, false), bind(first, 0), bind(written, false), bind(text, <>), bind(again, 0), bind(kept, make(agent-answer, bind(data, 0), bind(status, -1), bind(stdout, <>))), bind(own, <>))
+
+task the-skills
+  like skill-state
+  mark async
+
+  fork test, skill-now/made
+    hold
+      back skill-now
+  save skill-now/made, true
+  save project, agent-path/join(work-dir(), <skill>)
+  put(project, <deck.tree>, <deck @probe/skill\nmark \<0.0.0\>\n>)
+  make-folder(agent-path/join(project, <code>))
+  save skill-now/first, json-in(make(list, <self>, <skill>, <--back>, <json>), agent-path/join(project, <code>))/data
+  save file, agent-path/join(project, <.claude>, <skills>, <term>, <SKILL.md>)
+  save skill-now/written, file-exists(file)
+  fork test, skill-now/written
+    hold
+      save skill-now/text, read-file(file)
+  save skill-now/again, json-in(make(list, <self>, <skill>, <--back>, <json>), project)/data
+  save other, agent-path/join(work-dir(), <skill-other>)
+  put(other, <deck.tree>, <deck @probe/other\nmark \<0.0.0\>\n>)
+  put(other, <.claude/skills/term/SKILL.md>, <my own skill\n>)
+  save skill-now/kept, json-in(make(list, <self>, <skill>, <--back>, <json>), other)
+  save skill-now/own, read-file(agent-path/join(other, <.claude/skills/term/SKILL.md>))
+  back skill-now
+
+test <skill: written at the project root, from a folder inside it>
+  save state, the-skills()
+  want hold, and(is-equal(<{state/first/state}>, <written>), state/written)
+
+test <skill: names the verbs it teaches>
+  save text, the-skills()/text
+  save all, true
+  walk make(list, <term scan>, <--fix>, <typed-hole>, <term show kink>, <term show name>, <term roll --diff>)
+    take word, like text
+    fork test, not(text-contains(text, word))
+      hold
+        save all, false
+  want hold, all
+
+test <skill: a second run finds it current>
+  want hold, is-equal(<{the-skills()/again/state}>, <current>)
+
+test <skill: a file it did not write is kept, and the run fails>
+  save state, the-skills()
+  want hold, and(is-equal(state/kept/status, 1), is-equal(<{state/kept/data/state}>, <kept>))
+  want hold, is-equal(state/own, <my own skill\n>)

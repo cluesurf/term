@@ -1,0 +1,217 @@
+note <term hold --report: every law of the notes demo holds in English, a twin names the law that fails, no laws.tree fails>
+
+# Ported from hold-report.ts by statement (item term-self-host-001-0603), one test per `ok` in its order, the original's
+# loop over the seven laws written out. The MVP report (call/code/hold-report.ts, note/project/term/assurance/mvp.md
+# section 3, decision note/project/term/proof/lean-export/decision/001-laws-manifest.md), through the `term` under test
+# (@term/test/self):
+#   - the notes demo (test/assurance/notes, its laws.tree naming 7 laws): every law holds, each row carries its English
+#     from the Term form (a rule through law-english.ts, a mark from the mark, tier 0 from its count), the top line says
+#     7 laws hold, the page is written under the project's home as printed, and it exits 0
+#   - twin/ownership-skip: the report names ownership as the law that does not hold, with the refusal inside it
+#   - twin/no-forged-permit: the report names no-forged-permit, with the `hidden-make` refusal
+#   - a project with no laws.tree (twin/isolation): the top line says no law is named, and it exits 1
+# Each project is reported once, by the first test that reads it, and kept in `report-now`.
+
+load @term/test/self
+  find run-self
+
+load ../support/cli
+  find term-root
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+
+dock load
+  load <@term/call/code/home>, name report-home
+
+form report-run
+  link done, like boolean
+  link code, like number
+  link stdout, like text
+  link third, like text
+
+form report-state
+  mark shared
+  link notes, like report-run
+  link skip, like report-run
+  link forged, like report-run
+  link bare, like report-run
+
+task no-report
+  like report-run
+
+  back make(report-run, bind(done, false), bind(code, -1), bind(stdout, <>), bind(third, <>))
+
+host report-now, make(report-state, bind(notes, no-report()), bind(skip, no-report()), bind(forged, no-report()), bind(bare, no-report()))
+
+# a project of test/assurance, by its path under it
+task assurance
+  take name, like text
+  like text
+
+  back <{term-root()}/test/assurance/{name}>
+
+# `term hold --report --quiet` in a project, NO_COLOR set
+task report-of
+  take dir, like text
+  like report-run
+  mark async
+
+  save environment
+    make hash
+      save <NO_COLOR>, <1>
+  save ran, run-self(make(list, <hold>, <--report>, <--quiet>), dir, 600000, environment)
+  save lines, text-split(ran/output, <\n>)
+  save third, <>
+  fork test, is-above(lines/length, 2)
+    hold
+      save third, lines/2
+  back make(report-run, bind(done, true), bind(code, ran/code), bind(stdout, ran/output), bind(third, third))
+
+task good
+  like report-run
+  mark async
+
+  fork test, not(report-now/notes/done)
+    hold
+      save report-now/notes, report-of(assurance(<notes>))
+  back report-now/notes
+
+task skip-run
+  like report-run
+  mark async
+
+  fork test, not(report-now/skip/done)
+    hold
+      save report-now/skip, report-of(assurance(<twin/ownership-skip>))
+  back report-now/skip
+
+task forged
+  like report-run
+  mark async
+
+  fork test, not(report-now/forged/done)
+    hold
+      save report-now/forged, report-of(assurance(<twin/no-forged-permit>))
+  back report-now/forged
+
+task bare
+  like report-run
+  mark async
+
+  fork test, not(report-now/bare/done)
+    hold
+      save report-now/bare, report-of(assurance(<twin/isolation>))
+  back report-now/bare
+
+# whether the demo's report has a row saying `law` holds, resting on nothing
+task holds-alone
+  take law, like text
+  like boolean
+  mark async
+
+  back matches(make(pattern, <(?m)^{law}\\s+holds\\s+rests on: nothing$>), good()/stdout)
+
+# whether a pattern matches what a run printed
+task printed
+  take run, like report-run
+  take wanted, like text
+  like boolean
+
+  back matches(make(pattern, wanted), run/stdout)
+
+# THE DEMO
+test <the top line says 7 laws hold>
+  want hold, printed(good(), <<(?m)^✓ 7 laws hold, \d+ obligations, \d+ contracts>>)
+
+test <the top line says how many tasks the kernel declined>
+  want hold, matches(make(pattern, <tasks declined by the kernel>), good()/third)
+
+test <ownership holds, resting on nothing>
+  want hold, holds-alone(<ownership>)
+
+test <no-forged-permit holds, resting on nothing>
+  want hold, holds-alone(<no-forged-permit>)
+
+test <every-mutating-route-asks holds, resting on nothing>
+  want hold, holds-alone(<every-mutating-route-asks>)
+
+test <deleted-stays-gone holds, resting on nothing>
+  want hold, holds-alone(<deleted-stays-gone>)
+
+test <isolation holds, resting on nothing>
+  want hold, holds-alone(<isolation>)
+
+test <no-crash holds, resting on nothing>
+  want hold, holds-alone(<no-crash>)
+
+test <safe-text holds, resting on nothing>
+  want hold, holds-alone(<safe-text>)
+
+# the English, from the Term form: a rule's sentence, a mark's, tier 0's
+test <law 1 reads in English from its rules>
+  want hold, printed(good(), <<For every events es, fair-shelf holds of \(the replay of es\)\.>>)
+
+test <law 2 reads from its mark>
+  want hold, printed(good(), <<only code/model\.tree makes a permit>>)
+
+test <law 3 reads from its marks>
+  want hold, printed(good(), <<a permit is used at most once>>)
+  want hold, printed(good(), <<only code/permit\.tree calls bury-at>>)
+
+test <law 6 reads from the tier-0 count>
+  want hold, printed(good(), <<every division is by something other than zero.*: \d+ of \d+ obligations proven>>)
+
+test <law 7 reads in English from its rule>
+  want hold, printed(good(), <<For every page pg, safe-html holds of>>)
+
+test <the assumed list names the outside calls>
+  want hold, printed(good(), <<(?m)^assumed \(outside calls, each an axiom\):\n {2}code/site\.tree >>)
+
+test <the counts line is there>
+  want hold, printed(good(), <<(?m)^not proven: 0 tasks\. declined by the kernel: \d+ tasks$>>)
+
+test <the page is written under the home as printed>
+  save run, good()
+  want hold, is-equal(read-file(report-home/project-home(assurance(<notes>), <report>, <hold.txt>)), run/stdout)
+
+test <the demo holds and exits 0>
+  want hold, is-equal(good()/code, 0)
+
+# A LEMMA IS NOT A LAW: ownership-carry is a claim of law.tree and no row
+test <a claim the manifest does not name is not a row>
+  want hold, not(printed(good(), <<(?m)^ownership-carry\s>>))
+
+# THE TWINS: the failing law named, with the refusal that fails it
+test <ownership-skip: the top line names ownership>
+  want hold, printed(skip-run(), <<(?m)^✗ 0 of 1 laws hold, 1 does not \(ownership\)>>)
+
+test <ownership-skip: the row says why, inside the law>
+  want hold, printed(skip-run(), <<(?m)^ownership\s+does not hold>>)
+  want hold, printed(skip-run(), <<why: .*code/law\.tree:\d+>>)
+
+test <ownership-skip: it exits 1>
+  want hold, is-equal(skip-run()/code, 1)
+
+test <no-forged-permit: the top line names it>
+  want hold, printed(forged(), <<(?m)^✗ 0 of 1 laws hold, 1 does not \(no-forged-permit\)>>)
+
+test <no-forged-permit: the row quotes the hidden-make refusal>
+  want hold, printed(forged(), <<why: "permit" is `mark hide`>>)
+
+test <no-forged-permit: it exits 1>
+  want hold, is-equal(forged()/code, 1)
+
+# NO MANIFEST: a report that names no law proves nothing, and fails
+test <no laws.tree: the top line says so>
+  want hold, matches(make(pattern, <<there is no laws\.tree at the project root>>), bare()/third)
+
+test <no laws.tree: it exits 1>
+  want hold, is-equal(bare()/code, 1)

@@ -1,0 +1,118 @@
+note <a function body lowers to basic blocks wired by terminators>
+
+# Ported from cfg.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. Each body is parsed and
+# milled as the original did, with no check, and its first function's body built into a control-flow graph. ir/cfg and
+# its front end are the subject (decision 106).
+
+load ../support/reading
+  find first-with
+
+dock load
+  load <@term/make/code/parser/tree>, name parser-tree
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/ir/cfg>, name cfg-module
+
+bind source-of
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: "c.tree", text: $text \})>
+
+# the body of the first function of a text, parsed and milled
+task body-of
+  take text, like text
+  like dynamic
+
+  host parsed, parser-tree/parse(source-of(text))
+  fork test, not(parsed/ok)
+    hold
+      halt <parse failed>
+  host built, mill-module/mill(parsed/tree, <c.tree>)
+  fork test, not(built/ok)
+    hold
+      halt <mill failed>
+  host found, first-with(built/program, <form>, <function>)
+  fork test, is-equal(found, void)
+    hold
+      halt <no function>
+  back found/body
+
+task graph-of
+  take text, like text
+  like dynamic
+
+  back cfg-module/build-cfg(body-of(text))
+
+# the first block whose terminator is of `kind`, void when there is none
+task first-ending
+  take graph, like dynamic
+  take kind, like text
+  like dynamic
+
+  walk graph/blocks
+    take block, like dynamic
+    fork test, is-equal(block/terminator/kind, kind)
+      hold
+        back block
+  back void
+
+task any-ending
+  take graph, like dynamic
+  take kind, like text
+  like boolean
+
+  back is-unequal(first-ending(graph, kind), void)
+
+# the successors of a block
+task next-of
+  take block, like dynamic
+  like dynamic
+
+  back cfg-module/successors(block/terminator)
+
+# whether a block other than the header goes to the header
+task has-back-edge
+  take graph, like dynamic
+  like boolean
+
+  host header, first-ending(graph, <branch>)
+  fork test, is-equal(header, void)
+    hold
+      back false
+  walk graph/blocks
+    take block, like dynamic
+    walk next-of(block)
+      take next, like dynamic
+      fork test, and(is-equal(next, header/id), is-unequal(block/id, header/id))
+        hold
+          back true
+  back false
+
+# straight line: no branches, the body reaches the exit
+host straight-text, <task f\n  take n\n  save a, code 1\n  back a\n>
+
+# an if produces a branch with two distinct successors
+host branch-text, <task f\n  take n\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      back n\n    hook miss\n      back, code 0\n>
+
+# a while loop has a back edge: the body returns to the header
+host loop-text, <task f\n  take n\n  walk test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook step\n      save n\n        call subtract\n          read n\n          code 1\n  back n\n>
+
+test <straight-line has a return terminator>
+  want hold, any-ending(graph-of(straight-text), <return>)
+
+test <straight-line has no branch>
+  want hold, not(any-ending(graph-of(straight-text), <branch>))
+
+test <an if produces a branch terminator>
+  want hold, any-ending(graph-of(branch-text), <branch>)
+
+test <the branch has two successors>
+  host block, first-ending(graph-of(branch-text), <branch>)
+  want hold, is-unequal(block, void)
+  want hold, is-equal(next-of(block)/length, 2)
+
+test <a while loop has a header branch>
+  want hold, any-ending(graph-of(loop-text), <branch>)
+
+test <the loop body has a back edge to the header>
+  want hold, has-back-edge(graph-of(loop-text))

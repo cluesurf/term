@@ -1,0 +1,215 @@
+note <Coverage probes: cover writes a probe before every executable statement, and a run reads back the lines that ran>
+
+# Ported from cover.ts by statement (item term-self-host-001-0613), term/decisions-2026-10/coverage, D11, item 0001.
+# `compile` with `cover: true` writes a `probe` before every executable statement of the entry file, keyed `<path
+# relative to its folder>:<line>`. The emitted TypeScript adds each key to one process-wide set when its statement
+# starts, so running the program and reading the set back gives exactly the lines that ran. The fixture has a fork (one
+# arm never taken) and a loop. Held: the key list is every executable statement's line and no declaration's, the hit
+# keys are exactly the lines that ran (the untaken arm is the one missed), and a build without `cover` is byte-identical
+# to a second one without it. Two key lists are held equal as sets, each holding the other's every key, where the
+# original sorted both and compared them.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ../support/reading
+  find lines-of
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find trim
+  find contains, name text-contains
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+# `pick(1)` never reaches `back <big>`, `count(3)` runs the loop three times
+host program, <task pick\n  take n, like number\n\n  like text\n\n  fork test, is-above(n, 3)\n    hold\n      back \<big\>\n    miss\n      back \<small\>\n\ntask count\n  take limit, like number\n\n  like number\n\n  save total, 0\n  save at, 0\n  walk test\n    hook test, is-below(at, limit)\n    hook hold\n      save total, add(total, at)\n      save at, add(at, 1)\n  back total\n\ntask run\n  like text\n\n  back \<\{pick(1)\} \{count(3)\}\>\n>
+
+# the statements that run a line each, found by their text so the test never counts lines by hand
+host executable, make list(<fork test, is-above(n, 3)>, <back \<big\>>, <back \<small\>>, <save total, 0>, <save at, 0>, <walk test>, <save total, add(total, at)>, <save at, add(at, 1)>, <back total>, <back \<\{pick(1)\} \{count(3)\}\>>)
+
+# host value: the driver's cover keys are a host Set, read here as a list of text
+bind keys-of
+  take found, like dynamic
+  like list, like text
+  case node
+    text <[...($found ?? [])]>
+
+task line-of
+  take wanted, like text
+  like number
+
+  save at, 0
+  walk lines-of(program)
+    take line, like text
+    save at, add(at, 1)
+    fork test, is-equal(trim(line), wanted)
+      hold
+        back at
+  back 0
+
+task times-held
+  take wanted, like text
+  like number
+
+  save count, 0
+  walk lines-of(program)
+    take line, like text
+    fork test, is-equal(trim(line), wanted)
+      hold
+        save count, add(count, 1)
+  back count
+
+task key-of
+  take wanted, like text
+  like text
+
+  back <cover-fixture.tree:{line-of(wanted)}>
+
+task held-once
+  take wanted, like text
+  like boolean
+
+  back and(is-above(line-of(wanted), 0), is-equal(times-held(wanted), 1))
+
+# the keys of every executable statement, the untaken arm left out when `taken` says so
+task keys-wanted
+  take taken, like boolean
+  like list, like text
+
+  save out, make list
+  walk executable
+    take one, like text
+    fork test, not(and(taken, is-equal(one, <back \<big\>>)))
+      hold
+        out/push(key-of(one))
+  back out
+
+# two key lists hold the same keys, each held once
+task same-keys
+  take found, like list, like text
+  take wanted, like list, like text
+  like boolean
+
+  fork test, is-unequal(found/length, wanted/length)
+    hold
+      back false
+  walk wanted
+    take one, like text
+    fork test, not(contains(found, one))
+      hold
+        back false
+  back true
+
+task fixture-file
+  like text
+
+  save folder, temp-folder(<term-cover->)
+  save file, <{folder}/cover-fixture.tree>
+  write-file(file, program)
+  back file
+
+task built
+  take file, like text
+  take cover, like boolean
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(cover, cover)))
+
+# what the covered program answered, then | and the keys it hit, joined by commas
+task ran
+  like text
+
+  save covered, built(fixture-file(), true)
+  save folder, temp-folder(<term-cover->)
+  back typescript-answer(covered, <Promise.resolve(run()).then((text) =\> process.stdout.write(text + "|" + [...((globalThis as any).__termCover ?? [])].join(",")))>, folder, <cover-fixture-run>, prelude-text(covered, <node>, covered/emitted))
+
+test <the fixture holds "fork test, is-above(n, 3)" once>
+  want hold, held-once(<fork test, is-above(n, 3)>)
+
+test <the fixture holds "back \<big\>" once>
+  want hold, held-once(<back \<big\>>)
+
+test <the fixture holds "back \<small\>" once>
+  want hold, held-once(<back \<small\>>)
+
+test <the fixture holds "save total, 0" once>
+  want hold, held-once(<save total, 0>)
+
+test <the fixture holds "save at, 0" once>
+  want hold, held-once(<save at, 0>)
+
+test <the fixture holds "walk test" once>
+  want hold, held-once(<walk test>)
+
+test <the fixture holds "save total, add(total, at)" once>
+  want hold, held-once(<save total, add(total, at)>)
+
+test <the fixture holds "save at, add(at, 1)" once>
+  want hold, held-once(<save at, add(at, 1)>)
+
+test <the fixture holds "back total" once>
+  want hold, held-once(<back total>)
+
+test <the fixture holds "back \<\{pick(1)\} \{count(3)\}\>" once>
+  want hold, held-once(<back \<\{pick(1)\} \{count(3)\}\>>)
+
+test <a build without cover carries no probe>
+  host plain, built(fixture-file(), false)
+  want hold, plain/ok
+  want hold, not(text-contains(plain/emitted, <__termCoverHit>))
+  want hold, is-equal(plain/cover, void)
+
+test <a build with cover carries the probes and the set>
+  host covered, built(fixture-file(), true)
+  want hold, covered/ok
+  want hold, text-contains(covered/emitted, <__termCoverHit(>)
+  want hold, text-contains(covered/emitted, <__termCover>)
+
+test <a build without cover is byte-identical to the same build again>
+  host file, fixture-file()
+  host plain, built(file, false)
+  host again, built(file, false)
+  want hold, again/ok
+  want hold, is-equal(again/emitted, plain/emitted)
+
+test <the key list is every executable statement and nothing else>
+  host covered, built(fixture-file(), true)
+  want hold, same-keys(keys-of(covered/cover), keys-wanted(false))
+
+test <the program still answers what it answered>
+  host said, text-split(ran(), <|>)
+  want hold, is-equal(said/0, <small 3>)
+
+test <the hit keys are exactly the lines that ran>
+  host said, text-split(ran(), <|>)
+  want hold, is-equal(said/length, 2)
+  want hold, same-keys(text-split(said/1, <,>), keys-wanted(true))
+
+test <the untaken arm is the one missed>
+  host said, text-split(ran(), <|>)
+  host hit, text-split(said/1, <,>)
+  host covered, built(fixture-file(), true)
+  host missed, make list
+  walk keys-of(covered/cover)
+    take key, like text
+    fork test, not(contains(hit, key))
+      hold
+        missed/push(key)
+  want hold, is-equal(join(missed, <,>), key-of(<back \<big\>>))

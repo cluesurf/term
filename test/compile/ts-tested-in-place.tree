@@ -1,0 +1,70 @@
+note <TypeScript tests a checked value where it stands, and an overflow is still a stop the guard does not catch>
+
+# Ported from ts-tested-in-place.ts by statement (item term-self-host-001-0620), one test per `ok` in its order.
+# TypeScript tests a checked value where it stands (typescript.ts, `testedInPlace`): a `let`, a write to a plain variable
+# and a `return` whose whole value is one checked operation is the value made into a temporary, the overflow test written
+# in place, then the binding. Held both ways: the shape, and that it means what `__termInt` meant. A value that is more
+# than one checked operation keeps the call. The run writes the native prelude the harness's prelude-text reads (the
+# original joined one read with no runtime files), then the module and a main, under node with tsx's loader.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ../support/running
+  find running-node
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <task next\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      code 1\n\ntask climb\n  take start, like number\n  like text\n  save x, read start\n  host y\n    call add\n      read x\n      code 1\n  save x\n    call add\n      read y\n      call next\n        read x\n  fork\n    mark unsafe\n    save x\n      call add\n        read x\n        code 9007199254740991\n    send back, text \<no\>\n  halt take\n    take problem\n    send back, text \<\{problem/form\}:\{x\}:\{y\}\>\n\ntask compute\n  like text\n  send back\n    call climb\n      code 10\n>
+
+host return-in-place, make pattern, <<const (__n\d+) = x \+ 1; if \(!\(\1 <= 9007199254740991 && \1 >= -9007199254740991\)\) __termIntStop\(\1\); return \1>>
+host let-in-place, make pattern, <<const (__n\d+) = x \+ 1; if \(.*\) __termIntStop\(\1\); const y\b>>
+host write-in-place, make pattern, <<const (__n\d+) = x \+ 9007199254740991; if \(.*\) __termIntStop\(\1\); x = \1>>
+host outer-in-place, make pattern, <<const (__n\d+) = y \+ (__termInt\(x \+ 1\)|next\(x\)); if \(.*\) __termIntStop\(\1\); x = \1>>
+host excess, make pattern, <<excess>>
+
+task built
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>)))
+
+test <a `return` of one checked sum is tested in place>
+  host out, built()
+  want hold, out/ok
+  want hold, matches(return-in-place, out/emitted)
+
+test <a `let` of one checked sum is tested in place>
+  want hold, matches(let-in-place, built()/emitted)
+
+test <a write of one checked sum is tested in place, the write last>
+  want hold, matches(write-in-place, built()/emitted)
+
+test <a value holding a second check keeps the call for the inner one, and only the outer is in place>
+  want hold, matches(outer-in-place, built()/emitted)
+
+# what it means, run: 10 + 1 is y = 11, x = 11 + next(10) = 22, then 22 + 2^53 - 1 is past the safe integers. An
+# overflow is a stop (D15, divisor-0006): the guard's handler no longer runs (it answered `excess:22:11` here before),
+# so the run ends non-zero with `excess` on stderr and nothing on stdout
+test <the overflow is a stop the guard does not catch: `excess` on stderr, no handler answer>
+  host out, built()
+  host folder, temp-folder(<ts-tested-in-place->)
+  host file, <{folder}/main.ts>
+  write-file(file, <{prelude-text(out, <node>, out/emitted)}\n{out/emitted}\nprocess.stdout.write(String(compute()))\n>)
+  host result, run(running-node(0), make list(<--import>, <tsx>, file))
+  want hold, is-unequal(result/code, 0)
+  want hold, is-equal(result/output, <>)
+  want hold, matches(excess, result/error)

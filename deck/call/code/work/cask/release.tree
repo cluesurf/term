@@ -18,6 +18,7 @@ load ../self/runtime-stamp
   find runtime-version
   find toolchain-of
   find runtime-ask
+  find runtime-stamp
 
 load ../self/page-update
   find publish-update
@@ -80,7 +81,7 @@ form publish-item
 # exactly when its runtime version equals this file's. See runtime-version.ts and note/term/app/13.
 task stamp-runtime-version
   take ask, like stamp-ask
-  like dynamic
+  like runtime-stamp
 
   save target, ask/target
   save sources, make list

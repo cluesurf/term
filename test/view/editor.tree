@@ -1,0 +1,207 @@
+note <the editor sees a document the same way a save does, through analyze and through the server's own compile>
+
+# Ported from editor.ts by statement (item term-self-host-001-0644), one test per `ok` in its order. `analyze` is what
+# the language server lints a document with per keystroke. Without the role it mills a document as code and underlines
+# every `view` line as an undefined name. With it, the editor calls the SAME gate the compiler and `term view` call, so
+# it can never be more permissive than a save, and never more strict. The analysis, the catalog reader and the compiler
+# are the subject, docked as the original imported them (decision 106). Where the original asserted the catalog cases
+# only once the catalog read, a catalog that does not read fails those two tests.
+
+load ../support/judging
+  find truth
+
+load ../support/compiling
+  find file-text
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/analyze>, name editor-analysis
+  load <@term/make/code/compile/view-catalog>, name view-catalogs
+  load <@term/make/code/compile/compile>, name view-compiling
+
+form view-source
+  link file, like text
+  link text, like text
+
+form role-options
+  link role, like text
+
+form catalog-options
+  link role, like text
+  link catalog, like dynamic
+
+form server-options
+  link role-of, like dynamic
+  link optimize, like boolean
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+host document, <\nhost title, text \<Vowels\>\n\nview page\n  view text/heading\n    bind text, read title\n>
+
+task page-source
+  take text, like text
+  like view-source
+
+  back make(view-source, bind(file, <page.tree>), bind(text, text))
+
+host as-code, editor-analysis/analyze(page-source(document))
+host as-view, editor-analysis/analyze(page-source(document), make(role-options, bind(role, <view>)))
+
+# whether any message of `diagnostics` holds `word`
+task any-saying
+  take diagnostics, like dynamic
+  take word, like text
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, text-contains(one/message, word)
+      hold
+        back true
+  back false
+
+# whether every diagnostic has a span to underline
+task all-spanned
+  take diagnostics, like dynamic
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, is-void(one/span)
+      hold
+        back false
+  back true
+
+# whether a program is there and holds one statement
+task one-statement
+  take program, like dynamic
+  like boolean
+
+  fork test, not(truth(program))
+    hold
+      back false
+  back is-equal(program/length, 1)
+
+# whether a program is there, holds one statement, and that statement is a view
+task one-view
+  take program, like dynamic
+  like boolean
+
+  fork test, not(one-statement(program))
+    hold
+      back false
+  back is-equal(program/0/form, <view>)
+
+test <without the role it is milled as code>
+  want hold, is-equal(as-code/kind, <code>)
+
+test <with the role it is a document>
+  want hold, is-equal(as-view/kind, <view>)
+
+test <and the document has no diagnostics>
+  want hold, is-equal(as-view/diagnostics/length, 0)
+
+test <and it lowers to a program>
+  want hold, one-statement(as-view/program)
+
+test <the same text as code has none of that>
+  want hold, or(not(one-statement(as-code/program)), is-above(as-code/diagnostics/length, 0))
+
+# a fault is underlined with a span, per keystroke, and it is the SAME message a save gives
+host bad, editor-analysis/analyze(page-source(<view page\n  task main\n>), make(role-options, bind(role, <view>)))
+
+test <a fault is reported>
+  want hold, is-above(bad/diagnostics/length, 0)
+
+test <with the message a save would give>
+  want hold, any-saying(bad/diagnostics, <cannot declare a function>)
+
+test <and a span to underline>
+  want hold, all-spanned(bad/diagnostics)
+
+# the editor takes the catalog too, so an unregistered name is underlined while typing rather than at save. The
+# catalog is the one beside this suite
+host here, <test/view>
+host loaded, view-catalogs/read-catalog(make(view-source, bind(file, <catalog.tree>), bind(text, file-text(<{here}/catalog.tree>))))
+
+test <an unregistered component is underlined while typing>
+  want hold, truth(loaded/ok)
+  save off, editor-analysis/analyze(page-source(<view page\n  view text/nowhere\n    bind a, text \<x\>\n>), make(catalog-options, bind(role, <view>), bind(catalog, loaded/catalog)))
+  want hold, any-saying(off/diagnostics, <not a component this document may place>)
+
+test <a registered one is not>
+  want hold, truth(loaded/ok)
+  save on, editor-analysis/analyze(page-source(<view page\n  view text/heading\n    bind a, text \<x\>\n>), make(catalog-options, bind(role, <view>), bind(catalog, loaded/catalog)))
+  want hold, is-equal(on/diagnostics/length, 0)
+
+# a document formats, because it IS tree syntax and the formatter needs no role
+host messy, editor-analysis/analyze(page-source(<view page\n  view text/item\n    bind a,   text \<x\>\n\n\n>), make(role-options, bind(role, <view>)))
+
+test <a document formats>
+  want hold, is-equal(messy/format(), <view page\n  view text/item\n    bind a, text \<x\>\n>)
+
+test <and carries no code-role lint findings>
+  want hold, is-equal(messy/lint()/length, 0)
+
+# ---- the language server's own path ----
+# The server compiles every open document with the build's own `compile`, handed the project's `roleOf`, so a document
+# is read by the same gate a save uses. The server hands `compile` no catalog: `compile` takes none, so an unregistered
+# name is underlined while typing only through `analyze` above, and is not checked here (decision 068, item 0108).
+
+task view-role
+  take file, like text
+  like text
+
+  back <view>
+
+task no-role
+  take file, like text
+  like text
+
+  back <>
+
+task server-compile
+  take text, like text
+  take role-of, like dynamic
+  like dynamic
+
+  back view-compiling/compile(page-source(text), make(server-options, bind(role-of, role-of), bind(optimize, false)))
+
+# the warnings of a compile that passed, the diagnostics of one that did not
+task said-by
+  take result, like dynamic
+  like dynamic
+
+  fork test, truth(result/ok)
+    hold
+      back result/warnings
+  back result/diagnostics
+
+host good, server-compile(document, view-role)
+
+test <the server path reads a document>
+  want hold, truth(good/ok)
+  want hold, is-equal(said-by(good)/length, 0)
+
+test <and hands back its lowered program>
+  want hold, truth(good/ok)
+  want hold, one-view(good/program)
+
+host wrong, server-compile(document, no-role)
+
+# Without the role the same text goes through the code mill, which reads the `host` as a constant beside the component,
+# so what comes back is not the one lowered document. That is exactly why the role has to reach here
+test <the same text without the role is not read as a document>
+  want hold, not(and(truth(wrong/ok), one-view(wrong/program)))
+
+host broken, server-compile(<view page\n  task main\n>, view-role)
+
+test <a fault reaches the editor with the message a save gives>
+  want hold, not(truth(broken/ok))
+  want hold, any-saying(said-by(broken), <cannot declare a function>)

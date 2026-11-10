@@ -1,0 +1,174 @@
+note <Fibonacci by a loop and by recursion, and a value-position conditional, compiled to TypeScript and run>
+
+# Ported from run.ts by statement (item term-self-host-001-0619). Each program is compiled longhand with no resolver and
+# its emitted TypeScript run on node through typescript-answer: one main calls it on each input and prints one JSON value
+# a line, read by position. Then the refusals and the interpolations of text literals, read from the diagnostics and the
+# emitted text. The original printed the emitted TypeScript of each program, which asserts nothing.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fib-loop, <task find-fibonacci-via-loop\n  take n\n  save a, code 0\n  save b, code 1\n  walk test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook step\n      save next\n        call add\n          read a\n          read b\n      save a, read b\n      save b, read next\n      save n\n        call subtract\n          read n\n          code 1\n  send back a\n>
+
+# a conditional in value position (`save x / fork test / ...`): lowers to a ternary chain, not statement branching
+host conditional-expression, <task classify\n  take n\n  like text\n  save label\n    fork test\n      hook test\n        call is-above\n          read n\n          code 0\n      hook hold\n        text \<positive\>\n      hook miss\n        text \<non-positive\>\n  send back, read label\n>
+
+host fib-recursion, <task find-fibonacci-via-recursion\n  take n\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back n\n    hook miss\n      send back\n        call add\n          call find-fibonacci-via-recursion\n            call subtract\n              read n\n              code 1\n          call find-fibonacci-via-recursion\n            call subtract\n              read n\n              code 2\n>
+
+host ternary, make pattern, <<[ ]\? .* :[ ]>>
+
+form run-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(run-answers, bind(held, make hash))
+
+task built
+  take source, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, file)))
+
+# the messages of a compile, joined by ` | `
+task said
+  take out, like compile-outcome
+  like text
+
+  back join(out/messages, < | >)
+
+# what the program printed for each call of `name` on `inputs`, one JSON value a line, once per key
+task answers
+  take key, like text
+  take source, like text
+  take name, like text
+  take inputs, like text
+  like text
+
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<seed-compile->)
+  save main, <process.stdout.write([{inputs}].map(n =\> JSON.stringify({name}(n))).join("\\n"))\n>
+  save answer, typescript-answer(built(source, <{key}.tree>), main, folder, key)
+  save kept/held/{key}, answer
+  back answer
+
+task loop-at
+  take at, like number
+  like text
+
+  save parts, text-split(answers(<fibonacci>, fib-loop, <findFibonacciViaLoop>, <0, 1, 10, 20>), <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+task recursion-at
+  take at, like number
+  like text
+
+  save parts, text-split(answers(<recursion>, fib-recursion, <findFibonacciViaRecursion>, <0, 1, 10, 15>), <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+task classify-at
+  take at, like number
+  like text
+
+  save parts, text-split(answers(<classify>, conditional-expression, <classify>, <5, -3, 0>), <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+test <loop fib(0)>
+  want hold, is-equal(loop-at(0), <0>)
+
+test <loop fib(1)>
+  want hold, is-equal(loop-at(1), <1>)
+
+test <loop fib(10)>
+  want hold, is-equal(loop-at(2), <55>)
+
+test <loop fib(20)>
+  want hold, is-equal(loop-at(3), <6765>)
+
+test <recursion fib(0)>
+  want hold, is-equal(recursion-at(0), <0>)
+
+test <recursion fib(1)>
+  want hold, is-equal(recursion-at(1), <1>)
+
+test <recursion fib(10)>
+  want hold, is-equal(recursion-at(2), <55>)
+
+test <recursion fib(15)>
+  want hold, is-equal(recursion-at(3), <610>)
+
+# a value-position conditional emits a ternary and computes the right branch at runtime
+test <conditional expression emits a ternary>
+  host out, built(conditional-expression, <classify.tree>)
+  want hold, and(out/ok, matches(ternary, out/emitted))
+
+test <classify(5)>
+  want hold, is-equal(classify-at(0), <"positive">)
+
+test <classify(-3)>
+  want hold, is-equal(classify-at(1), <"non-positive">)
+
+test <classify(0)>
+  want hold, is-equal(classify-at(2), <"non-positive">)
+
+# a mistake the compiler used to accept silently is a diagnostic at the site
+test <`find get as pick` is refused at the import and names the alias form>
+  host out, built(<load ./x\n  find get as pick\n\ntask f\n  like number\n  send back, code 1\n>, <a.tree>)
+  want hold, and(not(out/ok), text-contains(said(out), <find get, name pick>))
+
+test <`read items/\{0\}` is refused and names /0>
+  host out, built(<task f\n  take items, like list\n    like number\n  like number\n  send back, read items/\{0\}\n>, <b.tree>)
+  want hold, and(not(out/ok), text-contains(said(out), <write /0>))
+
+# a brace in a plain text literal used to compile to an empty string, and then was refused. Since the second lean pass
+# there is one brace syntax: `{x}` naming a parameter is filled at run time, exactly as `{{x}}` is
+test <`\{x\}` in a plain text literal interpolates a parameter at run time>
+  host out, built(<task f\n  take x, like text\n  like text\n  send back, text \<a/\{x\}/b\>\n>, <t.tree>)
+  want hold, and(out/ok, text-contains(out/emitted, <return `a/$\{x\}/b`>))
+
+# runtime interpolation: `{{x}}` and `{{e/form}}` in a text literal, a template literal on TypeScript
+test <`\{\{x\}\}` interpolates at run time as a template literal>
+  host out, built(<task f\n  take x, like text\n  take n, like number\n  like text\n  send back, text \<a/\{\{x\}\}/b \{\{n\}\}\>\n>, <r.tree>)
+  want hold, and(out/ok, text-contains(out/emitted, <return `a/$\{x\}/b $\{n\}`>))
+
+test <`\{\{p/left\}\}` interpolates a path>
+  host out, built(<form pair\n  link left, like text\n  link right, like text\n\ntask f\n  take p, like pair\n  like text\n  send back, text \<\{\{p/left\}\}-\{\{p/right\}\}\>\n>, <q.tree>)
+  want hold, and(out/ok, text-contains(out/emitted, <return `$\{p.left\}-$\{p.right\}`>))
+
+test <an interpolated name that does not exist is refused>
+  host out, built(<task f\n  like text\n  send back, text \<a \{\{nothing\}\} b\>\n>, <u.tree>)
+  want hold, and(not(out/ok), text-contains(said(out), <"nothing" is not defined>))
+
+test <escaped braces stay literal text>
+  host out, built(<task f\n  like text\n  send back, text \<a \\\{x\\\} b\>\n>, <e.tree>)
+  want hold, and(out/ok, text-contains(out/emitted, <"a \{x\} b">))

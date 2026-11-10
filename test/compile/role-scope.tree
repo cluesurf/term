@@ -1,0 +1,387 @@
+note <Grammar scopes end to end: role note, a grammar imported by name, inline, in parentheses and as a block, run>
+
+# Ported from role-scope.ts by statement (item term-self-host-001-0619). A program written with `role note, ...`, with a
+# name imported as a grammar, inline, in parentheses and as a block, compiled through the whole pipeline over the
+# project at deck/base (unoptimized, as the original) and RUN, each answer held to the value the notation means. Then
+# what must be refused, with the message and the place. A scope that compiled to the wrong code would pass any test that
+# only looked at the tree (note/project/term/mill/02-role-scopes.md, 03-note-grammar.md). Each program runs on node
+# through typescript-answer: one main calls it and prints the JSON of what it answered, or THROWN and the message of what
+# it raised. Then the note grammar's spec, mine.tree, read by make/code/compile/feed-mill, the module this suite is about
+# (decision 106), and the bundle check. The original named its rule-count test by the count it read (67 today): here the
+# name is fixed and the test holds that the count is above 0.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find project-path
+  find file-text
+
+load ../support/judging
+  find make-record
+  find read-field
+  find truth
+
+load ../support/reading
+  find any-with
+  find lines-of
+
+load ../support/cli
+  find term-root
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+  find trim
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/feed-mill>, name mill-module
+  load <@term/make/code/parser/tree>, name parser-module
+  load <@term/call/code/draft>, name draft-module
+
+host load-note, <load @term/mill/text/note\n  find note\n\n>
+host unit, <load @term/base/unit\n  find quantity\n\n>
+host load-set, <load @term/base/set\n  find set\n\n>
+host load-range, <load @term/base/range\n  find range\n\n>
+
+host different-things, make pattern, <<measure different things>>
+host not-registered, make pattern, <<`mb` is not a registered unit>>
+host names-sums, make pattern, <<`sums`>>
+host no-arrow, make pattern, <<`->` is read by the note grammar>>
+host plain-number, make pattern, <<plain number>>
+host ends-early, make pattern, <<ends where .*`\)`.* was wanted>>
+
+# the guide's samples, as written there (note/project/term/guides/draft/language/dsls/roles.md)
+host guide-role, <task speed\n  take distance, like float\n  take time, like float\n  like float\n  send back, role note, distance / time\n\ntask area\n  take r, like float\n  like float\n  send back\n    role note\n      3.14159 * r^2\n>
+
+host guide-load, <load @term/mill/text/note\n  find note\n\ntask within\n  take x, like number\n  like boolean\n  send back, note 0 \< x \< 10 and x != 5\n\ntask rate\n  like float\n  save q, note 20MB/s\n  send back, call q/in-base\n>
+
+host spec-path, <deck/mill/code/text/note/mine.tree>
+
+# the place the original compiled every program as: a file of the project at deck/base
+task built
+  take text, like text
+  take lean, like boolean
+  like compile-outcome
+
+  host root, <deck/base>
+  back compile-text(text, make(compile-choice, bind(file, project-path(root, <code/scope-probe.tree>)), bind(project, root), bind(optimize, false), bind(lean, lean)))
+
+# what `calls` answered, run on the program built from `text`, as JSON, or THROWN and the message of what it raised
+task value-of
+  take text, like text
+  take calls, like text
+  take lean, like boolean
+  like text
+
+  save main, <let said\ntry \{\n  said = JSON.stringify({calls})\n\} catch (error) \{\n  said = `THROWN $\{error instanceof Error\} $\{error?.message\}`\n\}\nprocess.stdout.write(String(said))\n>
+  save folder, temp-folder(<term-role-scope->)
+  back typescript-answer(built(text, lean), main, folder, <scope-probe>)
+
+task value
+  take text, like text
+  take calls, like text
+  like text
+
+  back value-of(text, calls, false)
+
+# a quantity's field, read from `note <expression>`
+task quantity
+  take expression, like text
+  take field, like text
+  like text
+
+  save kind, <float>
+  fork test, is-equal(field, <unit>)
+    hold
+      save kind, <text>
+  back value(<{load-note}{unit}task f\n  like {kind}\n  save q, note {expression}\n  send back, read q/{field}\n>, <f()>)
+
+# whether a number written as text is within `within` of `want`
+task near
+  take said, like text
+  take want, like float
+  take within, like float
+  like boolean
+
+  save gap, subtract(parse-float(said), want)
+  back and(is-below(gap, within), is-above(gap, subtract(0.0, within)))
+
+form refusal
+  link name, like text
+  link message, like text
+  link line, like number
+  link column, like number
+
+# the first problem of a refused build, empty when it built
+task refused
+  take text, like text
+  like refusal
+
+  host out, built(text, false)
+  fork test, is-above(out/notes/length, 0)
+    hold
+      host first, out/notes/0
+      back make(refusal, bind(name, first/name), bind(message, first/message), bind(line, first/line), bind(column, first/column))
+  back make(refusal, bind(name, <>), bind(message, <>), bind(line, -1), bind(column, -1))
+
+bind rules-read
+  take grammar, like dynamic
+  take name, like text
+  like number
+  case node
+    text <($grammar.get($name) ?? []).length>
+
+bind unknown-refs
+  take refs, like dynamic
+  like number
+  case node
+    text <$refs.length>
+
+form spec-read
+  link ok, like boolean
+  link grammar, like dynamic
+
+# the spec parsed, and its grammar as the feed mill reads it
+task spec
+  like spec-read
+
+  host text, file-text(project-path(<.>, spec-path))
+  host parsed, parser-module/parse(make-record(make(list, <file>, spec-path, <text>, text)))
+  fork test, not(truth(read-field(parsed, <ok>)))
+    hold
+      back make(spec-read, bind(ok, false), bind(grammar, void))
+  back make(spec-read, bind(ok, true), bind(grammar, mill-module/read-feed-mine-grammar(read-field(parsed, <tree>))))
+
+# the rules the spec declares on its `mine` lines
+task declared
+  like list, like text
+
+  save out, make list
+  walk lines-of(file-text(project-path(<.>, spec-path)))
+    take line, like text
+    fork test, text-starts-with(line, <mine >)
+      hold
+        out/push(trim(line/slice(5)))
+  back out
+
+# ---- the spellings ----
+
+test <`role note, x + y * 2` inline, after a comma>
+  want hold, is-equal(value(<task f\n  take x, like number\n  take y, like number\n  like number\n  send back, role note, x + y * 2\n>, <f(1, 3)>), <7>)
+
+test <`role note` and the block indented under it>
+  want hold, is-equal(value(<task f\n  take x, like number\n  like number\n  send back\n    role note\n      x^2\n        + 1\n>, <f(3)>), <10>)
+
+test <a grammar imported by name needs no `role`: `note x - 1`>
+  want hold, is-equal(value(<{load-note}task f\n  take x, like number\n  like number\n  send back, note x - 1\n>, <f(5)>), <4>)
+
+test <in parentheses: `note(x * (x + 1))`>
+  want hold, is-equal(value(<{load-note}task f\n  take x, like number\n  like number\n  send back, note(x * (x + 1))\n>, <f(4)>), <20>)
+
+test <under an alias: `find note, name math`, then `math x + 1`>
+  want hold, is-equal(value(<load @term/mill/text/note\n  find note, name math\n\ntask f\n  take x, like number\n  like number\n  send back, math x + 1\n>, <f(1)>), <2>)
+
+test <a project's own mill: `load ./some/mill`>
+  want hold, is-equal(value(<load ./some/mill\n  find note\n\ntask f\n  take x, like number\n  like number\n  send back, note x * 10\n>, <f(2)>), <20>)
+
+test <`find role note`, under any load>
+  want hold, is-equal(value(<load ./anything\n  find role note\n\ntask f\n  take x, like number\n  like number\n  send back, note x + x\n>, <f(2)>), <4>)
+
+test <a literal written out is the same scope: `role note, \<\<x + 1\>\>`>
+  want hold, is-equal(value(<task f\n  take x, like number\n  like number\n  send back, role note, \<\<x + 1\>\>\n>, <f(2)>), <3>)
+
+test <in a lean file: `back role note, x * 3`>
+  want hold, is-equal(value-of(<task f\n  take x, like number\n  like number\n  back role note, x * 3\n>, <f(2)>, true), <6>)
+
+test <a statement `note total = x * 3` assigns>
+  want hold, is-equal(value(<{load-note}task f\n  take x, like number\n  like number\n  note total = x * 3\n  send back, read total\n>, <f(5)>), <15>)
+
+# ---- what it means ----
+
+test <comparison and logic: `0 \< x \< 10 and x != 5`>
+  host program, <{load-note}task f\n  take x, like number\n  like boolean\n  send back, note 0 \< x \< 10 and x != 5\n>
+  want hold, is-equal(<[{value(program, <f(1)>)},{value(program, <f(5)>)},{value(program, <f(12)>)}]>, <[true,false,false]>)
+
+test <a power of whole numbers: `2^10`>
+  want hold, is-equal(value(<{load-note}task f\n  like number\n  send back, note 2^10\n>, <f()>), <1024>)
+
+test <a power of decimals: `2.0^0.5`>
+  want hold, near(value(<{load-note}task f\n  like float\n  send back, note 2.0^0.5\n>, <f()>), 1.4142135623730951, 0.000000000001)
+
+test <scientific notation is exact: `1.5e3 + 0.5`>
+  want hold, is-equal(value(<{load-note}task f\n  like float\n  send back, note 1.5e3 + 0.5\n>, <f()>), <1500.5>)
+
+test <a list, and an index into it: `[10, 20, 30][1]`>
+  want hold, is-equal(value(<{load-note}task f\n  like number\n  save xs, note [10, 20, 30]\n  send back, note xs[1]\n>, <f()>), <20>)
+
+test <a set holds each value once: `\{1, 2, 2, 3\}`>
+  want hold, is-equal(value(<{load-note}{load-set}task f\n  like number\n  save s, note \{1, 2, 2, 3\}\n  send back, call s/length\n>, <f()>), <3>)
+
+test <membership: `2 in \{1, 2, 3\}` and `5 ∈ \{1, 2, 3\}`>
+  host first, value(<{load-note}{load-set}task f\n  like boolean\n  send back, note 2 in \{1, 2, 3\}\n>, <f()>)
+  host second, value(<{load-note}{load-set}task f\n  like boolean\n  send back, note 5 ∈ \{1, 2, 3\}\n>, <f()>)
+  want hold, is-equal(<[{first},{second}]>, <[true,false]>)
+
+test <the set operators: `\{1, 2\} ∪ \{2, 3\}` holds three, `\{1, 2\} ∩ \{2, 3\}` one, `\{1, 2\} \\ \{2, 3\}` one>
+  host union, value(<{load-note}{load-set}task f\n  like number\n  save s, note \{1, 2\} ∪ \{2, 3\}\n  send back, call s/length\n>, <f()>)
+  host both, value(<{load-note}{load-set}task f\n  like number\n  save s, note \{1, 2\} ∩ \{2, 3\}\n  send back, call s/length\n>, <f()>)
+  host less, value(<{load-note}{load-set}task f\n  like number\n  save s, note \{1, 2\} \\ \{2, 3\}\n  send back, call s/length\n>, <f()>)
+  want hold, is-equal(<[{union},{both},{less}]>, <[3,1,1]>)
+
+test <a negative: `-x * 2` and `-3 + x`>
+  host first, value(<{load-note}task f\n  take x, like number\n  like number\n  send back, note -x * 2\n>, <f(4)>)
+  host second, value(<{load-note}task f\n  take x, like number\n  like number\n  send back, note -3 + x\n>, <f(4)>)
+  want hold, is-equal(<[{first},{second}]>, <[-8,1]>)
+
+test <`1..5` holds both ends, five numbers>
+  want hold, is-equal(value(<{load-note}{load-range}task f\n  like number\n  save r, note 1..5\n  send back, call r/length\n>, <f()>), <5>)
+
+test <`0..\<5` and `[0, 5)` leave the end out, `(0, 5]` the start>
+  host open-end, value(<{load-note}{load-range}task f\n  like number\n  save r, note 0..\<5\n  send back, add(call(r/length), read(r/start))\n>, <f()>)
+  host bracket, value(<{load-note}{load-range}task f\n  like number\n  save r, note [0, 5)\n  send back, add(call(r/length), read(r/start))\n>, <f()>)
+  host open-start, value(<{load-note}{load-range}task f\n  like number\n  save r, note (0, 5]\n  send back, add(call(r/length), read(r/start))\n>, <f()>)
+  want hold, is-equal(<[{open-end},{bracket},{open-start}]>, <[5,5,6]>)
+
+test <a member: `p.x + p.y`>
+  want hold, is-equal(value(<{load-note}form point\n  link x, like number\n  link y, like number\n\ntask f\n  like number\n  save p\n    make point\n      bind x, code 3\n      bind y, code 4\n  send back, note p.x + p.y\n>, <f()>), <7>)
+
+test <a call: `twice(x) + 1`>
+  want hold, is-equal(value(<{load-note}task twice\n  take n, like number\n  like number\n  send back, note n * 2\n\ntask f\n  take x, like number\n  like number\n  send back, note twice(x) + 1\n>, <f(4)>), <9>)
+
+test <a text: `"hello"`>
+  want hold, is-equal(value(<{load-note}task f\n  like text\n  send back, note "hello \<there\>"\n>, <f()>), <"hello \<there\>">)
+
+# ---- quantities ----
+
+test <`9.81m/s^2` is 9.81 of m/s^2>
+  want hold, is-equal(quantity(<9.81m/s^2>, <value>), <9.81>)
+  want hold, is-equal(quantity(<9.81m/s^2>, <unit>), <"m/s^2">)
+
+test <`20MB/s` is 160,000,000 bits a second in base units>
+  want hold, is-equal(quantity(<20MB/s>, <scale>), <8000000>)
+  want hold, is-equal(quantity(<20MB/s>, <unit>), <"MB/s">)
+
+test <`20Mb/s` is eight times less: casing is meaning>
+  want hold, is-equal(quantity(<20Mb/s>, <scale>), <1000000>)
+
+test <`20 MB/s`: a space before a word unit is allowed>
+  want hold, is-equal(quantity(<20 MB/s>, <unit>), <"MB/s">)
+
+test <`100m / 10s` divides two quantities: 10 m/s>
+  want hold, is-equal(quantity(<100m / 10s>, <value>), <10>)
+  want hold, is-equal(quantity(<100m / 10s>, <unit>), <"m/s">)
+
+test <`1km + 500m` is given in the left one's unit: 1.5 km>
+  want hold, is-equal(quantity(<1km + 500m>, <value>), <1.5>)
+
+test <`2 * 3m` scales: 6 m>
+  want hold, is-equal(quantity(<2 * 3m>, <value>), <6>)
+
+test <`$20 + $5` is 25 USD>
+  want hold, is-equal(quantity(<$20 + $5>, <value>), <25>)
+  want hold, is-equal(quantity(<$20 + $5>, <unit>), <"USD">)
+
+test <`50%` is a hundredth of 50>
+  want hold, is-equal(quantity(<50%>, <scale>), <0.01>)
+
+test <`5m \< 2km` compares in base units>
+  want hold, is-equal(value(<{load-note}task f\n  like boolean\n  send back, note 5m \< 2km\n>, <f()>), <true>)
+
+test <`1km + 1s` measures two different things and is refused when it runs>
+  host said, quantity(<1km + 1s>, <value>)
+  want hold, text-starts-with(said, <THROWN true >)
+  want hold, matches(different-things, said)
+
+# ---- what is refused, and where ----
+
+test <an unregistered unit is refused, at the unit: `20mb/s`>
+  host found, refused(<{load-note}task f\n  like float\n  save q, note 20mb/s\n  send back, read q/value\n>)
+  want hold, is-equal(found/name, <scope-refused>)
+  want hold, matches(not-registered, found/message)
+  want hold, is-equal(found/line, 5)
+  want hold, is-equal(found/column, 17)
+
+test <a role naming no grammar is refused: `role sums, 1 + 2`>
+  host found, refused(<task f\n  like number\n  send back, role sums, 1 + 2\n>)
+  want hold, is-equal(found/name, <unknown-grammar>)
+  want hold, matches(names-sums, found/message)
+
+test <an operator Term gives no meaning yet is refused: `a -\> b`>
+  host found, refused(<{load-note}task f\n  like boolean\n  send back, note a -\> b\n>)
+  want hold, is-equal(found/name, <scope-refused>)
+  want hold, matches(no-arrow, found/message)
+
+test <a quantity and a plain number are not added: `3m + 2`>
+  host found, refused(<{load-note}task f\n  like float\n  save q, note 3m + 2\n  send back, read q/value\n>)
+  want hold, is-equal(found/name, <scope-refused>)
+  want hold, matches(plain-number, found/message)
+
+test <a grammar mistake is reported where it was written: `(1 + 2`>
+  host found, refused(<{load-note}task f\n  like number\n  send back, note (1 + 2\n>)
+  want hold, is-equal(found/name, <scope-refused>)
+  want hold, matches(ends-early, found/message)
+  want hold, is-equal(found/line, 5)
+
+test <a file role is never a scope: `role mill` stays a role rule>
+  host out, built(<role mill\n  take @/code/**/*.tree\n>, false)
+  want hold, not(any-with(out/notes, <name>, <unknown-grammar>))
+  want hold, not(any-with(out/notes, <name>, <scope-refused>))
+
+# ---- the guide's samples ----
+
+test <the guide's `role note` sample builds and computes>
+  want hold, is-equal(value(guide-role, <speed(100, 8)>), <12.5>)
+  want hold, near(value(guide-role, <area(2)>), 12.56636, 0.000000001)
+
+test <the guide's imported `note` sample builds and computes>
+  want hold, is-equal(value(guide-load, <[within(3), within(5), rate()]>), <[true,false,160000000]>)
+
+test <a small whole power of a decimal name is its factors: `r^3` with `r` a float>
+  want hold, is-equal(value(<{load-note}task f\n  take r, like float\n  like float\n  send back, note r^3\n>, <f(1.5)>), <3.375>)
+
+# ---- the grammar's spec ----
+
+test <the note grammar's spec (mine.tree) parses>
+  want hold, spec()/ok
+
+test <it declares its rules, each read>
+  host read, spec()
+  host names, declared()
+  save all-read, read/ok
+  walk names
+    take name, like text
+    fork test, not(is-above(rules-read(read/grammar, name), 0))
+      hold
+        save all-read, false
+  want hold, is-above(names/length, 0)
+  want hold, all-read
+
+test <it names no rule it does not define>
+  host read, spec()
+  want hold, read/ok
+  want hold, is-equal(unknown-refs(mill-module/feed-mine-unknown-refs(read/grammar)), 0)
+
+test <it is the parser: not shelved>
+  want hold, not(draft-module/declares-draft(file-text(project-path(<.>, spec-path))))
+
+# the grammar the build runs is mine.tree byte for byte: the baked copy is regenerated, never edited
+test <the grammar the build runs is mine.tree as written (pnpm term:grammar-bundle --check)>
+  host said, run(<pnpm>, make(list, <exec>, <tsx>, <task/term/grammar-bundle.ts>, <--check>), term-root())
+  want hold, is-equal(said/code, 0)

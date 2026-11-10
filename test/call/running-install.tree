@@ -1,0 +1,259 @@
+note <running-install finds the running toolchain by one walk: unbundled, bundled in an install, through symlinks, argv[1] and TERM_STDLIB>
+
+# Ported from running-install.ts by statement (item term-self-host-001-0604), one test per check in its order. Decision
+# 006 of term-cli-in-term, item term-cli-in-term-0156: the port deck/call/host/port/code/work/need/running-install.ts
+# (the subject, decision 106) answers the install root and the running CLI, held once per process, so each case is a
+# probe run in its own node process. The probe is a fixture of the child, written as the original wrote it: both answers,
+# then the root again after a new pin, printed as JSON.
+#   - the port unbundled under tsx answers this package
+#   - the port bundled into <t>/term/host/line.js beside <t>/term/deck/base/code answers <t>/term and that file, also
+#     started through a symlinked file and through a symlinked folder
+#   - a bundle under a folder with no marker answers through argv[1] (the install's built CLI that imported it)
+#   - the same bundle answers through TERM_STDLIB, and a pin with no code/ in it is passed over
+#   - nothing found answers the empty text for both, and a TERM_STDLIB set after the first call changes nothing
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split, name text-split
+  find trim
+
+dock load
+  load <esbuild>, name install-esbuild
+  load <node:fs>, name install-file
+  load <node:path>, name install-path
+
+bind install-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# host value: a JSON text read
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# host value: a text as a JSON string literal
+bind quoted
+  take text, like text
+  like text
+  case node
+    text <JSON.stringify($text)>
+
+# host value: a path as a file URL
+bind file-url
+  take path, like text
+  like text
+  case node
+    text <new URL(`file://$\{$path\}`).href>
+
+# host value: the text of the first file a build wrote
+bind first-output
+  take built, like dynamic
+  like text
+  case node
+    text <$built.outputFiles[0].text>
+
+form bundle-stdin
+  link contents, like text
+  link resolve-dir, like text
+  link sourcefile, like text
+  link loader, like text
+
+form bundle-ask
+  link stdin, like bundle-stdin
+  link bundle, like boolean
+  link write, like boolean
+  link platform, like text
+  link format, like text
+  link log-level, like text
+
+form install-answer
+  link root, like text
+  link cli, like text
+  link again, like text
+
+task the-port
+  like text
+
+  back <{term-root()}/deck/call/host/port/code/work/need/running-install.ts>
+
+# the probe, importing the port from `from`
+task probe-text
+  take from, like text
+  like text
+
+  back <import \{ findInstallRoot, findRunningCli \} from {quoted(from)}\nconst root = findInstallRoot()\nconst cli = findRunningCli()\nprocess.env.TERM_STDLIB = {quoted(<{term-root()}/deck/base>)}\nconsole.log(JSON.stringify(\{ root, cli, again: findInstallRoot() \}))\n>
+
+task fresh
+  like text
+
+  back install-file/realpath-sync(temp-folder(<running-install->))
+
+# the probe bundled with the port into one ESM file
+task bundle
+  take out, like text
+  like void
+
+  save stdin, make(bundle-stdin, bind(contents, probe-text(the-port())), bind(resolve-dir, term-root()), bind(sourcefile, <probe.ts>), bind(loader, <ts>))
+  save built, install-esbuild/build-sync(make(bundle-ask, bind(stdin, stdin), bind(bundle, true), bind(write, false), bind(platform, <node>), bind(format, <esm>), bind(log-level, <silent>)))
+  install-file/write-file-sync(out, first-output(built))
+
+# an install payload: <t>/term with the marker, package.json typing host/*.js as ESM
+task payload
+  take t, like text
+  like text
+
+  save root, install-path/join(t, <term>)
+  install-file/mkdir-sync(install-path/join(root, <deck/base/code>), install-folder-options(0))
+  install-file/mkdir-sync(install-path/join(root, <host>), install-folder-options(0))
+  install-file/write-file-sync(install-path/join(root, <package.json>), <\{ "type": "module", "version": "0.0.0" \}\n>)
+  back root
+
+# the probe's answer, run by node with these arguments, TERM_STDLIB taken out unless `stdlib` names one
+task run-probe
+  take arguments, like list, like text
+  take stdlib, like text, fall <>
+  like install-answer
+  mark async
+
+  save argument-list, make list
+  fork test, is-equal(stdlib, <>)
+    hold
+      argument-list/push(<-u>)
+      argument-list/push(<TERM_STDLIB>)
+    miss
+      argument-list/push(<TERM_STDLIB={stdlib}>)
+  argument-list/push(<node>)
+  walk arguments
+    take one, like text
+    argument-list/push(one)
+  save done, run(<env>, argument-list)
+  fork test, is-unequal(done/code, 0)
+    hold
+      halt <exit {done/code}: {done/error}>
+  save last, <>
+  walk text-split(trim(done/output), <\n>)
+    take line, like text
+    save last, line
+  save read, parsed-json(last)
+  back make(install-answer, bind(root, <{read/root}>), bind(cli, <{read/cli}>), bind(again, <{read/again}>))
+
+task answers
+  take got, like install-answer
+  take root, like text
+  take cli, like text
+  like boolean
+
+  back and(is-equal(got/root, root), and(is-equal(got/cli, cli), is-equal(got/again, root)))
+
+# 1. unbundled, under tsx: the walk from deck/call/host/port/code/work/need reaches this package
+test <the port unbundled>
+  save t, fresh()
+  save probe, install-path/join(t, <probe.mts>)
+  install-file/write-file-sync(probe, probe-text(file-url(the-port())))
+  save root, install-file/realpath-sync(term-root())
+  save got, run-probe(make(list, <{root}/node_modules/tsx/dist/cli.mjs>, probe))
+  want hold, answers(got, root, install-path/join(root, <host/line.js>))
+
+# 2. bundled into the payload's built CLI, run directly, through a symlinked file and a symlinked folder
+form bundled-state
+  mark shared
+  link t, like text
+  link root, like text
+  link line, like text
+
+host bundled-now, make(bundled-state, bind(t, <>), bind(root, <>), bind(line, <>))
+
+task bundled
+  like bundled-state
+
+  fork test, is-unequal(bundled-now/t, <>)
+    hold
+      back bundled-now
+  save t, fresh()
+  save root, payload(t)
+  save line, install-path/join(root, <host/line.js>)
+  bundle(line)
+  save bundled-now/t, t
+  save bundled-now/root, root
+  save bundled-now/line, line
+  back bundled-now
+
+test <bundled in host/line.js>
+  save state, bundled()
+  want hold, answers(run-probe(make(list, state/line)), state/root, state/line)
+
+test <bundled, started through a symlinked file>
+  save state, bundled()
+  save linked, install-path/join(state/t, <linked.js>)
+  install-file/symlink-sync(state/line, linked)
+  want hold, answers(run-probe(make(list, linked)), state/root, state/line)
+
+test <bundled, started through a symlinked folder>
+  save state, bundled()
+  save alias, install-path/join(state/t, <alias>)
+  install-file/symlink-sync(state/root, alias)
+  want hold, answers(run-probe(make(list, install-path/join(alias, <host/line.js>))), state/root, state/line)
+
+# 3. a bundle under a folder with no marker, imported by the install's built CLI: found through argv[1]
+test <a bundle outside the install, through argv[1]>
+  save t, fresh()
+  save root, payload(t)
+  install-file/mkdir-sync(install-path/join(t, <away>))
+  save away, install-path/join(t, <away/bundle.mjs>)
+  bundle(away)
+  save line, install-path/join(root, <host/line.js>)
+  install-file/write-file-sync(line, <await import({quoted(file-url(away))})\n>)
+  want hold, answers(run-probe(make(list, line)), root, line)
+
+# 4. the same bundle started by itself: through TERM_STDLIB, a pin without code/ passed over, and nothing found
+form away-state
+  mark shared
+  link t, like text
+  link root, like text
+  link away, like text
+
+host away-now, make(away-state, bind(t, <>), bind(root, <>), bind(away, <>))
+
+task away-bundle
+  like away-state
+
+  fork test, is-unequal(away-now/t, <>)
+    hold
+      back away-now
+  save t, fresh()
+  save root, payload(t)
+  install-file/mkdir-sync(install-path/join(t, <away>))
+  save away, install-path/join(t, <away/bundle.mjs>)
+  bundle(away)
+  save away-now/t, t
+  save away-now/root, root
+  save away-now/away, away
+  back away-now
+
+test <a bundle outside the install, through TERM_STDLIB>
+  save state, away-bundle()
+  want hold, answers(run-probe(make(list, state/away), install-path/join(state/root, <deck/base>)), state/root, install-path/join(state/root, <host/line.js>))
+
+test <a pin with no code/ in it, nothing else>
+  save state, away-bundle()
+  want hold, answers(run-probe(make(list, state/away), install-path/join(state/t, <away>)), <>, <>)
+
+test <nothing found>
+  save state, away-bundle()
+  want hold, answers(run-probe(make(list, state/away)), <>, <>)

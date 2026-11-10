@@ -261,7 +261,7 @@ task emit-head
 
 # a leaf manifest as `.tree` text
 task emit-manifest
-  take manifest, like dynamic
+  take manifest, like hold-manifest
   like text
 
   save body, make list

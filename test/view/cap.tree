@@ -1,0 +1,164 @@
+note <every bound the view dialect claims has a number, and exceeding one says which cap was hit>
+
+# Ported from cap.ts by statement (item term-self-host-001-0644), one test per `ok` in its order, each `caps` call of
+# the original one test of its own (`caps <what>`). A closed vocabulary stops a document doing what we did not write. It
+# does not stop it doing what we DID write, ten million times. The parser, the view reader, the cap defaults and the
+# template expander are the subject, docked as the original imported them (decision 106). The tight caps are the
+# defaults with nine bounds lowered, so a fixture stays readable: the point is that the number is configurable and the
+# message names it.
+
+load ../support/judging
+  find truth
+  find make-record
+  find read-field
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+dock load
+  load <@term/make/code/parser/tree>, name view-parser
+  load <@term/make/code/compile/view>, name view-reader
+  load <@term/make/code/compile/view-cap>, name view-cap
+  load <@term/make/code/compile/template>, name view-templates
+
+form view-source
+  link file, like text
+  link text, like text
+
+# what a check said: whether it read, and every message joined
+form checked
+  link ok, like boolean
+  link said, like text
+
+bind no-catalog
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+host view-caps, view-cap/make-view-caps()
+
+# the defaults with the tight bounds, `deep` and `walk-sum` given so one test can raise them
+task tight-with
+  take deep, like number
+  take walk-sum, like number
+  like dynamic
+
+  back make-record(make(list, <node>, 6, <deep>, deep, <callDeep>, 2, <callSum>, 3, <walkWide>, read-field(view-caps, <walkWide>), <walkDeep>, 2, <walkSum>, walk-sum, <find>, 2, <host>, 2, <view>, 1))
+
+host tight, tight-with(3, 40)
+
+# every message of a list of diagnostics, joined
+task said-of
+  take diagnostics, like dynamic
+  like text
+
+  save messages, make list
+  walk diagnostics
+    take one, like dynamic
+    messages/push(one/message)
+  back messages/join(< \| >)
+
+# a document parsed and read under `caps`, or the parse that refused it
+task check
+  take text, like text
+  take caps, like dynamic
+  like checked
+
+  save parsed, view-parser/parse(make(view-source, bind(file, <page.tree>), bind(text, text)))
+  fork test, not(truth(parsed/ok))
+    hold
+      back make(checked, bind(ok, false), bind(said, said-of(parsed/diagnostics)))
+  save result, view-reader/read-view(parsed/tree, <page.tree>, no-catalog(0), caps)
+  back make(checked, bind(ok, truth(result/ok)), bind(said, said-of(result/diagnostics)))
+
+# whether a document is refused under `caps` with a message holding `word`
+task caps
+  take text, like text
+  take word, like text
+  take use, like dynamic
+  like boolean
+
+  save result, check(text, use)
+  back and(not(result/ok), text-contains(result/said, word))
+
+# `n` placed items, one to a line
+task item
+  take n, like number
+  like text
+
+  save one, <  view text/item\n    bind a, text \<x\>>
+  fork test, is-below(n, 2)
+    hold
+      back one
+  back <{item(subtract(n, 1))}\n{one}>
+
+test <caps the node count>
+  want hold, caps(<view page\n{item(8)}\n>, <and the cap is 6>, tight)
+
+test <caps the tree depth>
+  want hold, caps(<view page\n  view a/b\n    view a/b\n      view a/b\n        view a/b\n>, <nests 4 deep>, tight)
+
+test <caps nested calls in one value>
+  want hold, caps(<view page\n  view a/b\n    bind x\n      call one\n        call two\n          call three\n            text \<x\>\n>, <nests 3 calls>, tight)
+
+test <caps operators in a document>
+  want hold, caps(<view page\n  view a/b\n    bind x\n      call one\n        text \<y\>\n  view a/b\n    bind x\n      call one\n        text \<y\>\n  view a/b\n    bind x\n      call one\n        text \<y\>\n  view a/b\n    bind x\n      call one\n        text \<y\>\n>, <applies 4 operators>, tight)
+
+# the product cap is the tighter of the two here, so raise it to let the DEPTH cap be the one that fires. Both bound
+# the same thing from different directions and whichever is lower is the one a document meets first
+test <caps nested walks>
+  want hold, caps(<host l, like text\nview page\n  walk list, read l\n    hook next\n      take site, name a\n      walk list, read a\n        hook next\n          take site, name b\n          walk list, read b\n            hook next\n              take site, name c\n              text \<x\>\n>, <nests 3 walks>, tight-with(12, 1000000000000))
+
+test <caps the product of nested counted walks>
+  want hold, caps(<view page\n  walk size\n    bind base, 0\n    bind head, 9\n    hook next\n      take site, name a\n      walk size\n        bind base, 0\n        bind head, 9\n        hook next\n          take site, name b\n          text \<x\>\n>, <build up to 81 nodes>, tight)
+
+test <caps the query count>
+  want hold, caps(<find a\n  task \<x\>\nfind b\n  task \<y\>\nfind c\n  task \<z\>\nview page\n  text \<x\>\n>, <names 3 queries>, tight)
+
+test <caps the value count>
+  want hold, caps(<host a, text \<x\>\nhost b, text \<y\>\nhost c, text \<z\>\nview page\n  text \<x\>\n>, <names 3 values>, tight)
+
+test <caps the view count>
+  want hold, caps(<view one\n  text \<x\>\nview two\n  text \<y\>\n>, <declares 2 views>, tight)
+
+test <a document inside every cap reads>
+  want hold, check(<host a, text \<x\>\nview page\n  view text/item\n    bind t, read a\n>, tight)/ok
+
+# the counts are taken AFTER macros expand, which is the whole point
+host expanded, <\ntree row\n  take n, like text\n  hook fuse\n    view text/item\n      bind a, text \<\{n\}\>\n    view text/item\n      bind b, text \<\{n\}\>\n    view text/item\n      bind c, text \<\{n\}\>\n\nview page\n  fuse row\n    bind n, \<1\>\n  fuse row\n    bind n, \<2\>\n  fuse row\n    bind n, \<3\>\n>
+
+host placing, make pattern, <<^\s+(view|fuse)\b>>
+
+# the lines of the document that place a node or fuse a macro, before expansion
+task placed-lines
+  take text, like text
+  like number
+
+  save count, 0
+  walk text-split(text, <\n>)
+    take line, like text
+    fork test, matches(placing, line)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <the document reads as fewer nodes before expansion>
+  want hold, is-below(placed-lines(expanded), 9)
+
+# expanding runs before the reader in every real path, so feed it the expanded tree the same way
+test <and is capped on the expanded count, which is what a browser builds>
+  save parsed, view-parser/parse(make(view-source, bind(file, <page.tree>), bind(text, expanded)))
+  want hold, truth(parsed/ok)
+  save result, view-reader/read-view(view-templates/expand-templates(parsed/tree, view-templates/collect-templates(parsed/tree)), <page.tree>, no-catalog(0), tight)
+  want hold, not(truth(result/ok))
+  want hold, text-contains(said-of(result/diagnostics), <builds 9 nodes and the cap is 6>)
+
+# the default caps are generous enough for a real document
+test <the default caps pass a forty-node document>
+  want hold, check(<host a, text \<x\>\nview page\n{item(40)}\n>, view-caps)/ok

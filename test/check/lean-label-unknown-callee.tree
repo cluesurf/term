@@ -1,0 +1,43 @@
+note <a lean call under a callee the program does not define is a nested call when it names a task>
+
+# Ported from lean-label-unknown-callee.ts by statement (item term-self-host-001-0608), one test per `ok` in its order.
+# nestLeanLabels nested labels only under a call to a task the program defines, so `get(items, pick-index(items))` kept
+# `pick-index` a label once two modules' definitions were renamed apart, and the checker refused it: "get is not a task
+# or a form this file can see, so its properties (pick-index) name nothing". Found by deck/test/test/struct-fuzz.tree on
+# the native gate, which merges struct-fuzz.tree and coverage-fuzz.tree, each defining `draw-under` (2026-10-05). The
+# program is read lean, `@app/a` and `@app/b` answered from the suite before the stdlib under the node env.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host a-text, <load @term/base/list\n  find list\n\ntask pick-index\n  take items, like list, like number\n  like number\n\n  back subtract(items/length, 1)\n>
+
+host b-text, <load @term/base/list\n  find list\n\ntask pick-index\n  take items, like list, like number\n  like number\n\n  back 0\n\ntask first-of\n  take items, like list, like number\n  like number\n\n  back get(items, pick-index(items))\n>
+
+host main-text, <load @term/base/list\n  find list\n\nload @app/a\n  find pick-index\n\nload @app/b\n  find first-of\n\ntask last-of\n  take items, like list, like number\n  like number\n\n  back get(items, pick-index(items))\n\ntask run\n  like number\n\n  host items, make list(4, 5, 6)\n\n  back add(last-of(items), first-of(items))\n>
+
+task app-choice
+  like compile-choice
+
+  host a, make(compiling-source, bind(file, <@app/a>), bind(text, a-text), bind(answer, <a.tree>))
+  host b, make(compiling-source, bind(file, <@app/b>), bind(text, b-text), bind(answer, <b.tree>))
+  back make(compile-choice, bind(file, <main.tree>), bind(stdlib, <node>), bind(env, <node>), bind(entry, <run>), bind(lean, true), bind(files, make list(a, b)))
+
+test <a task two modules define, written under get, is a nested call>
+  host out, compile-text(main-text, app-choice())
+  want hold, out/ok
+
+# each file reaches its own pick-index: a's is the last index, b's the first, so 6 + 4
+test <each file reaches its own pick-index: 6 + 4>
+  host folder, temp-folder(<lean-label-unknown-callee->)
+  host ran, run-text(main-text, <typescript>, folder, <apps>, app-choice())
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <10>)

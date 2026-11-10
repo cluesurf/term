@@ -1,0 +1,467 @@
+note <the dom lowering's accessibility: each vocabulary word's role and name read from its markup, and the contract's dom cell allows that role>
+
+# Ported from accessibility.ts by statement (item term-self-host-001-0644), one test per `ok` in its order
+# (native-accessibility-0002), the original's loop over its literal list of cases written out, one test per case and
+# `ok`. Every vocabulary word is placed on the in-memory dom with the props that name it, the tree is read back as
+# HTML, and each element's ROLE and NAME are computed from that markup the way a browser maps HTML to its accessibility
+# tree: an explicit `role`, else `aria-hidden="true"` takes it out, else the element's implicit role; a name from
+# `aria-label`, else `alt`, else `placeholder`, else its text. Two witnesses that must agree: the computed role is what
+# the case expects, and it must also appear in that word's DOM cell of the contract table, held as a json fixture. The
+# dom and view modules read as the in-memory host's, as the original's resolver pinned them, and the page is built and
+# run once on node through test/support/running. A case whose element is not drawn fails its role test, where the
+# original printed one `is drawn` failure in its place.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+  find file-text
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/json
+  find parse, name json-read
+
+load @term/base/list
+  find contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find pattern-match
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+host program, <load @term/site/code/dom/native/memory/dom\n  find view\n  find create-element\n  find serialize\n\nload @term/site/code/view/reactive\n  find make-signal\n\nload @term/face/code/logic/disclosure\n  find make-disclosure\n\nload @term/face/code/logic/range\n  find make-range\n\nload @term/base/code/list\n  find list\n  find push\n\nload @term/face/code/component/stack\n  find stack\nload @term/face/code/component/text\n  find text\nload @term/face/code/component/spacer\n  find spacer\nload @term/face/code/component/divider\n  find divider\nload @term/face/code/component/image\n  find image\nload @term/face/code/component/frame\n  find frame\nload @term/face/code/component/scroll\n  find scroll\nload @term/face/code/component/switch\n  find switch\nload @term/face/code/component/slider\n  find slider\nload @term/face/code/component/select\n  find select\nload @term/face/code/component/dialog\n  find dialog\n\nview still\n  take host, like view\n  view text\n    bind content, text \<plain\>\n  view text\n    bind content, text \<Title\>\n    bind level, code 2\n  view text\n    bind content, text \<Home\>\n    bind link, text \</home\>\n  view image\n    bind source, text \<a.png\>\n    bind text, text \<A dot\>\n  view image\n    bind source, text \<b.png\>\n  view input\n    bind placeholder, text \<Your name\>\n  view button\n    text \<Save\>\n  view stack\n    view text\n      bind content, text \<in a stack\>\n  view scroll\n    view text\n      bind content, text \<in a scroll\>\n  view spacer\n  view divider\n  view frame\n    bind width, code 100\n    view text\n      bind content, text \<in a frame\>\n\nview dialog-body\n  take host, like view\n  view span\n    text \<Sure?\>\n\ntask size-names\n  like list\n    like text\n  save names\n    make list\n  call push\n    bind list, read names\n    bind item, text \<small\>\n  call push\n    bind list, read names\n    bind item, text \<large\>\n  send back, read names\n\ntask run\n  like text\n  save root\n    call create-element\n      text \<main\>\n  call still\n    read root\n  call switch\n    read root\n    text \<\>\n    call make-disclosure\n      bind start, false\n    text \<Wi-Fi\>\n  call slider\n    read root\n    text \<\>\n    call make-range\n      bind start, code 40.0\n    code 0.0\n    code 100.0\n    code 1.0\n    text \<Volume\>\n  call select\n    read root\n    text \<\>\n    call make-signal\n      bind value, text \<small\>\n    call size-names\n    text \<Size\>\n  call dialog\n    read root\n    text \<\>\n    call make-disclosure\n      bind start, true\n    text \<Delete it?\>\n    read dialog-body\n  send back\n    call serialize\n      read root\n>
+
+host memory-choice, make(compile-choice, bind(file, <page.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<dom/native/\{platform\}/(dom|view)$>>), bind(into, <dom/native/memory/$1>)))))
+
+host out, compile-text(program, memory-choice)
+
+# ---- reading the markup ----
+
+form attribute
+  link name, like text
+  link value, like text
+
+# an element of the serializer's output, with its attributes and the text directly and indirectly inside it
+form element
+  mark shared
+  link tag, like text
+  link attributes, like list, like attribute
+  link text, like text
+
+host token, make pattern, <<[<](/?)([a-z][a-z0-9-]*)((?:\s+[a-z-]+="[^"]*")*)\s*[>]|([^<]+)>>
+host attribute-shape, make pattern, <<([a-z-]+)="([^"]*)">>
+host heading-tag, make pattern, <<^h[1-6]$>>
+host none-word, make pattern, <<(^|[ (;])none\b>>
+
+# the elements of the markup, in the order they open
+task elements-of
+  take html, like text
+  like list, like element
+
+  save elements, make list
+  save open, make list
+  walk find-matches(token, html)
+    take found, like pattern-match
+    save groups, found/groups
+    fork test, is-unequal(groups/3, <>)
+      hold
+        walk open
+          take holder, like element
+          save holder/text, <{holder/text}{groups/3}>
+      miss
+        fork test, is-equal(groups/0, </>)
+          hold
+            save closed, open/pop()
+          miss
+            save attributes, make list
+            walk find-matches(attribute-shape, groups/2)
+              take pair, like pattern-match
+              attributes/push(make(attribute, bind(name, pair/groups/0), bind(value, pair/groups/1)))
+            save made, make(element, bind(tag, groups/1), bind(attributes, attributes), bind(text, <>))
+            elements/push(made)
+            open/push(made)
+  back elements
+
+# an attribute's value, <> when it is not there
+task attribute-of
+  take one, like element
+  take name, like text
+  like text
+
+  walk one/attributes
+    take pair, like attribute
+    fork test, is-equal(pair/name, name)
+      hold
+        back pair/value
+  back <>
+
+task has-attribute
+  take one, like element
+  take name, like text
+  like boolean
+
+  walk one/attributes
+    take pair, like attribute
+    fork test, is-equal(pair/name, name)
+      hold
+        back true
+  back false
+
+# the role a browser maps the element to: explicit, hidden, or implicit by tag
+task role-of
+  take one, like element
+  like text
+
+  save tag, one/tag
+  fork test, is-equal(attribute-of(one, <aria-hidden>), <true>)
+    hold
+      back <hidden>
+  fork test, is-unequal(attribute-of(one, <role>), <>)
+    hold
+      back attribute-of(one, <role>)
+  fork test, is-equal(tag, <button>)
+    hold
+      back <button>
+  fork test, is-equal(tag, <input>)
+    hold
+      fork test, is-equal(attribute-of(one, <type>), <range>)
+        hold
+          back <slider>
+      back <textbox>
+  fork test, is-equal(tag, <select>)
+    hold
+      back <combobox>
+  fork test, is-equal(tag, <img>)
+    hold
+      fork test, is-unequal(attribute-of(one, <alt>), <>)
+        hold
+          back <img>
+      back <hidden>
+  fork test, is-equal(tag, <hr>)
+    hold
+      back <separator>
+  fork test, matches(heading-tag, tag)
+    hold
+      back <heading>
+  fork test, and(is-equal(tag, <a>), has-attribute(one, <href>))
+    hold
+      back <link>
+  back <none>
+
+task name-of
+  take one, like element
+  like text
+
+  walk make list(<aria-label>, <alt>, <placeholder>)
+    take name, like text
+    save value, attribute-of(one, name)
+    fork test, is-unequal(value, <>)
+      hold
+        back value
+  back trim(one/text)
+
+# ---- the contract table ----
+
+# the contract's DOM cell per word: the vocabulary's "Accessibility" table, held as a json fixture (the vocabulary is
+# written outside this repository, and the check that holds the snapshot equal to it runs there)
+host table, json-read(file-text(<test/fixture/accessibility.json>))
+
+# the DOM cell of a word's row, <> when there is none, the last row of the word as a table of rows keeps it
+task dom-cell
+  take word, like text
+  like text
+
+  save cell, <>
+  walk table
+    take cells, like dynamic
+    fork test, and(is-equal(cells/length, 10), is-equal(cells/0, word))
+      hold
+        save cell, <{cells/1}>
+  back cell
+
+# the cell allows this role: named in backticks, or `none` written as the cell's own word
+task allows
+  take word, like text
+  take role, like text
+  like boolean
+
+  save cell, dom-cell(word)
+  fork test, is-equal(role, <none>)
+    hold
+      back matches(none-word, cell)
+  back text-contains(cell, <`{role}`>)
+
+# ---- the run ----
+
+form held-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link elements, like list, like element
+
+host held, make(held-run, bind(done, false), bind(state, <>), bind(elements, make list))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  host folder, temp-folder(<term-accessibility->)
+  host ran, run-text(program, <typescript>, folder, <page>, memory-choice)
+  save held/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save held/state, <ran>
+      save held/elements, elements-of(trim(ran/output))
+  save held/done, true
+  back held
+
+task slot-is
+  take one, like element
+  take name, like text
+  like boolean
+
+  back is-equal(attribute-of(one, <data-slot>), name)
+
+# whether an element is the one a case looks for
+task is-case
+  take what, like text
+  take one, like element
+  like boolean
+
+  fork test, is-equal(what, <plain text>)
+    hold
+      back and(slot-is(one, <text>), is-equal(one/text, <plain>))
+  fork test, is-equal(what, <text with a level>)
+    hold
+      back is-equal(one/tag, <h2>)
+  fork test, is-equal(what, <text with a link>)
+    hold
+      back is-equal(one/tag, <a>)
+  fork test, is-equal(what, <an image with words>)
+    hold
+      back and(is-equal(one/tag, <img>), is-equal(attribute-of(one, <src>), <a.png>))
+  fork test, is-equal(what, <an image with none>)
+    hold
+      back and(is-equal(one/tag, <img>), is-equal(attribute-of(one, <src>), <b.png>))
+  fork test, is-equal(what, <a field>)
+    hold
+      back and(is-equal(one/tag, <input>), is-unequal(attribute-of(one, <type>), <range>))
+  fork test, is-equal(what, <a button>)
+    hold
+      back and(is-equal(one/tag, <button>), is-equal(one/text, <Save>))
+  fork test, is-equal(what, <a toggle>)
+    hold
+      back slot-is(one, <switch>)
+  fork test, is-equal(what, <a range>)
+    hold
+      back slot-is(one, <slider>)
+  fork test, is-equal(what, <a choice>)
+    hold
+      back slot-is(one, <select>)
+  fork test, is-equal(what, <a stack>)
+    hold
+      back slot-is(one, <stack>)
+  fork test, is-equal(what, <a scroll>)
+    hold
+      back slot-is(one, <scroll>)
+  fork test, is-equal(what, <a spacer>)
+    hold
+      back slot-is(one, <spacer>)
+  fork test, is-equal(what, <a divider>)
+    hold
+      back slot-is(one, <divider>)
+  fork test, is-equal(what, <a frame>)
+    hold
+      back slot-is(one, <frame>)
+  fork test, is-equal(what, <a dialog>)
+    hold
+      back slot-is(one, <dialog>)
+  back false
+
+# the role of the first element a case looks for, <not drawn> when there is none
+task role-for
+  take what, like text
+  like text
+  mark async
+
+  walk the-run()/elements
+    take one, like element
+    fork test, is-case(what, one)
+      hold
+        back role-of(one)
+  back <not drawn>
+
+# the name of the first element a case looks for, <not drawn> when there is none
+task name-for
+  take what, like text
+  like text
+  mark async
+
+  walk the-run()/elements
+    take one, like element
+    fork test, is-case(what, one)
+      hold
+        back name-of(one)
+  back <not drawn>
+
+host operable, make list(<button>, <switch>, <slider>, <combobox>, <textbox>, <link>, <img>, <dialog>, <heading>)
+
+# the operable or announced elements with no name
+task unnamed
+  like number
+  mark async
+
+  save count, 0
+  walk the-run()/elements
+    take one, like element
+    fork test, and(contains(operable, role-of(one)), is-equal(name-of(one), <>))
+      hold
+        save count, add(count, 1)
+  back count
+
+test <a page of every word compiles>
+  want hold, out/ok
+
+test <it runs>
+  want hold, is-equal(the-run()/state, <ran>)
+
+test <plain text: role none>
+  want hold, is-equal(role-for(<plain text>), <none>)
+
+test <plain text: the contract's text row allows none>
+  want hold, allows(<text>, <none>)
+
+test <text with a level: role heading>
+  want hold, is-equal(role-for(<text with a level>), <heading>)
+
+test <text with a level: the contract's text row allows heading>
+  want hold, allows(<text>, <heading>)
+
+test <text with a level: named Title>
+  want hold, is-equal(name-for(<text with a level>), <Title>)
+
+test <text with a link: role link>
+  want hold, is-equal(role-for(<text with a link>), <link>)
+
+test <text with a link: the contract's text row allows link>
+  want hold, allows(<text>, <link>)
+
+test <text with a link: named Home>
+  want hold, is-equal(name-for(<text with a link>), <Home>)
+
+test <an image with words: role img>
+  want hold, is-equal(role-for(<an image with words>), <img>)
+
+test <an image with words: the contract's image row allows img>
+  want hold, allows(<image>, <img>)
+
+test <an image with words: named A dot>
+  want hold, is-equal(name-for(<an image with words>), <A dot>)
+
+test <an image with none: role hidden>
+  want hold, is-equal(role-for(<an image with none>), <hidden>)
+
+test <an image with none: the contract's image row allows hidden>
+  want hold, allows(<image>, <hidden>)
+
+test <a field: role textbox>
+  want hold, is-equal(role-for(<a field>), <textbox>)
+
+test <a field: the contract's field row allows textbox>
+  want hold, allows(<field>, <textbox>)
+
+test <a field: named Your name>
+  want hold, is-equal(name-for(<a field>), <Your name>)
+
+test <a button: role button>
+  want hold, is-equal(role-for(<a button>), <button>)
+
+test <a button: the contract's button row allows button>
+  want hold, allows(<button>, <button>)
+
+test <a button: named Save>
+  want hold, is-equal(name-for(<a button>), <Save>)
+
+test <a toggle: role switch>
+  want hold, is-equal(role-for(<a toggle>), <switch>)
+
+test <a toggle: the contract's toggle row allows switch>
+  want hold, allows(<toggle>, <switch>)
+
+test <a toggle: named Wi-Fi>
+  want hold, is-equal(name-for(<a toggle>), <Wi-Fi>)
+
+test <a range: role slider>
+  want hold, is-equal(role-for(<a range>), <slider>)
+
+test <a range: the contract's range row allows slider>
+  want hold, allows(<range>, <slider>)
+
+test <a range: named Volume>
+  want hold, is-equal(name-for(<a range>), <Volume>)
+
+test <a choice: role combobox>
+  want hold, is-equal(role-for(<a choice>), <combobox>)
+
+test <a choice: the contract's choice row allows combobox>
+  want hold, allows(<choice>, <combobox>)
+
+test <a choice: named Size>
+  want hold, is-equal(name-for(<a choice>), <Size>)
+
+test <a stack: role none>
+  want hold, is-equal(role-for(<a stack>), <none>)
+
+test <a stack: the contract's stack row allows none>
+  want hold, allows(<stack>, <none>)
+
+test <a scroll: role none>
+  want hold, is-equal(role-for(<a scroll>), <none>)
+
+test <a scroll: the contract's scroll row allows none>
+  want hold, allows(<scroll>, <none>)
+
+test <a spacer: role hidden>
+  want hold, is-equal(role-for(<a spacer>), <hidden>)
+
+test <a spacer: the contract's spacer row allows hidden>
+  want hold, allows(<spacer>, <hidden>)
+
+test <a divider: role separator>
+  want hold, is-equal(role-for(<a divider>), <separator>)
+
+test <a divider: the contract's divider row allows separator>
+  want hold, allows(<divider>, <separator>)
+
+test <a frame: role none>
+  want hold, is-equal(role-for(<a frame>), <none>)
+
+test <a frame: the contract's frame row allows none>
+  want hold, allows(<frame>, <none>)
+
+test <a dialog: role dialog>
+  want hold, is-equal(role-for(<a dialog>), <dialog>)
+
+test <a dialog: the contract's dialog row allows dialog>
+  want hold, allows(<dialog>, <dialog>)
+
+test <a dialog: named Delete it?>
+  want hold, is-equal(name-for(<a dialog>), <Delete it?>)
+
+# every control a person operates has a name: nothing a screen reader reaches is announced as just its role
+test <no operable or announced element is unnamed>
+  want hold, is-equal(the-run()/state, <ran>)
+  want hold, is-equal(unnamed(), 0)

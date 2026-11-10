@@ -1,0 +1,30 @@
+note <First-class functions: a task passed as a value to a higher-order task, then called>
+
+# Ported from function.ts by statement (item term-self-host-001-0616). The program is compiled longhand with the
+# compiler's own resolver and run on node, one main printing both answers. `apply-twice` takes a task (number to number)
+# as a first-class value and applies it twice.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+host source, <task increment\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n\ntask apply-twice\n  take f\n    like task\n      take x, like number\n      like number\n  take n, like number\n  like number\n  send back\n    call f\n      call f\n        read n\n\ntask run-twice\n  like number\n  send back\n    call apply-twice\n      read increment\n      code 5\n\ntask run-direct\n  like number\n  send back\n    call apply-twice\n      read double\n      code 5\n\ntask double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+
+task answer-of
+  take call, like text
+  like text
+
+  save folder, temp-folder(<seed-function->)
+  back typescript-answer(compile-text(source, make(compile-choice, bind(file, <function.tree>))), <process.stdout.write(String({call}))>, folder, <module>)
+
+test <apply-twice increment 5 === 7>
+  want hold, is-equal(answer-of(<runTwice()>), <7>)
+
+test <apply-twice double 5 === 20>
+  want hold, is-equal(answer-of(<runDirect()>), <20>)

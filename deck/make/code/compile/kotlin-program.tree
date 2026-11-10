@@ -1710,6 +1710,29 @@ task emit-kotlin
   save float-table, float-forms(program)
   save hidden-generic, hidden-generics(program)
   save classes, variant-classes-of(program)
+  # each variant class's declared fields, for a left-out field's empty value (item term-self-host-001-1126)
+  save case-fields, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link variants
+        walk variants
+          take variant
+          save by-owner, classes/variant-class-of/get(variant/name)
+          save one-fields, make list
+          walk variant/fields
+            take field
+            save one-field
+              make record-field
+                bind name, field/name
+                bind type, field/type
+                bind optional, field/optional
+            push(one-fields, one-field)
+          save case-fields/{by-owner/get(name)}, one-fields
+      miss
+        save nothing, 0
   # F1's facts: the tasks whose signature this backend may change, the lent and fresh lists
   save gated, gated-tasks(program, keys-of(mask-methods))
   save list-facts, list-facts-of(program, gated)
@@ -2070,6 +2093,7 @@ task emit-kotlin
       bind variant-class, classes/variant-class
       bind variant-class-of, classes/variant-class-of
       bind variant-field-names, classes/variant-field-names
+      bind case-fields, case-fields
       bind owned-field-names, classes/owned-field-names
       bind mask-methods, mask-methods
       bind self-results, flags-of(self-names)

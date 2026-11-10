@@ -1,0 +1,71 @@
+note <A whole-number literal in a decimal field is a Double on Kotlin, never a Long>
+
+# Ported from decimal-literal.ts by statement (item term-self-host-001-0613). `1L` in a field declared `decimal` is
+# refused by kotlinc ("argument type mismatch: actual type is 'Long', but 'Double' was expected"). Swift's integer
+# literal adapts to its slot, so only Kotlin needed it. Found by the font table (native-text-0001), whose `scale` is 1 for
+# most faces. The emitted Kotlin is built by kotlinc with a main of its own and run on java, skipped without them.
+# compile/kotlin is the subject, docked for its import hoist.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+
+host program, <form face\n  link name, like text\n  link scale, like float\n  link count, like number\n\ntask make-face\n  like face\n  send back\n    make face\n      bind name, text \<plain\>\n      bind scale, code 1\n      bind count, code 2\n\ntask report\n  like text\n  save made\n    call make-face\n  send back, text \<\{\{made/scale\}\} \{\{made/count\}\}\>\n>
+
+host scale-double, make pattern, <<scale = 1\.0\b>>
+host count-long, make pattern, <<count = 2L\b>>
+
+task built
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <decimal.tree>), bind(env, <kotlin>)))
+
+test <compiles for kotlin>
+  want hold, built()/ok
+
+test <a whole number in a decimal field is written as a Double>
+  want hold, matches(scale-double, emit-text(built(), <kotlin>))
+
+test <a whole number in a number field stays a Long>
+  want hold, matches(count-long, emit-text(built(), <kotlin>))
+
+test <kotlinc builds it and it runs>
+  fork test, or(is-equal(find-tool(<kotlinc>), <>), is-equal(find-tool(<java>), <>))
+    hold
+      skip <kotlinc or java not installed>
+  host folder, temp-folder(<term-decimal->)
+  host file, <{folder}/main.kt>
+  host jar, <{folder}/main.jar>
+  write-file(file, kotlin-module/hoist-kotlin-imports(<{emit-text(built(), <kotlin>)}\nfun main() \{ print(report()) \}\n>))
+  want hold, is-equal(run-tool(make(list, <kotlinc>, file, <-include-runtime>, <-d>, jar)), <>)
+  host ran, run(<java>, make(list, <-jar>, jar))
+  want hold, starts-with(ran/output, <1>)
+  want hold, ends-with(ran/output, < 2>)

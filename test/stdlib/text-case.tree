@@ -1,0 +1,88 @@
+note <casing by language answers as node's own toLocaleUpperCase and toLocaleLowerCase do, on every backend>
+
+# Ported from test/stdlib/text-case.ts by statement (item term-self-host-001-0680): its one ok per backend is one walked
+# test, each backend a case of it. Casing by language (deck/base/code/text/case.tree, 2026-10-05) is held to node's own
+# toLocaleUpperCase and toLocaleLowerCase, which follow Unicode's SpecialCasing: Turkish and Azerbaijani dotted and
+# dotless i, Lithuanian's kept and dropped dot above, German's sharp s, a tag with a region, and a language with no rules.
+# `to-upper-case` takes no language, so a Turkish `i` was upper-cased to `I` everywhere (guides: library/text). One
+# program per backend pushes every case and joins the answers with a bar. A backend whose toolchain is not installed is
+# the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find join
+
+# one case: which way, the text, and its language
+form casing
+  link direction, like text
+  link text, like text
+  link language, like text
+
+# node's own casing of a text in a language, the oracle every backend is held to
+# host native: node's Intl casing is the reference the original compared with, Term's own casing is the subject
+bind node-cased
+  take direction, like text
+  take text, like text
+  take language, like text
+  like text
+  case node
+    text <$direction === 'upper' ? $text.toLocaleUpperCase($language) : $text.toLocaleLowerCase($language)>
+
+# the cases, written with the combining marks of the original
+host cases
+  make list
+    make(casing, bind(direction, <upper>), bind(text, <istanbul>), bind(language, <tr>))
+    make(casing, bind(direction, <upper>), bind(text, <istanbul>), bind(language, <tr-TR>))
+    make(casing, bind(direction, <upper>), bind(text, <istanbul>), bind(language, <en>))
+    make(casing, bind(direction, <lower>), bind(text, <IĞDIR>), bind(language, <tr>))
+    make(casing, bind(direction, <lower>), bind(text, <İSTANBUL>), bind(language, <tr>))
+    make(casing, bind(direction, <lower>), bind(text, <İ>), bind(language, <tr>))
+    make(casing, bind(direction, <lower>), bind(text, <Ị̇>), bind(language, <az>))
+    make(casing, bind(direction, <lower>), bind(text, <IĞDIR>), bind(language, <en>))
+    make(casing, bind(direction, <upper>), bind(text, <i̇>), bind(language, <lt>))
+    make(casing, bind(direction, <upper>), bind(text, <į̇>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <Ì>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <Ì>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <Í>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <Ĩ>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <Į́>), bind(language, <lt>))
+    make(casing, bind(direction, <lower>), bind(text, <J̃>), bind(language, <lt>))
+    make(casing, bind(direction, <upper>), bind(text, <straße>), bind(language, <de>))
+    make(casing, bind(direction, <lower>), bind(text, <ΟΔΟΣ>), bind(language, <el>))
+
+# the program: one push per case, the answers joined with a bar
+task case-program
+  like text
+
+  save pushes, <>
+  walk cases
+    take one, like casing
+    save pushes, <{pushes}  push(out, {one/direction}-case-in(\<{one/text}\>, \<{one/language}\>))\n>
+  back <load @term/base/text/case\n  find upper-case-in\n  find lower-case-in\n\nload @term/base/list\n  find list\n  find join\n\ntask run\n  like text\n  save out, make list\n{pushes}  back join(out, \<|\>)\n>
+
+# node's answers, in the same order, joined the same way
+task node-answers
+  like text
+
+  save answers, make list
+  walk cases
+    take one, like casing
+    answers/push(node-cased(one/direction, one/text, one/language))
+  back join(answers, <|>)
+
+test <casing by language answers as node does>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-case->)
+  host ran, run-text(case-program(), backend, folder, <case>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, node-answers())

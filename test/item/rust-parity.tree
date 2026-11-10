@@ -1,0 +1,140 @@
+note <the terminal output library answers the same on Rust as on TypeScript, line for line>
+
+# Ported from rust-parity.ts by statement (item term-self-host-001-0672), one test per `ok` in its order.
+# deck/call/test/item/parity.tree draws a handful of items in every shape the cards use, at 80 and 40 columns, in Unicode
+# and ASCII. The term under test emits it for node and for rust from the package, so its role (lean) applies, both run,
+# and every line is held equal. rustc compiling the modules proves they type, and this proves they say the same thing.
+# The whole run is made once and each test reads its part. Without rustc each test is its own skip, as the original
+# skipped the file.
+
+load ../support/running
+  find run-tool
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+
+load @term/base/text
+  find split, name text-split
+
+dock load
+  load <node:path>, name parity-path
+
+# what each step left, in order
+form parity-run
+  mark shared
+  link done, like boolean
+  link node-emitted, like boolean
+  link node-why, like text
+  link rust-emitted, like boolean
+  link rust-why, like text
+  link built, like boolean
+  link build-why, like text
+  link node-code, like number
+  link node-output, like text
+  link rust-code, like number
+  link rust-output, like text
+
+host now, make(parity-run, bind(done, false), bind(node-emitted, false), bind(node-why, <>), bind(rust-emitted, false), bind(rust-why, <>), bind(built, false), bind(build-why, <>), bind(node-code, -1), bind(node-output, <>), bind(rust-code, -1), bind(rust-output, <>))
+
+# the program for one target, emitted by the term under test from the package, answering its words on a failure
+task emit-for
+  take target, like text
+  take out, like text
+  like text
+  mark async
+
+  save ran, run-self(make(list, <make>, <--emit>, target, <test/item/parity.tree>, <--out>, out, <--log>, <json>), <deck/call>)
+  fork test, is-equal(ran/code, 0)
+    hold
+      back <>
+  back <exit {ran/code}: {ran/output}{ran/error}>
+
+task the-run
+  like parity-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  save folder, temp-folder(<term-item-parity->)
+  save ts, parity-path/join(folder, <parity.ts>)
+  save rs, parity-path/join(folder, <parity.rs>)
+  save node-why, emit-for(<node>, ts)
+  save rust-why, emit-for(<rust>, rs)
+  save now/node-why, node-why
+  save now/rust-why, rust-why
+  save now/node-emitted, is-equal(node-why, <>)
+  save now/rust-emitted, is-equal(rust-why, <>)
+  fork test, not(and(now/node-emitted, now/rust-emitted))
+    hold
+      back now
+  # each backend's entry: the program declares `draw-samples`, and the harness prints what it answers
+  write-file(ts, <{read-file(ts)}\nprocess.stdout.write(drawSamples())\n>)
+  save from-node, run(<node>, make list(<--import>, <tsx>, ts))
+  save now/node-code, from-node/code
+  save now/node-output, from-node/output
+  write-file(rs, <{read-file(rs)}\nfn main() \{ print!("\{\}", draw_samples()); \}\n>)
+  save binary, parity-path/join(folder, <parity>)
+  save build-why, run-tool(make list(<rustc>, <--edition>, <2021>, <-O>, <-A>, <warnings>, <-o>, binary, rs))
+  save now/build-why, build-why
+  save now/built, is-equal(build-why, <>)
+  fork test, not(now/built)
+    hold
+      back now
+  save from-rust, run(binary, make list)
+  save now/rust-code, from-rust/code
+  save now/rust-output, from-rust/output
+  back now
+
+test <the program emits for node>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, the-run()/node-emitted
+
+test <the program emits for rust>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, the-run()/rust-emitted
+
+test <the program builds with rustc>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  want hold, the-run()/built
+
+test <node drew the samples>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  save got, the-run()
+  want hold, and(is-equal(got/node-code, 0), is-above(text-split(got/node-output, <\n>)/length, 40))
+
+test <rust drew the samples>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  save got, the-run()
+  want hold, and(is-equal(got/rust-code, 0), is-above(text-split(got/rust-output, <\n>)/length, 40))
+
+test <every line the same on both>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc not installed>
+  save got, the-run()
+  want hold, is-equal(text-split(got/node-output, <\n>), text-split(got/rust-output, <\n>))

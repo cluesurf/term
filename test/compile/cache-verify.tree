@@ -1,0 +1,405 @@
+note <TERM_CACHE_VERIFY: hits rebuilds what it reads and refuses a stale answer, twice builds twice, ledger refuses an uncovered read>
+
+# Ported from cache-verify.ts by statement (item term-self-host-001-0622), one test per `ok` in its order. Decision 077
+# section 5, item term-self-host-001-0407: a stored unit answer that a key forgot an input of is served as it was
+# stored; under `hits` the build builds every stored answer it reads again and refuses one whose bytes differ, naming
+# the unit. The forgotten input is planted as a stored entry whose emitted text was changed after it was written. Under
+# `twice` every unit built is built a second time and must answer the same bytes. Under `ledger` a read made inside a
+# unit's build that its key does not cover (planted through the face's test hook, the global `termLedgerPlant`) fails
+# the build, naming the unit, the reader and what it read. compile/separate, compile/cache, call/cache-store and the
+# project build are the subject (decision 106). The builds run once, in order, and each test reads one of their facts.
+
+load @term/base/test/temp
+  find temp-folder
+
+load ../support/judging
+  find make-record
+
+load @term/base/environment
+  find set-variable
+  find remove-variable
+  find variable
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains
+  find starts-with
+  find ends-with
+  find split
+  find replace-all
+
+dock load
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name project-module
+  load <node:fs>, name verify-file
+  load <node:path>, name verify-path
+  load <node:zlib>, name verify-zlib
+
+bind new-cache
+  take module, like dynamic
+  take store, like dynamic
+  take label, like text
+  like dynamic
+  case node
+    text <new $module.CompileCache($store, $label)>
+
+# host reflect: a raise's words, as the original's String(problem)
+bind raised-words
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause)>
+
+# host reflect: a build's raise by its note, as the original's String(problem.note ?? problem)
+bind raised-note
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.note ?? $cause)>
+
+# host native: the ledger's test hook is the global the face calls inside a unit's build
+bind set-plant
+  take read, like dynamic
+  like boolean
+  case node
+    text <(globalThis.termLedgerPlant = $read, true)>
+
+# host native: the hook cleared, so a build after it reads nothing planted
+bind clear-plant
+  take seed, like number
+  like boolean
+  case node
+    text <(delete globalThis.termLedgerPlant, true)>
+
+form verify-story
+  link first, like dynamic
+  link clean, like text
+  link second, like dynamic
+  link same-output, like boolean
+  link planted, like number
+  link stale, like dynamic
+  link stale-output, like text
+  link said, like text
+  link ledgered, like text
+  link file-said, like text
+  link outside, like text
+  link env-said, like text
+  link own-said, like text
+  link off-said, like text
+
+form verify-told
+  mark shared
+  link held, like list, like verify-story
+
+host told, make(verify-told, bind(held, make list))
+
+task real-folder
+  take prefix, like text
+  like text
+
+  back verify-file/realpath-sync(temp-folder(prefix))
+
+task recursive
+  like dynamic
+
+  back make-record(make(list, <recursive>, true))
+
+# every unit `.json.gz` under the store, as paths from it
+task unit-entries
+  take store, like text
+  like list, like text
+
+  save out, make list
+  walk verify-file/readdir-sync(store, recursive())
+    take name, like text
+    save parts, split(name, verify-path/sep)
+    fork test, and(ends-with(name, <.json.gz>), is-equal(parts/0, <unit>))
+      hold
+        out/push(name)
+  back out
+
+# every module the build emitted, in name order
+task emitted
+  take root, like text
+  like text
+
+  save folder, verify-path/join(root, <host>, <.unit>)
+  save names, verify-file/readdir-sync(folder)
+  save texts, make list
+  walk names/sort()
+    take name, like text
+    texts/push(verify-file/read-file-sync(verify-path/join(folder, name), <utf8>))
+  back texts/join(<\n>)
+
+# a separate build of the project under TERM_CACHE_VERIFY=`verify`, the variable removed after
+task build
+  take root, like text
+  take store, like text
+  take verify, like text
+  like dynamic
+
+  set-variable(<TERM_CACHE_VERIFY>, verify)
+  save cache, new-cache(cache-module, cache-store/disk-cache-store(store, <verify>), <verify>)
+  save result, project-module/compile-project-separate(root, cache, <node>, project-module/build-session(root))
+  remove-variable(<TERM_CACHE_VERIFY>)
+  back result
+
+# what a build said: its failures, or the words of the raise that stopped it
+task build-said
+  take root, like text
+  take store, like text
+  take verify, like text
+  like text
+
+  fork
+    mark unsafe
+    save checked, build(root, store, verify)
+    save errors, checked/errors
+    back <no raise: {checked/failed} failed, {errors/join(< | >)}>
+  halt take
+    take problem
+    remove-variable(<TERM_CACHE_VERIFY>)
+    back raised-note(problem)
+
+# a ledger build on a fresh store of its own, as `failed` and the errors, or the raise's words
+task ledger-said
+  take root, like text
+  take stores, like text
+  take verify, like text
+  like text
+
+  save store, verify-file/mkdtemp-sync(verify-path/join(stores, <store->))
+  fork
+    mark unsafe
+    save checked, build(root, store, verify)
+    save errors, checked/errors
+    back <{checked/failed} failed {errors/join(< | >)}>
+  halt take
+    take problem
+    remove-variable(<TERM_CACHE_VERIFY>)
+    back raised-note(problem)
+
+# a ledger build with a read planted in every unit's build
+task planted-said
+  take root, like text
+  take stores, like text
+  take read, like dynamic
+  take verify, like text
+  like text
+
+  set-plant(read)
+  save said, ledger-said(root, stores, verify)
+  clear-plant(0)
+  back said
+
+# the reads planted: a file outside every unit, a setting, and a module the unit reaches
+form plant-paths
+  mark shared
+  link outside, like text
+  link helper, like text
+
+host plants, make(plant-paths, bind(outside, <>), bind(helper, <>))
+
+task read-outside
+  take files, like dynamic
+  like void
+
+  save ignored, verify-file/read-file-sync(plants/outside, <utf8>)
+
+task read-setting
+  take files, like dynamic
+  like void
+
+  save ignored, variable(<TERM_PLANTED_SETTING>)
+
+# only the entry's unit reaches helper.tree, so only its build reads it
+task read-own
+  take files, like dynamic
+  like void
+
+  save base-file, verify-path/join(<code>, <base.tree>)
+  walk files
+    take file, like text
+    fork test, ends-with(file, base-file)
+      hold
+        save ignored, verify-file/read-file-sync(plants/helper, <utf8>)
+
+task story
+  like verify-story
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  save root, real-folder(<cache-verify->)
+  save store, real-folder(<cache-verify-store->)
+  verify-file/mkdir-sync(verify-path/join(root, <code>), recursive())
+  verify-file/write-file-sync(verify-path/join(root, <deck.tree>), <deck @probe/verify\n  mark \<0.0.1\>\n>)
+  verify-file/write-file-sync(verify-path/join(root, <code>, <helper.tree>), <task greet\n  take who, like text\n  like text\n  back \<hello \{who\}\>\n>)
+  verify-file/write-file-sync(verify-path/join(root, <code>, <base.tree>), <load ./helper\n  find greet\n\ntask main\n  like text\n  back greet(\<planted-name\>)\n>)
+  # a clean build under `twice`, then a no-op under `hits`
+  save first, build(root, store, <twice>)
+  save clean, emitted(root)
+  save second, build(root, store, <hits>)
+  save same-output, is-equal(emitted(root), clean)
+  # plant the forgotten input: the stored answers' emitted name changed after they were written
+  save planted, 0
+  walk unit-entries(store)
+    take entry, like text
+    save file, verify-path/join(store, entry)
+    save unzipped, verify-zlib/gunzip-sync(verify-file/read-file-sync(file))
+    save stored, unzipped/to-string(<utf8>)
+    fork test, contains(stored, <planted-name>)
+      hold
+        verify-file/write-file-sync(file, verify-zlib/gzip-sync(replace-all(stored, <planted-name>, <PLANTED-NAME>)))
+        save planted, add(planted, 1)
+  # without the check the stale answer is served, and with it the build stops
+  save stale, build(root, store, <>)
+  save stale-output, emitted(root)
+  save said, build-said(root, store, <hits>)
+  # `ledger`: a clean build on an empty store, then reads no key holds, planted inside a unit's build
+  save stores, real-folder(<cache-verify-ledger->)
+  save ledgered, ledger-said(root, stores, <ledger,twice>)
+  save outside, verify-path/join(stores, <outside.txt>)
+  verify-file/write-file-sync(outside, <not a module\n>)
+  save plants/outside, outside
+  save plants/helper, verify-path/join(root, <code>, <helper.tree>)
+  save file-said, planted-said(root, stores, read-outside, <ledger>)
+  save env-said, planted-said(root, stores, read-setting, <ledger>)
+  save own-said, planted-said(root, stores, read-own, <ledger>)
+  # without ledger the planted read is not looked at
+  set-plant(read-outside)
+  save off, ledger-said(root, stores, <>)
+  clear-plant(0)
+  save made, make(verify-story, bind(first, first), bind(clean, clean), bind(second, second), bind(same-output, same-output), bind(planted, planted), bind(stale, stale), bind(stale-output, stale-output), bind(said, said), bind(ledgered, ledgered), bind(file-said, file-said), bind(outside, outside), bind(env-said, env-said), bind(own-said, own-said), bind(off-said, off))
+  told/held/push(made)
+  back made
+
+# the words a mode's refusal raised, <> when it was taken
+task mode-refused
+  take mode, like text
+  like text
+
+  fork
+    mark unsafe
+    save taken, separate-module/cache-verify-of(mode)
+    back <>
+  halt take
+    take problem
+    back raised-words(problem)
+
+task chosen-of-half
+  like number
+
+  save half, separate-module/cache-verify-of(<hits:0.5>)
+  save chosen, 0
+  save at, 0
+  walk make(list, 0, 1, 2, 3)
+    take hundred, like number
+    walk make(list, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
+      take one, like number
+      fork test, half/hit(<key-{at}>)
+        hold
+          save chosen, add(chosen, 1)
+      save at, add(at, 1)
+  back chosen
+
+# the modes read
+test <off by default>
+  host off, separate-module/cache-verify-of(<>)
+  want hold, is-equal(off/twice, false)
+  want hold, is-equal(off/hit(<x>), false)
+
+test <hits is every hit>
+  host every, separate-module/cache-verify-of(<hits>)
+  host one, separate-module/cache-verify-of(<hits:1>)
+  want hold, every/hit(<a>)
+  want hold, one/hit(<b>)
+
+test <hits:0 is none>
+  host none, separate-module/cache-verify-of(<hits:0>)
+  want hold, not(none/hit(<a>))
+
+test <hits:0.5 chooses about half, the same on every ask>
+  host chosen, chosen-of-half()
+  host half, separate-module/cache-verify-of(<hits:0.5>)
+  want hold, is-above(chosen, 150)
+  want hold, is-below(chosen, 250)
+  want hold, is-equal(half/hit(<key-7>), half/hit(<key-7>))
+
+test <twice>
+  host both, separate-module/cache-verify-of(<twice,hits>)
+  want hold, both/twice
+
+test <a share past 1 is refused>
+  want hold, contains(mode-refused(<hits:2>), <share>)
+
+test <an unknown mode is refused>
+  want hold, contains(mode-refused(<everything>), <not a verify mode>)
+
+# a clean build under `twice`: every unit built twice, the same bytes, the same output
+test <a build under twice builds>
+  want hold, is-equal(story()/first/failed, 0)
+
+test <and emits the planted name>
+  want hold, contains(story()/clean, <planted-name>)
+
+# a no-op under `hits` reads every stored answer, builds each again, and finds them equal
+test <a no-op under hits builds nothing and passes>
+  host told-story, story()
+  want hold, is-equal(told-story/second/failed, 0)
+  want hold, is-equal(told-story/second/built, 0)
+
+test <to the same output>
+  want hold, story()/same-output
+
+test <a stored unit answer holds the name to plant>
+  want hold, is-above(story()/planted, 0)
+
+# without the check the stale answer is served: this is what a key that forgot an input does
+test <without the check the planted answer is served>
+  host told-story, story()
+  want hold, is-equal(told-story/stale/failed, 0)
+  want hold, contains(told-story/stale-output, <PLANTED-NAME>)
+
+# with it the build stops, naming the check, the unit and the place the two answers part
+test <under hits the planted answer is refused>
+  want hold, starts-with(story()/said, <cache verify hits>)
+
+test <naming the unit>
+  want hold, contains(story()/said, </code/base.tree answered differently>)
+
+test <and showing both answers where they part>
+  host said, story()/said
+  want hold, contains(said, <PLANTED-NAME>)
+  want hold, contains(said, <against>)
+  want hold, contains(said, <planted-name>)
+
+test <ledger is a mode>
+  host with, separate-module/cache-verify-of(<ledger,hits>)
+  host without, separate-module/cache-verify-of(<hits>)
+  want hold, with/ledger
+  want hold, not(without/ledger)
+
+test <a clean build under ledger reads only what its keys cover>
+  want hold, starts-with(story()/ledgered, <0 failed>)
+
+test <a planted file read is refused under ledger>
+  want hold, starts-with(story()/file-said, <cache verify ledger>)
+
+test <naming the unit, the reader and the path>
+  host told-story, story()
+  want hold, contains(told-story/file-said, <unit >)
+  want hold, contains(told-story/file-said, <read {told-story/outside}>)
+
+test <a planted setting read is refused under ledger>
+  want hold, contains(story()/env-said, <env TERM_PLANTED_SETTING>)
+
+test <a read of a module the unit reaches, with the walk's bytes, is covered>
+  want hold, not(starts-with(story()/own-said, <cache verify>))
+
+test <without ledger the planted read is not looked at>
+  want hold, starts-with(story()/off-said, <0 failed>)

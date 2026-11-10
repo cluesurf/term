@@ -3,7 +3,7 @@
 import {
   parseLockfile,
   serializeLockfile,
-} from '@term/make/code/deck/lock'
+} from '@term/make/code/lockfile'
 
 const SAMPLE = `base <0.0.1>
 

@@ -1,0 +1,3142 @@
+# `pnpm term:release`: build the `term` command for every platform, as the payload `@term/code` ships through the Term
+# registry. Ported from task/release.ts (item term-self-host-001-0717), run by `term boot` through the alias, with the
+# Windows step (task/release-windows.tree) and the pack (task/release-pack.tree) beside it.
+#
+#   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop. windows-x64 is built and
+#                                smoke-run on an EC2 Windows machine (task/release-windows.tree, about $0.02 a run);
+#                                --windows-cross packs it here instead, run nowhere. `--platform <name>` builds that
+#                                one platform and asks the registry nothing, `--out <dir>` (new or empty) puts it there
+#   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag, and tell
+#                                the package index, which lists `@term/code` under /packages like any package
+#   pnpm term:release --ping     build nothing: tell the index about every version already released, which is how the
+#                                releases from before the index read them get listed
+#
+# SECRETS COME FROM THE ENVIRONMENT. The push (the `push` command, a child of this run) reads GHCR_TOKEN or
+# TERM_OCI_TOKEN, and the Windows step (the `windows` command) the EC2 key and TERM_MACHINE_MODULE, all from the
+# environment this run was given. This repository holds no secret store and spawns none: the publisher's alias runs
+# the release inside its own. Both children are this same booted program, started again with their command.
+#
+# Every staged payload passes the payload gate (task/term/self-contained.ts --payload) before it is packed, and a leak
+# refuses the release with nothing published.
+#
+# THE PAYLOAD IS THE NODE BUILD, for now. 09's target is a native binary per platform, which the self-hosting port
+# has not produced yet, so each platform's tarball is the console's run entry
+# (`deck/call/host/port/code/line/base-run.ts`, ported from `deck/call/code/line/base.tree`) bundled for Node, and only
+# the parts that cannot be bundled travel beside it:
+#
+#   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/need.mjs`
+#                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe, and
+#                            bin\term.exe beside it, task/launcher/term.go, for winget, which puts only an .exe on PATH)
+#   term/host/need.mjs       the first module: which version runs here. It imports line.js in-process when the answer
+#                            is this version, else hands over (work/need/version-dispatch.tree)
+#   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
+#                            (work/need/choice-report.tree)
+#   term/host/line.js        the CLI (the console's run entry), every pure-JS dependency BUNDLED
+#   term/host/dock.mjs       the hook dispatcher every booted console imports: the Term port work/hook/running.tree
+#   term/host/build-worker.mjs, term/host/separate-worker.mjs
+#                            the build pools' worker entries (work/workers/file-worker.tree, unit-worker.tree)
+#   term/host/compile.mjs    stage0 of the fixpoint chain (decision 126 of change 001-finish-self-host): task/stage0.ts's
+#                            bundle of the release tree's compile closure, the same bytes on every platform, which
+#                            `pnpm term:boot` fetches by the release boot.tree pins and runs term:fixpoint with
+#   term/package.json        the name and version `--version` and the build cache key read
+#   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
+#                            first holds alike
+#   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`), and its deck.tree
+#   term/deck/host/          `@term/host`, the data dialect, and term/deck/call/ the files of `@term/call` a user's
+#                            project compiles (`shipped-call`), with term/deck/make/ the one file of the compiler that
+#                            printer loads (`shipped-make`)
+#   term/deck/mill/          `@term/mill`, every grammar, its deck.tree and code/, reached by name beside the stdlib
+#   term/node_modules/       esbuild + @esbuild/<platform> (native, run by boot, test, walk, cast),
+#                            hono + @hono/node-server (linked into every `term boot` app, which imports them)
+#
+# EVERY PACKAGE IN node_modules IS FETCHED FROM THE npm REGISTRY, at the exact version installed here, and checked
+# against the registry's sha512 integrity. Never copied from this machine's node_modules: esbuild's install step
+# replaces `bin/esbuild` with THIS machine's native binary, so a copied esbuild would carry darwin-arm64 into a
+# linux-x64 tarball and fail only on that machine.
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by): a booted program runs in the folder it was
+# started in, which the alias makes the Term root.
+
+load @term/call/work/output/printer
+  find open-run
+  find report
+  find close-run
+  find progress
+  find count
+  find field
+  find fail-run
+  find is-run-open
+
+load @term/call/work/item/event
+  find item-field
+  find tally
+
+load @term/call/work/registry/publishing
+  find announce
+  find announce-ask
+  find load-publish-keypair
+  find mint-ask
+
+load @term/deck/oci/toolchain-release
+  find release-route
+  find publish-release
+
+load @term/deck/oci/oci-routing
+  find transport-for
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+
+load @term/base/environment
+  find variable
+  find directory
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+
+load @term/base/text
+  find split
+  find starts-with
+
+load ./release-pack
+  find pack-payload
+  find packed-payload
+  find is-secret-file
+
+load ./release-windows
+  find release-on-windows
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <esbuild>, name esbuild-module
+  load <@term/term/task/stage0>, name stage0-module
+
+# ---- the constants ----
+
+# the package a release is: the toolchain (09, "The name")
+task package-name
+  like text
+  send back, text <@term/code>
+
+# the repository the release links to on GHCR, the `site` line of this package's deck.tree
+task source-site
+  like text
+  send back, text <https://github.com/cluesurf/term>
+
+# the generic agent this repository sends to a host that has not asked for ours
+task agent
+  like text
+  send back, text <Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36>
+
+task npm-registry
+  like text
+  send back, text <https://registry.npmjs.org>
+
+# The oldest Node the CLI runs on: `process.getBuiltinModule`, which the terminal output writer calls on every run,
+# arrived in 22.3.0 (and 20.16.0, which the check below also admits)
+task node-floor
+  like text
+  send back, text <22.3.0>
+
+# The platforms a release carries, each named the way 09 names them, with the esbuild package that holds its binary
+form platform-entry
+  link name, like text
+  link esbuild, like text
+
+task platform-of
+  take name, like text
+  take esbuild, like text
+  like platform-entry
+  send back
+    make platform-entry
+      bind name, read name
+      bind esbuild, read esbuild
+
+task platforms
+  like list, like platform-entry
+  save all
+    make list
+  call all/push
+    call platform-of
+      text <darwin-arm64>
+      text <@esbuild/darwin-arm64>
+  call all/push
+    call platform-of
+      text <darwin-x64>
+      text <@esbuild/darwin-x64>
+  call all/push
+    call platform-of
+      text <linux-x64>
+      text <@esbuild/linux-x64>
+  call all/push
+    call platform-of
+      text <linux-arm64>
+      text <@esbuild/linux-arm64>
+  call all/push
+    call platform-of
+      text <windows-x64>
+      text <@esbuild/win32-x64>
+  call all/push
+    call platform-of
+      text <windows-arm64>
+      text <@esbuild/win32-arm64>
+  send back, read all
+
+# The packages fetched into node_modules for every platform, beside the platform's esbuild binary
+task shipped-modules
+  like list, like text
+  save all
+    make list
+  call all/push, text <esbuild>
+  call all/push, text <hono>
+  call all/push, text <@hono/node-server>
+  send back, read all
+
+# Top of line.js. The CommonJS dependencies bundled into an ES module still call `require` for node builtins, so one
+# is made for them. Then the Node floor, checked before any bundled code runs, so an old Node gets a sentence instead
+# of `process.getBuiltinModule is not a function` from deep inside the output writer
+task banner
+  like text
+  save lines
+    make list
+  call lines/push, text <#!/usr/bin/env node>
+  call lines/push, text <import \{ createRequire as __termRequire \} from 'node:module';>
+  call lines/push, text <const require = __termRequire(import.meta.url);>
+  call lines/push, text <if (typeof process.getBuiltinModule !== 'function') \{ process.stderr.write('term needs Node.js {node-floor()} or newer, and this is ' + process.version + '.\\n'); process.exit(69) \}>
+  send back
+    call lines/join, text <\n>
+
+# The launcher on PATH. It follows its own symlink, because `~/.base/@term/code/call/term` and a Homebrew
+# `bin/term` are both links to it, and the install is beside the file, not beside the link
+task launcher
+  like text
+  save lines
+    make list
+  call lines/push, text <#!/bin/sh>
+  call lines/push, text <# The term command. Installed by https://term.surf/load or Homebrew; see note/project/term/term-load-install.md.>
+  call lines/push, text <self="$0">
+  call lines/push, text <while [ -L "$self" ]; do>
+  call lines/push, text <  link="$(readlink "$self")">
+  call lines/push, text <  case "$link" in>
+  call lines/push, text <    /*) self="$link" ;;>
+  call lines/push, text <    *) self="$(dirname "$self")/$link" ;;>
+  call lines/push, text <  esac>
+  call lines/push, text <done>
+  call lines/push, text <root="$(cd "$(dirname "$self")/.." && pwd)">
+  call lines/push, text <if ! command -v node \>/dev/null 2\>&1; then>
+  call lines/push, text <  echo "term needs Node.js {node-floor()} or newer on PATH: https://nodejs.org" \>&2>
+  call lines/push, text <  exit 69>
+  call lines/push, text <fi>
+  call lines/push, text <exec node "$root/host/need.mjs" "$@">
+  call lines/push, text <>
+  send back
+    call lines/join, text <\n>
+
+# The Windows launcher, bin\term.cmd: the same check and the same call. `%~dp0` is the folder this file is in, and
+# `call\term.cmd` under ~/.base/@term/code is a shim that calls this one, so this file is never the one replaced while
+# it runs. CRLF, which cmd.exe reads either way and Notepad shows right
+task windows-launcher
+  like text
+  save lines
+    make list
+  call lines/push, text <@echo off>
+  call lines/push, text <rem The term command. Installed by https://term.surf/load.ps1; see note/project/term/term-load-install.md.>
+  call lines/push, text <where node \>nul 2\>nul>
+  call lines/push, text <if errorlevel 1 (echo term needs Node.js {node-floor()} or newer on PATH: https://nodejs.org 1\>&2 & exit /b 69)>
+  call lines/push, text <node "%~dp0..\\host\\need.mjs" %*>
+  call lines/push, text <>
+  send back
+    call lines/join, text <\r\n>
+
+# the packages that ship beside the stdlib, each with its manifest so the sibling resolver reaches it by name from an
+# installed `term`, as it does in this repository. `@term/mill` holds the format readers, `@term/host` is the data
+# dialect the test report writes its lines in. Its tests stay here, and a shelved draft builds nothing
+task shipped-packages
+  like list, like text
+  save all
+    make list
+  call all/push, text <mill>
+  call all/push, text <host>
+  send back, read all
+
+# the files of `@term/call` a user's project compiles: the test report's own program, which `term test` builds
+# (test-running.tree `reporter-sources`), and the printer a program reports through, `@term/call/item`, with what it
+# loads (the run, work/output/printer.tree, and the output library, work/item/), item term-self-host-001-0983. Only these
+# ship, with the manifest that names the package and the role that reads them lean. A folder ships whole
+task shipped-call
+  like list, like text
+  save all
+    make list
+  call all/push, text <role.tree>
+  call all/push, text <code/test-report.tree>
+  call all/push, text <code/test-report-node.tree>
+  call all/push, text <code/work/preprocess/failure-reading.tree>
+  call all/push, text <code/item.tree>
+  call all/push, text <code/output-plan.tree>
+  call all/push, text <code/draft-mark.tree>
+  call all/push, text <code/work/output/printer.tree>
+  call all/push, text <code/work/item>
+  send back, read all
+
+# the one file of `@term/make` the printer loads: the diagnostic record and its renderer, whose own loads are the
+# stdlib's alone. Not the compiler: nothing else of the package ships
+task shipped-make
+  like list, like text
+  save all
+    make list
+  call all/push, text <role.tree>
+  call all/push, text <code/parser/diagnostic.tree>
+  send back, read all
+
+# ---- the shapes ----
+
+# one platform's tarball, as release.json lists it
+form built-payload
+  link platform, like text
+  link file, like text
+  link digest, like text
+  link bytes, like number
+
+# the port build read for its summary line, `term port-build: N built, N unchanged, N failed`
+form port-result
+  link ok, like boolean
+  link built, like number
+  link unchanged, like number
+  link failed, like number
+  link lines, like list, like text
+
+# whether the version is on the registry already: free (and whether this is the scope's first release), released, or
+# unknown, with the reason the registry gave
+form taken-answer
+  link form, like text
+  link at, like text
+  link first, like boolean
+  link reason, like text
+
+form gate-answer
+  link ok, like boolean
+  link lines, like list, like text
+
+# what a child's lines said, filled in while they arrive
+form windows-heard
+  mark shared
+  link built, like dynamic
+  link failed, like text
+
+form push-heard
+  mark shared
+  link index, like text
+  link failed, like dynamic
+
+# what the printer reads: each shape names only the keys the original passed
+form opening-item
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+  link started, like number
+
+form step-item
+  link verb, like text
+  link subject, like text
+
+form counted-step-item
+  link verb, like text
+  link subject, like text
+  link done, like number
+  link total, like number
+  link noun, like text
+  link one, like text
+
+form plain-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form fields-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like item-field
+
+form kind-fields-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like item-field
+
+form kind-quote-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link quote, like list, like text
+
+form timed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+
+form port-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+  link quote, like list, like text
+
+form pack-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link bytes, like number
+  link fields, like list, like item-field
+
+form exit-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link exit, like number
+
+form failure-close
+  link verdict, like text
+  link failure, like text
+
+form next-failure-close
+  link verdict, like text
+  link failure, like text
+  link next, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like tally
+
+form counted-failure-close
+  link verdict, like text
+  link counts, like list, like tally
+  link failure, like text
+
+form counted-next-close
+  link verdict, like text
+  link counts, like list, like tally
+  link next, like text
+
+form message-next-close
+  link verdict, like text
+  link counts, like list, like tally
+  link message, like list, like text
+  link next, like text
+
+form done-next-close
+  link verdict, like text
+  link counts, like list, like tally
+  link done, like boolean
+  link next, like text
+
+# ---- the host values Term has no word for ----
+
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+bind parse-json
+  take text, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+bind number-of
+  take value, like dynamic
+  like number
+  case node
+    text <Number($value)>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind no-value
+  like dynamic
+  case node
+    text <undefined>
+
+bind list-size
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind item-at
+  take items, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$items[$at]>
+
+# the node this program runs on, and the program itself: a booted program is its own file, so a child of the release
+# is this same program started again with another command
+bind node-program
+  like text
+  case node
+    text <process.execPath>
+
+bind program-file
+  like text
+  case node
+    text <String(process.argv[1])>
+
+bind resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+bind recursive-options
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind forced-options
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+bind raise-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# an error a person can act on, not a bug in Term: `expected` keeps fail-run from reporting it as a crash (exit 70)
+bind raise-expected
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ expected: true \}) \})()>
+
+bind raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+# what a caught value says. An oci-failure raised by the registry ports says its `thing`, as the TypeScript faces'
+# OciError said it in its message (oci-failure.tree)
+bind error-message
+  take problem, like dynamic
+  like text
+  case node
+    text <<((caught_) => (caught_?.form === "oci-failure" ? String(caught_.link?.thing ?? "") : caught_ instanceof Error ? caught_.message : String(caught_)))($problem)>>
+
+# a caught oci-failure as the faces handed it on, an Error holding its message and status; anything else as it is
+bind lifted
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <<((caught_) => (caught_?.form === "oci-failure" ? Object.assign(new Error(String(caught_.link?.thing ?? "")), typeof caught_.link?.status === "number" ? { status: caught_.link.status } : {}) : caught_))($problem)>>
+
+bind pretty-json
+  take value, like dynamic
+  like text
+  case node
+    text <<`${JSON.stringify($value, null, 2)}\n`>>
+
+# term/package.json of a stage: the name and version `--version` and the build cache key read
+bind stage-manifest
+  take version, like text
+  like text
+  case node
+    text <<`${JSON.stringify({ name: "@cluesurf/term", version: $version, type: "module", private: true }, null, 2)}\n`>>
+
+bind release-json
+  take version, like text
+  take built, like dynamic
+  like text
+  case node
+    text <<`${JSON.stringify({ package: "@term/code", version: $version, built: $built.map((one_) => ({ platform: one_.platform, file: one_.file, digest: one_.digest, bytes: one_.bytes })) }, null, 2)}\n`>>
+
+# a semver tag, `<n>.<n>.<n>`
+bind is-version-tag
+  take tag, like text
+  like boolean
+  case node
+    text <</^\d+\.\d+\.\d+$/.test($tag)>>
+
+# ---- running the port build ----
+
+# the summary line, `term port-build: N built, N unchanged, N failed`, and every line that is not blank
+bind port-summary
+  take text, like text
+  take ok, like boolean
+  like dynamic
+  case node
+    text <<((text_, ok_) => { const summary_ = /(\d+) built, (\d+) unchanged.*?(\d+) failed/.exec(text_); return { built: Number(summary_?.[1] ?? 0), unchanged: Number(summary_?.[2] ?? 0), failed: Number(summary_?.[3] ?? (ok_ ? 0 : 1)), lines: text_.split("\n").filter((line_) => line_.trim() !== "") } })($text, $ok)>>
+
+# the port build as a child the release watches while it runs (about 2.5 minutes, 2026-10-22): `--progress` makes it
+# write `progress <done> <total>` on stderr per module, handed to `told` as it comes. Every other line it writes is
+# kept, in order, for the quote under a failed item. Answers whether it exited 0, and its stdout then those lines
+bind port-build-child
+  take term, like text
+  take told, like dynamic
+  like dynamic
+  case node
+    text <<new Promise((settle_) => { const child_ = require("node:child_process").spawn("pnpm", ["-s", "exec", "tsx", "task/port-build.ts", "--progress"], { cwd: $term, stdio: ["ignore", "pipe", "pipe"] }); const out_ = []; const errors_ = []; child_.stdout.on("data", (chunk_) => out_.push(chunk_.toString("utf8"))); const reading_ = (async () => { for await (const line_ of require("node:readline").createInterface({ input: child_.stderr })) { const said_ = /^progress (\d+) (\d+)$/.exec(line_); if (said_) { $told(Number(said_[1]), Number(said_[2])) } else { errors_.push(`${line_}\n`) } } })(); new Promise((resolve_) => { child_.on("error", () => resolve_(null)); child_.on("close", (code_) => resolve_(code_)) }).then(async (status_) => { await reading_; settle_({ ok: status_ === 0, text: `${out_.join("")}${errors_.join("")}` }) }) })>>
+
+bind answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <($answer.ok === true)>
+
+bind answer-text
+  take answer, like dynamic
+  like text
+  case node
+    text <String($answer.text)>
+
+# a child of this release whose stdout is read line by line, each line handed to `heard` with `state`, its stderr the
+# release's own. Answers its exit code, or none when a signal ended it, once every line is read
+bind follow-child
+  take command, like text
+  take arguments, like dynamic
+  take cwd, like text
+  take heard, like dynamic
+  take state, like dynamic
+  like dynamic
+  case node
+    text <<new Promise((settle_) => { const child_ = require("node:child_process").spawn($command, $arguments, { cwd: $cwd, stdio: ["ignore", "pipe", "inherit"] }); const reading_ = (async () => { for await (const line_ of require("node:readline").createInterface({ input: child_.stdout })) { $heard(line_, $state) } })(); new Promise((resolve_) => child_.on("close", (code_) => resolve_(code_))).then(async (status_) => { await reading_; settle_(status_ ?? undefined) }) })>>
+
+# a line read as JSON, or none when it is not
+bind said-of
+  take line, like text
+  like dynamic
+  case node
+    text <<(() => { try { return { value: JSON.parse($line) } } catch { return undefined } })()>>
+
+bind said-value
+  take said, like dynamic
+  like dynamic
+  case node
+    text <$said.value>
+
+bind said-form
+  take said, like dynamic
+  like text
+  case node
+    text <String($said.value?.form)>
+
+bind said-text
+  take said, like dynamic
+  take key, like text
+  like text
+  case node
+    text <String($said.value[$key])>
+
+bind said-entry
+  take said, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$said.value?.[$key]>
+
+bind built-of-said
+  take said, like dynamic
+  like dynamic
+  case node
+    text <<({ platform: "windows-x64", file: String($said.value.file), digest: String($said.value.digest), bytes: Number($said.value.bytes) })>>
+
+bind trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+bind is-status-zero
+  take status, like dynamic
+  like boolean
+  case node
+    text <($status === 0)>
+
+bind status-shown
+  take status, like dynamic
+  like text
+  case node
+    text <<String($status ?? "on a signal")>>
+
+bind failed-or
+  take failed, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <<($failed || $fallback)>>
+
+# ---- the bundle ----
+
+bind bundle-options
+  take term, like text
+  take entry, like text
+  take outfile, like text
+  take banner, like text
+  like dynamic
+  case node
+    text <<({ absWorkingDir: $term, bundle: true, platform: "node", format: "esm", target: "node20", external: ["esbuild", "hono", "hono/*", "@hono/node-server", "@hono/node-server/*", "pg"], banner: { js: $banner }, logLevel: "warning", entryPoints: [$entry], outfile: $outfile })>>
+
+bind bundle-bytes
+  take made, like dynamic
+  like dynamic
+  case node
+    text <$made.bytes>
+
+# ---- the npm registry ----
+
+bind npm-get
+  take url, like text
+  take agent, like text
+  like dynamic
+  case node
+    text <<fetch($url, { headers: { "user-agent": $agent } })>>
+
+bind answer-json
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.json()>
+
+bind is-response-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <Boolean($answer.ok)>
+
+bind response-status
+  take answer, like dynamic
+  like text
+  case node
+    text <String($answer.status)>
+
+bind response-bytes
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.arrayBuffer().then((bytes_) =\> Buffer.from(bytes_))>
+
+bind dist-tarball
+  take metadata, like dynamic
+  like dynamic
+  case node
+    text <$metadata.dist?.tarball>
+
+bind dist-integrity
+  take metadata, like dynamic
+  like dynamic
+  case node
+    text <$metadata.dist?.integrity>
+
+bind is-sha512-integrity
+  take integrity, like dynamic
+  like boolean
+  case node
+    text <Boolean($integrity?.startsWith("sha512-"))>
+
+bind sha512-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <<`sha512-${require("node:crypto").createHash("sha512").update($bytes).digest("base64")}`>>
+
+# a package name in a registry address, and in a cached file's name: its first `/` written as `%2f`, or as `+`
+bind first-slash-as
+  take name, like text
+  take with, like text
+  like text
+  case node
+    text <$name.replace("/", $with)>
+
+# ---- children ----
+
+# the options of the Windows launcher's cross build: Go for Windows on `arch`, no C toolchain, its error captured
+bind go-options
+  take arch, like text
+  like dynamic
+  case node
+    text <<({ env: { ...process.env, GOOS: "windows", GOARCH: $arch, CGO_ENABLED: "0" }, stdio: ["ignore", "ignore", "pipe"] })>>
+
+bind gate-options
+  take term, like text
+  like dynamic
+  case node
+    text <<({ cwd: $term, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })>>
+
+bind ran-ok
+  take ran, like dynamic
+  like boolean
+  case node
+    text <($ran.status === 0)>
+
+bind ran-output
+  take ran, like dynamic
+  like text
+  case node
+    text <<`${$ran.stdout ?? ""}${$ran.stderr ?? ""}`>>
+
+# ---- the registry ----
+
+bind tags-ask
+  take repository, like text
+  like dynamic
+  case node
+    text <<({ repository: $repository })>>
+
+bind manifest-ask
+  take repository, like text
+  take reference, like text
+  like dynamic
+  case node
+    text <<({ repository: $repository, reference: $reference })>>
+
+bind payloads-of
+  take built, like dynamic
+  like dynamic
+  case node
+    text <<$built.map((one_) => ({ platform: one_.platform, bytes: require("node:fs").readFileSync(one_.file) }))>>
+
+bind annotations-of
+  take source, like text
+  take license, like text
+  take description, like text
+  like dynamic
+  case node
+    text <<({ "org.opencontainers.image.source": $source, "org.opencontainers.image.licenses": $license, "org.opencontainers.image.description": $description })>>
+
+# one line of JSON on stdout, written through to the pipe before anything else runs
+bind say-line
+  take said, like dynamic
+  like void
+  case node
+    text <<require("node:fs").writeSync(1, JSON.stringify($said) + "\n")>>
+
+bind key-set-said
+  take at, like text
+  like dynamic
+  case node
+    text <<({ form: "key-set", at: $at })>>
+
+bind index-said
+  take at, like text
+  take index, like text
+  like dynamic
+  case node
+    text <<({ form: "index", at: $at, index: $index })>>
+
+bind failed-said
+  take message, like text
+  like dynamic
+  case node
+    text <<({ form: "failed", message: $message })>>
+
+# `darwin-arm64: layer sha256:..., manifest sha256:...` is one platform pushed. Any other line is a note
+bind pushed-said
+  take message, like text
+  like dynamic
+  case node
+    text <<((message_) => { const pushed_ = /^([\w-]+): layer (\S+), manifest (\S+)$/.exec(message_.trim()); return pushed_ ? { form: "push", platform: pushed_[1], layer: pushed_[2], manifest: pushed_[3] } : { form: "note", text: message_.trim() } })($message)>>
+
+# the step's exit code, 1, kept through the end of the booted program, which ends the process with its own code
+bind fail-exit
+  like void
+  case node
+    text <<(process.exitCode = 1, process.on("exit", () => { process.exitCode = 1 }))>>
+
+bind uri-part
+  take text, like text
+  like text
+  case node
+    text <encodeURIComponent($text)>
+
+# ---- the text ----
+
+task joined
+  take parts, like list, like text
+  take between, like text
+  like text
+  save out, text <>
+  save first, true
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read part
+          save first, false
+        hook miss
+          save out, text <{out}{between}{part}>
+  send back, read out
+
+task one-text
+  take text, like text
+  like list, like text
+  save all
+    make list
+  call all/push, read text
+  send back, read all
+
+task one-field
+  take key, like text
+  take value, like text
+  like list, like item-field
+  save all
+    make list
+  call all/push
+    call field
+      read key
+      read value
+  send back, read all
+
+task one-count
+  take amount, like number
+  take noun, like text
+  take one, like text
+  like list, like tally
+  save all
+    make list
+  call all/push
+    call count
+      read amount
+      read noun
+      read one
+  send back, read all
+
+# ---- the root and the package ----
+
+# TERM_ROOT when it is set, else the nearest folder at or above the working directory holding the root marker,
+# else the working directory
+task term-root
+  like text
+  save named
+    call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+task out-root
+  take term, like text
+  like text
+  send back
+    call node-path/join
+      read term
+      text <tmp>
+      text <release>
+
+task read-manifest
+  take term, like text
+  like dynamic
+  send back
+    call parse-json
+      call node-fs/read-file-sync
+        call node-path/join
+          read term
+          text <package.json>
+        text <utf8>
+
+task read-version
+  take term, like text
+  like text
+  save manifest
+    call read-manifest
+      read term
+  fork test
+    hook test
+      call not
+        call is-truthy
+          read manifest/version
+    hook hold
+      call raise-error, text <package.json has no version>
+  send back
+    call text-of
+      read manifest/version
+
+# What the release says about itself, read from the same package.json as the version: the description GHCR prints
+# under the package's name, and the license, as an SPDX id. One source, so they cannot drift
+task read-annotations
+  take term, like text
+  like dynamic
+  save manifest
+    call read-manifest
+      read term
+  fork test
+    hook test
+      call or
+        call not
+          call is-truthy
+            read manifest/description
+        call not
+          call is-truthy
+            read manifest/license
+    hook hold
+      call raise-error, text <package.json needs both a description and a license for the release to carry>
+  send back
+    call annotations-of
+      call source-site
+      call text-of
+        read manifest/license
+      call text-of
+        read manifest/description
+
+# The version installed here, which is the version `pnpm-lock.yaml` resolved, so the release ships what was tested
+# (read from the file itself, not through a resolve: hono's `exports` does not list its package.json)
+task installed-version
+  take term, like text
+  take name, like text
+  like text
+  save manifest
+    call parse-json
+      call node-fs/read-file-sync
+        call node-path/join
+          read term
+          text <node_modules>
+          read name
+          text <package.json>
+        text <utf8>
+  send back
+    call text-of
+      read manifest/version
+
+# One package from the npm registry, checked against its sha512 integrity and unpacked into `dir`
+task fetch-package
+  mark async
+  take name, like text
+  take version, like text
+  take dir, like text
+  take cache, like text
+  like void
+  save address, text <{npm-registry()}/{first-slash-as(name, <%2f>)}/{version}>
+  save asked
+    call npm-get
+      read address
+      call agent
+      wait true
+  save metadata
+    call answer-json
+      read asked
+      wait true
+  save tarball
+    call dist-tarball
+      read metadata
+  save integrity
+    call dist-integrity
+      read metadata
+  fork test
+    hook test
+      call or
+        call not
+          call is-truthy
+            read tarball
+        call not
+          call is-sha512-integrity
+            read integrity
+    hook hold
+      call raise-error, text <{name}@{version}: the registry gave no tarball or sha512 integrity>
+  save cached
+    call node-path/join
+      read cache
+      text <{first-slash-as(name, <+>)}-{version}.tgz>
+  fork test
+    hook test
+      call not
+        call node-fs/exists-sync
+          read cached
+    hook hold
+      save response
+        call npm-get
+          call text-of
+            read tarball
+          call agent
+          wait true
+      fork test
+        hook test
+          call not
+            call is-response-ok
+              read response
+        hook hold
+          call raise-error, text <{text-of(tarball)}: {response-status(response)}>
+      save bytes
+        call response-bytes
+          read response
+          wait true
+      fork test
+        hook test
+          call is-unequal
+            call sha512-of
+              read bytes
+            call text-of
+              read integrity
+        hook hold
+          call raise-error, text <{name}@{version}: the tarball does not match the registry's integrity>
+      call node-fs/write-file-sync
+        read cached
+        read bytes
+  call node-fs/mkdir-sync
+    read dir
+    call recursive-options
+  # an npm tarball holds everything under `package/`
+  save arguments
+    make list
+  call arguments/push, text <-xzf>
+  call arguments/push, read cached
+  call arguments/push, text <-C>
+  call arguments/push, read dir
+  call arguments/push, text <--strip-components=1>
+  call node-child/exec-file-sync
+    text <tar>
+    read arguments
+
+# ---- the port build ----
+
+task told-progress
+  take done, like number
+  take total, like number
+  like void
+  call progress
+    make counted-step-item
+      bind verb, text <port>
+      bind subject, text <toolchain modules>
+      bind done, read done
+      bind total, read total
+      bind noun, text <modules>
+      bind one, text <module>
+
+# the ported toolchain modules the console's run entry imports (and the entry itself), written by port-build (the step
+# make:line runs first), as a child whose progress is drawn while it runs
+task port-build-live
+  mark async
+  take term, like text
+  like port-result
+  save ran
+    call port-build-child
+      read term
+      read told-progress
+      wait true
+  save ok
+    call answer-ok
+      read ran
+  save summary
+    call port-summary
+      call answer-text
+        read ran
+      read ok
+  send back
+    make port-result
+      bind ok, read ok
+      bind built
+        call number-of
+          read summary/built
+      bind unchanged
+        call number-of
+          read summary/unchanged
+      bind failed
+        call number-of
+          read summary/failed
+      bind lines, read summary/lines
+
+# ---- the bundle ----
+
+task bundled-step
+  take done, like number
+  like void
+  call progress
+    make counted-step-item
+      bind verb, text <bundle>
+      bind subject
+        call bundle-subject
+      bind done, read done
+      bind total, code 7
+      bind noun, text <files>
+      bind one, text <file>
+
+task bundle-subject
+  like text
+  send back, text <line.js, dock.mjs, need.mjs, need-hand.mjs, the two worker entries and compile.mjs>
+
+task bundle-one
+  mark async
+  take term, like text
+  take entry, like text
+  take outfile, like text
+  like void
+  call esbuild-module/build
+    call bundle-options
+      read term
+      read entry
+      read outfile
+      call banner
+    wait true
+
+# line.js, dock.mjs, the two dispatch modules, the two worker entries and stage0's compile.mjs, bundled once: they are
+# the same for every platform
+task bundle
+  mark async
+  take term, like text
+  take into, like text
+  like void
+  save host
+    call node-path/join
+      read into
+      text <host>
+  call bundled-step, code 0
+  # the console's run entry, generated by port-build from deck/call/code/line/base.tree: the entry make:line bundles
+  # as host/line.js
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/line/base-run.ts>
+    call node-path/join
+      read host
+      text <line.js>
+  call bundled-step, code 1
+  # the hook dispatcher's port, the dispatcher every console `term boot` writes imports
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/work/hook/running.ts>
+    call node-path/join
+      read host
+      text <dock.mjs>
+  call bundled-step, code 2
+  # the version dispatch and its slow half, the need ports make:line bundles
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/work/need/version-dispatch.ts>
+    call node-path/join
+      read host
+      text <need.mjs>
+  call bundled-step, code 3
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/work/need/choice-report.ts>
+    call node-path/join
+      read host
+      text <need-hand.mjs>
+  call bundled-step, code 4
+  # the build pools' worker entries, the Term ports make:line bundles beside line.js: a pool starts
+  # host/build-worker.mjs or host/separate-worker.mjs, and without them it falls back to a sequential build
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/work/workers/file-worker.ts>
+    call node-path/join
+      read host
+      text <build-worker.mjs>
+  call bundled-step, code 5
+  call bundle-one
+    read term
+    text <deck/call/host/port/code/work/workers/unit-worker.ts>
+    call node-path/join
+      read host
+      text <separate-worker.mjs>
+  call bundled-step, code 6
+  # stage0 of the fixpoint chain (decision 126): task/stage0.ts's bundle of this tree's compile closure, the seven
+  # names port-build loads (decision 036), made once and copied into every platform, so its sha256 is the same bundle
+  # id everywhere. `pnpm term:boot` fetches the release boot.tree pins and hands this file to term:fixpoint --stage0
+  save made
+    call stage0-module/bundle
+      read term
+      wait true
+  call node-fs/write-file-sync
+    call node-path/join
+      read host
+      text <compile.mjs>
+    call bundle-bytes
+      read made
+
+# ---- the stage ----
+
+# What a payload never carries from the source tree: any dotfile or dot-folder (a build's `.base/` cache, `.env*`,
+# `.git`, `.DS_Store`, Swift's `.build`), `node_modules`, Rust's `target`, build info, and a key file by its extension
+bind is-native-target
+  take relative, like text
+  like boolean
+  case node
+    text <</(^|\/)native\/[^/]+\/target(\/|$)/.test($relative)>>
+
+bind is-build-info
+  take relative, like text
+  like boolean
+  case node
+    text <</\.tsbuildinfo$/.test($relative)>>
+
+task is-shipped
+  take from, like text
+  take source, like text
+  like boolean
+  save relative
+    call node-path/relative
+      read from
+      read source
+  fork test
+    hook test
+      call is-equal
+        read relative
+        text <>
+    hook hold
+      send back, true
+  save parts
+    call split
+      read relative
+      read node-path/sep
+  save last, text <>
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call or
+            call starts-with
+              read part
+              text <.>
+            call is-equal
+              read part
+              text <node_modules>
+        hook hold
+          send back, false
+      save last, read part
+  fork test
+    hook test
+      call or
+        call is-native-target
+          read relative
+        call or
+          call is-build-info
+            read relative
+          call is-secret-file
+            read last
+    hook hold
+      send back, false
+  send back, true
+
+# a copy of `from` (a folder copied whole) holding only what `is-shipped` lets through, judged against `from`
+bind copy-shipped
+  take from, like text
+  take to, like text
+  take test, like dynamic
+  like void
+  case node
+    text <<require("node:fs").cpSync($from, $to, { recursive: true, filter: (source_) => $test($from, source_) })>>
+
+# the stdlib as the npm package ships it: no native build output, no build info, no cache. WITH ITS MANIFEST: a
+# separate build names a unit by the deck it belongs to (unit-naming.tree `unit-slug`), so without deck/base/deck.tree
+# every stdlib unit was named by its path from the project, which climbs out of it into this install (zone-0144)
+task copy-stdlib
+  take term, like text
+  take into, like text
+  like void
+  call node-fs/cp-sync
+    call node-path/join
+      read term
+      text <deck>
+      text <base>
+      text <deck.tree>
+    call node-path/join
+      read into
+      text <deck>
+      text <base>
+      text <deck.tree>
+  call copy-shipped
+    call node-path/join
+      read term
+      text <deck>
+      text <base>
+      text <code>
+    call node-path/join
+      read into
+      text <deck>
+      text <base>
+      text <code>
+    read is-shipped
+
+task copy-package-files
+  take term, like text
+  take into, like text
+  take name, like text
+  take files, like list, like text
+  like void
+  save from
+    call node-path/join
+      read term
+      text <deck>
+      read name
+  call node-fs/cp-sync
+    call node-path/join
+      read from
+      text <deck.tree>
+    call node-path/join
+      read into
+      text <deck>
+      read name
+      text <deck.tree>
+  walk list
+    read files
+    hook next
+      take site, name file
+      call copy-shipped
+        call node-path/join
+          read from
+          read file
+        call node-path/join
+          read into
+          text <deck>
+          read name
+          read file
+        read is-shipped
+
+task copy-shipped-packages
+  take term, like text
+  take into, like text
+  like void
+  walk list
+    call shipped-packages
+    hook next
+      take site, name name
+      save from
+        call node-path/join
+          read term
+          text <deck>
+          read name
+      call node-fs/cp-sync
+        call node-path/join
+          read from
+          text <deck.tree>
+        call node-path/join
+          read into
+          text <deck>
+          read name
+          text <deck.tree>
+      call copy-shipped
+        call node-path/join
+          read from
+          text <code>
+        call node-path/join
+          read into
+          text <deck>
+          read name
+          text <code>
+        read is-shipped
+  call copy-package-files
+    read term
+    read into
+    text <call>
+    call shipped-call
+  call copy-package-files
+    read term
+    read into
+    text <make>
+    call shipped-make
+
+# bin\term.exe, the Windows launcher winget links onto PATH (task/launcher/term.go), cross-compiled by Go with no C
+# toolchain, stripped, and with no build paths in it, so two builds of one source are the same bytes
+task build-windows-exe
+  take term, like text
+  take out, like text
+  take arch, like text
+  like void
+  save arguments
+    make list
+  call arguments/push, text <build>
+  call arguments/push, text <-trimpath>
+  call arguments/push, text <-ldflags>
+  call arguments/push, text <-s -w>
+  call arguments/push, text <-o>
+  call arguments/push, read out
+  call arguments/push
+    call node-path/join
+      read term
+      text <task>
+      text <launcher>
+      text <term.go>
+  call node-child/exec-file-sync
+    text <go>
+    read arguments
+    call go-options
+      read arch
+
+# THE PAYLOAD GATE (decision term/004): no staged payload may carry an absolute path of the machine that built it, a
+# path that climbs out of it, or a name of the repository it was built in, which a stranger can neither open nor
+# should see. The gate reads the staged folder and exits 0 when it is clean, 1 with one line per leak and a summary
+# line, 2 on a usage error. Anything but 0 refuses the release, and so does a gate that is not there. `name` keys the
+# payload's entry in the gate's baseline: `oci` for the per-platform release images
+task payload-leaks
+  take term, like text
+  take stage, like text
+  take name, like text
+  like gate-answer
+  save gate
+    call node-path/join
+      read term
+      text <task>
+      text <term>
+      text <self-contained.ts>
+  fork test
+    hook test
+      call not
+        call node-fs/exists-sync
+          read gate
+    hook hold
+      send back
+        make gate-answer
+          bind ok, false
+          bind lines
+            call one-text, text <the payload gate {node-path/relative(term, gate)} is not there, so nothing can be released>
+  save arguments
+    make list
+  call arguments/push, text <--experimental-strip-types>
+  call arguments/push, read gate
+  call arguments/push, text <--payload>
+  call arguments/push, read stage
+  call arguments/push, text <--name>
+  call arguments/push, read name
+  save ran
+    call node-child/spawn-sync
+      call node-program
+      read arguments
+      call gate-options
+        read term
+  save lines
+    make list
+  walk list
+    call split
+      call ran-output
+        read ran
+      text <\n>
+    hook next
+      take site, name line
+      fork test
+        hook test
+          call is-unequal
+            call trimmed
+              read line
+            text <>
+        hook hold
+          call lines/push, read line
+  send back
+    make gate-answer
+      bind ok
+        call ran-ok
+          read ran
+      bind lines, read lines
+
+# ---- the Windows step ----
+
+task heard-windows
+  take line, like text
+  take heard, like windows-heard
+  like void
+  save said
+    call said-of
+      read line
+  fork test
+    hook test
+      call not
+        call is-truthy
+          read said
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            call trimmed
+              read line
+            text <>
+        hook hold
+          call report
+            make plain-item
+              bind glyph, text <info>
+              bind verb, text <pack>
+              bind subject
+                call trimmed
+                  read line
+      send back
+  save form
+    call said-form
+      read said
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <tools>
+    hook hold
+      call report
+        make fields-item
+          bind glyph, text <done>
+          bind verb, text <check>
+          bind subject, text <the Windows toolchain: Node, Go, MSVC and Rust>
+          bind fields
+            call one-field
+              text <crate>
+              call said-text
+                read said
+                text <crate>
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <native>
+    hook hold
+      save fields
+        make list
+      call fields/push
+        call field
+          text <digest>
+          call said-text
+            read said
+            text <digest>
+      save cross, text <the same bytes>
+      fork test
+        hook test
+          call not
+            call is-truthy
+              call said-entry
+                read said
+                text <same>
+        hook hold
+          save cross
+            call said-text
+              read said
+              text <cross>
+      call fields/push
+        call field
+          text <cross>
+          read cross
+      call report
+        make fields-item
+          bind glyph, text <done>
+          bind verb, text <build>
+          bind subject, text <bin\\term.exe on Windows>
+          bind fields, read fields
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <smoke>
+    hook hold
+      save fields
+        make list
+      call fields/push
+        call field
+          text <digest>
+          call said-text
+            read said
+            text <digest>
+      call fields/push
+        call field
+          text <make>
+          call said-text
+            read said
+            text <made>
+      call report
+        make fields-item
+          bind glyph, text <done>
+          bind verb, text <run>
+          bind subject, text <windows-x64 on Windows: {said-text(said, <version>)}>
+          bind fields, read fields
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <built>
+    hook hold
+      save heard/built
+        call built-of-said
+          read said
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <failed>
+    hook hold
+      save heard/failed
+        call said-text
+          read said
+          text <message>
+
+# THE WINDOWS STEP (D8): windows-x64 staged here, all but its native part, then handed to this program's `windows`
+# command (task/release-windows.tree) with this run's environment, which holds the EC2 key. It rents a Windows
+# machine, builds bin\term.exe there with Windows' own Go, packs the stage here with pack-payload, smoke-runs the
+# tarball there, and destroys the machine. The child says each step as a JSON line on stdout, drawn here as the
+# release's own items. `--windows-cross` packs windows-x64 here instead, cross built and not run anywhere, for a dry
+# run with no EC2 key or network
+task windows-step
+  mark async
+  take term, like text
+  take stage, like text
+  take file, like text
+  like dynamic
+  call report
+    make plain-item
+      bind glyph, text <info>
+      bind verb, text <pack>
+      bind subject, text <windows-x64 on an EC2 Windows machine>
+  save arguments
+    make list
+  call arguments/push
+    call program-file
+  call arguments/push, text <windows>
+  call arguments/push, text <--stage>
+  call arguments/push, read stage
+  call arguments/push, text <--out>
+  call arguments/push, read file
+  save heard
+    make windows-heard
+      bind built
+        call no-value
+      bind failed, text <>
+  save status
+    call follow-child
+      call node-program
+      read arguments
+      read term
+      read heard-windows
+      read heard
+      wait true
+  fork test
+    hook test
+      call or
+        call not
+          call is-status-zero
+            read status
+        call not
+          call is-truthy
+            read heard/built
+    hook hold
+      call raise-expected
+        call failed-or
+          read heard/failed
+          text <the Windows step exited {status-shown(status)}>
+  send back, read heard/built
+
+# the `windows` command: the step, in a child of the release
+task windows-command
+  mark async
+  take stage, like text
+  take out, like text
+  take hours, like number
+  take fail-at, like text
+  like void
+  call release-on-windows
+    call term-root
+    read stage
+    read out
+    read hours
+    read fail-at
+
+# ---- the registry ----
+
+# Is this version on the registry already? One request for the index under the version tag, the same question
+# publish-release asks, asked before the build instead of after it
+task released-already
+  mark async
+  take version, like text
+  like taken-answer
+  save route
+    call release-route
+      call package-name
+      call no-value
+  save at, text <{route/registry/host}/{route/repository/name}:{version}>
+  fork
+    mark unsafe
+    save offline, false
+    save transport
+      call transport-for
+        read route/registry/host
+        read offline
+    save index
+      call transport/get-manifest
+        call manifest-ask
+          read route/repository/name
+          read version
+        wait true
+    fork test
+      hook test
+        call is-truthy
+          read index
+      hook hold
+        send back
+          make taken-answer
+            bind form, text <released>
+            bind at, read at
+            bind first, false
+            bind reason, text <>
+    # a repository with no version yet: this is the first release, which GHCR makes private
+    save tags
+      make list
+    fork
+      mark unsafe
+      save tags
+        call transport/list-tags
+          call tags-ask
+            read route/repository/name
+          wait true
+    halt take
+      take missed
+      save tags
+        make list
+    save first, true
+    walk list
+      read tags
+      hook next
+        take site, name tag
+        fork test
+          hook test
+            call is-version-tag
+              call text-of
+                read tag
+          hook hold
+            save first, false
+    send back
+      make taken-answer
+        bind form, text <free>
+        bind at, read at
+        bind first, read first
+        bind reason, text <>
+  halt take
+    take problem
+    send back
+      make taken-answer
+        bind form, text <unknown>
+        bind at, read at
+        bind first, false
+        bind reason
+          call error-message
+            read problem
+
+task free-answer
+  like taken-answer
+  send back
+    make taken-answer
+      bind form, text <free>
+      bind at, text <>
+      bind first, false
+      bind reason, text <>
+
+task version-number
+  take tag, like text
+  take at, like number
+  like number
+  send back
+    call number-of
+      call get
+        call split
+          read tag
+          text <.>
+        read at
+
+# oldest first, by major, minor and patch
+task oldest-first
+  take left, like text
+  take right, like text
+  like ordering
+  save difference, code 0
+  save at, code 0
+  walk test
+    hook test
+      call and
+        call is-below
+          read at
+          code 3
+        call is-equal
+          read difference
+          code 0
+    hook step
+      save difference
+        call subtract
+          call version-number
+            read left
+            read at
+          call version-number
+            read right
+            read at
+      save at
+        call add
+          read at
+          code 1
+  send back
+    call from-numbers
+      read difference
+      code 0
+
+# `--ping`: every released version, told to the package index by its index digest, oldest first, signed by this
+# machine's key so a term.surf token credits them. Builds and pushes nothing
+task ping-released
+  mark async
+  take term, like text
+  like void
+  save started
+    call now-ms
+  save route
+    call release-route
+      call package-name
+      call no-value
+  save offline, false
+  save transport
+    call transport-for
+      read route/registry/host
+      read offline
+  save facts
+    make list
+  call facts/push
+    call package-name
+  call facts/push, text <--ping>
+  call open-run
+    make opening-item
+      bind verb, text <release>
+      bind root, read term
+      bind facts, read facts
+      bind started, read started
+  save keypair
+    call load-publish-keypair
+      make mint-ask
+        bind mint, false
+  save listed
+    call transport/list-tags
+      call tags-ask
+        read route/repository/name
+      wait true
+  save tags
+    make list
+  walk list
+    read listed
+    hook next
+      take site, name tag
+      fork test
+        hook test
+          call is-version-tag
+            call text-of
+              read tag
+        hook hold
+          call tags/push
+            call text-of
+              read tag
+  save versions
+    call sort
+      read tags
+      read oldest-first
+  save sent, code 0
+  walk list
+    read versions
+    hook next
+      take site, name version
+      save index
+        call transport/get-manifest
+          call manifest-ask
+            read route/repository/name
+            read version
+          wait true
+      fork test
+        hook test
+          call not
+            call is-truthy
+              read index
+        hook hold
+          turn next
+      call report
+        make fields-item
+          bind glyph, text <info>
+          bind verb, text <release>
+          bind subject, text <{package-name()}@{version}>
+          bind fields
+            call one-field
+              text <index>
+              call text-of
+                read index/digest
+      fork test
+        hook test
+          call is-truthy
+            read keypair
+        hook hold
+          fork test
+            hook test
+              call announce
+                make announce-ask
+                  bind route, read route
+                  bind digest
+                    call text-of
+                      read index/digest
+                  bind keypair, read keypair
+            hook hold
+              save sent
+                call add
+                  read sent
+                  code 1
+  save counts
+    call one-count
+      call list-size
+        read versions
+      text <releases>
+      text <release>
+  fork test
+    hook test
+      call is-truthy
+        read keypair
+    hook hold
+      save code
+        call close-run
+          make counted-close
+            bind verdict, text <Told the index about {sent} of {list-size(versions)} releases>
+            bind counts, read counts
+      call exit, read code
+  save code
+    call close-run
+      make counted-failure-close
+        bind verdict, text <There is no signing key on this machine, so nothing was claimed>
+        bind counts, read counts
+        bind failure, text <environment>
+  call exit, read code
+
+# ---- the push ----
+
+task heard-push
+  take line, like text
+  take heard, like push-heard
+  like void
+  save route
+    call release-route
+      call package-name
+      call no-value
+  save said
+    call said-of
+      read line
+  fork test
+    hook test
+      call not
+        call is-truthy
+          read said
+    hook hold
+      call report
+        make plain-item
+          bind glyph, text <info>
+          bind verb, text <push>
+          bind subject, read line
+      send back
+  save form
+    call said-form
+      read said
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <key-set>
+    hook hold
+      call report
+        make kind-fields-item
+          bind glyph, text <added>
+          bind kind, text <change>
+          bind verb, text <add>
+          bind subject, text <the key set of {route/scope}>
+          bind fields
+            call one-field
+              text <at>
+              call said-text
+                read said
+                text <at>
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <push>
+    hook hold
+      save fields
+        make list
+      call fields/push
+        call field
+          text <layer>
+          call said-text
+            read said
+            text <layer>
+      call fields/push
+        call field
+          text <manifest>
+          call said-text
+            read said
+            text <manifest>
+      call report
+        make fields-item
+          bind glyph, text <done>
+          bind verb, text <push>
+          bind subject
+            call said-text
+              read said
+              text <platform>
+          bind fields, read fields
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <note>
+    hook hold
+      call report
+        make plain-item
+          bind glyph, text <info>
+          bind verb, text <push>
+          bind subject
+            call said-text
+              read said
+              text <text>
+      send back
+  fork test
+    hook test
+      call is-equal
+        read form
+        text <index>
+    hook hold
+      save heard/index
+        call said-text
+          read said
+          text <index>
+      call report
+        make fields-item
+          bind glyph, text <done>
+          bind verb, text <push>
+          bind subject
+            call said-text
+              read said
+              text <at>
+          bind fields
+            call one-field
+              text <index>
+              call said-text
+                read said
+                text <index>
+      send back
+  save heard/failed
+    call said-entry
+      read said
+      text <message>
+
+# P2: the push, a child of this run that reads its one secret from the environment. The release stays the one run on
+# the terminal: the child reports each step on stdout, and the release draws them as its own items
+task publish
+  mark async
+  take term, like text
+  take version, like text
+  take built, like list, like built-payload
+  take first, like boolean
+  like void
+  save route
+    call release-route
+      call package-name
+      call no-value
+  # the push's own item, before the child starts: whatever the child prints nests under the item last printed
+  call report
+    make plain-item
+      bind glyph, text <info>
+      bind verb, text <push>
+      bind subject, text <{package-name()}@{version}>
+  # the registry credential (GHCR_TOKEN, TERM_OCI_TOKEN) comes from this run's environment, which the publisher's
+  # alias fills from its secret store: a child of this release, never a secret store of its own
+  save arguments
+    make list
+  call arguments/push
+    call program-file
+  call arguments/push, text <push>
+  call arguments/push, text <--release>
+  call arguments/push, read version
+  save heard
+    make push-heard
+      bind index, text <>
+      bind failed
+        call no-value
+  save status
+    call follow-child
+      call node-program
+      read arguments
+      read term
+      read heard-push
+      read heard
+      wait true
+  fork test
+    hook test
+      call or
+        call not
+          call is-status-zero
+            read status
+        call is-equal
+          read heard/index
+          text <>
+    hook hold
+      fork test
+        hook test
+          call is-truthy
+            read status
+        hook hold
+          call report
+            make exit-item
+              bind glyph, text <failed>
+              bind verb, text <push>
+              bind subject, text <{package-name()}@{version}>
+              bind exit
+                call number-of
+                  read status
+        hook miss
+          call report
+            make plain-item
+              bind glyph, text <failed>
+              bind verb, text <push>
+              bind subject, text <{package-name()}@{version}>
+      call raise-expected
+        call failed-or
+          read heard/failed
+          text <the push exited {status-shown(status)}>
+  # the package index lists `@term/code` like any package. Told here, by the release, which holds the index digest the
+  # child pushed and needs no registry credential for it
+  save keypair
+    call load-publish-keypair
+      make mint-ask
+        bind mint, false
+  fork test
+    hook test
+      call is-truthy
+        read keypair
+    hook hold
+      call announce
+        make announce-ask
+          bind route, read route
+          bind digest, read heard/index
+          bind keypair, read keypair
+  save named
+    call split
+      read route/repository/name
+      text </>
+  save owner, text <>
+  save rest
+    make list
+  save at, code 0
+  walk list
+    read named
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call is-equal
+            read at
+            code 0
+        hook hold
+          save owner, read part
+        hook miss
+          call rest/push, read part
+      save at
+        call add
+          read at
+          code 1
+  save counts
+    call one-count
+      call list-size
+        read built
+      text <platforms>
+      text <platform>
+  # a FIRST release lands private on GHCR, and nothing installs from a private package, so it is made public once.
+  # Every later release is public already
+  fork test
+    hook test
+      read first
+    hook hold
+      save code
+        call close-run
+          make message-next-close
+            bind verdict, text <Released {package-name()}@{version}>
+            bind counts, read counts
+            bind message
+              call one-text, text <A new GHCR package is private, and nothing installs from a private one. A first release is made public once.>
+            bind next, text <https://github.com/orgs/{owner}/packages/container/{uri-part(joined(rest, </>))}/settings>
+      call exit, read code
+  save code
+    call close-run
+      make done-next-close
+        bind verdict, text <Released {package-name()}@{version}>
+        bind counts, read counts
+        bind done, true
+        bind next, text <term self update, on an installed term>
+  call exit, read code
+
+task say-pushed
+  take message, like text
+  like void
+  call say-line
+    call pushed-said
+      read message
+
+# the `push` command, the child `publish` starts: push every platform built under tmp/release/<version> to
+# `@term/code`'s route, signed by this machine's publish key, which must be in (or will found) the scope's key set.
+# Credentials come from GHCR_TOKEN (or TERM_OCI_TOKEN) in the environment. It opens no run: it says each step to the
+# release as a line
+task push-command
+  mark async
+  take release, like text
+  like void
+  save term
+    call term-root
+  fork
+    mark unsafe
+    save listed
+      call parse-json
+        call node-fs/read-file-sync
+          call node-path/join
+            call out-root
+              read term
+            read release
+            text <release.json>
+          text <utf8>
+    save route
+      call release-route
+        call package-name
+        call no-value
+    save keypair
+      call load-publish-keypair
+        make mint-ask
+          bind mint, false
+    fork test
+      hook test
+        call not
+          call is-truthy
+            read keypair
+      hook hold
+        call raise-error, text <there is no publish key on this machine; `term host` makes one on a first publish>
+    save offline, false
+    save transport
+      call transport-for
+        read route/registry/host
+        read offline
+    save keys
+      call ensure-publisher
+        read transport
+        read route/keys-repository
+        read route/scope
+        read keypair
+    fork test
+      hook test
+        call is-truthy
+          read keys/created
+      hook hold
+        call say-line
+          call key-set-said, text <{route/registry/host}/{route/keys-repository}>
+    save annotations
+      call read-annotations
+        read term
+    save released
+      call publish-release
+        read transport
+        read route/repository/name
+        call package-name
+        read release
+        call payloads-of
+          read listed/built
+        read keypair
+        read annotations
+        read say-pushed
+    call say-line
+      call index-said
+        text <{route/registry/host}/{route/repository/name}:{release}>
+        call text-of
+          read released/index
+  halt take
+    take problem
+    call say-line
+      call failed-said
+        call error-message
+          read problem
+    call fail-exit
+
+# ---- the release ----
+
+task build-and-release
+  mark async
+  take term, like text
+  take dry, like boolean
+  take windows-cross, like boolean
+  take platform, like text
+  take out, like text
+  like void
+  # windows-x64 packed here and run nowhere, instead of by the Windows step: a dry run only
+  fork test
+    hook test
+      call and
+        read windows-cross
+        call not
+          read dry
+    hook hold
+      call raise-error, text <--windows-cross is for a dry run: a release builds windows-x64 on Windows (D8)>
+  # `--platform <name>`: a dry run of one platform's payload only, asking the registry nothing (task/term/release-user.ts
+  # installs it as a person does). `--out <dir>` puts the build there instead of tmp/release/<version>
+  fork test
+    hook test
+      call and
+        call or
+          call is-unequal
+            read platform
+            text <>
+          call is-unequal
+            read out
+            text <>
+        call not
+          read dry
+    hook hold
+      call raise-error, text <--platform and --out are for a dry run>
+  save all
+    call platforms
+  fork test
+    hook test
+      call is-unequal
+        read platform
+        text <>
+    hook hold
+      save known, false
+      save names
+        make list
+      walk list
+        read all
+        hook next
+          take site, name one
+          call names/push, read one/name
+          fork test
+            hook test
+              call is-equal
+                read one/name
+                read platform
+            hook hold
+              save known, true
+      fork test
+        hook test
+          call not
+            read known
+        hook hold
+          call raise-error, text <--platform names one of {joined(names, <, >)}>
+
+  save version
+    call read-version
+      read term
+  save out-dir
+    call node-path/join
+      call out-root
+        read term
+      read version
+  fork test
+    hook test
+      call is-unequal
+        read out
+        text <>
+    hook hold
+      save out-dir
+        call resolved-from
+          call directory
+          read out
+  save cache
+    call node-path/join
+      call out-root
+        read term
+      text <npm>
+  save common
+    call node-path/join
+      read out-dir
+      text <common>
+  save started
+    call now-ms
+
+  # THE REGISTRY FIRST. A release is write-once, so a version already there is refused before anything is built. A
+  # dry run builds all the same, and says so at the end
+  save taken
+    call free-answer
+  fork test
+    hook test
+      call is-equal
+        read platform
+        text <>
+    hook hold
+      save taken
+        call released-already
+          read version
+
+  fork test
+    hook test
+      call and
+        call not
+          read dry
+        call is-unequal
+          read taken/form
+          text <free>
+    hook hold
+      call open-run
+        make opening-item
+          bind verb, text <release>
+          bind root, read term
+          bind facts
+            call one-text, text <{package-name()} {version}>
+          bind started, read started
+      save subject, text <the registry could not say whether {package-name()}@{version} is released: {taken/reason}>
+      fork test
+        hook test
+          call is-equal
+            read taken/form
+            text <released>
+        hook hold
+          save subject, text <{package-name()}@{version} is already released, and releases are write-once>
+      call report
+        make kind-fields-item
+          bind glyph, text <failed>
+          bind kind, text <problem>
+          bind verb, text <release>
+          bind subject, read subject
+          bind fields
+            call one-field
+              text <at>
+              read taken/at
+      fork test
+        hook test
+          call is-equal
+            read taken/form
+            text <released>
+        hook hold
+          save code
+            call close-run
+              make next-failure-close
+                bind verdict, text <Nothing built, nothing released>
+                bind failure, text <usage>
+                bind next, text <raise the version to the next even patch in package.json and deck.tree>
+          call exit, read code
+      save code
+        call close-run
+          make failure-close
+            bind verdict, text <Nothing built, nothing released>
+            bind failure, text <environment>
+      call exit, read code
+
+  # a folder `--out` named is never emptied: it must be new or empty
+  fork test
+    hook test
+      call and
+        call is-unequal
+          read out
+          text <>
+        call node-fs/exists-sync
+          read out-dir
+    hook hold
+      fork test
+        hook test
+          call is-above
+            call list-size
+              call node-fs/readdir-sync
+                read out-dir
+            code 0
+        hook hold
+          call raise-error, text <--out {out-dir} is not empty>
+
+  call node-fs/rm-sync
+    read out-dir
+    call forced-options
+  call node-fs/mkdir-sync
+    read cache
+    call recursive-options
+
+  # the run opens BEFORE the port build, so its two and a half minutes show as a running step (section 10)
+  save facts
+    make list
+  call facts/push, text <{package-name()} {version}>
+  fork test
+    hook test
+      read dry
+    hook hold
+      call facts/push, text <--dry>
+  call open-run
+    make opening-item
+      bind verb, text <release>
+      bind root, read term
+      bind facts, read facts
+      bind started, read started
+  call progress
+    make step-item
+      bind verb, text <port>
+      bind subject, text <toolchain modules>
+  save port
+    call port-build-live
+      read term
+  save clean
+    call and
+      read port/ok
+      call is-equal
+        read port/failed
+        code 0
+  save counts
+    make list
+  call counts/push
+    call count
+      read port/built
+      text <built>
+  call counts/push
+    call count
+      read port/unchanged
+      text <unchanged>
+  fork test
+    hook test
+      call is-unequal
+        read port/failed
+        code 0
+    hook hold
+      call counts/push
+        call count
+          read port/failed
+          text <failed>
+  save quote
+    make list
+  fork test
+    hook test
+      call not
+        read clean
+    hook hold
+      save quote, read port/lines
+  call report
+    make port-item
+      bind glyph
+        call port-glyph
+          read clean
+      bind verb, text <port>
+      bind subject, text <toolchain modules>
+      bind duration
+        call subtract
+          call now-ms
+          read started
+      bind counts, read counts
+      # a child's own lines nest under the item that ran it, only when they say why it failed
+      bind quote, read quote
+  fork test
+    hook test
+      call not
+        read clean
+    hook hold
+      save code
+        call close-run
+          make next-close
+            bind verdict, text <Nothing released>
+            bind next, text <pnpm run make:port>
+      call exit, read code
+
+  save bundled
+    call now-ms
+  call bundle
+    read term
+    read common
+  call report
+    make timed-item
+      bind glyph, text <done>
+      bind verb, text <bundle>
+      bind subject
+        call bundle-subject
+      bind duration
+        call subtract
+          call now-ms
+          read bundled
+
+  save built
+    make list
+  save chosen
+    make list
+  walk list
+    read all
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call or
+            call is-equal
+              read platform
+              text <>
+            call is-equal
+              read one/name
+              read platform
+        hook hold
+          call chosen/push, read one
+  save at, code 0
+  walk list
+    read chosen
+    hook next
+      take site, name one
+      save packed
+        call now-ms
+      # each platform is a running `pack` step with the platforms done so far, which its own item below replaces
+      call progress
+        make counted-step-item
+          bind verb, text <pack>
+          bind subject, read one/name
+          bind done, read at
+          bind total
+            call list-size
+              read chosen
+          bind noun, text <platforms>
+          bind one, text <platform>
+      save stage
+        call node-path/join
+          read out-dir
+          read one/name
+      save root
+        call node-path/join
+          read stage
+          text <term>
+      call node-fs/cp-sync
+        call node-path/join
+          read common
+          text <host>
+        call node-path/join
+          read root
+          text <host>
+        call recursive-options
+      call copy-stdlib
+        read term
+        read root
+      call copy-shipped-packages
+        read term
+        read root
+      call node-fs/write-file-sync
+        call node-path/join
+          read root
+          text <package.json>
+        call stage-manifest
+          read version
+      # the license and the notice travel with the code, in every package made from this stage (Apache-2.0 section 4)
+      call node-fs/cp-sync
+        call node-path/join
+          read term
+          text <LICENSE>
+        call node-path/join
+          read root
+          text <LICENSE>
+      call node-fs/cp-sync
+        call node-path/join
+          read term
+          text <NOTICE>
+        call node-path/join
+          read root
+          text <NOTICE>
+      call node-fs/mkdir-sync
+        call node-path/join
+          read root
+          text <bin>
+        call recursive-options
+      # windows-x64's term.exe is built on Windows by the Windows step, below
+      save on-windows
+        call and
+          call is-equal
+            read one/name
+            text <windows-x64>
+          call not
+            read windows-cross
+      fork test
+        hook test
+          call starts-with
+            read one/name
+            text <windows->
+        hook hold
+          call node-fs/write-file-sync
+            call node-path/join
+              read root
+              text <bin>
+              text <term.cmd>
+            call windows-launcher
+          fork test
+            hook test
+              call not
+                read on-windows
+            hook hold
+              save arch, text <amd64>
+              fork test
+                hook test
+                  call is-equal
+                    read one/name
+                    text <windows-arm64>
+                hook hold
+                  save arch, text <arm64>
+              call build-windows-exe
+                read term
+                call node-path/join
+                  read root
+                  text <bin>
+                  text <term.exe>
+                read arch
+        hook miss
+          call node-fs/write-file-sync
+            call node-path/join
+              read root
+              text <bin>
+              text <term>
+            call launcher
+          call node-fs/chmod-sync
+            call node-path/join
+              read root
+              text <bin>
+              text <term>
+            code 493
+      walk list
+        call shipped-modules
+        hook next
+          take site, name module
+          call fetch-package
+            read module
+            call installed-version
+              read term
+              read module
+            call node-path/join
+              read root
+              text <node_modules>
+              read module
+            read cache
+      # the binary package matches esbuild's own version exactly, or esbuild refuses to start
+      call fetch-package
+        read one/esbuild
+        call installed-version
+          read term
+          text <esbuild>
+        call node-path/join
+          read root
+          text <node_modules>
+          read one/esbuild
+        read cache
+      # the payload gate, before anything is packed or sent: a leak refuses the release here, with nothing published
+      save gate
+        call payload-leaks
+          read term
+          read stage
+          text <oci>
+      fork test
+        hook test
+          call not
+            read gate/ok
+        hook hold
+          save quote
+            make list
+          walk list
+            read gate/lines
+            hook next
+              take site, name line
+              fork test
+                hook test
+                  call is-below
+                    call list-size
+                      read quote
+                    code 40
+                hook hold
+                  call quote/push, read line
+          call report
+            make kind-quote-item
+              bind glyph, text <failed>
+              bind kind, text <problem>
+              bind verb, text <check>
+              bind subject, text <the {one/name} payload names a path of this machine or of the repository it was built in>
+              bind quote, read quote
+          save code
+            call close-run
+              make next-close
+                bind verdict, text <Nothing released>
+                bind next, text <node --experimental-strip-types task/term/self-contained.ts --payload {stage} --name oci>
+          call exit, read code
+      save file
+        call node-path/join
+          read out-dir
+          text <term-{one/name}.tar.gz>
+      # the file list, the secrets check and the tar (task/release-pack.tree), here or, for windows-x64, by the
+      # Windows step once the machine has built term.exe
+      save made
+        make built-payload
+          bind platform, read one/name
+          bind file, read file
+          bind digest, text <>
+          bind bytes, code 0
+      fork test
+        hook test
+          read on-windows
+        hook hold
+          save heard
+            call windows-step
+              read term
+              read stage
+              read file
+          save made
+            make built-payload
+              bind platform
+                call text-of
+                  read heard/platform
+              bind file
+                call text-of
+                  read heard/file
+              bind digest
+                call text-of
+                  read heard/digest
+              bind bytes
+                call number-of
+                  read heard/bytes
+        hook miss
+          save sealed
+            call pack-payload
+              read stage
+              read file
+          save made/digest, read sealed/digest
+          save made/bytes, read sealed/bytes
+      call built/push, read made
+      # the digest is an identifier of 71 characters: a field, on its own line, not a fact
+      call report
+        make pack-item
+          bind glyph, text <done>
+          bind verb, text <pack>
+          bind subject, read one/name
+          bind duration
+            call subtract
+              call now-ms
+              read packed
+          bind bytes, read made/bytes
+          bind fields
+            call one-field
+              text <digest>
+              read made/digest
+      save at
+        call add
+          read at
+          code 1
+
+  call node-fs/write-file-sync
+    call node-path/join
+      read out-dir
+      text <release.json>
+    call release-json
+      read version
+      read built
+
+  fork test
+    hook test
+      read dry
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read taken/form
+            text <released>
+        hook hold
+          call report
+            make fields-item
+              bind glyph, text <warning>
+              bind verb, text <release>
+              bind subject, text <{package-name()}@{version} is already released, so a release of this version would be refused>
+              bind fields
+                call one-field
+                  text <at>
+                  read taken/at
+      save shown
+        call node-path/relative
+          call directory
+          read out-dir
+      fork test
+        hook test
+          call is-equal
+            read shown
+            text <>
+        hook hold
+          save shown, read out-dir
+      save code
+        call close-run
+          make counted-next-close
+            bind verdict, text <Built, nothing published>
+            bind counts
+              call one-count
+                call list-size
+                  read built
+                text <platforms>
+                text <platform>
+            bind next, text <ls {shown}>
+      call exit, read code
+
+  call publish
+    read term
+    read version
+    read built
+    call and
+      call is-equal
+        read taken/form
+        text <free>
+      read taken/first
+
+task port-glyph
+  take clean, like boolean
+  like text
+  fork test
+    hook test
+      read clean
+    hook hold
+      send back, text <done>
+  send back, text <failed>
+
+# the `release` command: a failure once the run is open ends it, through the printer; before that it is the booted
+# program's own failure line
+task release-command
+  mark async
+  take dry, like boolean
+  take windows-cross, like boolean
+  take platform, like text
+  take out, like text
+  take ping, like boolean
+  like void
+  save term
+    call term-root
+  fork
+    mark unsafe
+    fork test
+      hook test
+        read ping
+      hook hold
+        call ping-released
+          read term
+      hook miss
+        call build-and-release
+          read term
+          read dry
+          read windows-cross
+          read platform
+          read out
+  halt take
+    take problem
+    fork test
+      hook test
+        call is-run-open
+      hook hold
+        call exit
+          call fail-run
+            call lifted
+              read problem
+            read term
+    call raise-again
+      read problem
+
+# ---------------------------------------------------------------- the console
+
+# Build the `term` command for every platform and release it as `@term/code`. --dry stops before publishing
+hook release
+  # build tmp/release/<version>/term-<platform>.tar.gz and stop
+  take dry
+    like boolean
+    bind code false
+  # pack windows-x64 here, cross built and run nowhere, in a dry run
+  take windows-cross
+    like boolean
+    bind code false
+  # build this one platform only, asking the registry nothing, in a dry run
+  take platform
+    like text
+    bind <>
+  # put the build in this folder (new or empty), in a dry run
+  take out
+    like text
+    bind <>
+  # build nothing: tell the package index about every version already released
+  take ping
+    like boolean
+    bind code false
+  task release-command
+
+# Push the platforms a release built to the registry, saying each step as a JSON line: the release's own child
+hook push
+  # the version under tmp/release/
+  take release
+    like text
+    bind <>
+  task push-command
+
+# Build and smoke-run windows-x64 on a rented Windows machine, saying each step as a JSON line: the release's own child
+hook windows
+  # the staged windows-x64 folder, holding term/
+  take stage
+    like text
+    bind <>
+  # the tarball to write
+  take out
+    like text
+    bind <>
+  # how long the machine may live
+  take hours
+    like number
+    bind code 2
+  # throw at this step (tools, native, packed or smoke), to prove the machine still ends; never in a release
+  take fail-at
+    like text
+    bind <>
+  task windows-command

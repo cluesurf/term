@@ -1,0 +1,644 @@
+note <one hostile document per bound of the view dialect, each refused with the message naming the bound it broke>
+
+# Ported from hostile.ts by statement (item term-self-host-001-0644), one test per `ok` in its order, each `bound` call
+# of the original one test of its own, its loops over literal lists written out, one test per element. Assume the
+# author is hostile and skilled: they can craft any input the editor accepts, and any it would never produce, by
+# calling the API directly. Each case asserts the MESSAGE and not only the refusal, because a bound that fires without
+# saying which bound it was is a bug report nobody can act on. Every attack goes through the WHOLE path a save would,
+# `check-view` with the reference catalog beside this suite and the default caps, and nothing else: restating its
+# stages here would be a second copy of the gate. The parser, the view reader, the catalog reader, the compiler, the
+# cap defaults and the template expander are the subject, docked as the original imported them (decision 106). Each
+# macro bomb is timed by the test that times it, around an attack of its own, where the original timed the attack the
+# test before it read.
+
+load ../support/judging
+  find truth
+
+load ../support/compiling
+  find file-text
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+dock load
+  load <@term/make/code/parser/tree>, name view-parser
+  load <@term/make/code/compile/view>, name view-reader
+  load <@term/make/code/compile/view-catalog>, name view-catalogs
+  load <@term/make/code/compile/compile>, name view-compiling
+  load <@term/make/code/compile/view-cap>, name view-cap
+  load <@term/make/code/compile/template>, name view-templates
+
+form view-source
+  link file, like text
+  link text, like text
+
+form check-options
+  link catalog, like dynamic
+  link caps, like dynamic
+
+form server-options
+  link role-of, like dynamic
+  link optimize, like boolean
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+# host value: a catalog is a record of Sets the docked reader reads, here widened by names a project might register
+bind widened
+  take catalog, like dynamic
+  take names, like dynamic
+  like dynamic
+  case node
+    text <({ ...$catalog, call: new Set([...$catalog.call, ...$names]) })>
+
+host view-caps, view-cap/make-view-caps()
+
+# the reference catalog beside this suite
+host here, <test/view>
+host loaded, view-catalogs/read-catalog(make(view-source, bind(file, <catalog.tree>), bind(text, file-text(<{here}/catalog.tree>))))
+host catalog, loaded/catalog
+
+# every message of a list of diagnostics, joined
+task said-of
+  take diagnostics, like dynamic
+  like text
+
+  save messages, make list
+  walk diagnostics
+    take one, like dynamic
+    messages/push(one/message)
+  back messages/join(< \| >)
+
+# whether any message of `diagnostics` holds `word`
+task any-saying
+  take diagnostics, like dynamic
+  take word, like text
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, text-contains(one/message, word)
+      hold
+        back true
+  back false
+
+# whether any message of `diagnostics` matches `shape`
+task any-matching
+  take diagnostics, like dynamic
+  take shape, like pattern
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, matches(shape, one/message)
+      hold
+        back true
+  back false
+
+task all-spanned
+  take diagnostics, like dynamic
+  like boolean
+
+  walk diagnostics
+    take one, like dynamic
+    fork test, is-void(one/span)
+      hold
+        back false
+  back true
+
+task page-source
+  take text, like text
+  like view-source
+
+  back make(view-source, bind(file, <page.tree>), bind(text, text))
+
+# the gate a save calls, with the catalog and the caps
+task gate
+  take text, like text
+  like dynamic
+
+  back view-reader/check-view(page-source(text), make(check-options, bind(catalog, catalog), bind(caps, view-caps)))
+
+# what the gate says of a document, <> when it is not refused
+task attack
+  take text, like text
+  like text
+
+  save result, gate(text)
+  fork test, truth(result/ok)
+    hold
+      back <>
+  back said-of(result/diagnostics)
+
+# a hostile document is refused with a message holding `word`
+task bound
+  take text, like text
+  take word, like text
+  like boolean
+
+  back text-contains(attack(text), word)
+
+# `n` copies of `line`, one to a line
+task repeated
+  take line, like text
+  take n, like number
+  like text
+
+  fork test, is-below(n, 2)
+    hold
+      back line
+  back <{repeated(line, subtract(n, 1))}\n{line}>
+
+task pad-of
+  take depth, like number
+  like text
+
+  fork test, is-below(depth, 1)
+    hold
+      back <>
+  back <  {pad-of(subtract(depth, 1))}>
+
+# `view hold/box` at each depth from `from` to `to`, each one deeper than the last
+task nested-boxes
+  take from, like number
+  take to, like number
+  like text
+
+  save line, <{pad-of(from)}view hold/box>
+  fork test, not(is-below(from, to))
+    hold
+      back line
+  back <{line}\n{nested-boxes(add(from, 1), to)}>
+
+# a call of `word` placed in a document
+task call-of
+  take word, like text
+  like text
+
+  back <view page\n  view text/item\n    bind a\n      call {word}\n        text \<x\>\n>
+
+host good, <view page\n  view text/item\n    bind term, text \<x\>\n>
+
+test <a document inside every bound is not refused>
+  want hold, is-equal(attack(good), <>)
+
+# ---- the first bound: no head declares anything ----
+
+test <a task at the top level>
+  want hold, bound(<task main\n  take a\n>, <cannot declare a function>)
+
+test <a dock load>
+  want hold, bound(<dock load\n  load \<node:fs\>\n>, <cannot reach a native module>)
+
+test <a note unsafe>
+  want hold, bound(<note unsafe\n>, <carries no metadata>)
+
+test <a wait>
+  want hold, bound(<wait true\n>, <nothing a document writes is asynchronous>)
+
+test <a save>
+  want hold, bound(<save x, code 1\n>, <cannot hold state>)
+
+test <a form declaration>
+  want hold, bound(<form x\n  link a, like text\n>, <cannot declare a type>)
+
+# ---- the second bound: four closed vocabularies ----
+
+test <a relative load reaching out of the project>
+  want hold, bound(<load ../../secrets\n  find key\n>, <file path>)
+
+test <a load outside the catalog>
+  want hold, bound(<load @view/secret\n  find thing\n>, <not a package this document may load>)
+
+test <an unregistered component>
+  want hold, bound(<view page\n  view text/nowhere\n    bind a, text \<x\>\n>, <not a component this document may place>)
+
+test <an unregistered query>
+  want hold, bound(<find v\n  task \<filter:nowhere\>\n>, <not a registered query>)
+
+test <an unregistered operator>
+  want hold, bound(<view page\n  view text/item\n    bind a\n      call shout\n        text \<x\>\n>, <not a registered operator>)
+
+test <a call of "random", with the reason>
+  want hold, bound(call-of(<random>), <not deterministic>)
+
+test <a call of "uuid", with the reason>
+  want hold, bound(call-of(<uuid>), <not deterministic>)
+
+test <a call of "now", with the reason>
+  want hold, bound(call-of(<now>), <not deterministic>)
+
+test <a call of "resolve", with the reason>
+  want hold, bound(call-of(<resolve>), <performs input and output>)
+
+test <a call of "walk", with the reason>
+  want hold, bound(call-of(<walk>), <iteration is the `walk` head>)
+
+test <a call of "branch", with the reason>
+  want hold, bound(call-of(<branch>), <branching is the `fork` head>)
+
+test <a call of "attempt", with the reason>
+  want hold, bound(call-of(<attempt>), <nothing to catch>)
+
+# ---- the fourth bound: everything is bounded ----
+
+test <a document of far too many nodes>
+  want hold, bound(<view page\n{repeated(<  view text/item\n    bind a, text \<x\>>, 4200)}\n>, <and the cap is 4000>)
+
+test <a tree deeper than the cap>
+  want hold, bound(<view page\n{nested-boxes(1, 40)}\n>, <and the cap is 32>)
+
+test <a call nested past the depth cap>
+  want hold, bound(<view page\n  view text/item\n    bind a\n      call trim\n        call trim\n          call trim\n            call trim\n              call trim\n                text \<x\>\n>, <and the cap is 4>)
+
+test <three nested walks over unbounded lists>
+  want hold, bound(<host l, like text\nview page\n  walk list, read l\n    hook next\n      take site, name a\n      walk list, read a\n        hook next\n          take site, name b\n          walk list, read b\n            hook next\n              take site, name c\n              text \<x\>\n>, <and the cap is>)
+
+test <nested counted walks whose product is too large>
+  want hold, bound(<view page\n  walk size\n    bind base, 0\n    bind head, 1000\n    hook next\n      take site, name a\n      walk size\n        bind base, 0\n        bind head, 1000\n        hook next\n          take site, name b\n          text \<x\>\n>, <build up to 1000000 nodes>)
+
+# a macro whose EXPANSION exceeds the cap. Small before, over after, which is the whole point of counting after
+host bomb, <tree a\n  hook fuse\n{repeated(<    view text/item\n      bind t, text \<x\>>, 70)}\n\nview page\n{repeated(<  fuse a>, 70)}\n>
+
+host node-cap, make pattern, <<builds \d+ nodes and the cap is 4000>>
+host fuse-line, make pattern, <<fuse a>>
+
+test <a macro whose expansion exceeds the node cap>
+  save parsed, view-parser/parse(page-source(bomb))
+  want hold, truth(parsed/ok)
+  save result, view-reader/read-view(view-templates/expand-templates(parsed/tree, view-templates/collect-templates(parsed/tree)), <page.tree>, catalog, view-caps)
+  want hold, not(truth(result/ok))
+  want hold, any-matching(result/diagnostics, node-cap)
+
+# the lines of a text that match `shape`
+task lines-matching
+  take text, like text
+  take shape, like pattern
+  like number
+
+  save count, 0
+  walk text-split(text, <\n>)
+    take line, like text
+    fork test, matches(shape, line)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <and the document is far smaller than its expansion>
+  want hold, truth(view-parser/parse(page-source(bomb))/ok)
+  want hold, is-equal(lines-matching(bomb, fuse-line), 70)
+
+# ---- recursion ----
+
+test <a macro that fuses itself>
+  want hold, bound(<tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n>, <a fuses a>)
+
+test <two macros that fuse each other>
+  want hold, bound(<tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n>, <fuses>)
+
+test <a view that places itself>
+  want hold, bound(<view page\n  view page\n    bind a, text \<x\>\n>, <page places page>)
+
+# a fuse of a macro nothing declares. It expanded to NOTHING and compiled: the document said "put a row here" and
+# rendered an empty page, with no diagnostic. Found by testing the cross-module macro path
+test <a fuse of a macro nothing declares>
+  want hold, bound(<view page\n  fuse nowhere\n    bind a, \<x\>\n>, <is not a macro this document can reach>)
+
+test <a fuse misspelling a macro that exists>
+  want hold, bound(<tree sound-row\n  hook fuse\n    text \<x\>\nview page\n  fuse sound-rw\n>, <Did you mean "sound-row"?>)
+
+# ---- the fifth bound: validation is a gate ----
+
+test <a read of a name nothing declares>
+  want hold, bound(<view page\n  view text/item\n    bind a, read nowhere\n>, <not in scope in "page">)
+
+test <a size over the query cap>
+  want hold, bound(<find v\n  task \<filter:phoneme\>\n  size 99999\n>, <caps at 500>)
+
+test <a hold on a field the catalog does not index>
+  want hold, bound(<find v\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/secret\n    text \<x\>\n>, <has no filterable field>)
+
+test <a predicate no index answers>
+  want hold, bound(<find v\n  task \<filter:phoneme\>\n  hold is-above\n    read self/kind\n    text \<x\>\n>, <does not accept "is-above">)
+
+test <a hold whose operand reads another find>
+  want hold, bound(<find a\n  task \<select:language\>\n  hold is-equal\n    read self/slug\n    text \<x\>\nfind b\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/kind\n    read a\n>, <is a join>)
+
+test <a meet not with two children>
+  want hold, bound(<find v\n  task \<filter:phoneme\>\n  meet not\n    hold is-equal\n      read self/kind\n      text \<a\>\n    hold is-equal\n      read self/kind\n      text \<b\>\n>, <exactly one child>)
+
+test <a walk test>
+  want hold, bound(<view page\n  walk test\n    hook next\n      text \<x\>\n>, <no end of its own>)
+
+test <a fork case>
+  want hold, bound(<view page\n  fork case, read x\n    case one\n>, <declares none>)
+
+test <an event handler>
+  want hold, bound(<view page\n  view text/item\n    seed click, read go\n>, <event handler>)
+
+# ---- the compile path refuses, not just the reader ----
+
+task view-role
+  take file, like text
+  like text
+
+  back <view>
+
+task server-compile
+  take file, like text
+  take text, like text
+  like dynamic
+
+  back view-compiling/compile(make(view-source, bind(file, file), bind(text, text)), make(server-options, bind(role-of, view-role), bind(optimize, false)))
+
+host hostile, <task main\n  take a\n>
+
+host built, server-compile(</app/page/attack.tree>, hostile)
+
+test <the compile path refuses a hostile document>
+  want hold, not(truth(built/ok))
+
+test <and every diagnostic carries a span>
+  want hold, not(truth(built/ok))
+  want hold, all-spanned(built/diagnostics)
+
+# ---- one gate, three callers ----
+# The compiler, `term view` and a save path all call `check-view`. If they did not, a document refused by one could be
+# accepted by another, and the strictest of the three would be the only real bound.
+
+host by-gate, gate(hostile)
+host by-compile, server-compile(</app/page/x.tree>, hostile)
+
+# the first message of a refusal, <> when there is none
+task first-message
+  take result, like dynamic
+  like text
+
+  walk result/diagnostics
+    take one, like dynamic
+    back <{one/message}>
+  back <>
+
+test <the gate refuses it>
+  want hold, not(truth(by-gate/ok))
+
+test <the compiler refuses it>
+  want hold, not(truth(by-compile/ok))
+
+test <and both say the same thing>
+  want hold, and(not(truth(by-gate/ok)), not(truth(by-compile/ok)))
+  want hold, is-equal(first-message(by-gate), first-message(by-compile))
+
+# the gate is the whole path: a macro cycle is caught by it too, not only by a separate call
+test <the gate catches a macro cycle before expansion>
+  save ringed, gate(<tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n>)
+  want hold, not(truth(ringed/ok))
+  want hold, any-saying(ringed/diagnostics, <cannot fuse itself>)
+
+# and it refuses the WHOLE document: one diagnostic does not mean the rest was accepted
+test <a document with three faults reports all three, and saves none of them>
+  save several, gate(<load @view/secret\n  find a\nfind v\n  task \<filter:nowhere\>\nview page\n  view text/nowhere\n    bind a, text \<x\>\n>)
+  want hold, not(truth(several/ok))
+  want hold, not(is-below(several/diagnostics/length, 3))
+
+# ---- what no catalog may widen ----
+# Determinism and purity are properties of the RENDERING MODEL, not a project's taste, so these are refused whether a
+# catalog registers them or not. A project may narrow what it registers and may not widen past this.
+
+host permissive, widened(catalog, make list(<random>, <uuid>, <now>, <resolve>, <walk>, <branch>, <range>))
+
+# what the reader says of a document under the catalog `use`, <> when it reads
+task with-catalog
+  take text, like text
+  take use, like dynamic
+  like text
+
+  save parsed, view-parser/parse(page-source(text))
+  fork test, not(truth(parsed/ok))
+    hold
+      back said-of(parsed/diagnostics)
+  save result, view-reader/read-view(parsed/tree, <page.tree>, use, view-caps)
+  fork test, truth(result/ok)
+    hold
+      back <>
+  back said-of(result/diagnostics)
+
+test <a catalog cannot widen to "random">
+  want hold, text-contains(with-catalog(call-of(<random>), permissive), <not deterministic>)
+
+test <a catalog cannot widen to "uuid">
+  want hold, text-contains(with-catalog(call-of(<uuid>), permissive), <not deterministic>)
+
+test <a catalog cannot widen to "now">
+  want hold, text-contains(with-catalog(call-of(<now>), permissive), <not deterministic>)
+
+test <a catalog cannot widen to "resolve">
+  want hold, text-contains(with-catalog(call-of(<resolve>), permissive), <performs input and output>)
+
+# and they are refused with NO catalog at all, because the rule is the language's
+task bare-said
+  take text, like text
+  like text
+
+  save parsed, view-parser/parse(page-source(text))
+  fork test, not(truth(parsed/ok))
+    hold
+      back <>
+  save result, view-reader/read-view(parsed/tree, <page.tree>)
+  fork test, truth(result/ok)
+    hold
+      back <>
+  back said-of(result/diagnostics)
+
+test <and refused with no catalog at all>
+  want hold, text-contains(bare-said(<view page\n  view any/thing\n    bind a\n      call random\n        text \<x\>\n>), <not deterministic>)
+
+# `range` is synthesized for a counted walk. An author writing it by hand does NOT get the synthesized one's pass,
+# which a name-matched exemption would have handed them
+test <an author writing `call range` does not skip the catalog>
+  want hold, text-contains(with-catalog(<view page\n  view text/item\n    bind a\n      call range\n        0\n        9\n>, catalog), <not a registered operator>)
+
+test <while the synthesized one passes>
+  want hold, is-equal(with-catalog(<view page\n  walk size\n    bind base, 0\n    bind head, 9\n    hook next\n      take site, name i\n      view text/item\n        bind a, read i\n>, catalog), <>)
+
+# ---- a constant is a constant ----
+# A constant built from another is a good thing to write and the lowering folds it. Only a CYCLE is refused, because
+# the fold is recursive and a value defined as itself has nothing to fold to.
+
+test <a constant defined as itself>
+  want hold, bound(<host a, read a\nview page\n  text \<x\>\n>, <a reads a>)
+
+test <two constants defined as each other>
+  want hold, bound(<host a, read b\nhost b, read a\nview page\n  text \<y\>\n>, <cannot be built from itself>)
+
+test <a cycle through a call>
+  want hold, bound(<host a\n  call titlecase\n    read b\nhost b, read a\nview page\n  text \<y\>\n>, <cannot be built from itself>)
+
+test <but a constant built from another is fine, through a call too>
+  want hold, is-equal(attack(<host a, text \<x\>\nhost b, read a\nhost c\n  call titlecase\n    read b\nhost n, 20\nhost p, like text\nview page\n  text \<y\>\n>), <>)
+
+# ---- declared and never used ----
+# An unread `find` is not untidy, it is a COST: the manifest lists it, the host batches it, and the database runs it
+# on every render for a result nothing reads.
+
+test <a query nothing reads>
+  want hold, bound(<find v\n  task \<a\>\n  hold is-equal\n    read self/k\n    text \<x\>\nview page\n  text \<y\>\n>, <costs a request per render>)
+
+test <a package loaded with nothing taken from it>
+  want hold, bound(<load @view/text\nview page\n  text \<x\>\n>, <nothing is taken from it>)
+
+# a query read only inside a walk, or only by another query's filter, counts as read
+test <a query read only inside a walk counts as read>
+  want hold, is-equal(attack(<find v\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/kind\n    text \<x\>\nview page\n  walk list, read v\n    hook next\n      take site, name i\n      view text/item\n        bind t, read i/symbol\n>), <>)
+
+test <and a host read only by a filter counts as read>
+  want hold, is-equal(attack(<host cap, 20\nfind v\n  task \<filter:phoneme\>\n  hold is-below\n    read self/rank\n    read cap\nview page\n  view text/item\n    bind t, read v\n>), <>)
+
+# ---- a find that asks for nothing ----
+# Each of these was accepted and each produced a query that could not do what the document meant. None said so.
+
+test <a find that names a query twice>
+  want hold, bound(<find v\n  task \<a\>\n  task \<b\>\n>, <names a query twice>)
+
+test <two sorts on one field>
+  want hold, bound(<find v\n  task \<a\>\n  sort rise, read self/k\n  sort fall, read self/k\n>, <decides nothing>)
+
+test <a size of zero>
+  want hold, bound(<find v\n  task \<a\>\n  size 0\n>, <asks for at least one row>)
+
+test <a negative size>
+  want hold, bound(<find v\n  task \<a\>\n  size -5\n>, <asks for at least one row>)
+
+test <a negative slot>
+  want hold, bound(<find v\n  task \<a\>\n  slot -1\n>, <starts at zero or later>)
+
+test <a meet grouping nothing>
+  want hold, bound(<find v\n  task \<a\>\n  meet and\n>, <groups nothing>)
+
+test <a predicate with nothing to compare>
+  want hold, bound(<find v\n  task \<a\>\n  hold is-equal\n>, <has nothing to compare>)
+
+test <a counted walk that counts backwards>
+  want hold, bound(<view page\n  walk size\n    bind base, 9\n    bind head, 0\n    hook next\n      take site, name i\n      text \<x\>\n>, <draws nothing>)
+
+# two sorts on DIFFERENT fields is the ordinary shape
+test <but two sorts on different fields is ordinary>
+  want hold, is-equal(attack(<find v\n  task \<filter:phoneme\>\n  sort fall, read self/rank\n  sort rise, read self/symbol\nview page\n  view text/item\n    bind t, read v\n>), <>)
+
+# ---- declared twice ----
+# Each of these was accepted. The repeated `take` was the worst: it emitted the component's parameter list with the
+# name in it twice, so the compiled signature was broken and nothing said so.
+
+test <a view declared twice>
+  want hold, bound(<view page\n  text \<a\>\nview page\n  text \<b\>\n>, <already declared by a view>)
+
+test <a take declared twice on one view>
+  want hold, bound(<view page\n  take a, like text\n  take a, like text\n  text \<x\>\n>, <is taken twice by "page">)
+
+test <a name imported twice in one load>
+  want hold, bound(<load @view/text\n  find heading\n  find heading\nview page\n  text \<x\>\n>, <is taken twice from>)
+
+test <a property bound twice on one component>
+  want hold, bound(<view page\n  view text/item\n    bind t, text \<a\>\n    bind t, text \<b\>\n>, <is bound twice on>)
+
+# an alias makes two imports of one name legitimate
+test <but an alias makes two imports of one name fine>
+  want hold, is-equal(attack(<load @view/text\n  find heading\n  find heading, name title\nview page\n  text \<x\>\n>), <>)
+
+# ---- shapes the lowering would have quietly mangled ----
+# Neither of these failed to compile. A `walk` with two bodies rendered the FIRST and dropped the second; a `fork` with
+# no `hook test` had nothing to branch on and used `true`, so a document that forgot its condition rendered that branch
+# unconditionally.
+
+test <a walk with two bodies>
+  want hold, bound(<host l, like text\nview page\n  walk list, read l\n    hook next\n      take site, name a\n      text \<one\>\n    hook next\n      take site, name b\n      text \<two\>\n>, <the rest would vanish without being named>)
+
+test <a walk with no body>
+  want hold, bound(<host l, like text\nview page\n  walk list, read l\n>, <names what to render per item>)
+
+test <a fork that branches on nothing>
+  want hold, bound(<view page\n  fork test\n    hook hold\n      text \<a\>\n>, <branches on nothing>)
+
+test <a fork whose test comes after its body>
+  want hold, bound(<host x, true\nview page\n  fork test\n    hook hold\n      text \<a\>\n    hook test\n      read x\n>, <branches on nothing>)
+
+test <a fork whose test decides nothing>
+  want hold, bound(<host x, true\nview page\n  fork test\n    hook test\n      read x\n>, <decides nothing>)
+
+# the well-formed shape is untouched
+test <a well-formed fork is not caught by any of that>
+  want hold, is-equal(attack(<host x, true\nview page\n  fork test\n    hook test\n      read x\n    hook hold\n      text \<a\>\n    hook miss\n      text \<b\>\n>), <>)
+
+# ---- the oldest denial of service there is ----
+# A macro that fuses another twice, thirteen deep, is a 26-line document holding two million nodes. The node cap counts
+# the EXPANDED tree, which is the right thing to count and the wrong time: expansion has already happened. Measured
+# 2026-08-30 before the fix: 22 levels took 2.2 seconds, and 26 took the compiler down with an out-of-memory crash. The
+# size is computed over the macro graph first, so expansion never runs.
+
+# the macros from `at` to the last, each fusing the next twice, the last holding one text
+task bomb-macros
+  take at, like number
+  take levels, like number
+  like text
+
+  save head, <tree m{at}\n  hook fuse>
+  fork test, is-below(add(at, 1), levels)
+    hold
+      back <{head}\n    fuse m{add(at, 1)}\n    fuse m{add(at, 1)}\n{bomb-macros(add(at, 1), levels)}>
+  back <{head}\n    text \<x\>>
+
+task bomb-of
+  take levels, like number
+  like text
+
+  back <{bomb-macros(0, levels)}\nview page\n  fuse m0\n>
+
+# the gate refuses a bomb before expanding it
+task refused-before-expanding
+  take levels, like number
+  like boolean
+
+  save said, attack(bomb-of(levels))
+  back and(text-contains(said, <would expand to about>), text-contains(said, <before expanding>))
+
+# the milliseconds the gate takes over a bomb
+task attack-ms
+  take levels, like number
+  like number
+
+  save started, clock-now()
+  save said, attack(bomb-of(levels))
+  back subtract(clock-now(), started)
+
+test <a macro bomb 18 deep is refused before expanding>
+  want hold, refused-before-expanding(18)
+
+test <and in well under a second, 18 deep>
+  want hold, is-below(attack-ms(18), 1000)
+
+test <a macro bomb 26 deep is refused before expanding>
+  want hold, refused-before-expanding(26)
+
+test <and in well under a second, 26 deep>
+  want hold, is-below(attack-ms(26), 1000)
+
+test <a macro bomb 40 deep is refused before expanding>
+  want hold, refused-before-expanding(40)
+
+test <and in well under a second, 40 deep>
+  want hold, is-below(attack-ms(40), 1000)
+
+# a document whose macros are real and small still passes
+test <a document with ordinary macros is not caught by it>
+  want hold, is-equal(attack(<tree row\n  hook fuse\n    view text/item\n      bind t, text \<x\>\nview page\n  fuse row\n  fuse row\n  fuse row\n>), <>)

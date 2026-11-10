@@ -1,0 +1,144 @@
+note <term make --merged on a project big enough for the worker pool waits for the whole-program answer before reading it>
+
+# Ported from make-merged.ts by statement (item term-self-host-001-0604), one test per `ok` in its order. Until item
+# 0334 the pool's compile-project-parallel handed back its promise, build-command.tree read `result/problems` off it, and
+# the build stopped on "entries is not iterable" (exit 70) while the separate build passed. Each project has 18 files,
+# past the pool's own threshold (build-command.tree `build-project`: at least 16 files and more than two cores), one of
+# them not checking in the second. Each run is the `term` under test (@term/test/self), made once by the first test
+# that reads it. The original printed a skip line on two cores or fewer and ran every check anyway, as this does.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host file-count, 18
+
+form merged-run
+  link done, like boolean
+  link root, like text
+  link code, like number
+  link out, like text
+
+form merged-state
+  mark shared
+  link clean, like merged-run
+  link separate, like merged-run
+  link broken, like merged-run
+
+task no-run
+  like merged-run
+
+  back make(merged-run, bind(done, false), bind(root, <>), bind(code, -1), bind(out, <>))
+
+host merged-now, make(merged-state, bind(clean, no-run()), bind(separate, no-run()), bind(broken, no-run()))
+
+# a prefix without the word the build's output is searched for
+task project
+  take broken, like boolean
+  like text
+
+  save root, temp-folder(<term-pool->)
+  make-folder(<{root}/code>)
+  write-file(<{root}/deck.tree>, <deck @probe/make-merged\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>)
+  save n, 1
+  walk test
+    hook test, not(is-above(n, file-count))
+    hook hold
+      write-file(<{root}/code/times-{n}.tree>, <task times-{n}\n  take x, like number\n  like number\n  back multiply(x, {n})\n>)
+      save n, add(n, 1)
+  fork test, broken
+    hold
+      write-file(<{root}/code/broken.tree>, <task wrong\n  like number\n  back \<not a number\>\n>)
+  back root
+
+task term-in
+  take root, like text
+  take arguments, like list, like text
+  like merged-run
+  mark async
+
+  save ran, run-self(arguments, root, 600000)
+  back make(merged-run, bind(done, true), bind(root, root), bind(code, ran/code), bind(out, <{ran/output}\n{ran/error}>))
+
+# 1. a clean project: the merged build passes and writes every file
+task clean-run
+  like merged-run
+  mark async
+
+  fork test, not(merged-now/clean/done)
+    hold
+      save merged-now/clean, term-in(project(false), make(list, <make>, <--merged>))
+  back merged-now/clean
+
+task separate-run
+  like merged-run
+  mark async
+
+  save clean, clean-run()
+  fork test, not(merged-now/separate/done)
+    hold
+      save merged-now/separate, term-in(clean/root, make(list, <make>))
+  back merged-now/separate
+
+# 2. a project with one file that does not check: the merged build reads the pool's problems and reports that file
+task broken-run
+  like merged-run
+  mark async
+
+  fork test, not(merged-now/broken/done)
+    hold
+      save merged-now/broken, term-in(project(true), make(list, <make>, <--merged>))
+  back merged-now/broken
+
+task never-internal
+  take out, like text
+  like boolean
+
+  back not(matches(make(pattern, <internal error|not iterable>), out))
+
+test <merged build of a pooled project exits 0>
+  want hold, is-equal(clean-run()/code, 0)
+
+test <merged build never stops on an internal error>
+  want hold, never-internal(clean-run()/out)
+
+test <merged build says it was merged>
+  want hold, matches(make(pattern, <merged>), clean-run()/out)
+
+test <merged build writes every module>
+  save run, clean-run()
+  save all, true
+  save n, 1
+  walk test
+    hook test, not(is-above(n, file-count))
+    hook hold
+      fork test, not(file-exists(<{run/root}/host/code/times-{n}.ts>))
+        hold
+          save all, false
+      save n, add(n, 1)
+  want hold, all
+
+test <separate build of the same project exits 0>
+  want hold, is-equal(separate-run()/code, 0)
+
+test <merged build of a failing file exits 1>
+  want hold, is-equal(broken-run()/code, 1)
+
+test <merged build never stops on an internal error (failing file)>
+  want hold, never-internal(broken-run()/out)
+
+test <merged build names the failing file>
+  want hold, matches(make(pattern, <<broken\.tree>>), broken-run()/out)

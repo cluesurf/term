@@ -1,0 +1,94 @@
+note <a name first saved in every arm of a branch is scoped to its arm: a read after it is refused by name, every backend>
+
+# Ported from arm-saved-name.ts by statement (item term-self-host-001-0653): its four refused programs (sift and fork,
+# each read by a list builtin and by a method) and its run are each a walked test, each backend a case of it. Trap
+# T-0232, item term-self-host-001-0430: a call with no signature (a list builtin, a method on a receiver) never reached
+# the flag check, so `push(names, found)` after the branch compiled, and TypeScript threw `ReferenceError: found is not
+# defined` at run time while rustc, swiftc and kotlinc refused the emitted read. Refused now by name on every backend,
+# and the written-right shape (saved before the branch with a default, reassigned in the arms) runs on all four. A
+# backend whose toolchain is not installed is the run's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compile-note
+
+load ../support/running
+  find backends
+  find backend-env
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host list-head, <load @term/base/list\n  find list\n  find get\n\n>
+
+host shape-head, <form shape\n  case circle\n    link radius, like number\n  case square\n    link side, like number\n\n>
+
+# a name first saved in every arm of a sift, read after the branch by `read`
+task sift-program
+  take read, like text
+  like text
+
+  back <{list-head}{shape-head}task size\n  take s, like shape\n  like number\n  save names, make list\n  sift s\n    case circle\n      save found, radius\n    miss\n      save found, 0\n  {read}\n  back get(names, 0)\n>
+
+# the same in the arms of a fork
+task fork-program
+  take read, like text
+  like text
+
+  back <{list-head}task pick\n  take n, like number\n  like number\n  save names, make list\n  fork test, is-above(n, 2)\n    hold\n      save found, 1\n    miss\n      save found, 2\n  {read}\n  back get(names, 0)\n>
+
+# the same, saved before the branch with a default and only reassigned in the arms
+host hoisted, <{list-head}{shape-head}task size\n  take s, like shape\n  like number\n  save names, make list\n  save found, 0\n  sift s\n    case circle\n      save found, radius\n    case square\n      save found, side\n  push(names, found)\n  back get(names, 0)\n\ntask pick\n  take n, like number\n  like number\n  save names, make list\n  save found, 0\n  fork test, is-above(n, 2)\n    hold\n      save found, 1\n    miss\n      save found, 2\n  names/push(found)\n  back get(names, 0)\n\ntask run\n  like text\n  back \<\{size(make(circle, 3))\}|\{size(make(square, 7))\}|\{pick(5)\}|\{pick(1)\}\>\n>
+
+# refused, with an `unknown-name` diagnostic saying exactly that `found` is not defined
+task refused-found
+  take program, like text
+  take file, like text
+  take backend, like text
+  like boolean
+
+  save env, backend-env(backend)
+  save out, compile-text(program, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, env), bind(env, env), bind(lean, true)))
+  fork test, out/ok
+    hold
+      back false
+  walk out/notes
+    take note, like compile-note
+    fork test, and(is-equal(note/name, <unknown-name>), is-equal(note/message, <the name "found" is not defined>))
+      hold
+        back true
+  back false
+
+test <a name saved only in the arms of a sift, read by push(names, found), is refused by name>
+  take backend, like text
+    walk backends()
+  want hold, refused-found(sift-program(<push(names, found)>), <sift-push.tree>, backend)
+
+test <a name saved only in the arms of a fork, read by push(names, found), is refused by name>
+  take backend, like text
+    walk backends()
+  want hold, refused-found(fork-program(<push(names, found)>), <fork-push.tree>, backend)
+
+test <a name saved only in the arms of a sift, read by names/push(found), is refused by name>
+  take backend, like text
+    walk backends()
+  want hold, refused-found(sift-program(<names/push(found)>), <sift-method.tree>, backend)
+
+test <a name saved only in the arms of a fork, read by names/push(found), is refused by name>
+  take backend, like text
+    walk backends()
+  want hold, refused-found(fork-program(<names/push(found)>), <fork-method.tree>, backend)
+
+test <the name saved before the branch and reassigned in its arms is read after it>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-arm-saved-name->)
+  host ran, run-text(hoisted, backend, folder, <hoisted>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <3|7|1|2>)

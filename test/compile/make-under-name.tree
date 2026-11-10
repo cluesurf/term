@@ -1,0 +1,80 @@
+note <A construction's value written under its name is read as a positional value, never dropped>
+
+# Ported from make-under-name.ts by statement (item term-self-host-001-0617). `make some(x)`, and `make some x`, which
+# parses the same, since a space nests as a parenthesis does. The grammar reads a construction's values beside the name
+# (`make some, x`), so these were dropped without a word: `make some(error)` built `{ form: "some", value: undefined }`
+# on TypeScript, and a local one-field case reached the kernel as an unapplied constructor. Found by the time/compare
+# port (2026-10-04), compile/mint-bridge.ts `recordOf` reads them as positional values. Each program is built AND run,
+# lean and longhand, one call printed as JSON per test.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host forms, <form reading\n  case some\n    link value, like number\n  case none\n\nform pair\n  slot left, like number\n  slot right, like number\n>
+
+# what `call` answers in a program built with the compiler's own resolver, as JSON
+task answer-of
+  take program, like text
+  take lean, like boolean
+  take call, like text
+  like text
+
+  save out, compile-text(program, make(compile-choice, bind(file, </gate/code/make-under-name.tree>), bind(lean, lean)))
+  save folder, temp-folder(<term-make-under-name->)
+  back typescript-answer(out, <process.stdout.write(JSON.stringify({call}))>, folder, <module>)
+
+task wrap-with
+  take body, like text
+  like text
+
+  back <{forms}\ntask wrap\n  take x, like number\n  like reading\n  {body}\n>
+
+test <lean: make some(x)>
+  want hold, is-equal(answer-of(wrap-with(<back make some(x)>), true, <wrap(41).value>), <41>)
+
+test <lean: make some x, the value nested by a space>
+  want hold, is-equal(answer-of(wrap-with(<back make some x>), true, <wrap(41).value>), <41>)
+
+test <lean: make some(add(x, 1))>
+  want hold, is-equal(answer-of(wrap-with(<back make some(add(x, 1))>), true, <wrap(41).value>), <42>)
+
+# two values under the name fill a form's slots in order, as two beside it do
+test <lean: make pair(x, y) fills the slots>
+  want hold, is-equal(answer-of(<{forms}\ntask both\n  take x, like number\n  take y, like number\n  like pair\n  back make pair(x, y)\n>, true, <both(1, 2)>), <\{"left":1,"right":2\}>)
+
+# the native list, written with its items under the name: it built an EMPTY list (note/term/plan/
+# silent-defects-third-batch.md, which the call package's item parity suite wrote around)
+test <lean: make list(80, 40) holds both items>
+  want hold, is-equal(answer-of(<task widths\n  like list, like number\n  back make list(80, 40)\n>, true, <widths()>), <[80,40]>)
+
+test <lean: make list(\<a\>, \<b\>) holds both texts>
+  want hold, is-equal(answer-of(<task names\n  like list, like text\n  back make list(\<a\>, \<b\>)\n>, true, <names()>), <["a","b"]>)
+
+test <lean: make some(80), a literal under the name>
+  want hold, is-equal(answer-of(<{forms}\ntask eighty\n  like reading\n  back make some(80)\n>, true, <eighty().value>), <80>)
+
+# longhand: `make some x` under a call was dropped the same way
+test <longhand: make some x>
+  want hold, is-equal(answer-of(<{forms}\ntask wrap\n  take x, like number\n  like reading\n  send back, make some x\n>, false, <wrap(7).value>), <7>)
+
+host keeps-value, make pattern, <<function wrap[^]*?value: x\b>>
+host value-lost, make pattern, <<undefined as any>>
+
+# the stdlib's generic `maybe`, imported, where the value was dropped in SILENCE rather than refused
+test <lean: the imported maybe keeps its value>
+  host out, compile-text(<load @term/base/maybe\n  find maybe\n\ntask wrap\n  take x, like number\n  like maybe number\n  back make some(x)\n>, make(compile-choice, bind(file, </gate/code/generic-maybe.tree>), bind(lean, true), bind(project, <.>), bind(project-env, <node>)))
+  want hold, out/ok
+  want hold, matches(keeps-value, out/emitted)
+  want hold, not(matches(value-lost, out/emitted))

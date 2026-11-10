@@ -1,0 +1,383 @@
+note <`term` on Windows end to end: the payload on a loopback registry, installed by the loader, then the installed term run there>
+
+# Ported from self-release-windows.ts by statement (item term-self-host-001-0607), one test per `ok` in its order
+# (note/project/term/term-load-install.md, the Windows half). The Windows payload `pnpm run release --dry` wrote is
+# published to a loopback registry on this machine (@term/deck's oci-server, on 127.0.0.1 at a port of its own), reached
+# from the Windows machine through an ssh reverse tunnel, installed there by THE LOADER term.surf serves at /load.ps1,
+# and then the INSTALLED term is run there:
+#   1. the loader installs, checks the signature, writes bin\term.cmd and install.tree, and puts bin on the user Path
+#   2. `term --version`, and `term make` on a sample project
+#   3. `term self check`, `update` (the shim moves to the next version), `check`, `update` again (nothing newer), `back`
+#   4. a tampered install.tree: check refuses
+# The machine is the parent's machine module (task/term/cask/windows.ts under TERM_PARENT_ROOT), which reaches it, so
+# with no TERM_PARENT_ROOT every test skips, as the original did. The loader is read from the same parent checkout. One
+# PowerShell script on the machine is sent as -EncodedCommand (base64 of UTF-16LE), so no quote or `$` in it ever meets
+# cmd.exe or ssh. oci/keys, oci/release, oci/transport and object/sign of @term/deck are the subject (decision 106).
+
+load @term/base/environment
+  find variable
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find substring
+  find to-lower-case
+  find split, name text-split
+
+load @term/deck/test/oci-server
+  find start-oci-server
+  find close-oci-server
+
+load ../support/judging
+  find make-record
+
+dock load
+  load <@term/deck/code/object/sign>, name sign-face
+  load <@term/deck/code/oci/keys>, name keys-face
+  load <@term/deck/code/oci/release>, name release-face
+  load <@term/deck/code/oci/transport>, name transport-face
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+# host native: the parent's machine module, a CommonJS script whose exports Node finds only on `default`
+bind machine-module
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <(await import($path)).default>
+
+bind encoded
+  take script, like text
+  like text
+  case node
+    text <Buffer.from($script, "utf16le").toString("base64")>
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind as-number
+  take text, like text
+  like number
+  case node
+    text <Number($text)>
+
+bind now-millis
+  like number
+  case node
+    text <Date.now()>
+
+# host value: one tunnel forward, a port and the address it answers at
+bind forward
+  take port, like number
+  take address, like text
+  like dynamic
+  case node
+    text <[, ]>
+
+bind zeros
+  take count, like number
+  like text
+  case node
+    text <"0".repeat($count)>
+
+host parent, variable(<TERM_PARENT_ROOT>)
+
+host term-folder, dock-path/resolve(<.>)
+host version, parsed-json(dock-file/readFileSync(dock-path/join(term-folder, <package.json>), <utf8>))/version
+
+# the version two patches on
+task next-of
+  take given, like text
+  like text
+
+  save parts, text-split(given, <.>)
+  back <{parts/0}.{parts/1}.{add(as-number(parts/2), 2)}>
+
+host next, next-of(version)
+
+form windows-run
+  mark shared
+  link done, like boolean
+  link reason, like text
+  link platform, like text
+  link digest, like text
+  link base, like text
+  link loaded, like dynamic
+  link user-path, like text
+  link version-run, like dynamic
+  link made, like dynamic
+  link checked, like dynamic
+  link updated, like dynamic
+  link again, like dynamic
+  link newest, like dynamic
+  link back-run, like dynamic
+  link tampered, like dynamic
+  link leaked, like number
+
+form ps-result
+  link code, like number
+  link out, like text
+
+task no-result
+  like ps-result
+
+  back make(ps-result, bind(code, -1), bind(out, <>))
+
+host windows-now, make(windows-run, bind(done, false), bind(reason, <>), bind(platform, <>), bind(digest, <>), bind(base, <>), bind(loaded, no-result()), bind(user-path, <>), bind(version-run, no-result()), bind(made, no-result()), bind(checked, no-result()), bind(updated, no-result()), bind(again, no-result()), bind(newest, no-result()), bind(back-run, no-result()), bind(tampered, no-result()), bind(leaked, -1))
+
+# one PowerShell script on the machine. A script ends with `exit $LASTEXITCODE` where the last program's status is the answer
+task ps
+  take windows, like dynamic
+  take script, like text
+  like ps-result
+  mark async
+
+  save ran, wait windows/remoteAsync(<powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded(script)}>, make-record(make(list, <timeout>, 600000)))
+  back make(ps-result, bind(code, ran/status), bind(out, <{ran/stdout}{ran/stderr}>))
+
+task write-text
+  take path, like text
+  take text, like text
+  like void
+
+  dock-file/writeFileSync(path, text)
+
+task tester-credentials
+  like dynamic
+  mark async
+
+  back make-record(make(list, <kind>, <basic>, <username>, <tester>, <password>, <secret>))
+
+# the machine's PROCESSOR_ARCHITECTURE, as the payload built for it
+task platform-of
+  take machine, like text
+  like text
+
+  fork test, is-equal(machine, <AMD64>)
+    hold
+      back <windows-x64>
+  fork test, is-equal(machine, <ARM64>)
+    hold
+      back <windows-arm64>
+  back <>
+
+task the-windows
+  like windows-run
+  mark async
+
+  fork test, windows-now/done
+    hold
+      back windows-now
+  save windows-now/done, true
+  save windows, machine-module(dock-path/join(parent, <task/term/cask/windows.ts>))
+  save asked, wait windows/remoteAsync(<echo %PROCESSOR_ARCHITECTURE%& echo %USERPROFILE%>, make-record(make(list, <timeout>, 60000)))
+  save answers, make list
+  walk text-split(text-replace-return(asked/stdout), <\n>)
+    take line, like text
+    save trimmed, line/trim()
+    fork test, is-unequal(trimmed, <>)
+      hold
+        answers/push(trimmed)
+  save machine, <>
+  save profile, <>
+  fork test, is-above(answers/length, 0)
+    hold
+      save machine, answers/0
+  fork test, is-above(answers/length, 1)
+    hold
+      save profile, answers/1
+  save platform, platform-of(machine)
+  fork test, or(is-unequal(asked/status, 0), or(is-equal(platform, <>), is-equal(profile, <>)))
+    hold
+      save windows-now/reason, <the Windows machine did not answer with its architecture and profile: {asked/stdout}{asked/stderr}>
+      back windows-now
+  save windows-now/platform, platform
+  save payload-file, dock-path/join(term-folder, <tmp>, <release>, version, <term-{platform}.tar.gz>)
+  fork test, not(dock-file/existsSync(payload-file))
+    hold
+      save windows-now/reason, <no payload at {payload-file}: run `pnpm run release --dry` first>
+      back windows-now
+  # what the machine is sent, in a folder of its own: the loader, the module it hands over to, and a project for `term make`
+  save loader, dock-path/join(parent, <mesh/site/term.surf/home/public/load.ps1>)
+  save folder, <term-self-{now-millis()}>
+  save sent, dock-path/join(term-folder, <tmp>, <self-release-windows>)
+  dock-file/rmSync(sent, make-record(make(list, <recursive>, true, <force>, true)))
+  dock-file/mkdirSync(dock-path/join(sent, <sample>, <code>), make-record(make(list, <recursive>, true)))
+  dock-file/copyFileSync(loader, dock-path/join(sent, <load.ps1>))
+  dock-file/copyFileSync(dock-path/join(parent, <mesh/site/term.surf/home/public/load.mjs>), dock-path/join(sent, <load.mjs>))
+  write-text(dock-path/join(sent, <sample>, <deck.tree>), <deck @sample/hello\nhead \<A sample project the Windows install test builds\>\nmark \<0.0.0\>\n>)
+  write-text(dock-path/join(sent, <sample>, <code>, <base.tree>), <task greet\n  take name, like text\n  like text\n  send back, text \<hello \{name\}\>\n>)
+  # before the registry starts: ship is synchronous, and nothing it does needs the registry
+  windows/ship(sent, folder)
+  save payload, dock-file/readFileSync(payload-file)
+  save digest, transport-face/sha256Digest(payload)
+  save windows-now/digest, digest
+  save server, start-oci-server()
+  save transport, transport-face/httpTransport(make-record(make(list, <host>, server/host, <credentials>, tester-credentials, <retries>, 0)))
+  save keypair, sign-face/generateKeypair()
+  wait keys-face/ensurePublisher(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/name>, <scope>, <@term>, <keypair>, keypair)))
+  walk make(list, version, next)
+    take one, like text
+    save payloads, make list
+    payloads/push(make-record(make(list, <platform>, platform, <bytes>, payload)))
+    wait release-face/publishRelease(make-record(make(list, <transport>, transport, <repository>, <cluesurf/term/code>, <package>, <@term/code>, <version>, one, <payloads>, payloads, <keypair>, keypair)))
+  save port, as-number(text-split(server/host, <:>)/1)
+  save forwards, make list
+  forwards/push(forward(port, <127.0.0.1>))
+  forwards/push(forward(server/storage-port, <127.0.0.1>))
+  save tunnel, wait windows/tunnel(forwards)
+  # a fresh machine as far as term can tell: its own profile, trust pins and store, pointed at the registry through the
+  # tunnel, which answers at the same address there as here
+  save root, <{profile}\\{folder}>
+  save home, <{root}\\home>
+  save base, <{home}\\.base\\@term\\code>
+  save windows-now/base, base
+  save env, <New-Item -ItemType Directory -Force -Path '{home}' \| Out-Null\n$env:USERPROFILE = '{home}'\n$env:TERM_LOAD_REGISTRY = 'http://{server/host}'\n$env:TERM_LOAD_MODULE = '{root}\\load.mjs'\n$env:TERM_RELEASE_REGISTRY = 'oci://{server/host}/cluesurf/term'\n$env:TERM_OCI_HOST = '{server/host}'\n$env:TERM_OCI_USERNAME = 'tester'\n$env:TERM_OCI_TOKEN = 'secret'\n$env:TERM_TRUST_DIR = '{home}\\trust'\n$env:TERM_STORE = '{home}\\store'>
+  save term, <& '{base}\\call\\term.cmd'>
+  save shim, <Get-Content '{base}\\call\\term.cmd'>
+  save loaded, ps(windows, <{env}\n$env:TERM_LOAD_VERSION = '{version}'\n& '{root}\\load.ps1'\n{shim}\nGet-Content '{base}\\code\\{version}\\install.tree'\nWrite-Output "user-path=$([Environment]::GetEnvironmentVariable('Path', 'User'))">)
+  save windows-now/loaded, loaded
+  # the user Path as the loader left it, read back from the registry after the run
+  walk text-split(text-replace-return(loaded/out), <\n>)
+    take line, like text
+    fork test, and(starts-with(line, <user-path=>), is-equal(windows-now/user-path, <>))
+      hold
+        save windows-now/user-path, substring(line, 10)
+  save windows-now/version-run, ps(windows, <{env}\n{term} --version\nexit $LASTEXITCODE>)
+  save windows-now/made, ps(windows, <{env}\nSet-Location '{root}\\sample'\n{term} make --plain --color never\n$made = $LASTEXITCODE\nGet-ChildItem -Recurse -Name host\nexit $made>)
+  save windows-now/checked, ps(windows, <{env}\n{term} self check --plain --color never\nexit $LASTEXITCODE>)
+  save windows-now/updated, ps(windows, <{env}\n{term} self update --plain --color never\n$code = $LASTEXITCODE\n{shim}\nexit $code>)
+  save windows-now/again, ps(windows, <{env}\n{term} self check --plain --color never\nexit $LASTEXITCODE>)
+  save windows-now/newest, ps(windows, <{env}\n{term} self update --plain --color never\nexit $LASTEXITCODE>)
+  save windows-now/back-run, ps(windows, <{env}\n{term} self back --plain --color never\n$code = $LASTEXITCODE\n{shim}\nexit $code>)
+  save tree, <{base}\\code\\{version}\\install.tree>
+  save windows-now/tampered, ps(windows, <{env}\n(Get-Content '{tree}' -Raw).Replace('{digest}', 'sha256:{zeros(64)}') \| Set-Content -NoNewline '{tree}'\n{term} self check --plain --color never\nexit $LASTEXITCODE>)
+  # every blob GET above was redirected to the registry's separate storage host, which records any token it is sent
+  save windows-now/leaked, server/leaked-auth/length
+  tunnel/kill()
+  wait windows/remoteAsync(<rmdir /s /q %USERPROFILE%\\{folder}>, make-record(make(list, <timeout>, 120000)))
+  close-oci-server(server)
+  back windows-now
+
+bind text-replace-return
+  take text, like text
+  like text
+  case node
+    text <$text.replaceAll("\\r", "")>
+
+# whether the user Path holds the install's bin folder, read without case and trailing backslashes
+task path-holds
+  take user-path, like text
+  take folder, like text
+  like boolean
+
+  save wanted, to-lower-case(folder)
+  walk text-split(to-lower-case(user-path), <;>)
+    take entry, like text
+    save trimmed, entry
+    walk test
+      hook test, ends-with(trimmed, <\\>)
+      hook hold
+        save trimmed, substring(trimmed, 0, subtract(trimmed/length, 1))
+    fork test, is-equal(trimmed, wanted)
+      hold
+        back true
+  back false
+
+# the run, or a skip when there is no parent checkout, or a failure naming why the machine was not reached
+task reached
+  like windows-run
+  mark async
+
+  save got, the-windows()
+  back got
+
+test <the loader installs the version for the platform, checked, and writes bin\\term.cmd>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save got, reached()
+  want hold, is-equal(got/reason, <>)
+  want hold, and(is-equal(got/loaded/code, 0), text-contains(got/loaded/out, <code\\{version}\\term\\bin\\term.cmd>))
+
+test <the loader wrote install.tree with the layer digest>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save got, reached()
+  want hold, text-contains(got/loaded/out, <hash \<{got/digest}\>>)
+
+# since 2.8 the loader puts bin on the user Path itself, so the check reads the Path back rather than a printed command
+test <the loader puts bin on the user Path itself, and says so>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save got, reached()
+  want hold, and(text-contains(got/loaded/out, <path the user Path>), and(text-contains(got/loaded/out, <This terminal and new ones find term.>), path-holds(got/user-path, <{got/base}\\call>)))
+
+test <term --version runs on Windows and says the version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save got, reached()
+  want hold, and(is-equal(got/version-run/code, 0), text-contains(got/version-run/out, version))
+
+test <term make builds a project on Windows>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save made, reached()/made
+  want hold, and(is-equal(made/code, 0), and(text-contains(made/out, <1 file built>), or(text-contains(made/out, <base.ts>), text-contains(made/out, <base.js>))))
+
+test <self check passes on the loader's install>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save checked, reached()/checked
+  want hold, and(is-equal(checked/code, 0), text-contains(checked/out, <signed release>))
+
+test <self update installs the next version and moves bin\\term.cmd to it>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save updated, reached()/updated
+  want hold, and(is-equal(updated/code, 0), text-contains(updated/out, <code\\{next}\\term\\bin\\term.cmd>))
+
+test <self check passes on the next version, run through the shim update rewrote>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save again, reached()/again
+  want hold, and(is-equal(again/code, 0), text-contains(again/out, next))
+
+test <a second update finds nothing newer>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save newest, reached()/newest
+  want hold, and(is-equal(newest/code, 0), text-contains(to-lower-case(newest/out), <up to date>))
+
+test <self back returns bin\\term.cmd to the version>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save back-run, reached()/back-run
+  want hold, and(is-equal(back-run/code, 0), text-contains(back-run/out, <code\\{version}\\term\\bin\\term.cmd>))
+
+test <self check refuses an install whose digest is not the signed release>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  save tampered, reached()/tampered
+  want hold, and(is-unequal(tampered/code, 0), text-contains(tampered/out, <not the release>))
+
+test <no pull token ever reached the storage host>
+  fork test, is-equal(parent, <>)
+    hold
+      skip <needs TERM_PARENT_ROOT, the parent checkout that holds task/term/cask/windows.ts>
+  want hold, is-equal(reached()/leaked, 0)

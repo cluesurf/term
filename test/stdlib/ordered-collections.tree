@@ -1,0 +1,33 @@
+note <the bag, the set and the linked list give one answer on every backend>
+
+# Ported from test/stdlib/ordered-collections.ts by statement (item term-self-host-001-0680): its one ok per backend is
+# one walked test, each backend a case of it. `list/bag`, `set` and `list/linked-list`, marked stable on 2026-10-05, held
+# to what v1 promises of them. The bag counts each value in a hash (O(1) insert, remove, count-of), the set is a hash's
+# insertion-ordered keys (O(1) membership), and the linked list walks itself in loops, so a long one needs no deep stack.
+# The original's CHAIN_LENGTH variable only shortened the long list by hand; its default, 200,000, is written here. A
+# backend whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+host program, <load @term/base/list/bag\n  find bag\n\nload @term/base/list/linked-list\n  find linked-list\n  find from-list\n\nload @term/base/set\n  find set\n\nload @term/base/list\n  find list\n  find join\n\nload @term/base/maybe\n  find maybe\n\n# a bag: three copies of 5 and one of 2, then one 5 taken out, and a value it never held taken out too\ntask bag-story\n  like text\n  save b, make(bag)\n  insert(b, 5)\n  insert(b, 2)\n  insert(b, 5)\n  insert(b, 5)\n  save took, remove(b, 5)\n  save missed, remove(b, 9)\n  save shown, make list\n  walk to-list(b)\n    take one\n    push(shown, \<\{one\}\>)\n  back \<\{length(b)\} \{distinct(b)\} \{count-of(b, 5)\} \{count-of(b, 7)\} \{contains(b, 2)\} \{took\} \{missed\} \{join(shown, \<,\>)\}\>\n\n# a set: first-insertion order kept, a second insert of 3 changing nothing, a removal keeping the rest in order\n# (set.tree, decisions-2026-10.md, D13)\ntask set-story\n  like text\n  save s\n    make set\n      bind items, make hash\n  insert(s, 3)\n  insert(s, 1)\n  insert(s, 3)\n  insert(s, 2)\n  remove(s, 1)\n  save shown, make list\n  walk to-list(s)\n    take one\n    push(shown, \<\{one\}\>)\n  back \<\{length(s)\} \{has(s, 3)\} \{has(s, 1)\} \{join(shown, \<,\>)\}\>\n\n# a linked list: built from a list, reversed, measured, its head and tail read, and a long one measured in a loop\ntask chain-story\n  like text\n  save l, from-list(make(list, 1, 2, 3))\n  save r, reverse(l)\n  save shown, make list\n  walk to-list(r)\n    take one\n    push(shown, \<\{one\}\>)\n  save first, unwrap-or(head(l), 0)\n  save rest, length(unwrap-or(tail(l), make(empty)))\n  save long, make(empty)\n  save i, 0\n  walk test\n    hook test, is-below(i, 200000)\n    hold\n      save long, prepend(long, i)\n      save i, add(i, 1)\n  back \<\{length(l)\} \{join(shown, \<,\>)\} \{first\} \{rest\} \{is-empty(make(empty))\} \{length(long)\}\>\n\ntask run\n  like text\n  back \<\{bag-story()\} | \{set-story()\} | \{chain-story()\}\>\n>
+
+# bag: 3 copies left (5, 5, 2), 2 distinct, two 5s, no 7, a 2, a 5 taken, no 9 to take, and the copies grouped by first
+# insertion. set: 3 and 2 left of 3, 1, 2, in that order. chain: 3 long, reversed, head 1, a tail of 2, an empty list
+# empty, and 200,000 nodes measured
+host expected, <3 2 2 0 true true false 5,5,2 | 2 true false 3,2 | 3 3,2,1 1 2 true 200000>
+
+test <bag, set and linked list answer alike>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-ordered->)
+  host ran, run-text(program, backend, folder, <collections>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, expected)

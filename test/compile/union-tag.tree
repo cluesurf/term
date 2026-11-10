@@ -1,0 +1,92 @@
+note <mark tag, name kind: a union discriminates on the field it names, emitted and run, an untagged one on form>
+
+# Ported from union-tag.ts by statement (item term-self-host-001-0620), one test per `ok` in its order. `mark tag, name
+# kind`: a union chooses the field its TypeScript type and values discriminate on, so a port keeps the shape the
+# TypeScript it replaces declared (the checker's `Type` and the parser's nodes tag on `kind`). self-hosting-0020. The
+# type, a construction with fields, a field-less construction, and a `fork case` over it, each emitted AND run. An
+# untagged union is held to `form`, so nothing else moves. The original imported the emitted module: here
+# typescript-answer runs it under node with a main that prints each answer. The compile has no resolver, as the
+# original's had none.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <form shape\n  mark tag, name kind\n  case circle\n    link radius, like number\n  case square\n    link side, like number\n  case point\n\nform color\n  case red\n  case green\n\ntask make-circle\n  take r, like number\n  like shape\n  send back\n    make circle\n      bind radius, read r\n\ntask make-point\n  like shape\n  send back, make point\n\ntask area\n  take s, like shape\n  like number\n  fork case, read s\n    case circle\n      send back\n        call multiply\n          read radius\n          read radius\n    case square\n      send back\n        call multiply\n          read side\n          read side\n    case point\n      send back, code 0\n\ntask color-name\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<red\>\n    case green\n      send back, text \<green\>\n\ntask make-green\n  like color\n  send back, make green\n>
+
+host circle-type, make pattern, <<\| \{ kind: "circle"; radius: number \}>>
+host point-type, make pattern, <<\| \{ kind: "point" \}>>
+host red-type, make pattern, <<\| \{ form: "red" \}>>
+host circle-made, make pattern, <<\{ kind: "circle", radius: r \}>>
+host point-frozen, make pattern, <<Object\.freeze\(\{ kind: "point" as const \}\)>>
+host kind-test, make pattern, <<\.kind === "circle">>
+host form-test, make pattern, <<s\.form === "circle">>
+host red-test, make pattern, <<\.form === "red">>
+host red-guard, make pattern, <<function __termIsRed\(value: \{ form: string \}\): value is \{ form: "red" \}>>
+
+task built
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, </gate/code/union-tag.tree>)))
+
+# what the emitted module prints for a main, run under node
+task answer
+  take main, like text
+  like text
+
+  save folder, temp-folder(<term-union-tag->)
+  back typescript-answer(built(), main, folder, <union-tag>)
+
+test <it compiles>
+  want hold, built()/ok
+
+test <the tagged union discriminates on kind>
+  host ts, built()/emitted
+  want hold, matches(circle-type, ts)
+  want hold, matches(point-type, ts)
+
+test <the untagged union still discriminates on form>
+  want hold, matches(red-type, built()/emitted)
+
+test <a construction writes kind>
+  want hold, matches(circle-made, built()/emitted)
+
+test <a field-less constant writes kind>
+  want hold, matches(point-frozen, built()/emitted)
+
+test <the match tests kind>
+  host ts, built()/emitted
+  want hold, matches(kind-test, ts)
+  want hold, not(matches(form-test, ts))
+
+# a field-less case only ever its frozen constant is tested by identity through its guard (`identityCases`), whose
+# narrowing type names the tag: `form` here, `kind` for the tagged union
+test <the untagged match tests form>
+  host ts, built()/emitted
+  want hold, or(matches(red-test, ts), matches(red-guard, ts))
+
+test <a built circle carries kind>
+  want hold, is-equal(answer(<process.stdout.write(JSON.stringify(makeCircle(3)))>), <\{"kind":"circle","radius":3\}>)
+
+test <a built point carries kind>
+  want hold, is-equal(answer(<process.stdout.write(JSON.stringify(makePoint()))>), <\{"kind":"point"\}>)
+
+test <the match reads a built value>
+  want hold, is-equal(answer(<process.stdout.write(String(area(makeCircle(3)) === 9 && area(makePoint()) === 0))>), <true>)
+
+test <the match reads a value built by TypeScript in the declared shape>
+  want hold, is-equal(answer(<process.stdout.write(String(area(\{ kind: "square", side: 4 \} as any)))>), <16>)
+
+test <the untagged union runs as before>
+  want hold, is-equal(answer(<process.stdout.write(colorName(makeGreen()))>), <green>)

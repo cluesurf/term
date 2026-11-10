@@ -1,0 +1,127 @@
+note <A view walk's item has the type the main check found, in the lowered check too>
+
+# A component is checked twice: as markup (check/inferring-main.tree check-zone), and as its lowered code
+# (check/views-lowered.tree), which alone sees what the render runtime is handed. The lowering typed a walk's item only
+# when the walk read a list parameter of the view (compile/view-lower.tree element-of), so over a member path (`read
+# one/tiles`) or a view save (`save found, bands-of(bands)`) the lowered closure took an untyped item, and every read off
+# it was a read of an unknown, while the markup check had typed that item all along. Now views-lowered gathers the item
+# types the markup check found (walk-item-types) and the lowering writes them on the closure (lower-views-typed),
+# term-self-host-001-1095 as ruled in 1108. Held here: the types gathered, walk by walk, the gradual left out, and the
+# lowered closure's item typed with them, where the lowering the backends emit (lower-views) leaves it as it was.
+
+load ../support/compiling
+  find front-end
+  find compile-choice
+  find project-path
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/check/views-lowered>, name walk-items
+  load <@term/make/code/compile/view-lower>, name view-lowering
+
+host head, <form tile\n  link count, like number\n  link word, like text\n\nform band\n  link label, like text\n  link size, like number\n  link tiles, like list, like tile\n\ntask bands-of\n  take bands, like list, like band\n  like list, like band\n\n  send back, read bands\n\n>
+
+# the inner walk reads a member path of the outer item
+host by-path, <view grid\n  take host, like view\n  take bands, like list, like band\n  walk list, read bands\n    hook next\n      take site, name one\n      walk list, read one/tiles\n        hook next\n          take site, name each\n          view td\n            read each/word\n>
+
+# the walk reads a view save of a call
+host by-save, <view grid\n  take host, like view\n  take bands, like list, like band\n  save found, bands-of(bands)\n  walk list, read found\n    hook next\n      take site, name one\n      view td\n        read one/label\n>
+
+# a list of unknown items stays gradual
+host by-unknown, <view grid\n  take host, like view\n  take bands, like list, like unknown\n  save found, bands\n  walk list, read found\n    hook next\n      take site, name one\n      view td\n        read one/label\n>
+
+host file, project-path(<.>, <test/check/view-walk-items.tree>)
+
+# host value: the types a walk-item-types table holds, in walk order
+bind table-types
+  take table, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$table.values()]>
+
+# host reflect: whether a lowered program holds a closure parameter `item` typed the named type `form`
+bind typed-item
+  take program, like dynamic
+  take item, like text
+  take form, like text
+  like boolean
+  case node
+    text <JSON.stringify($program).includes('"name":"' + $item + '","type":\{"kind":"named","name":"' + $form + '"')>
+
+# host value: a statement's span given its file, as the build's unit stamp gives it (the front end leaves it out)
+bind stamp-file
+  take statement, like dynamic
+  take path, like text
+  like void
+  case node
+    text <($statement.span.file = $path)>
+
+# the program the markup check typed, its views kept, each statement stamped with the file
+task checked
+  take shape, like text
+  like dynamic
+
+  host out, front-end(<{head}{shape}>, make(compile-choice, bind(file, file)))
+  host program, out/program
+  walk program
+    take one, like dynamic
+    stamp-file(one, file)
+  send back, read program
+
+# the names of the item types gathered, joined by commas, in walk order
+task gathered
+  take shape, like text
+  like text
+
+  host program, checked(shape)
+  host types, table-types(walk-items/walk-item-types(program, file))
+  save names, make list
+  walk types
+    take one, like dynamic
+    names/push(one/name)
+  send back, join(names, <,>)
+
+# whether the lowering views-lowered asks for types the item, and whether the lowering the backends emit does
+task typed-by-check
+  take shape, like text
+  take item, like text
+  take form, like text
+  like boolean
+
+  host program, checked(shape)
+  host table, walk-items/walk-item-types(program, file)
+  host no-bound, make list
+  send back, typed-item(view-lowering/lower-views-typed(program, no-bound, table), item, form)
+
+task typed-by-emit
+  take shape, like text
+  take item, like text
+  take form, like text
+  like boolean
+
+  host program, checked(shape)
+  host no-bound, make list
+  send back, typed-item(view-lowering/lower-views(program, no-bound), item, form)
+
+test <a walk over a member path: both items are gathered, the outer band and the inner tile>
+  want hold, is-equal(gathered(by-path), <band,tile>)
+
+test <a walk over a view save: its item is gathered>
+  want hold, is-equal(gathered(by-save), <band>)
+
+test <a walk over unknown items: nothing is gathered, the item stays gradual>
+  want hold, is-equal(gathered(by-unknown), <>)
+
+test <the lowered check's closure takes the member path's item typed>
+  want hold, typed-by-check(by-path, <each>, <tile>)
+
+test <the lowered check's closure takes the view save's item typed>
+  want hold, typed-by-check(by-save, <one>, <band>)
+
+test <the lowering the backends emit leaves the member path's item as it was>
+  want hold, is-equal(typed-by-emit(by-path, <each>, <tile>), false)
+
+test <the lowering the backends emit still types a list parameter's item, by element-of>
+  want hold, typed-by-emit(by-path, <one>, <band>)

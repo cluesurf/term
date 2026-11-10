@@ -1,0 +1,113 @@
+note <The device traits in a browser: compiled for the browser env, run under node against a stand-in window>
+
+# Ported from device-browser.ts by statement (item term-self-host-001-0613), native-dom-0012. The program is compiled for
+# the `browser` env, so the public `view/device` reaches view/native/browser/device and its runtime, and run under node
+# against a stand-in `window` whose media queries the harness flips the way a browser does: the query's `matches`
+# changes, then it fires `change`. The check is the signal's value, light before and dark after, and the other traits
+# read from the queries and the window's width. That a written signal rewrites the view is held by render-native and
+# toolkit-view, this holds that the browser writes it. The prelude is held to what the program's code reaches, where the
+# original read the device runtime alone.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ../support/reading
+  find lines-of
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find trim
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/list
+  find push
+
+host program, <load @term/site/code/view/device\n  find device-trait\n\nload @term/site/code/view/reactive\n  find read-signal\n\ntask trait-text\n  take name, like text\n  like text\n  save trait\n    call device-trait\n      read name\n  send back\n    call read-signal\n      bind self, read trait\n\ntask scheme-line\n  like text\n  send back\n    call trait-text\n      text \<color-scheme\>\n\ntask traits-line\n  like text\n  save idiom\n    call trait-text\n      text \<idiom\>\n  save width\n    call trait-text\n      text \<width-class\>\n  save pointer\n    call trait-text\n      text \<pointer\>\n  save motion\n    call trait-text\n      text \<reduce-motion\>\n  send back, text \<\{\{idiom\}\} \{\{width\}\} \{\{pointer\}\} \{\{motion\}\}\>\n>
+
+# a window with the four queries the runtime asks, a laptop's: a fine pointer, 1280 wide, light, motion allowed
+host stand-in, <const media: Record\<string, \{ matches: boolean; listeners: (() =\> void)[] \}\> = \{\n  '(prefers-color-scheme: dark)': \{ matches: false, listeners: [] \},\n  '(prefers-reduced-motion: reduce)': \{ matches: false, listeners: [] \},\n  '(pointer: fine)': \{ matches: true, listeners: [] \},\n  '(pointer: coarse)': \{ matches: false, listeners: [] \},\n\}\nconst standInResize: (() =\> void)[] = []\n// the browser dom is in the program and reads the document when it loads; nothing here draws into it\n;(globalThis as any).document = \{ documentElement: \{\}, body: \{\}, head: \{\} \}\n;(globalThis as any).window = \{\n  innerWidth: 1280,\n  screen: \{ width: 1280, height: 800 \},\n  matchMedia(query: string) \{\n    const entry = media[query] ?? \{ matches: false, listeners: [] \}\n    return \{\n      get matches() \{ return entry.matches \},\n      addEventListener(_: string, run: () =\> void) \{ entry.listeners.push(run) \},\n    \}\n  \},\n  addEventListener(_: string, run: () =\> void) \{ standInResize.push(run) \},\n\}\nfunction flip(query: string, matches: boolean): void \{\n  media[query]!.matches = matches\n  for (const run of media[query]!.listeners) run()\n\}\nfunction narrow(width: number): void \{\n  ;(globalThis as any).window.innerWidth = width\n  for (const run of standInResize) run()\n\}\n>
+
+host harness, <\nconsole.log(schemeLine())\nconsole.log(traitsLine())\nflip('(prefers-color-scheme: dark)', true)\nconsole.log(schemeLine())\nnarrow(390)\nconsole.log(traitsLine())\n>
+
+task built
+  like compile-outcome
+
+  save folder, temp-folder(<term-device-browser->)
+  back compile-text(program, make(compile-choice, bind(file, <{folder}/device.tree>), bind(project, <.>), bind(project-env, <browser>), bind(env, <browser>)))
+
+form device-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(device-answers, bind(held, make hash))
+
+# what the harness printed, made once
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save out, built()
+  save folder, temp-folder(<term-device-browser->)
+  save said, typescript-answer(out, harness, folder, <device>, <{stand-in}\n{prelude-text(out, <browser>, out/emitted)}>)
+  save kept/held/{key}, said
+  back said
+
+# the printed lines, trimmed, the empty ones left out
+task printed-lines
+  like list, like text
+
+  save out, make list
+  walk lines-of(printed())
+    take line, like text
+    save kept-line, trim(line)
+    fork test, is-unequal(kept-line, <>)
+      hold
+        out/push(kept-line)
+  back out
+
+task line-at
+  take at, like number
+  like text
+
+  save lines, printed-lines()
+  fork test, is-below(at, lines/length)
+    hold
+      back lines/{at}
+  back <>
+
+test <the program compiles for the browser>
+  want hold, built()/ok
+
+test <the browser device runtime is in the prelude>
+  host out, built()
+  want hold, text-contains(prelude-text(out, <browser>, out/emitted), <nativeDevice>)
+
+test <it runs>
+  host said, printed()
+  want hold, not(starts-with(said, <exit >))
+  want hold, not(starts-with(said, <refused:>))
+
+test <light from the media query>
+  want hold, is-equal(line-at(0), <light>)
+
+test <a fine pointer 1280 wide is a regular desktop>
+  want hold, is-equal(line-at(1), <desktop regular fine no>)
+
+# the same signal device-trait handed out first, written by the watcher the query's change event ran
+test <the query's change event writes the signal>
+  want hold, is-equal(line-at(2), <dark>)
+
+test <a resize to 390 makes the width class compact>
+  want hold, is-equal(line-at(3), <desktop compact fine no>)

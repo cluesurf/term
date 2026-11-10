@@ -1,0 +1,215 @@
+note <the raw text literal is read exactly as written, with no interpolation and no escape>
+
+# Ported from raw-text.ts by statement (item term-self-host-001-0635), one test per `ok` in its order. `<<...>>`
+# (parser/token.ts) runs up to the `>>` that ends the first run of `>` on its line, with no interpolation and no
+# escape, so a pattern reads as its engine reads it. Held here: the value
+# each spelling compiles to, run on node, the refusal of one left open, what the printer and the formatter write back
+# (the raw spelling, and never an accidental `<<` for an ordinary literal), and that `<<` inside an ordinary literal is
+# still content (note/project/term/stdlib/regex-engine.md, "Writing a pattern"). The parser and the formatter are the
+# subject (decision 106). A title names its spelling by number, since a title holding an escaped angle prints its
+# backslash (item 1146): the comment above each test shows its spelling, case-0 to case-9 of `source` in order.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-parser
+  load <@term/make/code/format/format>, name formatter
+
+# a file to parse or format
+form parse-source
+  link file, like text
+  link text, like text
+
+# one task per spelling, case-0 to case-9, then two raw literals on one line
+host source, <task case-0\n  like text\n  send back, text \<\<\\p\{Lu\}\\p\{Ll\}+\>\>\n\ntask case-1\n  like text\n  send back, text \<\<(?\<=\\$)\\d+\>\>\n\ntask case-2\n  like text\n  send back, text \<\<a\\nb\>\>\n\ntask case-3\n  like text\n  send back, text \<\<\{x\} and \{\{y\}\}\>\>\n\ntask case-4\n  like text\n  send back, text \<\<a \< b \> c\>\>\n\ntask case-5\n  like text\n  send back, text \<\<\<.+?\>\>\>\n\ntask case-6\n  like text\n  send back, text \<\<\<a\>,\<bb\>\>\>\n\ntask case-7\n  like text\n  send back, text \<\<\>\>\n\ntask case-8\n  like text\n  send back, text \<\\\<x\\\>\>\n\ntask case-9\n  like text\n  send back, text \<a\<\<b\>\>c\>\n\ntask pair\n  take a, like text\n  take b, like text\n  like text\n  send back, text \<\{a\}\{b\}\>\n\ntask both\n  like text\n  save joined, call pair(text(\<\<a\>\>), text(\<\<b\>\>))\n  send back, read joined\n>
+
+# what `source` answers through a run task that calls `entry`, on node, else why it did not run
+task answer-of
+  take entry, like text
+  like text
+
+  host folder, temp-folder(<raw-text->)
+  host ran, run-text(<{source}\ntask run\n  like text\n  send back, call {entry}\n>, <typescript>, folder, entry)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+# whether a parse refused `text` with a message holding `word`
+task refused-saying
+  take text, like text
+  take word, like text
+  like boolean
+
+  host parsed, tree-parser/parse(make(parse-source, bind(file, <open.tree>), bind(text, text)))
+  fork test, parsed/ok
+    hold
+      back false
+  walk parsed/diagnostics
+    take one, like dynamic
+    fork test, text-contains(one/message, word)
+      hold
+        back true
+  back false
+
+# what the printer writes back for `save x, text <literal>`, <> when it does not parse
+task printed-of
+  take literal, like text
+  like text
+
+  host parsed, tree-parser/parse(make(parse-source, bind(file, <print.tree>), bind(text, <save x, text {literal}\n>)))
+  fork test, not(parsed/ok)
+    hold
+      back <>
+  back tree-parser/print-tree(parsed/tree)
+
+# a raw spelling prints back as written, and an ordinary one as written and never with a leading <<
+task prints-back
+  take literal, like text
+  like boolean
+
+  host printed, printed-of(literal)
+  fork test, starts-with(literal, <\<\<>)
+    hold
+      back text-contains(printed, literal)
+  back and(not(text-contains(printed, <\<\<x>)), text-contains(printed, literal))
+
+# the formatter writes `save x, text <literal>` back unchanged
+task formats-back
+  take literal, like text
+  like boolean
+
+  host text, <save x, text {literal}\n>
+  back is-equal(formatter/format(make(parse-source, bind(file, <print.tree>), bind(text, text))), text)
+
+test <every spelling compiles>
+  host out, compile-text(source, make(compile-choice, bind(file, <raw.tree>)))
+  want hold, out/ok
+
+# <<\p{Lu}\p{Ll}+>> means "\\p{Lu}\\p{Ll}+"
+test <spelling 0 means its content>
+  want hold, is-equal(answer-of(<case-0>), <\\p\{Lu\}\\p\{Ll\}+>)
+
+# <<(?<=\$)\d+>> means "(?<=\\$)\\d+"
+test <spelling 1 means its content>
+  want hold, is-equal(answer-of(<case-1>), <(?\<=\\$)\\d+>)
+
+# <<a\nb>> means "a\\nb"
+test <spelling 2 means its content>
+  want hold, is-equal(answer-of(<case-2>), <a\\nb>)
+
+# <<{x} and {{y}}>> means "{x} and {{y}}"
+test <spelling 3 means its content>
+  want hold, is-equal(answer-of(<case-3>), <\{x\} and \{\{y\}\}>)
+
+# <<a < b > c>> means "a < b > c"
+test <spelling 4 means its content>
+  want hold, is-equal(answer-of(<case-4>), <a \< b \> c>)
+
+# <<<.+?>>> means "<.+?>"
+test <spelling 5 means its content>
+  want hold, is-equal(answer-of(<case-5>), <\<.+?\>>)
+
+# <<<a>,<bb>>> means "<a>,<bb>"
+test <spelling 6 means its content>
+  want hold, is-equal(answer-of(<case-6>), <\<a\>,\<bb\>>)
+
+# <<>> means ""
+test <spelling 7 means its content>
+  want hold, is-equal(answer-of(<case-7>), <>)
+
+# <\<x\>> means "<x>"
+test <spelling 8 means its content>
+  want hold, is-equal(answer-of(<case-8>), <\<x\>>)
+
+# <a<<b>>c> means "a<<b>>c"
+test <spelling 9 means its content>
+  want hold, is-equal(answer-of(<case-9>), <a\<\<b\>\>c>)
+
+test <two raw literals on one line close apart>
+  want hold, is-equal(answer-of(<both>), <ab>)
+
+test <a raw literal left open is refused on its line>
+  want hold, refused-saying(<task x\n  send back, text \<\<abc\>\n>, <must end with `\>\>`>)
+
+# <<\p{Lu}\p{Ll}+>> prints back raw
+test <spelling 0 prints back raw>
+  want hold, prints-back(<\<\<\\p\{Lu\}\\p\{Ll\}+\>\>>)
+
+test <spelling 0 formats back the same>
+  want hold, formats-back(<\<\<\\p\{Lu\}\\p\{Ll\}+\>\>>)
+
+# <<(?<=\$)\d+>> prints back raw
+test <spelling 1 prints back raw>
+  want hold, prints-back(<\<\<(?\<=\\$)\\d+\>\>>)
+
+test <spelling 1 formats back the same>
+  want hold, formats-back(<\<\<(?\<=\\$)\\d+\>\>>)
+
+# <<a\nb>> prints back raw
+test <spelling 2 prints back raw>
+  want hold, prints-back(<\<\<a\\nb\>\>>)
+
+test <spelling 2 formats back the same>
+  want hold, formats-back(<\<\<a\\nb\>\>>)
+
+# <<{x} and {{y}}>> prints back raw
+test <spelling 3 prints back raw>
+  want hold, prints-back(<\<\<\{x\} and \{\{y\}\}\>\>>)
+
+test <spelling 3 formats back the same>
+  want hold, formats-back(<\<\<\{x\} and \{\{y\}\}\>\>>)
+
+# <<a < b > c>> prints back raw
+test <spelling 4 prints back raw>
+  want hold, prints-back(<\<\<a \< b \> c\>\>>)
+
+test <spelling 4 formats back the same>
+  want hold, formats-back(<\<\<a \< b \> c\>\>>)
+
+# <<<.+?>>> prints back raw
+test <spelling 5 prints back raw>
+  want hold, prints-back(<\<\<\<.+?\>\>\>>)
+
+test <spelling 5 formats back the same>
+  want hold, formats-back(<\<\<\<.+?\>\>\>>)
+
+# <<<a>,<bb>>> prints back raw
+test <spelling 6 prints back raw>
+  want hold, prints-back(<\<\<\<a\>,\<bb\>\>\>>)
+
+test <spelling 6 formats back the same>
+  want hold, formats-back(<\<\<\<a\>,\<bb\>\>\>>)
+
+# <<>> prints back raw
+test <spelling 7 prints back raw>
+  want hold, prints-back(<\<\<\>\>>)
+
+test <spelling 7 formats back the same>
+  want hold, formats-back(<\<\<\>\>>)
+
+# <\<x\>> prints back without a leading <<
+test <spelling 8 prints back with no leading double angle>
+  want hold, prints-back(<\<\\\<x\\\>\>>)
+
+test <spelling 8 formats back the same>
+  want hold, formats-back(<\<\\\<x\\\>\>>)
+
+# <a<<b>>c> prints back without a leading <<
+test <spelling 9 prints back with no leading double angle>
+  want hold, prints-back(<\<a\<\<b\>\>c\>>)
+
+test <spelling 9 formats back the same>
+  want hold, formats-back(<\<a\<\<b\>\>c\>>)

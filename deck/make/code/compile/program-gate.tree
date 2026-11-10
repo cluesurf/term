@@ -21,6 +21,8 @@
 #   - the original's two patterns are written out: an entry task's written name before `__<n>` or `__<n>__<k>` at its
 #     end (`/^(.+?)__\d+(?:__\d+)?$/`, the shortest name that leaves such an end), and a statement of
 #     `base/code/debug.tree` (`/(^|\/)base\/code\/debug\.tree$/`)
+#   - the prune's roots also take every form or form case a binding module under native/ finds (ir/prune.tree
+#     binding-finds, items 1144 and 1148)
 #   - the render runtime the prune pins is `render-names`' fields in their declared order, then `render-support`, as
 #     `Object.values` read the record
 
@@ -147,6 +149,7 @@ load ../ir/selection
 
 load ../ir/prune
   find prune-to-reachable
+  find binding-finds
 
 # what the run holds as `need false` and the gate reads, filled by the face, with whether the original had it
 form gate-given
@@ -997,6 +1000,11 @@ task program-gate
         hold
           save failure-name, <failure>
           save prune-roots/{failure-name}, true
+      # every form a binding module under native/ finds, since its shim is linked whole and may build any of them (items
+      # 1144 and 1148)
+      walk binding-finds(run/program, given/scopes)
+        take found-name
+        save prune-roots/{found-name}, true
       save root-list, make list
       walk prune-roots/entries()
         take entry

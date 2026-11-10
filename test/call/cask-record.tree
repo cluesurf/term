@@ -1,0 +1,175 @@
+note <a record crosses the cask bridge by value as host data text, and a missing or wrong field is the named data-mismatch>
+
+# Ported from cask-record.ts by statement (item term-self-host-001-0602), one test per `ok` in its order (native-dom-0019).
+# The generator carries a record by value as host data text: `data-to-text(melt(value))` on the sending side,
+# `fill(data-from-text(text))` on the receiving side, so both ends use the walker the compiler generates for the form and
+# a field that is missing or of the wrong kind raises the named `data-mismatch` with its path. The generator
+# (deck/call/code/cask-generate.ts, the subject, decision 106) is asked for the data cask's bridge without writing it, and
+# the generated shim and dispatch are read. The converters are compiled through the harness, their prelude and emit
+# joined, written to a temporary folder and imported, once, by the first test that runs them.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find prelude-text
+  find file-text
+
+load ../support/cli
+  find term-root
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find starts-with
+
+dock load
+  load <@term/call/code/cask-generate>, name record-generate
+  load <esbuild>, name record-esbuild
+  load <node:fs>, name record-file
+  load <node:path>, name record-path
+
+form bridge-ask
+  link page, like text
+  link out, like text
+  link commit, like boolean
+
+form transform-ask
+  link loader, like text
+  link format, like text
+
+# host value: whether the generator refused file/stat
+bind stat-refused
+  take report, like dynamic
+  like boolean
+  case node
+    text <$report.refused.some(one =\> one.module === "file" && one.task === "stat")>
+
+# host value: a module imported from its absolute path
+bind imported
+  take path, like text
+  like dynamic
+  mark async
+  case node
+    text <import(new URL(`file://$\{$path\}`).href)>
+
+# host value: the converted module's cross-and-back
+bind cross-and-back
+  take module, like dynamic
+  take size, like number
+  like text
+  case node
+    text <String($module.crossAndBack($size))>
+
+# host value: the converted module's land-info
+bind land-info
+  take module, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <$module.landInfo($text)>
+
+# host value: a raised exception's form, then its link's path and reason
+bind refusal-text
+  take cause, like dynamic
+  like text
+  case node
+    text <`$\{$cause?.form\} $\{$cause?.link?.path\} $\{$cause?.link?.reason\}`>
+
+host program, <load @term/host/code/text\n  find data-from-text\n  find data-to-text\n\nload @term/base/code/file/stat\n  find path-info\n\ntask carry\n  take info, like path-info\n  like text\n  send back\n    call data-to-text\n      call melt\n        read info\n        like path-info\n\ntask land-info\n  take text, like text\n  like path-info\n  send back\n    call fill\n      call data-from-text\n        read text\n      like path-info\n\ntask cross-and-back\n  take size, like number\n  like text\n  save info\n    make path-info\n      bind size, read size\n      bind directory, false\n  save back\n    call land-info\n      call carry\n        read info\n  send back, text \<\{\{back/size\}\} \{\{back/directory\}\}\>\n>
+
+form record-state
+  mark shared
+  link made, like boolean
+  link module, like dynamic
+
+host record-now, make(record-state, bind(made, false), bind(module, 0))
+
+task report
+  like dynamic
+
+  save root, term-root()
+  back record-generate/generate-bridge(make(bridge-ask, bind(page, <{root}/deck/cask/test/data/page.tree>), bind(out, <{root}/deck/cask/test/data>), bind(commit, false)))
+
+task built
+  like dynamic
+
+  save root, term-root()
+  back compile-text(program, make(compile-choice, bind(file, <{root}/test/call/cask-record.tree>), bind(project, root), bind(project-env, <node>), bind(env, <node>)))
+
+# the converters, compiled, joined to their prelude, written and imported once
+task converters
+  like dynamic
+  mark async
+
+  fork test, record-now/made
+    hold
+      back record-now/module
+  save record-now/made, true
+  save out, built()
+  save prelude, prelude-text(out, <node>)
+  save code, record-esbuild/transform-sync(<{prelude}\n{out/emitted}>, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))/code
+  save file, record-path/join(temp-folder(<term-cask-record->), <record.mjs>)
+  record-file/write-file-sync(file, code)
+  save record-now/module, imported(file)
+  back record-now/module
+
+# what land-info raised on a text, `no exception` when it raised nothing
+task refusal
+  take text, like text
+  like text
+  mark async
+
+  save module, converters()
+  fork
+    mark unsafe
+    land-info(module, text)
+    back <no exception>
+  halt take
+    take cause
+    back refusal-text(cause)
+
+# the generator: file/stat crosses, as a record, through fill and melt
+test <file/stat is carried, not refused>
+  want hold, not(stat-refused(report()))
+
+test <the bridge on disk is what the generator writes>
+  want hold, is-equal(report()/drift/length, 0)
+
+test <the page fills the reply into path-info>
+  save shim, file-text(<deck/base/code/native/webview/file.tree>)
+  # from `task stat-file` to the next task
+  save after, text-split(shim, <task stat-file>)/1
+  save stat-shim, text-split(after, <\ntask >)/0
+  want hold, matches(make(pattern, <<call fill\n\s+call data-from-text[\s\S]*like path-info>>), stat-shim)
+
+test <the cask melts its answer to text>
+  save dispatch, file-text(<deck/cask/test/data/dispatch.tree>)
+  want hold, matches(make(pattern, <<call data-to-text\n\s+call melt\n\s+read answer\n\s+like path-info>>), dispatch)
+
+# the converters, run: a round trip, and the named exception for a field that is missing or of the wrong kind
+test <the converters compile>
+  want hold, built()/ok
+
+test <a path-info crosses and comes back whole>
+  fork test, not(built()/ok)
+    hold
+      skip <the converters do not compile>
+  want hold, is-equal(cross-and-back(converters(), 4096), <4096 false>)
+
+test <a missing field is the named data-mismatch, with its path>
+  fork test, not(built()/ok)
+    hold
+      skip <the converters do not compile>
+  want hold, is-equal(refusal(<host size, 12\n>), <data-mismatch directory is missing>)
+
+test <a field of the wrong kind is named too>
+  fork test, not(built()/ok)
+    hold
+      skip <the converters do not compile>
+  want hold, starts-with(refusal(<host size, \<twelve\>\nhost directory, false\n>), <data-mismatch size >)

@@ -1,0 +1,77 @@
+note <gitSource reads a repository's origin as the https address a public manifest may carry, never a credential>
+
+# Ported from git-source.ts by statement (item term-self-host-001-0603), one test per `ok` in its order. gitSource
+# (deck/call/code/host.ts, the subject, decision 106) is the address `term host` writes as
+# `org.opencontainers.image.source`, which links a GHCR package to its repository. It is written into a public manifest,
+# so a credential in an https remote must never survive. Each case is a fresh repository in a temporary folder, its
+# origin set when one is given.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+dock load
+  load <@term/call/code/host>, name source-host
+
+# host value: whether gitSource answered undefined
+bind is-undefined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# host value: what gitSource answered, as text
+bind as-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# a fresh repository, with `origin` set when one is given
+task repo
+  take remote, like text, fall <>
+  like text
+  mark async
+
+  save dir, temp-folder(<term-git-source->)
+  run(<git>, make list(<init>, <-q>, dir))
+  fork test, is-unequal(remote, <>)
+    hold
+      run(<git>, make list(<-C>, dir, <remote>, <add>, <origin>, remote))
+  back dir
+
+# whether the origin `remote` reads as `source`
+task reads-as
+  take remote, like text
+  take source, like text
+  like boolean
+  mark async
+
+  save found, source-host/git-source(repo(remote))
+  fork test, is-undefined(found)
+    hold
+      back false
+  back is-equal(as-text(found), source)
+
+test <git@github.com:cluesurf/zone.git reads as https://github.com/cluesurf/zone>
+  want hold, reads-as(<git@github.com:cluesurf/zone.git>, <https://github.com/cluesurf/zone>)
+
+test <git@github.com:cluesurf/zone reads as https://github.com/cluesurf/zone>
+  want hold, reads-as(<git@github.com:cluesurf/zone>, <https://github.com/cluesurf/zone>)
+
+test <ssh://git@github.com/cluesurf/zone.git reads as https://github.com/cluesurf/zone>
+  want hold, reads-as(<ssh://git@github.com/cluesurf/zone.git>, <https://github.com/cluesurf/zone>)
+
+test <https://github.com/cluesurf/zone.git reads as https://github.com/cluesurf/zone>
+  want hold, reads-as(<https://github.com/cluesurf/zone.git>, <https://github.com/cluesurf/zone>)
+
+test <https://x-access-token:ghp_secret@github.com/cluesurf/zone.git reads as https://github.com/cluesurf/zone>
+  want hold, reads-as(<https://x-access-token:ghp_secret@github.com/cluesurf/zone.git>, <https://github.com/cluesurf/zone>)
+
+test <no origin is undefined>
+  want hold, is-undefined(source-host/git-source(repo()))
+
+test <outside a repository is undefined>
+  want hold, is-undefined(source-host/git-source(temp-folder(<term-git-source-none->)))

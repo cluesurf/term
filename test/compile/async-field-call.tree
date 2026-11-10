@@ -1,0 +1,40 @@
+note <A call through a field typed as an async task is awaited, and makes its caller async>
+
+# Ported from async-field-call.ts by statement (item term-self-host-001-0612). check/async-resolve.ts counted a call as
+# waiting only when its callee was a NAME in the async set, so `call(each/propose, gap)` on a field declared `like task /
+# mark async` handed back the promise unawaited: the caller was not async, and a `sift` on the result matched no case.
+# Found by the test package's model proposer (2026-10-05). The fixture is lean, as the port that found it is written.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture, <form asker\n  link name, like text\n  link ask\n    like task\n      mark async\n      take n, like number\n      like number\n\ntask doubled\n  mark async\n  take n, like number\n  like number\n\n  back add(n, n)\n\ntask ask-through\n  take who, like asker\n  take n, like number\n  like number\n\n  back call(who/ask, n)\n\ntask run\n  like number\n\n  host who\n    make asker\n      bind name, \<d\>\n      bind ask, doubled\n\n  back ask-through(who, 21)\n>
+
+host caller-async, make pattern, <<async function askThrough>>
+host field-awaited, make pattern, <<await who\.ask\(n\)>>
+
+test <the caller of an async field is async>
+  host built, compile-text(fixture, make(compile-choice, bind(file, <async-field.tree>), bind(lean, true), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, built/ok
+  want hold, matches(caller-async, built/emitted)
+
+test <the call through the field is awaited>
+  host built, compile-text(fixture, make(compile-choice, bind(file, <async-field.tree>), bind(lean, true), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, matches(field-awaited, built/emitted)
+
+test <and the answer is the number, not a promise>
+  host folder, temp-folder(<term-async-field->)
+  host ran, run-text(fixture, <typescript>, folder, <async-field>, make(compile-choice, bind(lean, true), bind(stdlib, <node>), bind(entry, <run>)))
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <42>)

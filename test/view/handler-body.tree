@@ -1,0 +1,70 @@
+note <a view's event handler with several statements runs all of them, and a one-statement handler runs too>
+
+# Ported from handler-body.ts by statement (item term-self-host-001-0644), one test per `ok` in its order. The mill makes
+# a handler of several statements a closure already, and the lowering wrapped it in a second one, so the handler BUILT
+# the function and never called it: a click whose handler wrote two signals wrote neither, and nothing failed. Two
+# buttons: `both` writes two signals in one handler, `one` writes one. Each is clicked once and the view shows all three
+# signals, so a handler that did not run leaves its zeros. The dom and view modules read as the in-memory host's, as the
+# original's resolver pinned them, and the program is built and run once on node through test/support/running. Where the
+# original asserted the run only once the compile passed, a compile that fails fails the run's test beside the first.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+host program, <load @term/site/code/view/reactive\n  find make-signal\n  find read-signal\n  find write-signal\n\nload @term/site/code/view/render\n  find make-element\n  find make-text\n  find make-dynamic-text\n  find attach-event\n\nload @term/site/code/dom/dom\n  find view\n  find append\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find child-at\n  find fire\n  find serialize\n\ntask show-all\n  take a, like signal\n  take b, like signal\n  take c, like signal\n  like text\n  save x\n    call read-signal\n      bind self, read a\n  save y\n    call read-signal\n      bind self, read b\n  save z\n    call read-signal\n      bind self, read c\n  send back, text \<\{x\}-\{y\}-\{z\}\>\n\nview board\n  take host, like view\n  save a\n    call make-signal\n      bind value, code 0\n  save b\n    call make-signal\n      bind value, code 0\n  save c\n    call make-signal\n      bind value, code 0\n  view button\n    seed click\n      call write-signal\n        bind self, read a\n        bind value, code 1\n      call write-signal\n        bind self, read b\n        bind value, code 1\n    text \<both\>\n  view button\n    seed click\n      call write-signal\n        bind self, read c\n        bind value, code 1\n    text \<one\>\n  view span\n    read\n      call show-all\n        read a\n        read b\n        read c\n\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call board\n    read root\n  call fire\n    call child-at\n      read root\n      code 0\n    text \<click\>\n  call fire\n    call child-at\n      read root\n      code 1\n    text \<click\>\n  send back\n    call serialize\n      read root\n>
+
+host want, <\<main\>\<button\>both\</button\>\<button\>one\</button\>\<span\>1-1-1\</span\>\</main\>>
+
+host memory-choice, make(compile-choice, bind(file, <board.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/memory/$1>)))))
+
+host out, compile-text(program, memory-choice)
+
+# the run, made once: `state` how it went, `output` what it printed
+form held-run
+  mark shared
+  link done, like boolean
+  link state, like text
+  link output, like text
+
+host held, make(held-run, bind(done, false), bind(state, <>), bind(output, <>))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  host folder, temp-folder(<term-handler-body->)
+  host ran, run-text(program, <typescript>, folder, <board>, memory-choice)
+  save held/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save held/state, <ran>
+      save held/output, trim(ran/output)
+  save held/done, true
+  back held
+
+test <the view compiles>
+  want hold, out/ok
+
+test <no handler is a closure that only builds a closure>
+  want hold, out/ok
+  want hold, not(text-contains(out/emitted, <=\> (() =\>>))
+
+test <both handlers run every statement they hold>
+  save ran, the-run()
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, want)

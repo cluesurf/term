@@ -1,0 +1,145 @@
+note <the parallel project build makes the same files, byte for byte, as the sequential one>
+
+# Ported from build-parallel.ts by statement (item term-self-host-001-0622), one test per `ok` in its order. A few
+# self-contained `.tree` files (no stdlib imports, so the project resolver needs only local files) are written to two
+# temp folders, one built by `compileProject` and one by `compileProjectParallel` at a concurrency of 3, the two
+# drivers this suite docks as its subject (decision 106), and what each wrote under `host/` is compared. Built once.
+
+load ../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+  find read, name read-file
+
+load @term/base/file/directory
+  find make, name folder-make
+  find walk, name folder-walk
+  find exists, name folder-exists
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find starts-with
+  find substring
+
+dock load
+  load <@term/call/code/make>, name parallel-make
+  load <@term/call/code/build-parallel>, name parallel-build
+
+host add-text, <task add-two\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call add\n      read a\n      read b\n>
+host point-text, <form point\n  link x, like number\n  link y, like number\n\ntask mag2\n  take p, like point\n  like number\n  send back\n    call add\n      call multiply\n        read p/x\n        read p/x\n      call multiply\n        read p/y\n        read p/y\n>
+host fib-text, <task fib\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-below\n        read n\n        code 2\n    hook hold\n      send back\n        read n\n    hook miss\n      send back\n        call add\n          call fib\n            call subtract\n              read n\n              code 1\n          call fib\n            call subtract\n              read n\n              code 2\n>
+host util-text, <task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 3\n>
+
+form parallel-ask
+  link concurrency, like number
+
+# one project folder, its files written
+task setup
+  like text
+
+  save root, temp-folder(<seed-proj->)
+  folder-make(<{root}/nested>)
+  write-file(<{root}/add.tree>, add-text)
+  write-file(<{root}/point.tree>, point-text)
+  write-file(<{root}/fib.tree>, fib-text)
+  write-file(<{root}/nested/util.tree>, util-text)
+  back root
+
+# every file under the root's host/, as `<path from host/>` then its text, in path order
+form host-files
+  link paths, like list, like text
+  link texts, like list, like text
+
+task read-host
+  take root, like text
+  like host-files
+
+  save paths, make list
+  save texts, make list
+  save host-folder, <{root}/host>
+  fork test, not(folder-exists(host-folder))
+    hold
+      back make(host-files, bind(paths, paths), bind(texts, texts))
+  save found, folder-walk(host-folder)
+  walk found/sort()
+    take path, like text
+    save full, path
+    fork test, not(starts-with(path, <{host-folder}/>))
+      hold
+        save full, <{host-folder}/{path}>
+    fork test, not(folder-exists(full))
+      hold
+        paths/push(substring(full, add(host-folder/length, 1)))
+        texts/push(read-file(full))
+  back make(host-files, bind(paths, paths), bind(texts, texts))
+
+# whether two lists of texts hold the same texts in the same order
+task same-texts
+  take one, like list, like text
+  take other, like list, like text
+  like boolean
+
+  fork test, is-unequal(one/length, other/length)
+    hold
+      back false
+  save at, 0
+  walk one
+    take text, like text
+    fork test, is-unequal(text, other/{at})
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# both builds, what each answered and what each wrote, made once
+form both-builds
+  link sequential, like dynamic
+  link parallel, like dynamic
+  link sequential-files, like host-files
+  link parallel-files, like host-files
+
+form kept-builds
+  mark shared
+  link held, like list, like both-builds
+
+host kept, make(kept-builds, bind(held, make list))
+
+task builds
+  like both-builds
+  mark async
+
+  fork test, is-above(kept/held/length, 0)
+    hold
+      back kept/held/0
+  save root-sequential, setup()
+  save sequential, parallel-make/compileProject(root-sequential)
+  save sequential-files, read-host(root-sequential)
+  save root-parallel, setup()
+  save waited, wait parallel-build/compileProjectParallel(root-parallel, make(parallel-ask, bind(concurrency, 3)))
+  save parallel-files, read-host(root-parallel)
+  save made, make(both-builds, bind(sequential, sequential), bind(parallel, waited), bind(sequential-files, sequential-files), bind(parallel-files, parallel-files))
+  kept/held/push(made)
+  back made
+
+test <same compiled count>
+  host both, builds()
+  want hold, is-equal(both/sequential/compiled, both/parallel/compiled)
+
+test <same failed count>
+  host both, builds()
+  want hold, is-equal(both/sequential/failed, both/parallel/failed)
+
+test <same set of output files>
+  host both, builds()
+  want hold, is-equal(both/sequential-files/paths/join(<|>), both/parallel-files/paths/join(<|>))
+
+test <byte-identical output to sequential>
+  host both, builds()
+  want hold, is-equal(both/sequential-files/paths/join(<|>), both/parallel-files/paths/join(<|>))
+  want hold, same-texts(both/sequential-files/texts, both/parallel-files/texts)

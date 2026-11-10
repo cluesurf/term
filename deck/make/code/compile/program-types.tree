@@ -742,7 +742,7 @@ task program-types
   sift view-copy
     case some
       link copied
-      save view-errors, check-lowered-views(copied, file, run/merged, runtime-table(run))
+      save view-errors, check-lowered-views(copied, run/program, file, run/merged, runtime-table(run))
       fork test, is-above(view-errors/length, 0)
         hold
           back types-refusal(view-errors)

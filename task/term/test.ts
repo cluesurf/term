@@ -525,7 +525,7 @@ const SUITES: Suite[] = [
   // only runs TypeScript. MEASURED at 15.6s on 2026-08-31, not guessed: the first version of this line said 120
   // on the assumption that three toolchains must mean minutes, and an inflated hint misorders the schedule just
   // as surely as a missing one.
-  ...each('compile', 'compile', ['roundtrip.ts', 'host-native.ts', 'remote-cache.ts', 'server-roundtrip.ts', 'watch.ts', 'guard-native.ts', 'unknown-native.ts', 'shared-native.ts', 'render-native.ts', 'toolkit-view.ts', 'blog-native.ts', 'toolkit-words.ts', 'toolkit-font.ts', 'toolkit-grow.ts', 'toolkit-compose.ts', 'text-golden.ts', 'toolkit-accessibility.ts', 'toolkit-navigation.ts', 'toolkit-swiftui.ts', 'toolkit-keys.ts', 'toolkit-leak.ts', 'route-table.ts', 'hive-native.ts', 'key-native.ts', 'tag-native.ts', 'inspect-native.ts', 'loop-name-native.ts', 'mask-native.ts', 'unknown-narrow.ts', 'lowered-members.ts', 'spawn-native.ts', 'caught-prop-native.ts','build-memory.ts', 'twin-diff.ts', 'compose-view.ts', 'compose-make.ts', 'compose-work.ts', 'device-features.ts', 'permission-prompt.ts', 'device-watch.ts', 'notification-prompt.ts', 'photos-prompt.ts', 'device-audio.ts', 'device-transfer.ts', 'beat-term.ts', 'beat-term-build.ts', 'uikit-make.ts', 'manifest-boot.ts', 'slot-report.ts']).map(
+  ...each('compile', 'compile', ['roundtrip.ts', 'host-native.ts', 'remote-cache.ts', 'server-roundtrip.ts', 'watch.ts', 'guard-native.ts', 'unknown-native.ts', 'shared-native.ts', 'render-native.ts', 'toolkit-view.ts', 'blog-native.ts', 'toolkit-words.ts', 'toolkit-font.ts', 'toolkit-grow.ts', 'toolkit-compose.ts', 'text-golden.ts', 'toolkit-accessibility.ts', 'toolkit-navigation.ts', 'toolkit-swiftui.ts', 'toolkit-keys.ts', 'toolkit-leak.ts', 'route-table.ts', 'hive-native.ts', 'key-native.ts', 'tag-native.ts', 'inspect-native.ts', 'loop-name-native.ts', 'mask-native.ts', 'unknown-narrow.ts', 'lowered-members.ts', 'spawn-native.ts', 'caught-prop-native.ts','build-memory.ts', 'twin-diff.ts', 'compose-view.ts', 'compose-make.ts', 'compose-work.ts', 'device-features.ts', 'permission-prompt.ts', 'device-watch.ts', 'notification-prompt.ts', 'photos-prompt.ts', 'device-audio.ts', 'device-transfer.ts', 'beat-term.ts', 'beat-term-build.ts', 'uikit-make.ts', 'manifest-boot.ts', 'slot-report.ts', 'shake-differential.ts']).map(
     suite =>
       suite.name === 'compile/feed-mill-bench'
         ? { ...suite, slow: 20 }
@@ -567,6 +567,9 @@ const SUITES: Suite[] = [
       env: { TERMINAL_ONLY: backend },
     }))
   }),
+  // every stdlib module built shaken and unshaken: the same verdict, and every kept statement identical. A gate, not a
+  // suite, so it lives in task/term (item term-self-host-001-1200)
+  { name: 'compile/shake-differential', file: 'task/term/shake-differential.ts' },
   { name: 'compile/module-blame', file: 'test/compile/module-blame.ts', timeout: 300 },
   // the lean surface: every fixture written lean and long must build the same program, and every refusal
   // must say why. note/project/term/mill/lean.md

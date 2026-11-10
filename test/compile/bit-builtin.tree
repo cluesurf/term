@@ -1,0 +1,60 @@
+note <the bit words are built in: no load, 64-bit on every backend, a module's own task by the name its own>
+
+# Ported from bit-builtin.ts by statement (item term-self-host-001-0653), its three `ok`s each a walked test, each
+# backend a case of it. Decisions-2026-10.md, D3: `bitwise-and`, `bitwise-or`, `bitwise-exclusive-or`, `bitwise-not`,
+# `shift-left`, `shift-right` (arithmetic) and `unsigned-shift-right` (logical) need no `load`, as `add` needs none.
+# Each is @term/base/bit's own task, given to a module that names it (compile/load.ts `BIT_WORDS`), so it is 64-bit on
+# every backend: a 32-bit mask is a mask and not -1 on TypeScript, and a shift past 32 bits keeps its bits. A module
+# that loads the module itself is unchanged, and one that defines a task by a bit word's name keeps its own. A backend
+# whose toolchain is not installed is the case's own skip.
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+# no `load` anywhere: every word below is built in
+host built-in, <task run\n  like text\n\n  save a, bitwise-and(12, 10)\n  save o, bitwise-or(12, 10)\n  save x, bitwise-exclusive-or(12, 10)\n  save n, bitwise-not(0)\n  save wide, shift-left(1, 40)\n  save down, shift-right(-16, 2)\n  save logical, unsigned-shift-right(-1, 60)\n  save mask, bitwise-and(4294967295, 255)\n  save high, bitwise-and(shift-left(1, 40), 1099511627776)\n  back \<\{a\} \{o\} \{x\} \{n\} \{wide\} \{down\} \{logical\} \{mask\} \{high\}\>\n>
+
+host built-in-expected, <8 14 6 -1 1099511627776 -4 15 255 1099511627776>
+
+# the module loaded by hand, as before: the same answers
+host loaded, <load @term/base/bit\n  find bitwise-and\n  find shift-left\n\ntask run\n  like text\n\n  back \<\{bitwise-and(12, 10)\} \{shift-left(1, 40)\}\>\n>
+
+# a task of the module's own by a bit word's name is the one its calls reach
+host own, <task shift-left\n  take value, like number\n  take count, like number\n\n  like number\n\n  back add(value, count)\n\ntask run\n  like text\n\n  back \<\{shift-left(1, 40)\} \{bitwise-or(1, 2)\}\>\n>
+
+test <the seven bit words need no load, 64-bit>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-bit-builtin->)
+  host ran, run-text(built-in, backend, folder, <builtin>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, built-in-expected)
+
+test <a module that loads them itself answers the same>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-bit-builtin->)
+  host ran, run-text(loaded, backend, folder, <loaded>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <8 1099511627776>)
+
+test <a task of the module's own by a bit word's name is its own>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-bit-builtin->)
+  host ran, run-text(own, backend, folder, <own>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <41 3>)

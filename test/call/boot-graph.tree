@@ -1,0 +1,150 @@
+note <term boot builds through one build graph per process: an edit rebuilds the edited unit and its reader, no other>
+
+# Ported from boot-graph.ts by statement (item term-self-host-001-0602), one test per `ok` in its order. Decision 094
+# rule 1, decision 097, item 0495: the subject is the port of `term boot` (deck/call/host/port/code/work/boot/
+# boot-running.ts), called in this process. A command-line program of two modules is booted into an `--out` folder and
+# run, a module it loads is edited, and it is booted again: the rebuild builds the edited unit and what reads it and no
+# other (the graph's memo, not the store), and runs the edited program. A second boot with nothing edited builds
+# nothing. The boots depend on one another, so they are made once, by the first test, and kept in `boot-now`.
+# TERM_CACHE_HOME points into the temporary project and is put back after.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+dock load
+  load <@term/call/host/port/code/work/boot/boot-running>, name boot-module
+  load <node:fs>, name boot-file
+  load <node:path>, name boot-path
+
+bind boot-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+form boot-ask
+  link root, like text
+  link entry, like text
+  link out, like text
+
+form boot-units
+  link built, like number
+  link reused, like number
+
+# what each boot left, in the original's order
+form boot-state
+  mark shared
+  link made, like boolean
+  link first, like boot-units
+  link first-code, like number
+  link again, like boot-units
+  link edited, like boot-units
+  link edited-code, like number
+  link merged-code, like number
+
+task no-units
+  like boot-units
+
+  back make(boot-units, bind(built, -1), bind(reused, -1))
+
+host boot-now, make(boot-state, bind(made, false), bind(first, no-units()), bind(first-code, -1), bind(again, no-units()), bind(edited, no-units()), bind(edited-code, -1), bind(merged-code, -1))
+
+# the helper module, answering `answer`
+task helper-text
+  take answer, like number
+  like text
+
+  back <load @term/base/text\n  find trim\n\ntask answer\n  take who, like text\n  like number\n  save said, trim(who)\n  back {answer}\n>
+
+# the units the last boot built and reused, copied
+task last-units
+  like boot-units
+
+  save read, boot-module/read-last-boot-units()
+  back make(boot-units, bind(built, read/built), bind(reused, read/reused))
+
+# the booted program run as `say --who you`, its exit code
+task run-program
+  take out, like text
+  like number
+  mark async
+
+  save ran, run(<node>, make list(boot-path/join(out, <run.mjs>), <say>, <--who>, <you>))
+  back ran/code
+
+task the-boots
+  like boot-state
+  mark async
+
+  fork test, boot-now/made
+    hold
+      back boot-now
+  save boot-now/made, true
+  save root, boot-file/realpath-sync(temp-folder(<boot-graph->))
+  save held, has-variable(<TERM_CACHE_HOME>)
+  save kept, variable-of(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, boot-path/join(root, <.store>))
+  boot-file/mkdir-sync(boot-path/join(root, <code>), boot-folder-options(0))
+  boot-file/write-file-sync(boot-path/join(root, <deck.tree>), <deck @probe/boot\n  mark \<0.0.1\>\n>)
+  save helper, boot-path/join(root, <code>, <helper.tree>)
+  boot-file/write-file-sync(helper, helper-text(3))
+  save entry, boot-path/join(root, <code>, <base.tree>)
+  boot-file/write-file-sync(entry, <load ./helper\n  find answer\n\n# Answer with the helper's number\nhook say\n  take who\n  task answer\n>)
+  save out, boot-path/join(root, <out>)
+  save ask, make(boot-ask, bind(root, root), bind(entry, entry), bind(out, out))
+  save booted, wait boot-module/call-boot(ask)
+  save boot-now/first, last-units()
+  save boot-now/first-code, run-program(out)
+  save again, wait boot-module/call-boot(ask)
+  save boot-now/again, last-units()
+  boot-file/write-file-sync(helper, helper-text(5))
+  save edited, wait boot-module/call-boot(ask)
+  save boot-now/edited, last-units()
+  save boot-now/edited-code, run-program(out)
+  set-variable(<TERM_BOOT_MERGED>, <1>)
+  save merged, wait boot-module/call-boot(ask)
+  remove-variable(<TERM_BOOT_MERGED>)
+  save boot-now/merged-code, run-program(out)
+  fork test, held
+    hold
+      set-variable(<TERM_CACHE_HOME>, kept)
+    miss
+      remove-variable(<TERM_CACHE_HOME>)
+  back boot-now
+
+test <the program boots through units>
+  save state, the-boots()
+  want hold, is-above(state/first/built, 0)
+
+test <and runs, answering the helper's number>
+  save state, the-boots()
+  want hold, is-equal(state/first-code, 3)
+
+test <a second boot with nothing edited builds nothing>
+  save state, the-boots()
+  want hold, is-equal(state/again/built, 0)
+
+test <a rebuild after an edit to the helper builds its unit and the one reading it, no other>
+  save state, the-boots()
+  want hold, and(is-above(state/edited/built, 0), not(is-above(state/edited/built, 2)))
+
+test <and reads every other unit>
+  save state, the-boots()
+  want hold, not(is-below(state/edited/reused, subtract(add(state/first/built, state/first/reused), 2)))
+
+test <and runs the edited program>
+  save state, the-boots()
+  want hold, is-equal(state/edited-code, 5)
+
+test <the same program booted whole answers alike>
+  save state, the-boots()
+  want hold, is-equal(state/merged-code, 5)

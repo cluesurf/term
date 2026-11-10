@@ -1,0 +1,65 @@
+note <a plain segment written on a hash is a literal key, found by has and get on every backend>
+
+# Ported from hash-literal-key.ts by statement (item term-self-host-001-0655), its backend loop one walked test, each
+# backend a case of it. Item term-self-host-001-0054, traps.md T007: a plain segment WRITTEN on a hash is a literal key,
+# as `xs/0` is a literal index on a list, so `save st/needs/exception, true` writes the key "exception". Until
+# 2026-10-29 TypeScript set a PROPERTY of the map object, so `has` and `get` never found the key, the native backends
+# named a member no map has, and a key of another type was taken in silence. A key is read with `get`: a plain segment
+# READ on a hash is still a property read. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/reading
+  find any-holding
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <form state\n  link needs, like hash, like text, like boolean\n\ntask run\n  like text\n  save st\n    make state\n      bind needs, make hash\n  save st/needs/exception, true\n  save found, st/needs/has(\<exception\>)\n  save read, st/needs/get(\<exception\>)\n  save counts, make hash\n  save key, \<alpha\>\n  save counts/\{key\}, 1\n  save counts/alpha, add(counts/get(\<alpha\>), 2)\n  send back, \<\{found\} \{read\} \{st/needs/size\} \{counts/get(\<alpha\>)\} \{counts/size\}\>\n>
+
+host set-of-key, make pattern, <<needs\.set\("exception", true\)>>
+host property-of-map, make pattern, <<needs\.exception\b>>
+
+task built
+  take text, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+test <typescript: the write is a `.set` of the key>
+  host out, built(program, <keys.tree>)
+  want hold, out/ok
+  want hold, matches(set-of-key, out/emitted)
+
+test <typescript: and never a property of the map>
+  host out, built(program, <keys.tree>)
+  want hold, out/ok
+  want hold, not(matches(property-of-map, out/emitted))
+
+test <a word key on a hash keyed by numbers is refused as a map key>
+  host out, built(<task run\n  like number\n  save m, make hash\n  save three, 3\n  save m/\{three\}, 1\n  save m/alpha, 2\n  back m/size\n>, <numbered.tree>)
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <map key>)
+
+test <a key written by a plain segment is found by has and get, and counted>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-hash-literal->)
+  host ran, run-text(program, backend, folder, <keys>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <true true 1 3 1>)

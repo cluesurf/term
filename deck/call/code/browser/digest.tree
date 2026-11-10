@@ -1,0 +1,40 @@
+# The digests the browser compile asks of Node's `crypto`, answered from the Term definitions every backend's native
+# digest is held equal to (native/shared/cryptography: sha256.tree, md5.tree). The compiler's ports are emitted for
+# node, so they call `createHash` from `node:crypto`. The bundle aliases `crypto` and `node:crypto` to browser/crypto.ts,
+# which is Node's shape over these tasks: each `update` becomes bytes here, and `digest` answers the lowercase hex.
+
+load @term/base/native/shared/cryptography/sha256
+  find calculate-sha256
+  find encode-utf-8
+
+load @term/base/native/shared/cryptography/md5
+  find calculate-md5
+
+# the UTF-8 bytes of a text, as node's `update` reads a string with no encoding (a lone surrogate as U+FFFD)
+task text-bytes
+  take value, like text
+  like list
+    like number
+  send back
+    call encode-utf-8
+      read value
+
+# SHA-256 of a byte list, as 64 lowercase hex characters
+task sha256-hex
+  take input
+    like list
+      like number
+  like text
+  send back
+    call calculate-sha256
+      read input
+
+# MD5 of a byte list, as 32 lowercase hex characters
+task md5-hex
+  take input
+    like list
+      like number
+  like text
+  send back
+    call calculate-md5
+      read input

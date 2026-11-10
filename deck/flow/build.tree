@@ -1,0 +1,199 @@
+# `node ../../host/line.js boot build.tree -- build [--watch]` from this folder: bundle both halves of the VS Code
+# extension with esbuild, into make/:
+#   make/extension.js  the VS Code client, the port of code/extension.tree (host/port/code/extension.ts, which
+#                      port-build writes), CommonJS, `vscode` left external since VS Code provides it
+#   make/server.js     the Term language server, code/main.ts, self-contained, with every `@term/*` import resolved
+#                      through the Term package's tsconfig paths and inlined
+#
+# Ported from build.mjs (item term-self-host-001-0713), run by `term boot`. esbuild is this package's own (its
+# devDependency), loaded from this folder as the original's import was.
+#
+# NOT host/. This folder is also the `@term/flow` deck, and host/ is where `term make` writes the deck's own output and
+# what `term wash` deletes, so the extension bundles beside it rather than into it.
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by), and this folder is its deck/flow.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find variable
+  find directory
+
+load @term/base/text
+  find trim
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# this package's esbuild, required from its own folder
+bind flow-esbuild
+  take flow, like text
+  like dynamic
+  case node
+    text <<require("node:module").createRequire(require("node:path").join($flow, "package.json"))("esbuild")>>
+
+# the options both bundles share. Both are CJS, where `import.meta` is empty. make/code/resolve.ts reads
+# `import.meta.url` to walk up to the stdlib, and `fileURLToPath(undefined)` throws, so the bundle's own file url stands
+# in for it
+bind flow-shared
+  like dynamic
+  case node
+    text <<({ bundle: true, platform: "node", logLevel: "info", define: { "import.meta.url": "__bundleUrl" }, banner: { js: "const __bundleUrl = require('node:url').pathToFileURL(__filename).href;" } })>>
+
+bind flow-extension-options
+  take shared, like dynamic
+  take flow, like text
+  like dynamic
+  case node
+    text <<((shared_, flow_) => ({ ...shared_, entryPoints: [require("node:path").join(flow_, "host", "port", "code", "extension.ts")], outfile: require("node:path").join(flow_, "make", "extension.js"), format: "cjs", external: ["vscode"] }))($shared, $flow)>>
+
+# esbuild reaches the graph through one DYNAMIC import, call/code/make.ts `callMake` loading build-parallel.ts for
+# `term make --parallel`, which the server never calls (it imports only `projectResolver` and `findTreeFiles` from that
+# module). Bundled, esbuild's own `require.resolve("esbuild")` warns and would fail with no node_modules in the .vsix;
+# external, the `require` sits inside that import's lazy initializer and is never run. test/server/wire.ts starts
+# make/server.js itself and asks it to initialize.
+bind flow-server-options
+  take shared, like dynamic
+  take flow, like text
+  take term, like text
+  like dynamic
+  case node
+    text <<((shared_, flow_, term_) => ({ ...shared_, entryPoints: [require("node:path").join(flow_, "code", "main.ts")], outfile: require("node:path").join(flow_, "make", "server.js"), format: "cjs", tsconfig: require("node:path").join(term_, "tsconfig.json"), external: ["esbuild"] }))($shared, $flow, $term)>>
+
+bind flow-build-both
+  take esbuild, like dynamic
+  take extension, like dynamic
+  take server, like dynamic
+  like dynamic
+  case node
+    text <<((esbuild_, extension_, server_) => Promise.all([esbuild_.build(extension_), esbuild_.build(server_)]))($esbuild, $extension, $server)>>
+
+bind flow-watch-both
+  take esbuild, like dynamic
+  take extension, like dynamic
+  take server, like dynamic
+  like dynamic
+  case node
+    text <<(async (esbuild_, configs_) => { for (const config_ of configs_) { const context_ = await esbuild_.context(config_); await context_.watch() } })($esbuild, [$extension, $server])>>
+
+bind flow-resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+# TERM_ROOT when it is set, else the nearest folder at or above the working directory holding the root marker,
+# else the working directory
+task term-root
+  like text
+  save named
+    call trim
+      call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call flow-resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+task build-extension
+  mark async
+  take watch, like boolean
+  like void
+  save term
+    call term-root
+  save flow
+    call node-path/join
+      read term
+      text <deck>
+      text <flow>
+  save esbuild
+    call flow-esbuild
+      read flow
+  save shared
+    call flow-shared
+  save extension
+    call flow-extension-options
+      read shared
+      read flow
+  save server
+    call flow-server-options
+      read shared
+      read flow
+      read term
+  fork test
+    hook test
+      read watch
+    hook hold
+      call flow-watch-both
+        read esbuild
+        read extension
+        read server
+        wait true
+      call log, text <watching extension + server...>
+    hook miss
+      call flow-build-both
+        read esbuild
+        read extension
+        read server
+        wait true
+      call log, text <built make/extension.js + make/server.js>
+
+# ---------------------------------------------------------------- the console
+
+# Bundle the VS Code extension and the language server into make/
+hook build
+  # rebuild both on every change
+  take watch
+    like boolean
+    bind code false
+  task build-extension

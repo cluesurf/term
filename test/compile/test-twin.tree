@@ -1,0 +1,179 @@
+note <a twin declared under a package's test folder is admitted by its signature alone and chosen reaches every call>
+
+# Ported from test-twin.ts by statement (item term-self-host-001-0620), one test per `ok` in its order. A TEST TWIN
+# (term/decisions-2026-10/mocks 0001, spec 2.1 and 3.1): a `twin` declared in a file under its package's `test/` is
+# admitted by its signature alone, so it can stand in for an IMPURE task, and the compile's `twins` choice makes every
+# call to that task in the build reach it. The fixture is two files in a temporary package folder, made once:
+# `code/app.tree` holds `read-config` (reads a file that does not exist) and `describe` (calls it). `test/app.tree`, the
+# entry, loads both and declares the twin `fake`, which answers a fixed text, rewritten before each compile. The SAME
+# twin written under `code/` is refused, and `count.tree`'s two twins are still admitted.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find file-text
+  find project-path
+
+load ../support/reading
+  find any-holding
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name folder-make
+
+load @term/base/text
+  find replace
+  find trim
+
+load @term/base/json
+  find make-object
+  find set-field
+  find from-text
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host app, <load @term/base/file\n  find read\n\ntask read-config\n  mark async\n  take path, like text\n  like text\n  send back\n    call read\n      read path\n\ntask describe\n  mark async\n  like text\n  save body\n    call read-config\n      text \</nonexistent/config.txt\>\n  send back, text \<config=\{body\}\>\n>
+
+host fake, <twin read-config, name fake\n  take path\n  send back, text \<fake text\>\n>
+
+host answer-text, <task answer\n  mark async\n  like text\n  send back\n    call describe\n>
+
+host imports, <load ../code/app\n  find describe\n  find read-config\n\n>
+
+host impure-fake, <load @term/base/file\n  find read\n\ntwin read-config, name from-disk\n  take path\n  send back\n    call read\n      read path\n>
+
+host chosen-call, make pattern, <<readConfigChosen\(>>
+host twin-reference, make pattern, <<readConfigChosen|readConfigTwinFake>>
+host twin-fake, make pattern, <<readConfigTwinFake>>
+host count-twin, make pattern, <<countEachTwinTally>>
+
+# the package folder, made once in this process
+form twin-package
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(twin-package, bind(held, make hash))
+
+task package
+  like text
+
+  save key, <folder>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<test-twin->)
+  folder-make(<{folder}/code>)
+  folder-make(<{folder}/test>)
+  write-file(<{folder}/code/app.tree>, app)
+  write-file(<{folder}/deck.tree>, <deck @fixture/mocks\n  head \<A package for the test twin check\>\n  mark \<0.0.0\>\n>)
+  save kept/held/{key}, folder
+  back folder
+
+# the choice over the package, the node stdlib under it
+task package-choice
+  take file, like text
+  like compile-choice
+
+  save folder, package()
+  back make(compile-choice, bind(file, file), bind(project, folder), bind(project-env, <node>), bind(env, <node>))
+
+# the entry under test/, written with its extra text, then compiled
+task entry-built
+  take extra, like text
+  take chosen, like compile-choice
+  like compile-outcome
+
+  save text, <{imports}{extra}\n{answer-text}>
+  write-file(chosen/file, text)
+  back compile-text(text, chosen)
+
+task entry-file
+  like text
+
+  back <{package()}/test/app.tree>
+
+# the build with `read-config` reaching the twin `fake`: the driver reads its twins as a plain object keyed by task
+# name, so the choice is built as a JSON object, never a hash
+task mocked
+  like compile-outcome
+
+  save chosen, package-choice(entry-file())
+  save use, set-field(make-object(), <use>, from-text(<fake>))
+  save chosen/twins, set-field(make-object(), <read-config>, use)
+  back entry-built(fake, chosen)
+
+test <a test twin of an impure task builds>
+  want hold, mocked()/ok
+
+test <the call from describe goes through the dispatch>
+  want hold, matches(chosen-call, mocked()/emitted)
+
+test <the twin text came back from the code under test>
+  host folder, temp-folder(<test-twin-run->)
+  host said, typescript-answer(mocked(), <answer().then(console.log)>, folder, <run>)
+  want hold, is-equal(trim(said), <config=fake text>)
+
+# admitted with no choice too (admission is the signature, not the selection)
+test <a test twin is admitted without a choice>
+  want hold, entry-built(fake, package-choice(entry-file()))/ok
+
+test <an unchosen test twin leaves the reference in place>
+  host out, entry-built(fake, package-choice(entry-file()))
+  want hold, out/ok
+  want hold, not(matches(twin-reference, out/emitted))
+
+test <an impure test twin is admitted>
+  want hold, entry-built(impure-fake, package-choice(entry-file()))/ok
+
+# a test twin keeps the refusals that say it could not stand in at all
+test <a test twin of no task is refused>
+  host out, entry-built(replace(fake, <read-config,>, <read-nothing,>), package-choice(entry-file()))
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <there is no task>)
+
+test <a test twin with another signature is refused>
+  host out, entry-built(replace(fake, <take path\n>, <take path\n  take extra\n>), package-choice(entry-file()))
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <takes>)
+
+test <the same twin under code/ is refused as a twin of an impure task>
+  host out, compile-text(<{app}\n{fake}\n{answer-text}>, package-choice(<{package()}/code/main.tree>))
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <is not pure>)
+
+# test twins are not exposed to the differential admission, and a non-test twin still is
+test <a test twin is not exposed for the differential admission>
+  save chosen, package-choice(entry-file())
+  save chosen/expose-twins, true
+  host out, entry-built(fake, chosen)
+  want hold, out/ok
+  want hold, not(matches(twin-fake, out/emitted))
+
+task count-built
+  like compile-outcome
+
+  save file, project-path(<.>, <deck/base/code/count.tree>)
+  save chosen, package-choice(file)
+  save chosen/expose-twins, true
+  back compile-text(file-text(file), chosen)
+
+test <count.tree twins are still admitted>
+  host out, count-built()
+  want hold, out/ok
+  want hold, is-equal(out/twins/length, 2)
+
+test <count.tree twins are still exposed>
+  host out, count-built()
+  want hold, out/ok
+  want hold, matches(count-twin, out/emitted)

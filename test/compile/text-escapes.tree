@@ -1,0 +1,67 @@
+note <text-literal escapes parse inside text and carry the right value on the emitted TypeScript>
+
+# Ported from text-escapes.ts by statement (item term-self-host-001-0655), one test per `expect` in its order. The
+# delimiters (`\<` `\>` `\{` `\}`) and the standard characters (`\n` `\r` `\t` `\\`) parse inside `text <...>` and carry
+# the right run-time value on the emitted TypeScript. The original imported the emitted module and compared each answer:
+# here typescript-answer runs the emitted TypeScript under node with a main that prints the answer as JSON, so a control
+# character reads as its escape, and each test compares that JSON. The compile has no resolver, as the original's had
+# none.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains
+
+host source, <task newline\n  like text\n  send back, text \<a\\nb\>\n\ntask carriage\n  like text\n  send back, text \<a\\rb\>\n\ntask tab\n  like text\n  send back, text \<a\\tb\>\n\ntask backslash\n  like text\n  send back, text \<a\\\\nb\>\n\ntask angle\n  like text\n  send back, text \<a\\\<b\\\>c\>\n\ntask carriage-template\n  take n, like text\n  like text\n  send back, text \<\{n\}\\r\{n\}\>\n\ntask newline-template\n  take n, like text\n  like text\n  send back, text \<\{n\}\\n\{n\}\>\n\ntask quote-template\n  take n, like text\n  like text\n  send back, text \<\{n\}`$\\\{x\\\}\\\\\{n\}\>\n>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <e.tree>)))
+
+# the JSON of what one call of the program answers, printed by its emitted TypeScript under node
+task answer
+  take call, like text
+  like text
+
+  save folder, temp-folder(<escape->)
+  back typescript-answer(built(), <process.stdout.write(JSON.stringify({call}))>, folder, <e>)
+
+test <newline escape>
+  want hold, is-equal(answer(<newline()>), <"a\\nb">)
+
+test <carriage-return escape>
+  want hold, is-equal(answer(<carriage()>), <"a\\rb">)
+
+test <tab escape>
+  want hold, is-equal(answer(<tab()>), <"a\\tb">)
+
+test <escaped backslash stays literal>
+  want hold, is-equal(answer(<backslash()>), <"a\\\\nb">)
+
+test <angle escapes>
+  want hold, is-equal(answer(<angle()>), <"a\<b\>c">)
+
+# an interpolated text is a template literal on TypeScript, where a raw carriage return reads as a line feed
+test <carriage return in a template>
+  want hold, is-equal(answer(<carriageTemplate("x")>), <"x\\rx">)
+
+test <no raw carriage return in the emitted TypeScript>
+  host out, built()
+  want hold, out/ok
+  want hold, not(contains(out/emitted, <\r>))
+
+test <newline in a template>
+  want hold, is-equal(answer(<newlineTemplate("x")>), <"x\\nx">)
+
+test <backtick, $\{ and backslash in a template>
+  want hold, is-equal(answer(<quoteTemplate("x")>), <"x`$\{x\}\\\\x">)

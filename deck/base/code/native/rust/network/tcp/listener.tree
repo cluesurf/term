@@ -1,4 +1,4 @@
-# rust TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's tokio TcpListener handle. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
+# rust TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's std TcpListener handle. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
 
 dock load
   load <global:tcp>, name tcp

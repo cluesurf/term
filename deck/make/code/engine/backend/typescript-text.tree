@@ -457,20 +457,6 @@ task emit-statement
       state/stack/pop()
       back <{label}: for (const {name} of RT.iterate({iterable-text})) {body-text}>
 
-# the emitted module text (importing the runtime), the standalone TypeScript output
-task compile-to-typescript
-  take code, like list, like statement
-  like text
-
-  save state, new-emitter()
-  save lines, make list
-  push(lines, <import * as RT from '@term/make/code/engine/backend/runtime'>)
-  push(lines, typescript-preamble())
-  walk code
-    take one
-    push(lines, emit-statement(state, one))
-  back join(lines, <\n>)
-
 # a program's functions, then the rest with its last expression returned, for running in-process (typescript.ts
 # `runCompiled`, and `runCompiledFunction`, which reads only the functions)
 task compile-for-run

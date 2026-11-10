@@ -1,0 +1,223 @@
+note <the package index ping: anonymous by default, credited to an account with a token, and the token sent nowhere else>
+
+# Ported from index-ping.test.ts by statement (item term-self-host-001-0627), one test per `it` in its order. The
+# original held code/oci/index-ping.ts, a face whose logic is code/oci/index-announcing.tree: this holds that module
+# itself, and code/object/id-signing.tree for the keys. A fake fetch, a Term task handed to the module as its fetcher,
+# stands in for the index and for GHCR, so nothing leaves the machine. GHCR answers an anonymous pull-token request 200
+# for a public package and 401 for one the fake names private. A record the original compared whole with `toEqual` is
+# compared here as its JSON text, in the order the module writes its keys.
+
+load ../code/oci/index-announcing
+  find ping-index
+  find publish-statement
+
+load ../code/object/id-signing
+  find generate-keypair
+  find verify-id
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find starts-with
+  find contains, name text-contains
+  find replace-all, name text-replace
+
+host digest, <sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>
+host reference, <oci://ghcr.io/cluesurf/term/bind@{digest}>
+host now-text, <2026-10-02T12:00:00.000Z>
+
+bind ghcr-repository
+  take name, like text
+  like dynamic
+  case node
+    text <(\{ host: "ghcr.io", namespace: "cluesurf/term", name: $name \})>
+
+bind other-repository
+  take host, like text
+  like dynamic
+  case node
+    text <(\{ host: $host, namespace: "x", name: "x/y" \})>
+
+# an environment of no variables, or of the index's address alone
+bind no-variables
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind index-at
+  take url, like text
+  like dynamic
+  case node
+    text <(\{ TERM_INDEX_URL: $url \})>
+
+bind nothing
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind date-at
+  take time, like text
+  like dynamic
+  case node
+    text <new Date($time)>
+
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse(String($text))>
+
+bind is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind new-response
+  take body, like text
+  take status, like number
+  like dynamic
+  case node
+    text <new Response($body, \{ status: $status \})>
+
+bind scope-of
+  take url, like text
+  like text
+  case node
+    text <(new URL($url).searchParams.get("scope") ?? "")>
+
+# one request the index was sent
+form seen-request
+  link url, like text
+  link headers, like dynamic
+  link body, like dynamic
+
+form fake-index
+  link fetcher, like dynamic
+  link seen, like list, like seen-request
+
+# an index answering `status` with the JSON text `body`, behind a GHCR that refuses an anonymous pull of each of
+# `private`
+task fake-index-of
+  take status, like number
+  take body, like text
+  take private, like list, like text
+  like fake-index
+
+  save seen, make list
+  save fetcher
+    task
+      take url, like text
+      take init, like dynamic
+      like dynamic
+      fork test, starts-with(url, <https://ghcr.io/token>)
+        hold
+          save name, text-replace(text-replace(scope-of(url), <repository:>, <>), <:pull>, <>)
+          fork test, contains(private, name)
+            hold
+              back new-response(<\{\}>, 401)
+          back new-response(<\{\}>, 200)
+      seen/push(make(seen-request, bind(url, url), bind(headers, init/headers), bind(body, parsed-json(init/body))))
+      back new-response(body, status)
+  back make(fake-index, bind(fetcher, fetcher), bind(seen, seen))
+
+# the clock of a ping that reads no time, and the one fixed time
+task clock-now
+  like dynamic
+
+  save clock
+    task
+      like dynamic
+      back date-at(now-text)
+  back clock
+
+# a ping of the bind repository, at the fixed time
+task ping
+  take repository, like dynamic
+  take token, like dynamic
+  take keypair, like dynamic
+  take env, like dynamic
+  take index, like fake-index
+  like dynamic
+
+  back ping-index(repository, digest, token, keypair, env, index/fetcher, clock-now())
+
+test <pingIndex: sends the reference alone, with no authorization, when there is no token>
+  host index, fake-index-of(200, <\{"form":"selection","base":\{"outcome":"published"\}\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), nothing(0), nothing(0), no-variables(0), index)
+  want hold, is-equal(json-of(got), <\{"form":"sent","outcome":"published"\}>)
+  want hold, is-equal(index/seen/0/url, <https://tool.term.surf/packages/publish!>)
+  want hold, not(is-given(index/seen/0/headers/authorization))
+  want hold, is-equal(json-of(index/seen/0/body), <\{"reference":"{reference}"\}>)
+
+test <pingIndex: with a token, sends it as a bearer and a claim signed by the version key>
+  host keypair, generate-keypair()
+  host index, fake-index-of(200, <\{"form":"selection","base":\{"outcome":"published","publisher":\{"id":"kvmt-nhbs"\}\}\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), <ws-abc>, keypair, no-variables(0), index)
+  want hold, is-equal(json-of(got), <\{"form":"sent","outcome":"published","publisher":"kvmt-nhbs"\}>)
+  host sent, index/seen/0
+  want hold, is-equal(sent/headers/authorization, <Bearer ws-abc>)
+  want hold, is-equal(sent/body/reference, reference)
+  want hold, is-equal(sent/body/time, now-text)
+  want hold, is-equal(sent/body/key, keypair/public-key)
+  want hold, is-equal(publish-statement(reference, now-text), <term.publish.v1 {reference} {now-text}>)
+  want hold, verify-id(publish-statement(reference, sent/body/time), sent/body/sig, keypair/public-key)
+
+test <pingIndex: names the token page when the index refuses the token>
+  host index, fake-index-of(401, <\{\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), <ws-dead>, generate-keypair(), no-variables(0), index)
+  want hold, is-equal(got/form, <failed>)
+  want hold, text-contains(got/reason, <term.surf/settings/tokens>)
+
+test <pingIndex: says why the index refused, in the index own words>
+  host index, fake-index-of(400, <\{"form":"defect","note":"The named thing failed validation","link":\{"thing":"package","field":"reference","value":"401","expected":"an anonymous pull token, which a public package grants"\}\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), nothing(0), nothing(0), no-variables(0), index)
+  want hold, is-equal(json-of(got), <\{"form":"failed","reason":"400 from https://tool.term.surf: the reference needs an anonymous pull token, which a public package grants"\}>)
+  host bare, fake-index-of(502, <\{\}>, make list)
+  host bare-got, ping(ghcr-repository(<cluesurf/term/bind>), nothing(0), nothing(0), no-variables(0), bare)
+  want hold, is-equal(json-of(bare-got), <\{"form":"failed","reason":"502 from https://tool.term.surf"\}>)
+
+test <pingIndex: names the settings page, and never asks the index, while the GHCR package is private>
+  host index, fake-index-of(200, <\{\}>, make list(<cluesurf/term/bind>))
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), nothing(0), nothing(0), no-variables(0), index)
+  want hold, is-equal(got/form, <failed>)
+  want hold, text-contains(got/reason, <https://github.com/orgs/cluesurf/packages/container/term%2Fbind/settings>)
+  want hold, is-equal(index/seen/length, 0)
+
+test <pingIndex: names the key set too, the second package the index reads, when only it is private>
+  host index, fake-index-of(200, <\{\}>, make list(<cluesurf/term/name>))
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), nothing(0), nothing(0), no-variables(0), index)
+  want hold, is-equal(got/form, <failed>)
+  want hold, text-contains(got/reason, <https://github.com/orgs/cluesurf/packages/container/term%2Fname/settings>)
+  want hold, not(text-contains(got/reason, <term%2Fbind>))
+  want hold, is-equal(index/seen/length, 0)
+
+test <pingIndex: never sends a token over plain http to anything but loopback>
+  host index, fake-index-of(200, <\{\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), <ws-abc>, generate-keypair(), index-at(<http://index.example>), index)
+  want hold, is-equal(got/form, <failed>)
+  want hold, is-equal(index/seen/length, 0)
+  host local, fake-index-of(200, <\{\}>, make list)
+  ping(ghcr-repository(<cluesurf/term/bind>), <ws-abc>, generate-keypair(), index-at(<http://127.0.0.1:4000>), local)
+  want hold, is-equal(local/seen/0/headers/authorization, <Bearer ws-abc>)
+
+test <pingIndex: refuses to send a token without the key that proves the claim>
+  host index, fake-index-of(200, <\{\}>, make list)
+  host got, ping(ghcr-repository(<cluesurf/term/bind>), <ws-abc>, nothing(0), no-variables(0), index)
+  want hold, is-equal(got/form, <failed>)
+  want hold, is-equal(index/seen/length, 0)
+
+test <pingIndex: skips a registry the index does not read, token or not>
+  host index, fake-index-of(200, <\{\}>, make list)
+  host got, ping(other-repository(<localhost:5000>), <ws-abc>, generate-keypair(), no-variables(0), index)
+  want hold, is-equal(got/form, <skipped>)
+  want hold, is-equal(index/seen/length, 0)

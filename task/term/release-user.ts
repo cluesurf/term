@@ -3,7 +3,7 @@
 // them all and still could not test, unit-build or boot any project outside it. This suite:
 //
 //   1. takes this platform's release payload as `pnpm run release --dry` wrote it, or one given with --from, or with
-//      --build builds it (task/release.ts --dry --platform <this> --out <temp>), payload gate and all
+//      --build builds it (task/release.tree --dry --platform <this> --out <temp>), payload gate and all
 //   2. installs it into a temporary HOME, under .base/@term/code/code/<version>/term, as the loader does
 //   3. in a project in the system temporary folder, outside any checkout, runs the installed `term`: make (its stdlib
 //      units must be named `_term_base_...`), test, boot from the project, boot from another folder, boot --out and
@@ -54,7 +54,7 @@ function flagValue(flag: string): string | undefined {
   return at < 0 ? undefined : process.argv[at + 1]
 }
 
-// the payload name of this machine, as task/release.ts PLATFORMS names it
+// the payload name of this machine, as task/release.tree `platforms` names it
 function platformName(): string {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
 
@@ -221,11 +221,11 @@ function payload(work: string): string | undefined {
   }
 
   const out = join(work, 'release')
-  const built = run('npx', ['tsx', 'task/release.ts', '--dry', '--platform', platformName(), '--out', out], TERM, process.env, 1800)
+  const built = run(process.execPath, ['host/line.js', 'boot', 'task/release.tree', '--', 'release', '--dry', '--platform', platformName(), '--out', out], TERM, process.env, 1800)
   const tarball = join(out, `term-${platformName()}.tar.gz`)
   // a refused build quotes the payload gate's own lines, which name the leak, else its last lines
   const said = built.text.split('\n').filter(line => /parent-name|machine|absolute|climb|refused|rror/.test(line))
-  ok('the release payload builds (task/release.ts --dry --platform)', built.status === 0 && existsSync(tarball), said.length > 0 ? said.slice(0, 8).join(' | ').slice(0, 900) : tail(built.text, 8))
+  ok('the release payload builds (task/release.tree --dry --platform)', built.status === 0 && existsSync(tarball), said.length > 0 ? said.slice(0, 8).join(' | ').slice(0, 900) : tail(built.text, 8))
 
   if (!existsSync(tarball)) {
     return undefined

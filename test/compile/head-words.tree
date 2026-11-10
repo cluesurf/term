@@ -1,0 +1,282 @@
+note <every head a mill grammar anchors is a four-letter word of the vocabulary, beyond a known list that only shrinks>
+
+# Ported from head-words.ts by statement (item term-self-host-001-0622), one test per `ok` in its order. A HEAD is a word
+# that can START A LINE: a rule named as an alternative inside some `mine list` (directly, or inside that list's
+# `mine any`) is a LINE RULE, and the word it is anchored on (its first `mine term, term <word>`, or each
+# alternative's in a leading `mine any`) is a head. The three literals can stand alone on a line as a value and are not
+# held. The grammars are read with the compiler's own parser through deck/deck/code/package/read.ts, the subject this
+# suite docks (decision 106). KNOWN holds the heads outside the list on the day this gate went up (2026-10-02), and may
+# only shrink (proof-by-default-0020). The vocabulary is its own checkout, outside this repository, and TERM_VOCABULARY
+# names its terms.json: without it every test SKIPS, saying why, as the original's gate did.
+
+load ../support/compiling
+  find project-path
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+  find read, name read-file
+
+load @term/base/file/directory
+  find list, name folder-list
+  find exists, name folder-exists
+
+load @term/base/json
+  find parse, name json-parse
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/deck/code/package/read>, name words-read
+  load <node:path>, name words-path
+  load <global:Array>, name words-array
+
+host mill, project-path(<.>, <deck/mill/code/tree>)
+
+# heads outside terms.json, with where each lives. Renaming one is a mechanical rewrite checked mill-equivalent
+host known, make(list, <send>, <free>, <fall>, <tag>, <else>, <step>, <or>, <and>, <accessor>, <computed>, <intrinsic>, <force>, <bold>, <key>, <shift>, <slate>, <start>, <state>, <write>)
+
+# the literals a line may hold as a bare value
+host literals, make(list, <true>, <false>, <void>)
+
+# the vocabulary's terms.json, resolved against the folder it was typed in, <> when none is named
+task terms-path
+  like text
+
+  save given, variable(<TERM_VOCABULARY>)
+  fork test, is-equal(given, <>)
+    hold
+      back <>
+  save from, variable(<INIT_CWD>)
+  fork test, is-equal(from, <>)
+    hold
+      back words-path/resolve(given)
+  back words-path/resolve(from, given)
+
+# every mine.tree under a folder, in name order
+task mine-files
+  take folder, like text
+  take into, like list, like text
+  like list, like text
+
+  save names, folder-list(folder)
+  walk names/sort()
+    take name, like text
+    save path, words-path/join(folder, name)
+    fork test, folder-exists(path)
+      hold
+        mine-files(path, into)
+      miss
+        fork test, is-equal(name, <mine.tree>)
+          hold
+            into/push(path)
+  back into
+
+task first-term
+  take form, like dynamic
+  like text
+
+  fork test, is-above(form/terms/length, 0)
+    hold
+      back form/terms/0
+  back <>
+
+# the word a `mine term, term <word>` form anchors, or <>
+task anchored
+  take form, like dynamic
+  like text
+
+  fork test, or(is-unequal(form/head, <mine>), is-unequal(first-term(form), <term>))
+    hold
+      back <>
+  walk form/forms
+    take child, like dynamic
+    fork test, is-equal(child/head, <term>)
+      hold
+        back first-term(child)
+  back <>
+
+# the heads a top-level rule anchors
+task heads-of
+  take rule, like dynamic
+  like list, like text
+
+  save out, make list
+  walk rule/forms
+    take first, like dynamic
+    fork test, is-equal(first/head, <mine>)
+      hold
+        save word, anchored(first)
+        fork test, is-unequal(word, <>)
+          hold
+            out/push(word)
+            back out
+        # `mine any` of alternatives, each anchored on its own head (the proof steps, for one)
+        fork test, is-equal(first-term(first), <any>)
+          hold
+            walk first/forms
+              take alternative, like dynamic
+              save each, anchored(alternative)
+              fork test, is-unequal(each, <>)
+                hold
+                  out/push(each)
+        back out
+  back out
+
+# the rules named as alternatives of a `mine list`, anywhere under a form
+task named-in
+  take alternative, like dynamic
+  take into, like hash, like text, like boolean
+  like void
+
+  fork test, and(is-equal(alternative/head, <mine>), is-equal(first-term(alternative), <form>))
+    hold
+      walk alternative/forms
+        take like-form, like dynamic
+        fork test, is-equal(like-form/head, <like>)
+          hold
+            save rule-name, first-term(like-form)
+            fork test, is-unequal(rule-name, <>)
+              hold
+                save into/{rule-name}, true
+            back
+  fork test, and(is-equal(alternative/head, <mine>), is-equal(first-term(alternative), <any>))
+    hold
+      walk alternative/forms
+        take inner, like dynamic
+        named-in(inner, into)
+
+task line-rules
+  take form, like dynamic
+  take into, like hash, like text, like boolean
+  like void
+
+  fork test, and(is-equal(form/head, <mine>), is-equal(first-term(form), <list>))
+    hold
+      walk form/forms
+        take alternative, like dynamic
+        named-in(alternative, into)
+  walk form/forms
+    take child, like dynamic
+    line-rules(child, into)
+
+# one rule of a grammar file, by its name
+form named-rule
+  link name, like text
+  link rule, like dynamic
+
+# what the gate found: the files it could not read, the rules it read, and the heads outside the vocabulary
+form head-count
+  link vocabulary, like text
+  link unreadable, like number
+  link rules, like number
+  link outside, like list, like text
+
+form head-told
+  mark shared
+  link held, like list, like head-count
+
+host told, make(head-told, bind(held, make list))
+
+task counted
+  like head-count
+
+  fork test, is-above(told/held/length, 0)
+    hold
+      back told/held/0
+  save terms, terms-path()
+  save outside, make list
+  save unreadable, 0
+  save rules, 0
+  fork test, or(is-equal(terms, <>), not(file-exists(terms)))
+    hold
+      save made, make(head-count, bind(vocabulary, terms), bind(unreadable, 0), bind(rules, 0), bind(outside, outside))
+      told/held/push(made)
+      back made
+  save allowed, json-parse(read-file(terms))
+  save all-rules, make list
+  save lines, make hash
+  walk mine-files(mill, make list)
+    take file, like text
+    save parsed, words-read/readTree(make(named-source, bind(file, file), bind(text, read-file(file))))
+    fork test, not(words-array/is-array(parsed/forms))
+      hold
+        save unreadable, add(unreadable, 1)
+      miss
+        walk parsed/forms
+          take rule, like dynamic
+          fork test, and(is-equal(rule/head, <mine>), is-equal(rule/terms/length, 1))
+            hold
+              save rules, add(rules, 1)
+              all-rules/push(make(named-rule, bind(name, rule/terms/0), bind(rule, rule)))
+              line-rules(rule, lines)
+  walk all-rules
+    take one, like named-rule
+    fork test, lines/has(one/name)
+      hold
+        walk heads-of(one/rule)
+          take head, like text
+          fork test, and(not(allowed/includes(head)), not(literals/includes(head)))
+            hold
+              fork test, not(outside/includes(head))
+                hold
+                  outside/push(head)
+  save made, make(head-count, bind(vocabulary, terms), bind(unreadable, unreadable), bind(rules, rules), bind(outside, outside))
+  told/held/push(made)
+  back made
+
+form named-source
+  link file, like text
+  link text, like text
+
+# <missing> when no vocabulary is named or the one named is not there, else <there>. It answers text, so term test
+# never collects it as a test of its own (T-1127)
+task vocabulary-state
+  like text
+
+  save terms, counted()/vocabulary
+  fork test, or(is-equal(terms, <>), not(file-exists(terms)))
+    hold
+      back <missing>
+  back <there>
+
+test <every grammar file reads with the compiler parser>
+  fork test, is-equal(vocabulary-state(), <missing>)
+    hold
+      skip <needs the vocabulary: TERM_VOCABULARY names its terms.json, and it is not there>
+  want hold, is-equal(counted()/unreadable, 0)
+
+test <the gate found rules to check>
+  fork test, is-equal(vocabulary-state(), <missing>)
+    hold
+      skip <needs the vocabulary: TERM_VOCABULARY names its terms.json, and it is not there>
+  want hold, is-above(counted()/rules, 100)
+
+test <no head outside hold/base/terms.json beyond the known list>
+  fork test, is-equal(vocabulary-state(), <missing>)
+    hold
+      skip <needs the vocabulary: TERM_VOCABULARY names its terms.json, and it is not there>
+  save fresh, make list
+  save outside, counted()/outside
+  walk outside
+    take head, like text
+    fork test, not(known/includes(head))
+      hold
+        fresh/push(head)
+  want hold, is-equal(fresh/join(<, >), <>)
+
+test <every known exception is still needed (the list only shrinks)>
+  fork test, is-equal(vocabulary-state(), <missing>)
+    hold
+      skip <needs the vocabulary: TERM_VOCABULARY names its terms.json, and it is not there>
+  save outside, counted()/outside
+  save gone, make list
+  walk known
+    take head, like text
+    fork test, not(outside/includes(head))
+      hold
+        gone/push(head)
+  want hold, is-equal(gone/join(<, >), <>)

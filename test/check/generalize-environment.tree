@@ -1,0 +1,93 @@
+note <generalize keeps a variable the environment holds inside a form's arguments>
+
+# Ported from generalize-environment.ts by statement (item term-self-host-001-0608), one test per `ok` in its order (D10,
+# D027 row 7). An environment binding typed `maybe ?a` mentions a, so a type that mentions a must leave a free:
+# quantifying it would give every use a fresh copy that never reaches the `maybe`'s. The retired original gathered the
+# environment with free-type-vars, which skips a form's arguments, and generalized a away. check/scheme is the subject,
+# over check/substitution's fresh variables (decision 106). The types are the checker's own records, made by one bind each.
+
+dock load
+  load <@term/make/code/check/scheme>, name scheme
+  load <@term/make/code/check/substitution>, name subst
+
+bind named-type
+  take name, like text
+  take args, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "named", name: $name, args: $args \})>
+
+bind function-type
+  take params, like list, like dynamic
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "function", params: $params, result: $result \})>
+
+bind array-type
+  take element, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "array", element: $element \})>
+
+bind number-type
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ kind: "number" \})>
+
+# an environment of one binding, its scheme quantifying `vars`
+bind one-binding
+  take name, like text
+  take vars, like list, like number
+  take type, like dynamic
+  like dynamic
+  case node
+    text <new Map([[$name, \{ vars: $vars, type: $type \}]])>
+
+bind id-of
+  take type, like dynamic
+  like number
+  case node
+    text <$type.id>
+
+# the variables generalize quantified, as a list Term reads
+bind quantified
+  take out, like dynamic
+  like list, like number
+  case node
+    text <$out>
+
+# the environment holds `maybe ?a`: a occurs only inside a form's arguments
+test <a variable held in a form argument stays free>
+  host s, subst/new-substitution()
+  host a, subst/fresh-type(s)
+  host b, subst/fresh-type(s)
+  host env, one-binding(<found>, make(list), named-type(<maybe>, make list(a)))
+  host out, quantified(scheme/generalize(function-type(make(list, a, b), a), env, s))
+  want hold, not(out/contains(id-of(a)))
+
+test <a variable the environment does not hold is generalized>
+  host s, subst/new-substitution()
+  host a, subst/fresh-type(s)
+  host b, subst/fresh-type(s)
+  host env, one-binding(<found>, make(list), named-type(<maybe>, make list(a)))
+  host out, quantified(scheme/generalize(function-type(make(list, a, b), a), env, s))
+  want hold, out/contains(id-of(b))
+
+# deeper: the form's argument is itself a list of a function returning a
+test <a variable nested under a form argument stays free>
+  host s, subst/new-substitution()
+  host a, subst/fresh-type(s)
+  host inner, array-type(function-type(make(list), a))
+  host env, one-binding(<found>, make(list), named-type(<pair>, make list(number-type(0), inner)))
+  host out, quantified(scheme/generalize(a, env, s))
+  want hold, is-equal(out/length, 0)
+
+# a variable the binding's own scheme quantifies is not the environment's
+test <a quantified variable in the environment does not hold>
+  host s, subst/new-substitution()
+  host a, subst/fresh-type(s)
+  host env, one-binding(<id>, make(list, id-of(a)),named-type(<maybe>, make list(a)))
+  host out, quantified(scheme/generalize(a, env, s))
+  want hold, and(is-equal(out/length, 1), is-equal(out/0, id-of(a)))

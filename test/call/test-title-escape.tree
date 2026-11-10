@@ -1,0 +1,40 @@
+note <a test title is unescaped as an ordinary literal is, so an escaped angle in it prints bare>
+
+# A title is written inside `<...>`, so an angle in it is written `\<` or `\>`, and the label printed it with its
+# backslash: `is-nonneg(x) is x \>= 0` (deck/test/test/predicate-synthesis.tree, item 1146). The label now reads the
+# phrase as a literal's text is read (compile/surface.tree `unescape-text`), and the task name is cut as before.
+
+load @term/call/work/preprocess/test-rewriting
+  find preprocess-tests
+
+bind no-options
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# the label `term test` prints for the test whose task is `slug`
+task label-of
+  take source, like text
+  take slug, like text
+  like text
+
+  save labels, preprocess-tests(source, no-options(0))/labels
+  back labels/{slug}
+
+host above, <test \<x \\\>= 0\>\n  want hold, true\n>
+host below, <test \<a \\\<= b\>\n  want hold, true\n>
+host both, <test \<\\\<one\\\> and \\\{two\\\}\>\n  want hold, true\n>
+host plain, <test \<a plain title\>\n  want hold, true\n>
+host bare, <test plain-slug\n  want hold, true\n>
+
+test <a title holding \> or \< prints the bare angle>
+  want hold, is-equal(label-of(above, <x-0>), <x \>= 0>)
+  want hold, is-equal(label-of(below, <a-b>), <a \<= b>)
+
+test <escaped braces and angles together read bare>
+  want hold, is-equal(label-of(both, <one-and-two>), <\<one\> and \{two\}>)
+
+test <a title with no escape is unchanged>
+  want hold, is-equal(label-of(plain, <a-plain-title>), <a plain title>)
+  want hold, is-equal(label-of(bare, <plain-slug>), <plain slug>)

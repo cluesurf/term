@@ -1,0 +1,123 @@
+note <a view-role document compiles through the whole pipeline, and mounted it builds real dom with its query passed in resolved>
+
+# Ported from document.ts by statement (item term-self-host-001-0644), one test per `ok` in its order. The one test that
+# closes the whole chain: document, reader, zone, view lowering, emitted component, mounted nodes. The document compiles
+# alone through the project under the node env with the tree shake off and the view role for its own file only, as the
+# original compiled it, and its emitted TypeScript is read for its shape. The role is per FILE: the render runtime it
+# pulls in is code, and reading that with the view reader is how the original first failed. The original then called
+# the built module from TypeScript: here a run task in a second file loads the document, mounts it on a root with three
+# resolved items, and answers every text node of the tree, depth first, built and run once on node through
+# test/support/running. Where the original stopped after a failed compile, a compile that fails fails every test after it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find replace-all
+  find ends-with
+
+load @term/base/list
+  find contains
+
+host document, <\nhost title, text \<Vowels\>\n\nfind vowel\n  task \<filter:phoneme\>\n  hold is-equal\n    read self/kind\n    text \<vowel\>\n\nview page\n  view div\n    view span\n      text \<heading\>\n    walk list, read vowel\n      hook next\n        take site, name one\n        view li\n          text \<row\>\n>
+
+# the document mounted on a root over three resolved items: the renderer never fetches, the host resolves every query
+# first and passes the result in. Every text node of the tree, depth first, joined by commas
+host mount-program, <load @term/site/code/view/render\n  find make-element\nload @term/site/code/dom/dom\n  find view\nload ./page/doc\n  find page\n\ntask collect\n  take node, like view\n  take found, like list, like text\n\n  save handle, node/handle\n  fork test, is-unequal(handle/text, \<\>)\n    hold\n      found/push(handle/text)\n  walk handle/children\n    take child, like view\n    collect(child, found)\n\ntask run\n  like text\n\n  save host, make-element(\<root\>)\n  page(host, make list(\<a\>, \<e\>, \<i\>))\n  save found, make list\n  collect(host, found)\n  back found/join(\<,\>)\n>
+
+# the role of a file, handed to the compiler as its `roleOf`: only the document is a document
+task doc-role
+  take file, like text
+  like text
+
+  fork test, ends-with(file, <page/doc.tree>)
+    hold
+      back <view>
+  back <>
+
+host doc-choice, make(compile-choice, bind(file, <page/doc.tree>), bind(project, <.>), bind(project-env, <node>), bind(role-of, doc-role), bind(tree-shake, <false>))
+
+host built, compile-text(document, doc-choice)
+
+host mount-choice, make(compile-choice, bind(file, <mount.tree>), bind(project, <.>), bind(project-env, <node>), bind(role-of, doc-role), bind(tree-shake, <false>), bind(files, make list(make(compiling-source, bind(file, <./page/doc>), bind(text, document), bind(answer, <page/doc.tree>)))))
+
+host component-shape, make pattern, <<export function page\(>>
+host takes-shape, make pattern, <<export function page\(\s*host[^)]*vowel>>
+
+# the text nodes the mounted document holds, made once
+form answers
+  mark shared
+  link done, like boolean
+  link state, like text
+  link said, like list, like text
+
+host now, make(answers, bind(done, false), bind(state, <>), bind(said, make list))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<term-view-doc->)
+  host ran, run-text(mount-program, <typescript>, folder, <mount>, mount-choice)
+  save now/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/state, <ran>
+      save said, trim(ran/output)
+      fork test, is-unequal(said, <>)
+        hold
+          save now/said, text-split(said, <,>)
+  save now/done, true
+  back now
+
+# how many of the text nodes are `row`
+task rows-of
+  take said, like list, like text
+  like number
+
+  save count, 0
+  walk said
+    take one, like text
+    fork test, is-equal(one, <row>)
+      hold
+        save count, add(count, 1)
+  back count
+
+test <a document compiles through the view role>
+  want hold, built/ok
+
+test <it emits one component>
+  want hold, built/ok
+  want hold, matches(component-shape, built/emitted)
+
+test <the component takes the mount host first, then the query>
+  want hold, built/ok
+  want hold, matches(takes-shape, replace-all(built/emitted, <\n>, < >))
+
+test <it mounts and renders text>
+  save state, the-answers()
+  want hold, is-equal(state/state, <ran>)
+  want hold, is-above(state/said/length, 0)
+
+test <the static text is there>
+  want hold, contains(the-answers()/said, <heading>)
+
+test <the walk rendered one node per resolved item>
+  want hold, is-equal(rows-of(the-answers()/said), 3)

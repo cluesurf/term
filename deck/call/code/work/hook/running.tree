@@ -27,26 +27,36 @@ load @term/base/maybe
 
 load @term/make/compile/node
   find dock-route
-  find dock-take
   find statement
 
 # the emitted-identifier mapping, which this port exports as `toCamel` for a generated run entry (dock.mjs)
 load @term/make/compile/ts-names
   find to-camel
 
+# hook-dispatch.ts's surface over the compiler's records, which this port exports, and the records in the plain form
+# the run reads (decision 138 rule 2 of term/self-host/change/001-finish-self-host, item term-self-host-001-1118)
 load @term/call/work/hook/parsing
   find dispatch
   find command-routes
   find program-of
-  find console-program
   find passing-start
-  find parse-line
-  find parsed-line
   find render-help
   find render-usage
+  find plain-routes
+
+load @term/call/work/hook/route
+  find route
+  find route-take
+
+load @term/call/work/hook/route-parsing
+  find split-routes
+  find route-split
+  find program-takes
+  find find-passing-start
+  find parse-line
+  find parsed-line
   find missing-of
   find usage-refusal
-  find maybe-item
   find type-kind
   find arg-of
   find host-value-of
@@ -137,19 +147,6 @@ bind hook-is-absent
   case node
     text <($value === undefined)>
 
-# the bound call's parameter names, undefined for a route compiled before they were recorded
-bind hook-call-params
-  take route, like dock-route
-  like dynamic
-  case node
-    text <$route.calls[0]?.params>
-
-bind hook-texts
-  take value, like dynamic
-  like list, like text
-  case node
-    text <$value>
-
 # the call of the resolved function with its ordered values
 bind hook-call
   take fn, like dynamic
@@ -208,15 +205,14 @@ task no-values
 # the takes a bound call is handed, in its parameters' order: each parameter takes the take of its own name, and one no
 # take names takes the take at its position; with no parameter names recorded, the takes in their order
 task ordered-takes
-  take route, like dock-route
-  like list, like dock-take
+  take route, like route
+  like list, like route-take
   save takes, route/takes
-  save params, hook-call-params(route)
-  fork test, hook-is-absent(params)
+  fork test, not(route/params-given)
     hold
       back takes
   save ordered, make list
-  save names, hook-texts(params)
+  save names, route/params
   walk names
     take param
     take at
@@ -236,13 +232,12 @@ task ordered-takes
 # given, decision cli-in-term/008 part 1), a given value itself, and a plain take left out its natural zero: the empty
 # list for a list slot or a list option, false for a boolean, 0 for a number, the empty text for the rest
 task handed-value
-  take one, like dock-take
+  take one, like route-take
   take args, like list, like line-arg
   like dynamic
   save given, arg-of(args, one/name)
-  save item, maybe-item(one)
-  sift item
-    case some
+  fork test, one/optional
+    hold
       sift given
         case some
           link value-given
@@ -250,8 +245,6 @@ task handed-value
           back make(some, handed)
         case none
           back make none
-    case none
-      save nothing, 0
   sift given
     case some
       link held
@@ -270,29 +263,18 @@ task handed-value
       back host-value-of(make(arg-number, bind(amount, 0)))
   back host-value-of(make(arg-text, bind(given, <>)))
 
-# the program's global options: its takes, when the console is one program hook
-task program-takes
-  take split, like console-program
-  like list, like dock-take
-  sift split/program
-    case some
-      link program
-      back program/takes
-    case none
-      save nothing, 0
-  back make list
-
 # the help of the deepest command the bare words name, or the program's own, in term's layout (work/help.tree): the
-# program's usage line is its name, as a booted program's root note is its description, not a usage line
+# program's usage line is its name, as a booted program's root note is its description, not a usage line. The
+# program's global options are its takes, when the console is one program hook
 task help-of
   take name, like text
-  take split, like console-program
+  take split, like route-split
   take bare, like list, like text
   like text
   back help-text(name, <>, program-takes(split), split/commands, bare)
 
 task no-route-yet
-  like maybe, like dock-route
+  like maybe, like route
   back make none
 
 task no-lines
@@ -304,7 +286,7 @@ task no-lines
 task refuse-booted
   take name, like text
   take mark, like text
-  take commands, like list, like dock-route
+  take commands, like list, like route
   take bare, like list, like text
   take error, like text
   like number
@@ -334,17 +316,18 @@ task run-command-line
   like number
   mark async
   save name, hook-shown-name(input/name)
-  save routes, input/routes
+  # the compiler's records, read once in the plain form (work/hook/route.tree)
+  save routes, plain-routes(input/routes)
   save argv, input/argv
   # the commands are the program's nested hooks, when the console is one program hook
-  save split, program-of(routes)
+  save split, split-routes(routes)
   save commands, split/commands
 
   # strip help flags, remembering that help was asked for, only BEFORE the line's passing words (`passing-start`):
   # every word after a passing command's path is another console's (`term zone --help` is zone's help, decision
   # cli-in-term/008), and so is every word from a passing slot's first positional on (decision cli-in-term/012). A
   # literal `--` ends the console's words the same way
-  save cut, passing-start(routes, argv)
+  save cut, find-passing-start(routes, argv)
   save dashes, -1
   walk argv
     take word
@@ -414,15 +397,16 @@ task run-command-line
       back 2
     case some
       link route
-      back run-route(input, name, hit, route)
+      back run-route(input, name, split, hit, route)
 
 # the accepted line's run: a group with no task lists its subcommands, a required take left out is refused, else the
 # bound task is called with its ordered values
 task run-route
   take input, like run-input
   take name, like text
+  take split, like route-split
   take hit, like parsed-line
-  take route, like dock-route
+  take route, like route
   like number
   mark async
 
@@ -431,7 +415,7 @@ task run-route
     hold
       fork test, is-above(route/children/length, 0)
         hold
-          hook-out(input, help-of(name, program-of(input/routes), hit/command))
+          hook-out(input, help-of(name, split, hit/command))
           back 2
       hook-err(input, <{name}: {join(hit/command, < >)} has no implementation bound>)
       back 2

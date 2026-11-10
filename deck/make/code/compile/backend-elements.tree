@@ -650,6 +650,7 @@ task visit
                   save op-none, 0
             miss
               save callee, callee
+          call-keys(es, callee-name, kids)
           # an outer list at a position the task takes lent: its body is scanned for its own reads
           fork test, and(is-unequal(callee-name, <>), es/lend/has(callee-name))
             hold
@@ -800,6 +801,42 @@ task param-key
           back <>
     case none
       back <>
+
+# a task's parameter of one inner-list key handed an outer list of another key (a generic `list of list of t` handed a
+# `list of list of number`, keyed `T` and `i64` on Rust): the parameter's key and the argument's key are both refused,
+# so the callee's parameter and its caller's list are spelled the same. Refusing only the argument's key left `T` owned
+# whenever nothing else in the program refused it, which a tree-shaken program often is (term-self-host-001-1149)
+task call-keys
+  take es, like elements-scope
+  take callee-name, like text
+  take kids, like list, like number
+  like void
+  mark private
+
+  fork test, or(is-equal(callee-name, <>), is-equal(es/tasks/has(callee-name), false))
+    hold
+      back
+  walk kids
+    take child
+    take index
+    fork test, is-equal(index, 0)
+      hold
+        turn next
+    save wanted, param-key(es, callee-name, subtract(index, 1))
+    fork test, is-equal(wanted, <>)
+      hold
+        turn next
+    save given, <>
+    sift row-expression(es/w, child)
+      case some
+        link e
+        save given, outer(es, expression-type(e))
+      case none
+        save given, <>
+    fork test, is-unequal(given, wanted)
+      hold
+        refuse(es, wanted)
+        refuse(es, given)
 
 # ---- the hand-offs ----
 

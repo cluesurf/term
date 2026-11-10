@@ -1,0 +1,69 @@
+note <the site router matches a param route, binds its param for the handler, and falls through to 404>
+
+# Ported from test/site/router.ts by statement (item term-self-host-001-0639), one test per `expect` in its order. The
+# original compiled a one-route server (`GET /users/:id`) over the site package's trie router (`route-server`) for node
+# and called its tasks; here the suite holds the same tasks, so term test compiles them over @term/site and the tests
+# call them: matched dispatch, the 404 fallthrough, and the param read through the handler (the real surface). No
+# socket is opened: `handle-request` takes the request directly.
+
+load @term/site/http/http
+  find handle-request
+  find route-server
+  find request
+  find response
+  find route
+  find server
+
+load @term/base/hash
+  find hash
+  find get
+
+load @term/base/maybe
+  find unwrap-or
+
+# the one handler: 200, its body the bound `id`, or <none>
+task respond
+  take request, like request
+  take params, like hash, like text, like text
+  like response
+
+  back make(response, bind(status, 200), bind(body, unwrap-or(get(params, <id>), <none>)))
+
+task build-app
+  like server
+
+  back route-server(make(list, make(route, bind(method, <GET>), bind(path, </users/:id>), bind(handle, respond))))
+
+task route-status
+  take method, like text
+  take path, like text
+  like number
+
+  save result, handle-request(build-app(), make(request, bind(method, method), bind(path, path), bind(body, <>)))
+  back result/status
+
+task route-param
+  take method, like text
+  take path, like text
+  like text
+
+  save result, handle-request(build-app(), make(request, bind(method, method), bind(path, path), bind(body, <>)))
+  back result/body
+
+test <site/router: GET /users/42 matches the :id route (200)>
+  want hold, is-equal(route-status(<GET>, </users/42>), 200)
+
+test <site/router: GET /users/7 also matches the param route (200)>
+  want hold, is-equal(route-status(<GET>, </users/7>), 200)
+
+test <site/router: a non-matching path falls through to 404>
+  want hold, is-equal(route-status(<GET>, </posts/1>), 404)
+
+test <site/router: a wrong method does not match (404)>
+  want hold, is-equal(route-status(<POST>, </users/42>), 404)
+
+test <site/router: the :id param is bound and reaches the handler>
+  want hold, is-equal(route-param(<GET>, </users/42>), <42>)
+
+test <site/router: a different :id value binds correctly>
+  want hold, is-equal(route-param(<GET>, </users/7>), <7>)

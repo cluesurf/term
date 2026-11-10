@@ -1,0 +1,223 @@
+# How a staged platform payload becomes its tarball, one way for every platform: `pnpm term:release` packs the others
+# with it, and the Windows step (task/release-windows.tree) packs windows-x64 with it once the machine has built the
+# payload's native part. The file list goes in first, the secrets check runs over everything, then the tar. Ported
+# from task/release-pack.ts (item term-self-host-001-0717).
+
+load @term/call/work/need/version-install
+  find write-file-list
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <node:child_process>, name node-child
+
+form packed-payload
+  link digest, like text
+  link bytes, like number
+
+# whether a file name holds a secret or a key, refused in a payload whatever folder it is in
+bind is-secret-file
+  take name, like text
+  like boolean
+  case node
+    text <</^(\.env.*|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa).*|zone\.code\.tree|auth)$|\.(pem|key|p12|pfx|gpg|asc)$/.test($name)>>
+
+# a folder's entries in the order the file system lists them, each with its name and whether it is a folder or a file
+bind folder-entries
+  take dir, like text
+  like dynamic
+  case node
+    text <<require("node:fs").readdirSync($dir, { withFileTypes: true }).map((entry_) => ({ name: entry_.name, directory: entry_.isDirectory(), file: entry_.isFile() }))>>
+
+bind entry-name
+  take entry, like dynamic
+  like text
+  case node
+    text <String($entry.name)>
+
+bind entry-is-directory
+  take entry, like dynamic
+  like boolean
+  case node
+    text <($entry.directory === true)>
+
+bind entry-is-file
+  take entry, like dynamic
+  like boolean
+  case node
+    text <($entry.file === true)>
+
+# whether a file holds the home folder's path, its bytes compared as bytes
+bind holds-home
+  take file, like text
+  take home, like text
+  like boolean
+  case node
+    text <require("node:fs").readFileSync($file).includes(Buffer.from($home))>>
+
+bind list-size
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind raise-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# the tar's options: this process's environment with COPYFILE_DISABLE, which keeps macOS tar from writing `._`
+# resource-fork entries into the archive
+bind tar-options
+  like dynamic
+  case node
+    text <<({ env: { ...process.env, COPYFILE_DISABLE: "1" } })>>
+
+bind file-digest
+  take file, like text
+  like text
+  case node
+    text <<`sha256:${require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync($file)).digest("hex")}`>>
+
+bind file-bytes
+  take file, like text
+  like number
+  case node
+    text <require("node:fs").statSync($file).size>
+
+# every finding under `dir`, depth first in the order each folder lists its entries
+task find-secrets
+  take dir, like text
+  take home, like text
+  take found, like list, like text
+  like void
+  walk list
+    call folder-entries
+      read dir
+    hook next
+      take site, name entry
+      save name
+        call entry-name
+          read entry
+      save at
+        call node-path/join
+          read dir
+          read name
+      fork test
+        hook test
+          call entry-is-directory
+            read entry
+        hook hold
+          fork test
+            hook test
+              call or
+                call is-equal
+                  read name
+                  text <.base>
+                call is-equal
+                  read name
+                  text <.git>
+            hook hold
+              call found/push, read at
+            hook miss
+              call find-secrets
+                read at
+                read home
+                read found
+        hook miss
+          fork test
+            hook test
+              call is-secret-file
+                read name
+            hook hold
+              call found/push, read at
+            hook miss
+              fork test
+                hook test
+                  call and
+                    call entry-is-file
+                      read entry
+                    call holds-home
+                      read at
+                      read home
+                hook hold
+                  call found/push, text <{at} (holds {home})>
+
+# The last check before a payload is packed: nothing under the staged `term/` (its `node_modules` fetched from npm
+# included) is a `.base` cache, a `.env`, or a key file, and no file names the machine it was built on: the home
+# folder's absolute path, which shows the builder's user name and folder layout. A hit stops the release, naming
+# the file
+task refuse-secrets
+  take root, like text
+  like void
+  save home
+    call node-os/homedir
+  save found
+    make list
+  call find-secrets
+    read root
+    read home
+    read found
+  fork test
+    hook test
+      call is-above
+        call list-size
+          read found
+        code 0
+    hook hold
+      save listed, text <>
+      save first, true
+      walk list
+        read found
+        hook next
+          take site, name at
+          save shown
+            call node-path/relative
+              read root
+              read at
+          fork test
+            hook test
+              read first
+            hook hold
+              save listed, text <  {shown}>
+              save first, false
+            hook miss
+              save listed, text <{listed}\n  {shown}>
+      call raise-error, text <the payload holds what is never published:\n{listed}>
+
+# Pack `<stage>/term` into `file`: its file list (`hash.tree`, every file with its sha256 and mode, inside the signed
+# layer, so an install shares what an installed version holds alike), the secrets check, then the tar. Answers the
+# tarball's digest and size.
+task pack-payload
+  take stage, like text
+  take file, like text
+  like packed-payload
+  save root
+    call node-path/join
+      read stage
+      text <term>
+  call write-file-list
+    read root
+  call refuse-secrets
+    read root
+  save arguments
+    make list
+  call arguments/push, text <-czf>
+  call arguments/push, read file
+  call arguments/push, text <-C>
+  call arguments/push, read stage
+  call arguments/push, text <term>
+  call node-child/exec-file-sync
+    text <tar>
+    read arguments
+    call tar-options
+  send back
+    make packed-payload
+      bind digest
+        call file-digest
+          read file
+      bind bytes
+        call file-bytes
+          read file

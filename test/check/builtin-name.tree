@@ -1,0 +1,39 @@
+note <a task named like one of the kernel's own constants keeps its own meaning>
+
+# Ported from builtin-name.ts by statement (item term-self-host-001-0608), one test per `ok` in its order. The kernel
+# lowers `is-equal` to its `equal` and arithmetic to its `add`, so a user task of such a name took them over inside the
+# kernel: every `is-equal` in the module failed as `expected <form>, found Type 0`, at an unrelated task. Found by the
+# check/cubical port (2026-10-04). `kindsApart` renames such a task on the kernel's copy. Each program is longhand,
+# loads nothing, and is built and run on node through test/support/running: a refusal fails the test with its reason.
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+# a task named `equal` beside `is-equal` in other tasks
+host equal-text, <form point\n  link x, like number\n\ntask equal\n  take a, like point\n  take b, like point\n  like boolean\n  send back, call is-equal, read(a/x), read(b/x)\n\ntask same\n  take n, like number\n  like boolean\n  send back, call is-equal, read(n), code 3\n\ntask run\n  like boolean\n  save p\n    make point\n      bind x, code 3\n  send back, call and, call(equal, read(p), read(p)), call(same, code 3)\n>
+
+# `cond` and `notequal`, the kernel's other names a task may take. `add`, `not`, `and` and the rest are Term's own words
+# at the surface too, refused there by the checker, which is the language reserving them and not this defect
+host cond-text, <task cond\n  take n, like number\n  like number\n  send back, call add, read(n), code 1\n\ntask notequal\n  take a, like text\n  take b, like text\n  like boolean\n  send back, call is-unequal, read(a), read(b)\n\ntask run\n  like boolean\n  save a, text \<a\>\n  save b, text \<b\>\n  send back, call and, call(is-equal, call(cond, code 1), code 2), call(notequal, read(a), read(b))\n>
+
+# what the program's run task answered on node, else why it did not run
+task answer-of
+  take source, like text
+  take name, like text
+  like text
+
+  host folder, temp-folder(<builtin-name->)
+  host ran, run-text(source, <typescript>, folder, name)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a task named equal, beside is-equal elsewhere>
+  want hold, is-equal(answer-of(equal-text, <equal>), <true>)
+
+test <tasks named cond and notequal, beside comparisons elsewhere>
+  want hold, is-equal(answer-of(cond-text, <cond>), <true>)

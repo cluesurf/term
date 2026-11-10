@@ -1,0 +1,184 @@
+note <term boot [mode] [entry]: development by default, production as star, a first word that is no mode the entry, and feed refused>
+
+# Ported from boot-mode.ts by statement (item term-self-host-001-0602), one test per `ok` in its order, the original's
+# loops over the mode words written out. The development server is `term boot`, and production is `term boot star`.
+# `moon`, `dev` and `development` are development, the default, and `star`, `prod` and `production` are production. A
+# first word that is none of the six is the entry, so `term boot app.tree` still boots that file. `term feed`, which was
+# the browser development server, refuses and names `term boot`. bootMode (deck/call/code/boot.ts, the subject, decision
+# 106) is called in this process, and the command itself runs as the `term` under test (@term/test/self), booting a
+# command-line program into a folder of a project in a temporary folder, made once by the first boot.
+
+load @term/test/self
+  find run-self
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/clock
+  find now, name clock-now
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/boot>, name mode-boot
+  load <node:fs>, name mode-file
+  load <node:path>, name mode-path
+
+bind mode-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# host value: whether a field of what bootMode read is undefined
+bind is-unset
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# host value: what bootMode read, as JSON
+bind read-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# host value: bootMode with no word at all
+bind mode-of-nothing
+  take module, like dynamic
+  like dynamic
+  case node
+    text <$module.bootMode()>
+
+form boot-ran
+  link code, like number
+  link text, like text
+
+form mode-state
+  mark shared
+  link root, like text
+
+host mode-now, make(mode-state, bind(root, <>))
+
+# whether a word reads as `mode`, the next word the entry
+task reads-as
+  take word, like text
+  take mode, like text
+  like boolean
+
+  save read, mode-boot/boot-mode(word, <app.tree>)
+  back and(is-equal(<{read/mode}>, mode), is-equal(<{read/entry}>, <app.tree>))
+
+# the project: a deck whose boot is a command-line program answering three
+task the-project
+  like text
+
+  fork test, is-unequal(mode-now/root, <>)
+    hold
+      back mode-now/root
+  save root, mode-file/realpath-sync(temp-folder(<boot-mode->))
+  mode-file/mkdir-sync(mode-path/join(root, <code>), mode-folder-options(0))
+  mode-file/write-file-sync(mode-path/join(root, <deck.tree>), <deck @probe/boot-mode\n  mark \<0.0.2\>\n  boot ./code/base.tree\n>)
+  mode-file/write-file-sync(mode-path/join(root, <code>, <base.tree>), <# run at {clock-now()}\n\n# Answer three\nhook say\n  task answer\n\ntask answer\n  like number\n  back 3\n>)
+  save mode-now/root, root
+  back root
+
+# `term boot` with these words, into the project's out folder, NODE_ENV empty
+task boot
+  take words, like list, like text
+  like boot-ran
+  mark async
+
+  save root, the-project()
+  save argument-list, make list(<boot>)
+  walk words
+    take one, like text
+    argument-list/push(one)
+  argument-list/push(<--out>)
+  argument-list/push(mode-path/join(root, <out>))
+  save environment
+    make hash
+      save <NODE_ENV>, <>
+  save ran, run-self(argument-list, root, 600000, environment)
+  back make(boot-ran, bind(code, ran/code), bind(text, <{ran/output}{ran/error}>))
+
+# whether a boot with these words passes and says `word`
+task boots-in
+  take words, like list, like text
+  take word, like text
+  like boolean
+  mark async
+
+  save ran, boot(words)
+  back and(is-equal(ran/code, 0), matches(make(pattern, word), ran/text))
+
+test <moon is development, and the next word the entry>
+  want hold, reads-as(<moon>, <development>)
+
+test <dev is development, and the next word the entry>
+  want hold, reads-as(<dev>, <development>)
+
+test <development is development, and the next word the entry>
+  want hold, reads-as(<development>, <development>)
+
+test <star is production, and the next word the entry>
+  want hold, reads-as(<star>, <production>)
+
+test <prod is production, and the next word the entry>
+  want hold, reads-as(<prod>, <production>)
+
+test <production is production, and the next word the entry>
+  want hold, reads-as(<production>, <production>)
+
+test <a first word that is no mode is the entry>
+  want hold, is-equal(read-json(mode-boot/boot-mode(<app.tree>)), <<{"entry":"app.tree"}>>)
+
+test <nothing names neither>
+  save read, mode-of-nothing(mode-boot)
+  want hold, and(is-unset(read/mode), is-unset(read/entry))
+
+test <a mode alone names no entry>
+  save read, mode-boot/boot-mode(<star>)
+  want hold, and(is-equal(<{read/mode}>, <production>), is-unset(read/entry))
+
+# the command itself, through the CLI under test, in each mode
+test <a bare term boot is development>
+  save none, make list
+  want hold, boots-in(none, <development>)
+
+test <term boot moon is development>
+  want hold, boots-in(make(list, <moon>), <development>)
+
+test <term boot dev is development>
+  want hold, boots-in(make(list, <dev>), <development>)
+
+test <term boot development is development>
+  want hold, boots-in(make(list, <development>), <development>)
+
+test <term boot star is production>
+  want hold, boots-in(make(list, <star>), <production>)
+
+test <term boot prod is production>
+  want hold, boots-in(make(list, <prod>), <production>)
+
+test <term boot production is production>
+  want hold, boots-in(make(list, <production>), <production>)
+
+test <a mode and an entry boot that entry in that mode>
+  save root, the-project()
+  want hold, boots-in(make(list, <star>, mode-path/join(root, <code>, <base.tree>)), <production>)
+
+test <an entry alone boots it in development>
+  save root, the-project()
+  want hold, boots-in(make(list, mode-path/join(root, <code>, <base.tree>)), <development>)
+
+test <term feed starts nothing, exit 2>
+  save ran, run-self(make(list, <feed>), the-project(), 600000)
+  want hold, is-equal(ran/code, 2)
+
+test <and names term boot>
+  save ran, run-self(make(list, <feed>), the-project(), 600000)
+  want hold, matches(make(pattern, <term boot>), <{ran/output}{ran/error}>)

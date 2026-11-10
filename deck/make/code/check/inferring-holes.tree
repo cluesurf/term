@@ -10,7 +10,7 @@
 #   - the environment is walked newest first, by its keys in insertion order, which a Term `hash` keeps on every
 #     backend (note/project/term/optimize/meaning.md question 1, test/compile/meaning-native.ts), so section 4.4 needs
 #     no list beside it
-#   - the tasks a hole offers sort by `locale-compare` through deck/lock, as compile/rolling.tree does (section 4.5)
+#   - the tasks a hole offers sort by `locale-compare` through lockfile.tree, as compile/rolling.tree does (section 4.5)
 #   - a trial unification restores the substitution's two tables and its counter as the original did, the tables
 #     copied before the trial and put back after it
 #   - the program is written in place by `check/resolving.tree`'s pattern: each task answers the node to keep and its
@@ -63,7 +63,7 @@ load ../compile/node-rewrite
 load ../compile/type-text
   find show-type
 
-load ../deck/lock
+load ../lockfile
   find locale-compare
 
 load ./substitution

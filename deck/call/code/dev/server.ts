@@ -32,7 +32,7 @@ import {
   affectedModules,
 } from '@term/make/code/dev/hmr'
 import type { HmrResult } from '@term/make/code/dev/hmr'
-import { devClient } from '@term/make/code/dev/client'
+import { devClient } from '@term/make/code/dev/hmr-client'
 
 const MOD_PREFIX = '/@mod/'
 const CLIENT_URL = '/@seed/client.mjs'

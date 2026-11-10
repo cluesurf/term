@@ -39,6 +39,10 @@ load @term/deck/package/tree-reading
 load @term/make/compile/host-data
   find escape-text
 
+# a `<phrase>` title read as an ordinary literal reads it: `\<` `\>` `\{` `\}` `\n` `\r` `\t` `\e` `\\` (item 1146)
+load @term/make/compile/surface
+  find unescape-text
+
 # a guard's lines, each with the source line it came from
 form want-written
   link lines, like list, like text
@@ -518,7 +522,8 @@ task header-slug
       back slugify(phrase)
   back trim(rest)
 
-# and its label: the phrase verbatim, or the slug with dashes shown as spaces
+# and its label: the phrase unescaped as a literal's text is, so `<x \>= 0>` reads `x >= 0`, or the slug with dashes
+# shown as spaces. The slug is cut from the phrase as written, so no task name moves
 task header-label
   take rest, like text
   like text
@@ -526,7 +531,7 @@ task header-label
   save phrase, header-phrase(rest)
   fork test, not(is-equal(phrase, <>))
     hold
-      back phrase
+      back unescape-text(phrase)
   back replace-all(trim(rest), <->, < >)
 
 # The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it

@@ -1,0 +1,76 @@
+note <A case arm that only reads a left-out list leaves the record as it was>
+
+# Ported from arm-list-read.ts by statement (item term-self-host-001-0612). A case arm that only READS a left-out `need
+# false` list leaves the record as it was, and one that writes through it puts the list in the record, as the native field
+# holds it. Until 2026-10-05 both put it there (`??=`), so a port that walked a type's `args` gave every type it read
+# `args: []`, and the checker tells that from none (`if (subject.args)`). compile/typescript.ts `onlyReads`. The program
+# is compiled as a lean library for node, and one main prints what each call answered and whether each record holds
+# `items` afterwards, made once in the first test that asks.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+host fixture, <load @term/base/list\n  find list\n\nform shape\n  case group\n    link items\n      like list, like number\n      need false\n  case dot\n\ntask total\n  take value, like shape\n  like number\n\n  save sum, 0\n  sift value\n    case group\n      walk items\n        take one\n        save sum, add(sum, one)\n    case dot\n      back 0\n  back sum\n\ntask size\n  take value, like shape\n  like number\n\n  sift value\n    case group\n      back items/length\n    case dot\n      back 0\n\ntask grow\n  take value, like shape\n  like shape\n  mark private\n\n  sift value\n    case group\n      push(items, 7)\n      back value\n    case dot\n      back value\n\ntask grown\n  take value, like shape\n  like shape\n\n  back grow(value)\n>
+
+# the records the original handed in, and what it read of each, in order: 0 total(walked), 1 whether walked holds
+# items, 2 size(measured), 3 whether measured holds items, 4 total(given), 5 size(given), 6 the items grown wrote
+host main, <const walked = \{ form: "group" \}\nconst measured = \{ form: "group" \}\nconst given = \{ form: "group", items: [1, 2] \}\nconst a = total(walked)\nconst c = size(measured)\nconst written = grown(\{ form: "group" \})\nprocess.stdout.write([a, "items" in walked, c, "items" in measured, total(given), size(given), JSON.stringify(written.items)].join("|"))>
+
+form read-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(read-answers, bind(held, make hash))
+
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save out, compile-text(fixture, make(compile-choice, bind(file, <arm-list-read.tree>), bind(stdlib, <node>), bind(library, true), bind(lean, true)))
+  save folder, temp-folder(<term-arm-list-read->)
+  save said, typescript-answer(out, main, folder, <arm-list-read>)
+  save kept/held/{key}, said
+  back said
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <a walk over a left-out list reads it as empty>
+  want hold, is-equal(answer(0), <0>)
+
+test <and leaves the record as it was>
+  want hold, is-equal(answer(1), <false>)
+
+test <its length reads as zero>
+  want hold, is-equal(answer(2), <0>)
+
+test <and leaves the record as it was too>
+  want hold, is-equal(answer(3), <false>)
+
+test <a list that is there is read>
+  want hold, is-equal(answer(4), <3>)
+  want hold, is-equal(answer(5), <2>)
+
+test <a write through a left-out list lands in the record>
+  want hold, is-equal(answer(6), <[7]>)

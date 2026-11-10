@@ -1,0 +1,446 @@
+note <the cell grid places the vocabulary's layout model in a terminal's cells, each grid worked out by hand, and its character widths agree with string-width>
+
+# Ported from cells.ts by statement (item term-self-host-001-0644), one test per `ok` in its order, the original's loops
+# over its literal lists of cases and samples written out, one test per element (terminal-target-0001,
+# deck/site/code/view/cells/grid.tree). Each case's EXPECTED grid is worked out by hand from the layout model (CSS's
+# defaults, a cell 8 points wide and 16 tall, growers sharing the free cells, clipping never shrinking), never read from
+# the engine's own output. Rows end where the last drawn cell does. Each case's tree is written as a call, spelled as
+# the Term the program holds by `term-of`, the original's own helper, and laid out by a task of the program. The program
+# is built and run once on node through test/support/running, and answers each grid, then the witness, then each
+# sample's cluster line, joined by a line of `=====`.
+#
+# The width of a character is held separately: the grid's `cell-width` is asked for EVERY code point, U+0000 to
+# U+10FFFF, and each answer compared with string-width's for that code point alone, inside the program. string-width is
+# borrowed, as the Term package does not declare it: `borrowed-file` is the part of test/borrow.ts this suite needs
+# (decision 1141), looking in the Term root and then the folder TERM_TEST_MODULES names. Without it the width tests are
+# skipped and the grids still run, where the original printed one skip line and wrote no test for the clusters. The
+# original's witness reached `cellWidth` and `fromCodePoint` in the emitted module, so the program's loads find
+# `cell-width` and `from-runes` as well, its only change.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find run-text
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists, name file-exists
+
+load @term/base/path
+  find directory
+  find resolve-path
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find starts-with
+  find index-of
+  find substring
+  find char-count
+
+host base-program, <load @term/site/code/view/cells/grid\n  find cell-node\n  find lay-out\n  find runes-width\n  find cell-width\n\nload @term/base/code/list\n  find list\n\nload @term/base/text/unicode\n  find to-runes\n  find from-runes\n\ntask cluster-cells\n  take value, like text\n  like number\n  send back\n    call runes-width\n      call to-runes\n        read value\n\ntask blank\n  like cell-node\n  send back\n    make cell-node\n      bind kind, text \<text\>\n      bind text, text \<\>\n      bind direction, text \<column\>\n      bind gap, code 0\n      bind align, text \<stretch\>\n      bind justify, text \<start\>\n      bind padding, code 0\n      bind grow, code 0\n      bind width, code 0\n      bind height, code 0\n      bind min-width, code 0\n      bind max-width, code 0\n      bind min-height, code 0\n      bind max-height, code 0\n      bind children\n        make list\n\ntask text-node\n  take value, like text\n  like cell-node\n  save made\n    call blank\n  save made/text, read value\n  send back, read made\n\ntask spacer-node\n  like cell-node\n  save made\n    call blank\n  save made/kind, text \<spacer\>\n  save made/grow, code 1\n  send back, read made\n\ntask divider-node\n  like cell-node\n  save made\n    call blank\n  save made/kind, text \<divider\>\n  send back, read made\n\ntask frame-node\n  take width, like number\n  take child, like cell-node\n  like cell-node\n  save made\n    call blank\n  save made/kind, text \<frame\>\n  save made/width, read width\n  call made/children/push\n    read child\n  send back, read made\n\ntask bounded-node\n  take low, like number\n  take high, like number\n  take child, like cell-node\n  like cell-node\n  save made\n    call blank\n  save made/kind, text \<frame\>\n  save made/min-width, read low\n  save made/max-width, read high\n  call made/children/push\n    read child\n  send back, read made\n\ntask stack\n  take direction, like text\n  take gap, like number\n  take align, like text\n  take justify, like text\n  take padding, like number\n  take children\n    like list\n      like cell-node\n  like cell-node\n  save made\n    call blank\n  save made/kind, text \<stack\>\n  save made/direction, read direction\n  save made/gap, read gap\n  save made/align, read align\n  save made/justify, read justify\n  save made/padding, read padding\n  save made/children, read children\n  send back, read made\n\ntask one\n  take a, like cell-node\n  like list\n    like cell-node\n  save made\n    make list\n  call made/push\n    read a\n  send back, read made\n\ntask two\n  take a, like cell-node\n  take b, like cell-node\n  like list\n    like cell-node\n  save made\n    make list\n  call made/push\n    read a\n  call made/push\n    read b\n  send back, read made\n\ntask three\n  take a, like cell-node\n  take b, like cell-node\n  take c, like cell-node\n  like list\n    like cell-node\n  save made\n    make list\n  call made/push\n    read a\n  call made/push\n    read b\n  call made/push\n    read c\n  send back, read made\n>
+
+# each case: the Term expression building its tree, the grid's size, and the grid by hand
+form cell-case
+  link tree, like text
+  link width, like number
+  link height, like number
+  link want, like text
+
+# ---- the borrowed package ----
+
+# node's own package resolution of a borrowed package's entry, which reads the package's exports map
+# host native: createRequire is node's resolver, and the entry depends on each package's exports
+bind package-entry
+  take place, like text
+  take name, like text
+  like text
+  case node
+    text <process.getBuiltinModule('node:module').createRequire($place + '/package.json').resolve($name)>
+
+# the folders a package is looked for in, in order: the Term root, then the folder TERM_TEST_MODULES names
+task borrow-places
+  like list, like text
+
+  save places, make list(term-root())
+  save given, trim(variable(<TERM_TEST_MODULES>))
+  fork test, is-unequal(given, <>)
+    hold
+      places/push(resolve-path(term-root(), given))
+  back places
+
+# whether the package sits in a node_modules of the place or a folder above it. `require` also falls back to
+# NODE_PATH, where an older table was once found, so the folders are walked first
+task installed-in
+  take place, like text
+  take name, like text
+  like boolean
+  mark async
+
+  fork test, file-exists(<{place}/node_modules/{name}/package.json>)
+    hold
+      back true
+  save up, directory(place)
+  fork test, is-equal(up, place)
+    hold
+      back false
+  back installed-in(up, name)
+
+# the package's entry file, <> when it is not installed where it is looked for
+task borrowed-file
+  take name, like text
+  like text
+  mark async
+
+  walk borrow-places()
+    take place, like text
+    fork test, installed-in(place, name)
+      hold
+        save file, <>
+        fork
+          mark unsafe
+          save file, package-entry(place, name)
+        halt take
+          take problem
+          save ignored, 0
+        fork test, is-unequal(file, <>)
+          hold
+            back file
+  back <>
+
+# ---- spelling a case ----
+
+host integer, make pattern, <<^-?\d+$>>
+
+task pad-of
+  take depth, like number
+  like text
+
+  fork test, is-below(depth, 1)
+    hold
+      back <>
+  back <  {pad-of(subtract(depth, 1))}>
+
+# a case's tree is written as a call; this spells it as the Term the program holds, one call per line
+task term-of
+  take expression, like text
+  take depth, like number
+  like text
+
+  save pad, pad-of(depth)
+  save text, trim(expression)
+  fork test, starts-with(text, <\<>)
+    hold
+      back <{pad}text {text}>
+  fork test, matches(integer, text)
+    hold
+      back <{pad}code {text}>
+  save open, index-of(text, <(>)
+  save name, substring(text, 0, open)
+  save inside, substring(text, add(open, 1), subtract(char-count(text), 1))
+  save args, make list
+  save current, <>
+  save level, 0
+  save quoted, false
+  walk text-split(inside, <>)
+    take c, like text
+    fork test, is-equal(c, <\<>)
+      hold
+        save quoted, true
+        save current, <{current}{c}>
+      miss
+        fork test, is-equal(c, <\>>)
+          hold
+            save quoted, false
+            save current, <{current}{c}>
+          miss
+            fork test, and(and(not(quoted), is-equal(level, 0)), is-equal(c, <,>))
+              hold
+                args/push(current)
+                save current, <>
+              miss
+                fork test, and(not(quoted), is-equal(c, <(>))
+                  hold
+                    save level, add(level, 1)
+                fork test, and(not(quoted), is-equal(c, <)>))
+                  hold
+                    save level, subtract(level, 1)
+                save current, <{current}{c}>
+  fork test, is-unequal(trim(inside), <>)
+    hold
+      args/push(current)
+  save lines, make list(<{pad}call {name}>)
+  walk args
+    take arg, like text
+    lines/push(term-of(arg, add(depth, 1)))
+  back lines/join(<\n>)
+
+host run-task, <task run\n  like text\n  save parts\n    make list\n  call parts/push\n    call case-0\n  call parts/push\n    call case-1\n  call parts/push\n    call case-2\n  call parts/push\n    call case-3\n  call parts/push\n    call case-4\n  call parts/push\n    call case-5\n  call parts/push\n    call case-6\n  call parts/push\n    call case-7\n  call parts/push\n    call case-8\n  call parts/push\n    call case-9\n  call parts/push\n    call case-10\n  call parts/push\n    call case-11\n  call parts/push\n    call case-12\n  call parts/push\n    call case-13\n  call parts/push\n    call case-14\n  call parts/push\n    call case-15\n  call parts/push\n    call case-16\n  call parts/push\n    call case-17\n  call parts/push\n    call case-18\n  call parts/push\n    call case-19\n  call parts/push\n    call case-20\n  call parts/push\n    call case-21\n  call parts/push\n    call case-22\n  call parts/push\n    call case-23\n  call parts/push\n    call witness\n  call parts/push\n    call cluster-line\n      text \<👨‍👩‍👧\>\n  call parts/push\n    call cluster-line\n      text \<🇯🇵\>\n  call parts/push\n    call cluster-line\n      text \<각\>\n  call parts/push\n    call cluster-line\n      text \<각\>\n  call parts/push\n    call cluster-line\n      text \<가\>\n  call parts/push\n    call cluster-line\n      text \<❤️\>\n  call parts/push\n    call cluster-line\n      text \<é\>\n  call parts/push\n    call cluster-line\n      text \<🇯🇵🇯🇵\>\n  call parts/push\n    call cluster-line\n      text \<a👨‍👩‍👧b\>\n  call parts/push\n    call cluster-line\n      text \<#️⃣\>\n  call parts/push\n    call cluster-line\n      text \<👍🏽\>\n  call parts/push\n    call cluster-line\n      text \<日本\>\n  send back\n    call parts/join\n      text \<\\n=====\\n\>\n>
+
+task witness-for
+  take file, like text
+  like text
+
+  back <dock load\n  load \<{file}\>, name width-module\n\ntask theirs-of\n  take rune, like number\n  like number\n  fork test\n    hook test\n      call and\n        call is-above\n          read rune\n          code 55295\n        call is-below\n          read rune\n          code 57344\n    hook hold\n      send back, code 0\n  save runes\n    make list\n  call runes/push\n    read rune\n  send back\n    call width-module/default\n      call from-runes\n        read runes\n\ntask witness\n  like text\n  save count, code 0\n  save shown\n    make list\n  walk size\n    bind base, code 0\n    bind head, code 1114112\n    hook next\n      take site, name rune\n      save ours\n        call cell-width\n          read rune\n      save theirs\n        call theirs-of\n          read rune\n      fork test\n        hook test\n          call is-unequal\n            read ours\n            read theirs\n        hook hold\n          save count\n            call add\n              read count\n              code 1\n          fork test\n            hook test\n              call is-below\n                read shown/length\n                code 8\n            hook hold\n              call shown/push\n                text \<U+\{\{rune\}\} \{\{ours\}\} not \{\{theirs\}\}\>\n  save joined\n    call shown/join\n      text \<, \>\n  send back, text \<\{\{count\}\}|\{\{joined\}\}\>\n\ntask cluster-line\n  take value, like text\n  like text\n  save ours\n    call cluster-cells\n      read value\n  save theirs\n    call width-module/default\n      read value\n  send back, text \<\{\{ours\}\} \{\{theirs\}\}\>\n>
+
+host stub-text, <task witness\n  like text\n  send back, text \<\>\n\ntask cluster-line\n  take value, like text\n  like text\n  send back, text \<\>\n>
+
+host cases, make list(make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, two(text-node(\<one\>), text-node(\<two\>)))>), bind(width, 10), bind(height, 3), bind(want, <one\ntwo\n>)), make(cell-case, bind(tree, <stack(\<row\>, 16, \<stretch\>, \<start\>, 0, two(text-node(\<ab\>), text-node(\<cd\>)))>), bind(width, 10), bind(height, 1), bind(want, <ab  cd>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 0, three(text-node(\<L\>), spacer-node(), text-node(\<R\>)))>), bind(width, 10), bind(height, 1), bind(want, <L        R>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<between\>, 0, three(text-node(\<a\>), text-node(\<b\>), text-node(\<c\>)))>), bind(width, 9), bind(height, 1), bind(want, <a   b   c>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<center\>, \<start\>, 0, one(text-node(\<hi\>)))>), bind(width, 10), bind(height, 1), bind(want, <    hi>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, three(text-node(\<ab\>), divider-node(), text-node(\<cd\>)))>), bind(width, 4), bind(height, 3), bind(want, <ab\n────\ncd>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 0, three(text-node(\<ab\>), divider-node(), text-node(\<cd\>)))>), bind(width, 5), bind(height, 1), bind(want, <ab│cd>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, one(text-node(\<the quick brown fox\>)))>), bind(width, 10), bind(height, 3), bind(want, <the quick\nbrown fox\n>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, one(frame-node(48, text-node(\<aaa bbb ccc\>))))>), bind(width, 20), bind(height, 2), bind(want, <aaa\nbbb>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, two(text-node(\<日本語\>), text-node(\<éx\>)))>), bind(width, 10), bind(height, 2), bind(want, <日本語\néx>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 16, one(text-node(\<x\>)))>), bind(width, 6), bind(height, 3), bind(want, <\n  x\n>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, two(stack(\<column\>, 8, \<stretch\>, \<start\>, 0, two(text-node(\<a\>), text-node(\<b\>))), stack(\<column\>, 4, \<stretch\>, \<start\>, 0, two(text-node(\<c\>), text-node(\<d\>)))))>), bind(width, 4), bind(height, 5), bind(want, <a\n\nb\nc\nd>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<end\>, \<start\>, 0, two(text-node(\<ab\>), text-node(\<c\>)))>), bind(width, 6), bind(height, 2), bind(want, <    ab\n     c>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<center\>, 0, two(text-node(\<ab\>), text-node(\<cd\>)))>), bind(width, 8), bind(height, 1), bind(want, <  abcd>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<end\>, 0, two(text-node(\<ab\>), text-node(\<cd\>)))>), bind(width, 8), bind(height, 1), bind(want, <    abcd>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 0, two(bounded-node(64, 0, text-node(\<ab\>)), text-node(\<x\>)))>), bind(width, 12), bind(height, 1), bind(want, <ab      x>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<start\>, \<start\>, 0, one(bounded-node(0, 32, text-node(\<abc def\>))))>), bind(width, 12), bind(height, 2), bind(want, <abc\ndef>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, one(stack(\<row\>, 0, \<stretch\>, \<start\>, 0, three(text-node(\<a\>), spacer-node(), text-node(\<b\>)))))>), bind(width, 6), bind(height, 1), bind(want, <a    b>)), make(cell-case, bind(tree, <stack(\<row\>, 16, \<stretch\>, \<start\>, 0, two(text-node(\<ab\>), text-node(\<cd ef\>)))>), bind(width, 7), bind(height, 2), bind(want, <ab  cd\n    ef>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, one(frame-node(16, text-node(\<[ add ]\>))))>), bind(width, 2), bind(height, 4), bind(want, <[\nad\nd\n]>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 0, one(text-node(\<👨‍👩‍👧ab\>)))>), bind(width, 4), bind(height, 1), bind(want, <👨‍👩‍👧ab>)), make(cell-case, bind(tree, <stack(\<column\>, 0, \<stretch\>, \<start\>, 0, one(text-node(\<🇯🇵🇯🇵 x\>)))>), bind(width, 3), bind(height, 3), bind(want, <🇯🇵\n🇯🇵\nx>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<start\>, 0, one(text-node(\<각x\>)))>), bind(width, 3), bind(height, 1), bind(want, <각x>)), make(cell-case, bind(tree, <stack(\<row\>, 0, \<stretch\>, \<end\>, 0, one(text-node(\<❤️x\>)))>), bind(width, 4), bind(height, 1), bind(want, < ❤️x>)))
+
+# every case as a task of the program laying its tree out at its size
+task case-tasks
+  like text
+
+  save out, make list
+  save at, 0
+  walk cases
+    take one, like cell-case
+    out/push(<task case-{at}\n  like text\n  send back\n    call lay-out\n{term-of(one/tree, 3)}\n      code {one/width}\n      code {one/height}>)
+    save at, add(at, 1)
+  back out/join(<\n\n>)
+
+host case-text, case-tasks()
+
+# the program the original compiled: the builders, the cases and the run, the witness left out
+host out, compile-text(<{base-program}\n{case-text}\n\n{run-task}\n{stub-text}>, make(compile-choice, bind(file, <cells.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+# the run, made once: `file` string-width's entry or <>, `state` how it went, `parts` what it answered
+form held-run
+  mark shared
+  link done, like boolean
+  link file, like text
+  link state, like text
+  link parts, like list, like text
+
+host held, make(held-run, bind(done, false), bind(file, <>), bind(state, <>), bind(parts, make list))
+
+task the-run
+  like held-run
+  mark async
+
+  fork test, held/done
+    hold
+      back held
+  save held/file, borrowed-file(<string-width>)
+  save witness, stub-text
+  fork test, is-unequal(held/file, <>)
+    hold
+      save witness, witness-for(held/file)
+  host folder, temp-folder(<term-cells->)
+  host ran, run-text(<{base-program}\n{case-text}\n\n{run-task}\n{witness}>, <typescript>, folder, <cells>, make(compile-choice, bind(file, <cells.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  save held/state, <{ran/state} {ran/stage} {ran/reason}>
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save held/state, <ran>
+      save held/parts, text-split(ran/output, <\n=====\n>)
+  save held/done, true
+  back held
+
+# whether string-width was found, so the widths can be held to it
+task measured
+  take seed, like number
+  like boolean
+  mark async
+
+  back is-unequal(the-run()/file, <>)
+
+# the answer at `at`, <none> when the run gave none
+task part
+  take at, like number
+  like text
+  mark async
+
+  save parts, the-run()/parts
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <none>
+
+task grid-at
+  take at, like number
+  like text
+  mark async
+
+  back part(at)
+
+# a sample's cells, the grid's then string-width's, equal and both there
+task cluster-agrees
+  take at, like number
+  like boolean
+  mark async
+
+  save both, text-split(trim(part(add(25, at))), < >)
+  fork test, is-unequal(both/length, 2)
+    hold
+      back false
+  back is-equal(both/0, both/1)
+
+test <the cell grid and the cases compile>
+  want hold, out/ok
+
+test <it runs>
+  want hold, is-equal(the-run()/state, <ran>)
+
+test <cell-width agrees with string-width on all 1,114,112 code points>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to hold the widths to>
+  want hold, is-equal(part(24), <0|>)
+
+test <U+1F468 U+200D U+1F469 U+200D U+1F467 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(0)
+
+test <U+1F1EF U+1F1F5 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(1)
+
+test <U+1100 U+1161 U+11A8 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(2)
+
+test <U+AC00 U+11A8 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(3)
+
+test <U+1100 U+1161 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(4)
+
+test <U+2764 U+FE0F takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(5)
+
+test <U+65 U+301 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(6)
+
+test <U+1F1EF U+1F1F5 U+1F1EF U+1F1F5 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(7)
+
+test <U+61 U+1F468 U+200D U+1F469 U+200D U+1F467 U+62 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(8)
+
+test <U+23 U+FE0F U+20E3 takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(9)
+
+test <U+1F44D U+1F3FD takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(10)
+
+test <U+65E5 U+672C takes the cells string-width measures for the cluster>
+  fork test, not(measured(0))
+    hold
+      skip <no string-width to measure the cluster with>
+  want hold, cluster-agrees(11)
+
+test <a stack with no direction is a column: one child under the other>
+  want hold, is-equal(grid-at(0), cases/0/want)
+
+test <a row with a 16 point gap: 2 blank cells between>
+  want hold, is-equal(grid-at(1), cases/1/want)
+
+test <a grower between two texts takes the 8 free cells of a 10 cell row>
+  want hold, is-equal(grid-at(2), cases/2/want)
+
+test <justify between spreads 6 free cells as 3 between each pair>
+  want hold, is-equal(grid-at(3), cases/3/want)
+
+test <align center in a 10 cell column puts a 2 cell text at column 4>
+  want hold, is-equal(grid-at(4), cases/4/want)
+
+test <a divider in a column is a line across it>
+  want hold, is-equal(grid-at(5), cases/5/want)
+
+test <a divider in a row is a line down it>
+  want hold, is-equal(grid-at(6), cases/6/want)
+
+test <text wraps at the width, words kept whole>
+  want hold, is-equal(grid-at(7), cases/7/want)
+
+test <a frame 48 points wide keeps its 6 cells in a stretching column, its text wraps there and clips at the height>
+  want hold, is-equal(grid-at(8), cases/8/want)
+
+test <a wide character takes two cells, a combining mark none>
+  want hold, is-equal(grid-at(9), cases/9/want)
+
+test <16 points of padding is 2 cells across and 1 down>
+  want hold, is-equal(grid-at(10), cases/10/want)
+
+test <an 8 point gap in a column is one blank row, a 4 point gap none>
+  want hold, is-equal(grid-at(11), cases/11/want)
+
+test <align end puts each child of a column against its far edge, at its own width>
+  want hold, is-equal(grid-at(12), cases/12/want)
+
+test <justify center leaves equal room before and after the children of a row>
+  want hold, is-equal(grid-at(13), cases/13/want)
+
+test <justify end puts the children of a row against its far edge>
+  want hold, is-equal(grid-at(14), cases/14/want)
+
+test <a minimum width holds a frame wider than its content>
+  want hold, is-equal(grid-at(15), cases/15/want)
+
+test <a maximum width holds a frame narrower than its content, which wraps inside it>
+  want hold, is-equal(grid-at(16), cases/16/want)
+
+test <a row inside a column is stretched across, so its grower reaches the far edge>
+  want hold, is-equal(grid-at(17), cases/17/want)
+
+test <a child of a row is measured in the room left after the children and the gaps before it>
+  want hold, is-equal(grid-at(18), cases/18/want)
+
+test <a word wider than a 2 cell line is broken at the edge and its rest starts the next line>
+  want hold, is-equal(grid-at(19), cases/19/want)
+
+test <a family joined by zero-width joiners takes 2 cells, as one cluster>
+  want hold, is-equal(grid-at(20), cases/20/want)
+
+test <a word wider than its line breaks between flags, never inside one>
+  want hold, is-equal(grid-at(21), cases/21/want)
+
+test <a Hangul syllable spelled in jamo takes 2 cells>
+  want hold, is-equal(grid-at(22), cases/22/want)
+
+test <a character asked to draw as an emoji takes 2 cells>
+  want hold, is-equal(grid-at(23), cases/23/want)

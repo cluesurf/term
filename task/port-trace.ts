@@ -19,7 +19,8 @@
 // the one cache it cannot reach, resolve.ts `codeRootCache` (keyed by a deck.tree's mtime, which it stats on every
 // call), is attributed here: a stat that sees a file also records that file's read. Whatever the process observed
 // OUTSIDE every module (stage0 loading, port-build between modules) is a key of every later module. A read the trace
-// cannot describe (a file descriptor, `openSync`, a stream) marks the process UNTRACKABLE from that point on, and an
+// cannot describe (a descriptor it never saw opened for reading, a write open, a stream) marks the process UNTRACKABLE
+// from that point on (a read-only `openSync` of a path is a read of it, A READ-ONLY DESCRIPTOR below), and an
 // untrackable module is never skipped.
 //
 // It also keeps, per compile, the `.tree` sources that compile read (openWindow / closeWindow), which port-build
@@ -259,13 +260,95 @@ target.accessSync = wrap(fs.accessSync, 'access')
 
 ;(target.realpathSync as unknown as { native: unknown }).native = wrap(fs.realpathSync.native, 'real')
 
+// A READ-ONLY DESCRIPTOR (item term-self-host-001-1041). An `openSync` of a path for reading is a read of that path:
+// whatever is read through the descriptor is the file's content, which the read observation hashes, and an `fstatSync`
+// of it learns the kind and size a stat would. Node's own `readFileSync` opens and reads through the module object, and
+// from node 23 the ESM loader under tsx's synchronous hooks loads a module's source with the ORIGINAL `readFileSync`,
+// at depth 0, so its `openSync` and `readSync` reached here. Marked untrackable, they made every module of every run
+// on node 24 a compile (port-build loads stage0 through that loader). So a read-only open is filed as a read, its
+// descriptor is remembered until it is closed, and a read or fstat through a remembered descriptor is no untrackable
+// read. Any other open (a write, an append, a descriptor this trace never saw opened) stays untrackable
+const readOnly = new Set<number>()
+
+function readOnlyFlags(flags: unknown): boolean {
+  if (flags === undefined || flags === null) {
+    return true
+  }
+
+  if (typeof flags === 'string') {
+    return flags === 'r' || flags === 'rs' || flags === 'sr'
+  }
+
+  if (typeof flags === 'number') {
+    const { O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND } = fs.constants
+
+    return (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)) === 0
+  }
+
+  return false
+}
+
+const openSync = fs.openSync
+
+target.openSync = function (this: unknown, ...args: any[]) {
+  const at = absolute(args[0])
+  const filed = recording && depth === 0 && at !== undefined && readOnlyFlags(args[1])
+
+  if (filed) {
+    note('read', at)
+
+    if (window && at.endsWith('.tree') && !window.has(at)) {
+      window.set(at, observe('read', at))
+    }
+  } else if (recording && depth === 0) {
+    seen.set(UNTRACKABLE, 'never')
+  }
+
+  depth++
+
+  let fd: number
+
+  try {
+    fd = openSync.apply(fs, args as Parameters<typeof fs.openSync>)
+  } finally {
+    depth--
+  }
+
+  if (filed) {
+    readOnly.add(fd)
+  }
+
+  return fd
+} as typeof fs.openSync
+
+for (const name of ['readSync', 'readvSync', 'fstatSync']) {
+  const original = target[name]!
+
+  target[name] = function (this: unknown, ...args: any[]) {
+    if (recording && depth === 0 && !readOnly.has(args[0])) {
+      seen.set(UNTRACKABLE, 'never')
+    }
+
+    depth++
+
+    try {
+      return original.apply(this, args)
+    } finally {
+      depth--
+    }
+  }
+}
+
+const closeSync = fs.closeSync
+
+target.closeSync = function (this: unknown, ...args: any[]) {
+  readOnly.delete(args[0])
+  return closeSync.apply(fs, args as Parameters<typeof fs.closeSync>)
+} as typeof fs.closeSync
+
 // reads the trace cannot describe as content at a path, and every asynchronous read, which could land at any time:
 // one made while recording marks the process untrackable, so no module after it is skipped
 const UNTRACKED = [
-  'openSync',
-  'readSync',
-  'readvSync',
-  'fstatSync',
   'opendirSync',
   'readlinkSync',
   'createReadStream',

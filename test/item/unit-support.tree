@@ -1,0 +1,246 @@
+note <the room, the clock and the event parts of test/item/build.ts, and the line readers of test/item/unit.ts, shared by both parts of its port>
+
+# Ported from test/item/build.ts and the helpers at the head of test/item/unit.ts (item term-self-host-001-0670), for
+# unit-part-1 and the part after it. The terminal output library is the subject, loaded as the Term modules it is
+# (deck/call/code/work/item), the same code the TypeScript original reached through its compiled port. An event of the
+# original's `ev` is `make(event, ...)` here: every field of the event form has its absent value as a `fall`, as
+# `blankEvent()` gave the original, so a case names only what it has. `frame` and `node` are the same, the defaults of
+# their forms. What the original's `ev` turned into a form of the library (a subject from a text, a clock from a time,
+# a status from a number) is a task below.
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find starts-with, name text-starts-with
+  find trim-start
+  find substring
+  find pad-right
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+load @term/call/work/item/standard
+  find standard
+  find make-standard
+
+load @term/call/work/item/layout
+  find room
+  find line
+  find make-room
+  find line-text
+  find unglue-text
+  find make-spaces
+
+load @term/call/work/item/event
+  find status
+  find tally
+  find item-field
+  find plain-subject
+
+load @term/call/work/item/measure
+  find measure-text
+
+host space-pattern, make pattern, <<\s>>
+
+# the standard as the mockups draw it: a clock on every item (D35) and the verb dim (D36). The standard itself shows a
+# clock only on a slow item or a live log, and draws the verb cyan
+task mockup-standard
+  like standard
+
+  save one, make-standard()
+  save one/layout/verb-role, <dim>
+  save one/facts/clock-from, -1
+  back one
+
+host mockups, mockup-standard()
+
+# the mockups' zone: Pacific daylight time, 2026-10-03, in minutes east of UTC
+task mockup-offset
+  like number
+
+  back -420
+
+# a room of the mockups' standard and zone
+task room-of
+  take width, like number
+  take ascii, like boolean, fall false
+  take utc, like boolean, fall false
+  like room
+
+  back make-room(width, mockups, ascii, mockup-offset(), utc)
+
+# a clock on the mockups' day, `14:42:00.005`, as epoch milliseconds. 1790985600000 is 2026-10-03 at midnight UTC
+task clock-at
+  take time, like text
+  take day, like number, fall 3
+  like number
+
+  save parts, text-split(time, <.>)
+  save millis, <0>
+  fork test, is-above(parts/length, 1)
+    hold
+      save millis, parts/1
+  save clock, text-split(parts/0, <:>)
+  save hours, 0
+  save minutes, 0
+  save seconds, 0
+  fork test, is-above(clock/length, 0)
+    hold
+      save hours, parse-integer(clock/0)
+  fork test, is-above(clock/length, 1)
+    hold
+      save minutes, parse-integer(clock/1)
+  fork test, is-above(clock/length, 2)
+    hold
+      save seconds, parse-integer(clock/2)
+  save padded, pad-right(millis, 3, <0>)
+  save midnight, add(1790985600000, multiply(subtract(day, 3), 86400000))
+  save into, add(add(multiply(hours, 3600000), multiply(minutes, 60000)), add(multiply(seconds, 1000), parse-integer(padded)))
+  back subtract(add(midnight, into), multiply(mockup-offset(), 60000))
+
+# the status of an HTTP response, an exit code and a signal, as the original's `http`, `exit` and `signal`
+task http-status
+  take value, like number
+  like status
+
+  back make(status, bind(kind, <http>), bind(value, value), bind(name, <>))
+
+task exit-status
+  take value, like number
+  like status
+
+  back make(status, bind(kind, <exit>), bind(value, value), bind(name, <>))
+
+task signal-status
+  take name, like text
+  like status
+
+  back make(status, bind(kind, <signal>), bind(value, 0), bind(name, name))
+
+task tally-of
+  take amount, like number
+  take noun, like text
+  take one, like text, fall <>
+  take total, like number, fall -1
+  like tally
+
+  back make(tally, bind(amount, amount), bind(noun, noun), bind(one, one), bind(total, total))
+
+# a field whose value is one plain span
+task field-of
+  take key, like text
+  take value, like text
+  take location, like boolean, fall false
+  like item-field
+
+  back make(item-field, bind(key, key), bind(value, plain-subject(value)), bind(location, location))
+
+# a location field, under the standard's own key (`file` since 2026-10-05, `at` before), as the CLI's `location()`
+task at-location
+  take value, like text
+  like item-field
+
+  back field-of(mockups/fields/location-key, value, true)
+
+# ---- reading what was drawn ----
+
+# the plain text of each line
+task texts-of
+  take lines, like list, like line
+  like list, like text
+
+  save out, make list
+  walk lines
+    take one, like line
+    out/push(line-text(one))
+  back out
+
+# the values of spans joined, a no-break space read as a space
+task spans-text
+  take spans, like dynamic
+  like text
+
+  save out, <>
+  walk spans
+    take one, like dynamic
+    save out, <{out}{one/value}>
+  back unglue-text(out)
+
+# the text with every white space character gone
+task without-space
+  take value, like text
+  like text
+
+  back replace-matches(space-pattern, value, <>)
+
+# a line with its quote arrow (`⇒`, `=>` in ASCII) or its `│` gutter taken off the front
+task without-gutter
+  take value, like text
+  like text
+
+  save rest, trim-start(value)
+  walk make list(<│ >, <| >, <⇒ >, <=\> >)
+    take mark, like text
+    fork test, text-starts-with(rest, mark)
+      hold
+        back substring(rest, mark/length)
+  back value
+
+# whether no line is wider than `width` cells
+task within-width
+  take texts, like list, like text
+  take width, like number
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, is-above(measure-text(one), width)
+      hold
+        back false
+  back true
+
+# whether every line after the title, but a blank one, starts at the body column or past it (section 2: every child
+# line starts at column 2, and nothing of an item goes back to column 0 but its title)
+task at-body-column
+  take texts, like list, like text
+  like boolean
+
+  save indent, make-spaces(mockups/layout/body-column)
+  save at, 0
+  walk texts
+    take one, like text
+    fork test, and(is-above(at, 0), and(is-unequal(one, <>), not(text-starts-with(one, indent))))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# the characters of a value survive, in order: the drawing with its white space and quote gutters removed holds the
+# value's. A quoted line wrapped inside its quote carries the gutter on every piece
+task holds-whole
+  take texts, like list, like text
+  take value, like text
+  like boolean
+
+  save flat, <>
+  walk texts
+    take one, like text
+    save flat, <{flat}{without-gutter(one)}>
+  back text-contains(without-space(flat), without-space(value))
+
+# whether any line holds the word
+task any-line-holding
+  take texts, like list, like text
+  take word, like text
+  like boolean
+
+  walk texts
+    take one, like text
+    fork test, text-contains(one, word)
+      hold
+        back true
+  back false

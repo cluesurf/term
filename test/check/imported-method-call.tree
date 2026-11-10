@@ -1,0 +1,107 @@
+note <A call of a method's name from a file that imported a task of that name renamed apart reaches the method when its receiver is the method's form>
+
+# Item term-self-host-001-1006. deck/make/code/time/output-records.tree writes contains(object-keys(value), key) and
+# finds contains from @term/base/text. Alone, text's contains is the only top-level one and the checker's receiver
+# dispatch sends the call to list's method. Once @term/base/text/string's own contains is in the program, the binding by
+# import split the name by file and bound the call to text's task renamed apart, so dispatch never saw it and the
+# checker refused 'expected text, found list'. The call now reaches the checker as a choice between the imported task
+# and the method, decided by its receiver's type. A text, unknown or dynamic receiver still reaches the imported task.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find refused-as
+  find refused-saying
+
+load @term/base/text
+  find starts-with
+
+load ../support/judging
+  find read-field
+  find truth
+
+load ../support/walking
+  find kind-of
+  find nodes-of
+
+# every call a task makes, by name, read off the checked program
+task callees-in
+  take program, like dynamic
+  take name, like text
+  like list, like text
+
+  host out, make list
+  fork test, is-unequal(kind-of(program), <list>)
+    hold
+      back out
+  walk program
+    take statement, like dynamic
+    fork test, and(is-equal(read-field(statement, <form>), <function>), is-equal(read-field(statement, <name>), name))
+      hold
+        walk nodes-of(statement, <call>)
+          take call, like dynamic
+          host callee, read-field(call, <callee>)
+          fork test, and(is-equal(read-field(callee, <form>), <variable>), truth(read-field(callee, <name>)))
+            hold
+              out/push(read-field(callee, <name>))
+        back out
+  back out
+
+# whether a call names a `contains` renamed apart by file
+task some-apart
+  take names, like list, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, starts-with(one, <contains__in>)
+      hold
+        back true
+  back false
+
+# two modules, each with its own top-level `contains` of two texts, and one task the entry imports
+host one, make(compiling-source, bind(file, <@app/one>), bind(text, <task contains\n  take a, like text\n  take b, like text\n  like boolean\n  send back, true\n\ntask one\n  like number\n  send back, code 1\n>), bind(answer, <one.tree>))
+host two, make(compiling-source, bind(file, <@app/two>), bind(text, <task contains\n  take a, like text\n  take b, like text\n  like boolean\n  send back, false\n\ntask two\n  like number\n  send back, code 2\n>), bind(answer, <two.tree>))
+
+# the entry finds one's contains, as output-records.tree finds text's, and loads list.tree for list's method
+host loads, <load @term/base/list\n  find list\n\nload @app/one\n  find one\n  find contains\n\nload @app/two\n  find two\n\n>
+
+task build
+  take main, like text
+  like compile-outcome
+
+  back compile-text(main, make(compile-choice, bind(file, <main.tree>), bind(project, <.>), bind(project-env, <node>), bind(optimize, false), bind(files, make list(one, two))))
+
+host list-call, <{loads}task run\n  like boolean\n  save xs\n    make list\n      code 1\n      code 2\n  send back\n    call contains\n      read xs\n      code 2\n>
+
+test <a call of list's method from a file that imported a task of its name builds>
+  host result, build(list-call)
+  want hold, not(refused-saying(result, <type-mismatch>, <expected text>))
+  want hold, result/ok
+
+test <the call with a list receiver is list's method, never the imported task renamed apart>
+  host result, build(list-call)
+  want hold, result/ok
+  want hold, not(some-apart(callees-in(result/program, <run>)))
+
+test <a call with text arguments still reaches the imported task>
+  host result, build(<{loads}task run\n  like boolean\n  send back, call contains(<a>, <b>)\n>)
+  want hold, result/ok
+  want hold, some-apart(callees-in(result/program, <run>))
+
+# no argument's type pins a form: the flat program read the imported task, and so does the choice
+test <a call with an untyped receiver still reaches the imported task>
+  host result, build(<{loads}task run\n  take d, like unknown\n  like boolean\n  send back\n    call contains\n      read d\n      text <b>\n>)
+  want hold, result/ok
+  want hold, some-apart(callees-in(result/program, <run>))
+
+# a `like dynamic` receiver fits no parameter by type, and the choice was refused 'No overload of
+# "contains__anym0_2_0" takes (dynamic, text)' (test/call/hook.tree in the 1006 + 1118 window). The flat program
+# reached the imported task, which takes a dynamic argument as any call does
+test <a call with a dynamic receiver still reaches the imported task>
+  host result, build(<{loads}task run\n  take d, like dynamic\n  like boolean\n  send back\n    call contains\n      read d\n      text <b>\n>)
+  want hold, not(refused-saying(result, <type-mismatch>, <overload of>))
+  want hold, result/ok
+  want hold, some-apart(callees-in(result/program, <run>))

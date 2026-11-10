@@ -22,7 +22,14 @@ export type RoleOf = (file: string) => string | null
 //
 // It also makes `@` mean the right thing. A glob's `@` is the package root, so `@/code/**` in @term/site's role
 // file has to expand against @term/site's directory, not against whoever is building.
+//
+// THE WALK STOPS AT THE ROOT ITSELF, never at a folder as long as the root. A file outside the root (a booted tool's
+// own package, or Term's CLI sources, compiled from a folder holding no project) climbs to its own `deck.tree`. A
+// length test stopped it as soon as its folder's path was no longer than the root's, so from a deep empty folder
+// call/code/work/item/standard.tree was given that folder's (absent) role file, lost `mark lean`, and its
+// `make standard` with named fields was refused (term-self-host-001-1113).
 function packageRootOf(file: string, root: string): string {
+  const base = path.resolve(root)
   let dir = path.dirname(file)
 
   for (;;) {
@@ -32,7 +39,7 @@ function packageRootOf(file: string, root: string): string {
 
     const up = path.dirname(dir)
 
-    if (up === dir || dir.length <= root.length) {
+    if (up === dir || dir === base) {
       return root
     }
 

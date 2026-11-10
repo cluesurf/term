@@ -1,0 +1,77 @@
+note <a wear instance's method bodies are kept, and a trait-method call dispatches to them, concretely and through a bounded generic>
+
+# Ported from trait-dispatch.ts by statement (item term-self-host-001-0609), one test per `expect` in its order. Each
+# program loads nothing, so it compiles with a resolver that finds nothing, as the original's `{}` did, and runs on node
+# through test/support/running. The original called the first program's `direct` from TypeScript: here a run task of
+# a second file loads the program as `@app/c` and answers `direct()`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <mask sizer\n  task measure\n    take self\n    like number\n\nform box\n  link n, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        read self/n\n\ntask direct\n  like number\n  save c\n    make box\n      bind n\n        code 9\n  send back\n    call measure\n      read c\n>
+
+# generic trait-bounded dispatch: a generic function bounded by a trait calls a trait method on its type parameter. The
+# concrete instance is not known inside the body, so dictionary passing threads it from each call site. Two different
+# instances must dispatch to two different methods through the SAME generic function
+host generic, <mask sizer\n  task measure\n    take self\n    like number\n\nform box\n  link n, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        read self/n\n\nform circle\n  link r, like number\n  wear sizer\n    task measure\n      take self\n      like number\n      send back\n        call add\n          read self/r\n          read self/r\n\ntask describe\n  head t, need sizer\n  take x, like t\n  like number\n  send back\n    call measure\n      read x\n\ntask run\n  like number\n  save a\n    call describe\n      make box\n        bind n\n          code 7\n  save b\n    call describe\n      make circle\n        bind r\n          code 9\n  send back\n    call add\n      read a\n      read b\n>
+
+# a run task answering the first program's `direct`
+host direct-run, <load @app/c\n  find direct\n\ntask run\n  like number\n  send back\n    call direct\n>
+
+host method-shape, make pattern, <<function boxMeasure>>
+host member-shape, make pattern, <<\.measure\(>>
+
+task closed-choice
+  take file, like text
+  like compile-choice
+
+  back make(compile-choice, bind(file, file), bind(closed, true))
+
+# the first program answered by its path, and nothing else
+task direct-choice
+  like compile-choice
+
+  save files, make list
+  files/push(make(compiling-source, bind(file, <@app/c>), bind(text, program), bind(answer, <c.tree>)))
+  back make(compile-choice, bind(file, <main.tree>), bind(closed, true), bind(files, files))
+
+# what a program's run task answered on node, else why it did not run
+task answer
+  take source, like text
+  take name, like text
+  take choice, like compile-choice
+  like text
+  mark async
+
+  host folder, temp-folder(<trait->)
+  host ran, run-text(source, <typescript>, folder, name, choice)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <instance method emitted as a function>
+  want hold, matches(method-shape, compile-text(program, closed-choice(<c.tree>))/emitted)
+
+test <concrete trait-method call dispatches + runs>
+  want hold, is-equal(answer(direct-run, <m>, direct-choice()), <9>)
+
+# the generic body resolves the trait call through a threaded dictionary, not a hard-wired concrete function
+test <generic trait call lowers to a dictionary member call>
+  want hold, matches(member-shape, compile-text(generic, closed-choice(<g.tree>))/emitted)
+
+# box.measure = 7, circle.measure = 9 + 9 = 18, through one generic `describe`
+test <two instances dispatch through one generic function>
+  want hold, is-equal(answer(generic, <g>, closed-choice(<g.tree>)), <25>)

@@ -1,0 +1,127 @@
+note <term test turns its session once a round: three test files take one turn, and a second run counts anew>
+
+# Ported from test-turns.ts by statement (item term-self-host-001-0605), one test per `ok` in its order. Decision 097 of
+# change 001, item 0495: term test builds every test file through the run's one build graph (decision 094 rule 1), each
+# file an entry request with its rewritten text. The run turns the session itself once for the round and marks the graph
+# turned, so a round of three test files takes one turn. The subject is the port of the test command
+# (deck/call/host/port/code/work/testing/test-command.ts), called in this process twice over a project of three test
+# files in a temporary folder, with TERM_CACHE_HOME inside it and put back after. Both runs are made once, by the first
+# test, and kept in `turns-now`.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+dock load
+  load <@term/call/host/port/code/work/testing/test-command>, name turns-command
+  load <node:fs>, name turns-file
+  load <node:path>, name turns-path
+
+host names, make list(<one>, <two>, <three>)
+
+# host value: the exit code this process will end with, 0 when none is set
+bind exit-code-of
+  take seed, like number
+  like number
+  case node
+    text <(process.exitCode ?? 0)>
+
+# host value: the exit code this process will end with, set
+bind set-exit-code
+  take code, like number
+  like number
+  case node
+    text <(process.exitCode = $code)>
+
+bind turns-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# one call of the test command: no filter, case or env, as the original's undefined fields
+form turns-ask
+  link root, like text
+  link merged, like boolean
+  link ride, like boolean
+  link update, like boolean
+
+# what each run left: its exit code and the rounds and turns it read
+form turns-state
+  mark shared
+  link made, like boolean
+  link first-code, like number
+  link first-rounds, like number
+  link first-turns, like number
+  link second-code, like number
+  link second-rounds, like number
+  link second-turns, like number
+
+host turns-now, make(turns-state, bind(made, false), bind(first-code, -1), bind(first-rounds, -1), bind(first-turns, -1), bind(second-code, -1), bind(second-rounds, -1), bind(second-turns, -1))
+
+task the-runs
+  like turns-state
+  mark async
+
+  fork test, turns-now/made
+    hold
+      back turns-now
+  save turns-now/made, true
+  save root, turns-file/realpath-sync(temp-folder(<test-turns->))
+  save held, has-variable(<TERM_CACHE_HOME>)
+  save kept, variable-of(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, turns-path/join(root, <.store>))
+  turns-file/mkdir-sync(turns-path/join(root, <code>), turns-folder-options(0))
+  turns-file/mkdir-sync(turns-path/join(root, <test>), turns-folder-options(0))
+  turns-file/write-file-sync(turns-path/join(root, <deck.tree>), <deck @probe/turns\n  mark \<0.0.1\>\n>)
+  turns-file/write-file-sync(turns-path/join(root, <code>, <base.tree>), <task double\n  take n, like number\n  like number\n  send back, multiply(n, 2)\n>)
+  save n, 1
+  walk names
+    take name, like text
+    turns-file/write-file-sync(turns-path/join(root, <test>, <{name}.tree>), <load ../code/base\n  find double\n\ntest doubles-{name}\n  want hold, is-equal(double({n}), {multiply(n, 2)})\n>)
+    save n, add(n, 1)
+  save was, exit-code-of(0)
+  save ask, make(turns-ask, bind(root, root), bind(merged, false), bind(ride, false), bind(update, false))
+  save ran, wait turns-command/call-test(ask)
+  save first, turns-command/read-last-test-turns()
+  save turns-now/first-code, exit-code-of(0)
+  save turns-now/first-rounds, first/rounds
+  save turns-now/first-turns, first/turns
+  # a second run in the same process: its own graph, its own count
+  save again, wait turns-command/call-test(ask)
+  save second, turns-command/read-last-test-turns()
+  save turns-now/second-code, exit-code-of(0)
+  save turns-now/second-rounds, second/rounds
+  save turns-now/second-turns, second/turns
+  set-exit-code(was)
+  fork test, held
+    hold
+      set-variable(<TERM_CACHE_HOME>, kept)
+    miss
+      remove-variable(<TERM_CACHE_HOME>)
+  back turns-now
+
+test <the run passed>
+  save state, the-runs()
+  want hold, is-equal(state/first-code, 0)
+
+test <one round>
+  save state, the-runs()
+  want hold, is-equal(state/first-rounds, 1)
+
+test <one turn of the session for the round of three files>
+  save state, the-runs()
+  want hold, is-equal(state/first-turns, 1)
+
+test <a second run counts its own round and turn>
+  save state, the-runs()
+  want hold, and(is-equal(state/second-rounds, 1), is-equal(state/second-turns, 1))
+
+test <and passes>
+  save state, the-runs()
+  want hold, is-equal(state/second-code, 0)

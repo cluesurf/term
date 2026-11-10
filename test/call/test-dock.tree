@@ -1,0 +1,210 @@
+note <term test resolves a dock as the project's own build resolves it>
+
+# Ported from test-dock.ts by statement (item term-self-host-001-0649), one test per `ok` in its order (decision 009,
+# term-cli-in-term-0174). The project test/call/test-dock-fixture/ has one test file docking an npm package in its own
+# node_modules and a .ts module its tsconfig.json `paths` maps. Each is held through units and merged: both tests pass,
+# the module is built inside the project's cache and never the system temp folder, the kept bundle lists the source it
+# inlined, a second run reuses it, and an edit of that source rebuilds it. The fixture is copied to a project of its own,
+# its package installed in its node_modules as npm would, and the CLI under test runs there (test/support/cli). The
+# runs depend on one another, so they are made once, in order, and each test reads its part.
+
+load ../support/cli
+  find term-line
+
+load @term/base/process/run
+  find run
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/file/directory
+  find list, name list-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find ends-with
+  find starts-with
+  find replace-all, name text-replace
+
+dock load
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+host fixture, <test/call/test-dock-fixture>
+
+# how long one run of the CLI may take
+host run-limit, 600000
+
+# the modification time of a file, in milliseconds
+bind modified-at
+  take stat, like dynamic
+  like number
+  case node
+    text <$stat.mtimeMs>
+
+bind parsed-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# what each step left, in the order the original took them
+form dock-run
+  mark shared
+  link done, like boolean
+  link root, like text
+  link first-code, like number
+  link first-output, like text
+  link built, like list, like text
+  link built-time, like number
+  link run-entries, like number
+  link inlined-greeting, like boolean
+  link inlined-package, like boolean
+  link second-code, like number
+  link second-output, like text
+  link again, like list, like text
+  link again-time, like number
+  link edited-code, like number
+  link edited-output, like text
+  link merged-code, like number
+  link merged-output, like text
+  link merged-runs, like list, like text
+
+host now, make(dock-run, bind(done, false), bind(root, <>), bind(first-code, -1), bind(first-output, <>), bind(built, make list), bind(built-time, 0), bind(run-entries, 0), bind(inlined-greeting, false), bind(inlined-package, false), bind(second-code, -1), bind(second-output, <>), bind(again, make list), bind(again-time, 0), bind(edited-code, -1), bind(edited-output, <>), bind(merged-code, -1), bind(merged-output, <>), bind(merged-runs, make list))
+
+# the kept test bundles of the project
+task bundles
+  take kept, like text
+  like list, like text
+  mark async
+
+  save out, make list
+  fork test, not(file-exists(kept))
+    hold
+      back out
+  walk list-folder(kept)
+    take name, like text
+    fork test, ends-with(name, <.mjs>)
+      hold
+        out/push(name)
+  back out
+
+# `term test --color never` in the project, with `flags` after it
+task run-test
+  take root, like text
+  take flags, like list, like text
+  like dynamic
+  mark async
+
+  save arguments, make(list, term-line(), <test>, <--color>, <never>)
+  walk flags
+    take flag, like text
+    arguments/push(flag)
+  back run(<node>, arguments, bind(directory, root), bind(limit, run-limit))
+
+task the-run
+  like dock-run
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save now/done, true
+  save root, dock-file/realpath-sync(temp-folder(<test-dock->))
+  save now/root, root
+  run(<cp>, make(list, <-R>, <{fixture}/.>, root))
+  dock-file/mkdir-sync(dock-path/join(root, <node_modules>), make-recursive(0))
+  run(<cp>, make(list, <-R>, dock-path/join(root, <vendor>, <probe-dock-package>), dock-path/join(root, <node_modules>, <probe-dock-package>)))
+  save kept, dock-path/join(root, <.base>, <@term>, <code>, <cache>, <test>)
+  save first, run-test(root, make list)
+  save now/first-code, first/code
+  save now/first-output, <{first/output}{first/error}>
+  save built, bundles(kept)
+  save now/built, built
+  fork test, is-above(built/length, 0)
+    hold
+      save now/built-time, modified-at(dock-file/stat-sync(dock-path/join(kept, built/0)))
+      save listing, dock-path/join(kept, text-replace(built/0, <.mjs>, <.inputs.json>))
+      fork test, file-exists(listing)
+        hold
+          save greeting-path, dock-path/join(root, <shared>, <greeting.ts>)
+          walk parsed-json(read-file(listing))
+            take one, like dynamic
+            fork test, is-equal(one/path, greeting-path)
+              hold
+                save now/inlined-greeting, true
+            fork test, text-contains(one/path, <probe-dock-package>)
+              hold
+                save now/inlined-package, true
+  fork test, file-exists(dock-path/join(kept, <run>))
+    hold
+      save now/run-entries, list-folder(dock-path/join(kept, <run>))/length
+  save second, run-test(root, make list)
+  save now/second-code, second/code
+  save now/second-output, <{second/output}{second/error}>
+  save again, bundles(kept)
+  save now/again, again
+  fork test, is-above(again/length, 0)
+    hold
+      save now/again-time, modified-at(dock-file/stat-sync(dock-path/join(kept, again/0)))
+  # the inlined source edited: the kept bundle is not reused, and the test sees the new answer
+  save greeting, dock-path/join(root, <shared>, <greeting.ts>)
+  save original, read-file(greeting)
+  write-file(greeting, text-replace(original, <`hello $\{name\}`>, <`hi $\{name\}`>))
+  save edited, run-test(root, make list)
+  save now/edited-code, edited/code
+  save now/edited-output, <{edited/output}{edited/error}>
+  write-file(greeting, original)
+  save merged, run-test(root, make list(<--merged>))
+  save now/merged-code, merged/code
+  save now/merged-output, <{merged/output}{merged/error}>
+  fork test, file-exists(dock-path/join(kept, <run>))
+    hold
+      save now/merged-runs, list-folder(dock-path/join(kept, <run>))
+  back now
+
+bind make-recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+test <through units: both docks resolve and both tests pass>
+  save got, the-run()
+  want hold, and(is-equal(got/first-code, 0), text-contains(got/first-output, <2 tests · 2 passed>))
+
+test <the module is kept inside the project cache>
+  want hold, is-equal(the-run()/built/length, 1)
+
+test <the module was built in the project, under its cache test/run/>
+  want hold, is-above(the-run()/run-entries, 0)
+
+test <the kept bundle lists the tsconfig-mapped source it inlined, and not the npm package>
+  save got, the-run()
+  want hold, and(got/inlined-greeting, not(got/inlined-package))
+
+test <a second run passes and reuses the kept bundle>
+  save got, the-run()
+  want hold, and(is-equal(got/second-code, 0), and(is-equal(got/again/length, 1), is-equal(got/again-time, got/built-time)))
+
+test <an edit of an inlined source rebuilds the bundle: the mapped test now fails>
+  save got, the-run()
+  want hold, and(is-unequal(got/edited-code, 0), text-contains(got/edited-output, <hello ada>))
+
+test <merged: both docks resolve and both tests pass>
+  save got, the-run()
+  want hold, and(is-equal(got/merged-code, 0), text-contains(got/merged-output, <2 tests · 2 passed>))
+
+test <the merged module was built in the project too>
+  save merged, false
+  walk the-run()/merged-runs
+    take name, like text
+    fork test, starts-with(name, <merged>)
+      hold
+        save merged, true
+  want hold, merged

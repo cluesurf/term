@@ -205,10 +205,19 @@ bind scan-nothing
   case node
     text <undefined>
 
+# what `term scan` is asked: the root, the file, --fix and the program's --back, as scan.tree's `scan` makes it. Kept
+# here, beside call-scan, so the verb finds it (term-self-host-001-0775, as 1084 and 1092 moved the asks into their
+# callees)
+form scan-ask
+  link root, like text
+  link file, like text
+  link fix, like boolean
+  link back, like text
+
 form scan-open
   link verb, like text
   link root, like text
-  link facts, like list, like dynamic
+  link facts, like list, like text
 
 form scan-problem-item
   link glyph, like text
@@ -314,7 +323,7 @@ task sure-fixes
   back scan-sure(all)
 
 task call-scan
-  take input, like dynamic
+  take input, like scan-ask
   like void
 
   save root, input/root

@@ -1,0 +1,110 @@
+note <Enum and match: discriminated-union emit, tagged construction, exhaustiveness, and running it>
+
+# Ported from enum.ts by statement (item term-self-host-001-0613). Each program is compiled longhand with the compiler's
+# own resolver, as the original did, and the two that run are run on node.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find refused-as
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# an enum, a constructor, and an exhaustive match
+host exhaustive, <form color\n  case red\n  case green\n  case blue\n\ntask name-of\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<red\>\n    case green\n      send back, text \<green\>\n    case blue\n      send back, text \<blue\>\n\ntask run\n  send back\n    call name-of\n      make green\n>
+
+# the same match, missing the `blue` case
+host non-exhaustive, <form color\n  case red\n  case green\n  case blue\n\ntask name-of\n  take c, like color\n  like text\n  fork case, read c\n    case red\n      send back, text \<red\>\n    case green\n      send back, text \<green\>\n>
+
+host payload, <form box\n  case full, like text\n  case void\n\ntask open\n  take b, like box\n  like text\n  fork case, read b\n    case full, link content\n      send back, read content\n    case void\n      send back, text \<empty\>\n\ntask run\n  like text\n  send back\n    call open\n      make full\n        bind value, text \<filled\>\n>
+
+# a field-less case only ever its frozen constant is tested by identity through its guard (typescript.ts,
+# `identityCases`), one that is not by its tag
+host form-switch, make pattern, <<\.form === "red"|__termIsRed\(\w+\)>>
+
+# the shared `__termAt`, or the same check written in place for a plain list and index
+host checked-read, make pattern, <<return (__termAt\(items, 0\)|\(0 < items\.length \? items\[0\]! : __termReadPast\(items, 0\)\))>>
+
+task built
+  take program, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, file)))
+
+# whether one message holds both words
+task one-saying
+  take messages, like list, like text
+  take first, like text
+  take second, like text
+  like boolean
+
+  walk messages
+    take message, like text
+    fork test, and(text-contains(message, first), text-contains(message, second))
+      hold
+        back true
+  back false
+
+test <emits discriminated union>
+  host out, built(exhaustive, <enum.tree>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <type Color =>)
+
+test <emits variant tag>
+  want hold, text-contains(built(exhaustive, <enum.tree>)/emitted, <form: "green">)
+
+test <emits match as form switch>
+  want hold, matches(form-switch, built(exhaustive, <enum.tree>)/emitted)
+
+test <run() returns "green">
+  host folder, temp-folder(<seed-enum->)
+  host ran, run-text(exhaustive, <typescript>, folder, <enum>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <green>)
+
+test <non-exhaustive match caught>
+  want hold, refused-as(built(non-exhaustive, <enum.tree>), <non-exhaustive>)
+
+# a literal index is a plain path segment, read on the way out through the checked list read (it stops out of range,
+# note/project/term/stdlib/semantics.md), never JavaScript's bare `items[0]`, which answered undefined
+test <a literal index reads through the checked list read>
+  host out, built(<task first\n  take items, like list, like number\n  like number\n  send back, read items/0\n>, <i.tree>)
+  want hold, out/ok
+  want hold, matches(checked-read, out/emitted)
+
+# a `link` past the variant's last field binds nothing, so it is refused rather than silently ignored
+test <a link past the last field is refused and names the fields>
+  host out, built(<form shape\n  case dot\n    link x, like number\n  case line\n    link a, like number\n    link b, like number\n\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case dot\n      link px\n      link py\n      send back, read px\n    case line\n      send back, read a\n>, <l.tree>)
+  want hold, not(out/ok)
+  want hold, one-saying(out/messages, <"link py" under "case dot" binds nothing>, <(x)>)
+
+# the same arm with one rename is the ordinary rename form
+test <a rename within the field count is accepted>
+  host out, built(<form shape\n  case dot\n    link x, like number\n  case line\n    link a, like number\n    link b, like number\n\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case dot\n      link px\n      send back, read px\n    case line\n      send back, read a\n>, <r.tree>)
+  want hold, out/ok
+
+# `case full, like text` is a payload variant: its one value is the `value` field, so an arm reads it as `value` or
+# renames it with a link
+test <a payload variant binds its value through a link>
+  host out, built(payload, <p.tree>)
+  want hold, out/ok
+  want hold, text-contains(out/emitted, <const content = b.value>)
+
+test <a payload variant runs>
+  host folder, temp-folder(<term-enum->)
+  host ran, run-text(payload, <typescript>, folder, <payload>)
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <filled>)

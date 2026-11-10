@@ -1,0 +1,64 @@
+note <a make hash local learns its key type from the keys written into it, on every backend>
+
+# Ported from hash-key-inferred.ts by statement (item term-self-host-001-0655), its backend loop one walked test, each
+# backend a case of it. Item term-self-host-001-0052, traps.md T038: until 2026-10-29 a key read or written by index
+# (`save seen/{w}, 1`) was inferred and never held to the map's key, so a hash whose only writes were by index kept a
+# free key, emitted `Map<number, number>` on TypeScript (which only tsc refused) and a map of integers natively. Now the
+# index is the key: `Map<string, number>`, and the program runs on every backend. A backend whose toolchain is not
+# installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/reading
+  find any-holding
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find replace
+
+host program, <load @term/base/list\n  find list\n\ntask distinct\n  take words, like list, like text\n  like number\n  save seen, make hash\n  walk words\n    take w\n    save seen/\{w\}, 1\n  save n, 0\n  walk seen/keys()\n    take k\n    save n, add(n, seen/get(k))\n  back n\n\ntask run\n  like text\n  send back, \<\{distinct(make(list, \<a\>, \<b\>, \<a\>, \<c\>))\}\>\n>
+
+host declared, make pattern, <<const seen: [^=]*Map<string, number>[^=]*=>>
+
+task built
+  take text, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+test <typescript: the local is `Map<string, number>`, its key the text written>
+  host out, built(program, <keys.tree>)
+  want hold, out/ok
+  want hold, matches(declared, out/emitted)
+
+test <a number key written into the same hash is refused as a map key>
+  host mixed, replace(program, <    save seen/\{w\}, 1\n>, <    save seen/\{w\}, 1\n    save three, 3\n    save seen/\{three\}, 1\n>)
+  want hold, not(is-equal(mixed, program))
+  host out, built(mixed, <mixed.tree>)
+  want hold, not(out/ok)
+  want hold, any-holding(out/messages, <map key>)
+
+test <three distinct words counted through a hash keyed by text>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-hash-key->)
+  host ran, run-text(program, backend, folder, <keys>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <3>)

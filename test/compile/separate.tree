@@ -1,0 +1,339 @@
+note <Separate compilation and cross-boundary early cutoff: a body edit rebuilds only its unit, a signature edit its dependents>
+
+# Ported from separate.ts by statement (item term-self-host-001-0619). make/code/compile/separate is the subject (decision
+# 106): units check against dependency interface STUBS and emit per module, cached by own content and dependency
+# interface hashes. So a body-only edit in a dependency rebuilds ONLY that dependency (dependents replay from cache),
+# while a signature edit rebuilds the dependents too, and the emitted modules still run end to end. The builds share one
+# cache and depend on their order, so one task runs every build in the original's order, once, and keeps what each check
+# reads as text in a list, which the tests read by position. A build's modules are written as `.mts` files beside a main
+# that imports the entry, run under tsx, which reads an import of `./x.mjs` as `./x.mts`. The original stopped at a cold,
+# body or signature build that failed: here each later test fails on its own instead.
+
+load ../support/compiling
+  find compiling-source
+  find compiling-with-files
+
+load ../support/judging
+  find make-record
+
+load ../support/running
+  find running-node
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find replace-matches
+
+load @term/base/text/util
+  find join
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+# TWO statements: a body of one `send back` is part of the surface, since the provers unfold it in a caller
+# (compile/stub.ts `stubShape`), so it is the longer body whose edit must not reach a dependent
+host dep, <task double\n  take value, like number\n  like number\n  save twice\n    call add\n      read value\n      read value\n  send back, read twice\n>
+
+# same signature, different body (associativity shuffle): the surface must not move
+host dep-body-edit, <task double\n  take value, like number\n  like number\n  save twice\n    call add\n      call add\n        read value\n        code 0\n      read value\n  send back, read twice\n>
+
+# a signature edit: the parameter is renamed, which changes the observable interface
+host dep-signature-edit, <task double\n  take amount, like number\n  like number\n  save twice\n    call add\n      read amount\n      read amount\n  send back, read twice\n>
+
+# a ONE-LINE body and an edit of it: the dependent is rebuilt, because what the provers read of `double` changed
+host dep-line, <task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n>
+
+host dep-line-edit, <task double\n  take value, like number\n  like number\n  send back\n    call add\n      call add\n        read value\n        code 0\n      read value\n>
+
+host entry, <load ./dep\n  find double\n\ntask run\n  like number\n  send back\n    call double\n      code 21\n>
+
+# a type error in the dependent against the dependency's INTERFACE is still caught (stubs carry real signatures)
+host bad-entry, <load ./dep\n  find double\n\ntask run\n  like number\n  send back\n    call double\n      text \<oops\>\n>
+
+host consults, <load ./dep\n  find double\n\ntask run\n  take n, like number\n  like number\n  hold is-equal(double(n), add(n, n))\n  send back, read n\n>
+
+# a name both files define: the entry's own keeps its name, the dependency's is imported under the name its own module
+# exported it by, whichever entry compiled that module first
+host shared-dep, <task double\n  take value, like number\n  like number\n  save twice\n    call add\n      read value\n      read value\n  send back, read twice\n\ntask label\n  like text\n  back \<dep\>\n>
+
+host shared-entry, <load ./dep\n  find double\n\ntask label\n  like text\n  back \<entry\>\n\ntask run\n  like number\n  send back\n    call double\n      code 21\n>
+
+# a constant of the dependency, read by the entry: its module exports it, and the entry imports it
+host constant-dep, <host base, code 21\n\ntask double\n  take value, like number\n  like number\n  save twice\n    call add\n      read value\n      read value\n  send back, read twice\n>
+
+host constant-entry, <load ./dep\n  find double\n  find base\n\ntask run\n  like number\n  send back\n    call double\n      read base\n>
+
+# a bind of the dependency, called by the entry: a bind is written into its caller, so the entry's module needs it
+host bind-dep, <bind add-one, take n, like number\n  like number\n  case node\n    \<$n + 1\>\n>
+
+host bind-entry, <load ./dep\n  find add-one\n\ntask run\n  like number\n  send back\n    call add-one\n      code 41\n>
+
+# a record of a form another module declares is a value all the same: `save copy, one` and a field write through `copy`
+# leaves `one` as it was. The unit alone has no `record-type` for the form, and every such alias went uncopied until
+# recordCopies read the stubs (2026-10-05, item/run.tree's hidden tally reaching its caller's event)
+host form-dep, <form box\n  link count, like number, fall 0\n>
+
+host form-entry, <load ./dep\n  find box\n\ntask bump\n  take one, like box\n  like box\n  save copy, one\n  save copy/count, 20\n  send back, read copy\n\ntask run\n  like number\n  save first, make box\n  save first/count, 1\n  save second, bump(first)\n  send back, add(second/count, first/count)\n>
+
+host tree-end, make pattern, <<\.tree$>>
+host non-word, make pattern, <<\W>>
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# host value: the cache every build of the suite shares
+host cache, new-cache(cache-module)
+
+bind result-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok === true>
+
+# host value: a list field of a build's result, empty when it has none
+bind units-of
+  take result, like dynamic
+  take field, like text
+  like list, like text
+  case node
+    text <$result?.[$field] ?? []>
+
+# host value: the files of a build's module map, in its order
+bind module-files
+  take modules, like dynamic
+  like list, like text
+  case node
+    text <[...$modules.keys()]>
+
+# host value: the code a build emitted for one file
+bind module-code
+  take modules, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$modules.get($file).code>
+
+# the module name the build gives a file: `./<stem>.mjs`, each non-word character an underscore
+task stem
+  take file, like text
+  like text
+
+  back replace-matches(non-word, replace-matches(tree-end, file, <>), <_>)
+
+task slug
+  take file, like text
+  like text
+
+  back <./{stem(file)}.mjs>
+
+# `./dep` answers as dep.tree with the text given, every other load as nothing
+task resolver
+  take text, like text
+  like dynamic
+
+  save files, make list
+  files/push(make(compiling-source, bind(file, <./dep>), bind(text, text), bind(answer, <dep.tree>)))
+  back compiling-with-files(files, void)
+
+task build
+  take source, like text
+  take dependency, like text
+  like dynamic
+
+  host options, make-record(make(list, <resolve>, resolver(dependency), <cache>, cache, <modules>, slug))
+  back separate-module/compile-separate(make-record(make(list, <file>, <entry.tree>, <text>, source)), options)
+
+# what the entry's run answered on node, every module written beside it, or why it did not run
+task ran
+  take result, like dynamic
+  like text
+
+  fork test, not(result-ok(result))
+    hold
+      back <refused>
+  save folder, temp-folder(<seed-separate->)
+  walk module-files(result/modules)
+    take file, like text
+    write-file(<{folder}/{stem(file)}.mts>, module-code(result/modules, file))
+  write-file(<{folder}/main.mts>, <import \{ run \} from "./{stem(<entry.tree>)}.mjs"\nprocess.stdout.write(String(run()))\n>)
+  save said, run(running-node(0), make(list, <--import>, <tsx>, <{folder}/main.mts>))
+  fork test, is-unequal(said/code, 0)
+    hold
+      back <exit {said/code}: {said/error}>
+  back said/output
+
+task count
+  take result, like dynamic
+  take field, like text
+  like text
+
+  save units, units-of(result, field)
+  save size, units/length
+  back <{size}>
+
+task joined
+  take result, like dynamic
+  take field, like text
+  like text
+
+  back join(units-of(result, field), <,>)
+
+task truth-of
+  take result, like dynamic
+  like text
+
+  fork test, result-ok(result)
+    hold
+      back <true>
+  back <false>
+
+form separate-answers
+  mark shared
+  link held, like list, like text
+  link done, like boolean
+
+host kept, make(separate-answers, bind(held, make list), bind(done, false))
+
+# every build in the original's order, what each check reads kept in order, once
+task steps
+  like list, like text
+
+  fork test, kept/done
+    hold
+      back kept/held
+  save out, make list
+  # cold build: both units built, program runs
+  host first, build(entry, dep)
+  out/push(count(first, <built>))
+  out/push(count(first, <reused>))
+  out/push(ran(first))
+  # no-op rebuild: everything replays from cache
+  host again, build(entry, dep)
+  out/push(truth-of(again))
+  out/push(count(again, <built>))
+  out/push(count(again, <reused>))
+  # body-only dependency edit: the dependency rebuilds, the DEPENDENT replays from cache (early cutoff)
+  host body-edit, build(entry, dep-body-edit)
+  out/push(joined(body-edit, <built>))
+  out/push(joined(body-edit, <reused>))
+  out/push(ran(body-edit))
+  # signature edit: the dependent must rebuild too (its check ran against a changed interface)
+  host signature-edit, build(entry, dep-signature-edit)
+  out/push(count(signature-edit, <built>))
+  out/push(ran(signature-edit))
+  out/push(truth-of(build(bad-entry, dep)))
+  # a one-line body is carried, and a dependency only of the units that consult it (decision 103 item 4): its edit
+  # leaves a dependent that only calls it where it was
+  host line, build(entry, dep-line)
+  host line-edit, build(entry, dep-line-edit)
+  out/push(joined(line-edit, <built>))
+  # and rebuilds the one whose goal unfolds it (the edited dependency is in the store from the case above)
+  host consulting, build(consults, dep-line)
+  host consulted, build(consults, dep-line-edit)
+  out/push(joined(consulted, <built>))
+  host shared, build(shared-entry, shared-dep)
+  out/push(truth-of(shared))
+  out/push(ran(shared))
+  host constant, build(constant-entry, constant-dep)
+  out/push(truth-of(constant))
+  out/push(ran(constant))
+  host bound, build(bind-entry, bind-dep)
+  out/push(truth-of(bound))
+  out/push(ran(bound))
+  host formed, build(form-entry, form-dep)
+  out/push(truth-of(formed))
+  out/push(ran(formed))
+  save kept/held, out
+  save kept/done, true
+  back out
+
+task step
+  take at, like number
+  like text
+
+  save all, steps()
+  fork test, is-below(at, all/length)
+    hold
+      back all/{at}
+  back <none>
+
+test <cold build: both units built>
+  want hold, is-equal(step(0), <2>)
+
+test <cold build: nothing reused>
+  want hold, is-equal(step(1), <0>)
+
+test <emitted modules run (21 doubled)>
+  want hold, is-equal(step(2), <42>)
+
+test <no-op rebuild ok>
+  want hold, is-equal(step(3), <true>)
+
+test <no-op rebuild: nothing rebuilt>
+  want hold, is-equal(step(4), <0>)
+
+test <no-op rebuild: both units reused>
+  want hold, is-equal(step(5), <2>)
+
+test <body edit: only the dependency rebuilt>
+  want hold, is-equal(step(6), <dep.tree>)
+
+test <body edit: the dependent was cut off early>
+  want hold, is-equal(step(7), <entry.tree>)
+
+test <body-edited build still runs>
+  want hold, is-equal(step(8), <42>)
+
+test <signature edit: both units rebuilt>
+  want hold, is-equal(step(9), <2>)
+
+test <signature-edited build still runs>
+  want hold, is-equal(step(10), <42>)
+
+test <interface violation is still a type error>
+  want hold, is-equal(step(11), <false>)
+
+test <one-line body edit: a caller is cut off>
+  want hold, is-equal(step(12), <dep.tree>)
+
+test <one-line body edit: a unit that consults it rebuilt too>
+  want hold, is-equal(step(13), <entry.tree>)
+
+test <a name two files define builds>
+  want hold, is-equal(step(14), <true>)
+
+test <and runs>
+  want hold, is-equal(step(15), <42>)
+
+test <a constant another module defines builds>
+  want hold, is-equal(step(16), <true>)
+
+test <and runs, the constant imported>
+  want hold, is-equal(step(17), <42>)
+
+test <a bind another module declares builds>
+  want hold, is-equal(step(18), <true>)
+
+test <and runs, written into its caller>
+  want hold, is-equal(step(19), <42>)
+
+test <a record of an imported form builds>
+  want hold, is-equal(step(20), <true>)
+
+test <and an alias of it is a copy (20 + 1, not 20 + 20)>
+  want hold, is-equal(step(21), <21>)

@@ -1,8 +1,8 @@
-# rust TCP implementation. Forwards to the linked tcp runtime shim (tokio::net). Declares the opaque handle types a connection / listener hold (an Arc-wrapped tokio TcpStream / TcpListener). Internal: reached only through the public TCP API.
+# rust TCP implementation. Forwards to the linked tcp runtime shim (std::net, each wait handed back to the loop). Declares the opaque handle types a connection / listener hold (an Arc-wrapped std TcpStream / TcpListener). Internal: reached only through the public TCP API.
 
 dock type
-  load <std::sync::Arc<tokio::net::TcpStream>>, name tcp-stream
-  load <std::sync::Arc<tokio::net::TcpListener>>, name tcp-server
+  load <std::sync::Arc<std::net::TcpStream>>, name tcp-stream
+  load <std::sync::Arc<std::net::TcpListener>>, name tcp-server
 
 dock load
   load <global:tcp>, name tcp

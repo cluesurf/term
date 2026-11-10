@@ -1,0 +1,793 @@
+note <the language server: its codec round-trips, and its dispatcher answers, diagnoses, hovers, navigates, completes and colors>
+
+# Ported from run.ts by statement (item term-self-host-001-0638), one test per `expect` in its order. The original drove
+# @term/flow's faces (code/server.ts, protocol.ts, analyze.ts, symbols.ts), each of which only hands on to its Term port:
+# this drives the ports themselves, as test/server/store-clean.tree does (decision 106). framing.tree is the codec,
+# language-server.tree makes the server's record and request-loop.tree dispatches each message to it, analysis.tree and
+# symbol-index.tree read a document the way the original located its positions. Each server of the original is one
+# sequence, each `expect` reading what the steps before it left, so each sequence runs once, its answers held in a
+# shared form, and each test reads its part. The project server's document lives at the Term root, where a doc uri
+# resolves the stdlib exactly as a build would.
+
+load ../support/judging
+  find make-record
+  find empty-record
+  find empty-list
+  find read-field
+  find read-at
+  find truth
+
+load ../support/cli
+  find term-root
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find contains
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/math
+  find round-down
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find substring
+  find replace-all, name text-replace
+  find split, name text-split
+
+dock load
+  load <@term/flow/code/framing>, name flow-framing
+  load <@term/flow/code/language-server>, name flow-server
+  load <@term/flow/code/request-loop>, name flow-loop
+  load <@term/flow/code/analysis>, name flow-analysis
+  load <@term/flow/code/symbol-index>, name flow-index
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+  load <node:url>, name dock-url
+
+bind file-uri
+  take url, like dynamic
+  like text
+  case node
+    text <$url.href>
+
+host bad-text, <task f\n  like number\n  back\n    read nope\n>
+
+host good-text, <task add-one\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n>
+
+host documented-text, <# Add one to a number.\ntask helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n>
+
+host saved-text, <load ./b\n  find double\n\ntask quad\n  take n, like number\n  like number\n  back\n    call double\n      call double\n        read n\n>
+
+host unsaved-text, <task double\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 2\n>
+
+host nav-text, <task helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n>
+
+host member-text, <form point\n  link x, like number\n  link y, like number\n\ntask get\n  take p, like point\n  like number\n  send back\n    read p/\n>
+
+host nav-import-text, <load @term/base/code/text\n  find to-upper-case\n\ntask shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n>
+
+host import-text, <task shout\n  take m, like text\n  like text\n  send back\n    call to-upper-case\n      read m\n>
+
+host rank-text, <task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n\ntask use\n  take amount, like number\n  take label, like text\n  like number\n  send back\n    call double\n      a\n>
+
+host lens-text, <task square\n  take n, like number\n  like number\n  send back\n    read n\n\ntask run\n  take n, like number\n  like number\n  send back\n    call square\n      read n\n>
+
+host inlay-text, <task demo\n  like number\n  save x\n    code 5\n  send back\n    read x\n>
+
+host sem-text, <task square\n  take n, like number\n  like number\n  send back\n    read n\n>
+
+# --- messages, as an editor sends them ---
+
+task request
+  take id, like number
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <jsonrpc>, <2.0>, <id>, id, <method>, method, <params>, params))
+
+task notice
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back make-record(make(list, <jsonrpc>, <2.0>, <method>, method, <params>, params))
+
+task document
+  take uri, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri))))
+
+task open-params
+  take uri, like text
+  take text, like text
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri, <text>, text))))
+
+task position
+  take line, like number
+  take character, like number
+  like dynamic
+
+  back make-record(make(list, <line>, line, <character>, character))
+
+task at-params
+  take uri, like text
+  take place, like dynamic
+  like dynamic
+
+  back make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <position>, place))
+
+task serve
+  like dynamic
+
+  back flow-server/make-language-server(empty-record())
+
+task deliver
+  take server, like dynamic
+  take message, like dynamic
+  like list, like dynamic
+  mark async
+
+  back wait flow-loop/dispatch(server, message)
+
+task open
+  take server, like dynamic
+  take uri, like text
+  take text, like text
+  like list, like dynamic
+  mark async
+
+  back deliver(server, notice(<textDocument/didOpen>, open-params(uri, text)))
+
+# the result of the first answer to a request
+task result-of
+  take server, like dynamic
+  take message, like dynamic
+  like dynamic
+  mark async
+
+  back read-field(read-at(deliver(server, message), 0), <result>)
+
+# the field `field` of each of `items`
+task fields-of
+  take items, like dynamic
+  take field, like text
+  like list, like dynamic
+
+  save out, empty-list()
+  fork test, truth(items)
+    hold
+      walk items
+        take one, like dynamic
+        out/push(read-field(one, field))
+  back out
+
+# the completion labels at a place
+task labels-at
+  take server, like dynamic
+  take id, like number
+  take uri, like text
+  take place, like dynamic
+  like list, like dynamic
+  mark async
+
+  save result, result-of(server, request(id, <textDocument/completion>, at-params(uri, place)))
+  back fields-of(read-field(result, <items>), <label>)
+
+# the completion item labelled `label`, void when there is none
+task item-labelled
+  take items, like dynamic
+  take label, like text
+  like dynamic
+
+  walk items
+    take one, like dynamic
+    fork test, is-equal(read-field(one, <label>), label)
+      hold
+        back one
+  back void
+
+# whether `left` sorts before `right`, by code point
+task text-before
+  take left, like text
+  take right, like text
+  like boolean
+
+  sift from-texts(left, right)
+    case less
+      back true
+    case equal
+      back false
+    case greater
+      back false
+
+# the place where a span starts, as a position
+task start-of
+  take span, like dynamic
+  like dynamic
+
+  save start, read-field(span, <start>)
+  back position(read-field(start, <line>), read-field(start, <column>))
+
+# --- the codec ---
+
+form codec-answers
+  link whole, like boolean
+  link half, like number
+  link rest, like number
+
+task codec-run
+  like codec-answers
+
+  save reader, flow-framing/make-reader()
+  save framed, flow-framing/encode(request(1, <initialize>, empty-record()))
+  save decoded, flow-framing/append-text(reader, framed)
+  save whole, false
+  fork test, is-equal(decoded/length, 1)
+    hold
+      save whole, is-equal(read-field(read-at(decoded, 0), <method>), <initialize>)
+  # a message split across two chunks is only surfaced once complete
+  save split, flow-framing/make-reader()
+  save frame, flow-framing/encode(make-record(make(list, <jsonrpc>, <2.0>, <method>, <noop>)))
+  save cut, round-down(divide(frame/length, 2))
+  save half, flow-framing/append-text(split, substring(frame, 0, cut))/length
+  save rest, flow-framing/append-text(split, substring(frame, cut, frame/length))/length
+  back make(codec-answers, bind(whole, whole), bind(half, half), bind(rest, rest))
+
+host codec, codec-run()
+
+# --- the first server, opened with documents and asked of them in the original's order ---
+
+form main-answers
+  mark shared
+  link done, like boolean
+  link hover-support, like boolean
+  link bad-error, like boolean
+  link good-clean, like boolean
+  link hover-kind, like dynamic
+  link hover-number, like boolean
+  link closed-count, like number
+  link more-capabilities, like boolean
+  link unknown-id, like dynamic
+  link member-fields, like boolean
+  link member-only, like boolean
+  link task-format, like dynamic
+  link rank-first, like boolean
+  link lens-count, like boolean
+  link inlay-type, like boolean
+  link sem-tokens, like boolean
+  link sem-first, like boolean
+
+host main, make(main-answers, bind(done, false), bind(hover-support, false), bind(bad-error, false), bind(good-clean, false), bind(hover-kind, void), bind(hover-number, false), bind(closed-count, -1), bind(more-capabilities, false), bind(unknown-id, void), bind(member-fields, false), bind(member-only, false), bind(task-format, void), bind(rank-first, false), bind(lens-count, false), bind(inlay-type, false), bind(sem-tokens, false), bind(sem-first, false))
+
+# where the integer literal 1 of the good document starts, read from the analyzed program
+task literal-start
+  like dynamic
+
+  save program, read-field(flow-analysis/analyze(make-record(make(list, <file>, <good.tree>, <text>, good-text)), empty-record()), <program>)
+  save found, void
+  walk flow-index/expressions-of(program)
+    take node, like dynamic
+    fork test, and(is-equal(read-field(node, <form>), <integer>), is-equal(read-field(node, <value>), 1))
+      hold
+        save found, start-of(read-field(node, <span>))
+  back found
+
+task severities
+  take answers, like list, like dynamic
+  like list, like dynamic
+
+  back fields-of(read-field(read-field(read-at(answers, 0), <params>), <diagnostics>), <severity>)
+
+task the-main
+  like main-answers
+  mark async
+
+  fork test, main/done
+    hold
+      back main
+  save main/done, true
+  save server, serve()
+  save init, result-of(server, request(1, <initialize>, empty-record()))
+  save main/hover-support, is-equal(read-field(read-field(init, <capabilities>), <hoverProvider>), true)
+  # a document with an undefined name: a diagnostic must be published
+  save bad, severities(open(server, <bad.tree>, bad-text))
+  fork test, is-above(bad/length, 0)
+    hold
+      save main/bad-error, is-equal(bad/0, 1)
+  # a valid document: no error diagnostics, then hover an integer literal and expect `number`
+  save good, severities(open(server, <good.tree>, good-text))
+  save main/good-clean, not(contains(good, 1))
+  save hover, result-of(server, request(2, <textDocument/hover>, at-params(<good.tree>, literal-start())))
+  fork test, truth(hover)
+    hold
+      save contents, read-field(hover, <contents>)
+      save main/hover-kind, read-field(contents, <kind>)
+      save main/hover-number, text-contains(read-field(contents, <value>), <number>)
+  # close the document: diagnostics are cleared
+  save closed, deliver(server, notice(<textDocument/didClose>, document(<good.tree>)))
+  save main/closed-count, read-field(read-field(read-at(closed, 0), <params>), <diagnostics>)/length
+  # initialize advertises the new capabilities
+  save again, read-field(result-of(server, request(20, <initialize>, empty-record())), <capabilities>)
+  save main/more-capabilities, and(and(truth(read-field(again, <definitionProvider>)), truth(read-field(again, <completionProvider>))), truth(read-field(again, <renameProvider>)))
+  # an unknown request still gets a response (never hangs the client)
+  save unknown, deliver(server, request(9, <textDocument/somethingNew>, empty-record()))
+  save main/unknown-id, read-field(read-at(unknown, 0), <id>)
+  # member completion: after `read p/`, offer the record's fields (and nothing else)
+  open(server, <file:///member.tree>, member-text)
+  save members, labels-at(server, 30, <file:///member.tree>, position(8, 11))
+  save main/member-fields, and(contains(members, <x>), contains(members, <y>))
+  save only, true
+  walk members
+    take label, like dynamic
+    fork test, and(is-unequal(label, <x>), is-unequal(label, <y>))
+      hold
+        save only, false
+  save main/member-only, only
+  # keyword completion: `task` accepts as a snippet that scaffolds the construct
+  save keywords, read-field(result-of(server, request(31, <textDocument/completion>, at-params(<file:///member.tree>, position(3, 0)))), <items>)
+  save task-item, item-labelled(keywords, <task>)
+  fork test, truth(task-item)
+    hold
+      save main/task-format, read-field(task-item, <insertTextFormat>)
+  # argument-type ranking: in a call, a scope value of the expected type sorts ahead of one that does not
+  open(server, <file:///rank.tree>, rank-text)
+  save ranked, read-field(result-of(server, request(50, <textDocument/completion>, at-params(<file:///rank.tree>, position(14, 7)))), <items>)
+  save amount-sort, <z>
+  save amount, item-labelled(ranked, <amount>)
+  fork test, truth(amount)
+    hold
+      fork test, truth(read-field(amount, <sortText>))
+        hold
+          save amount-sort, read-field(amount, <sortText>)
+  save label-sort, <z>
+  save label, item-labelled(ranked, <label>)
+  fork test, truth(label)
+    hold
+      fork test, truth(read-field(label, <sortText>))
+        hold
+          save label-sort, read-field(label, <sortText>)
+  save main/rank-first, text-before(amount-sort, label-sort)
+  # code lens: a reference count above each definition
+  open(server, <file:///lens.tree>, lens-text)
+  save lenses, result-of(server, request(60, <textDocument/codeLens>, document(<file:///lens.tree>)))
+  walk lenses
+    take lens, like dynamic
+    fork test, is-equal(read-field(read-field(lens, <command>), <title>), <1 reference>)
+      hold
+        save main/lens-count, true
+  # inlay hints: an un-annotated binding shows its inferred type inline
+  open(server, <file:///inlay.tree>, inlay-text)
+  save range, make-record(make(list, <start>, position(0, 0), <end>, position(20, 0)))
+  save hints, result-of(server, request(70, <textDocument/inlayHint>, make-record(make(list, <textDocument>, make-record(make(list, <uri>, <file:///inlay.tree>)), <range>, range))))
+  save main/inlay-type, contains(fields-of(hints, <label>), <: number>)
+  # semantic tokens: 5-int delta-encoded tokens, the first being the `square` declaration (function + declaration)
+  open(server, <file:///sem.tree>, sem-text)
+  save data, read-field(result-of(server, request(80, <textDocument/semanticTokens/full>, document(<file:///sem.tree>))), <data>)
+  save main/sem-tokens, and(is-above(data/length, 0), is-equal(multiply(round-down(divide(data/length, 5)), 5), data/length))
+  save main/sem-first, and(is-equal(read-at(data, 3), 0), is-equal(read-at(data, 4), 1))
+  back main
+
+# --- a hover over a call shows the callee's `#` doc comment under its signature, as `term look` prints it ---
+
+task doc-hover
+  like text
+  mark async
+
+  save server, serve()
+  open(server, <doc.tree>, documented-text)
+  save lines, text-split(documented-text, <\n>)
+  save line, 0
+  save at, 0
+  walk lines
+    take one, like text
+    fork test, text-contains(one, <call helper>)
+      hold
+        save line, at
+        halt
+    save at, add(at, 1)
+  save character, add(lines/{line}/index-of(<helper>), 1)
+  save shown, result-of(server, request(9, <textDocument/hover>, at-params(<doc.tree>, position(line, character))))
+  fork test, truth(shown)
+    hold
+      back read-field(read-field(shown, <contents>), <value>)
+  back <>
+
+# --- an open file not yet saved is loaded by path from another open file: the resolver asked the disk, so it was not ---
+
+task unsaved-errors
+  like text
+  mark async
+
+  save dir, temp-folder(<term-unsaved->)
+  dock-file/mkdir-sync(dock-path/join(dir, <code>))
+  dock-file/write-file-sync(dock-path/join(dir, <deck.tree>), <deck @probe/unsaved\n  mark \<0.0.1\>\n>)
+  save saved, dock-path/join(dir, <code/a.tree>)
+  save unsaved, dock-path/join(dir, <code/b.tree>)
+  dock-file/write-file-sync(saved, saved-text)
+  save saved-uri, file-uri(dock-url/pathToFileURL(saved))
+  save editor, serve()
+  open(editor, file-uri(dock-url/pathToFileURL(unsaved)), unsaved-text)
+  save opened, open(editor, saved-uri, saved-text)
+  save messages, empty-list()
+  walk opened
+    take each, like dynamic
+    save params, read-field(each, <params>)
+    fork test, and(truth(params), is-equal(read-field(params, <uri>), saved-uri))
+      hold
+        walk read-field(params, <diagnostics>)
+          take one, like dynamic
+          fork test, is-equal(read-field(one, <severity>), 1)
+            hold
+              messages/push(read-field(one, <message>))
+  back messages/join(< \| >)
+
+# --- navigation: definition, references, rename, symbols, completion, signature help ---
+
+form nav-answers
+  mark shared
+  link done, like boolean
+  link definition-line, like dynamic
+  link references, like number
+  link rename-edits, like boolean
+  link renamed, like text
+  link symbols, like boolean
+  link completion, like boolean
+  link signature, like boolean
+
+host nav, make(nav-answers, bind(done, false), bind(definition-line, void), bind(references, -1), bind(rename-edits, false), bind(renamed, <>), bind(symbols, false), bind(completion, false), bind(signature, false))
+
+# the later edit first: by line, then by character, both descending
+task later-first
+  take left, like dynamic
+  take right, like dynamic
+  like ordering
+
+  save a, read-field(read-field(left, <range>), <start>)
+  save b, read-field(read-field(right, <range>), <start>)
+  fork test, is-above(read-field(a, <line>), read-field(b, <line>))
+    hold
+      back make less
+  fork test, is-below(read-field(a, <line>), read-field(b, <line>))
+    hold
+      back make greater
+  fork test, is-above(read-field(a, <character>), read-field(b, <character>))
+    hold
+      back make less
+  fork test, is-below(read-field(a, <character>), read-field(b, <character>))
+    hold
+      back make greater
+  back make equal
+
+# the text after the edits are applied: each edit covers the NAME and nothing else, so replacing the edited text must
+# leave the program intact. The edits used to cover the whole `task helper` statement and the whole call
+task applied
+  take text, like text
+  take edits, like list, like dynamic
+  like text
+
+  save lines, text-split(text, <\n>)
+  walk sort(edits, later-first)
+    take edit, like dynamic
+    save start, read-field(read-field(edit, <range>), <start>)
+    save end, read-field(read-field(edit, <range>), <end>)
+    fork test, is-unequal(read-field(start, <line>), read-field(end, <line>))
+      hold
+        back <\<a multi-line edit\>>
+    save at, read-field(start, <line>)
+    save line, lines/{at}
+    save lines/{at}, <{substring(line, 0, read-field(start, <character>))}{read-field(edit, <newText>)}{substring(line, read-field(end, <character>), line/length)}>
+  back lines/join(<\n>)
+
+task the-nav
+  like nav-answers
+  mark async
+
+  fork test, nav/done
+    hold
+      back nav
+  save nav/done, true
+  save server, serve()
+  open(server, <nav.tree>, nav-text)
+  # the `helper` reference at the call site: its span drives the position-based queries
+  save program, read-field(flow-analysis/analyze(make-record(make(list, <file>, <nav.tree>, <text>, nav-text)), empty-record()), <program>)
+  save index, flow-index/build-index(program, <>)
+  save at, void
+  walk read-field(index, <references>)
+    take reference, like dynamic
+    fork test, is-equal(read-field(reference, <name>), <helper>)
+      hold
+        save at, start-of(read-field(reference, <span>))
+        halt
+  save definition, result-of(server, request(10, <textDocument/definition>, at-params(<nav.tree>, at)))
+  fork test, truth(definition)
+    hold
+      save nav/definition-line, read-field(read-field(read-field(definition, <range>), <start>), <line>)
+  save nav/references, result-of(server, request(11, <textDocument/references>, at-params(<nav.tree>, at)))/length
+  save asked, at-params(<nav.tree>, at)
+  save asked, make-record(make(list, <textDocument>, read-field(asked, <textDocument>), <position>, at, <newName>, <assist>))
+  save rename, result-of(server, request(12, <textDocument/rename>, asked))
+  save edits, empty-list()
+  fork test, truth(rename)
+    hold
+      save changed, read-field(read-field(rename, <changes>), <nav.tree>)
+      fork test, truth(changed)
+        hold
+          walk changed
+            take edit, like dynamic
+            edits/push(edit)
+  save all-assist, true
+  walk edits
+    take edit, like dynamic
+    fork test, is-unequal(read-field(edit, <newText>), <assist>)
+      hold
+        save all-assist, false
+  save nav/rename-edits, and(is-equal(edits/length, 2), all-assist)
+  save nav/renamed, applied(nav-text, edits)
+  save names, fields-of(result-of(server, request(13, <textDocument/documentSymbol>, document(<nav.tree>))), <name>)
+  save nav/symbols, and(contains(names, <helper>), contains(names, <runner>))
+  save labels, labels-at(server, 14, <nav.tree>, at)
+  save nav/completion, and(contains(labels, <helper>), contains(labels, <call>))
+  save signature, result-of(server, request(15, <textDocument/signatureHelp>, at-params(<nav.tree>, at)))
+  fork test, truth(signature)
+    hold
+      save first, read-at(read-field(signature, <signatures>), 0)
+      fork test, truth(first)
+        hold
+          save nav/signature, starts-with(read-field(first, <label>), <helper(>)
+  back nav
+
+# --- import hints and cross-file navigation, on a document inside the Term package ---
+
+form project-answers
+  mark shared
+  link done, like boolean
+  link modules, like boolean
+  link exports, like boolean
+  link cross-file, like boolean
+  link scoped, like boolean
+  link blended, like boolean
+  link auto-import, like boolean
+  link save-imports, like boolean
+  link lint-imports, like boolean
+  link unknown-imports, like boolean
+
+host project, make(project-answers, bind(done, false), bind(modules, false), bind(exports, false), bind(cross-file, false), bind(scoped, false), bind(blended, false), bind(auto-import, false), bind(save-imports, true), bind(lint-imports, true), bind(unknown-imports, false))
+
+# the completion labels of `text` at a place, the document opened for the ask and closed after it
+task project-complete
+  take server, like dynamic
+  take uri, like text
+  take text, like text
+  take line, like number
+  take character, like number
+  like list, like dynamic
+  mark async
+
+  open(server, uri, text)
+  save labels, labels-at(server, 41, uri, position(line, character))
+  deliver(server, notice(<textDocument/didClose>, document(uri)))
+  back labels
+
+# the titles of the code actions over the unknown name, asked with `context`
+task action-titles
+  take server, like dynamic
+  take uri, like text
+  take id, like number
+  take context, like dynamic
+  like list, like dynamic
+  mark async
+
+  save params, make-record(make(list, <textDocument>, make-record(make(list, <uri>, uri)), <range>, unknown-range(), <context>, context))
+  back fields-of(result-of(server, request(id, <textDocument/codeAction>, params)), <title>)
+
+task unknown-range
+  like dynamic
+
+  back make-record(make(list, <start>, position(4, 9), <end>, position(4, 22)))
+
+# a context of one diagnostic over the unknown name, with `code` when it is not empty
+task context-of
+  take code, like text
+  like dynamic
+
+  save diagnostic, make-record(make(list, <range>, unknown-range()))
+  fork test, is-unequal(code, <>)
+    hold
+      save diagnostic, make-record(make(list, <range>, unknown-range(), <code>, code))
+  back make-record(make(list, <diagnostics>, make(list, diagnostic)))
+
+task any-starting
+  take titles, like list, like dynamic
+  take start, like text
+  like boolean
+
+  walk titles
+    take title, like dynamic
+    fork test, starts-with(title, start)
+      hold
+        back true
+  back false
+
+task any-holding
+  take titles, like list, like dynamic
+  take part, like text
+  like boolean
+
+  walk titles
+    take title, like dynamic
+    fork test, text-contains(title, part)
+      hold
+        back true
+  back false
+
+task the-project
+  like project-answers
+  mark async
+
+  fork test, project/done
+    hold
+      back project
+  save project/done, true
+  save uri, file-uri(dock-url/pathToFileURL(dock-path/join(term-root(), <flow-probe.tree>)))
+  save server, serve()
+  deliver(server, request(40, <initialize>, empty-record()))
+  # import-path completion: `load @term/base/code/` lists the stdlib modules, with no `link/` entry for it
+  save modules, project-complete(server, uri, <load @term/base/code/\n>, 0, 21)
+  save project/modules, and(contains(modules, <text>), contains(modules, <list>))
+  # export completion: `find` under a `load` lists that module's definitions
+  save exported, project-complete(server, uri, <load @term/base/code/text\n  find \n>, 1, 7)
+  save project/exports, and(contains(exported, <split>), contains(exported, <to-upper-case>))
+  # cross-file go-to-definition: a call to an imported name jumps to its module file
+  open(server, uri, nav-import-text)
+  save jumped, result-of(server, request(42, <textDocument/definition>, at-params(uri, position(7, 12))))
+  fork test, truth(jumped)
+    hold
+      save project/cross-file, ends-with(read-field(jumped, <uri>), <deck/base/code/text.tree>)
+  # document-scoped index: the outline lists only THIS document's definitions, never the imported module's
+  save outline, fields-of(result-of(server, request(43, <textDocument/documentSymbol>, document(uri))), <name>)
+  fork test, is-equal(outline/length, 1)
+    hold
+      save project/scoped, is-equal(outline/0, <shout>)
+  # completion still offers imported callables (from the merged program), alongside the local definitions
+  save blended, project-complete(server, uri, nav-import-text, 2, 0)
+  save project/blended, and(contains(blended, <shout>), contains(blended, <to-upper-case>))
+  # auto-import code action: an unknown name a linked package exports is offered as a `load`. The short form: a
+  # package path resolves in the code root first, so the action writes no `code/`
+  open(server, uri, import-text)
+  save titles, action-titles(server, uri, 44, context-of(<>))
+  walk titles
+    take title, like dynamic
+    fork test, and(text-contains(title, <to-upper-case>), text-contains(title, <@term/base/text>))
+      hold
+        save project/auto-import, true
+  # THE SAVE NEVER SEARCHES. A save asks for `source.fixAll` alone, and a lint finding names no unknown name, yet both
+  # used to start the auto-import search through the stdlib and every linked package: 8.6 s for each save of the Term
+  # root's deck.tree, whose one diagnostic was a long comment line (2026-10-05)
+  save only-fix, make-record(make(list, <diagnostics>, read-field(context-of(<>), <diagnostics>), <only>, make(list, <source.fixAll>)))
+  save project/save-imports, any-starting(action-titles(server, uri, 45, only-fix), <Import >)
+  save project/lint-imports, any-starting(action-titles(server, uri, 46, context-of(<L019>)), <Import >)
+  save project/unknown-imports, any-holding(action-titles(server, uri, 47, context-of(<unknown-name>)), <@term/base/text>)
+  back project
+
+test <codec: a framed message round-trips>
+  want hold, codec/whole
+
+test <codec: a half-arrived message is buffered>
+  want hold, is-equal(codec/half, 0)
+
+test <codec: the rest completes the message>
+  want hold, is-equal(codec/rest, 1)
+
+test <initialize: advertises hover support>
+  want hold, the-main()/hover-support
+
+test <didOpen: an undefined name publishes one error diagnostic>
+  want hold, the-main()/bad-error
+
+test <didOpen: a valid document publishes no errors>
+  want hold, the-main()/good-clean
+
+test <hover: renders markdown>
+  want hold, is-equal(the-main()/hover-kind, <markdown>)
+
+test <hover: the integer literal reports type number>
+  want hold, the-main()/hover-number
+
+test <hover: a definition shows its doc comment under the signature>
+  want hold, text-contains(doc-hover(), <```\n\nAdd one to a number.>)
+
+test <an open file not yet saved is loaded by path from another open file>
+  want hold, is-equal(unsaved-errors(), <>)
+
+test <didClose: clears diagnostics>
+  want hold, is-equal(the-main()/closed-count, 0)
+
+test <definition: jumps to the function declaration (line 0)>
+  want hold, is-equal(the-nav()/definition-line, 0)
+
+test <references: finds the call site and the declaration>
+  want hold, is-equal(the-nav()/references, 2)
+
+test <rename: edits every occurrence to the new name>
+  want hold, the-nav()/rename-edits
+
+test <rename: edits name spans only (the program survives)>
+  want hold, is-equal(the-nav()/renamed, text-replace(nav-text, <helper>, <assist>))
+
+test <documentSymbol: lists the top-level functions>
+  want hold, the-nav()/symbols
+
+test <completion: offers in-scope names and keywords>
+  want hold, the-nav()/completion
+
+test <signatureHelp: shows the callee signature>
+  want hold, the-nav()/signature
+
+test <initialize: advertises definition + completion + rename>
+  want hold, the-main()/more-capabilities
+
+test <unknown request: still answered>
+  want hold, is-equal(the-main()/unknown-id, 9)
+
+test <completion: members after `/` offers record fields>
+  want hold, the-main()/member-fields
+
+test <completion: member list is fields only (no keyword noise)>
+  want hold, the-main()/member-only
+
+test <completion: task keyword is a snippet>
+  want hold, is-equal(the-main()/task-format, 2)
+
+test <completion: import path lists stdlib modules>
+  want hold, the-project()/modules
+
+test <completion: `find` lists the module exports>
+  want hold, the-project()/exports
+
+test <definition: cross-file jump to the imported module>
+  want hold, the-project()/cross-file
+
+test <documentSymbol: document-scoped (no import leak)>
+  want hold, the-project()/scoped
+
+test <completion: offers local + imported callables>
+  want hold, the-project()/blended
+
+test <codeAction: auto-imports an unknown name from its module>
+  want hold, the-project()/auto-import
+
+test <codeAction: a save (`source.fixAll` only) offers no import>
+  want hold, is-equal(the-project()/save-imports, false)
+
+test <codeAction: a lint finding is not searched for as a name>
+  want hold, is-equal(the-project()/lint-imports, false)
+
+test <codeAction: an `unknown-name` diagnostic still offers the import>
+  want hold, the-project()/unknown-imports
+
+test <completion: argument-type match ranks first>
+  want hold, the-main()/rank-first
+
+test <codeLens: reports the reference count per definition>
+  want hold, the-main()/lens-count
+
+test <inlayHint: inferred type of an un-annotated binding>
+  want hold, the-main()/inlay-type
+
+test <semanticTokens: emits 5-int tokens>
+  want hold, the-main()/sem-tokens
+
+test <semanticTokens: first token is a function declaration>
+  want hold, the-main()/sem-first

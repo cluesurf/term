@@ -1,0 +1,85 @@
+note <the small-task inliner: a one-line task is replaced by its value at a call whose arguments are all pure, and every reason it is not>
+
+# Ported from inline-small.ts by statement (item term-self-host-001-0589), one test per `ok` in its order. The inliner is
+# ir/simplify.ts's `smallBody`. Each program is compiled with `use` its only root, so a helper whose calls are all inlined
+# is dropped, and its emitted TypeScript read by the original's patterns.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+
+# the emitted TypeScript of a program, with `use` the only root
+task emit
+  take text, like text
+  like text
+
+  host built, compile-text(text, make(compile-choice, bind(file, <main.tree>), bind(entry, <use>)))
+  fork test, not(built/ok)
+    hold
+      save said, <compile failed>
+      walk built/messages
+        take message, like text
+        save said, <{said} | {message}>
+      halt <{said}>
+  back built/emitted
+
+task holds
+  take shape, like text
+  take text, like text
+  like boolean
+
+  back matches(make(pattern, shape), text)
+
+host helper, <task twice\n  take x, like number\n  like number\n  send back\n    call multiply\n      read x\n      code 2\n>
+
+# 1. pure arguments: inlined, and the helper is dropped once nothing calls it
+test <a call with a pure argument is replaced by the value>
+  host inlined, emit(<{helper}\ntask use\n  take n, like number\n  like number\n  send back\n    call twice\n      read n\n>)
+  want hold, and(not(holds(<<twice\(>>, inlined)), holds(<<n \* 2>>, inlined))
+
+# 2. an impure argument (a call that stays a call: `bump` is two statements, so it is not inlined itself) keeps the call,
+# so the argument is evaluated once and in order. A small `bump` would inline first to `n + 1`, which has no effect and is
+# read once by `twice`, and then `twice` inlines too, which is correct
+test <a call whose argument is itself a call is NOT inlined>
+  host impure, emit(<{helper}\ntask bump\n  take n, like number\n  like number\n  save m\n    call add\n      read n\n      code 1\n  send back, read m\n\ntask use\n  take n, like number\n  like number\n  send back\n    call twice\n      call bump\n        read n\n>)
+  want hold, holds(<<twice\(>>, impure)
+
+# 3. capture: the helper reads a module constant `limit`, and the caller binds its own `limit`. The caller's own `limit`
+# is live (it is read after the call), so inlining `x + limit` here would read the caller's
+test <a body name the caller binds itself is NOT inlined into it>
+  host captured, emit(<host limit, code 10\n\ntask capped\n  take x, like number\n  like number\n  send back\n    call add\n      read x\n      read limit\n\ntask use\n  take n, like number\n  like number\n  save limit\n    call add\n      read n\n      code 3\n  send back\n    call add\n      call capped\n        read n\n      read limit\n>)
+  want hold, holds(<<capped\(>>, captured)
+
+# 4. an `unknown` result is boxed at the boundary on Rust, so it is never inlined
+test <a task answering `unknown` is NOT inlined>
+  host boxed, emit(<task wrap\n  take x, like number\n  like unknown\n  send back, read x\n\ntask use\n  take n, like number\n  like unknown\n  send back\n    call wrap\n      read n\n>)
+  want hold, holds(<<wrap\(>>, boxed)
+
+# 5. an async task is awaited by its caller, so it is never inlined
+test <an async task is NOT inlined>
+  host awaited, emit(<task later\n  take x, like number\n  like number\n  note async\n  send back, read x\n\ntask use\n  take n, like number\n  like number\n  note async\n  send back\n    call later\n      read n\n      wait true\n>)
+  want hold, holds(<<later\(>>, awaited)
+
+host shifted, <task shift\n  take x, like number\n  take\n    by\n    like number\n    need false\n  like number\n  send back\n    call add\n      read x\n      read by\n>
+
+# 6. a trailing `need false` number left out is the 0 every backend passes, written in, so the call inlines
+test <a left-out optional number inlines as 0>
+  host omitted, emit(<{shifted}\ntask use\n  take n, like number\n  like number\n  send back\n    call shift\n      read n\n>)
+  want hold, and(not(holds(<<shift\(>>, omitted)), holds(<<n \+ 0|\(n\)|return n\b>>, omitted))
+
+# 7. a left-out optional that is not a number stays a call: its absent value is the host's, and not one literal
+test <a left-out optional boolean is NOT inlined>
+  host flagged, emit(<task pick\n  take x, like number\n  take\n    flip\n    like boolean\n    need false\n  like number\n  send back, read x\n\ntask use\n  take n, like number\n  like number\n  send back\n    call pick\n      read n\n>)
+  want hold, holds(<<pick\(>>, flagged)
+
+# a small task answering a template, inlined into another template: one template, its parts spliced in order, where two
+# nested were two text builds (Rust's `format!` in `format!`)
+test <a template inlined into a template is one template>
+  host nested, emit(<task pair\n  take a, like number\n  take b, like number\n  like text\n  send back, text \<\{a\}|\{b\}\>\n\ntask use\n  take n, like number\n  like text\n  send back, text \<[\{pair(n, n)\}]\>\n>)
+  want hold, holds(<<`\[\$\{n\}\|\$\{n\}\]`>>, nested)
+  want hold, is-equal(find-matches(make(pattern, <`>), nested)/length, 2)

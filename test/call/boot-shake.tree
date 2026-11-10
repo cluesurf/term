@@ -1,0 +1,1 @@
+note <draft moved out: boot.ts finds hook-dispatch.ts by import.meta.url, which a docked bundle cannot reach>

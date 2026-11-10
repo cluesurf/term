@@ -1,0 +1,108 @@
+note <two links to one deck resolve when both accept the version picked, and are refused, naming both, when not>
+
+# Ported from resolve-holds.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order. One
+# version of a deck is installed, so every link to it must accept the version the first one picked. Two that did not
+# were kept the first and dropped the second without a word (guides: packages/install, 2026-10-04). The original held
+# code/package/resolve.ts, a face whose logic is code/package/resolution.tree: this holds that module itself.
+# Workspace decks, so nothing is fetched. The original's regex of literal characters is the text it spells.
+
+load ../code/package/resolution
+  find resolve
+  find workspace-deck
+
+load ../code/package/manifest-shape
+  find deck-manifest
+  find deck-link
+
+load ../code/package/lockfile-shape
+  find lockfile
+
+load ../code/package/registry-fetching
+  find make-default-fetch-config
+
+load ../code/version
+  find parse-code
+  find parse-code-hold
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+
+# the message of what a call raised
+bind cause-message
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause)>
+
+# a manifest of `name` at `mark`, linking each of `links` at its hold, written `name hold`
+task deck-of
+  take name, like text
+  take mark, like text
+  take links, like list, like text
+  like deck-manifest
+
+  save linked, make list
+  walk links
+    take one, like text
+    save parts, text-split(one, < >)
+    linked/push(make(deck-link, bind(name, parts/0), bind(mark, parse-code-hold(parts/1))))
+  back make(deck-manifest, bind(host, <>), bind(name, name), bind(mark, parse-code(mark)), bind(link, linked))
+
+# no lockfile
+task no-lock
+  like maybe, like lockfile
+
+  back make none
+
+# the workspace of @alice/tools and the given @bob/shelf
+task workspaces-with
+  take shelf, like deck-manifest
+  like hash, like text, like workspace-deck
+
+  save none, make list
+  save found, make hash
+  found/set(<@alice/tools>, make(workspace-deck, bind(manifest, deck-of(<@alice/tools>, <1.0.0>, none))))
+  found/set(<@bob/shelf>, make(workspace-deck, bind(manifest, shelf)))
+  back found
+
+# the app linking @alice/tools 1.x.x and @bob/shelf 0.x.x
+task project-deck
+  like deck-manifest
+
+  back deck-of(<@probe/app>, <0.0.1>, make list(<@alice/tools 1.x.x>, <@bob/shelf 0.x.x>))
+
+# what resolving the app over a shelf asking `hold` of @alice/tools raised, the empty text when it resolved
+task refusal-with
+  take hold, like text
+  like text
+  mark async
+
+  save message, <>
+  save shelf, deck-of(<@bob/shelf>, <0.1.0>, make list(<@alice/tools {hold}>))
+  fork
+    mark unsafe
+    save resolved, resolve(project-deck(), make-default-fetch-config(), no-lock(), workspaces-with(shelf))
+  halt take
+    take cause
+    save message, cause-message(cause)
+  back message
+
+test <two links to one deck: resolve when both accept the version picked>
+  host shelf, deck-of(<@bob/shelf>, <0.1.0>, make list(<@alice/tools 1.x.x>))
+  host resolution, resolve(project-deck(), make-default-fetch-config(), no-lock(), workspaces-with(shelf))
+  host names, make list
+  walk resolution/decks/values()
+    take one
+    names/push(one/name)
+  host sorted, sort(names, from-texts)
+  want hold, is-equal(sorted/join(<,>), <@alice/tools,@bob/shelf>)
+
+test <two links to one deck: are refused when they accept no version in common, naming both>
+  want hold, text-contains(refusal-with(<2.x.x>), <@alice/tools: deck.tree accepts 1.x.x and @bob/shelf accepts 2.x.x>)

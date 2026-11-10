@@ -151,6 +151,30 @@ bind roll-no-before
   case node
     text <(\{ error: "no-before", message: $message \})>
 
+# ---- what is asked ----
+
+# what `call-roll` takes without `--diff` (work/roll.tree makes it). NOT `roll-ask` or `show-ask`: Term names are
+# package-global, and base-verbs.tree declares a `show-ask` of its own
+form roll-whole-ask
+  link root, like text
+  link kind, like text
+  link json, like boolean
+  link private, like boolean
+  link host, like text
+  link path, like boolean
+
+# what `call-roll` takes with `--diff`: it tests `diff !== undefined`, so the field is only there when given (the take
+# is a maybe, decision cli-in-term/008 part 1: `--diff ""` is given). call-roll takes either form, so its input stays
+# loose until its callers are split (term-self-host-001-1115)
+form roll-diff-ask
+  link root, like text
+  link kind, like text
+  link json, like boolean
+  link private, like boolean
+  link host, like text
+  link path, like boolean
+  link diff, like text
+
 # ---- what is said ----
 
 form roll-open

@@ -1,0 +1,60 @@
+note <A Term-defined method of hash or list called as a member on a native map or list reaches the Term method>
+
+# Ported from member-method.ts by statement (item term-self-host-001-0617). `kids/get-or-default(k, d)` and
+# `xs/contains(x)` were emitted as native methods of those names, which are not native: TypeScript emitted
+# `kids.getOrDefault(..)`, a TypeError at run time. Found by the engine/data/map port (2026-10-04). `bindMemberMethod`
+# now dispatches such a call to the Term method, and leaves a native member (`xs/get(i)`, `h/has(k)`, `xs/push(x)`) to
+# the native call it always was. Built with its native prelude AND run on node, one call printed per test.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find prelude-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host source, <load @term/base/list\n  find list\n\nload @term/base/hash\n  find hash\n\ntask lookups\n  like number\n  save h, make hash\n  call h/set, text(\<a\>), code 1\n  save found, call h/get-or-default, text(\<a\>), code 0\n  save missing, call h/get-or-default, text(\<b\>), code 7\n  send back, call add, read(found), read missing\n\ntask holds\n  like boolean\n  save xs, make list\n  call xs/push, code 3\n  send back, call xs/contains, code 3\n\ntask natives\n  like number\n  save xs, make list\n  call xs/push, code 5\n  call xs/push, code 6\n  send back, call xs/get, code 1\n>
+
+host native-default, make pattern, <<\.getOrDefault\(>>
+host list-get, make pattern, <<listGet\(xs>>
+
+task built
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, </gate/code/member-method.tree>), bind(stdlib, <node>)))
+
+task answer-of
+  take call, like text
+  like text
+
+  save out, built()
+  save folder, temp-folder(<term-member-method->)
+  back typescript-answer(out, <process.stdout.write(String({call}))>, folder, <module>, prelude-text(out, <node>))
+
+test <get-or-default is not emitted as a native method>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(native-default, out/emitted))
+
+test <a native member stays native: xs/get is an index read>
+  host out, built()
+  want hold, out/ok
+  want hold, not(matches(list-get, out/emitted))
+
+test <h/get-or-default runs: 1 found, 7 by default>
+  want hold, is-equal(answer-of(<lookups()>), <8>)
+
+test <xs/contains runs>
+  want hold, is-equal(answer-of(<holds()>), <true>)
+
+test <xs/get still reads the element>
+  want hold, is-equal(answer-of(<natives()>), <6>)

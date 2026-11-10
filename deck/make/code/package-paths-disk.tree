@@ -59,8 +59,6 @@ load ./package-paths
   find find-project-root
   find tree-file
   find package-disk
-
-load ./deck/resolve
   find package-rest
 
 # ---- the disk ----

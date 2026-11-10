@@ -12,12 +12,7 @@ load @term/call/work/home
 
 load @term/call/work/tool/scan-command
   find call-scan
-
-form scan-ask
-  link root, like text
-  link file, like text
-  link fix, like boolean
-  link back, like text
+  find scan-ask
 
 task scan
   mark async

@@ -16,6 +16,7 @@ load @term/base/list
 
 load ./kink-showing
   find show-kink
+  find kink-ask
 
 load ../context/name-context
   find show-context
@@ -173,11 +174,6 @@ form show-close-usage
   link verdict, like text
   link next, like text
   link failure, like text
-
-form kink-ask
-  link root, like text
-  link query, like dynamic
-  link json, like boolean
 
 # the toolchains each backend calls, the tool and the arguments it is asked its version with
 form tool

@@ -1,0 +1,59 @@
+note <a whole number in braces in a text literal is a value, and a quantifier stays text>
+
+# Ported from brace-number.ts by statement (item term-self-host-001-0635), one test per `ok` in its order. parser/token.ts
+# and token.tree `TEXT_PATTERN`: `{123}` in a literal is `123`, as `{x}` is the value of `x`. It printed the braces
+# until 2026-10-05, with no message. A regex quantifier with a comma and a brace before anything else stay text. A
+# number in braces right after another character is a quantifier as written: a uuid pattern matched `[0-9a-f]8` until
+# token.tree `stands-apart` held it (2026-10-05). Each body is the answer of a one-task program, run on node.
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+# the text a run task answering `body` prints on node, else why it did not run
+task answer
+  take body, like text
+  take name, like text
+  like text
+
+  host folder, temp-folder(<brace-number->)
+  host ran, run-text(<task run\n  like text\n  back {body}\n>, <typescript>, folder, name)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      back ran/output
+  back <{ran/state} at {ran/stage}: {ran/reason}>
+
+test <a number alone in braces is its value>
+  want hold, is-equal(answer(<\<\{123\}\>>, <brace-0>), <123>)
+
+test <beside text>
+  want hold, is-equal(answer(<\<a \{31\} b\>>, <brace-1>), <a 31 b>)
+
+test <a negative one>
+  want hold, is-equal(answer(<\<at \{-7\}\>>, <brace-2>), <at -7>)
+
+test <a quantifier with a comma stays text>
+  want hold, is-equal(answer(<\<[0-9]\{3,5\}\>>, <brace-3>), <[0-9]\{3,5\}>)
+
+test <JSON stays text>
+  want hold, is-equal(answer(<\<\{"a":1\}\>>, <brace-4>), <\{"a":1\}>)
+
+test <an escaped brace is a brace>
+  want hold, is-equal(answer(<\<\\\{3\\\}\>>, <brace-5>), <\{3\}>)
+
+test <a name in braces is still its value>
+  want hold, is-equal(answer(<\<\{add(1, 2)\}\>>, <brace-6>), <3>)
+
+test <a quantifier after a class stays text>
+  want hold, is-equal(answer(<\<^[0-9a-f]\{8\}$\>>, <brace-7>), <^[0-9a-f]\{8\}$>)
+
+test <after an escape>
+  want hold, is-equal(answer(<\<\\d\{4\}\>>, <brace-8>), <\\d\{4\}>)
+
+test <after a letter or a group>
+  want hold, is-equal(answer(<\<a\{2\}(ab)\{3\}\>>, <brace-9>), <a\{2\}(ab)\{3\}>)
+
+test <after another interpolation it is a value>
+  want hold, is-equal(answer(<\<\{add(1, 2)\}\{4\}\>>, <brace-10>), <34>)

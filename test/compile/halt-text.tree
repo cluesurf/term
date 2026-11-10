@@ -1,0 +1,89 @@
+note <halt with a text raises an Error on TypeScript whether or not the text interpolates>
+
+# Ported from halt-text.ts by statement (item term-self-host-001-0616). An interpolated text is a `template` node, which
+# the emitter's throw case missed, so `halt <cycle: {{x}}>` threw a bare STRING: no `message`, no stack, and `error
+# instanceof Error` false in every handler. Found porting compile/affected, 2026-10-02. The program is run on node, one
+# main calling each task and printing whether what it raised is an Error and its message.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture, <task plain\n  like text\n  halt \<it broke\>\n\ntask interpolated\n  take n, like number\n  like text\n  halt \<it broke at \{\{n\}\}\>\n>
+
+# the `failure` carrier since 2026-10-03 (note/project/term/guides/research/gaps/plan.md phase 1), and since 2026-10-23
+# the TermException every form raise throws, its Term frame first (term/hive decision 001), so a handler reads `form`,
+# `note` and `flow` as it does from any raise
+host carrier, make pattern, <<__termRaised\(new TermException\(\{ host: "", form: "failure", note: `it broke at \$\{n\}`>>
+host frame, make pattern, <<"interpolated halt-text\.tree:8">>
+
+task built
+  like compile-outcome
+
+  back compile-text(fixture, make(compile-choice, bind(file, </gate/code/halt-text.tree>)))
+
+# for plain() and interpolated(3): whether the raise is an Error, then its message, joined by |
+host main, <const said = []\nfor (const call of [() =\> plain(), () =\> interpolated(3)]) \{\n  try \{\n    call()\n    said.push("none", "")\n  \} catch (error) \{\n    said.push(String(error instanceof Error), error instanceof Error ? error.message : "")\n  \}\n\}\nprocess.stdout.write(said.join("|"))\n>
+
+form halt-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(halt-answers, bind(held, make hash))
+
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-halt-text->)
+  save said, typescript-answer(built(), main, folder, <halt-text>)
+  save kept/held/{key}, said
+  back said
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <it compiles>
+  want hold, built()/ok
+
+test <an interpolated halt throws the failure carrier, a TermException with its frame>
+  host out, built()
+  want hold, matches(carrier, out/emitted)
+  want hold, matches(frame, out/emitted)
+
+test <plain: the raise is an Error>
+  want hold, is-equal(answer(0), <true>)
+
+test <plain: with the text as its message>
+  want hold, is-equal(answer(1), <it broke>)
+
+test <interpolated: the raise is an Error>
+  want hold, is-equal(answer(2), <true>)
+
+test <interpolated: with the text as its message>
+  want hold, is-equal(answer(3), <it broke at 3>)

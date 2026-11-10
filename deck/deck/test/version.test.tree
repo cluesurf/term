@@ -1,0 +1,213 @@
+note <a package version: every file of a folder as a dataset record, deterministic, and one edit changes one record>
+
+# Ported from version.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order.
+# code/object/version.ts, dataset.ts and store.ts are the subject, docked as the original imported them: each fills the
+# defaults a TypeScript caller is given and hands on to its Term module. The prolly tree and the chunk store are
+# @cluesurf/save's, docked as the original imported them. The original's `beforeAll` made one source folder and one
+# store for the file: here two top-level hosts make them once, by the standard library's temp-folder (item 0985), so
+# they are removed when the run ends. The seventh test edits that folder, as the original's did.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <@term/deck/code/object/version>, name version-face
+  load <@term/deck/code/object/dataset>, name dataset-face
+  load <@term/deck/code/object/store>, name store-face
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/store/chunk-store>, name save-chunks
+  load <node:fs>, name version-file
+  load <node:path>, name version-path
+
+form store-input
+  link root, like text
+
+form version-input
+  link dir, like text
+  link store, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+# host native: a value written as JSON, to compare a list field for field
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind is-void
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value === undefined>
+
+bind new-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+# host value: the hashes a chunk store holds, in its order
+bind chunk-hashes
+  take shelf, like dynamic
+  like list, like text
+  case node
+    text <[...$shelf.keys()]>
+
+# host value: the members of a set, in its order
+bind members-of
+  take set, like dynamic
+  like list, like text
+  case node
+    text <Array.from($set)>
+
+task folder-in
+  take dir, like text
+  take at, like text
+
+  version-file/mkdir-sync(version-path/join(dir, at), make(folder-ask, bind(recursive, true)))
+
+task file-in
+  take dir, like text
+  take at, like text
+  take text, like text
+
+  version-file/write-file-sync(version-path/join(dir, at), text)
+
+# the source folder: a nested file, an empty folder, node_modules, and an executable script
+task source-folder
+  like text
+
+  save dir, temp-folder(<version-test->)
+  folder-in(dir, <task>)
+  folder-in(dir, <code/native/node>)
+  folder-in(dir, <view/empty>)
+  folder-in(dir, <node_modules/junk>)
+  file-in(dir, <code/base.tree>, <task a\n>)
+  file-in(dir, <code/native/node/f.tree>, <task b\n>)
+  file-in(dir, <deck.tree>, <deck @term/probe\n>)
+  file-in(dir, <node_modules/junk/x.js>, <nope\n>)
+  file-in(dir, <task/run.sh>, <#!/bin/sh\n>)
+  # 0o755
+  version-file/chmod-sync(version-path/join(dir, <task/run.sh>), 493)
+  back dir
+
+host root, source-folder()
+host store, store-face/local-object-store(make(store-input, bind(root, temp-folder(<version-objects->))))
+
+task built-of
+  take dir, like text
+  mark async
+  like dynamic
+
+  back wait version-face/build-version(make(version-input, bind(dir, dir), bind(store, store)))
+
+# the file of the version at `path`, void when it has none
+task file-at
+  take built, like dynamic
+  take path, like text
+  like dynamic
+
+  walk built/files
+    take file, like dynamic
+    fork test, is-equal(file/path, path)
+      hold
+        back file
+  back void
+
+# whether any file of the version lies under node_modules
+task any-under-modules
+  take built, like dynamic
+  like boolean
+
+  walk built/files
+    take file, like dynamic
+    fork test, starts-with(file/path, <node_modules>)
+      hold
+        back true
+  back false
+
+# the version read back from its own tree, as JSON
+task read-back
+  take built, like dynamic
+  like text
+
+  back json-of(dataset-face/files-of-dataset(save-tree/read-dataset(built/root, built/tree-chunks)))
+
+# both trees in one store, so the diff can reach either side
+task both-stores
+  take before, like dynamic
+  take after, like dynamic
+  like dynamic
+
+  save chunks, new-store(save-chunks)
+  save sources, make list
+  sources/push(before/tree-chunks)
+  sources/push(after/tree-chunks)
+  walk sources
+    take source, like dynamic
+    walk chunk-hashes(source)
+      take hash, like text
+      save bytes, source/get(hash)
+      fork test, not(is-void(bytes))
+        hold
+          chunks/put(bytes)
+  back chunks
+
+test <buildVersion: flattens nested directories into full paths>
+  host built, built-of(root)
+  want hold, not(is-void(file-at(built, <code/native/node/f.tree>)))
+
+test <buildVersion: keeps an empty directory, which git cannot represent>
+  host built, built-of(root)
+  want hold, is-equal(file-at(built, <view/empty>)/mode, <dir>)
+
+test <buildVersion: records the executable bit>
+  host built, built-of(root)
+  want hold, is-equal(file-at(built, <task/run.sh>)/mode, <exec>)
+
+test <buildVersion: excludes node_modules>
+  host built, built-of(root)
+  want hold, is-equal(any-under-modules(built), false)
+
+test <buildVersion: round-trips through the prolly tree>
+  host built, built-of(root)
+  want hold, is-equal(read-back(built), json-of(built/files))
+
+test <buildVersion: is deterministic: the same directory gives the same root>
+  host a, built-of(root)
+  host b, built-of(root)
+  want hold, is-equal(a/root, b/root)
+
+test <buildVersion: a one-file edit changes exactly that record>
+  host before, built-of(root)
+  file-in(root, <code/native/node/f.tree>, <task b changed\n>)
+  host after, built-of(root)
+  host chunks, both-stores(before, after)
+  host changed, members-of(save-tree/diff-roots(before/root, after/root, chunks))
+  want hold, is-equal(changed/length, 1)
+  want hold, is-equal(changed/0, dataset-face/mark-of-path(<code/native/node/f.tree>))
+
+# Each of these failed `term host` for the whole package before it fell back to bytes: a blank `.tree`, a comments-only
+# one (the parser's `empty .tree input`), and a lean `role.tree`, whose `mark lean` parses as a record identity and is
+# then refused by the encoder for not being 32 characters. Each text is ASCII, so its length is its byte length.
+test <buildVersion: ships a .tree the record grammar cannot hold as bytes, and keeps the bytes>
+  host dir, temp-folder(<version-bytes->)
+  host blank, <>
+  host comments, <# a placeholder, bound later\n# and nothing else\n>
+  host role, <role code\n  mark lean\n  take @/code/**\n>
+  file-in(dir, <blank.tree>, blank)
+  file-in(dir, <comments.tree>, comments)
+  file-in(dir, <role.tree>, role)
+  host built, built-of(dir)
+  want hold, is-void(file-at(built, <blank.tree>)/record)
+  want hold, is-equal(file-at(built, <blank.tree>)/size, blank/length)
+  want hold, is-void(file-at(built, <comments.tree>)/record)
+  want hold, is-equal(file-at(built, <comments.tree>)/size, comments/length)
+  want hold, is-void(file-at(built, <role.tree>)/record)
+  want hold, is-equal(file-at(built, <role.tree>)/size, role/length)
+  want hold, is-equal(read-back(built), json-of(built/files))

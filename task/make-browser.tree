@@ -1,0 +1,375 @@
+# `node host/line.js boot task/make-browser.tree -- build --out <file.js> [--meta <file.json>]`: bundle the browser
+# compiler (the port of deck/call/code/work/browser/browser-compiling.tree) into ONE self-contained module worker.
+# Ported from deck/call/code/browser/build.mjs (item term-self-host-001-1166), run by `term boot`. Every `@term/*`
+# import is resolved through the Term package's tsconfig paths and inlined.
+#
+# NOTHING NODE-ONLY SURVIVES. `fs` (either spelling) is the port of work/browser/snapshot-disk.tree in Node's module
+# shape, the in-memory snapshot the worker mounts, `path` is aliased to deck/call/code/browser/path.ts, and `crypto`
+# to deck/call/code/browser/crypto.ts, Node's `createHash` over the Term digests the compile's hash keys call. Every other
+# Node builtin the compile path's modules import at their top goes to deck/call/code/browser/absent.ts, which throws if
+# it is ever CALLED: the compile and emit path never calls one. The one dynamic `esbuild` import in the build driver is
+# external: it sits inside a lazy initializer `term make --parallel` reaches and the worker never does.
+#
+# The bundle is then READ BACK and refused if any `require(` or `import` of a Node builtin is left in it, so a new Node
+# import in the compile path fails this build rather than a reader's browser.
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by), as task/make-load.tree reads it. `--out` and
+# `--meta` are read against the working directory, as the original read them.
+
+load @term/base/console
+  find log
+  find error
+
+load @term/base/environment
+  find variable
+  find directory
+
+load @term/base/process
+  find exit
+
+load @term/base/text
+  find trim
+
+load @term/base/text/util
+  find join
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# whether `--<name>` was typed with no value after it, which the original refused as not given (the booted console
+# reads a bare flag as `true`)
+bind browser-flag-bare
+  take name, like text
+  like boolean
+  case node
+    text <<((at_) => at_ > 0 && !process.argv[at_ + 1])(process.argv.indexOf($name))>>
+
+# the bundle: the entry, the snapshot disk wrapped in Node's `fs` shape by a plugin, the alias map and the defines
+bind browser-bundle
+  take entry, like text
+  take port, like text
+  take disk-shape, like text
+  take outfile, like text
+  take tsconfig, like text
+  take path-file, like text
+  take crypto-file, like text
+  take absent-file, like text
+  take role-file, like text
+  take absent-names, like list, like text
+  like dynamic
+  case node
+    text <<require("esbuild").build({ entryPoints: [$entry], plugins: [{ name: "snapshot-fs", setup(builder_) { builder_.onResolve({ filter: /^(node:)?fs$/ }, () => ({ path: "fs", namespace: "snapshot-fs" })); builder_.onLoad({ filter: /.*/, namespace: "snapshot-fs" }, () => ({ contents: $disk-shape, loader: "js", resolveDir: $port })) } }], outfile: $outfile, bundle: true, format: "esm", platform: "browser", target: "es2022", minify: true, legalComments: "none", logLevel: "warning", tsconfig: $tsconfig, alias: Object.assign({ path: $path-file, "node:path": $path-file, crypto: $crypto-file, "node:crypto": $crypto-file, "@cluesurf/deck.tree": $role-file }, ...$absent-names.map((name_) => ({ [name_]: $absent-file, [`node:${name_}`]: $absent-file }))), external: ["esbuild"], define: { "process.env.TERM_STDLIB": JSON.stringify("/term/base"), "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.url": JSON.stringify("file:///term/call/code/browser/worker.js") }, metafile: true })>>
+
+# whether the bundle still imports the Node builtin `name`, by either spelling
+bind browser-still-imports
+  take text, like text
+  take name, like text
+  like boolean
+  case node
+    text <<new RegExp(`(require\\(|from\\s*|import\\(\\s*)["'](node:)?${$name.replace("/", "\\/")}["']`).test($text)>>
+
+# the bundle's length as the original counted it, in UTF-16 code units
+bind browser-length
+  take text, like text
+  like number
+  case node
+    text <$text.length>
+
+bind browser-write-meta
+  take result, like dynamic
+  take file, like text
+  like void
+  case node
+    text <require("node:fs").writeFileSync($file, JSON.stringify($result.metafile))>
+
+bind browser-resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+# TERM_ROOT when it is set, else the nearest folder at or above the working directory holding the root marker,
+# else the working directory
+task term-root
+  like text
+  save named
+    call trim
+      call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call browser-resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+# the snapshot disk's names, the ones Node's `fs` shape carries
+task disk-names
+  like list, like text
+  send back
+    make list
+      text <existsSync>
+      text <readFileSync>
+      text <statSync>
+      text <lstatSync>
+      text <readdirSync>
+      text <realpathSync>
+      text <writeFileSync>
+      text <mkdirSync>
+      text <appendFileSync>
+      text <rmSync>
+      text <renameSync>
+      text <watch>
+      text <openSync>
+      text <closeSync>
+      text <writeSync>
+      text <readSync>
+      text <createWriteStream>
+      text <createReadStream>
+
+# what the bundle must not still import, read back after the build
+task node-builtins
+  like list, like text
+  send back
+    make list
+      text <fs>
+      text <fs/promises>
+      text <path>
+      text <url>
+      text <child_process>
+      text <os>
+      text <crypto>
+      text <util>
+      text <worker_threads>
+      text <module>
+      text <events>
+      text <stream>
+      text <zlib>
+      text <http>
+      text <https>
+      text <net>
+      text <readline>
+      text <process>
+      text <buffer>
+      text <vm>
+
+# the port of the snapshot disk in Node's module shape: a default export and a `promises` record, which a Term module
+# cannot say, so `fs` is the port wrapped in this shape, never a copy of it
+task disk-shape
+  take disk, like text
+  like text
+  save names
+    call join
+      call disk-names
+      text <, >
+  save quoted
+    call node-json-text
+      read disk
+  send back
+    call join
+      make list
+        text <import * as disk from {quoted}>
+        text <export const \{ {names} \} = disk>
+        text <<export const promises = { readFile: async (path) => disk.readFileSync(path), writeFile: disk.writeFileSync, mkdir: disk.mkdirSync }>>
+        text <export default \{ {names}, promises \}>
+      text <\n>
+
+bind node-json-text
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+task build-browser
+  mark async
+  take out, like text
+  take meta, like text
+  like void
+  save outfile, read out
+  fork test
+    hook test
+      call browser-flag-bare, text <--out>
+    hook hold
+      save outfile, text <>
+  fork test
+    hook test
+      call is-equal
+        read outfile
+        text <>
+    hook hold
+      call error, text <usage: node host/line.js boot task/make-browser.tree -- build --out \<file.js\> [--meta \<file.json\>]>
+      call exit, code 2
+  save metafile, read meta
+  fork test
+    hook test
+      call browser-flag-bare, text <--meta>
+    hook hold
+      save metafile, text <>
+  save term
+    call term-root
+  save here
+    call node-path/join
+      read term
+      text <deck>
+      text <call>
+      text <code>
+      text <browser>
+  # the worker and its disk are the ports of call/code/work/browser (term-cli-in-term-0063), emitted by port-build
+  save port
+    call node-path/join
+      read term
+      text <deck>
+      text <call>
+      text <host>
+      text <port>
+      text <code>
+      text <work>
+      text <browser>
+  save result
+    call browser-bundle
+      call node-path/join
+        read port
+        text <browser-compiling.ts>
+      read port
+      call disk-shape
+        call node-path/join
+          read port
+          text <snapshot-disk.ts>
+      read outfile
+      call node-path/join
+        read term
+        text <tsconfig.json>
+      call node-path/join
+        read here
+        text <path.ts>
+      call node-path/join
+        read here
+        text <crypto.ts>
+      call node-path/join
+        read here
+        text <absent.ts>
+      # the package manager's barrel re-exports its registry, OCI and signing code, all Node. The compile path reads
+      # only the role reader from it, so the barrel is narrowed to that one module
+      call node-path/join
+        read term
+        text <deck>
+        text <deck>
+        text <code>
+        text <package>
+        text <role.ts>
+      # only what the closure imports today. Any other builtin is left unaliased, so under the browser platform the
+      # build cannot resolve it and fails naming the importer, which is the point
+      make list
+        text <url>
+      wait true
+  save text
+    call node-fs/read-file-sync
+      read outfile
+      text <utf8>
+  save left
+    make list
+  walk list
+    call node-builtins
+    hook next
+      take site, name builtin
+      fork test
+        hook test
+          call browser-still-imports
+            read text
+            read builtin
+        hook hold
+          call left/push
+            read builtin
+  fork test
+    hook test
+      call is-above
+        read left/length
+        code 0
+    hook hold
+      save named
+        call join
+          read left
+          text <, >
+      call error, text <refused: the bundle still imports {named}>
+      call exit, code 1
+  fork test
+    hook test
+      call is-unequal
+        read metafile
+        text <>
+    hook hold
+      call browser-write-meta
+        read result
+        read metafile
+  save shown
+    call node-path/relative
+      call directory
+      read outfile
+  save size
+    call browser-length
+      read text
+  call log, text <built {shown} ({size} bytes), no Node builtin left>
+
+# ---------------------------------------------------------------- the console
+
+# Bundle the browser compiler into one module worker
+hook build
+  # the bundle to write
+  take out
+    like text
+    bind <>
+  # where to write esbuild's metafile, as JSON
+  take meta
+    like text
+    bind <>
+  task build-browser

@@ -1,0 +1,167 @@
+note <A bind's text is host code written into its caller, its escapes and its grouping held>
+
+# Ported from bind-text.ts by statement (item term-self-host-001-0612). A bind's text is host code written into its caller
+# (compile/bind.tree render-bind), and two ways it went wrong compiled clean: a `\n` (likewise `\r`, `\t`) in the text
+# was unescaped by the text literal into a real line break inside the JavaScript string, an unterminated string only
+# tsx or esbuild loading the output refuses (term-compiler-0047), and the text was spliced around its argument as
+# written, so an argument that is not one primary lost its grouping: `$value.trim()` over an awaited call emitted
+# `await readIt().trim()`, the trim of a promise (term-compiler-0046). Each case is built AND run: the emit tests read
+# the TypeScript, and the run tests run it under node with a main that prints what `run` gave back as JSON.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+# one file read longhand, or lean when `lean` says so, with no resolver, as the original compiled it
+task outcome
+  take program, like text
+  take lean, like boolean, fall false
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(lean, lean)))
+
+# what `run` gave back, called with `arguments` (JavaScript), as JSON, or why it did not
+task answer-of
+  take program, like text
+  take arguments, like text
+  take lean, like boolean, fall false
+  like text
+
+  save folder, temp-folder(<bind-text->)
+  back typescript-answer(outcome(program, lean), <Promise.resolve(run({arguments})).then((a) =\> process.stdout.write(JSON.stringify(a)))>, folder, <main>)
+
+# 0047: the escapes a text literal turns into control characters stay escapes in a bind's text
+host newline, <bind joined\n  take parts, like list, like text\n  like text\n  case node\n    text \<$parts.join("\\n")\>\n\nbind tabbed\n  take parts, like list, like text\n  like text\n  case node\n    text \<$parts.join("\\t") + "\\r"\>\n\ntask run\n  take parts, like list, like text\n  like text\n  save one\n    call joined\n      read parts\n  save two\n    call tabbed\n      read parts\n  send back, text \<\{one\}\{two\}\>\n>
+
+# a doubled backslash still reaches the host as one (a regular expression's \s, 30 binds rely on it)
+host regex, <bind first-word\n  take line, like text\n  like text\n  case node\n    text \<$line.trim().split(/\\\\s+/)[0]\>\n\ntask run\n  like text\n  send back\n    call first-word\n      text \< one two \>\n>
+
+# 0046: an argument that is not one primary is grouped where the text reads a member of it
+host awaited, <bind trim-text\n  take value, like text\n  like text\n  case node\n    text \<$value.trim()\>\n\ntask read-it\n  like text\n  mark async\n  send back, text \< x \>\n\ntask run\n  like text\n  send back\n    call trim-text\n      call read-it\n>
+
+# a binary argument under an operator of the text is grouped too, a delimited hole is left alone
+host binary, <bind shown\n  take value, like boolean\n  like text\n  case node\n    text \<$value.toString()\>\n\nbind spelled\n  take value, like boolean\n  like text\n  case node\n    text \<String($value)\>\n\ntask run\n  take a, like text\n  like text\n  save one\n    call shown\n      call is-equal\n        read a\n        text \<x\>\n  save two\n    call spelled\n      call is-equal\n        read a\n        text \<y\>\n  send back, text \<\{one\}\{two\}\>\n>
+
+# 0051: a hole the text uses twice reads its argument once. stdlibBase() ran twice through such a bind
+host once, <bind counted\n  like number\n  case node\n    text \<(globalThis.bindTextCount = (globalThis.bindTextCount ?? 0) + 1)\>\n\nbind doubled\n  take value, like number\n  like text\n  case node\n    text \<String($value) + String($value)\>\n\ntask run\n  take a, like number\n  like text\n  save one\n    call doubled\n      call counted\n  save two\n    call doubled\n      read a\n  send back, text \<\{one\}\{two\}\>\n>
+
+# 0052: a parameter whose name starts with another's is its own hole, never the shorter one's with a tail
+host prefix, <bind paired\n  take store, like text\n  take stored, like text\n  like text\n  case node\n    text \<$stored + "/" + $store\>\n\ntask run\n  take a, like text\n  take b, like text\n  like text\n  send back\n    call paired\n      read a\n      read b\n>
+
+# 0054: a local the text declares never captures the caller's value of that name pasted into a hole
+host capture, <form stamp\n  link version, like text\n\nbind version-of\n  take value, like stamp\n  like text\n  case node\n    text \<(() =\\\> \\\{ const manifest = \\\{ version: "0.0.0" \\\}; return $value.version ?? manifest.version \\\})()\>\n\ntask run\n  like text\n  save manifest\n    make stamp\n      bind version, text \<1.2.3\>\n  send back\n    call version-of\n      read manifest\n>
+
+# 0045, decision 008: the escapes are a closed set. A pipe is not special, so `||` is written plainly, and a backslash
+# before any other character is kept with it (a regular expression's \s in an ordinary literal)
+host either, <bind either\n  take a, like boolean\n  take b, like boolean\n  like boolean\n  case node\n    text \<($a || $b)\>\n\ntask run\n  like boolean\n  send back\n    call either\n      false\n      true\n>
+
+host kept, <bind squeezed\n  take s, like text\n  like text\n  case node\n    text \<$s.replace(/\\s+/g, "")\>\n\ntask run\n  like text\n  send back\n    call squeezed\n      text \< a b  c \>\n>
+
+host piped, <task run\n  like text\n  send back, text \<a\\|b\>\n>
+
+# 0058: a brace in a bind's text opens an interpolation (a bind's text is an ordinary literal, decision 008), which the
+# bind dropped in silence: <Array.from({ length: $n }).length> emitted Array.from().length. Literal braces are \{ and
+# \}, and they reach the host, and an unescaped one is refused, naming the escape
+host braced, <bind lanes\n  take n, like number\n  like number\n  case node\n    text \<Array.from(\\\{ length: $n \\\}).length\>\n\ntask run\n  take n, like number\n  like number\n  send back\n    call lanes\n      read n\n>
+
+host loose, <bind lanes\n  take n, like number\n  like number\n  case node\n    text \<Array.from(\{ length: $n \}).length\>\n\ntask run\n  take n, like number\n  like number\n  send back\n    call lanes\n      read n\n>
+
+# 0060: a callback parameter the text introduces never captures an argument naming it. refused-reason(exported,
+# one/name) emitted find(one => one.name === one.name), always true, and every declined claim took the first reason
+host callback, <form claim\n  link name, like text\n\nbind first-named\n  take all, like list, like claim\n  take wanted, like text\n  like text\n  case node\n    text \<$all.find(one =\\\> one.name === $wanted).name\>\n\nbind any-named\n  take all, like list, like claim\n  take wanted, like text\n  like boolean\n  case node\n    text \<$all.some((one, at) =\\\> at \\\>= 0 && one.name === $wanted)\>\n\ntask run\n  take all, like list, like claim\n  take one, like claim\n  like text\n\n  save found, first-named(all, one/name)\n  save any, any-named(all, \<c\>)\n  back \<\{found\} \{any\}\>\n>
+
+host join-escape, make pattern, <<join\("\\n"\)>>
+host trim-grouped, make pattern, <<\(await readIt\(\)\)\.trim\(\)>>
+host compare-grouped, make pattern, <<\(a === "x"\)\.toString\(\)>>
+host hole-alone, make pattern, <<String\(\(a === "y"\)\)>>
+host name-pasted, make pattern, <<String\(a\) \+ String\(a\)>>
+host or-plain, make pattern, <<\(false \|\| true\)>>
+host space-kept, make pattern, <<replace\(\/\\s\+\/g, ""\)>>
+host braces-reach, make pattern, <<Array\.from\(\{ length: n \}\)\.length>>
+
+test <a \\n in a bind text is the escape, never a line break>
+  host out, outcome(newline)
+  want hold, out/ok
+  want hold, matches(join-escape, out/emitted)
+
+test <the output loads and joins with a line break, a tab and a return>
+  want hold, is-equal(answer-of(newline, <["a", "b"]>), <"a\\nba\\tb\\r">)
+
+test <a doubled backslash is one backslash in the host>
+  want hold, is-equal(answer-of(regex, <>), <"one">)
+
+test <an awaited argument is grouped before .trim()>
+  want hold, matches(trim-grouped, outcome(awaited)/emitted)
+
+test <it runs and trims the awaited text>
+  want hold, is-equal(answer-of(awaited, <>), <"x">)
+
+test <a comparison before .toString() is grouped>
+  want hold, matches(compare-grouped, outcome(binary)/emitted)
+
+# the emitter groups a comparison itself, a hole between parentheses adds no group of its own
+test <a hole between parentheses is not grouped again>
+  want hold, matches(hole-alone, outcome(binary)/emitted)
+
+test <it runs: "true" then "false">
+  want hold, is-equal(answer-of(binary, <"x">), <"truefalse">)
+
+test <a call under a hole used twice runs once>
+  want hold, is-equal(answer-of(once, <7>), <"1177">)
+
+test <a plain name under it is pasted as is>
+  want hold, matches(name-pasted, outcome(once)/emitted)
+
+test <$stored is its own hole beside $store>
+  want hold, is-equal(answer-of(prefix, <"one", "two">), <"two/one">)
+
+test <the text's own const manifest leaves the caller's manifest alone>
+  want hold, is-equal(answer-of(capture, <>), <"1.2.3">)
+
+test <a bind text \<($a || $b)\> emits (false || true)>
+  want hold, matches(or-plain, outcome(either)/emitted)
+
+test <it runs to true>
+  want hold, is-equal(answer-of(either, <>), <true>)
+
+test <a stray \\s in a bind text is kept>
+  want hold, matches(space-kept, outcome(kept)/emitted)
+
+test <it runs and squeezes the spaces out>
+  want hold, is-equal(answer-of(kept, <>), <"abc">)
+
+test <an ordinary text \<a\\|b\> is the four characters a\\|b>
+  want hold, is-equal(answer-of(piped, <>), <"a\\\\|b">)
+
+test <\\\{ and \\\} in a bind text reach the host as braces>
+  want hold, matches(braces-reach, outcome(braced)/emitted)
+
+test <it runs to 3>
+  want hold, is-equal(answer-of(braced, <3>), <3>)
+
+test <an unescaped brace in a bind text is refused, naming \\\{>
+  host out, outcome(loose)
+  host said, join(out/messages, < | >)
+  want hold, not(out/ok)
+  want hold, text-contains(said, <\\\{>)
+  want hold, text-contains(said, <bind>)
+
+test <an argument one.name is bound outside the text's one =\>>
+  want hold, is-equal(answer-of(callback, <[\{ name: "a" \}, \{ name: "b" \}], \{ name: "b" \}>, true), <"b false">)

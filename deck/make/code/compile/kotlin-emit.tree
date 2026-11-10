@@ -199,6 +199,9 @@ form kotlin-facts
   link variant-class, like hash, like text, like text
   link variant-class-of, like hash, like text, like hash, like text, like text
   link variant-field-names, like hash, like text, like list, like text
+  # each variant class's declared fields with their types, for the empty value of a field a construction leaves out
+  # (item term-self-host-001-1126)
+  link case-fields, like hash, like text, like list, like record-field
   link owned-field-names, like hash, like text, like list, like text
   link mask-methods, like hash, like text, like boolean
   link self-results, like hash, like text, like boolean
@@ -2836,13 +2839,35 @@ task kt-record
           back <kotlin.run \{ {join-texts(temps, <; >)}; val __h{k} = __spare{cls}; if (__h{k} != null) \{ __spare{cls} = null; {join-texts(sets, <; >)}; __h{k} \} else {cls}({join-texts(fresh, <, >)}) \}>
       fork test, is-unequal(cls, <>)
         hold
-          fork test, no-fields
-            hold
-              back cls
           save given, make list
           walk record-fields
             take field
             push(given, <{kotlin-camel(field/name)} = {kt-field-value(record-name, field/name, field/value, st, facts)}>)
+          # a field the construction leaves out (`need false`) takes its type's empty value, as a struct's does below:
+          # `make(pin)` with its maybe field left out was the bare class `MarkPin`, which kotlinc refuses as a value
+          # (item term-self-host-001-1126)
+          fork test, facts/case-fields/has(cls)
+            hold
+              walk facts/case-fields/get(cls)
+                take declared
+                save named, false
+                walk record-fields
+                  take field
+                  fork test, is-equal(field/name, declared/name)
+                    hold
+                      save named, true
+                fork test, not(named)
+                  hold
+                    save empty, <>
+                    fork test, facts/field-lists/has(<{record-name}/{declared/name}>)
+                      hold
+                        save empty, need(<longs>, <TermLongs(10)>, st)
+                      miss
+                        save empty, empty-of(make(some, declared/type), st, facts)
+                    push(given, <{kotlin-camel(declared/name)} = {empty}>)
+          fork test, is-equal(given/length, 0)
+            hold
+              back cls
           back <{builder}({join-texts(given, <, >)})>
       # a struct: a field the construction leaves out takes its type's empty value, so the data class is whole
       fork test, facts/record-fields/has(record-name)

@@ -1,0 +1,112 @@
+note <a union's case may be named void or fuse, a word the language also uses, and builds and matches on every backend>
+
+# Ported from case-word-names.ts by statement (item term-self-host-001-0653), one test per `ok` in its order, its loop
+# over the backends two walked tests, each backend a case of each. Item term-self-host-001-0050, traps.md T038: until
+# 2026-10-29 both compiled wrong with no message. `case fuse` lost its name to the template pass, which read the bare
+# word as a fuse of no template and dropped it, so the case took the next node's word (`link`). `make void` of a union
+# with a `case void` emitted the void value (`undefined`, Rust's boxed unit, Swift's `()`, Kotlin's `Unit`) where the
+# case was meant. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find index-of
+  find substring
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host program, <form value\n  case void\n  case fuse\n    link name, like text\n  case word\n    link name, like text\n\ntask blank\n  like value\n  back make void\n\ntask graft\n  take name, like text\n  like value\n  save made\n    make fuse\n      bind name, name\n  back made\n\ntask tell\n  take v, like value\n  like text\n  sift v\n    case void\n      back \<void\>\n    case fuse\n      back \<fuse \{name\}\>\n    case word\n      back \<word \{name\}\>\n\ntask run\n  like text\n  save w\n    make word\n      bind name, \<w\>\n  send back, \<\{tell(blank())\} \{tell(graft(\<g\>))\} \{tell(w)\}\>\n>
+
+# `case void` alone, so the emitters' half is held apart from the template pass's
+host void-only, <form value\n  case void\n  case word\n    link name, like text\n\ntask blank\n  like value\n  back make void\n\ntask tell\n  take v, like value\n  like text\n  sift v\n    case void\n      back \<void\>\n    case word\n      back \<word \{name\}\>\n\ntask run\n  like text\n  save w\n    make word\n      bind name, \<w\>\n  send back, \<\{tell(blank())\} \{tell(w)\}\>\n>
+
+host variant-void, make pattern, <<return __termVariantVoid>>
+host return-undefined, make pattern, <<return undefined>>
+
+task built
+  take text, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+
+# the names of the cases of the union `value`, as the checker read them, joined by spaces
+task case-names
+  take out, like compile-outcome
+  like text
+
+  save names, make list
+  walk out/program
+    take one, like dynamic
+    fork test, and(is-equal(one/form, <record-type>), is-equal(one/name, <value>))
+      hold
+        walk one/variants
+          take variant, like dynamic
+          names/push(name-of(variant))
+  back names/join(< >)
+
+task name-of
+  take node, like dynamic
+  like text
+
+  back node/name
+
+# the TypeScript of `blank` itself: a run may fold `tell(blank())` at compile time and never call it
+task blank-body
+  like text
+
+  save ts, built(void-only, <void.tree>)/emitted
+  save at, index-of(ts, <export function blank(>)
+  fork test, is-below(at, 0)
+    hold
+      back <(no blank)>
+  back substring(ts, at, add(index-of(ts, <\n\}\n>, at), 2))
+
+# the checker's view: the union has the three cases by their written names
+test <the union builds>
+  want hold, built(program, <cases.tree>)/ok
+
+test <its cases are void, fuse and word, and `fuse` keeps its name and its field>
+  want hold, is-equal(case-names(built(program, <cases.tree>)), <void fuse word>)
+
+test <typescript: `blank` returns the case, not `undefined`>
+  host body, blank-body()
+  want hold, matches(variant-void, body)
+  want hold, not(matches(return-undefined, body))
+
+test <`make void` of a union with a `case void` builds the case, not the void value>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-case-word->)
+  host ran, run-text(void-only, backend, folder, <void-case>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <void word w>)
+
+test <`make void` builds the case, `make fuse` builds its case with its field, and each arm matches its own>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-case-word->)
+  host ran, run-text(program, backend, folder, <cases>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <void fuse g word w>)

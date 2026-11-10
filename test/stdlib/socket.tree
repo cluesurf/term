@@ -1,0 +1,80 @@
+note <a TCP client and a UDP socket round-trip a message over the wire through network/tcp and network/udp on node>
+
+# Ported from test/stdlib/socket.ts by statement (item term-self-host-001-0642), one test per `eq` in its order. The
+# original compiled a TCP client (connect, write, read, close) and a UDP socket (open, send, receive, close) over the
+# stdlib on node and ran each against a node echo server; here the suite holds the same two tasks, and each echo server
+# is the stdlib's own other end (a `listen` and `accept` for TCP, a second bound socket for UDP), started with `tick` so
+# it answers while the client waits. Both stay on 127.0.0.1, on ports of their own beside the original's 8753 and 8754.
+
+load @term/base/network/tcp
+  find connect
+  find listen
+  find listener
+
+load @term/base/network/udp
+  find open
+  find socket
+
+host tcp-port, 18753
+host udp-port, 18754
+
+# the original's `ping`: connect, write, read the reply, close
+task ping
+  mark async
+  take host, like text
+  take port, like number
+  take message, like text
+  like text
+
+  save conn, connect(host, port, false)
+  save written, conn/write(message)
+  save reply, conn/read()
+  conn/close()
+  back reply
+
+# the original's `round-trip`: open on any port, send, receive the reply, close
+task round-trip
+  mark async
+  take host, like text
+  take port, like number
+  take message, like text
+  like text
+
+  save sock, open(0, <0.0.0.0>)
+  save sent, sock/send(message, host, port)
+  save reply, sock/receive()
+  sock/close()
+  back reply/data
+
+# a TCP echo for one connection: what it reads, it writes back
+task echo-tcp
+  mark async
+  take server, like listener
+  like void
+
+  save conn, server/accept()
+  save data, conn/read()
+  save written, conn/write(data)
+
+# a UDP echo for one datagram: what it receives, it sends back to its sender
+task echo-udp
+  mark async
+  take server, like socket
+  like void
+
+  save got, server/receive()
+  save sent, server/send(got/data, got/host, got/port)
+
+test <tcp connect/write/read round-trip>
+  save server, listen(tcp-port, <127.0.0.1>)
+  tick echo-tcp(server)
+  save reply, ping(<127.0.0.1>, tcp-port, <ping-from-seed>)
+  server/close()
+  want hold, is-equal(reply, <ping-from-seed>)
+
+test <udp open/send/receive round-trip>
+  save server, open(udp-port, <127.0.0.1>)
+  tick echo-udp(server)
+  save reply, round-trip(<127.0.0.1>, udp-port, <hi-over-udp>)
+  server/close()
+  want hold, is-equal(reply, <hi-over-udp>)

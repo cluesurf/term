@@ -1,0 +1,389 @@
+note <MVP gate 3: Lean re-checks every law of the notes demo with no axioms>
+
+# Ported from lean.ts by statement (item term-self-host-001-0601), one test per `ok` in its order. The demo's laws are
+# the claims of test/assurance/notes/code/law.tree, over the forms and tasks of model.tree, and for law 7 page.tree and
+# @term/site's http/glyph.tree and http/html.tree. The exporter (make/check/lean-export, the subject with lean-run,
+# decision 106) writes every claim the kernel proved as Lean 4 source, and Lean decides.
+#   - without Lean: all 43 claims are proven by the kernel and exported, none refused, no constant written as an axiom,
+#     every form a Lean inductive, and the recursive laws written through a recursor, never by name (one test per name
+#     of the original's literal list)
+#   - with Lean (TERM_LEAN, else `lean` on the PATH): Lean accepts the file with no error and no warning, `#print
+#     axioms` says each claim it read depends on no axiom (one walked test, a case per claim Lean reported), and a
+#     planted wrong proof of law 1 is refused on its own line alone, law 1 of `replay` the one other claim resting on it
+# With no Lean the Lean tests skip, never pass. The original's `--write <dir>` writes the two files and asserts nothing,
+# so it is not ported.
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find starts-with
+  find split, name text-split
+
+load @term/base/text/util
+  find join, name text-join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load ../support/compiling
+  find file-text
+
+load ../support/judging
+  find make-record
+  find read-field
+  find read-at
+  find truth
+
+dock load
+  load <@term/make/code/check/lean-export>, name lean-export
+  load <@term/make/code/check/lean-run>, name lean-run
+  load <node:fs>, name dock-file
+  load <node:path>, name dock-path
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind slice-text
+  take text, like text
+  take from, like number
+  take to, like number
+  like text
+  case node
+    text <$text.slice($from, $to)>
+
+host base, <test/assurance/notes/code>
+host site, <deck/site/code/http>
+
+# the demo's 43 claims: laws 1, 4, 5 and 7, their lemmas, the bridge from `view` to `shows`, and from `replay` to
+# `replays`, then law 1 of `replay` itself, then law 7, safe text
+host claims, make list(<deleted-stays-gone>, <isolation>, <ownership>, <ownership-carry>, <ownership-step>, <ownership-cross>, <ownership-join>, <ownership-split>, <ownership-build>, <ownership-apply>, <ownership-settle>, <view-same-lift>, <view-same>, <view-same-zero>, <view-same-succ>, <view-pick-by>, <view-pick-live>, <view-pick>, <view-shows>, <deleted-stays-gone-of-view>, <isolation-of-view>, <ownership-of-replay-own>, <ownership-of-replay-may>, <ownership-of-replay-aim>, <ownership-of-replay-settle>, <ownership-of-replay-cross>, <ownership-of-replay-step>, <ownership-of-replay-run>, <ownership-of-replay>, <safe-text-escape-glyph>, <safe-text-escape>, <safe-text-round-glyph>, <safe-text-round-trip>, <safe-text-escaped-text>, <safe-text-text-glyph>, <safe-text-text>, <safe-text-attribute-glyph>, <safe-text-attribute>, <safe-text-attributes>, <safe-text-serialize>, <safe-text-of-view>, <safe-text-of-refusal>, <safe-text>)
+
+task source-of
+  take file, like text
+  take path, like text
+  like dynamic
+
+  back make-record(make(list, <file>, file, <text>, file-text(path)))
+
+# law 7 reads @term/site's glyphs and escapes and its model of the node serializer, and the notes pages
+task demo-source
+  like dynamic
+
+  save files, make list
+  files/push(source-of(<site/http/glyph.tree>, <{site}/glyph.tree>))
+  files/push(source-of(<site/http/html.tree>, <{site}/html.tree>))
+  files/push(source-of(<notes/model.tree>, <{base}/model.tree>))
+  files/push(source-of(<notes/page.tree>, <{base}/page.tree>))
+  files/push(source-of(<notes/law.tree>, <{base}/law.tree>))
+  back lean-export/joinSources(files)
+
+host out, lean-export/exportLean(demo-source())
+host lean-text, out/lean
+
+# whether every claim of the demo is in `names`
+task holds-every
+  take names, like dynamic
+  like boolean
+
+  walk claims
+    take claim, like text
+    fork test, not(names/includes(claim))
+      hold
+        back false
+  back true
+
+# whether the export holds an entry for a claim that is marked a claim
+task exported-as-claim
+  take name, like text
+  like boolean
+
+  walk out/exported
+    take one, like dynamic
+    fork test, and(is-equal(one/name, name), truth(one/claim))
+      hold
+        back true
+  back false
+
+# the body of a definition in the export: from its `:=` to the blank line after it, empty when it is not there
+task body-of
+  take name, like text
+  like text
+
+  save start, index-of(lean-text, <def TermExport.«{name}» >)
+  fork test, is-below(start, 0)
+    hold
+      back <>
+  back slice-text(lean-text, index-of(lean-text, <:=\n>, start), index-of(lean-text, <\n\n>, start))
+
+host rec-call, make pattern, <<\.rec >>
+
+# a recursive definition is written by its recursor: its body names `T.rec` and never the definition itself
+task by-recursor
+  take name, like text
+  like boolean
+
+  save body, body-of(name)
+  back and(matches(rec-call, body), and(not(text-contains(body, <TermExport.«{name}»>)), not(text-contains(body, <TermExport.{name} >))))
+
+host axiom-line, make pattern, <<(^|\n)axiom >>
+host loose-proof, make pattern, <<\bsorry\b|\bpartial\b|decreasing_by|termination_by>>
+host axiom-report, make pattern, <<^'TermExport\.(\S+)' (does not depend|depends)>>
+
+# THE PLANTED TWIN: law 1 "proved" by the empty shelf's evidence, which has type `fair-shelf bare`, not `fair-shelf s`
+host planted, lean-export/plantLean(lean-text, <ownership>, <@TermExport.«fair-shelf».«clean»>)
+
+# the lines of the export the plant changed, by their index
+task changed-lines
+  like list, like number
+
+  save mine, text-split(lean-text, <\n>)
+  save theirs, text-split(planted, <\n>)
+  save out, make list
+  save at, 0
+  walk mine
+    take line, like text
+    fork test, not(is-equal(read-at(theirs, at), line))
+      hold
+        out/push(at)
+    save at, add(at, 1)
+  back out
+
+test <the kernel reports no error on the demo>
+  want hold, is-equal(out/kernel/diagnostics/length, 0)
+
+test <the claims read are the demo's 43>
+  want hold, and(holds-every(out/claims), is-equal(out/claims/length, claims/length))
+
+test <every claim is proven by the kernel>
+  want hold, holds-every(out/kernel/proven)
+
+test <every claim is exported>
+  save all, true
+  walk claims
+    take claim, like text
+    fork test, not(exported-as-claim(claim))
+      hold
+        save all, false
+  want hold, all
+
+test <nothing is refused>
+  want hold, is-equal(out/refused/length, 0)
+
+test <no constant is written as an axiom>
+  want hold, and(is-equal(out/axioms/length, 0), not(matches(axiom-line, lean-text)))
+
+test <no claim rests on an axiom>
+  save all, true
+  walk out/exported
+    take one, like dynamic
+    fork test, is-above(one/axioms/length, 0)
+      hold
+        save all, false
+  want hold, all
+
+test <a record and the unit type are Lean inductives>
+  want hold, and(text-contains(lean-text, <inductive TermExport.«person» : Type where\n  | «make» :>), text-contains(lean-text, <inductive TermExport.«Unit» : Type where\n  | «unitValue» :>))
+
+test <no sorry, no partial, no termination clause in the file>
+  want hold, not(matches(loose-proof, lean-text))
+
+test <deleted-stays-gone recurses through the recursor, not by name>
+  want hold, by-recursor(<deleted-stays-gone>)
+
+test <isolation recurses through the recursor, not by name>
+  want hold, by-recursor(<isolation>)
+
+test <ownership recurses through the recursor, not by name>
+  want hold, by-recursor(<ownership>)
+
+test <ownership-cross recurses through the recursor, not by name>
+  want hold, by-recursor(<ownership-cross>)
+
+test <view-same recurses through the recursor, not by name>
+  want hold, by-recursor(<view-same>)
+
+test <view-shows recurses through the recursor, not by name>
+  want hold, by-recursor(<view-shows>)
+
+test <same recurses through the recursor, not by name>
+  want hold, by-recursor(<same>)
+
+test <view recurses through the recursor, not by name>
+  want hold, by-recursor(<view>)
+
+test <ownership-of-replay-cross recurses through the recursor, not by name>
+  want hold, by-recursor(<ownership-of-replay-cross>)
+
+test <ownership-of-replay-run recurses through the recursor, not by name>
+  want hold, by-recursor(<ownership-of-replay-run>)
+
+test <cross recurses through the recursor, not by name>
+  want hold, by-recursor(<cross>)
+
+test <replay recurses through the recursor, not by name>
+  want hold, by-recursor(<replay>)
+
+test <safe-text-escape recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-escape>)
+
+test <safe-text-round-trip recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-round-trip>)
+
+test <safe-text-escaped-text recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-escaped-text>)
+
+test <safe-text-text recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-text>)
+
+test <safe-text-attribute recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-attribute>)
+
+test <safe-text-attributes recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-attributes>)
+
+test <safe-text-serialize recurses through the recursor, not by name>
+  want hold, by-recursor(<safe-text-serialize>)
+
+test <escape-glyphs recurses through the recursor, not by name>
+  want hold, by-recursor(<escape-glyphs>)
+
+test <escape-text-glyphs recurses through the recursor, not by name>
+  want hold, by-recursor(<escape-text-glyphs>)
+
+test <escape-attr-glyphs recurses through the recursor, not by name>
+  want hold, by-recursor(<escape-attr-glyphs>)
+
+test <unescape-glyphs recurses through the recursor, not by name>
+  want hold, by-recursor(<unescape-glyphs>)
+
+test <serialize-attributes recurses through the recursor, not by name>
+  want hold, by-recursor(<serialize-attributes>)
+
+test <serialize recurses through the recursor, not by name>
+  want hold, by-recursor(<serialize>)
+
+test <the plant changes exactly one line, the body of ownership>
+  want hold, and(is-equal(changed-lines()/length, 1), is-unequal(planted, lean-text))
+
+# ---- Lean itself, at TERM_LEAN or else the `lean` on the PATH, found and read by the driver `term hold --lean` uses ----
+
+host lean, lean-run/findLean()
+
+form lean-runs
+  mark shared
+  link done, like boolean
+  link good, like dynamic
+  link bad, like dynamic
+
+host lean-now, make(lean-runs, bind(done, false), bind(good, void), bind(bad, void))
+
+task the-lean
+  like lean-runs
+  mark async
+
+  fork test, lean-now/done
+    hold
+      back lean-now
+  save lean-now/done, true
+  save folder, dock-path/resolve(<tmp/lean-export/run>)
+  dock-file/mkdirSync(folder, make-record(make(list, <recursive>, true)))
+  save good-file, dock-path/join(folder, <notes.lean>)
+  save bad-file, dock-path/join(folder, <notes-planted.lean>)
+  dock-file/writeFileSync(good-file, lean-text)
+  dock-file/writeFileSync(bad-file, planted)
+  save lean-now/good, wait lean-run/runLean(make-record(make(list, <lean>, lean, <file>, good-file, <source>, lean-text, <claims>, claims)))
+  save lean-now/bad, wait lean-run/runLean(make-record(make(list, <lean>, lean, <file>, bad-file, <source>, planted, <claims>, claims)))
+  back lean-now
+
+# the claims Lean reported on, by name: the demo's when there is no Lean, so each case skips
+task reported-names
+  like list, like text
+  mark async
+
+  fork test, is-absent(lean)
+    hold
+      back claims
+  save names, make list
+  walk the-lean()/good/claims
+    take one, like dynamic
+    names/push(one/name)
+  back names
+
+# the verdict Lean gave a claim
+task verdict-of
+  take name, like text
+  like text
+  mark async
+
+  walk the-lean()/good/claims
+    take one, like dynamic
+    fork test, is-equal(one/name, name)
+      hold
+        back one/verdict
+  back <>
+
+task refused-names
+  take run, like dynamic
+  like text
+
+  save names, make list
+  walk run/claims
+    take one, like dynamic
+    fork test, is-equal(one/verdict, <refused>)
+      hold
+        names/push(one/name)
+  back text-join(names, <,>)
+
+test <lean checks the export>
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  save good, the-lean()/good
+  want hold, and(is-equal(good/status, 0), is-equal(good/errors/length, 0))
+
+test <lean prints no warning on the export>
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  want hold, is-equal(the-lean()/good/warnings, 0)
+
+test <lean: claim depends on no axiom>
+  take name, like text
+    walk reported-names()
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  want hold, is-equal(verdict-of(name), <checked>)
+
+test <lean reports exactly one axiom line per claim>
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  save reported, 0
+  walk text-split(the-lean()/good/output, <\n>)
+    take line, like text
+    fork test, matches(axiom-report, line)
+      hold
+        save reported, add(reported, 1)
+  want hold, is-equal(reported, claims/length)
+
+test <lean refuses the planted proof>
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  want hold, is-unequal(the-lean()/bad/status, 0)
+
+test <lean refuses the planted body alone, and only law 1 and law 1 of replay rest on it>
+  fork test, is-absent(lean)
+    hold
+      skip <the Lean re-check did not run: no Lean at TERM_LEAN or on the PATH. Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3>
+  save bad, the-lean()/bad
+  save planted-line, add(changed-lines()/0, 1)
+  want hold, is-equal(bad/errors/length, 1)
+  want hold, is-equal(bad/errors/0/line, planted-line)
+  want hold, is-equal(bad/errors/0/definition, <ownership>)
+  want hold, is-equal(refused-names(bad), <ownership,ownership-of-replay>)

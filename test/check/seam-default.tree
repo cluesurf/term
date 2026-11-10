@@ -1,0 +1,115 @@
+note <THE GRADUAL SEAM IS ON BY DEFAULT: unset, TERM_UNKNOWN_SEAM refuses an unknown handed to a typed place, =0 turns it off, =1 still means on>
+
+# Ported from seam-default.ts by statement (item term-self-host-001-0609), one test per `ok` in its order
+# (note/project/term/decisions-2026-10/seam/, item 0008). The setting is part of every compile cache key
+# (check/strict `checkerSwitchKey`), so an answer stored with the seam off is never read as a seam-on answer.
+#
+# The process reads its switches once, at load, by check/checker-switches `switches-from-env`, so the original ran each
+# setting in a child process of its own. Here each setting is read in this process by that same task: `seen-with` sets
+# the variable (or leaves it out), reads the switches from the environment, sets the seam of check/strict's one
+# instance to what it read, compiles the program, reads the seam and the key, and puts the seam and the variable back.
+# check/strict and check/checker-switches are the subject (decision 106). The original's eighth `ok`, `each setting
+# runs`, stands only for a child that printed no JSON, which no child is here.
+#
+# The flip to on by default was built and reverted on 2026-10-23 (check/strict.ts), so this suite holds the flip once
+# it is made: until then its four unset assertions fail, as the original's do (the named baseline exception of the
+# check area). So the file is shelved, as the gate holds its original apart: delete the shelving line below once the
+# seam is on by default, and all nine pass.
+mark draft
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/reading
+  find any-holding
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/path
+  find join, name path-join
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/make/code/check/strict>, name strict-switches
+  load <@term/make/code/check/checker-switches>, name checker-switches
+
+# text through an unknown to a task that wants a number
+host program, <task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n>
+
+host refusal-words, <an unknown value where a number is wanted>
+
+# what one setting saw: whether the seam was on, the cache key, and the compile's messages
+form seen
+  link on, like boolean
+  link key, like text
+  link messages, like list, like text
+
+# the program compiled with TERM_UNKNOWN_SEAM at `value`, left out of the environment when `given` is false
+task seen-with
+  take given, like boolean
+  take value, like text
+  like seen
+
+  save had, has-variable(<TERM_UNKNOWN_SEAM>)
+  save before, <>
+  fork test, had
+    hold
+      save before, variable(<TERM_UNKNOWN_SEAM>)
+  remove-variable(<TERM_UNKNOWN_SEAM>)
+  fork test, given
+    hold
+      set-variable(<TERM_UNKNOWN_SEAM>, value)
+  save seam-before, strict-switches/unknown-seam-on()
+  strict-switches/set-unknown-seam(checker-switches/switches-from-env()/seam)
+  save file, path-join(temp-folder(<seam-default->), <seam.tree>)
+  save out, compile-text(program, make(compile-choice, bind(file, file), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  save on, strict-switches/unknown-seam-on()
+  save key, strict-switches/checker-switch-key(true, on)
+  strict-switches/set-unknown-seam(seam-before)
+  remove-variable(<TERM_UNKNOWN_SEAM>)
+  fork test, had
+    hold
+      set-variable(<TERM_UNKNOWN_SEAM>, before)
+  back make(seen, bind(on, on), bind(key, key), bind(messages, out/messages))
+
+host unset, seen-with(false, <>)
+host off, seen-with(true, <0>)
+host on, seen-with(true, <1>)
+
+test <unset: the seam is on>
+  want hold, unset/on
+
+test <unset: an unknown handed to a number is refused>
+  want hold, any-holding(unset/messages, refusal-words)
+
+test <TERM_UNKNOWN_SEAM=0: the seam is off>
+  want hold, not(off/on)
+
+test <TERM_UNKNOWN_SEAM=0: the same program builds>
+  want hold, is-equal(off/messages/length, 0)
+
+test <TERM_UNKNOWN_SEAM=1: the seam is on>
+  want hold, on/on
+
+test <TERM_UNKNOWN_SEAM=1: the program is refused>
+  want hold, any-holding(on/messages, refusal-words)
+
+test <the cache key differs between unset and =0>
+  want hold, is-unequal(unset/key, off/key)
+
+test <the cache key carries +seam when on>
+  want hold, text-contains(unset/key, <+seam>)
+  want hold, is-equal(on/key, unset/key)
+
+test <the cache key carries no +seam when off>
+  want hold, not(text-contains(off/key, <+seam>))

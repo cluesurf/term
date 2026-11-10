@@ -1,0 +1,136 @@
+note <a route table mounted in the terminal host, moved by the navigation contract and back by a key, each screen painted>
+
+# Ported from terminal-routes.ts by statement (item term-self-host-001-0684), one walked test per `ok` in its order, each
+# backend a case of it, as the original's loop gave one line per backend (native-navigation-0005,
+# deck/site/code/dom/native/terminal/routes.tree). A route table in the route DSL is mounted by `mount-routes`, moved by
+# the contract's `navigate` and back by a key, as a person at a terminal would, and every backend must draw the same four
+# screens of 12 by 1: home, home redrawn by a signal it reads, the user page with the id the path carried, and home again
+# after Escape. Until 2026-10-07 every effect of a routed page ran once, inside the host's `untrack`, subscribed to
+# nothing and never redrew (beat-term item 0067, reactive.tree `run-effect`): `home 0` twice. Its dom and view modules
+# are pinned to the terminal host, as the original's resolver pinned them. On node the app host is pinned too, to the
+# one that runs routes in a terminal: it is otherwise the HTTP server, which docks hono, and a terminal program has no
+# server to start. Swift and Kotlin keep the abstract host, which mounts nothing, since they have no terminal loop. The
+# program is built and run once per backend through test/support/running, the run kept for the tests after it. A
+# backend whose toolchain is not installed is each case's own skip. Where the original asserted the screens only once
+# the program ran, a run that did not go reads an empty screen here, so those cases fail beside the first.
+
+load ../support/compiling
+  find compile-choice
+  find compiling-rewrite
+
+load ../support/running
+  find backends
+  find run-text
+  find ran-program
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find split, name text-split
+
+host program, <load @term/site/code/dom/native/terminal/dom\n  find view\n  find paint-screen\n  find press-key\n\nload @term/site/code/dom/native/terminal/routes\n  find mount-routes\n\nload @term/site/code/view/navigation\n  find navigate\n\nload @term/site/code/view/reactive\n  find signal\n  find make-signal\n  find read-signal\n  find write-signal\n\n# what the home page shows, written from outside it: one object, as the navigation contract holds its signal\nform tally\n  mark shared\n  link said, like signal text\n\nhost tally-now\n  make tally\n    bind said\n      call make-signal\n        bind value, text \<0\>\n\nview home-page\n  take host, like view\n  view span\n    text \<home \>\n    read\n      call read-signal\n        bind self, read tally-now/said\n\nview user-page\n  take host, like view\n  take id, like text\n  view span\n    text \<user \>\n    read id\n\nhook /\n  view home-page\n\nhook /users/:id\n  take path\n    take id\n      like text\n  view user-page\n    bind id, read id\n\ntask run\n  like text\n  save root\n    call mount-routes\n      read route\n      text \<Escape\>\n  save first\n    call paint-screen\n      read root\n      code 12\n      code 1\n  call write-signal\n    bind self, read tally-now/said\n    bind value, text \<1\>\n  save wrote\n    call paint-screen\n      read root\n      code 12\n      code 1\n  call navigate\n    text \</users/7\>\n  save second\n    call paint-screen\n      read root\n      code 12\n      code 1\n  call press-key\n    read root\n    text \<escape\>\n  save third\n    call paint-screen\n      read root\n      code 12\n      code 1\n  send back, text \<\{first\}|\{wrote\}|\{second\}|\{third\}\>\n>
+
+# the dom contract read as the terminal's, and on node the app host as the one that runs routes in a terminal
+task routes-choice
+  take backend, like text
+  like compile-choice
+
+  host dom-rewrite, make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/terminal/$1>))
+  fork test, is-equal(backend, <typescript>)
+    hold
+      host host-rewrite, make(compiling-rewrite, bind(pattern, <<view/native/\{platform\}/host$>>), bind(into, <view/native/rust/host>))
+      back make(compile-choice, bind(file, <routes.tree>), bind(project, <.>), bind(rewrites, make list(dom-rewrite, host-rewrite)))
+  back make(compile-choice, bind(file, <routes.tree>), bind(project, <.>), bind(rewrites, make list(dom-rewrite)))
+
+# each backend's run, made once: `names` the backends run so far, `runs` their runs in the same order
+form held-runs
+  mark shared
+  link names, like list, like text
+  link runs, like list, like ran-program
+
+host held, make(held-runs, bind(names, make list), bind(runs, make list))
+
+# the program built and run on a backend, once
+task ran-on
+  take backend, like text
+  like ran-program
+
+  save at, 0
+  walk held/names
+    take name, like text
+    fork test, is-equal(name, backend)
+      hold
+        back held/runs/{at}
+    save at, add(at, 1)
+  host folder, temp-folder(<term-terminal-routes->)
+  host ran, run-text(program, backend, folder, <routes>, routes-choice(backend))
+  push(held/names, backend)
+  push(held/runs, ran)
+  back ran
+
+# the screen of a backend's output at `at`, split on `|`, <> when it did not run
+task part-on
+  take backend, like text
+  take at, like number
+  like text
+
+  save ran, ran-on(backend)
+  fork test, is-unequal(ran/state, <ran>)
+    hold
+      back <>
+  save parts, text-split(ran/output, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back <>
+
+# whether a backend's toolchain is missing, so its case is skipped
+task skipped-on
+  take backend, like text
+  like boolean
+
+  back is-equal(ran-on(backend)/state, <skipped>)
+
+test <the route table compiles, builds and runs in the terminal host>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran-on(backend)/state, <ran>)
+
+test </ draws the home page>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 0), <home 0>)
+
+test <a signal the page reads, written with no move, redraws the page's text>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 1), <home 1>)
+
+test <navigating to /users/7 draws the user page with the id the path carried>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 2), <user 7>)
+
+test <Escape goes back, and home is drawn again>
+  take backend, like text
+    walk backends()
+  fork test, skipped-on(backend)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(part-on(backend, 3), <home 1>)

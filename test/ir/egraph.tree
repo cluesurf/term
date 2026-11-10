@@ -1,0 +1,142 @@
+note <the e-graph optimizer: equality saturation finds the cheapest equivalent form>
+
+# Ported from egraph.ts by statement (item term-self-host-001-0589), one test per `expect` and the one counted check in
+# its order. Two names gain a few words, since a test name's symbols drop out of its slug: `a * 0` read as `a + 0`, and
+# `a - b preserved` as `a + b preserved`. Each expression is built as the original's `int`, `v` and `op` built it, optimized, and shown. ir/egraph is
+# the subject (decision 106).
+
+load ../support/judging
+  find make-record
+
+load @term/base/clock
+  find now
+
+load @term/base/pattern
+  find pattern
+  find find-matches
+
+dock load
+  load <@term/make/code/ir/egraph>, name egraph-module
+
+# host value: whether a number literal the optimizer printed reads back as a safe integer (2^53), Infinity and NaN not
+bind is-safe-literal
+  take text, like text
+  like boolean
+  case node
+    text <Number.isSafeInteger(Number($text))>
+
+task int
+  take value, like number
+  like dynamic
+
+  back make-record(make(list, <t>, <int>, <value>, value))
+
+task v
+  take name, like text
+  like dynamic
+
+  back make-record(make(list, <t>, <var>, <name>, name))
+
+task op
+  take o, like text
+  take left, like dynamic
+  take right, like dynamic
+  like dynamic
+
+  back make-record(make(list, <t>, <op>, <op>, o, <left>, left, <right>, right))
+
+# an expression optimized and shown
+task best
+  take expression, like dynamic
+  like text
+
+  back egraph-module/show-expr(egraph-module/optimize(expression))
+
+# identity: a + 0 -> a
+test <a + 0>
+  want hold, is-equal(best(op(<+>, v(<a>), int(0))), <a>)
+
+# identity via commutativity: 0 + a -> a
+test <0 + a>
+  want hold, is-equal(best(op(<+>, int(0), v(<a>))), <a>)
+
+# constant folding: 2 + 3 -> 5
+test <2 + 3>
+  want hold, is-equal(best(op(<+>, int(2), int(3))), <5>)
+
+# nested folding: 6 * 7 + 0 -> 42
+test <6 * 7 + 0>
+  want hold, is-equal(best(op(<+>, op(<*>, int(6), int(7)), int(0))), <42>)
+
+# cancellation: (a * 2) / 2 -> a (a rule no peephole pass would find without the right order)
+test <(a * 2) / 2>
+  want hold, is-equal(best(op(</>, op(<*>, v(<a>), int(2)), int(2))), <a>)
+
+# commutative cancellation: (2 * a) / 2 -> a
+test <(2 * a) / 2>
+  want hold, is-equal(best(op(</>, op(<*>, int(2), v(<a>)), int(2))), <a>)
+
+test <a * 0, a product with zero>
+  want hold, is-equal(best(op(<*>, v(<a>), int(0))), <0>)
+
+# mixed: (a + 0) * 1 -> a
+test <(a + 0) * 1>
+  want hold, is-equal(best(op(<*>, op(<+>, v(<a>), int(0)), int(1))), <a>)
+
+# guard: a genuinely irreducible expression must be preserved, not corrupted or wrongly collapsed
+test <a + b preserved>
+  want hold, is-equal(best(op(<+>, v(<a>), v(<b>))), <(a + b)>)
+
+test <a - b preserved, a difference>
+  want hold, is-equal(best(op(<->, v(<a>), v(<b>))), <(a - b)>)
+
+# guard: commutativity must not change a non-commutative division's meaning
+test <a / b preserved (not a)>
+  want hold, is-equal(best(op(</>, v(<a>), v(<b>))), <(a / b)>)
+
+# guard: distinct variables are not conflated
+test <(a + b) - b stays (not folded to a, no such rule)>
+  want hold, is-equal(best(op(<->, op(<+>, v(<a>), v(<b>)), v(<b>))), <((a + b) - b)>)
+
+# x - x -> 0
+test <a - a>
+  want hold, is-equal(best(op(<->, v(<a>), v(<a>))), <0>)
+
+# constant reassociation: (a + 2) + 3 -> a + 5
+test <(a + 2) + 3>
+  want hold, is-equal(best(op(<+>, op(<+>, v(<a>), int(2)), int(3))), <(a + 5)>)
+
+# and multiplicative: (a * 2) * 4 -> a * 8
+test <(a * 2) * 4>
+  want hold, is-equal(best(op(<*>, op(<*>, v(<a>), int(2)), int(4))), <(a * 8)>)
+
+# congruence: once `a + 0` joins `a`'s class, `(a + 0) - b` and `a - b` are the same node and must share a class, so
+# their difference cancels. `-` has no commutativity rule to re-key the parents by accident, so only a rebuild after the
+# merge can find this
+test <((a + 0) - b) - (a - b)>
+  want hold, is-equal(best(op(<->, op(<->, op(<+>, v(<a>), int(0)), v(<b>)), op(<->, v(<a>), v(<b>)))), <0>)
+
+# the same, one level deeper: congruence must propagate up through a parent of a parent
+test <(((a + 0) - b) - c) - ((a - b) - c)>
+  want hold, is-equal(best(op(<->, op(<->, op(<->, op(<+>, v(<a>), int(0)), v(<b>)), v(<c>)), op(<->, op(<->, v(<a>), v(<b>)), v(<c>)))), <0>)
+
+# guard: congruence must not merge parents whose children differ
+test <((a + 0) - b) - (a - c) stays>
+  want hold, is-equal(best(op(<->, op(<->, op(<+>, v(<a>), int(0)), v(<b>)), op(<->, v(<a>), v(<c>)))), <((a - b) - (a - c))>)
+
+# a fold past 2^53 is refused, so the graph does not grow on it: `u64-maximum-value`'s `i64-maximum-value * 2 + 1`, over
+# the safe literals of `-2^31 * 2^32`, folded out to Infinity and NaN and hung the build (2026-10-04)
+test <a fold past 2^53 is left unfolded>
+  host i64-max, op(<->, op(<->, int(0), op(<*>, int(-2147483648), int(4294967296))), int(1))
+  host started, now()
+  host shown, best(op(<+>, op(<*>, i64-max, int(2)), int(1)))
+  host took, subtract(now(), started)
+  host literal, make pattern, <<-?\d+(\.\d+)?(e[+-]?\d+)?|Infinity|NaN>>
+  save safe, true
+  walk find-matches(literal, shown)
+    take found
+    fork test, not(is-safe-literal(found/text))
+      hold
+        save safe, false
+  want hold, safe
+  want hold, is-below(took, 1000)

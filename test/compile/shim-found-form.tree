@@ -1,0 +1,60 @@
+note <A form only a native shim builds survives the tree-shake>
+
+# Items 1143 and 1144. A binding module's runtime shim is linked whole: native/<env>/file/runtime/blocking.<ext> builds
+# `StatRaw` and `EntryRaw`, the records native/<env>/file/blocking.tree finds from @term/base/file/blocking. A program
+# that reads a file and never stats one reached no Term statement naming `stat-raw`, so the tree-shake dropped the form
+# while the shim still built it: rust (unresolved import super::StatRaw), swift and kotlin (unresolved reference
+# StatRaw) did not build. The prune now roots every name a binding module finds (ir/prune.tree binding-finds). Each
+# build is the shaken `term make --build` of the fixture beside this file, through the `term` under test
+# (@term/test/self), then the built program runs. A backend whose toolchain is not installed is passed over.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/file/blocking
+  find read, name read-path
+
+load @term/base/text
+  find contains
+
+host fixture, <test/compile/shim-found-form-fixture>
+
+# the built program's own line, once the shaken build declared the record the shim builds
+task built-and-ran
+  take target, like text
+  take tool, like text
+  take source, like text
+  take declared, like text
+  take program, like list, like text
+  like boolean
+  mark async
+
+  fork test, is-equal(find-tool(tool), <>)
+    hold
+      back true
+  save arguments, make list(<make>, <code/go.tree>, <--emit>, target, <--main>, <go>, <--build>, <--color>, <never>)
+  save made, run-self(arguments, fixture, 280000)
+  fork test, is-unequal(made/code, 0)
+    hold
+      back false
+  save emitted, read-path(<{fixture}/{source}>)
+  fork test, not(contains(emitted, declared))
+    hold
+      back false
+  save ran, run(</bin/sh>, program, bind(directory, fixture))
+  back and(is-equal(ran/code, 0), contains(ran/output, <shim-found-form true>))
+
+test <a shaken rust build declares the record the blocking shim builds, and runs>
+  want hold, built-and-ran(<rust>, <cargo>, <host/rust/go-cargo/src/main.rs>, <struct StatRaw>, make list(<-c>, <./host/rust/go-cargo/target/release/go>))
+
+test <a shaken swift build declares the record the blocking shim builds, and runs>
+  want hold, built-and-ran(<swift>, <swiftc>, <host/swift/go.swift>, <struct StatRaw>, make list(<-c>, <./host/swift/go>))
+
+test <a shaken kotlin build declares the record the blocking shim builds, and runs>
+  want hold, built-and-ran(<kotlin>, <kotlinc>, <host/kotlin/go.kt>, <class StatRaw>, make list(<-c>, <java -jar host/kotlin/go.jar>))

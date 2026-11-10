@@ -1,0 +1,193 @@
+note <A kebab dock member whose later segment is an acronym word is refused, naming both readings>
+
+# Ported from dock-member-acronym.ts by statement (item term-self-host-001-0613). `host-module/to-json-value` was emitted
+# `hostModule.toJSONValue`, while compile/host.ts exports `toJsonValue`, so the call was undefined at run time and the
+# build was clean (term-compiler-0037, term-cli-in-term-0052). The build cannot see the host's exports, so such a member
+# is refused as `dock-member-spelling`, naming both readings, on every backend (term/compiler decision 010). Written with
+# no `-` it is the host's name as written, and a kebab member with no acronym word is still converted. The output that
+# builds is run against a real host module written to a temp folder. The two second lines of each refused member, both
+# indented in the original, carry the member in brackets here so their names differ.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find split, name text-split
+  find contains, name text-contains
+
+load @term/base/list
+  find contains
+
+host host-module, <export function toJsonValue() \{ return "json" \}\nexport function fileURLToPath() \{ return "url" \}\nexport function readFileText() \{ return "text" \}\n>
+
+form acronym-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(acronym-answers, bind(held, make hash))
+
+# the host module, written once
+task host-path
+  like text
+
+  save key, <host>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-dock-acronym->)
+  save path, <{folder}/host.mjs>
+  write-file(path, host-module)
+  save kept/held/{key}, path
+  back path
+
+task dock
+  like text
+
+  back <dock load\n  load \<file://{host-path()}\>, name host-module\n\n>
+
+task one-task
+  take name, like text
+  take member, like text
+  like text
+
+  back <task {name}\n  like text\n  send back\n    call host-module/{member}\n>
+
+task built
+  take program, like text
+  take env, like text, fall <>
+  like compile-outcome
+
+  back compile-text(program, make(compile-choice, bind(file, <main.tree>), bind(closed, true), bind(env, env)))
+
+# whether a diagnostic is dock-member-spelling, code 0x43, an error
+task spelling-error
+  take out, like compile-outcome
+  like boolean
+
+  walk out/notes
+    take one
+    fork test, and(is-equal(one/name, <dock-member-spelling>), and(is-equal(one/code, 67), is-equal(one/severity, <error>)))
+      hold
+        back true
+  back false
+
+task naming-both
+  take out, like compile-outcome
+  take upper, like text
+  take plain, like text
+  like boolean
+
+  walk out/messages
+    take message, like text
+    fork test, and(text-contains(message, upper), text-contains(message, plain))
+      hold
+        back true
+  back false
+
+# the kebab spellings with an acronym word are refused, each naming both readings
+test <host-module/to-json-value is refused>
+  want hold, not(built(<{dock()}{one-task(<one>, <to-json-value>)}>)/ok)
+
+test <as dock-member-spelling, an error [to-json-value]>
+  host out, built(<{dock()}{one-task(<one>, <to-json-value>)}>)
+  want hold, not(out/ok)
+  want hold, spelling-error(out)
+
+test <naming toJSONValue and toJsonValue>
+  host out, built(<{dock()}{one-task(<one>, <to-json-value>)}>)
+  want hold, not(out/ok)
+  want hold, naming-both(out, <toJSONValue>, <toJsonValue>)
+
+test <host-module/file-url-to-path is refused>
+  want hold, not(built(<{dock()}{one-task(<one>, <file-url-to-path>)}>)/ok)
+
+test <as dock-member-spelling, an error [file-url-to-path]>
+  host out, built(<{dock()}{one-task(<one>, <file-url-to-path>)}>)
+  want hold, not(out/ok)
+  want hold, spelling-error(out)
+
+test <naming fileURLToPath and fileUrlToPath>
+  host out, built(<{dock()}{one-task(<one>, <file-url-to-path>)}>)
+  want hold, not(out/ok)
+  want hold, naming-both(out, <fileURLToPath>, <fileUrlToPath>)
+
+# the refusal is made before any backend: the same on rust, swift and kotlin
+test <refused on rust>
+  host out, built(<{dock()}{one-task(<one>, <to-json-value>)}>, <rust>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <dock-member-spelling>)
+
+test <refused on swift>
+  host out, built(<{dock()}{one-task(<one>, <to-json-value>)}>, <swift>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <dock-member-spelling>)
+
+test <refused on kotlin>
+  host out, built(<{dock()}{one-task(<one>, <to-json-value>)}>, <kotlin>)
+  want hold, not(out/ok)
+  want hold, contains(out/names, <dock-member-spelling>)
+
+# a lean call of the same member is refused too
+test <a lean host-module/to-json-value() is refused>
+  host out, built(<{dock()}task one\n  like text\n  back host-module/to-json-value()\n>)
+  want hold, not(out/ok)
+  want hold, naming-both(out, <toJSONValue>, <toJSONValue>)
+
+# the host's own spelling is written as is, and a kebab member with no acronym word is converted
+task spelled
+  like text
+
+  back <{dock()}{one-task(<json>, <toJsonValue>)}\n{one-task(<url>, <fileURLToPath>)}\n{one-task(<text>, <read-file-text>)}>
+
+# what the three tasks answered, joined by |, made once
+task printed
+  like text
+
+  save key, <printed>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-dock-acronym->)
+  save said, typescript-answer(built(spelled()), <process.stdout.write([json(), url(), text()].join("|"))>, folder, <module>)
+  save kept/held/{key}, said
+  back said
+
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <host/toJsonValue, host/fileURLToPath and host/read-file-text build>
+  want hold, built(spelled())/ok
+
+test <toJsonValue reaches the export>
+  want hold, is-equal(answer(0), <json>)
+
+test <fileURLToPath reaches the export>
+  want hold, is-equal(answer(1), <url>)
+
+test <read-file-text is still converted to readFileText>
+  want hold, is-equal(answer(2), <text>)
+
+# a local named like the dock hides it, so a member of the local is a field, never refused
+test <a field of a local named like the dock is not refused>
+  host out, built(<{dock()}form holder\n  link to-json-value, like text\n\ntask one\n  like text\n  save host-module\n    make holder\n      bind to-json-value, text \<x\>\n  send back, read host-module/to-json-value\n>)
+  host refused, naming-both(out, <could be>, <could be>)
+  want hold, or(out/ok, not(refused))

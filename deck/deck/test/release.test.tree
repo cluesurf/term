@@ -1,0 +1,240 @@
+note <a release commits a folder through the object store, closes over its chunks, and restores to disk as it was>
+
+# Ported from release.test.ts by statement (item term-self-host-001-0582), one test per `it` in its order.
+# code/object/release.ts, restore.ts and store.ts are the subject, docked as the original imported them: each fills the
+# defaults a TypeScript caller is given and hands on to its Term module. The original's `beforeEach` made a source folder
+# and a store for every test: here each test asks `set-up` for its own, made by the standard library's temp-folder (item
+# 0985), so they are removed when the run ends.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find contains
+
+load @term/base/bit
+  find bitwise-and
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/deck/code/object/release>, name release-face
+  load <@term/deck/code/object/restore>, name restore-face
+  load <@term/deck/code/object/store>, name store-face
+  load <node:fs>, name release-file
+  load <node:path>, name release-path
+
+form store-input
+  link root, like text
+
+form release-meta
+  link author, like text
+  link time, like number
+  link message, like text
+
+form release-input
+  link dir, like text
+  link store, like dynamic
+  link meta, like release-meta
+
+form restore-input
+  link root, like text
+  link dest, like text
+  link chunks, like dynamic
+  link store, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+form release-source
+  link dir, like text
+  link store, like dynamic
+
+# host value: a set of the ids, to look each up once
+bind id-set
+  take ids, like list, like text
+  like dynamic
+  case node
+    text <new Set($ids)>
+
+bind set-has
+  take set, like dynamic
+  take id, like text
+  like boolean
+  case node
+    text <$set.has($id)>
+
+host digest-shape, make pattern, <<^sha256:[0-9a-f]{64}$>>
+
+task meta-at
+  take time, like number
+  like release-meta
+
+  back make(release-meta, bind(author, <lance>), bind(time, time), bind(message, <first>))
+
+task folder-in
+  take dir, like text
+  take at, like text
+
+  release-file/mkdir-sync(release-path/join(dir, at), make(folder-ask, bind(recursive, true)))
+
+task file-in
+  take dir, like text
+  take at, like text
+  take text, like text
+
+  release-file/write-file-sync(release-path/join(dir, at), text)
+
+# a source folder holding a nested file, an empty folder and an executable script, and a store of its own
+task set-up
+  like release-source
+
+  save dir, temp-folder(<release-src->)
+  folder-in(dir, <code/deep>)
+  folder-in(dir, <view/empty>)
+  file-in(dir, <code/deep/a.tree>, <task a\n>)
+  file-in(dir, <deck.tree>, <deck @term/probe\n>)
+  file-in(dir, <run.sh>, <#!/bin/sh\n>)
+  # 0o755
+  release-file/chmod-sync(release-path/join(dir, <run.sh>), 493)
+  save store, store-face/local-object-store(make(store-input, bind(root, temp-folder(<release-obj->))))
+  back make(release-source, bind(dir, dir), bind(store, store))
+
+task released
+  take dir, like text
+  take store, like dynamic
+  take meta, like release-meta
+  mark async
+  like dynamic
+
+  back wait release-face/build-release(make(release-input, bind(dir, dir), bind(store, store), bind(meta, meta)))
+
+# the release of `source` restored to a fresh folder, answering that folder
+task restored
+  take source, like release-source
+  mark async
+  like text
+
+  save release, released(source/dir, source/store, meta-at(1))
+  save dest, temp-folder(<release-out->)
+  wait restore-face/restore-version(make(restore-input, bind(root, release/root), bind(dest, dest), bind(chunks, release/chunks), bind(store, source/store)))
+  back dest
+
+# whether every chunk of every file is in the closure
+task closes-over-chunks
+  take release, like dynamic
+  like boolean
+
+  walk release/files
+    take file, like dynamic
+    walk file/chunks
+      take chunk, like text
+      fork test, not(contains(release/closure, chunk))
+        hold
+          back false
+  back true
+
+# how many ids of `after` are not in `before`
+task new-objects
+  take before, like dynamic
+  take after, like dynamic
+  like number
+
+  save had, id-set(before/closure)
+  save count, 0
+  walk after/closure
+    take id, like text
+    fork test, not(set-has(had, id))
+      hold
+        save count, add(count, 1)
+  back count
+
+# the new objects one edit costs in a folder of `size` files, the folder and store kept across sizes
+task edit-cost
+  take big, like text
+  take store, like dynamic
+  take size, like number
+  mark async
+  like number
+
+  save i, 0
+  walk test
+    hook test, is-below(i, size)
+    hook hold
+      file-in(big, <code/m{i}.tree>, <task m{i}\n>)
+      save i, add(i, 1)
+  save before, released(big, store, meta-at(1))
+  # each size is even, so half of it is a whole number
+  file-in(big, <code/m{divide(size, 2)}.tree>, <CHANGED\n>)
+  save after, released(big, store, meta-at(2))
+  back new-objects(before, after)
+
+# what joining `at` under `dest` raised, the empty text when it joined
+task join-refusal
+  take dest, like text
+  take at, like text
+  like text
+
+  save message, <>
+  fork
+    mark unsafe
+    restore-face/safe-join(dest, at)
+  halt take
+    take cause
+    save message, <raised>
+  back message
+
+test <buildRelease: commits through base and names a tree root>
+  host source, set-up()
+  host release, released(source/dir, source/store, meta-at(1))
+  want hold, matches(digest-shape, release/commit)
+  want hold, matches(digest-shape, release/root)
+
+test <buildRelease: is deterministic for the same directory and metadata>
+  host source, set-up()
+  host a, released(source/dir, source/store, meta-at(1))
+  host b, released(source/dir, source/store, meta-at(1))
+  want hold, is-equal(a/commit, b/commit)
+
+test <buildRelease: closes over the tree and every file chunk>
+  host source, set-up()
+  host release, released(source/dir, source/store, meta-at(1))
+  want hold, closes-over-chunks(release)
+  want hold, contains(release/closure, release/commit)
+
+# 16x the files must not cost materially more objects
+test <buildRelease: a one-file edit costs a FLAT number of new objects>
+  host source, set-up()
+  host big, temp-folder(<release-big->)
+  folder-in(big, <code>)
+  want hold, is-below(edit-cost(big, source/store, 50), 30)
+  want hold, is-below(edit-cost(big, source/store, 200), 30)
+  want hold, is-below(edit-cost(big, source/store, 800), 30)
+
+test <restoreVersion: round-trips a release back to disk>
+  host source, set-up()
+  host dest, restored(source)
+  want hold, is-equal(release-file/read-file-sync(release-path/join(dest, <code/deep/a.tree>), <utf8>), <task a\n>)
+
+test <restoreVersion: recreates an empty directory>
+  host source, set-up()
+  host dest, restored(source)
+  want hold, release-file/exists-sync(release-path/join(dest, <view/empty>))
+
+test <restoreVersion: restores the executable bit>
+  host source, set-up()
+  host dest, restored(source)
+  host mode, release-file/stat-sync(release-path/join(dest, <run.sh>))/mode
+  # 0o111
+  want hold, is-unequal(bitwise-and(mode, 73), 0)
+
+test <safeJoin: blocks a path that escapes the destination>
+  want hold, is-equal(join-refusal(</tmp/dest>, <../escape>), <raised>)
+
+test <safeJoin: blocks an absolute path>
+  want hold, is-equal(join-refusal(</tmp/dest>, </etc/passwd>), <raised>)
+
+test <safeJoin: allows a nested path>
+  want hold, is-equal(restore-face/safe-join(</tmp/dest>, <code/a.tree>), </tmp/dest/code/a.tree>)

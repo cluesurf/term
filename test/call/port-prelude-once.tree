@@ -1,0 +1,119 @@
+note <a port's native prelude carries each runtime shim once: every top-level const declared once, and esbuild takes it>
+
+# Ported from port-prelude-once.ts by statement (item term-self-host-001-0604), one test per `ok` in its order, the
+# original's loop over its three cases written out. term-cli-in-term-0127: a port that loaded @term/base/json beside a
+# compiler module (deck/flow/code/framing.tree) got the json runtime shim written into it twice, `const json` declared
+# twice, and esbuild refused the port although `term make` passed. Each case is built the way task/port-build.ts builds a
+# port (its own `portContent`, the subject, decision 106), from a source held in memory at a path under deck/test/code
+# (nothing is written), compiled through the harness over the deck/test project as a library.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/cli
+  find term-root
+
+load @term/base/list
+  find push
+  find contains
+
+dock load
+  load <@term/term/task/port-build>, name port-build
+  load <esbuild>, name port-esbuild
+
+form transform-ask
+  link loader, like text
+  link format, like text
+
+# host value: an error's message, its first two lines joined
+bind first-lines
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause?.message ?? $cause).split("\\n").slice(0, 2).join(" ")>
+
+# host value: every top-level `const <name> =` of a port's content, in order
+bind const-names
+  take content, like text
+  like list, like text
+  case node
+    text <[...$content.matchAll(/^(?:export )?const ([A-Za-z_$][\\w$]*) =/gm)].map(one =\> one[1])>
+
+host json-beside, <load @term/base/json\n  find parse, name parse-json\n\nload @term/make/compile/main-entry\n  find whitespace-code\n\ntask probe\n  take text, like text\n  like dynamic\n  back parse-json(text)\n>
+host json-beside-global, <load @term/base/json\n  find parse, name parse-json\n\nload @term/make/compile/main-entry\n  find whitespace-code\n\ndock load\n  load \<global:JSON\>, name json-global\n\ntask probe\n  take text, like text\n  like dynamic\n  back parse-json(text)\n>
+host json-global-alone, <load @term/base/json\n  find parse, name parse-json\n\ndock load\n  load \<global:JSON\>, name json-global\n\ntask probe\n  take text, like text\n  like dynamic\n  back parse-json(text)\n>
+
+# the port's content of a case, <> when it does not compile
+task content-of
+  take text, like text
+  like text
+
+  save root, <{term-root()}/deck/test>
+  save out, compile-text(text, make(compile-choice, bind(file, <{root}/code/__port-prelude-once.tree>), bind(project, root), bind(project-lean, true), bind(library, true)))
+  fork test, not(out/ok)
+    hold
+      back <>
+  back port-build/port-content(out/program, out/emitted)
+
+# whether the case compiles and every top-level const of its port is declared once
+task once-each
+  take text, like text
+  like boolean
+
+  save content, content-of(text)
+  fork test, is-equal(content, <>)
+    hold
+      back false
+  save seen, make list
+  walk const-names(content)
+    take name, like text
+    fork test, contains(seen, name)
+      hold
+        back false
+    seen/push(name)
+  back true
+
+# what esbuild said refusing the port, <> when it took it
+task refusal-of
+  take content, like text
+  like text
+  mark async
+
+  fork
+    mark unsafe
+    save done, wait port-esbuild/transform(content, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))
+    back <>
+  halt take
+    take cause
+    back first-lines(cause)
+
+# whether the case compiles and esbuild takes its port
+task esbuild-takes
+  take text, like text
+  like boolean
+  mark async
+
+  save content, content-of(text)
+  fork test, is-equal(content, <>)
+    hold
+      back false
+  back is-equal(refusal-of(content), <>)
+
+test <json beside a compiler module: each top-level const once>
+  want hold, once-each(json-beside)
+
+test <json beside a compiler module: esbuild takes it>
+  want hold, esbuild-takes(json-beside)
+
+test <json beside a compiler module and global:JSON: each top-level const once>
+  want hold, once-each(json-beside-global)
+
+test <json beside a compiler module and global:JSON: esbuild takes it>
+  want hold, esbuild-takes(json-beside-global)
+
+test <json and \<global:JSON\> alone: each top-level const once>
+  want hold, once-each(json-global-alone)
+
+test <json and \<global:JSON\> alone: esbuild takes it>
+  want hold, esbuild-takes(json-global-alone)

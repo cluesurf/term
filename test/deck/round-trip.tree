@@ -1,0 +1,201 @@
+note <a manifest read and written back still declares every field it declared>
+
+# Ported from round-trip.ts by statement (item term-self-host-001-0664), one test per `ok` in its order. `writeManifest`
+# emits the model and nothing else, so a field the model does not carry is deleted the next time anything writes the
+# file: `term toss @nothing` once dropped `bear ./code` and `boot ./code/boot` from a scaffolded project. So this holds
+# the property over every real `deck.tree` under deck/: every top-level field a manifest declares is still declared
+# after a load and a write. It compares field heads, read with the one parser, never text, since a manifest is
+# rewritten canonically on purpose. Then one manifest using every field the grammar knows makes the same trip. The
+# manifest module, the parser and the mill's head word are the subject (decision 106). The sweep is made once, and the
+# titles hold no counts, so the original's counted titles are plain here.
+
+load @term/base/file
+  find read, name read-file
+
+load @term/base/file/directory
+  find list, name list-folder
+
+load @term/base/file/metadata
+  find is-directory
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <@term/deck/code/package/manifest>, name deck-manifest
+  load <@term/make/code/parser/tree>, name tree-parser
+  load <@term/make/code/compile/mill-run>, name mill-run
+
+# how many distinct field heads the tree's own manifests use, of the 27 the grammar knows (round-trip.ts gives the
+# history of the number). A new one is welcome, and it has to survive the trip
+host checked-heads, 11
+
+form parse-source
+  link file, like text
+  link text, like text
+
+form manifest-source
+  link text, like text
+
+form manifest-written
+  link manifest, like dynamic
+
+# a host value, or the empty text when it has none
+bind or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# every `deck.tree` under a folder, past node_modules, host, link and dot folders
+task manifests
+  take folder, like text
+  like list, like text
+  mark async
+
+  save out, make list
+  walk list-folder(folder)
+    take name, like text
+    fork test, or(or(is-equal(name, <node_modules>), is-equal(name, <host>)), or(is-equal(name, <link>), starts-with(name, <.>)))
+      hold
+        turn next
+    save full, <{folder}/{name}>
+    fork test, is-directory(full)
+      hold
+        walk manifests(full)
+          take found, like text
+          out/push(found)
+      miss
+        fork test, is-equal(name, <deck.tree>)
+          hold
+            out/push(full)
+  back out
+
+# The top-level field heads a manifest declares: the head of each direct child of the `deck` group. The first two
+# nodes are not fields: `deck @term/base` parses as `deck > @term/base`, node 0 the head word and node 1 the package name
+task fields-of
+  take file, like text
+  take text, like text
+  like list, like text
+
+  save out, make list
+  host parsed, tree-parser/parse(make(parse-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back out
+  walk parsed/tree/nodes
+    take group, like dynamic
+    fork test, is-equal(or-empty(mill-run/head-word(group)), <deck>)
+      hold
+        save at, 0
+        walk group/nodes
+          take node, like dynamic
+          fork test, and(is-above(at, 1), is-equal(node/kind, <group>))
+            hold
+              save head, or-empty(mill-run/head-word(node))
+              fork test, and(is-unequal(head, <>), not(contains(out, head)))
+                hold
+                  out/push(head)
+          save at, add(at, 1)
+  back out
+
+# a manifest's text loaded and written back
+task written
+  take text, like text
+  like text
+
+  back deck-manifest/write-manifest(make(manifest-written, bind(manifest, deck-manifest/parse-manifest(make(manifest-source, bind(text, text))))))
+
+# the sweep: how many manifests made the trip, the fields lost on it, and the distinct heads seen
+form sweep
+  mark shared
+  link done, like boolean
+  link checked, like number
+  link losses, like list, like text
+  link seen, like list, like text
+
+host now, make(sweep, bind(done, false), bind(checked, 0), bind(losses, make list), bind(seen, make list))
+
+task the-sweep
+  like sweep
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  save checked, 0
+  save losses, make list
+  save seen, make list
+  walk manifests(<deck>)
+    take file, like text
+    save text, read-file(file)
+    save before, fields-of(file, text)
+    # a deck.tree that is a code module rather than a manifest has no `deck @name` and is not this test's business
+    fork test, is-equal(before/length, 0)
+      hold
+        turn next
+    save after, make list
+    save threw, <>
+    fork
+      mark unsafe
+      save after, fields-of(file, written(text))
+    halt take
+      take cause
+      save threw, <{file}: threw>
+    fork test, is-unequal(threw, <>)
+      hold
+        losses/push(threw)
+        turn next
+    save checked, add(checked, 1)
+    walk before
+      take field, like text
+      fork test, not(contains(seen, field))
+        hold
+          seen/push(field)
+      fork test, not(contains(after, field))
+        hold
+          losses/push(<{file}: lost {field}>)
+  save now/checked, checked
+  save now/losses, losses
+  save now/seen, seen
+  save now/done, true
+  back now
+
+# one manifest using every field the grammar knows. `mark` is the version and `code` a code root that is not the
+# default, so the writer keeps it
+host whole, <deck @scope/whole\n  mark \<0.0.2\>\n  code ./src\n  head \<One line about the package\>\n  text \<The long title of the package\>\n  hide true\n  lock mit\n  sort library\n  site \<https://example.com\>\n  view ./view/tree.gif\n  term \<Apache 2.0\>\n  make \<security\>\n  make \<parser\>\n  deck ./deck/load\n  link @term/base, mark \<0.x.x\>\n  host \<https://registry.example.com\>\n    link @other/thing, mark \<1.x.x\>\n  case work\n    link @term/test, mark \<0.x.x\>\n  task ./task\n  book ./book\n  role ./base/role\n  line ./code/line\n  call ./call\n  test ./test\n  boot ./code/boot\n  tool ./tool\n  mind \<A Person\>, base \<a@example.com\>\n    site \<https://person.example.com\>\n  cite \<Another Person\>, base \<b@example.com\>\n  hook build, task ./task/build\n>
+
+test <the manifests round trip>
+  want hold, is-above(the-sweep()/checked, 10)
+
+test <no manifest loses a field it declares>
+  want hold, is-equal(the-sweep()/losses/length, 0)
+
+# pinned, not checked for non-zero: the property above is worth only the variety it runs over
+test <the distinct field heads in the tree's own manifests>
+  want hold, is-equal(the-sweep()/seen/length, checked-heads)
+
+test <a manifest using every field the grammar knows loses none of them>
+  host before, fields-of(<whole.tree>, whole)
+  host after, fields-of(<whole.tree>, written(whole))
+  save lost, 0
+  walk before
+    take field, like text
+    fork test, not(contains(after, field))
+      hold
+        save lost, add(lost, 1)
+  want hold, is-equal(lost, 0)
+
+# every field the tree uses is in the whole-surface manifest too, so the two halves cannot drift apart
+test <the whole-surface manifest covers every field the real ones use>
+  host before, fields-of(<whole.tree>, whole)
+  save missing, 0
+  walk the-sweep()/seen
+    take field, like text
+    fork test, not(contains(before, field))
+      hold
+        save missing, add(missing, 1)
+  want hold, is-equal(missing, 0)

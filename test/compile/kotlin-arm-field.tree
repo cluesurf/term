@@ -1,0 +1,109 @@
+note <Two Kotlin refusals: a generic case holding a list of its type argument, and an arm field named like a task>
+
+# Ported from kotlin-arm-field.ts by statement (item term-self-host-001-0617). Found by the engine ports on 2026-10-04
+# (engine/data/array, string, value, engine), held through kotlinc and RUN against TypeScript's answer. 1: a generic
+# union's case holding a LIST of its type argument: the class is `sealed class Vector<out T>` and the field
+# `MutableList<T>`, where T is invariant, so Kotlin refused the class. The field now asserts the variance
+# (`MutableList<@UnsafeVariance T>`). 2: an arm field named like a task (`size`): the body read it as the function
+# reference `::size`, since the arm's locals were not locals while its body was emitted. kotlinc's step is skipped
+# without kotlinc.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ../support/running
+  find run-tool
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find trim
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host fixture, <load @term/base/list\n  find list\n\nform vector\n  head t\n  case leaf\n    link items, like list, like t\n    link size, like integer\n  case pair\n    link left, like vector t\n    link right, like vector t\n    link size, like integer\n\ntask size\n  head t\n  take v, like vector t\n  like integer\n  fork case, read v\n    case leaf\n      send back, read size\n    case pair\n      send back, read size\n\ntask total\n  like integer\n  save items, make list\n  call items/push\n    code 4\n  save a\n    make leaf\n      bind items, read items\n      bind size, code 1\n  save b\n    make pair\n      bind left, read a\n      bind right, read a\n      bind size, code 2\n  send back\n    call add\n      call size, read a\n      call size, read b\n>
+
+host wanted, <3>
+host size-reference, make pattern, <<return ::size>>
+host variance, make pattern, <<MutableList<@UnsafeVariance T>>>
+
+task built
+  take env, like text
+  like compile-outcome
+
+  save choice, make(compile-choice, bind(file, <vector.tree>), bind(stdlib, env), bind(entry, <total>))
+  fork test, is-equal(env, <kotlin>)
+    hold
+      save choice/env, <kotlin>
+  back compile-text(fixture, choice)
+
+task kotlin-text
+  like text
+
+  back <{emit-text(built(<kotlin>), <kotlin>)}\nfun main() \{\n    println(total())\n\}\n>
+
+test <TypeScript reads the arm field>
+  host folder, temp-folder(<term-kotlin-arm-field->)
+  want hold, is-equal(typescript-answer(built(<node>), <process.stdout.write(String(total()))>, folder, <module>), wanted)
+
+test <the arm field is read as the local, never a function reference>
+  host out, built(<kotlin>)
+  want hold, out/ok
+  want hold, not(matches(size-reference, kotlin-text()))
+
+test <the list field asserts its variance>
+  want hold, matches(variance, kotlin-text())
+
+form kotlin-builds
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(kotlin-builds, bind(held, make hash))
+
+# kotlinc's errors over the program, <> when it built, made once: the jar is at `jar`
+task kotlinc-errors
+  like text
+
+  save key, <errors>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-kotlin-arm-field->)
+  save file, <{folder}/main.kt>
+  save kept/held/jar, <{folder}/main.jar>
+  write-file(file, kotlin-text())
+  save errors, run-tool(make(list, <kotlinc>, file, <-include-runtime>, <-nowarn>, <-d>, kept/held/jar))
+  save kept/held/{key}, errors
+  back errors
+
+test <kotlinc compiles it>
+  fork test, is-equal(find-tool(<kotlinc>), <>)
+    hold
+      skip <kotlinc not installed>
+  want hold, is-equal(kotlinc-errors(), <>)
+
+test <Kotlin answers what TypeScript does>
+  fork test, is-equal(find-tool(<kotlinc>), <>)
+    hold
+      skip <kotlinc not installed>
+  want hold, is-equal(kotlinc-errors(), <>)
+  host ran, run(<java>, make(list, <-jar>, kept/held/jar))
+  want hold, is-equal(trim(ran/output), wanted)

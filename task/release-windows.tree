@@ -1,0 +1,718 @@
+# The Windows step of `pnpm term:release` (D8, decided 2026-10-02: windows-x64 is built natively on an on-demand EC2
+# Windows machine and smoke-run in the same session). release.tree stages windows-x64 as it stages every platform, all
+# but its native part, and runs this (its `windows` command, a child of the release) with the environment it was
+# given, which holds the EC2 key (the publisher's alias runs the release under its secret store). This:
+#
+#   1  rents a machine (the library TERM_MACHINE_MODULE names, windows-x64, use release) with Node, Go, the MSVC build
+#      tools and Rust, ending itself after --hours whatever happens here
+#   2  says the toolchain's versions, and builds and runs a one-file Rust crate there: MSVC links on this machine
+#   3  BUILDS THE PAYLOAD'S NATIVE PART THERE: bin\term.exe (task/launcher/term.go) by Windows' own Go, brought back
+#      into the stage. The same source cross-built on this Mac is compared with it, digest for digest
+#   4  packs the stage here (task/release-pack.tree, as every platform is packed), and ships the tarball back
+#   5  SMOKE-RUNS THE TARBALL THERE: its sha256 read on the machine, unpacked by Windows' tar.exe into a fresh folder
+#      under a fresh profile, `term.exe --version`, `term.cmd --version`, and `term make` on a one-file project
+#   6  destroys the machine, in a `finally`, after a failure or a signal too
+#
+# The payload is still the Node build (task/release.tree, "THE PAYLOAD IS THE NODE BUILD"), so term.exe is its one
+# native part today. When the native term lands (self-host item 0161) its cargo build joins step 3, on the toolchain
+# step 2 proves.
+#
+# It speaks to release.tree in JSON lines on stdout, as the push child does: { form: 'tools' | 'native' | 'smoke' |
+# 'built' | 'failed', ... }. Every other line (the machine's own progress) is a note.
+#
+#   TERM_MACHINE_MODULE=<machine.ts> node host/line.js boot task/release.tree -- windows --stage <dir> --out <tar.gz>
+#     [--hours 2] [--fail-at tools|native|packed|smoke]   throw at that step, to prove the machine still ends (never
+#     in a release)
+#
+# Ported from task/release-windows.ts (item term-self-host-001-0717).
+#
+# THE MACHINE IS THE CALLER'S. Renting an EC2 Windows machine is the publisher's own library, not Term's, so the
+# module that does it is named by TERM_MACHINE_MODULE (the publisher's term:release alias names its own, run under the
+# zone that holds the EC2 key). Its calls: session({ platform, use, needs, hours, work }), shipIn(machine, from, to),
+# shipOut(machine, from, to), run(machine, command, { timeout }), runPowerShell(machine, script, { timeout }) and
+# redact(text).
+
+load ./release-pack
+  find pack-payload
+  find packed-payload
+
+load @term/base/environment
+  find variable
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+
+# where the step keeps what it sends, under the profile of the machine's Administrator
+task remote-folder
+  like text
+  send back, text <term-release>
+
+form windows-context
+  link stage, like text
+  link out, like text
+  link cross, like text
+  link sent, like text
+  link fail-at, like text
+  link machines, like dynamic
+
+form windows-answer
+  link packed, like packed-payload
+  link instance, like dynamic
+
+# ---- the host values Term has no word for ----
+
+bind raise-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# one line of JSON on stdout, written through to the pipe before anything else runs
+bind say-line
+  take said, like dynamic
+  like void
+  case node
+    text <<require("node:fs").writeSync(1, JSON.stringify($said) + "\n")>>
+
+bind tools-said
+  take text, like text
+  take crate, like text
+  like dynamic
+  case node
+    text <<({ form: "tools", text: $text, crate: $crate })>>
+
+bind native-said
+  take digest, like text
+  take cross, like text
+  like dynamic
+  case node
+    text <<({ form: "native", file: "bin/term.exe", digest: $digest, cross: $cross, same: $digest === $cross })>>
+
+bind smoke-said
+  take digest, like text
+  take version, like text
+  take made, like text
+  like dynamic
+  case node
+    text <<({ form: "smoke", digest: $digest, version: $version, made: $made })>>
+
+bind built-said
+  take out, like text
+  take session, like dynamic
+  like dynamic
+  case node
+    text <<({ form: "built", platform: "windows-x64", file: $out, digest: $session.answer.packed.digest, bytes: $session.answer.packed.bytes, minutes: $session.minutes, dollars: $session.dollars, instance: $session.answer.instance ?? "" })>>
+
+bind failed-said
+  take message, like text
+  like dynamic
+  case node
+    text <<({ form: "failed", message: $message })>>
+
+bind error-message
+  take problem, like dynamic
+  like text
+  case node
+    text <<($problem instanceof Error ? $problem.message : String($problem))>>
+
+# the step's exit code, 1, kept through the end of the booted program, which ends the process with its own code
+bind fail-exit
+  like void
+  case node
+    text <<(process.exitCode = 1, process.on("exit", () => { process.exitCode = 1 }))>>
+
+bind digest-of
+  take file, like text
+  like text
+  case node
+    text <<`sha256:${require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync($file)).digest("hex")}`>>
+
+bind recursive-options
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind forced-options
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+bind force-options
+  like dynamic
+  case node
+    text <<({ force: true })>>
+
+# the cross build of the launcher here: Go for Windows on amd64, no C toolchain, its error captured
+bind cross-options
+  like dynamic
+  case node
+    text <<({ env: { ...process.env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" }, stdio: ["ignore", "ignore", "pipe"] })>>
+
+# the library TERM_MACHINE_MODULE names, from the folder the person typed the command in (INIT_CWD, which pnpm sets).
+# A CommonJS module's exports arrive on `default`
+bind load-machines
+  take named, like text
+  like dynamic
+  case node
+    text <<import(require("node:url").pathToFileURL(require("node:path").resolve(process.env.INIT_CWD ?? process.cwd(), $named)).href).then((loaded_) => loaded_.default ?? loaded_)>>
+
+bind timeout-of
+  take timeout, like number
+  like dynamic
+  case node
+    text <<({ timeout: $timeout })>>
+
+bind machine-run
+  take machines, like dynamic
+  take machine, like dynamic
+  take command, like text
+  take timeout, like number
+  like dynamic
+  case node
+    text <<$machines.run($machine, $command, { timeout: $timeout })>>
+
+bind machine-power-shell
+  take machines, like dynamic
+  take machine, like dynamic
+  take script, like text
+  take timeout, like number
+  like dynamic
+  case node
+    text <<$machines.runPowerShell($machine, $script, { timeout: $timeout })>>
+
+bind machine-ship-in
+  take machines, like dynamic
+  take machine, like dynamic
+  take from, like text
+  take to, like text
+  like void
+  case node
+    text <<$machines.shipIn($machine, $from, $to)>>
+
+bind machine-ship-out
+  take machines, like dynamic
+  take machine, like dynamic
+  take from, like text
+  take to, like text
+  like boolean
+  case node
+    text <<Boolean($machines.shipOut($machine, $from, $to))>>
+
+bind machine-redact
+  take machines, like dynamic
+  take text, like text
+  like text
+  case node
+    text <<$machines.redact($text)>>
+
+bind machine-instance
+  take machine, like dynamic
+  like dynamic
+  case node
+    text <$machine.instance>
+
+# the session the library rents: the work is called with the machine and the stop test, and the context
+bind open-session
+  take machines, like dynamic
+  take hours, like number
+  take work, like dynamic
+  take context, like dynamic
+  like dynamic
+  case node
+    text <<$machines.session({ platform: "windows-x64", use: "release", needs: ["node", "go", "build"], hours: $hours, work: (machine_, stopped_) => $work(machine_, stopped_, $context) })>>
+
+bind is-stopped
+  take stopped, like dynamic
+  like boolean
+  case node
+    text <Boolean($stopped())>
+
+bind ran-status
+  take ran, like dynamic
+  like dynamic
+  case node
+    text <$ran.status>
+
+bind ran-stdout
+  take ran, like dynamic
+  like text
+  case node
+    text <String($ran.stdout)>
+
+bind ran-stderr
+  take ran, like dynamic
+  like text
+  case node
+    text <String($ran.stderr)>
+
+bind is-exit-zero
+  take ran, like dynamic
+  like boolean
+  case node
+    text <($ran.status === 0)>
+
+bind holds-text
+  take text, like text
+  take part, like text
+  like boolean
+  case node
+    text <$text.includes($part)>
+
+# what the smoke run printed, read as the original reads it: the digest there, the version, and the make's output
+bind smoke-digest
+  take text, like text
+  like text
+  case node
+    text <</digest (sha256:[0-9a-f]{64})/.exec($text)?.[1] ?? "">>
+
+bind smoke-version
+  take text, like text
+  like text
+  case node
+    text <</^exe 0 (.*)$/m.exec($text)?.[1]?.trim() ?? "">>
+
+bind smoke-made
+  take text, like text
+  like text
+  case node
+    text <</^make 0 ([\s\S]*?)^host /m.exec($text)?.[1]?.trim() ?? "">>
+
+bind smoke-built
+  take text, like text
+  like boolean
+  case node
+    text <</base\.(ts|js)/.test($text)>>
+
+bind last-three
+  take made, like text
+  like text
+  case node
+    text <<$made.split("\n").slice(-3).join(" | ")>>
+
+bind trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+# ---- the step ----
+
+task fail-at
+  take wanted, like text
+  take step, like text
+  like void
+  fork test
+    hook test
+      call is-equal
+        read wanted
+        read step
+    hook hold
+      call raise-error, text <--fail-at {step}: a failure forced at this step>
+
+task halt-when-stopped
+  take stopped, like dynamic
+  like void
+  fork test
+    hook test
+      call is-stopped
+        read stopped
+    hook hold
+      call raise-error, text <stopped>
+
+# the smoke run's script, one PowerShell line each
+task smoke-script
+  like text
+  save remote
+    call remote-folder
+  save lines
+    make list
+  call lines/push, text <$root = "$env:USERPROFILE\\{remote}">
+  call lines/push, text <$hash = (Get-FileHash "$root\\smoke\\term-windows-x64.tar.gz" -Algorithm SHA256).Hash.ToLower()>
+  call lines/push, text <Write-Output "digest sha256:$hash">
+  call lines/push, text <New-Item -ItemType Directory -Force -Path "$root\\run", "$root\\home" | Out-Null>
+  call lines/push, text <& "$env:SystemRoot\\System32\\tar.exe" -xzf "$root\\smoke\\term-windows-x64.tar.gz" -C "$root\\run">
+  call lines/push, text <if ($LASTEXITCODE -ne 0) \{ Write-Output "unpack failed $LASTEXITCODE"; exit 1 \}>
+  call lines/push, text <$env:USERPROFILE = "$root\\home">
+  call lines/push, text <$env:TERM_NEED = 'local'>
+  call lines/push, text <$exe = & "$root\\run\\term\\bin\\term.exe" --version 2\>&1 | Out-String>
+  call lines/push, text <$exeCode = $LASTEXITCODE>
+  call lines/push, text <$cmd = & "$root\\run\\term\\bin\\term.cmd" --version 2\>&1 | Out-String>
+  call lines/push, text <$cmdCode = $LASTEXITCODE>
+  call lines/push, text <Set-Location "$root\\smoke\\sample">
+  call lines/push, text <$made = & "$root\\run\\term\\bin\\term.cmd" make --plain --color never 2\>&1 | Out-String>
+  call lines/push, text <$madeCode = $LASTEXITCODE>
+  call lines/push, text <$hosted = (Get-ChildItem -Recurse -Name host) -join " ">
+  call lines/push, text <Write-Output "exe $exeCode $($exe.Trim())">
+  call lines/push, text <Write-Output "cmd $cmdCode $($cmd.Trim())">
+  call lines/push, text <Write-Output "make $madeCode $($made.Trim())">
+  call lines/push, text <Write-Output "host $hosted">
+  call lines/push, text <if ($exeCode -ne 0 -or $cmdCode -ne 0 -or $madeCode -ne 0) \{ exit 1 \}>
+  call lines/push, text <exit 0>
+  send back
+    call lines/join, text <\n>
+
+# steps 2 to 5, on the machine the session rented
+task work-on-windows
+  mark async
+  take machine, like dynamic
+  take stopped, like dynamic
+  take context, like windows-context
+  like windows-answer
+  save machines, read context/machines
+  save remote
+    call remote-folder
+  # 2  the toolchain, and MSVC linking a crate
+  call machine-ship-in
+    read machines
+    read machine
+    read context/sent
+    read remote
+  save tools
+    call machine-run
+      read machines
+      read machine
+      text <node --version & go version & rustc --version & cargo --version>
+      code 120000
+  save crate
+    call machine-run
+      read machines
+      read machine
+      text <cd /d %USERPROFILE%\\{remote}\\crate && cargo build --release --quiet && target\\release\\term-release-crate.exe>
+      code 900000
+  fork test
+    hook test
+      call or
+        call not
+          call is-exit-zero
+            read crate
+        call not
+          call holds-text
+            call ran-stdout
+              read crate
+            text <crate linked for x86_64>
+    hook hold
+      call raise-error, text <the Rust crate did not build and run with MSVC there:\n{ran-stdout(tools)}{ran-stdout(crate)}{ran-stderr(crate)}>
+  call say-line
+    call tools-said
+      call trimmed
+        call ran-stdout
+          read tools
+      call trimmed
+        call ran-stdout
+          read crate
+  call fail-at
+    read context/fail-at
+    text <tools>
+  call halt-when-stopped
+    read stopped
+
+  # 3  the native part, by Windows' own Go
+  save built
+    call machine-run
+      read machines
+      read machine
+      text <cd /d %USERPROFILE%\\{remote}\\launcher && set CGO_ENABLED=0&& set GOOS=windows&& set GOARCH=amd64&& go build -trimpath -ldflags "-s -w" -o term.exe term.go>
+      code 600000
+  save exe
+    call node-path/join
+      read context/stage
+      text <term>
+      text <bin>
+      text <term.exe>
+  call node-fs/rm-sync
+    read exe
+    call force-options
+  fork test
+    hook test
+      call or
+        call not
+          call is-exit-zero
+            read built
+        call not
+          call machine-ship-out
+            read machines
+            read machine
+            text <{remote}/launcher/term.exe>
+            read exe
+    hook hold
+      call raise-error, text <term.exe was not built there:\n{ran-stdout(built)}{ran-stderr(built)}>
+  save native
+    call digest-of
+      read exe
+  save cross-digest
+    call digest-of
+      read context/cross
+  call say-line
+    call native-said
+      read native
+      read cross-digest
+  call fail-at
+    read context/fail-at
+    text <native>
+  call halt-when-stopped
+    read stopped
+
+  # 4  packed here, as every platform is
+  save packed
+    call pack-payload
+      read context/stage
+      read context/out
+  call fail-at
+    read context/fail-at
+    text <packed>
+
+  # 5  the tarball there, read back, unpacked fresh and run
+  save smoke
+    call node-path/join
+      call node-path/dirname
+        read context/stage
+      text <windows-smoke>
+  call node-fs/rm-sync
+    read smoke
+    call forced-options
+  call node-fs/mkdir-sync
+    call node-path/join
+      read smoke
+      text <sample>
+      text <code>
+    call recursive-options
+  call node-fs/copy-file-sync
+    read context/out
+    call node-path/join
+      read smoke
+      text <term-windows-x64.tar.gz>
+  call node-fs/write-file-sync
+    call node-path/join
+      read smoke
+      text <sample>
+      text <deck.tree>
+    text <deck @sample/hello\nhead \<A sample project the release smoke-runs on Windows\>\nmark \<0.0.0\>\n>
+  call node-fs/write-file-sync
+    call node-path/join
+      read smoke
+      text <sample>
+      text <code>
+      text <base.tree>
+    text <task greet\n  take name, like text\n  like text\n  send back, text \<hello \{name\}\>\n>
+  call machine-ship-in
+    read machines
+    read machine
+    read smoke
+    text <{remote}\\smoke>
+  call halt-when-stopped
+    read stopped
+
+  save ran
+    call machine-power-shell
+      read machines
+      read machine
+      call smoke-script
+      code 900000
+  save text, text <{ran-stdout(ran)}{ran-stderr(ran)}>
+  save there
+    call smoke-digest
+      read text
+  save version
+    call smoke-version
+      read text
+  save made
+    call smoke-made
+      read text
+  fork test
+    hook test
+      call or
+        call not
+          call is-exit-zero
+            read ran
+        call or
+          call is-unequal
+            read there
+            read packed/digest
+          call or
+            call is-equal
+              read version
+              text <>
+            call not
+              call smoke-built
+                read text
+    hook hold
+      save shown, read there
+      fork test
+        hook test
+          call is-equal
+            read there
+            text <>
+        hook hold
+          save shown, text <none>
+      call raise-error, text <the payload did not smoke-run there (digest there {shown}, here {packed/digest}):\n{trimmed(text)}>
+  call say-line
+    call smoke-said
+      read there
+      read version
+      call last-three
+        read made
+  call fail-at
+    read context/fail-at
+    text <smoke>
+  send back
+    make windows-answer
+      bind packed, read packed
+      bind instance
+        call machine-instance
+          read machine
+
+task release-on-windows
+  mark async
+  take root, like text
+  take stage, like text
+  take out, like text
+  take hours, like number
+  take fail-at, like text
+  like void
+  save machines, text <>
+  save loaded, false
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call or
+          call is-equal
+            read stage
+            text <>
+          call or
+            call is-equal
+              read out
+              text <>
+            call not
+              call node-fs/exists-sync
+                call node-path/join
+                  read stage
+                  text <term>
+                  text <bin>
+                  text <term.cmd>
+      hook hold
+        call raise-error, text <--stage \<dir\> holding a staged term/ (bin\\term.cmd in it) and --out \<tar.gz\> are needed>
+    save launcher
+      call node-path/join
+        read root
+        text <task>
+        text <launcher>
+    # what is sent, beside the stage and never inside it: the launcher's source, a one-file crate, and later the
+    # tarball with a project to build
+    save sent
+      call node-path/join
+        call node-path/dirname
+          read stage
+        text <windows-sent>
+    call node-fs/rm-sync
+      read sent
+      call forced-options
+    call node-fs/mkdir-sync
+      call node-path/join
+        read sent
+        text <launcher>
+      call recursive-options
+    call node-fs/copy-file-sync
+      call node-path/join
+        read launcher
+        text <term.go>
+      call node-path/join
+        read sent
+        text <launcher>
+        text <term.go>
+    call node-fs/mkdir-sync
+      call node-path/join
+        read sent
+        text <crate>
+        text <src>
+      call recursive-options
+    call node-fs/write-file-sync
+      call node-path/join
+        read sent
+        text <crate>
+        text <Cargo.toml>
+      text <[package]\nname = "term-release-crate"\nversion = "0.0.0"\nedition = "2021"\n>
+    call node-fs/write-file-sync
+      call node-path/join
+        read sent
+        text <crate>
+        text <src>
+        text <main.rs>
+      text <fn main() \{\n    println!("crate linked for \{\}", std::env::consts::ARCH);\n\}\n>
+
+    # the same source cross-built here, for the comparison: reproducible Go builds are the same bytes on any host
+    save cross
+      call node-path/join
+        call node-path/dirname
+          read stage
+        text <term-cross.exe>
+    save go-arguments
+      make list
+    call go-arguments/push, text <build>
+    call go-arguments/push, text <-trimpath>
+    call go-arguments/push, text <-ldflags>
+    call go-arguments/push, text <-s -w>
+    call go-arguments/push, text <-o>
+    call go-arguments/push, read cross
+    call go-arguments/push
+      call node-path/join
+        read launcher
+        text <term.go>
+    call node-child/exec-file-sync
+      text <go>
+      read go-arguments
+      call cross-options
+
+    save named
+      call trimmed
+        call variable, text <TERM_MACHINE_MODULE>
+    fork test
+      hook test
+        call is-equal
+          read named
+          text <>
+      hook hold
+        call raise-error, text <the Windows step rents a machine through the module TERM_MACHINE_MODULE names, and it is not set. A dry run can pack windows-x64 here instead: --windows-cross>
+    save machines
+      call load-machines
+        read named
+        wait true
+    save loaded, true
+    save context
+      make windows-context
+        bind stage, read stage
+        bind out, read out
+        bind cross, read cross
+        bind sent, read sent
+        bind fail-at, read fail-at
+        bind machines, read machines
+    save session
+      call open-session
+        read machines
+        read hours
+        read work-on-windows
+        read context
+        wait true
+    call say-line
+      call built-said
+        read out
+        read session
+  halt take
+    take problem
+    save message
+      call error-message
+        read problem
+    fork test
+      hook test
+        read loaded
+      hook hold
+        save message
+          call machine-redact
+            read machines
+            read message
+    call say-line
+      call failed-said
+        read message
+    call fail-exit

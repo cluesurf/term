@@ -1,0 +1,92 @@
+note <the http runtime's trie router matches each request to its route, binds params, and answers 404 for no match>
+
+# Ported from run.ts by statement (item term-self-host-001-0632), one test per `ok` in its order. The matcher and
+# dispatch of deck/site/code/http/http.tree are the uniform layer, and `serve` (transport) is native, so it is not run.
+# The demo API is deck/site/code/test/site/api.tree: first it compiles alone through the project under the node env with
+# the tree shake off, as the original compiled it. The original then called `make-api` and `handle-request` of the
+# built module from TypeScript: here a run task loads both from @term/site and answers every request's status and body,
+# one line each, built and run once on node. Each test reads its line.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find project-path
+  find file-text
+
+load ../support/running
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+host api-file, <deck/site/code/test/site/api.tree>
+
+# a run task answering `status|body` for each request, in the order the tests read them
+host program, <load @term/site/test/site/api\n  find make-api\n\nload @term/site/http/http\n  find request\n  find handle-request\n\ntask answer\n  take server\n  take method, like text\n  take path, like text\n  like text\n\n  save got, handle-request(server, make(request, bind(method, method), bind(path, path), bind(body, \<\>)))\n  back \<\{got/status\}|\{got/body\}\>\n\ntask run\n  like text\n\n  save server, make-api()\n  save lines, make list\n  lines/push(answer(server, \<GET\>, \</health\>))\n  lines/push(answer(server, \<GET\>, \</users/42\>))\n  lines/push(answer(server, \<GET\>, \</users/abc\>))\n  lines/push(answer(server, \<GET\>, \</files/a/b/c.txt\>))\n  lines/push(answer(server, \<GET\>, \</nope\>))\n  lines/push(answer(server, \<POST\>, \</health\>))\n  lines/push(answer(server, \<GET\>, \</health\>))\n  back lines/join(\<\\n\>)\n>
+
+# the answers, made once: `lines` each request's `status|body`, `reason` why the program did not run
+form answers
+  mark shared
+  link done, like boolean
+  link lines, like list, like text
+  link reason, like text
+
+host now, make(answers, bind(done, false), bind(lines, make list), bind(reason, <>))
+
+task the-answers
+  like answers
+  mark async
+
+  fork test, now/done
+    hold
+      back now
+  host folder, temp-folder(<http-run->)
+  host ran, run-text(program, <typescript>, folder, <api>)
+  fork test, is-equal(ran/state, <ran>)
+    hold
+      save now/lines, text-split(ran/output, <\n>)
+    miss
+      save now/reason, <{ran/state} at {ran/stage}: {ran/reason}>
+  save now/done, true
+  back now
+
+# the status and body one request answered, <> when the program did not run
+task answer-at
+  take at, like number
+  like text
+  mark async
+
+  save lines, the-answers()/lines
+  fork test, is-below(at, lines/length)
+    hold
+      back lines/{at}
+  back <>
+
+test <http runtime + API compiles to JS>
+  host out, compile-text(file-text(api-file),make(compile-choice, bind(file, project-path(<.>, api-file)), bind(project, <.>), bind(project-env, <node>), bind(tree-shake, <false>)))
+  want hold, out/ok
+
+test <exact route dispatches>
+  want hold, is-equal(answer-at(0), <200|ok>)
+
+test <:param route binds the param>
+  want hold, is-equal(answer-at(1), <200|42>)
+
+test <:param matches a different value>
+  want hold, is-equal(text-split(answer-at(2), <|>)/1, <abc>)
+
+test <** catch-all binds the joined rest>
+  want hold, is-equal(answer-at(3), <200|a/b/c.txt>)
+
+test <unmatched path returns 404>
+  want hold, is-equal(text-split(answer-at(4), <|>)/0, <404>)
+
+test <method mismatch returns 404>
+  want hold, is-equal(text-split(answer-at(5), <|>)/0, <404>)
+
+# static must win over a same-depth :param sibling (specificity)
+test <static beats param at same depth>
+  want hold, is-equal(text-split(answer-at(6), <|>)/1, <ok>)

@@ -107,6 +107,45 @@ const REPORT = 'gate-report'
 process.on('uncaughtException', error => console.log(`note   a test module raised outside its test: ${String(error).slice(0, 160)}`))
 process.on('unhandledRejection', error => console.log(`note   a test module rejected outside its test: ${String(error).slice(0, 160)}`))
 
+// NO RUN ENDS WITHOUT A VERDICT (trap T-1161). `doing` names what runs now, `reported` is set once the tally is out.
+// A test whose await nothing will ever answer (a read after its input closed) leaves no timer or handle: the loop
+// drained, node quit with exit 0, and the gate printed neither the file's verdict nor the tally, so a hung test read as
+// a pass. Each end before the report is now a named failure with a code that is never 0.
+let doing = 'starting'
+let reported = false
+let told = false
+const endBeforeReport = (why: string): void => {
+  if (!told) {
+    told = true
+    console.log(`fail   gate    ${doing}  ${why}, before any verdict or tally`)
+  }
+}
+// the loop drained with the run unfinished: nothing is left that could answer the await the run is on
+process.on('beforeExit', () => {
+  if (!reported) {
+    endBeforeReport('the run stopped with nothing left to wait on (an await that never settles)')
+    process.exit(2)
+  }
+})
+// any other end: a test module or a shim that called process.exit (with 0 or any code), or an exit nobody named.
+// The code the exit asked for is replaced, since node takes process.exitCode as set here
+process.on('exit', code => {
+  if (!reported) {
+    endBeforeReport(`the process exited (code ${code})`)
+    process.exitCode = 2
+  }
+})
+// a stop asked from outside (a timeout's kill, ^C): named, and the conventional 128 + signal code
+for (const [signal, number] of [['SIGTERM', 15], ['SIGINT', 2], ['SIGHUP', 1]] as const) {
+  process.on(signal, () => {
+    endBeforeReport(`the gate was stopped by ${signal}`)
+    reported = true
+    process.exit(128 + number)
+  })
+}
+// how long one file's run may take, on every leg (a node test in this process, a native program): BG_RUN_SECONDS, 60
+const RUN_MS = Number(process.env.BG_RUN_SECONDS ?? 60) * 1000
+
 const only = process.env.BG_ONLY ?? ''
 const match = process.env.BG_MATCH ?? ''
 const jobs = Math.max(1, Math.min(cpus().length - 1, 8))
@@ -267,19 +306,45 @@ async function runNode(file: string, prep: Prepared, env: 'node' | 'browser' = '
   const out = join(work, `node-${Math.random().toString(36).slice(2)}.mjs`)
   writeFileSync(out, js)
 
-  // a test that waits on something that never comes (a socket nobody answers) must not hold the gate: each file
-  // gets a minute, and a file that overruns is reported rather than waited on
-  const timeout = new Promise<{ fail: string }>(done =>
-    setTimeout(() => done({ fail: 'run: no answer within 60s' }), 60_000).unref(),
-  )
+  // a test that waits on something that never comes (a socket nobody answers, a read after its input closed) must not
+  // hold the gate: each file gets RUN_MS, and a file that overruns is a named failure rather than waited on. The timer
+  // is NOT unref'd: an unref'd one let the loop drain under an await nothing answers, and node quit with exit 0 and no
+  // verdict (T-1161). The module's own top-level work races it too, since a load that never settles hangs the same way
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<{ fail: string }>(done => {
+    timer = setTimeout(() => done({ fail: `run: no answer within ${RUN_MS / 1000}s (an await that never settles)` }), RUN_MS)
+  })
 
   try {
-    const mod = (await import(pathToFileURL(out).href)) as Record<string, () => unknown>
+    const report = import(pathToFileURL(out).href).then(mod => (mod as Record<string, () => unknown>).gateReport!())
 
-    return await Promise.race([Promise.resolve(mod.gateReport!()).then(String), timeout])
+    return await Promise.race([report.then(String), timeout])
   } catch (error) {
     return { fail: `run: ${String(error).slice(0, 160)}` }
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+// a native program's end that is not a clean exit, named: the run timed out and was killed, was killed by a signal,
+// could not start, or exited non-zero. spawnSync gives status null for the first two, which once read "exit null"
+function runFail(ran: ReturnType<typeof spawnSync>): string {
+  const stderr = firstError(String(ran.stderr ?? ''), /./)
+  const error = ran.error as NodeJS.ErrnoException | undefined
+
+  if (error?.code === 'ETIMEDOUT') {
+    return `run: no answer within ${RUN_MS / 1000}s, killed (${ran.signal ?? 'SIGTERM'}) ${stderr}`
+  }
+
+  if (ran.signal) {
+    return `run: killed by ${ran.signal} ${stderr}`
+  }
+
+  if (error) {
+    return `run: could not start: ${String(error).slice(0, 160)}`
+  }
+
+  return `run: exit ${ran.status} ${stderr}`
 }
 
 // ---------------------------------------------------------------- native front end
@@ -497,11 +562,11 @@ async function runRust(batch: Job[]): Promise<Outcome[]> {
       continue
     }
 
-    const ran = spawnSync(join(env.CARGO_TARGET_DIR, 'debug', bin), [], { encoding: 'utf8', timeout: 60_000 })
+    const ran = spawnSync(join(env.CARGO_TARGET_DIR, 'debug', bin), [], { encoding: 'utf8', timeout: RUN_MS })
     outcomes.push(
       ran.status === 0
         ? { key: job.key, out: lastLine(ran.stdout) }
-        : { key: job.key, fail: `run: exit ${ran.status} ${firstError(ran.stderr, /./)}` },
+        : { key: job.key, fail: runFail(ran) },
     )
   }
 
@@ -530,11 +595,11 @@ async function runSwift(batch: Job[]): Promise<Outcome[]> {
         if (error) {
           outcomes.push({ key: job.key, fail: `build: ${firstError(String(stderr), /error:/)}` })
         } else {
-          const ran = spawnSync(exe, [], { encoding: 'utf8', timeout: 60_000 })
+          const ran = spawnSync(exe, [], { encoding: 'utf8', timeout: RUN_MS })
           outcomes.push(
             ran.status === 0
               ? { key: job.key, out: lastLine(ran.stdout) }
-              : { key: job.key, fail: `run: exit ${ran.status} ${firstError(ran.stderr, /./)}` },
+              : { key: job.key, fail: runFail(ran) },
           )
         }
 
@@ -624,12 +689,12 @@ async function runKotlin(batch: Job[]): Promise<Outcome[]> {
     // native access, as deck/call's native-build.ts grants it: the process runner spawns through java.lang.foreign
     const ran = spawnSync('java', ['--enable-native-access=ALL-UNNAMED', '-cp', classpath, facade.get(file)!], {
       encoding: 'utf8',
-      timeout: 60_000,
+      timeout: RUN_MS,
     })
     outcomes.push(
       ran.status === 0
         ? { key: job.key, out: lastLine(ran.stdout) }
-        : { key: job.key, fail: `run: exit ${ran.status} ${firstError(ran.stderr, /./)}` },
+        : { key: job.key, fail: runFail(ran) },
     )
   }
 
@@ -690,6 +755,7 @@ async function main(): Promise<void> {
       continue
     }
 
+    doing = `node    ${relative(TERM, file)}`
     const node = await runNode(file, prep)
     rows.push(typeof node === 'string' ? { file, prep, node } : { file, prep, nodeFail: node.fail })
     console.log(`.      node    ${relative(TERM, file)}  ${typeof node === 'string' ? node : node.fail}`)
@@ -740,6 +806,7 @@ async function main(): Promise<void> {
         continue
       }
 
+      doing = `browser ${rel}`
       const got = await runNode(row.file, row.prep, 'browser')
 
       if (typeof got !== 'string') {
@@ -758,6 +825,8 @@ async function main(): Promise<void> {
   }
 
   for (const env of backends) {
+    doing = `${env.padEnd(6)}  the ${env} legs`
+
     if (!tools[env]) {
       lines.push(`skip   ${env}  toolchain not installed`)
       continue
@@ -825,15 +894,32 @@ async function main(): Promise<void> {
     .join(' | ')
   console.log(`\nbase-gate (${rows.length} files): ${summary}`)
 
-  const red = Object.values(tally).some(t => t.diff + t.fail + t.build + t.front > 0)
+  // a file with no verdict on a leg it ran is red: every row gives node a verdict above, and every native job one
+  // outcome, so a row missing from the tally means the gate lost it
+  const counted = Object.values(tally.node ?? {}).reduce((sum, n) => sum + n, 0)
+  // and a run of no file proved nothing (a BG_MATCH that names no file): red, never a pass by silence
+  const lost = counted !== rows.length || rows.length === 0
 
-  // exit outright: a test module that opened a server or a timer would otherwise keep the process alive
-  process.exit(red ? 1 : 0)
+  if (rows.length === 0) {
+    console.log(`fail   gate    no test file matched${match ? ` BG_MATCH=${match}` : ''}`)
+  } else if (lost) {
+    console.log(`fail   gate    node verdicts ${counted} for ${rows.length} files`)
+  }
+
+  const red = lost || Object.values(tally).some(t => t.diff + t.fail + t.build + t.front > 0)
+  reported = true
+
+  // exit outright: a test module that opened a server or a timer would otherwise keep the process alive. The exit waits
+  // for standard output to take the tally, so a pipe never loses it
+  process.stdout.write('', () => process.exit(red ? 1 : 0))
 }
 
 // the gate's own failure is never a pass: without this, an error in the gate (a compiler module that threw while
 // emitting) reached the stray-error handler above, was printed as a test module's, and the run ended at 0
 main().catch(error => {
   console.log(`gate   crashed: ${String(error).slice(0, 400)}`)
+  console.log(`fail   gate    ${doing}  crashed, before any verdict or tally`)
+  told = true
+  reported = true
   process.exit(2)
 })

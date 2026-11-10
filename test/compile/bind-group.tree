@@ -1,0 +1,95 @@
+note <A native binding's template under an operator is grouped>
+
+# Ported from bind-group.ts by statement (item term-self-host-001-0612). The stdlib's `bignum-compare` renders as
+# `$a < $b ? -1 : (...)`, and the TypeScript emitter put it in place of the call without grouping it, so
+# `is-below(big-compare(x, y), 0)` emitted `x < y ? -1 : (...) < 0`: the `< 0` bound to the last arm and the answer was
+# wrong for every x below y. Found by the engine/data/integer port (2026-10-04). Built AND run: the program is compiled for
+# node, its native prelude written ahead of it, and a main prints the twelve answers the original read one by one, made
+# once in the first test that asks (a run is async, so never at the top of the file).
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find prelude-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find split, name text-split
+
+host fixture, <load @term/base/integer/big\n  find big-integer\n  find big-from-number\n  find big-compare\n\ntask below\n  take a, like number\n  take b, like number\n  like boolean\n  send back, call is-below, call(big-compare, call(big-from-number, read a), call(big-from-number, read b)), code 0\n\ntask above\n  take a, like number\n  take b, like number\n  like boolean\n  send back, call is-above, call(big-compare, call(big-from-number, read a), call(big-from-number, read b)), code 0\n\ntask shifted\n  take a, like number\n  take b, like number\n  like number\n  send back, call add, call(big-compare, call(big-from-number, read a), call(big-from-number, read b)), code 10\n>
+
+# each pair of the original's loop, its three calls in order
+host main, <process.stdout.write([below(1, 2), above(1, 2), shifted(1, 2), below(2, 1), above(2, 1), shifted(2, 1), below(3, 3), above(3, 3), shifted(3, 3), below(-5, 4), above(-5, 4), shifted(-5, 4)].join("|"))>
+
+form group-answers
+  mark shared
+  link held, like hash, like text, like text
+
+host kept, make(group-answers, bind(held, make hash))
+
+# what the program printed, made once
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save out, compile-text(fixture, make(compile-choice, bind(file, </gate/code/bind-group.tree>), bind(stdlib, <node>)))
+  save folder, temp-folder(<term-bind-group->)
+  save said, typescript-answer(out, main, folder, <bind-group>, prelude-text(out, <node>))
+  save kept/held/{key}, said
+  back said
+
+# the answer of one call, by its place in the main
+task answer
+  take at, like number
+  like text
+
+  save said, printed()
+  save parts, text-split(said, <|>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back said
+
+test <is-below(compare(1, 2), 0) is true>
+  want hold, is-equal(answer(0), <true>)
+
+test <is-above(compare(1, 2), 0) is false>
+  want hold, is-equal(answer(1), <false>)
+
+test <compare(1, 2) + 10 is 9>
+  want hold, is-equal(answer(2), <9>)
+
+test <is-below(compare(2, 1), 0) is false>
+  want hold, is-equal(answer(3), <false>)
+
+test <is-above(compare(2, 1), 0) is true>
+  want hold, is-equal(answer(4), <true>)
+
+test <compare(2, 1) + 10 is 11>
+  want hold, is-equal(answer(5), <11>)
+
+test <is-below(compare(3, 3), 0) is false>
+  want hold, is-equal(answer(6), <false>)
+
+test <is-above(compare(3, 3), 0) is false>
+  want hold, is-equal(answer(7), <false>)
+
+test <compare(3, 3) + 10 is 10>
+  want hold, is-equal(answer(8), <10>)
+
+test <is-below(compare(-5, 4), 0) is true>
+  want hold, is-equal(answer(9), <true>)
+
+test <is-above(compare(-5, 4), 0) is false>
+  want hold, is-equal(answer(10), <false>)
+
+test <compare(-5, 4) + 10 is 9>
+  want hold, is-equal(answer(11), <9>)

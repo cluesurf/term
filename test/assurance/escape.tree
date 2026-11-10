@@ -1,0 +1,141 @@
+note <law 7's text step: the html escape answers the five replacements it always meant, on any text>
+
+# Ported from escape.ts by statement (item term-self-host-001-0600), one test per `ok` in its order. escape.tree's
+# `escape-html` runs glyph.tree's `escape-glyphs`, which law.tree proves keeps no `<`, `>`, `&`, `"` or `'` and reads
+# back to its input. What the kernel cannot see is the text around it: `glyphs-of` reading each character's glyph, and
+# `write-pieces` writing each kept character back in its place. This holds that step on node against the five
+# replacements, on every ASCII character alone, on texts that are not ASCII, and on 5,000 random texts. The original
+# built test/assurance/notes and imported its unit of escape.tree: the first test builds it with the term under test,
+# and the rest load @term/site/http/escape itself, compiled with this suite on node. A title names a fixed text by
+# number, since a title holding an escaped angle prints its backslash (item 1146): the comment above shows the text.
+
+load @term/site/http/escape
+  find escape-html
+
+load @term/test/self
+  find run-self
+
+load @term/test/seeded-random
+  find seed-state
+  find draw-between
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/base/text
+  find contains, name text-contains
+  find replace-all, name text-replace
+
+# what the escape always meant: the five replacements, `&` first
+task meant
+  take value, like text
+  like text
+
+  back text-replace(text-replace(text-replace(text-replace(text-replace(value, <&>, <&amp;>), <\<>, <&lt;>), <\>>, <&gt;>), <">, <&quot;>), <'>, <&#39;>)
+
+task escapes-as-meant
+  take value, like text
+  like boolean
+
+  back is-equal(escape-html(value), meant(value))
+
+# what law 7 says of the text, read off the output: with the five entities taken out, no `<`, `>`, `&`, `"` or `'`
+task clean
+  take value, like text
+  like boolean
+
+  save out, escape-html(value)
+  walk make list(<&lt;>, <&gt;>, <&amp;>, <&quot;>, <&#39;>)
+    take entity, like text
+    save out, text-replace(out, entity, <>)
+  walk make list(<\<>, <\>>, <&>, <">, <'>)
+    take mark, like text
+    fork test, text-contains(out, mark)
+      hold
+        back false
+  back true
+
+host named, make list(<>, <\<script\>alert("x")\</script\>>, <it's>, <&amp;>, <a&b\<c\>d"e'f>, <नमस्ते \<b\>>, <𝄞 & 𝄞>, <\<\<\>\>&&""''>)
+
+test <test/assurance/notes builds>
+  host made, run-self(make(list, <make>), <test/assurance/notes>)
+  want hold, is-equal(made/code, 0)
+
+test <every ASCII character alone escapes as meant>
+  save wrong, 0
+  save code, 0
+  walk test
+    hook test, is-below(code, 128)
+    hook hold
+      fork test, not(escapes-as-meant(rune-to-text(code)))
+        hold
+          save wrong, add(wrong, 1)
+      save code, add(code, 1)
+  want hold, is-equal(wrong, 0)
+
+# the empty text
+test <named text 0 escapes as meant>
+  want hold, escapes-as-meant(named/0)
+
+# <script>alert("x")</script>
+test <named text 1 escapes as meant>
+  want hold, escapes-as-meant(named/1)
+
+# it's
+test <named text 2 escapes as meant>
+  want hold, escapes-as-meant(named/2)
+
+# &amp;
+test <named text 3 escapes as meant>
+  want hold, escapes-as-meant(named/3)
+
+# a&b<c>d"e'f
+test <named text 4 escapes as meant>
+  want hold, escapes-as-meant(named/4)
+
+# नमस्ते <b>
+test <named text 5 escapes as meant>
+  want hold, escapes-as-meant(named/5)
+
+# 𝄞 & 𝄞
+test <named text 6 escapes as meant>
+  want hold, escapes-as-meant(named/6)
+
+# <<>>&&""''
+test <named text 7 escapes as meant>
+  want hold, escapes-as-meant(named/7)
+
+# A fixed generator, so a failure is reproducible: @term/test/seeded-random's, seed 7, each text 0 to 23 characters of
+# the original's alphabet. The original's own generator multiplied past 2^53 and leaned on the rounding of a double,
+# which Term's checked arithmetic refuses (excess), so the 5,000 texts are other texts of the same shape
+test <5,000 random texts escape as meant>
+  host alphabet, make list(<\<>, <\>>, <&>, <">, <'>, <a>, < >, <;>, <#>, <l>, <t>, <é>, <𝄞>, <\n>, <=>)
+  host state, seed-state(7)
+  save right, 0
+  save n, 0
+  walk test
+    hook test, is-below(n, 5000)
+    hook hold
+      save length, draw-between(state, 0, 23)
+      save text, <>
+      save at, 0
+      walk test
+        hook test, is-below(at, length)
+        hook hold
+          save text, <{text}{alphabet/{draw-between(state, 0, subtract(alphabet/length, 1))}}>
+          save at, add(at, 1)
+      fork test, escapes-as-meant(text)
+        hold
+          save right, add(right, 1)
+      save n, add(n, 1)
+  want hold, is-equal(right, 5000)
+
+# the original's title: no output holds <, >, " or ', and every & begins an entity it wrote
+test <no output holds an angle or a quote, and every ampersand begins an entity it wrote>
+  save all, true
+  walk named
+    take text, like text
+    fork test, not(clean(text))
+      hold
+        save all, false
+  want hold, all

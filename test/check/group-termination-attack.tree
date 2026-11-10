@@ -1,0 +1,103 @@
+note <Attacks on the group termination judgment>
+
+# Written by the item 1174 attack generator.
+# Item term-self-host-001-1174 of note/project/term/self-host/change/001-finish-self-host. Since 8fe388e8 a task in a
+# cycle with other tasks is judged on every call of the cycle (check/termination.tree `group-descends`: one fixed
+# position, an order of positions, then size-change graphs). Each fixture below never ends, so each must read as not
+# terminating (a warning naming the task) or, as a claim, be refused `looping-proof`. The controls are the shapes the
+# judgment newly accepted (the generated size and forest pair, seam.tree page, list and cask from json): they must end.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+  find compiling-holds
+
+load @term/base/list
+  find contains
+
+task choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <s.tree>))
+
+# compiles, and no task is said not to end
+task ending
+  take text, like text
+  like boolean
+
+  host out, compile-text(text, choice())
+  back and(out/ok, not(contains(out/warnings, <non-terminating>)))
+
+# refused with the code `code`
+task refused
+  take text, like text
+  take code, like text
+  like boolean
+
+  back refused-as(compile-text(text, choice()), code)
+
+# compiles, and warns that the task `name` may not end
+task looping-named
+  take text, like text
+  take name, like text
+  like boolean
+
+  host out, compile-text(text, choice())
+  fork test, not(and(out/ok, contains(out/warnings, <non-terminating>)))
+    hold
+      back false
+  walk out/warning-messages
+    take message
+    fork test, compiling-holds(message, <"{name}">)
+      hold
+        back true
+  back false
+
+test <two tasks swapping their arguments, nothing descending, do not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take a, like nat\n  take b, like nat\n  like number\n  send back\n    call g\n      read b\n      read a\n\ntask g\n  take a, like nat\n  take b, like nat\n  like number\n  send back\n    call f\n      read b\n      read a\n>, <f>)
+
+test <a cycle whose swap composes to the identity, beside a descending call, does not end>
+  want hold, looping-named(<task f\n  take x, like number\n  take y, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read x\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call add\n      call g\n        read y\n        read x\n      call g\n        call subtract\n          read x\n          code 1\n        read y\n\ntask g\n  take x, like number\n  take y, like number\n  like number\n  send back\n    call f\n      read x\n      read y\n>, <f>)
+
+test <a cycle falling on one edge and growing on the other does not end>
+  want hold, looping-named(<task f\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call g\n      call subtract\n        read n\n        code 1\n\ntask g\n  take m, like number\n  like number\n  send back\n    call f\n      call add\n        read m\n        code 1\n>, <f>)
+
+test <a cycle rebuilding the parameter itself, not a part of it, does not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take n, like nat\n  like number\n  fork case, read n\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call g\n          read p\n\ntask g\n  take m, like nat\n  like number\n  send back\n    call f\n      make succ\n        bind prior\n          read m\n>, <f>)
+
+test <a cycle descending on a different argument per edge while the other grows does not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take a, like nat\n  take b, like nat\n  like number\n  fork case, read a\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call g\n          read p\n          make succ\n            bind prior\n              read b\n\ntask g\n  take a, like nat\n  take b, like nat\n  like number\n  fork case, read b\n    case zero\n      send back\n        code 0\n    case succ\n      link q\n      send back\n        call f\n          make succ\n            bind prior\n              read a\n          read q\n>, <f>)
+
+test <a numeric cycle descending on a different argument per edge while the other grows does not end>
+  want hold, looping-named(<task f\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read a\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call g\n      call subtract\n        read a\n        code 1\n      call add\n        read b\n        code 1\n\ntask g\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read b\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call f\n      call add\n        read a\n        code 1\n      call subtract\n        read b\n        code 1\n>, <f>)
+
+test <a cycle whose falling argument is reset from the other does not end>
+  want hold, looping-named(<task f\n  take n, like number\n  take m, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call g\n      call subtract\n        read n\n        code 1\n      read m\n\ntask g\n  take n, like number\n  take m, like number\n  like number\n  send back\n    call f\n      read m\n      read m\n>, <f>)
+
+test <a cycle closed through a task read as a value does not end>
+  want hold, looping-named(<task f\n  take n, like number\n  like number\n  fork test\n    hook test\n      call is-maximum\n        read n\n        code 0\n    hook hold\n      send back\n        code 0\n  send back\n    call g\n      call subtract\n        read n\n        code 1\n\ntask g\n  take m, like number\n  like number\n  save h, read f\n  send back\n    call h\n      call add\n        read m\n        code 1\n>, <f>)
+
+test <a claim of never by self-application through a task parameter is not proven>
+  want hold, not(compile-text(<form never\n  case later\n    link next, like never\n\nrule omega\n  take k, like dynamic\n  like never\n\ntask omega\n  take k\n  send back\n    call k\n      read k\n\nrule absurd\n  like never\n\ntask absurd\n  send back\n    call omega\n      read omega\n>, choice())/ok)
+
+test <a cycle whose named arguments are written out of order does not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take a, like nat\n  take b, like nat\n  like number\n  fork case, read a\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call g\n          bind b, read p\n          bind a\n            make succ\n              bind prior\n                make succ\n                  bind prior\n                    read p\n\ntask g\n  take a, like nat\n  take b, like nat\n  like number\n  send back\n    call f\n      read a\n      read b\n>, <f>)
+
+test <a self-call whose named arguments are written out of order does not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take a, like nat\n  take b, like nat\n  like number\n  fork case, read a\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call f\n          bind b, read p\n          bind a\n            make succ\n              bind prior\n                make succ\n                  bind prior\n                    read p\n>, <f>)
+
+test <a cycle through a loop item that hides a parameter of the same name does not end>
+  want hold, looping-named(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take n, like nat\n  take xs, like list, like nat\n  like number\n  save total, 0\n  walk list, read xs\n    hook next\n      take site, name n\n      save total\n        call add\n          read total\n          call g\n            read n\n            read xs\n  send back\n    read total\n\ntask g\n  take a, like nat\n  take xs, like list, like nat\n  like number\n  fork case, read a\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call f\n          read p\n          read xs\n>, <f>)
+
+test <control: the generated size and forest pair, forest sizing a and b, ends>
+  want hold, ending(<form tree\n  case leaf\n  case node\n    link left, like tree\n    link right, like tree\n\ntask size\n  take t, like tree\n  like number\n  fork case, read t\n    case leaf\n      send back\n        code 1\n    case node\n      send back\n        call forest\n          read left\n          read right\n\ntask forest\n  take a, like tree\n  take b, like tree\n  like number\n  send back\n    call add\n      call size\n        read a\n      call size\n        read b\n>)
+
+test <control: the generated size and forest pair, forest sizing b twice, ends>
+  want hold, ending(<form tree\n  case leaf\n  case node\n    link left, like tree\n    link right, like tree\n\ntask size\n  take t, like tree\n  like number\n  fork case, read t\n    case leaf\n      send back\n        code 1\n    case node\n      send back\n        call forest\n          read left\n          read right\n\ntask forest\n  take a, like tree\n  take b, like tree\n  like number\n  send back\n    call add\n      call size\n        read b\n      call size\n        read b\n>)
+
+test <control: the seam.tree shape, three tasks descending once around through a list case, ends>
+  want hold, ending(<form kind\n  case plain\n    link name, like text\n  case listed\n    link item, like kind\n\ntask page\n  take k, like kind\n  take depth, like number\n  like number\n  fork case, read k\n    case listed\n      link element\n      send back\n        call list-of\n          read element\n          read depth\n          code 0\n    case plain\n      send back\n        read depth\n\ntask list-of\n  take item, like kind\n  take depth, like number\n  take side, like number\n  like number\n  fork test\n    hook test\n      call is-equal\n        read side\n        code 1\n    hook hold\n      send back\n        call cask\n          read item\n          read depth\n  send back\n    call page\n      read item\n      read depth\n\ntask cask\n  take k, like kind\n  take depth, like number\n  like number\n  fork case, read k\n    case listed\n      link element\n      send back\n        call list-of\n          read element\n          read depth\n          code 1\n    case plain\n      send back\n        call page\n          read k\n          read depth\n>)
+
+test <control: a cycle whose named arguments put the smaller value at the descending parameter ends>
+  want hold, ending(<form nat\n  case zero\n  case succ\n    link prior, like nat\n\ntask f\n  take a, like nat\n  take b, like nat\n  like number\n  fork case, read a\n    case zero\n      send back\n        code 0\n    case succ\n      link p\n      send back\n        call g\n          bind b\n            make succ\n              bind prior\n                read b\n          bind a, read p\n\ntask g\n  take a, like nat\n  take b, like nat\n  like number\n  send back\n    call f\n      read a\n      read b\n>)

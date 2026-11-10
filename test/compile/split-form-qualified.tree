@@ -1,0 +1,196 @@
+note <A form two modules define, built by its qualified case: the merged and the separate build agree>
+
+# Ported from split-form-qualified.ts by statement (item term-self-host-001-0619). `union.tree` defines a form
+# `resolution` with cases, built as `make resolution/file`, matched by its own arms and named in its own signatures.
+# `plain.tree` defines a record `resolution` of its own, built and read there, and the entry loads both. The whole-program
+# build splits the two forms by file (`resolution__in0_1`, check/scope.ts), and the qualified construction kept the
+# written owner, so the checker refused it: 'expected resolution__in0_1, found resolution/file' (term-compiler-0074).
+# The separate build passed. Both builds must compile and run to the same answers. The merged program runs on node
+# through typescript-answer. The separate build (make/code/compile/separate, the subject, decision 106) writes each module
+# under its own `.mts` name beside a main that imports the entry, run under tsx, which reads an import of `./x.mjs` as
+# `./x.mts`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-source
+  find compiling-with-files
+
+load ../support/judging
+  find make-record
+
+load ./shared/rust-native
+  find typescript-answer
+
+load ../support/running
+  find running-node
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find replace-matches
+
+load @term/base/text/util
+  find join
+
+dock load
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/cache>, name cache-module
+
+# the union, with qualified and bare constructions, a match over its own cases, and the form in type positions
+host union, <form resolution\n  case file\n    link path, like text\n  case missing\n  case native\n    link name, like text\n\ntask resolve-path\n  take path, like text\n  like resolution\n  fork test\n    hook test, is-equal(read(path), text \<\>)\n    hook hold\n      send back, make resolution/missing\n  fork test\n    hook test, is-equal(read(path), text \<fs\>)\n    hook hold\n      send back\n        make resolution/native\n          bind name, read path\n  send back\n    make resolution/file\n      bind path, read path\n\ntask tell-resolution\n  take found, like resolution\n  like text\n  fork case, read found\n    case file\n      send back, read path\n    case native\n      send back, read name\n    case missing\n      send back, text \<missing\>\n  send back, text \<none\>\n\ntask tell-path\n  take path, like text\n  like text\n  save found, like resolution\n    call resolve-path\n      read path\n  send back\n    call tell-resolution\n      read found\n>
+
+# a record of the same name, built and read in its own file
+host plain, <form resolution\n  link name, like text\n  link size, like number\n\ntask make-resolution\n  take name, like text\n  like resolution\n  send back\n    make resolution\n      bind name, read name\n      bind size, code 3\n\ntask tell-plain\n  take name, like text\n  like text\n  save found, like resolution\n    call make-resolution\n      read name\n  send back, read found/name\n>
+
+host entry, <load ./union\n  find tell-path\n\nload ./plain\n  find tell-plain\n\ntask run\n  like text\n  save a, call tell-path(text \<a/b\>)\n  save b, call tell-path(text \<fs\>)\n  save c, call tell-path(text \<\>)\n  save d, call tell-plain(text \<pkg\>)\n  send back, text \<\{a\} \{b\} \{c\} \{d\}\>\n>
+
+host want, <a/b fs missing pkg>
+
+host split-name, make pattern, <<[Rr]esolution(__in0_|In0_?)\d>>
+host tree-end, make pattern, <<\.tree$>>
+host non-word, make pattern, <<\W>>
+
+bind new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# host value: the files of the separate build's module map, in its order
+bind module-files
+  take modules, like dynamic
+  like list, like text
+  case node
+    text <[...$modules.keys()]>
+
+# host value: the code the separate build emitted for one file
+bind module-code
+  take modules, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$modules.get($file).code>
+
+bind result-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok === true>
+
+# each load answers from the two files, `./union` as union.tree
+task sources
+  like list, like compiling-source
+
+  save out, make list
+  out/push(make(compiling-source, bind(file, <./union>), bind(text, union), bind(answer, <union.tree>)))
+  out/push(make(compiling-source, bind(file, <./plain>), bind(text, plain), bind(answer, <plain.tree>)))
+  back out
+
+# the module name the separate build gives a file: `./<stem>.mjs`, each non-word character an underscore
+task slug
+  take file, like text
+  like text
+
+  back <./{replace-matches(non-word, replace-matches(tree-end, file, <>), <_>)}.mjs>
+
+form split-answers
+  mark shared
+  link held, like hash, like text, like text
+  link outcomes, like hash, like text, like compile-outcome
+  link results, like hash, like text, like dynamic
+
+host kept, make(split-answers, bind(held, make hash), bind(outcomes, make hash), bind(results, make hash))
+
+task merged
+  like compile-outcome
+
+  save key, <merged>
+  fork test, kept/outcomes/has(key)
+    hold
+      back kept/outcomes/{key}
+  save out, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(files, sources()), bind(cache, new-cache(cache-module))))
+  save kept/outcomes/{key}, out
+  back out
+
+task separate
+  like dynamic
+
+  save key, <separate>
+  fork test, kept/results/has(key)
+    hold
+      back kept/results/{key}
+  host resolver, compiling-with-files(sources(), void)
+  host options, make-record(make(list, <resolve>, resolver, <cache>, new-cache(cache-module), <modules>, slug))
+  host result, separate-module/compile-separate(make-record(make(list, <file>, <entry.tree>, <text>, entry)), options)
+  save kept/results/{key}, result
+  back result
+
+# what the merged program's run answered on node, or why it did not run
+task merged-answer
+  like text
+
+  save key, <merged>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save folder, temp-folder(<term-split-form->)
+  save answer, typescript-answer(merged(), <process.stdout.write(run())>, folder, <merged>)
+  save kept/held/{key}, answer
+  back answer
+
+# what the separate build's entry's run answered on node, every module written beside it, or why it did not run
+task separate-answer
+  like text
+
+  save key, <separate>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  host result, separate()
+  fork test, not(result-ok(result))
+    hold
+      back <refused>
+  save folder, temp-folder(<term-split-form->)
+  walk module-files(result/modules)
+    take file, like text
+    save stem, replace-matches(non-word, replace-matches(tree-end, file, <>), <_>)
+    write-file(<{folder}/{stem}.mts>, module-code(result/modules, file))
+  save stem, replace-matches(non-word, replace-matches(tree-end, <entry.tree>, <>), <_>)
+  write-file(<{folder}/main.mts>, <import \{ run \} from "./{stem}.mjs"\nprocess.stdout.write(run())\n>)
+  save ran, run(running-node(0), make(list, <--import>, <tsx>, <{folder}/main.mts>))
+  save answer, ran/output
+  fork test, is-unequal(ran/code, 0)
+    hold
+      save answer, <exit {ran/code}: {ran/error}>
+  save kept/held/{key}, answer
+  back answer
+
+test <the whole-program build compiles>
+  want hold, merged()/ok
+
+test <and it split the two forms by file>
+  host out, merged()
+  want hold, and(out/ok, matches(split-name, out/emitted))
+
+test <the separate build compiles>
+  want hold, result-ok(separate())
+
+test <the whole-program build runs to the answer>
+  want hold, is-equal(merged-answer(), want)
+
+test <the separate build runs to the answer>
+  want hold, is-equal(separate-answer(), want)
+
+test <the two builds behave the same>
+  want hold, and(and(merged()/ok, result-ok(separate())), is-equal(merged-answer(), separate-answer()))

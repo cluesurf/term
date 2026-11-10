@@ -1,0 +1,257 @@
+note <installed versions share files: a file of the same path, sha256 and mode is hard-linked, nothing else is, and removing one version leaves the other whole>
+
+# Ported from need-share.ts by statement (item term-self-host-001-0604), one test per `ok` in its order. Sharing files
+# between installed versions (deck/call/code/need-load.ts `extractShared`, the subject, decision 106, and
+# note/project/term/term-versions.md "Disk", V10): a file the release's list gives the same path, sha256 and mode as an
+# installed version's list is hard-linked instead of extracted, nothing else is, and removing one version leaves the
+# other whole. Real tarballs in a temporary folder, each with the list `pnpm term:release` writes. The steps build on one
+# another, so they run once, in the original's order, by the first test, and each test reads what they left.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/process/run
+  find run
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/call/code/need-load>, name share-load
+  load <node:fs>, name share-file
+  load <node:path>, name share-path
+
+bind share-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind share-remove-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+# host value: the inode of a file
+bind inode-of
+  take path, like text
+  like number
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($path).ino>
+
+# host value: the permission bits of a file
+bind mode-of
+  take path, like text
+  like number
+  case node
+    text <(process.getBuiltinModule("node:fs").statSync($path).mode & 0o777)>
+
+# host value: the keys of a read list, in order, <> when there was no list
+bind list-keys
+  take listed, like dynamic
+  like list, like text
+  case node
+    text <[...($listed?.keys() ?? [])]>
+
+# host value: the entry of a read list under a path
+bind list-entry
+  take listed, like dynamic
+  take path, like text
+  like dynamic
+  case node
+    text <$listed?.get($path)>
+
+form staged-file
+  link path, like text
+  link text, like text
+  link executable, like boolean
+
+form share-ask
+  link archive, like text
+  link into, like text
+  link others, like list, like text
+
+form share-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link listed-keys, like list, like text
+  link term-mode, like text
+  link term-hash, like text
+  link first-files, like number
+  link first-line, like text
+  link shared-files, like number
+  link shared-bytes, like number
+  link list-ino-old, like number
+  link list-ino-new, like number
+  link term-ino-old, like number
+  link term-ino-new, like number
+  link line-ino-old, like number
+  link line-ino-new, like number
+  link new-line, like text
+  link new-text, like text
+  link tool-ino-old, like number
+  link tool-ino-new, like number
+  link tool-mode, like number
+  link new-time, like text
+  link new-list, like boolean
+  link third-term, like text
+  link left-list, like text
+
+host share-now, make(share-state, bind(made, false), bind(root, <>), bind(listed-keys, make list), bind(term-mode, <>), bind(term-hash, <>), bind(first-files, -1), bind(first-line, <>), bind(shared-files, -1), bind(shared-bytes, -1), bind(list-ino-old, -1), bind(list-ino-new, -2), bind(term-ino-old, -1), bind(term-ino-new, -2), bind(line-ino-old, -1), bind(line-ino-new, -1), bind(new-line, <>), bind(new-text, <>), bind(tool-ino-old, -1), bind(tool-ino-new, -1), bind(tool-mode, -1), bind(new-time, <>), bind(new-list, false), bind(third-term, <>), bind(left-list, <>))
+
+# a payload: `term/` with these files and its list, packed as a release packs it
+task payload
+  take root, like text
+  take name, like text
+  take files, like list, like staged-file
+  like text
+  mark async
+
+  save stage, share-path/join(root, <stage>, name)
+  walk files
+    take one, like staged-file
+    save place, share-path/join(stage, <term>, one/path)
+    share-file/mkdir-sync(share-path/dirname(place), share-folder-options(0))
+    share-file/write-file-sync(place, one/text)
+    save mode, 420
+    fork test, one/executable
+      hold
+        save mode, 493
+    share-file/chmod-sync(place, mode)
+  share-load/write-file-list(share-path/join(stage, <term>))
+  save archive, share-path/join(root, <{name}.tar.gz>)
+  save environment
+    make hash
+      save <COPYFILE_DISABLE>, <1>
+  run(<tar>, make(list, <-czf>, archive, <-C>, stage, <term>), bind(environment, environment))
+  back archive
+
+task staged
+  take path, like text
+  take text, like text
+  take executable, like boolean, fall false
+  like staged-file
+
+  back make(staged-file, bind(path, path), bind(text, text), bind(executable, executable))
+
+task read-text
+  take path, like text
+  like text
+
+  back <{share-file/read-file-sync(path, <utf8>)}>
+
+task the-steps
+  like share-state
+  mark async
+
+  fork test, share-now/made
+    hold
+      back share-now
+  save share-now/made, true
+  save root, temp-folder(<term-share->)
+  save share-now/root, root
+  save old, payload(root, <old>, make(list, staged(<deck/base/code/list.tree>, <task size\n>), staged(<bin/term>, <#!/bin/sh\n>, true), staged(<host/line.js>, <old cli>), staged(<package.json>, <2.6.4>), staged(<deck/base/code/text.tree>, <aaaa>), staged(<bin/tool>, <x>)))
+  save fresh, payload(root, <new>, make(list, staged(<deck/base/code/list.tree>, <task size\n>), staged(<bin/term>, <#!/bin/sh\n>, true), staged(<host/line.js>, <new cli>), staged(<package.json>, <2.6.6>), staged(<deck/base/code/text.tree>, <bbbb>), staged(<bin/tool>, <x>, true), staged(<deck/base/code/time.tree>, <task now\n>)))
+  save listed, share-load/read-file-list(share-path/join(root, <stage>, <new>, <term>, <hash.tree>))
+  save share-now/listed-keys, list-keys(listed)
+  save entry, list-entry(listed, <bin/term>)
+  save share-now/term-mode, <{entry/mode}>
+  save share-now/term-hash, <{entry/hash}>
+  save old-dir, share-path/join(root, <code>, <2.6.4>)
+  save new-dir, share-path/join(root, <code>, <2.6.6>)
+  share-file/mkdir-sync(old-dir, share-folder-options(0))
+  share-file/mkdir-sync(new-dir, share-folder-options(0))
+  save none, make list
+  save first, wait share-load/extract-shared(make(share-ask, bind(archive, old), bind(into, old-dir), bind(others, none)))
+  save share-now/first-files, first/files
+  save share-now/first-line, read-text(share-path/join(old-dir, <term>, <host>, <line.js>))
+  save old-term, share-path/join(old-dir, <term>)
+  save new-term, share-path/join(new-dir, <term>)
+  save shared, wait share-load/extract-shared(make(share-ask, bind(archive, fresh), bind(into, new-dir), bind(others, make(list, old-term))))
+  save share-now/shared-files, shared/files
+  save share-now/shared-bytes, shared/bytes
+  save share-now/list-ino-old, inode-of(share-path/join(old-term, <deck/base/code/list.tree>))
+  save share-now/list-ino-new, inode-of(share-path/join(new-term, <deck/base/code/list.tree>))
+  save share-now/term-ino-old, inode-of(share-path/join(old-term, <bin/term>))
+  save share-now/term-ino-new, inode-of(share-path/join(new-term, <bin/term>))
+  save share-now/line-ino-old, inode-of(share-path/join(old-term, <host/line.js>))
+  save share-now/line-ino-new, inode-of(share-path/join(new-term, <host/line.js>))
+  save share-now/new-line, read-text(share-path/join(new-term, <host>, <line.js>))
+  save share-now/new-text, read-text(share-path/join(new-term, <deck>, <base>, <code>, <text.tree>))
+  save share-now/tool-ino-old, inode-of(share-path/join(old-term, <bin/tool>))
+  save share-now/tool-ino-new, inode-of(share-path/join(new-term, <bin/tool>))
+  save share-now/tool-mode, mode-of(share-path/join(new-term, <bin>, <tool>))
+  save share-now/new-time, read-text(share-path/join(new-term, <deck>, <base>, <code>, <time.tree>))
+  save share-now/new-list, share-file/exists-sync(share-path/join(new-term, <hash.tree>))
+  # a file the old list promises and the disk no longer has is extracted from the archive instead
+  save third, share-path/join(root, <code>, <2.6.8>)
+  share-file/mkdir-sync(third, share-folder-options(0))
+  share-file/rm-sync(share-path/join(old-term, <bin>, <term>))
+  save again, wait share-load/extract-shared(make(share-ask, bind(archive, fresh), bind(into, third), bind(others, make(list, old-term))))
+  save share-now/third-term, read-text(share-path/join(third, <term>, <bin>, <term>))
+  share-file/rm-sync(old-dir, share-remove-options(0))
+  save share-now/left-list, read-text(share-path/join(new-term, <deck>, <base>, <code>, <list.tree>))
+  back share-now
+
+test <the list names every file once, not itself>
+  save state, the-steps()
+  save named, false
+  walk state/listed-keys
+    take key, like text
+    fork test, is-equal(key, <hash.tree>)
+      hold
+        save named, true
+  want hold, and(is-equal(state/listed-keys/length, 7), not(named))
+
+test <   with its sha256 and mode>
+  save state, the-steps()
+  want hold, and(is-equal(state/term-mode, <755>), matches(make(pattern, <<^[0-9a-f]{64}$>>), state/term-hash))
+
+test <the first version unpacks whole and shares nothing>
+  save state, the-steps()
+  want hold, and(is-equal(state/first-files, 0), is-equal(state/first-line, <old cli>))
+
+test <the same file is linked>
+  save state, the-steps()
+  want hold, is-equal(state/list-ino-old, state/list-ino-new)
+
+test <   and so is a second one>
+  save state, the-steps()
+  want hold, is-equal(state/term-ino-old, state/term-ino-new)
+
+test <a changed file is not>
+  save state, the-steps()
+  want hold, and(is-unequal(state/line-ino-old, state/line-ino-new), is-equal(state/new-line, <new cli>))
+
+test <   nor one of the same size with other bytes>
+  save state, the-steps()
+  want hold, is-equal(state/new-text, <bbbb>)
+
+test <   nor one with another mode>
+  save state, the-steps()
+  want hold, and(is-unequal(state/tool-ino-old, state/tool-ino-new), is-equal(state/tool-mode, 493))
+
+test <a file only the new version has is extracted>
+  save state, the-steps()
+  want hold, is-equal(state/new-time, <task now\n>)
+
+test <the count is the files linked, and their bytes>
+  save state, the-steps()
+  save list-text, <task size\n>
+  save term-text, <#!/bin/sh\n>
+  want hold, and(is-equal(state/shared-files, 2), is-equal(state/shared-bytes, add(list-text/length, term-text/length)))
+
+test <the new version carries its own list>
+  save state, the-steps()
+  want hold, state/new-list
+
+test <a listed file gone from the disk is extracted instead>
+  save state, the-steps()
+  want hold, is-equal(state/third-term, <#!/bin/sh\n>)
+
+test <removing the old version leaves the new one whole>
+  save state, the-steps()
+  want hold, is-equal(state/left-list, <task size\n>)

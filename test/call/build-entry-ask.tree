@@ -1,0 +1,223 @@
+note <an entry request builds what its caller asks: the caller's text, the env it emits for, the program kept, its own resolver>
+
+# Ported from build-entry-ask.ts by statement (item term-self-host-001-0602), one test per `ok` in its order. Decision
+# 094 rule 1, item 0495: an entry request of build-graph.tree `build-request` takes four fields beside the file: the
+# caller's text (term test's file as its preprocessor rewrote it), compiled as given, the empty text meaning the disk's
+# through `buildable`; `env`, the platform emitted for; `keep-program`, the checked program handed back; and `resolve`, a
+# resolver in place of the graph's own (term boot's app resolver). A TypeScript caller's ask that leaves them out reads as
+# the empty text, false and the graph's resolver. The subject is the port of build-graph
+# (deck/call/host/port/code/work/build/build-graph.ts) with the project's store from cache-store, over a project in a
+# temporary folder. TERM_CACHE_HOME points into it and is put back by the last test. The graph is made once, in
+# `entry-now`, and every request goes to it in the original's order.
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/text
+  find contains, name text-contains
+
+dock load
+  load <@term/call/host/port/code/work/build/build-graph>, name entry-graph
+  load <@term/call/code/cache-store>, name entry-store
+  load <node:fs>, name entry-file
+  load <node:path>, name entry-path
+
+bind entry-folder-options
+  take seed, like number
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# host value: every emitted module of a result as JSON, one a line, <> when it has none
+bind emitted
+  take answer, like dynamic
+  like text
+  case node
+    text <[...($answer.result?.modules ?? new Map()).values()].map(one =\> JSON.stringify(one)).join("\\n")>
+
+# host value: whether the result hands back a program
+bind has-program
+  take answer, like dynamic
+  like boolean
+  case node
+    text <($answer.result?.program !== undefined)>
+
+# host value: how many diagnostics the result carries, 0 when none
+bind diagnostic-count
+  take answer, like dynamic
+  like number
+  case node
+    text <($answer.result?.diagnostics?.length ?? 0)>
+
+# host value: the closure key of the result, as text
+bind key-of
+  take answer, like dynamic
+  like text
+  case node
+    text <String($answer.result?.closureKey)>
+
+# host value: a resolver's answer of no file
+bind no-file
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+# the original's plain ask: no field of the four at all
+form plain-ask
+  link mode, like text
+  link file, like text
+  link platform, like text
+
+form resolved-file
+  link file, like text
+  link text, like text
+
+form entry-state
+  mark shared
+  link made, like boolean
+  link root, like text
+  link lib, like text
+  link main, like text
+  link graph, like dynamic
+  link store, like dynamic
+  link asked, like number
+  link held, like boolean
+  link kept, like text
+
+host entry-now, make(entry-state, bind(made, false), bind(root, <>), bind(lib, <>), bind(main, <>), bind(graph, 0), bind(store, 0), bind(asked, 0), bind(held, false), bind(kept, <>))
+
+task the-project
+  like entry-state
+
+  fork test, entry-now/made
+    hold
+      back entry-now
+  save entry-now/made, true
+  save scratch, entry-file/realpath-sync(temp-folder(<build-entry-ask->))
+  save entry-now/held, has-variable(<TERM_CACHE_HOME>)
+  save entry-now/kept, variable-of(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, entry-path/join(scratch, <store>))
+  save root, entry-path/join(scratch, <project>)
+  save entry-now/root, root
+  entry-file/mkdir-sync(entry-path/join(root, <code>), entry-folder-options(0))
+  entry-file/write-file-sync(entry-path/join(root, <deck.tree>), <deck @probe/entry\n  mark \<0.0.1\>\n>)
+  save entry-now/lib, entry-path/join(root, <code>, <lib.tree>)
+  save entry-now/main, entry-path/join(root, <code>, <base.tree>)
+  entry-file/write-file-sync(entry-now/lib, <task lib-value\n  like number\n  send back, code 7\n>)
+  entry-file/write-file-sync(entry-now/main, <load ./lib\n  find lib-value\n\ntask disk-only\n  like number\n  send back, lib-value()\n>)
+  save entry-now/graph, entry-graph/make-build-graph(root)
+  save entry-now/store, entry-store/project-cache(root)
+  back entry-now
+
+# one request to the graph, its answer
+task request
+  take ask, like dynamic
+  like dynamic
+
+  save state, the-project()
+  back entry-graph/build-request(state/graph, ask, state/store)/answer
+
+# the caller's resolver: every load counted, ./lib answered with a text of its own
+task resolve-lib
+  take path, like text
+  take from, like text
+  like dynamic
+
+  save entry-now/asked, add(entry-now/asked, 1)
+  fork test, is-equal(path, <./lib>)
+    hold
+      back make(resolved-file, bind(file, entry-now/lib), bind(text, <task lib-value\n  like number\n  send back, code 8\n>))
+  back no-file(0)
+
+# the disk's text, as a TypeScript caller asks with no new field at all
+test <an ask without the new fields builds the disk>
+  save state, the-project()
+  save plain, request(make(plain-ask, bind(mode, <entry>), bind(file, state/main), bind(platform, <node>)))
+  want hold, and(plain/ok, text-contains(emitted(plain), <diskOnly>))
+
+test <and hands back no program>
+  save state, the-project()
+  save plain, request(make(plain-ask, bind(mode, <entry>), bind(file, state/main), bind(platform, <node>)))
+  want hold, not(has-program(plain))
+
+# the caller's text, compiled as given
+test <the caller's text is compiled in place of the disk's>
+  save state, the-project()
+  save given, request(entry-graph/entry-ask(state/main, <load ./lib\n  find lib-value\n\ntask caller-only\n  like number\n  send back, lib-value()\n>))
+  want hold, and(given/ok, and(text-contains(emitted(given), <callerOnly>), not(text-contains(emitted(given), <diskOnly>))))
+
+# a caller's text that fails: its problems
+test <a caller's text that fails answers not ok>
+  save state, the-project()
+  save broken, request(entry-graph/entry-ask(state/main, <task broken\n  like number\n  send back, read nowhere-at-all\n>))
+  want hold, not(broken/ok)
+
+test <with its diagnostics>
+  save state, the-project()
+  save broken, request(entry-graph/entry-ask(state/main, <task broken\n  like number\n  send back, read nowhere-at-all\n>))
+  want hold, is-above(diagnostic-count(broken), 0)
+
+# the program is the entry unit's as built THIS request: a text no request built yet
+test <keep-program hands back the checked program>
+  save state, the-project()
+  save kept, request(entry-graph/entry-ask(state/main, <task kept-only\n  like number\n  send back, code 5\n>, <>, true))
+  want hold, and(kept/ok, has-program(kept))
+
+# env: the platform the compiler emits for, which the unit's key holds; the empty text is no env at all
+host booted, <task boot\n  like number\n  send back, code 1\n>
+
+form env-keys
+  mark shared
+  link made, like boolean
+  link browser-ok, like boolean
+  link none-ok, like boolean
+  link browser, like text
+  link none, like text
+  link empty, like text
+
+host keys-now, make(env-keys, bind(made, false), bind(browser-ok, false), bind(none-ok, false), bind(browser, <>), bind(none, <>), bind(empty, <>))
+
+task the-keys
+  like env-keys
+
+  fork test, keys-now/made
+    hold
+      back keys-now
+  save keys-now/made, true
+  save state, the-project()
+  save on-browser, request(entry-graph/entry-ask(state/main, booted, <browser>))
+  save on-none, request(entry-graph/entry-ask(state/main, booted))
+  save on-empty, request(entry-graph/entry-ask(state/main, booted, <>))
+  save keys-now/browser-ok, on-browser/ok
+  save keys-now/none-ok, on-none/ok
+  save keys-now/browser, key-of(on-browser)
+  save keys-now/none, key-of(on-none)
+  save keys-now/empty, key-of(on-empty)
+  back keys-now
+
+test <env browser keys the entry otherwise than no env>
+  save keys, the-keys()
+  want hold, and(keys/browser-ok, and(keys/none-ok, is-unequal(keys/browser, keys/none)))
+
+test <the empty env is no env>
+  save keys, the-keys()
+  want hold, is-equal(keys/empty, keys/none)
+
+# a resolver in place of the graph's: every load goes through it. The last test, so it puts TERM_CACHE_HOME back
+test <a caller's resolver is asked for the loads>
+  save state, the-project()
+  save resolved, request(entry-graph/entry-ask(state/main, <>, <>, false, resolve-lib))
+  save asked, entry-now/asked
+  fork test, state/held
+    hold
+      set-variable(<TERM_CACHE_HOME>, state/kept)
+    miss
+      remove-variable(<TERM_CACHE_HOME>)
+  want hold, and(is-above(asked, 0), resolved/ok)

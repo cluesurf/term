@@ -1,0 +1,95 @@
+# THE VS CODE CLIENT for the Term language server. It launches the bundled server (code/main.ts, built to
+# make/server.js beside this extension) as a child `node` process and speaks LSP to it over stdio. Syntax highlighting
+# is the TextMate grammar in text/tree.json; this client adds the semantic features the server implements (the list is
+# the server's `initialize` capabilities, request-loop.tree).
+#
+# Ported from extension.ts (term-self-host-001-0713). build.tree bundles this module's port
+# (host/port/code/extension.ts) to make/extension.js, CommonJS, with `vscode` left external since VS Code provides it.
+# VS Code reads `activate` and `deactivate` off its exports. The decisions:
+#   - `let client` is `held-client`, a list the started client is pushed onto, and `deactivate` stops the last one
+#     pushed, which is the client the original's variable held
+#   - the server and client options, the client's construction, `start` and `stop` are host expressions (binds), one
+#     per call the original made, so VS Code reads the same records
+
+load @term/base/list
+  find push
+
+dock load
+  load <node:path>, name node-path
+  load <vscode>, name vscode
+  load <vscode-languageclient/node>, name language-client
+
+# the clients `activate` started, the last of them the one running
+host held-client
+  like list
+    like dynamic
+  make list
+
+# `TransportKind.stdio`
+bind stdio-transport
+  take module, like dynamic
+  like dynamic
+  case node
+    text <$module.TransportKind.stdio>
+
+# the server is bundled next to this extension (see build.tree), so it is fully self-contained: no tsx, no node_modules
+# at run time, the same binary whether run from source or a published .vsix
+bind server-options
+  take server, like text
+  take transport, like dynamic
+  like dynamic
+  case node
+    text <<((server_, transport_) => ({ run: { command: "node", args: [server_], transport: transport_ }, debug: { command: "node", args: [server_], transport: transport_ } }))($server, $transport)>>
+
+# an unsaved buffer is analyzed as well as a file: it compiles against the stdlib alone. A `.tree` file created,
+# changed or deleted outside the editor: the server re-reads the packages and re-analyzes every open file that imported
+# it. `role.tree` and `deck.tree` are `.tree` files too.
+bind client-options
+  take watcher, like dynamic
+  like dynamic
+  case node
+    text <<({ documentSelector: [{ scheme: "file", language: "tree" }, { scheme: "untitled", language: "tree" }], synchronize: { fileEvents: $watcher } })>>
+
+# the id is the prefix of the client's settings (`term.trace.server`). It was `seed` until the extension was renamed
+# `term-code` on 2026-10-02, which is a new Marketplace listing, so there was no installed configuration left to keep
+# by holding the old prefix.
+bind new-language-client
+  take module, like dynamic
+  take serving, like dynamic
+  take options, like dynamic
+  like dynamic
+  case node
+    text <<new $module.LanguageClient("term", "Term Language Server", $serving, $options)>>
+
+# `void client.start()`
+bind start-client
+  take made, like dynamic
+  like void
+  case node
+    text <<void $made.start()>>
+
+# `client?.stop()`, the last client started, or nothing when none was
+bind stop-held
+  take held, like list, like dynamic
+  like dynamic
+  case node
+    text <<((held_) => held_[held_.length - 1]?.stop())($held)>>
+
+task activate
+  take context, like dynamic
+  like void
+
+  save server, context/as-absolute-path(node-path/join(<make>, <server.js>))
+  save watcher, vscode/workspace/create-file-system-watcher(<**/*.tree>)
+  save made
+    new-language-client
+      language-client
+      server-options(server, stdio-transport(language-client))
+      client-options(watcher)
+  push(held-client, made)
+  start-client(made)
+
+task deactivate
+  like dynamic
+
+  back stop-held(held-client)

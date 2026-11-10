@@ -1,0 +1,149 @@
+note <guards: a fork with mark unsafe over a body, a halt take handler after it, lowered to try and catch and run>
+
+# Ported from guard.ts by statement (item term-self-host-001-0655), one test per `ok` in its order, its loop over the
+# two old spellings one test each. A `fork` with `mark unsafe` on it, over a body, with a `halt take` handler after it,
+# lowers to try / catch, the caught value is bound, and a raise inside the body reaches the handler at run time.
+# `mark unsafe` or `note unsafe` holding the statements itself, the older spellings, is refused by name. The original
+# imported each emitted module and called its task: here typescript-answer runs the emitted TypeScript under node with
+# a main that prints the call's answer. Every compile has no resolver, as the original's had none.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains
+  find replace
+
+host stdlib, <form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\ntask exception-code\n  like text\n  send back, text \<kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr\>\n\ntask exception-time\n  like number\n  send back, code 7\n\nform absence\n  like exception\n    bind note, \<Not found\>\n    link thing, like text\n>
+
+host source, <{stdlib}\ntask find-it\n  take key, like text\n  like number\n  fork test\n    hook test\n      call is-equal\n        read key\n        text \<a\>\n    hook hold\n      send back, code 1\n    hook miss\n      halt absence\n        bind thing, read key\n\ntask lookup\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    save found\n      call find-it\n        read key\n    send back\n      text \<found\>\n  halt take\n    take problem\n    send back\n      read problem/note\n>
+
+host cased, <{stdlib}\nform user-absence\n  like absence\n    bind note, \<No such user\>\n    link key, like text\n\ntask find-user\n  take key, like text\n  like text\n  halt user-absence\n    bind thing, text \<user\>\n    bind key, read key\n\ntask describe\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call find-user\n        read key\n  halt take\n    take problem\n    fork case, read problem\n      case user-absence\n        send back, text \<no user \{\{key\}\}: \{\{note\}\}\>\n>
+
+host translate, <{stdlib}\nform user-absence\n  like absence\n    bind note, \<No such user\>\n\ntask find-user\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    halt user-absence\n      bind thing, read key\n  halt take\n    take problem\n    halt absence\n      bind thing, text \<translated \{\{key\}\}\>\n\ntask describe\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call find-user\n        read key\n  halt take\n    take problem\n    send back, read problem/link/thing\n>
+
+host orphan, <{stdlib}\ntask orphan\n  halt take\n    take problem\n    send back, code 1\n>
+
+host nested, <{stdlib}\ntask lookup\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    send back\n      call find-it-twice\n        read key\n  halt take\n    take problem\n    fork\n      mark unsafe\n      halt absence\n        bind thing, text \<again\>\n    halt take\n      take second\n      send back, read second/link/thing\n  send back, text \<none\>\n\ntask find-it-twice\n  take key, like text\n  like text\n  halt absence\n    bind thing, read key\n>
+
+host lean-source, <{stdlib}\ntask echo\n  take key, like text\n  like text\n  back key\n\ntask lookup\n  take key, like text\n  like text\n  fork\n    mark unsafe\n    back echo(key)\n  halt take\n    take problem\n    back problem/note\n>
+
+task built
+  take text, like text
+  take file, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, file)))
+
+# what a task of the program answers for one call, printed by its emitted TypeScript under node
+task answer
+  take out, like compile-outcome
+  take call, like text
+  like text
+
+  save folder, temp-folder(<term-guard->)
+  back typescript-answer(out, <process.stdout.write(String({call}))>, folder, <g>)
+
+# the messages of a refused compile that hold the word
+task count-holding
+  take texts, like list, like text
+  take word, like text
+  like number
+
+  save n, 0
+  walk texts
+    take one, like text
+    fork test, contains(one, word)
+      hold
+        save n, add(n, 1)
+  back n
+
+# the program with an old spelling holding the statements, `mark` or `note`
+task old-spelling
+  take word, like text
+  like text
+
+  back <{stdlib}\ntask lookup\n  take key, like text\n  like text\n  {word} unsafe\n    send back, read key\n  halt take\n    take problem\n    send back, read problem/note\n>
+
+# refused naming the fork once, and never also as an orphaned handler
+task refused-by-name
+  take word, like text
+  like boolean
+
+  save out, built(old-spelling(word), <o.tree>)
+  fork test, out/ok
+    hold
+      back false
+  fork test, is-unequal(count-holding(out/messages, <a guarded block is a `fork`>), 1)
+    hold
+      back false
+  back is-equal(count-holding(out/messages, <must follow>), 0)
+
+test <a guarded body with a handler compiles>
+  want hold, built(source, <g.tree>)/ok
+
+test <it lowers to try>
+  want hold, contains(built(source, <g.tree>)/emitted, <try \{>)
+
+test <the handler binds the caught value>
+  want hold, contains(built(source, <g.tree>)/emitted, <catch (problem: any)>)
+
+test <the handler reads the caught note>
+  want hold, contains(built(source, <g.tree>)/emitted, <problem.note>)
+
+test <the happy path returns>
+  want hold, is-equal(answer(built(source, <g.tree>), <lookup("a")>), <found>)
+
+test <the raise reaches the handler>
+  want hold, is-equal(answer(built(source, <g.tree>), <lookup("b")>), <Not found>)
+
+test <a fork case over the caught exception compiles>
+  want hold, built(cased, <c.tree>)/ok
+
+test <the arm binds the form's prop and the shared note>
+  want hold, is-equal(answer(built(cased, <c.tree>), <describe("zed")>), <no user zed: No such user>)
+
+test <a fork case that misses a form the body can raise is refused>
+  host denial, replace(cased, <    link key, like text\n>, <    link key, like text\n\nform user-denial\n  like absence\n    bind note, \<Not yours\>\n>)
+  host uncovered, replace(denial, <  halt user-absence\n    bind thing, text \<user\>\n    bind key, read key\n>, <  fork test\n    hook test\n      call is-equal\n        read key\n        text \<x\>\n    hook hold\n      halt user-denial\n        bind thing, text \<user\>\n  halt user-absence\n    bind thing, text \<user\>\n    bind key, read key\n>)
+  want hold, not(is-equal(uncovered, denial))
+  host out, built(uncovered, <u.tree>)
+  want hold, not(out/ok)
+  want hold, is-above(count-holding(out/messages, <can also raise user-denial>), 0)
+
+test <a raise inside a handler compiles>
+  want hold, built(translate, <t.tree>)/ok
+
+test <the handler's raise carries its own props>
+  want hold, is-equal(answer(built(translate, <t.tree>), <describe("zed")>), <translated zed>)
+
+test <a halt take without a guard is refused>
+  host out, built(orphan, <g.tree>)
+  want hold, not(out/ok)
+  want hold, is-above(count-holding(out/messages, <must follow>), 0)
+
+test <`mark unsafe` over statements is refused, naming `fork` / `mark unsafe`, once>
+  want hold, refused-by-name(<mark>)
+
+test <`note unsafe` over statements is refused, naming `fork` / `mark unsafe`, once>
+  want hold, refused-by-name(<note>)
+
+test <a guard inside a handler compiles>
+  want hold, built(nested, <n.tree>)/ok
+
+test <the inner handler catches the inner raise>
+  want hold, is-equal(answer(built(nested, <n.tree>), <lookup("zed")>), <again>)
+
+test <a lean file writes the guard the same way>
+  host out, compile-text(lean-source, make(compile-choice, bind(file, <l.tree>), bind(lean, true)))
+  want hold, out/ok
+  want hold, contains(out/emitted, <try \{>)
+  want hold, contains(out/emitted, <catch (problem>)

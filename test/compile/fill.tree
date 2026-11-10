@@ -1,0 +1,266 @@
+note <fill and melt with like a form: data becomes a value of the form and back, a misfit raises data-mismatch>
+
+# Ported from fill.ts by statement (item term-self-host-001-0616). The compiler walks the form's fields, so a data value
+# becomes a value of the form (members named the way the emitter names them) and a form value goes back to data. A value
+# that does not fit raises `data-mismatch` from @term/host with the path and the reason, and the roll shows the task
+# raising it. The project is a temp folder linking deck/base and deck/host, as the original's. The program runs on node
+# through typescript-answer, the native prelude written ahead of it: one main calls load and round-trip on each input and
+# prints one JSON value a line, which the tests read by position. The original stopped after its first test when the
+# program did not compile: here each later test fails on its own instead.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+  find prelude-text
+
+load ../support/judging
+  find make-record
+  find read-field
+  find truth
+
+load ../support/reading
+  find first-with
+  find any-with
+
+load ../support/walking
+  find json-without
+
+load ../support/cli
+  find term-root
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+  find split, name text-split
+  find replace, name text-replace
+
+load @term/base/text/util
+  find join
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <node:fs>, name fill-file
+  load <node:path>, name fill-path
+
+host entry, <load @term/host/code/base\n  find data\n  find read\n  find write\n\nform limit\n  link burst, like number\n  link rate, like float\n\nform service\n  link name, like text\n  link retry-after, like number\n  link secure, like boolean\n  link region, like text\n    need false\n  link limit, like limit\n  link tags\n    like list\n      like text\n\ntask load\n  take input, like text\n  like service\n  send back\n    call fill\n      call read(read input)\n      like service\n\ntask save-service\n  take value, like service\n  like text\n  send back\n    call write\n      call melt\n        read value\n        like service\n\ntask round-trip\n  take input, like text\n  like text\n  send back\n    call save-service(call load(read input))\n>
+
+host good, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  \<a\>, \<b\>\n>
+host with-region, <{good}host region, \<eu\>\n>
+host missing-retry, <host name, \<api\>\n>
+host number-name, <host name, 1\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2\nlist tags\n  \<a\>\n>
+host extra-field, <{good}host extra, 1\n>
+host scalar-limit, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost limit, 5\nlist tags\n  \<a\>\n>
+host number-tag, <host name, \<api\>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2\nlist tags\n  1\n>
+# a number fits a decimal field, a whole decimal melts back as a decimal
+host whole, <host name, \<api\>\nhost retry-after, 3\nhost secure, false\nhost limit\n  host burst, 10\n  host rate, 2\nlist tags\n  \<a\>\n>
+
+host shape-or-argument, make pattern, <<shape|argument>>
+
+host top, temp-folder(<term-fill->)
+
+task folder
+  take path, like text
+  like text
+
+  fill-file/mkdir-sync(path, make-record(make(list, <recursive>, true)))
+  back path
+
+# the project: link/@term/base and link/@term/host at the real decks, a deck.tree, and the entry at code/fill.tree
+task set-up
+  take seed, like number
+  like text
+
+  host links, folder(fill-path/join(top, <link>, <@term>))
+  host code, folder(fill-path/join(top, <code>))
+  fill-file/symlink-sync(fill-path/join(term-root(), <deck>, <base>), fill-path/join(links, <base>))
+  fill-file/symlink-sync(fill-path/join(term-root(), <deck>, <host>), fill-path/join(links, <host>))
+  fill-file/write-file-sync(fill-path/join(top, <deck.tree>), <deck @probe/fill\n  code \<0.0.0\>\n>)
+  host file, fill-path/join(code, <fill.tree>)
+  fill-file/write-file-sync(file, entry)
+  back file
+
+host entry-file, set-up(0)
+
+task compiled
+  take text, like text
+  take roll, like boolean
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, entry-file), bind(project, top), bind(stdlib, <node>), bind(project-deck, true), bind(roll, roll)))
+
+form fill-answers
+  mark shared
+  link held, like hash, like text, like compile-outcome
+  link said, like hash, like text, like text
+
+host kept, make(fill-answers, bind(held, make hash), bind(said, make hash))
+
+# the entry compiled with a roll, once
+task result
+  like compile-outcome
+
+  save key, <all>
+  fork test, kept/held/has(key)
+    hold
+      back kept/held/{key}
+  save out, compiled(entry, true)
+  save kept/held/{key}, out
+  back out
+
+# a text as a JavaScript string literal
+task literal
+  take text, like text
+  like text
+
+  back json-without(text, make list(<none>))
+
+# load and round-trip on every input, one JSON value a line: the fields of good, its limit, its tags, whether region is
+# there, its round trip, region of with-region, the five refusals (form, host, then path and reason), the rate of whole
+# and its round trip
+task main
+  like text
+
+  save inputs, join(make(list, literal(missing-retry), literal(number-name), literal(extra-field), literal(scalar-limit), literal(number-tag)), <, >)
+  back <const said = []\nconst show = value =\> said.push(JSON.stringify(value))\nconst good = {literal(good)}\nconst loaded = load(good)\nshow([loaded.name, loaded.retryAfter, loaded.secure])\nshow([loaded.limit?.burst, loaded.limit?.rate])\nshow(loaded.tags)\nshow("region" in loaded)\nshow(roundTrip(good))\nshow(load({literal(with-region)}).region)\nfor (const input of [{inputs}]) \{\n  try \{\n    load(input)\n    show("accepted")\n  \} catch (error) \{\n    show([error.form, error.host, `$\{error.link?.path\} $\{error.link?.reason\}`])\n  \}\n\}\nshow(load({literal(whole)}).limit.rate)\nshow(roundTrip({literal(whole)}))\nprocess.stdout.write(said.join("\\n"))\n>
+
+# what main printed on node, once
+task printed
+  like text
+
+  save key, <all>
+  fork test, kept/said/has(key)
+    hold
+      back kept/said/{key}
+  save out, result()
+  save folder, temp-folder(<term-fill-run->)
+  save answer, typescript-answer(out, main(), folder, <fill>, prelude-text(out, <node>))
+  save kept/said/{key}, answer
+  back answer
+
+task printed-part
+  take at, like number
+  like text
+
+  save answer, printed()
+  save parts, text-split(answer, <\n>)
+  fork test, is-below(at, parts/length)
+    hold
+      back parts/{at}
+  back answer
+
+# the raise set of load, as JSON writes it
+task load-halts
+  like text
+
+  save out, result()
+  fork test, not(and(out/ok, truth(out/roll)))
+    hold
+      back <none>
+  host found, first-with(out/roll/task, <name>, <load>)
+  fork test, not(truth(found))
+    hold
+      back <none>
+  back json-without(read-field(found, <halt>), make list(<none>))
+
+bind text-of
+  take cause, like dynamic
+  like text
+  case node
+    text <String($cause)>
+
+# why the Rust emitter refused a program, <emitted> when it did not
+task rust-refusal
+  take out, like compile-outcome
+  like text
+
+  fork
+    mark unsafe
+    emit-text(out, <rust>)
+    back <emitted>
+  halt take
+    take cause
+    back text-of(cause)
+
+test <fill and melt with a form compile>
+  want hold, result()/ok
+
+test <the walk is emitted once, in the prelude>
+  want hold, is-equal(text-split(result()/emitted, <function __termFill(>)/length, 2)
+
+test <the spec names the members the emitter uses>
+  want hold, text-contains(result()/emitted, <"member":"retryAfter">)
+
+test <the roll shows load raising data-mismatch>
+  want hold, text-contains(load-halts(), <"data-mismatch">)
+
+test <fill gives a value of the form>
+  want hold, is-equal(printed-part(0), <["api",3,true]>)
+
+test <a nested form fills>
+  want hold, is-equal(printed-part(1), <[10,2.5]>)
+
+test <a list of text fills>
+  want hold, is-equal(printed-part(2), <["a","b"]>)
+
+test <an optional field left out is absent>
+  want hold, is-equal(printed-part(3), <false>)
+
+test <melt writes the value back as data>
+  want hold, is-equal(printed-part(4), literal(good))
+
+test <an optional field present is kept>
+  want hold, is-equal(printed-part(5), <"eu">)
+
+test <fill refuses: retry-after is missing>
+  want hold, is-equal(printed-part(6), <["data-mismatch","@term/host","retry-after is missing"]>)
+
+test <fill refuses: name is number where text belongs>
+  want hold, is-equal(printed-part(7), <["data-mismatch","@term/host","name is number where text belongs"]>)
+
+test <fill refuses: extra is not in the form>
+  want hold, is-equal(printed-part(8), <["data-mismatch","@term/host","extra is not in the form"]>)
+
+test <fill refuses: limit is a scalar where a map belongs>
+  want hold, is-equal(printed-part(9), <["data-mismatch","@term/host","limit is a scalar where a map belongs"]>)
+
+test <fill refuses: tags/0 is number where text belongs>
+  want hold, is-equal(printed-part(10), <["data-mismatch","@term/host","tags/0 is number where text belongs"]>)
+
+test <a number fits a decimal field>
+  want hold, is-equal(printed-part(11), <2>)
+
+test <a whole decimal melts as a decimal>
+  want hold, text-contains(printed-part(12), <host rate, 2.0>)
+
+# without a `like`, `fill` is the package's runtime task and needs a shape
+test <fill without a form is the runtime task>
+  host out, compiled(text-replace(entry, <    call fill\n      call read(read input)\n      like service>, <    call fill\n      call read(read input)>), false)
+  want hold, and(not(out/ok), matches(shape-or-argument, join(out/messages, <\n>)))
+
+# a `like` that is not a form with fields is refused
+test <fill needs a form after like>
+  host out, compiled(text-replace(entry, <      like service\n\ntask save-service>, <      like text\n\ntask save-service>), false)
+  want hold, and(not(out/ok), text-contains(join(out/messages, < | >), <needs a form>))
+
+# the native backends generate a walker per form (test/compile/host-native.ts builds and runs them)
+test <rust generates a fill walker per form>
+  host rust, emit-text(result(), <rust>)
+  want hold, and(text-contains(rust, <fn __fill_service(>), text-contains(rust, <fn __fill_limit(>))
+
+test <rust generates a melt walker per form>
+  host rust, emit-text(result(), <rust>)
+  want hold, and(text-contains(rust, <fn __melt_service(>), text-contains(rust, <fn __melt_limit(>))
+
+test <rust refuses a field with no data form>
+  host odd, compiled(text-replace(entry, <  link tags\n    like list\n      like text\n>, <  link tags\n    like list\n      like text\n  link extra, like dynamic\n>), false)
+  want hold, and(odd/ok, text-contains(rust-refusal(odd), <no data form>))
