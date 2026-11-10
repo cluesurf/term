@@ -1,0 +1,1510 @@
+# pnpm term:bench: every program under mark/, built from Term and by hand on each installed target, checked for the
+# expected output, then timed in shuffled rounds. The number reported is the ratio of the medians, Term over the hand
+# version, with a 95% bootstrap interval over the rounds. Reports
+# by default, and writes mark/<program>/results/<machine>.json only on --commit. The programs were under bench/ until
+# 2026-10-05, when that folder took the name mark/ and the suite package that held it moved to deck/mark. Ported from
+# task/bench.ts (item term-self-host-001-0719), run by `term boot` through the alias.
+#
+#   pnpm term:bench                          every program, every target
+#   pnpm term:bench --only fannkuch-redux    one program
+#   pnpm term:bench --target rust --size 11 --runs 9
+#
+# Release builds on both sides, with the same flags: rustc opt-level 3 with one codegen unit and panic=abort, swiftc
+# -O -wmo with exclusivity unchecked (cask's release build), esbuild to node20 (minified) on the pinned node, kotlinc
+# to a jar targeting JVM 21 with no null assertions, on the pinned JVM. A process is timed from spawn to exit, so
+# startup is in both columns alike.
+#
+# `term mark` (deck/mark) times the suite's own programs under their bench.tree contracts; this times the older
+# programs under mark/, whose bench.tree is not a contract, and the kernels with --kernels.
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by), as task/distro.tree reads it. The times and the
+# shuffle are the host's floating point, in binds, as the original measured them.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find variable
+  find directory
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find trim
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/rust>, name rust-module
+  load <@term/make/code/compile/swift>, name swift-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/make/code/compile/host>, name host-module
+
+# ---- the shapes ----
+
+# one program as its bench.tree states it. `dir` is the program's directory, `hand` the stem of its hand-written
+# versions (`idiom` here, `same` in deck/mark/kernels)
+form bench-spec
+  link dir, like text
+  link program, like text
+  link entry, like text
+  link check, like float
+  link expect, like text
+  link size, like float
+  link runs, like float
+  link hand, like text
+
+# a side built for a target: the command that runs it at a size is `command` then the size. `failure` is why the
+# build failed, empty when it did not
+form bench-built
+  link command, like list, like text
+  link failure, like text
+
+# ---- the host values Term has no word for ----
+
+bind bench-resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+bind bench-runtime-reader
+  like dynamic
+  case node
+    text <<((path_) => (require("node:fs").existsSync(path_) ? require("node:fs").readFileSync(path_, "utf8") : undefined))>>
+
+# a program's bench.tree as JSON, read by the compiler's own data reader; a read that fails raises naming the file
+bind bench-read-spec
+  take reading, like dynamic
+  take to-json, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <<((read_) => { if (!read_.ok) { throw new Error(`${$file}: ${read_.diagnostics.map((d_) => d_.message).join(" | ")}`) } return $to-json(read_.data.root) })($reading({ file: $file, text: require("node:fs").readFileSync($file, "utf8") }))>>
+
+bind bench-is-kernel
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value.input)>
+
+bind bench-kernel-check
+  take value, like dynamic
+  like float
+  case node
+    text <Number($value.input.sizes.check)>
+
+bind bench-kernel-timed
+  take value, like dynamic
+  like float
+  case node
+    text <Number($value.input.sizes.timed)>
+
+bind bench-field-text
+  take value, like dynamic
+  take key, like text
+  like text
+  case node
+    text <String($value[$key])>
+
+bind bench-field-number
+  take value, like dynamic
+  take key, like text
+  like float
+  case node
+    text <Number($value[$key])>
+
+# `value.runs ?? 5`, a number
+bind bench-field-runs
+  take value, like dynamic
+  like float
+  case node
+    text <Number($value.runs ?? 5)>
+
+bind bench-number
+  take text, like text
+  like float
+  case node
+    text <Number($text)>
+
+# whitespace runs made one space, the ends trimmed
+bind bench-normal
+  take text, like text
+  like text
+  case node
+    text <<$text.trim().split(/\s+/).join(" ")>>
+
+bind bench-camel
+  take name, like text
+  like text
+  case node
+    text <<$name.replace(/-([a-z])/g, (_m, c_) => c_.toUpperCase())>>
+
+bind bench-snake
+  take name, like text
+  like text
+  case node
+    text <<$name.replace(/-/g, "_")>>
+
+# the size as a template prints it
+bind bench-number-text
+  take n, like float
+  like text
+  case node
+    text <String($n)>
+
+# the program compiled for one env with its entry the one root, or why not
+bind bench-compile
+  take compiling, like dynamic
+  take with-env, like dynamic
+  take stdlib, like dynamic
+  take file, like text
+  take env, like text
+  take entry, like text
+  like dynamic
+  case node
+    text <<$compiling({ file: $file, text: require("node:fs").readFileSync($file, "utf8") }, { resolve: $with-env($env, $stdlib), env: $env, entryPoints: [$entry] })>>
+
+bind bench-is-built
+  take built, like dynamic
+  like boolean
+  case node
+    text <Boolean($built.ok)>
+
+# a failed compile as the original's catch printed it: String of the Error its messages make
+bind bench-compile-failure
+  take built, like dynamic
+  like text
+  case node
+    text <<String(new Error($built.diagnostics.map((d_) => d_.message).join(" | ")))>>
+
+# a failure as the original's catch printed it: the child's stderr, else the error, its first 300 characters
+bind bench-failure-text
+  take error, like dynamic
+  like text
+  case node
+    text <<String($error.stderr ?? $error)>>
+
+# esbuild's bundle of `entry` into `outfile`, as the original built both sides: the failure's text, empty when none
+bind bench-esbuild
+  take entry, like text
+  take outfile, like text
+  like text
+  case node
+    text <<(() => { try { require("esbuild").buildSync({ entryPoints: [$entry], outfile: $outfile, bundle: true, minify: true, sourcemap: "external", platform: "node", target: "node20", format: "esm", logLevel: "error" }); return "" } catch (error_) { return String(error_.stderr ?? error_) } })()>>
+
+# a build command, run as execFileSync runs it with its output captured: the failure's text, empty when none
+bind bench-exec
+  take command, like text
+  take arguments, like list, like text
+  like text
+  case node
+    text <<(() => { try { require("node:child_process").execFileSync($command, $arguments, { stdio: ["ignore", "pipe", "pipe"] }); return "" } catch (error_) { return String(error_.stderr ?? error_) } })()>>
+
+bind bench-slice
+  take text, like text
+  take size, like number
+  like text
+  case node
+    text <$text.slice(0, $size)>
+
+bind bench-raises-rust
+  take source, like text
+  take entry, like text
+  like boolean
+  case node
+    text <<new RegExp(`fn ${$entry}\\([^)]*\\) -> std::result::Result<`).test($source)>>
+
+bind bench-throws-swift
+  take source, like text
+  take entry, like text
+  like boolean
+  case node
+    text <<new RegExp(`func ${$entry}\\([^)]*\\)[^{]*throws`).test($source)>>
+
+bind bench-is-installed
+  take tool, like text
+  like boolean
+  case node
+    text <<require("node:child_process").spawnSync("which", [$tool]).status === 0>>
+
+# what a command prints, normalized: execFileSync, which raises on a failure, as the original's output() did
+bind bench-output
+  take command, like list, like text
+  like text
+  case node
+    text <<require("node:child_process").execFileSync($command[0], $command.slice(1), { maxBuffer: 268435456 }).toString().trim().split(/\s+/).join(" ")>>
+
+# a run's milliseconds from spawn to exit; a run that fails raises naming the command
+bind bench-time
+  take command, like list, like text
+  like float
+  case node
+    text <<(() => { const start_ = performance.now(); const ran_ = require("node:child_process").spawnSync($command[0], $command.slice(1), { stdio: "ignore" }); if (ran_.status !== 0) { throw new Error(`${$command.join(" ")} exited ${ran_.status}`) } return performance.now() - start_ })()>>
+
+bind bench-heads-first
+  like boolean
+  case node
+    text <Math.random() \< 0.5>
+
+bind bench-median
+  take xs, like list, like float
+  like float
+  case node
+    text <<((s_) => { const m_ = Math.floor(s_.length / 2); return s_.length % 2 ? s_[m_] : (s_[m_ - 1] + s_[m_]) / 2 })([...$xs].sort((a_, b_) => a_ - b_))>>
+
+# a 95% interval on median(term) / median(idiom), resampling the rounds with replacement: [low, high]
+bind bench-interval
+  take term, like list, like float
+  take idiom, like list, like float
+  like list, like float
+  case node
+    text <<((term_, idiom_) => { const median_ = (xs_) => { const s_ = [...xs_].sort((a_, b_) => a_ - b_); const m_ = Math.floor(s_.length / 2); return s_.length % 2 ? s_[m_] : (s_[m_ - 1] + s_[m_]) / 2 }; let seed_ = 12345; const random_ = () => { seed_ = (seed_ * 1103515245 + 12345) % 2147483648; return seed_ / 2147483648 }; const ratios_ = []; for (let b_ = 0; b_ < 2000; b_++) { const pick_ = term_.map(() => Math.floor(random_() * term_.length)); ratios_.push(median_(pick_.map((i_) => term_[i_])) / median_(pick_.map((i_) => idiom_[i_]))) } ratios_.sort((a_, b_) => a_ - b_); return [ratios_[Math.floor(ratios_.length * 0.025)], ratios_[Math.floor(ratios_.length * 0.975)]] })($term, $idiom)>>
+
+bind bench-fixed
+  take n, like float
+  take digits, like number
+  like text
+  case node
+    text <$n.toFixed($digits)>
+
+bind bench-divide
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <$a / $b>
+
+bind bench-pad-end
+  take text, like text
+  take width, like number
+  like text
+  case node
+    text <$text.padEnd($width)>
+
+bind bench-pad-start
+  take text, like text
+  take width, like number
+  like text
+  case node
+    text <$text.padStart($width)>
+
+bind bench-quoted
+  take text, like text
+  like text
+  case node
+    text <JSON.stringify($text)>
+
+bind bench-machine
+  like text
+  case node
+    text <<`${require("node:os").platform()}-${(require("node:os").cpus()[0]?.model ?? "cpu").replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}`>>
+
+bind bench-new-results
+  like dynamic
+  case node
+    text <<({})>>
+
+bind bench-result-term
+  take results, like dynamic
+  take target, like text
+  take term, like list, like float
+  like void
+  case node
+    text <<void ($results[$target] = { term: $term })>>
+
+bind bench-result-pair
+  take results, like dynamic
+  take target, like text
+  take term, like list, like float
+  take idiom, like list, like float
+  take ratio, like float
+  take bounds, like list, like float
+  like void
+  case node
+    text <<void ($results[$target] = { term: $term, idiom: $idiom, ratio: $ratio, interval: $bounds })>>
+
+# the results file: the program, its size and rounds, the machine, the date, and every target's times
+bind bench-results-text
+  take program, like text
+  take size, like float
+  take runs, like float
+  take machine, like text
+  take results, like dynamic
+  like text
+  case node
+    text <<JSON.stringify({ program: $program, size: $size, runs: $runs, machine: $machine, host: require("node:os").hostname(), date: new Date().toISOString().slice(0, 10), results: $results }, null, 2) + "\n">>
+
+bind bench-recursive
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# ---- the root ----
+
+task term-root
+  like text
+  save named
+    call trim
+      call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call bench-resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+# ---- the flags and the targets ----
+
+task target-names
+  like list, like text
+  save names
+    make list
+  call names/push, text <typescript>
+  call names/push, text <rust>
+  call names/push, text <swift>
+  call names/push, text <kotlin>
+  send back, read names
+
+task tools-of
+  take target, like text
+  like list, like text
+  save tools
+    make list
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <typescript>
+    hook hold
+      call tools/push, text <node>
+      send back, read tools
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      call tools/push, text <rustc>
+      send back, read tools
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      call tools/push, text <swiftc>
+      send back, read tools
+  call tools/push, text <kotlinc>
+  call tools/push, text <java>
+  send back, read tools
+
+task rust-flags
+  like list, like text
+  save flags
+    make list
+  call flags/push, text <-A>
+  call flags/push, text <warnings>
+  call flags/push, text <-C>
+  call flags/push, text <opt-level=3>
+  call flags/push, text <-C>
+  call flags/push, text <codegen-units=1>
+  call flags/push, text <-C>
+  call flags/push, text <panic=abort>
+  send back, read flags
+
+# the release build cask ships (cask.ts), on both sides
+task swift-flags
+  like list, like text
+  save flags
+    make list
+  call flags/push, text <-O>
+  call flags/push, text <-wmo>
+  call flags/push, text <-enforce-exclusivity=unchecked>
+  send back, read flags
+
+# a release Kotlin build, on both sides: bytecode for the JVM it runs on (kotlinc's default target is 1.8), and none
+# of the null assertions the Android release build also leaves out (cask.ts)
+task kotlin-flags
+  like list, like text
+  save flags
+    make list
+  call flags/push, text <-nowarn>
+  call flags/push, text <-jvm-target>
+  call flags/push, text <21>
+  call flags/push, text <-Xno-param-assertions>
+  call flags/push, text <-Xno-call-assertions>
+  call flags/push, text <-Xno-receiver-assertions>
+  send back, read flags
+
+# `words` with `more` after them
+task joined-words
+  take words, like list, like text
+  take more, like list, like text
+  like list, like text
+  save all
+    make list
+  walk list
+    read words
+    hook next
+      take site, name one
+      call all/push, read one
+  walk list
+    read more
+    hook next
+      take site, name one
+      call all/push, read one
+  send back, read all
+
+# the command with the size after it
+task with-size
+  take command, like list, like text
+  take n, like float
+  like list, like text
+  save more
+    make list
+  call more/push
+    call bench-number-text
+      read n
+  send back
+    call joined-words
+      read command
+      read more
+
+task built-ok
+  take command, like list, like text
+  like bench-built
+  send back
+    make bench-built
+      bind command, read command
+      bind failure, text <>
+
+task built-failed
+  take failure, like text
+  like bench-built
+  send back
+    make bench-built
+      bind command
+        make list
+      bind failure, read failure
+
+# ---- one program ----
+
+task spec-of
+  take dir, like text
+  take size, like text
+  take runs, like text
+  like bench-spec
+  save file
+    call node-path/join
+      read dir
+      text <bench.tree>
+  save value
+    call bench-read-spec
+      read host-module/read-data-text
+      read host-module/toJsonValue
+      read file
+  save program
+    call node-path/basename
+      read dir
+  # a kernel of the suite (deck/mark/kernels): its entry is `run`, its sizes and
+  # expected output are the contract's own, and its hand versions are `same.*`
+  fork test
+    hook test
+      call bench-is-kernel
+        read value
+    hook hold
+      save timed
+        call bench-kernel-timed
+          read value
+      fork test
+        hook test
+          call is-unequal
+            read size
+            text <>
+        hook hold
+          save timed
+            call bench-number
+              read size
+      save rounds
+        call bench-number, text <5>
+      fork test
+        hook test
+          call is-unequal
+            read runs
+            text <>
+        hook hold
+          save rounds
+            call bench-number
+              read runs
+      send back
+        make bench-spec
+          bind dir, read dir
+          bind program, read program
+          bind entry, text <run>
+          bind check
+            call bench-kernel-check
+              read value
+          bind expect
+            call bench-normal
+              call node-fs/read-file-sync
+                call node-path/join
+                  read dir
+                  text <expect/check.txt>
+                text <utf8>
+          bind size, read timed
+          bind runs, read rounds
+          bind hand, text <same>
+  save timed
+    call bench-field-number
+      read value
+      text <size>
+  fork test
+    hook test
+      call is-unequal
+        read size
+        text <>
+    hook hold
+      save timed
+        call bench-number
+          read size
+  save rounds
+    call bench-field-runs
+      read value
+  fork test
+    hook test
+      call is-unequal
+        read runs
+        text <>
+    hook hold
+      save rounds
+        call bench-number
+          read runs
+  send back
+    make bench-spec
+      bind dir, read dir
+      bind program
+        call bench-field-text
+          read value
+          text <program>
+      bind entry
+        call bench-field-text
+          read value
+          text <entry>
+      bind check
+        call bench-field-number
+          read value
+          text <check>
+      bind expect
+        call bench-normal
+          call bench-field-text
+            read value
+            text <expect>
+      bind size, read timed
+      bind runs, read rounds
+      bind hand, text <idiom>
+
+# the Term program for one target, built into an executable. Built as the program it is, with its entry the one root,
+# as the hand versions are: a task nothing reaches is dropped, where a library build kept it public and a caller it
+# cannot see weakened every fact it feeds
+task build-term
+  take spec, like bench-spec
+  take target, like text
+  take out, like text
+  take stdlib, like dynamic
+  like bench-built
+  save file
+    call node-path/join
+      read spec/dir
+      text <term.tree>
+  save env, read target
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <typescript>
+    hook hold
+      save env, text <node>
+  save built
+    call bench-compile
+      read compile-module/compile
+      read native-module/with-native-env
+      read stdlib
+      read file
+      read env
+      read spec/entry
+  fork test
+    hook test
+      call not
+        call bench-is-built
+          read built
+    hook hold
+      send back
+        call built-failed
+          call bench-compile-failure
+            read built
+  save prelude
+    call native-module/native-prelude
+      read built/program
+      read env
+      call bench-runtime-reader
+  save camel
+    call bench-camel
+      read spec/entry
+  save snake
+    call bench-snake
+      read spec/entry
+  save run
+    make list
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <typescript>
+    hook hold
+      save source
+        call node-path/join
+          read out
+          text <term.ts>
+      save product
+        call node-path/join
+          read out
+          text <term.mjs>
+      call node-fs/write-file-sync
+        read source
+        text <{prelude}\n{built/typescript}\nconsole.log({camel}(Number(process.argv[2])))\n>
+      save failure
+        call bench-esbuild
+          read source
+          read product
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, text <node>
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      # an entry that may raise answers a Result: a raise stops the program, as it does on every other backend
+      save rust
+        call rust-module/emit-rust
+          read built/program
+      save answer, text <{snake}(n)>
+      fork test
+        hook test
+          call bench-raises-rust
+            read rust
+            read snake
+        hook hold
+          save answer, text <match {snake}(n) \{ Ok(v) =\> v, Err(e) =\> panic!("\{\}", e.note) \}>
+      save source
+        call node-path/join
+          read out
+          text <term.rs>
+      save product
+        call node-path/join
+          read out
+          text <term-rs>
+      call node-fs/write-file-sync
+        read source
+        text <{prelude}\n{rust}\nfn main() \{ let n: i64 = std::env::args().nth(1).unwrap().parse().unwrap(); println!("\{\}", {answer}); \}\n>
+      save words
+        make list
+      call words/push, read source
+      call words/push, text <-o>
+      call words/push, read product
+      save failure
+        call bench-exec
+          text <rustc>
+          call joined-words
+            call rust-flags
+            read words
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      # an entry that may raise throws: `try!` stops the program on a raise, as every other backend does
+      save swift
+        call swift-module/emit-swift
+          read built/program
+      save attempt, text <>
+      fork test
+        hook test
+          call bench-throws-swift
+            read swift
+            read camel
+        hook hold
+          save attempt, text <try! >
+      save source
+        call node-path/join
+          read out
+          text <term.swift>
+      save product
+        call node-path/join
+          read out
+          text <term-swift>
+      call node-fs/write-file-sync
+        read source
+        text <{prelude}\n{swift}\nprint({attempt}{camel}(Int(CommandLine.arguments[1])!))\n>
+      save words
+        make list
+      call words/push, text <-o>
+      call words/push, read product
+      call words/push, read source
+      save failure
+        call bench-exec
+          text <swiftc>
+          call joined-words
+            call swift-flags
+            read words
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  save source
+    call node-path/join
+      read out
+      text <term.kt>
+  save product
+    call node-path/join
+      read out
+      text <term.jar>
+  save kotlin
+    call kotlin-module/emit-kotlin
+      read built/program
+  call node-fs/write-file-sync
+    read source
+    call kotlin-module/hoist-kotlin-imports
+      text <{prelude}\n{kotlin}\nfun main(args: Array\<String\>) \{ println({camel}(args[0].toLong())) \}\n>
+  save first
+    make list
+  call first/push, read source
+  save last
+    make list
+  call last/push, text <-include-runtime>
+  call last/push, text <-d>
+  call last/push, read product
+  save failure
+    call bench-exec
+      text <kotlinc>
+      call joined-words
+        call joined-words
+          read first
+          call kotlin-flags
+        read last
+  fork test
+    hook test
+      call is-unequal
+        read failure
+        text <>
+    hook hold
+      send back
+        call built-failed
+          read failure
+  call run/push, text <java>
+  call run/push, text <-jar>
+  call run/push, read product
+  send back
+    call built-ok
+      read run
+
+# the extension of a target's hand version
+task extension-of
+  take target, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <typescript>
+    hook hold
+      send back, text <ts>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      send back, text <rs>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      send back, text <swift>
+  send back, text <kt>
+
+# the hand-written version for one target. No file is a built side with no command and no failure
+task build-idiom
+  take spec, like bench-spec
+  take target, like text
+  take out, like text
+  like bench-built
+  save file
+    call node-path/join
+      read spec/dir
+      text <{spec/hand}.{call(extension-of, read(target))}>
+  save run
+    make list
+  fork test
+    hook test
+      call not
+        call node-fs/exists-sync
+          read file
+    hook hold
+      send back
+        call built-ok
+          read run
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <typescript>
+    hook hold
+      save product
+        call node-path/join
+          read out
+          text <idiom.mjs>
+      save failure
+        call bench-esbuild
+          read file
+          read product
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, text <node>
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      save product
+        call node-path/join
+          read out
+          text <idiom-rs>
+      save words
+        make list
+      call words/push, read file
+      call words/push, text <-o>
+      call words/push, read product
+      save failure
+        call bench-exec
+          text <rustc>
+          call joined-words
+            call rust-flags
+            read words
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      save product
+        call node-path/join
+          read out
+          text <idiom-swift>
+      save words
+        make list
+      call words/push, text <-o>
+      call words/push, read product
+      call words/push, read file
+      save failure
+        call bench-exec
+          text <swiftc>
+          call joined-words
+            call swift-flags
+            read words
+      fork test
+        hook test
+          call is-unequal
+            read failure
+            text <>
+        hook hold
+          send back
+            call built-failed
+              read failure
+      call run/push, read product
+      send back
+        call built-ok
+          read run
+  save product
+    call node-path/join
+      read out
+      text <idiom.jar>
+  save first
+    make list
+  call first/push, read file
+  save last
+    make list
+  call last/push, text <-include-runtime>
+  call last/push, text <-d>
+  call last/push, read product
+  save failure
+    call bench-exec
+      text <kotlinc>
+      call joined-words
+        call joined-words
+          read first
+          call kotlin-flags
+        read last
+  fork test
+    hook test
+      call is-unequal
+        read failure
+        text <>
+    hook hold
+      send back
+        call built-failed
+          read failure
+  call run/push, text <java>
+  call run/push, text <-jar>
+  call run/push, read product
+  send back
+    call built-ok
+      read run
+
+# ---- the run ----
+
+task bench-run
+  take only, like text
+  take target, like text
+  take size, like text
+  take runs, like text
+  take kernels, like boolean
+  take commit, like boolean
+  like void
+  save term
+    call term-root
+  save bench
+    call node-path/join
+      read term
+      text <mark>
+  save work
+    call node-path/join
+      read term
+      text <tmp>
+      text <bench>
+  # the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+  save stdlib
+    call resolve-module/stdlib-resolver
+  # `--kernels` reads the suite's kernels (deck/mark/kernels) instead of mark/, the two overlapping in three programs
+  save root, read bench
+  fork test
+    hook test
+      read kernels
+    hook hold
+      save root
+        call node-path/join
+          read term
+          text <deck>
+          text <mark>
+          text <kernels>
+  save programs
+    make list
+  walk list
+    call node-fs/readdir-sync
+      read root
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call and
+            call node-fs/exists-sync
+              call node-path/join
+                read root
+                read name
+                text <bench.tree>
+            call or
+              call is-equal
+                read only
+                text <>
+              call is-equal
+                read name
+                read only
+        hook hold
+          call programs/push, read name
+  save targets
+    make list
+  walk list
+    call target-names
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call or
+            call is-equal
+              read target
+              text <>
+            call is-equal
+              read one
+              read target
+        hook hold
+          call targets/push, read one
+  save machine
+    call bench-machine
+  save failed, code 0
+  walk list
+    read programs
+    hook next
+      take site, name program
+      save spec
+        call spec-of
+          call node-path/join
+            read root
+            read program
+          read size
+          read runs
+      save results
+        call bench-new-results
+      save shown-size
+        call bench-number-text
+          read spec/size
+      save shown-runs
+        call bench-number-text
+          read spec/runs
+      call log, text <\n{program}, n = {shown-size}, {shown-runs} rounds, {machine}>
+      walk list
+        read targets
+        hook next
+          take site, name one
+          save shown-target
+            call bench-pad-end
+              read one
+              code 11
+          save tools
+            call tools-of
+              read one
+          save missing, false
+          walk list
+            read tools
+            hook next
+              take site, name tool
+              fork test
+                hook test
+                  call not
+                    call bench-is-installed
+                      read tool
+                hook hold
+                  save missing, true
+          fork test
+            hook test
+              read missing
+            hook hold
+              save tool-names
+                call join-texts
+                  read tools
+                  text <, >
+              call log, text <  {shown-target} skipped: {tool-names} not installed>
+              turn next
+          save out
+            call node-path/join
+              read work
+              read program
+              read one
+          call node-fs/mkdir-sync
+            read out
+            call bench-recursive
+          save term-side
+            call build-term
+              read spec
+              read one
+              read out
+              read stdlib
+          save failure, read term-side/failure
+          save idiom-side
+            call built-ok
+              make list
+          fork test
+            hook test
+              call is-equal
+                read failure
+                text <>
+            hook hold
+              save idiom-side
+                call build-idiom
+                  read spec
+                  read one
+                  read out
+              save failure, read idiom-side/failure
+          fork test
+            hook test
+              call is-unequal
+                read failure
+                text <>
+            hook hold
+              save failed
+                call add
+                  read failed
+                  code 1
+              save shown-failure
+                call bench-slice
+                  read failure
+                  code 300
+              call log, text <  {shown-target} BUILD FAILED  {shown-failure}>
+              turn next
+          save has-idiom
+            call is-above
+              read idiom-side/command/length
+              code 0
+          # the answer first: a fast wrong program never gets a time
+          save wrong, false
+          save got
+            call bench-output
+              call with-size
+                read term-side/command
+                read spec/check
+          fork test
+            hook test
+              call is-unequal
+                read got
+                read spec/expect
+            hook hold
+              save wrong, true
+              save shown-got
+                call bench-quoted
+                  read got
+              save shown-want
+                call bench-quoted
+                  read spec/expect
+              call log, text <  {shown-target} WRONG ANSWER from term: {shown-got}, want {shown-want}>
+          fork test
+            hook test
+              read has-idiom
+            hook hold
+              save got
+                call bench-output
+                  call with-size
+                    read idiom-side/command
+                    read spec/check
+              fork test
+                hook test
+                  call is-unequal
+                    read got
+                    read spec/expect
+                hook hold
+                  save wrong, true
+                  save shown-got
+                    call bench-quoted
+                      read got
+                  save shown-want
+                    call bench-quoted
+                      read spec/expect
+                  call log, text <  {shown-target} WRONG ANSWER from idiom: {shown-got}, want {shown-want}>
+          fork test
+            hook test
+              read wrong
+            hook hold
+              save failed
+                call add
+                  read failed
+                  code 1
+              turn next
+          save term-run
+            call with-size
+              read term-side/command
+              read spec/size
+          save idiom-run
+            call with-size
+              read idiom-side/command
+              read spec/size
+          # one untimed warm run of each, then the rounds in a shuffled order per round
+          call bench-time
+            read term-run
+          fork test
+            hook test
+              read has-idiom
+            hook hold
+              call bench-time
+                read idiom-run
+          save term-times
+            make list
+          save idiom-times
+            make list
+          save round, code 0
+          walk test
+            hook test
+              call is-below
+                read round
+                read spec/runs
+            hook step
+              fork test
+                hook test
+                  read has-idiom
+                hook hold
+                  fork test
+                    hook test
+                      call bench-heads-first
+                    hook hold
+                      call term-times/push
+                        call bench-time
+                          read term-run
+                      call idiom-times/push
+                        call bench-time
+                          read idiom-run
+                    hook miss
+                      call idiom-times/push
+                        call bench-time
+                          read idiom-run
+                      call term-times/push
+                        call bench-time
+                          read term-run
+                hook miss
+                  call term-times/push
+                    call bench-time
+                      read term-run
+              save round
+                call add
+                  read round
+                  code 1
+          save t
+            call bench-median
+              read term-times
+          save shown-t
+            call bench-pad-start
+              call bench-fixed
+                read t
+                code 0
+              code 7
+          fork test
+            hook test
+              call not
+                read has-idiom
+            hook hold
+              call log, text <  {shown-target} term {shown-t} ms   (no hand version)>
+              call bench-result-term
+                read results
+                read one
+                read term-times
+              turn next
+          save h
+            call bench-median
+              read idiom-times
+          save bounds
+            call bench-interval
+              read term-times
+              read idiom-times
+          save ratio
+            call bench-divide
+              read t
+              read h
+          save shown-h
+            call bench-pad-start
+              call bench-fixed
+                read h
+                code 0
+              code 7
+          save shown-ratio
+            call bench-fixed
+              read ratio
+              code 2
+          save shown-low
+            call bench-fixed
+              read bounds/0
+              code 2
+          save shown-high
+            call bench-fixed
+              read bounds/1
+              code 2
+          call log, text <  {shown-target} term {shown-t} ms   idiom {shown-h} ms   ratio {shown-ratio}  ({shown-low} to {shown-high})>
+          call bench-result-pair
+            read results
+            read one
+            read term-times
+            read idiom-times
+            read ratio
+            read bounds
+      fork test
+        hook test
+          read commit
+        hook hold
+          save dir
+            call node-path/join
+              read bench
+              read program
+              text <results>
+          call node-fs/mkdir-sync
+            read dir
+            call bench-recursive
+          call node-fs/write-file-sync
+            call node-path/join
+              read dir
+              text <{machine}.json>
+            call bench-results-text
+              read spec/program
+              read spec/size
+              read spec/runs
+              read machine
+              read results
+          call log, text <  wrote {call(node-path/join, text(<mark>), read(program), text(<results>), text(<{machine}.json>))}>
+  fork test
+    hook test
+      call is-above
+        read failed
+        code 0
+    hook hold
+      call exit, code 1
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  save out, text <>
+  save first, true
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read part
+          save first, false
+        hook miss
+          save out, text <{out}{between}{part}>
+  send back, read out
+
+# ---------------------------------------------------------------- the console
+
+# Time every program under mark/ from Term against its hand versions, per installed target
+hook time
+  # run only this program
+  take only
+    like text
+    bind <>
+  # typescript, rust, swift or kotlin
+  take target
+    like text
+    bind <>
+  # the timed size, else the program's own
+  take size
+    like text
+    bind <>
+  # the timed rounds, else the program's own (5 when it names none)
+  take runs
+    like text
+    bind <>
+  # the suite's kernels (deck/mark/kernels) instead of mark/
+  take kernels
+    like boolean
+    bind code false
+  # write mark/<program>/results/<machine>.json
+  take commit
+    like boolean
+    bind code false
+  task bench-run

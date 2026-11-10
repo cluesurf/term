@@ -1,0 +1,9 @@
+
+# The floats as the host's 32-bit typed array, the vertex data a GPU buffer takes. Reached through
+# ../../lattice's `native/{platform}` load.
+
+bind float-32-array
+  take values, like list, like float
+  like dynamic
+  case node
+    text <new Float32Array($values)>

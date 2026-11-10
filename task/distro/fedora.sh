@@ -1,5 +1,5 @@
 #!/bin/sh
-# term's Fedora half, run inside task/distro/fedora.dockerfile by task/distro.ts. Two modes:
+# term's Fedora half, run inside task/distro/fedora.dockerfile by task/distro.tree. Two modes:
 #
 #   build   /in/term-linux-{x64,arm64}.tar.gz (the release payloads) -> /out/term-<VERSION>-1.{x86_64,aarch64}.rpm
 #   index   /repo, a dnf repository whose <version>/ folders hold every .rpm it lists -> its repodata/. The host signs

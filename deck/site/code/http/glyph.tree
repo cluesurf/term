@@ -91,7 +91,7 @@ task escape-glyphs
     case glyph-then
       back escape-glyph(first, escape-glyphs(rest))
 
-# THE NODE SERIALIZER'S TEXT ESCAPE (dom/native/node/runtime/html.ts `escapeText`): `&`, `<` and `>`, quotes kept
+# THE NODE SERIALIZER'S TEXT ESCAPE (dom/native/node/html.tree `escape-text`): `&`, `<` and `>`, quotes kept
 task escape-text-glyph
   take g, like glyph
   take rest, like pieces
@@ -137,7 +137,7 @@ task escape-text-glyphs
     case glyph-then
       back escape-text-glyph(first, escape-text-glyphs(rest))
 
-# THE NODE SERIALIZER'S ATTRIBUTE ESCAPE (html.ts `escapeAttr`): `&` and `"`, for a value it always quotes with `"`
+# THE NODE SERIALIZER'S ATTRIBUTE ESCAPE (html.tree `escape-attribute`): `&` and `"`, for a value it always quotes with `"`
 task escape-attr-glyph
   take g, like glyph
   take rest, like pieces

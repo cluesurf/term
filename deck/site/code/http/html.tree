@@ -1,11 +1,12 @@
 # THE NODE SERIALIZER AS THE KERNEL READS IT (claims in test/assurance/notes/code/law.tree, law 7). The node and
 # cloudflare hosts (dom/native/cloudflare/dom.tree reuses the node dom whole) turn a rendered `view` into HTML with
-# dom/native/node/runtime/html.ts `compactNode`: a text node is its text through `escapeText`, an element is `<tag`,
-# each attribute ` name="` its value through `escapeAttr` `"`, then `>`, its children, and `</tag>`. That serializer is
-# TypeScript, which the kernel cannot read, so this is its model, task for task: `serialize` is `compactNode`,
-# `serialize-attributes` is `openTag`'s attribute walk, and the two escapes are glyph.tree's `escape-text-glyphs` and
-# `escape-attr-glyphs`. Nothing runs this file. That html.ts does what it says is read off html.ts, not proven: change
-# one and change the other.
+# dom/native/node/html.tree `compact-node`: a text node is its text through `escape-text`, an element is `<tag`,
+# each attribute ` name="` its value through `escape-attribute` `"`, then `>`, its children, and `</tag>`. That
+# serializer's escapes are host binds (the host's regex replace) and its walk reads host records, which the kernel
+# cannot read, so this is its model, task for task: `serialize` is `compact-node`, `serialize-attributes` is
+# `open-tag`'s attribute walk, and the two escapes are glyph.tree's `escape-text-glyphs` and `escape-attr-glyphs`.
+# Nothing runs this file. That html.tree does what it says is read off html.tree, not proven: change one and change the
+# other.
 #
 # The output is a list of CHUNKS that say where each part came from: the serializer's own syntax (`<`, a tag or
 # attribute name the program wrote, `>`, `</tag>`), a text node's text, or an attribute's value. The law about it

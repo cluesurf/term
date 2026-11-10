@@ -1,0 +1,109 @@
+# The CLI bundles hold no import of a `@term/*` module: `pnpm run make:line` ends with it. Ported from
+# task/line-imports.ts (item term-self-host-001-0719), run by `term boot` through the make:line:steps script.
+#
+# The bundles are built with `--packages=external`, so a bare import that does not resolve through the tsconfig's
+# paths is left as an import, and nothing fails until the CLI starts: node finds no package `@term/make` and every
+# `term` command dies before it runs. That happened on 2026-10-06, when a file under deck/flow (which has a tsconfig of
+# its own, with no paths) was first reached from the CLI. Every bundle is read here, and one such import fails the
+# build naming its line, so the hazard shows at build time instead of at the next command. A host/line.js that cannot
+# start at all fails this boot too, so the build still stops, with node's own message.
+#
+# The bundles are read relative to the folder the program runs in, the Term root.
+
+load @term/base/console
+  find log
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find split
+
+dock load
+  load <node:fs>, name node-fs
+
+# a line of a bundle that imports a `@term/*` module: `import ... from "@term/`
+bind is-term-import
+  take line, like text
+  like boolean
+  case node
+    text <<(/^import .* from "@term\//).test($line)>>
+
+task bundle-names
+  like list, like text
+  save names
+    make list
+  call names/push, text <host/line.js>
+  call names/push, text <host/dock.mjs>
+  call names/push, text <host/need.mjs>
+  call names/push, text <host/need-hand.mjs>
+  call names/push, text <host/build-worker.mjs>
+  call names/push, text <host/separate-worker.mjs>
+  send back, read names
+
+task check-bundles
+  like void
+  save bundles
+    call bundle-names
+  save found
+    make list
+  walk list
+    read bundles
+    hook next
+      take site, name bundle
+      save lines
+        call split
+          call node-fs/read-file-sync
+            read bundle
+            text <utf8>
+          text <\n>
+      save at, code 0
+      walk list
+        read lines
+        hook next
+          take site, name line
+          save at
+            call add
+              read at
+              code 1
+          fork test
+            hook test
+              call is-term-import
+                read line
+            hook hold
+              call found/push, text <{bundle}:{at}  {line}>
+  save size
+    read bundles/length
+  fork test
+    hook test
+      call is-above
+        read found/length
+        code 0
+    hook hold
+      save plural, text <s>
+      fork test
+        hook test
+          call is-equal
+            read found/length
+            code 1
+        hook hold
+          save plural, text <>
+      save joined
+        call join
+          read found
+          text <\n  >
+      save count
+        read found/length
+      call log, text <line-imports: {count} import{plural} of a @term module left in a bundle, which the CLI cannot load:\n  {joined}>
+      call exit, code 1
+  call log, text <line-imports: {size} bundles, no @term import left>
+
+# ---------------------------------------------------------------- the console
+
+# Fail when a CLI bundle still imports a @term module
+hook check
+  task check-bundles

@@ -16,14 +16,9 @@ load ./view
   find view
   find page-element
 
-dock load
-  load <global:html>, name doc
-
-# one attribute or style, a name and its value. Not the stdlib `pair` (`first` / `second`): names are package-global,
-# so a second `form pair` here took the stdlib's place in any program that loaded both (`"pair" has no field "name"`)
-form page-pair
-  link name, like text
-  link value, like text
+load ./html
+  find page-pair
+  find serialize-node
 
 form listener
   link event, like text
@@ -246,14 +241,12 @@ task page-body
     call create-element
       bind tag, text <body>
 
-# serialize the in-memory tree to HTML (the SSR render output), via the runtime shim. The shim fns are named
-# `serialize-node` / `document-shell` (not `serialize` / `page-shell`) so they do not collide with these task names
-# when the shim is prepended into the bundle.
+# serialize the in-memory tree to HTML (the SSR render output), through ./html
 task serialize
   take node, like view
   like text
   send back
-    call doc/serialize-node
+    call serialize-node
       read node/handle
 
 # no ResizeObserver on the server

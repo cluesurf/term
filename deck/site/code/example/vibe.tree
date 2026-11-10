@@ -2,9 +2,9 @@
 # The vibe computer's lattice view as a Seed zone: a canvas with a WebGL2 surface that renders the {3,4,3,4} substrate
 # through the FULL graphics pipeline (compile shaders, upload the edge geometry, draw). This is the first code.surf
 # visualization page in Seed: it draws the 24-cell (the D4 coin of 24 directions) as its 2D F4-Coxeter shadow, 96 edges
-# with twelve-fold symmetry. The GLSL sources and the projected edge geometry come from a deterministic runtime shim
-# (<global:lattice>) so the .tree side stays clean. DOM chrome (the canvas) is rendered by zone; the render is WebGL via
-# @term/site/code/graphics. Copy of the structure for the vibe pages.
+# with twelve-fold symmetry. The GLSL sources and the projected edge geometry come from ./lattice, deterministic Term.
+# DOM chrome (the canvas) is rendered by zone; the render is WebGL via @term/site/code/graphics. Copy of the structure
+# for the vibe pages.
 
 load @term/site/dom/dom
   find view
@@ -25,11 +25,14 @@ load @term/site/graphics/graphics
 load @term/base/integer/unsigned
   find to-u32
 
-# the 24-cell shadow geometry + shader sources, from a deterministic native runtime shim
-dock load
-  load <global:lattice>, name grid
+# the 24-cell shadow geometry and shader sources
+load ./lattice
+  find lattice-vertices
+  find lattice-count
+  find vertex-source
+  find fragment-source
 
-# build the program and buffer from the shim's geometry, then draw the lattice edges into the surface
+# build the program and buffer from the lattice geometry, then draw the lattice edges into the surface
 task render
   take pane, like surface
   call size
@@ -46,12 +49,12 @@ task render
     call make-shader
       read pane
       make vertex
-      read grid/vertex-source
+      call vertex-source
   save fragment
     call make-shader
       read pane
       make fragment
-      read grid/fragment-source
+      call fragment-source
   save program
     call make-program
       read pane
@@ -60,15 +63,15 @@ task render
   save buffer
     call make-buffer
       read pane
-      read grid/vertices
+      call lattice-vertices
   call draw
     read pane
     read program
     read buffer
     make lines
-    # a host value, so checked as a `u32` here, where nothing can prove it
+    # a count the checker cannot bound, so checked as a `u32` here
     call to-u32
-      read grid/count
+      call lattice-count
 
 view lattice-view
   take host, like view

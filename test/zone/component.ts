@@ -141,8 +141,8 @@ async function main(): Promise<void> {
     /makeDynamicText\(\(\) =>/.test(result.typescript),
   )
 
-  // run it against the headless (node) dom. The dom module docks `<global:html>`, so the native prelude (the one
-  // `term boot` prepends) goes first, the way test/site/serve.ts does it.
+  // run it against the headless (node) dom. The node dom serializes in Term (dom/native/node/html.tree), and
+  // the native prelude (the one `term boot` prepends for any docked global) still goes first, the way test/site/serve.ts does it.
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
   const js = (

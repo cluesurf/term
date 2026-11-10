@@ -1,0 +1,979 @@
+# pnpm term:idiom: is the emitted code idiomatic, as the target's own tools judge it (codegen rule 4). Every program under mark/ and every meaning-native fixture is emitted with its prelude on all four
+# targets: Rust linted with `clippy::all`, TypeScript typechecked with `tsc --strict`, Swift and Kotlin counted by
+# their compilers' own warnings and errors. The findings are counted by kind, and the total is the gate: it may only
+# fall. swiftlint, ktlint and detekt join when they are installed on the machine that runs this. Ported from
+# task/idiom.ts (item term-self-host-001-0719), run by `term boot` through the alias.
+#
+#   pnpm term:idiom            report, and fail when any target's count rose above task/idiom-baseline.json
+#   pnpm term:idiom --commit   write the counts as the new baseline (after a fall, or a reviewed new fixture)
+#   pnpm term:idiom --max 0    fail when the total is above the number
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by), as task/distro.tree reads it.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find variable
+  find directory
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find trim
+  find ends-with
+  find starts-with
+  find substring
+  find char-count
+  find split
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/rust>, name rust-module
+  load <@term/make/code/compile/swift>, name swift-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+
+# ---- the shapes ----
+
+# one program: its name in the report and its file
+form idiom-program
+  link name, like text
+  link file, like text
+
+# a finding's name and how many times it was met
+form tally
+  link name, like text
+  link count, like number
+
+# ---- the host values Term has no word for ----
+
+bind idiom-resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+# a runtime file's text, or nothing when it is absent: the reader every prelude call takes
+bind idiom-runtime-reader
+  like dynamic
+  case node
+    text <<((path_) => (require("node:fs").existsSync(path_) ? require("node:fs").readFileSync(path_, "utf8") : undefined))>>
+
+# compile one file for one env against the stdlib, with that env's native modules
+bind idiom-compile
+  take compiling, like dynamic
+  take with-env, like dynamic
+  take stdlib, like dynamic
+  take file, like text
+  take env, like text
+  like dynamic
+  case node
+    text <<$compiling({ file: $file, text: require("node:fs").readFileSync($file, "utf8") }, { resolve: $with-env($env, $stdlib), env: $env })>>
+
+bind idiom-is-built
+  take built, like dynamic
+  like boolean
+  case node
+    text <Boolean($built.ok)>
+
+# the first diagnostic's message, as a template prints it (`undefined` when there is none)
+bind idiom-first-message
+  take built, like dynamic
+  like text
+  case node
+    text <String($built.diagnostics[0]?.message)>
+
+bind idiom-pad-end
+  take text, like text
+  take width, like number
+  like text
+  case node
+    text <$text.padEnd($width)>
+
+bind idiom-pad-start
+  take text, like text
+  take width, like number
+  like text
+  case node
+    text <$text.padStart($width)>
+
+bind idiom-dashes
+  take name, like text
+  like text
+  case node
+    text <<$name.replace(/\//g, "-")>>
+
+bind idiom-package
+  take name, like text
+  like text
+  case node
+    text <<`idiom.${$name.replace(/[^a-z0-9]+/gi, "_")}`>>
+
+# the lints a clippy run names: every finding carries exactly one documentation link, which names its lint
+bind idiom-clippy-lints
+  take text, like text
+  like list, like text
+  case node
+    text <<[...$text.matchAll(/https:\/\/rust-lang\.github\.io\/rust-clippy\/[^#\s]+#([a-z_]+)/g)].map((m_) => m_[1])>>
+
+bind idiom-clippy-note
+  take status, like dynamic
+  take text, like text
+  like text
+  case node
+    text <<($status !== 0 && !/warning/.test($text) ? "  (did not compile)" : "")>>
+
+# a child's run: spawnSync, utf8, in `cwd` when one is named
+bind idiom-spawn
+  take command, like text
+  take arguments, like list, like text
+  take cwd, like text
+  like dynamic
+  case node
+    text <<require("node:child_process").spawnSync($command, $arguments, $cwd ? { cwd: $cwd, encoding: "utf8" } : { encoding: "utf8" })>>
+
+bind idiom-is-installed
+  take tool, like text
+  like boolean
+  case node
+    text <<require("node:child_process").spawnSync("which", [$tool]).status === 0>>
+
+bind idiom-stderr
+  take ran, like dynamic
+  like text
+  case node
+    text <String($ran.stderr)>
+
+bind idiom-stdout
+  take ran, like dynamic
+  like text
+  case node
+    text <String($ran.stdout)>
+
+bind idiom-status
+  take ran, like dynamic
+  like dynamic
+  case node
+    text <$ran.status>
+
+bind idiom-error-count
+  take text, like text
+  like number
+  case node
+    text <<($text.match(/error TS\d+/g) ?? []).length>>
+
+# how many lines of a tsc report name `path`, written relative to `term` or whole
+bind idiom-own-lines
+  take text, like text
+  take path, like text
+  take term, like text
+  like number
+  case node
+    text <<$text.split("\n").filter((line_) => line_.startsWith($path.slice($term.length + 1)) || line_.startsWith($path)).length>>
+
+# the findings of swiftc (`path:line:col: warning: message`) and kotlinc (`w: file:///path:line:col message`) in
+# `text`, on one of `files`, each named by its message with the specifics dropped. An error counts too, so a program
+# that stopped compiling can never read as a clean zero
+bind idiom-warnings
+  take text, like text
+  take files, like list, like text
+  like list, like text
+  case node
+    text <<[...$text.matchAll(/^(?:([we]): )?(?:file:\/\/)?(\/[^:\s]+):\d+:\d+:? (?:(warning|error): )?(.*)$/gm)].flatMap(([, kotlin_, file_, swift_, message_]) => { const severity_ = swift_ ?? (kotlin_ === "e" ? "error" : kotlin_ === "w" ? "warning" : undefined); return !severity_ || !$files.some((f_) => f_ === file_) ? [] : [`${severity_ === "error" ? "ERROR " : ""}${message_.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, "_")}`.slice(0, 76)] })>>
+
+# the tallies by count, most first, ties in the order they were first met
+bind idiom-by-count
+  take tallies, like list, like tally
+  like list, like tally
+  case node
+    text <<[...$tallies].sort((a_, b_) => b_.count - a_.count)>>
+
+bind idiom-to-number
+  take text, like text
+  like float
+  case node
+    text <Number($text)>
+
+# the committed baseline: target to count, empty when the file is absent
+bind idiom-read-baseline
+  take file, like text
+  like dynamic
+  case node
+    text <<(require("node:fs").existsSync($file) ? JSON.parse(require("node:fs").readFileSync($file, "utf8")) : {})>>
+
+bind idiom-baseline-has
+  take baseline, like dynamic
+  take target, like text
+  like boolean
+  case node
+    text <$baseline[$target] !== undefined>
+
+bind idiom-baseline-count
+  take baseline, like dynamic
+  take target, like text
+  like float
+  case node
+    text <Number($baseline[$target])>
+
+bind idiom-baseline-shown
+  take baseline, like dynamic
+  take target, like text
+  like text
+  case node
+    text <<String($baseline[$target] ?? "none")>>
+
+# the baseline with the counts written over it, as the file holds it
+bind idiom-baseline-text
+  take baseline, like dynamic
+  take tallies, like list, like tally
+  like text
+  case node
+    text <<`${JSON.stringify({ ...$baseline, ...Object.fromEntries($tallies.map((t_) => [t_.name, t_.count])) }, null, 2)}\n`>>
+
+bind idiom-recursive
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# ---- the root ----
+
+task term-root
+  like text
+  save named
+    call trim
+      call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call idiom-resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+# ---- the tallies ----
+
+# `tallies` with one more of `name`, a new tally at the end when it is the first
+task count-one
+  take tallies, like list, like tally
+  take name, like text
+  like list, like tally
+  save out
+    make list
+  save seen, false
+  walk list
+    read tallies
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal
+            read one/name
+            read name
+        hook hold
+          save seen, true
+          call out/push
+            make tally
+              bind name, read one/name
+              bind count
+                call add
+                  read one/count
+                  code 1
+        hook miss
+          call out/push, read one
+  fork test
+    hook test
+      call not
+        read seen
+    hook hold
+      call out/push
+        make tally
+          bind name, read name
+          bind count, code 1
+  send back, read out
+
+task print-tallies
+  take tallies, like list, like tally
+  like void
+  walk list
+    call idiom-by-count
+      read tallies
+    hook next
+      take site, name one
+      save shown
+        call idiom-pad-start
+          text <{one/count}>
+          code 5
+      call log, text <  {shown}  {one/name}>
+
+# the findings of a compiler's run, printed by kind under the target's line, and their number
+task warned
+  take label, like text
+  take text, like text
+  take files, like list, like text
+  like number
+  save names
+    call idiom-warnings
+      read text
+      read files
+  save tallies
+    make list
+  walk list
+    read names
+    hook next
+      take site, name one
+      save tallies
+        call count-one
+          read tallies
+          read one
+  save sum
+    read names/length
+  save size
+    read files/length
+  call log, text <\n{label}: {sum} compiler warnings over {size} programs>
+  call print-tallies
+    read tallies
+  send back, read sum
+
+# ---- the programs ----
+
+task program-list
+  take term, like text
+  like list, like idiom-program
+  save programs
+    make list
+  save marks
+    call node-path/join
+      read term
+      text <mark>
+  walk list
+    call node-fs/readdir-sync
+      read marks
+    hook next
+      take site, name name
+      save file
+        call node-path/join
+          read marks
+          read name
+          text <term.tree>
+      fork test
+        hook test
+          call node-fs/exists-sync
+            read file
+        hook hold
+          call programs/push
+            make idiom-program
+              bind name, read name
+              bind file, read file
+  save fixtures
+    call node-path/join
+      read term
+      text <test/compile/meaning-native>
+  walk list
+    call node-fs/readdir-sync
+      read fixtures
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call ends-with
+            read name
+            text <.tree>
+        hook hold
+          save stem
+            call substring
+              read name
+              code 0
+              call subtract
+                call char-count
+                  read name
+                code 5
+          call programs/push
+            make idiom-program
+              bind name, text <meaning/{stem}>
+              bind file
+                call node-path/join
+                  read fixtures
+                  read name
+  send back, read programs
+
+task idiom-run
+  take commit, like boolean
+  take max, like text
+  like void
+  save term
+    call term-root
+  save out
+    call node-path/join
+      read term
+      text <tmp>
+      text <idiom>
+  call node-fs/mkdir-sync
+    read out
+    call idiom-recursive
+  # the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+  save stdlib
+    call resolve-module/stdlib-resolver
+  save reader
+    call idiom-runtime-reader
+  save programs
+    call program-list
+      read term
+  save counted
+    make list
+  save total, code 0
+
+  # ---- Rust: clippy
+  save lints
+    make list
+  walk list
+    read programs
+    hook next
+      take site, name program
+      save shown-name
+        call idiom-pad-end
+          read program/name
+          code 28
+      save built
+        call idiom-compile
+          read compile-module/compile
+          read native-module/with-native-env
+          read stdlib
+          read program/file
+          text <rust>
+      fork test
+        hook test
+          call not
+            call idiom-is-built
+              read built
+        hook hold
+          save message
+            call idiom-first-message
+              read built
+          call log, text <  {shown-name} does not build: {message}>
+          turn next
+      save path
+        call node-path/join
+          read out
+          text <{call(idiom-dashes, read(program/name))}.rs>
+      save prelude
+        call native-module/native-prelude
+          read built/program
+          text <rust>
+          read reader
+      save emitted
+        call rust-module/emit-rust
+          read built/program
+      call node-fs/write-file-sync
+        read path
+        text <{prelude}\n{emitted}\nfn main() \{\}\n>
+      save words
+        make list
+      call words/push, text <--edition>
+      call words/push, text <2021>
+      call words/push, text <-W>
+      call words/push, text <clippy::all>
+      call words/push, text <-A>
+      call words/push, text <dead_code>
+      call words/push, text <-A>
+      call words/push, text <unused>
+      call words/push, text <-o>
+      call words/push
+        call node-path/join
+          read out
+          text <lint-out>
+      call words/push, read path
+      save ran
+        call idiom-spawn
+          text <clippy-driver>
+          read words
+          text <>
+      save said
+        call idiom-stderr
+          read ran
+      save found
+        call idiom-clippy-lints
+          read said
+      walk list
+        read found
+        hook next
+          take site, name lint
+          save lints
+            call count-one
+              read lints
+              read lint
+      save count
+        read found/length
+      save total
+        call add
+          read total
+          read count
+      save shown-count
+        call idiom-pad-start
+          text <{count}>
+          code 4
+      save note
+        call idiom-clippy-note
+          call idiom-status
+            read ran
+          read said
+      call log, text <  {shown-name} {shown-count} clippy findings{note}>
+  call counted/push
+    make tally
+      bind name, text <rust>
+      bind count, read total
+  save size
+    read programs/length
+  call log, text <\nrust: {total} clippy findings over {size} programs>
+  call print-tallies
+    read lints
+
+  # ---- TypeScript: the same programs emitted for node, typechecked together by `tsc --strict`
+  save ts-files
+    make list
+  walk list
+    read programs
+    hook next
+      take site, name program
+      save built
+        call idiom-compile
+          read compile-module/compile
+          read native-module/with-native-env
+          read stdlib
+          read program/file
+          text <node>
+      fork test
+        hook test
+          call not
+            call idiom-is-built
+              read built
+        hook hold
+          turn next
+      # each file a module of its own, so two programs' declarations never meet
+      save path
+        call node-path/join
+          read out
+          text <{call(idiom-dashes, read(program/name))}.ts>
+      save joined
+        call native-module/join-type-script-prelude
+          call native-module/native-prelude
+            read built/program
+            text <node>
+            read reader
+          read built/typescript
+      call node-fs/write-file-sync
+        read path
+        text <{joined}\nexport \{\}\n>
+      call ts-files/push, read path
+  # es2023: the emitted code targets node 20, which has `toReversed` and the other ES2023 array methods it uses
+  save words
+    make list
+  call words/push, text <tsc>
+  call words/push, text <--noEmit>
+  call words/push, text <--strict>
+  call words/push, text <--target>
+  call words/push, text <es2022>
+  call words/push, text <--lib>
+  call words/push, text <es2023>
+  call words/push, text <--types>
+  call words/push, text <node>
+  call words/push, text <--skipLibCheck>
+  walk list
+    read ts-files
+    hook next
+      take site, name one
+      call words/push, read one
+  save tsc
+    call idiom-spawn
+      text <npx>
+      read words
+      read term
+  save tsc-said
+    call idiom-stdout
+      read tsc
+  save ts-errors
+    call idiom-error-count
+      read tsc-said
+  save out-size
+    call char-count
+      read out
+  walk list
+    read ts-files
+    hook next
+      take site, name path
+      save own
+        call idiom-own-lines
+          read tsc-said
+          read path
+          read term
+      save shown-path
+        call idiom-pad-end
+          call substring
+            read path
+            call add
+              read out-size
+              code 1
+            call char-count
+              read path
+          code 30
+      save shown-own
+        call idiom-pad-start
+          text <{own}>
+          code 4
+      call log, text <  {shown-path} {shown-own} tsc --strict errors>
+  save ts-size
+    read ts-files/length
+  call log, text <\ntypescript: {ts-errors} tsc --strict errors over {ts-size} programs>
+  save total
+    call add
+      read total
+      read ts-errors
+  call counted/push
+    make tally
+      bind name, text <typescript>
+      bind count, read ts-errors
+
+  # ---- Swift and Kotlin: no linter is installed here (swiftlint, ktlint and detekt join when one is), so the
+  # compilers' own warnings stand in. They are idiom findings all the same: a `var` never mutated, a value never read,
+  # a cast that always succeeds, code after a `return`
+  fork test
+    hook test
+      call idiom-is-installed, text <swiftc>
+    hook hold
+      save swift-files
+        make list
+      save swift-text, text <>
+      walk list
+        read programs
+        hook next
+          take site, name program
+          save built
+            call idiom-compile
+              read compile-module/compile
+              read native-module/with-native-env
+              read stdlib
+              read program/file
+              text <swift>
+          fork test
+            hook test
+              call not
+                call idiom-is-built
+                  read built
+            hook hold
+              turn next
+          save path
+            call node-path/join
+              read out
+              text <{call(idiom-dashes, read(program/name))}.swift>
+          save prelude
+            call native-module/native-prelude
+              read built/program
+              text <swift>
+              read reader
+          save emitted
+            call swift-module/emit-swift
+              read built/program
+          call node-fs/write-file-sync
+            read path
+            text <{prelude}\n{emitted}\n>
+          call swift-files/push, read path
+          save words
+            make list
+          call words/push, text <-typecheck>
+          call words/push, read path
+          save ran
+            call idiom-spawn
+              text <swiftc>
+              read words
+              text <>
+          save swift-text
+            text <{swift-text}{call(idiom-stderr, read(ran))}>
+      save swift-count
+        call warned
+          text <swift>
+          read swift-text
+          read swift-files
+      call counted/push
+        make tally
+          bind name, text <swift>
+          bind count, read swift-count
+      save total
+        call add
+          read total
+          read swift-count
+  fork test
+    hook test
+      call idiom-is-installed, text <kotlinc>
+    hook hold
+      save kotlin-files
+        make list
+      walk list
+        read programs
+        hook next
+          take site, name program
+          save built
+            call idiom-compile
+              read compile-module/compile
+              read native-module/with-native-env
+              read stdlib
+              read program/file
+              text <kotlin>
+          fork test
+            hook test
+              call not
+                call idiom-is-built
+                  read built
+            hook hold
+              turn next
+          # a package each, so one kotlinc run takes them all and two programs' declarations never meet
+          save path
+            call node-path/join
+              read out
+              text <{call(idiom-dashes, read(program/name))}.kt>
+          save prelude
+            call native-module/native-prelude
+              read built/program
+              text <kotlin>
+              read reader
+          save emitted
+            call kotlin-module/emit-kotlin
+              read built/program
+          save hoisted
+            call kotlin-module/hoist-kotlin-imports
+              text <{prelude}\n{emitted}\n>
+          save package-name
+            call idiom-package
+              read program/name
+          call node-fs/write-file-sync
+            read path
+            text <package {package-name}\n{hoisted}>
+          call kotlin-files/push, read path
+      save words
+        make list
+      walk list
+        read kotlin-files
+        hook next
+          take site, name one
+          call words/push, read one
+      call words/push, text <-d>
+      call words/push
+        call node-path/join
+          read out
+          text <kotlin-out>
+      save ran
+        call idiom-spawn
+          text <kotlinc>
+          read words
+          text <>
+      save kotlin-count
+        call warned
+          text <kotlin>
+          call idiom-stderr
+            read ran
+          read kotlin-files
+      call counted/push
+        make tally
+          bind name, text <kotlin>
+          bind count, read kotlin-count
+      save total
+        call add
+          read total
+          read kotlin-count
+
+  fork test
+    hook test
+      call and
+        call is-unequal
+          read max
+          text <>
+        call is-above
+          read total
+          call idiom-to-number
+            read max
+    hook hold
+      call log, text <\nabove the gate of {max}>
+      call exit, code 1
+
+  # THE HOLD: each target's count against the one committed in idiom-baseline.json beside this file. A count above
+  # its baseline fails, naming the target; one below it is reported, and `--commit` writes the new counts so the lower
+  # one becomes the gate. A target whose tool is missing on this machine is not compared. Writes only on --commit
+  save baseline-file
+    call node-path/join
+      read term
+      text <task>
+      text <idiom-baseline.json>
+  save baseline
+    call idiom-read-baseline
+      read baseline-file
+  save rose
+    make list
+  save fell
+    make list
+  walk list
+    read counted
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call idiom-baseline-has
+            read baseline
+            read one/name
+        hook hold
+          save held
+            call idiom-baseline-count
+              read baseline
+              read one/name
+          fork test
+            hook test
+              call is-above
+                read one/count
+                read held
+            hook hold
+              call rose/push, text <{one/name} ({call(idiom-baseline-shown, read(baseline), read(one/name))} to {one/count})>
+          fork test
+            hook test
+              call is-below
+                read one/count
+                read held
+            hook hold
+              call fell/push, read one/name
+  call log, text <>
+  walk list
+    read counted
+    hook next
+      take site, name one
+      save shown-target
+        call idiom-pad-end
+          read one/name
+          code 11
+      save shown-count
+        call idiom-pad-start
+          text <{one/count}>
+          code 4
+      save shown-base
+        call idiom-baseline-shown
+          read baseline
+          read one/name
+      call log, text <  {shown-target} {shown-count}  baseline {shown-base}>
+  fork test
+    hook test
+      read commit
+    hook hold
+      call node-fs/write-file-sync
+        read baseline-file
+        call idiom-baseline-text
+          read baseline
+          read counted
+      call log, text <\nwrote {baseline-file}>
+    hook miss
+      fork test
+        hook test
+          call is-above
+            read fell/length
+            code 0
+        hook hold
+          save fell-names
+            call join-texts
+              read fell
+              text <, >
+          call log, text <\nfell on {fell-names}: run with --commit to hold the lower count>
+  fork test
+    hook test
+      call is-above
+        read rose/length
+        code 0
+    hook hold
+      save rose-names
+        call join-texts
+          read rose
+          text <, >
+      call log, text <\nROSE on {rose-names}: the count may only fall>
+      call exit, code 1
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  save out, text <>
+  save first, true
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read part
+          save first, false
+        hook miss
+          save out, text <{out}{between}{part}>
+  send back, read out
+
+# ---------------------------------------------------------------- the console
+
+# Count the idiom findings of the emitted code on every target, held against task/idiom-baseline.json
+hook count
+  # write the counts as the new baseline
+  take commit
+    like boolean
+    bind code false
+  # fail when the total is above this number
+  take max
+    like text
+    bind <>
+  task idiom-run

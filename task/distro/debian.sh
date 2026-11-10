@@ -1,5 +1,5 @@
 #!/bin/sh
-# term's Debian half, run inside task/distro/debian.dockerfile by task/distro.ts. Two modes:
+# term's Debian half, run inside task/distro/debian.dockerfile by task/distro.tree. Two modes:
 #
 #   build   /in/term-linux-{x64,arm64}.tar.gz (the release payloads) -> /out/term_<VERSION>_{amd64,arm64}.deb
 #   index   /repo, an apt repository whose pool/<version>/ folders hold every .deb it lists -> its dists/, with an

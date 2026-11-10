@@ -1,0 +1,371 @@
+# `pnpm term:index-revoke`: take versions of a package out of the term.surf package index, so
+# its page and `term self find` stop offering them. The index never deletes a version: a revoke marks it, and the
+# version leaves every listing.
+#
+#   pnpm term:index-revoke @term/code 2.7.0 2.7.4                    report what would be revoked
+#   pnpm term:index-revoke @term/code 2.7.0 2.7.4 --reason "..." --commit   revoke them
+#
+# The index accepts a revoke signed by a key of the scope's key set: `term.revoke.v1 <name> <version> <digest> <time>`
+# (the index's `revokeStatement`), within ten minutes of now. It signs with this
+# machine's publish key, the one `term host` and `pnpm term:release` sign with (work/registry/publishing.tree
+# `load-publish-keypair`), and reads each version's digest from the index itself. Written 2026-10-22, when 2.6.0 to
+# 2.7.4 were deleted from ghcr for carrying build caches with a machine's paths and the index still listed 2.7.0 and
+# 2.7.4. Ported from task/index-revoke.ts (item term-self-host-001-0718), run by `term boot` through the alias.
+
+load @term/base/console
+  find log
+  find error
+
+load @term/base/environment
+  find variable
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+
+load @term/call/work/small/home-folder
+  find user-home
+  find legacy-user-home
+  find kept-at
+
+load @term/deck/object/id-signing
+  find sign-id
+
+dock load
+  load <node:fs>, name node-fs
+
+# ---- the host values Term has no word for ----
+
+# the index's address: TERM_INDEX_URL trimmed, else tool.term.surf, with no trailing slash
+bind index-address
+  take given, like text
+  like text
+  case node
+    text <<($given.trim() || "https://tool.term.surf").replace(/\/+$/, "")>>
+
+# a GET with the index's user agent: the host's Response
+bind index-get
+  take url, like text
+  take agent, like text
+  like dynamic
+  case node
+    text <<fetch($url, { headers: { "user-agent": $agent } })>>
+
+# a POST of a JSON body with the index's user agent
+bind index-post
+  take url, like text
+  take body, like text
+  take agent, like text
+  like dynamic
+  case node
+    text <<fetch($url, { method: "POST", headers: { "content-type": "application/json", "user-agent": $agent }, body: $body })>>
+
+bind is-answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <Boolean($answer.ok)>
+
+bind answer-status
+  take answer, like dynamic
+  like number
+  case node
+    text <$answer.status>
+
+bind answer-text
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.text()>
+
+bind answer-json
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.json()>
+
+# the versions an index answer lists: `(answer.base ?? answer).package_version?.list ?? []`
+bind indexed-of
+  take answer, like dynamic
+  like list, like dynamic
+  case node
+    text <<((answer_) => ((answer_.base ?? answer_).package_version?.list ?? []))($answer)>>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+bind now-iso
+  like text
+  case node
+    text <new Date().toISOString()>
+
+bind parse-json
+  take text, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# the digest as the report shows it: its first 19 characters (`sha256:` and twelve)
+bind digest-head
+  take digest, like dynamic
+  like text
+  case node
+    text <String($digest).slice(0, 19)>
+
+# the revoke's body, in the original's key order, the reason only when one is given
+bind revoke-body
+  take name, like text
+  take version, like text
+  take time, like text
+  take key, like dynamic
+  take sig, like text
+  take reason, like text
+  like text
+  case node
+    text <<JSON.stringify({ name: $name, version: $version, time: $time, key: $key, sig: $sig, ...($reason ? { reason: $reason } : {}) })>>
+
+# `error.message` of an Error, `String(error)` of anything else
+bind problem-message
+  take problem, like dynamic
+  like text
+  case node
+    text <<((problem_) => (problem_ instanceof Error ? problem_.message : String(problem_)))($problem)>>
+
+# ---- the run ----
+
+# the message on stderr, and exit 1
+task fail
+  take message, like text
+  like void
+  call error, text <index-revoke: {message}>
+  call exit, code 1
+
+# this machine's publish key, as load-publish-keypair reads it with mint false: the key file, else nothing
+task publish-keypair
+  like dynamic
+  save parts
+    make list
+  call parts/push, text <key>
+  save file
+    call kept-at
+      call user-home
+        read parts
+      call legacy-user-home
+        read parts
+  save pair
+    call parse-json, text <null>
+  fork
+    mark unsafe
+    save pair
+      call parse-json
+        call node-fs/read-file-sync
+          read file
+          text <utf-8>
+  halt take
+    take problem
+    save pair
+      call parse-json, text <null>
+  send back, read pair
+
+task revoke-each
+  mark async
+  take name, like text
+  take versions, like list, like text
+  take reason, like text
+  take commit, like boolean
+  like void
+  save index
+    call index-address
+      call variable, text <TERM_INDEX_URL>
+  save agent, text <term>
+  save response
+    call index-get
+      text <{index}/packages/select!?name={name}>
+      read agent
+      wait true
+  fork test
+    hook test
+      call not
+        call is-answer-ok
+          read response
+    hook hold
+      save said
+        call answer-text
+          read response
+          wait true
+      save status
+        call answer-status
+          read response
+      call fail, text <read {name} from {index}: {status} {said}>
+  save answer
+    call answer-json
+      read response
+      wait true
+  save indexed
+    call indexed-of
+      read answer
+  save keypair
+    call publish-keypair
+  fork test
+    hook test
+      call not
+        call is-truthy
+          read keypair
+    hook hold
+      call fail, text <this machine has no publish key, so nothing can be signed>
+  walk list
+    read versions
+    hook next
+      take site, name version
+      save found
+        call parse-json, text <null>
+      save seen, false
+      walk list
+        read indexed
+        hook next
+          take site, name one
+          fork test
+            hook test
+              call and
+                call not
+                  read seen
+                call is-equal
+                  call text-of
+                    read one/version
+                  read version
+            hook hold
+              save found, read one
+              save seen, true
+      fork test
+        hook test
+          call not
+            read seen
+        hook hold
+          call fail, text <{name}@{version} is not in the index>
+      fork test
+        hook test
+          call is-truthy
+            read found/revocation
+        hook hold
+          call log, text <  {name}@{version} is revoked already>
+          turn next
+      fork test
+        hook test
+          call not
+            read commit
+        hook hold
+          save head
+            call digest-head
+              read found/digest
+          call log, text <  would revoke {name}@{version} ({head})>
+          turn next
+      save time
+        call now-iso
+      save digest
+        call text-of
+          read found/digest
+      save statement, text <term.revoke.v1 {name} {version} {digest} {time}>
+      save sig
+        call sign-id
+          read statement
+          call text-of
+            read keypair/privateKey
+      save body
+        call revoke-body
+          read name
+          read version
+          read time
+          read keypair/publicKey
+          read sig
+          read reason
+      save sent
+        call index-post
+          text <{index}/packages/revoke!>
+          read body
+          read agent
+          wait true
+      fork test
+        hook test
+          call not
+            call is-answer-ok
+              read sent
+        hook hold
+          save said
+            call answer-text
+              read sent
+              wait true
+          save status
+            call answer-status
+              read sent
+          call fail, text <revoke {name}@{version}: {status} {said}>
+      call log, text <  revoked {name}@{version}>
+  fork test
+    hook test
+      call not
+        read commit
+    hook hold
+      call log, text <report only: --commit revokes them>
+
+task revoke
+  mark async
+  take name, like text
+  take versions, like list, like text
+  take reason, like text
+  take commit, like boolean
+  like void
+  fork test
+    hook test
+      call or
+        call is-equal
+          read name
+          text <>
+        call is-equal
+          read versions/length
+          code 0
+    hook hold
+      call fail, text <name a package and its versions: pnpm term:index-revoke @term/code 2.7.0 2.7.4>
+  fork
+    mark unsafe
+    call revoke-each
+      read name
+      read versions
+      read reason
+      read commit
+      wait true
+  halt take
+    take problem
+    call fail
+      call problem-message
+        read problem
+
+# ---------------------------------------------------------------- the console
+
+# Revoke versions of a package in the term.surf package index. Without --commit this reports what it would revoke
+hook revoke
+  # the package, `@term/code`
+  slot name
+    like text
+    bind <>
+  # the versions to revoke
+  slot versions
+    like list, like text
+  # why, shown on the version's page
+  take reason
+    like text
+    bind <>
+  # revoke them
+  take commit
+    like boolean
+    bind code false
+  task revoke

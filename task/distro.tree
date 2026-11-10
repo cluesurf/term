@@ -1,0 +1,2211 @@
+# `pnpm term:distro`: the `term` command for the package managers Linux and Windows already have, made from the
+# payloads `pnpm term:release` built. Ported from task/distro.ts (item
+# term-self-host-001-0718), run by `term boot` through the alias.
+#
+#   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
+#   pnpm term:distro --commit   also write the signed apt and dnf indexes and the installer load.mjs (task/make-load.tree,
+#                               from installer.tree) into the term.surf site's public/ (served at https://term.surf/apt,
+#                               /rpm and /load.mjs; `--site <dir>` or TERM_SITE_DIR, else host/site/)
+#                               and the winget manifests into the winget-pkgs fork (`--winget <dir>` or
+#                               TERM_WINGET_FORK, else host/winget/). It writes files and nothing else: the GitHub
+#                               release, the deploy and every git step are printed for a person to run
+#
+# What it makes, all from tmp/release/<version>/term-<platform>.tar.gz, the bytes `@term/code` releases:
+#
+#   packages/term_<v>_{amd64,arm64}.deb          /usr/lib/term, the payload as released, and /usr/bin/term a link
+#   packages/term-<v>-1.{x86_64,aarch64}.rpm     to its launcher (task/distro/debian.sh, fedora.sh, term.spec)
+#   packages/term-<v>-windows-{x64,arm64}.zip    term\, with bin\term.exe (task/launcher/term.go) for winget
+#   winget/manifests/c/ClueSurf/Term/<v>/        ClueSurf.Term
+#   repo/                                        the repositories, packages included, as apt and dnf read them
+#   public/                                      the same without the packages, and load.mjs: what --commit puts on
+#                                                term.surf
+#
+# NO PACKAGE IS STORED ON term.surf. Every file in packages/ is an asset of the GitHub release `v<version>` on
+# cluesurf/term, which winget downloads its zips from too. The indexes name each package under its version
+# (`pool/<v>/...`, `<v>/...`), and the term.surf Worker answers such a path with a redirect to that release asset
+# (the shapes test/distro-redirect.ts holds). apt and dnf follow it and check the file against the
+# signed index. So a release costs no storage and no git history, and the indexes a deploy carries are kilobytes.
+#
+# THE INDEXES KEEP THE NEWEST THREE VERSIONS. The older two are read back from their GitHub releases, so an index can
+# be rebuilt on any machine from what is public, and a version whose release lacks its packages is not listed.
+#
+# THE KEY NEVER ENTERS A CONTAINER. The containers build packages and indexes and sign nothing; Release and repomd.xml
+# are signed here, by gpg, with TERM_DISTRO_KEY (the key `deck/task`'s repositories were made for, by default), which
+# asks for its passphrase once on the terminal. test/call/distro.ts signs with a throwaway key in its own GNUPGHOME.
+#
+# NODE IS RECOMMENDED, NOT REQUIRED, by the .deb and the .rpm. The launcher runs the `node` on PATH, so a Node from
+# nvm, fnm or a tarball, which no package manager can see, works, and one too old is named by the launcher itself.
+# winget has no such distinction and depends on OpenJS.NodeJS.LTS.
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by): a booted program runs in the
+# folder it was started in, which the alias makes the Term root.
+
+load @term/call/work/output/printer
+  find open-run
+  find report
+  find close-run
+  find count
+  find field
+  find location
+  find show-path
+
+load @term/call/work/item/event
+  find item-field
+  find tally
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find set-variable
+  find directory
+
+load @term/base/process
+  find exit
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+  find from-texts
+
+load @term/base/text
+  find split
+  find trim
+  find ends-with
+  find starts-with
+  find contains
+  find substring
+  find char-count
+  find to-upper-case
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <node:crypto>, name node-crypto
+
+# ---- the constants ----
+
+task site-url
+  like text
+  send back, text <https://term.surf>
+
+# the GitHub repository whose releases hold every package
+task repository
+  like text
+  send back, text <cluesurf/term>
+
+task releases-url
+  like text
+  send back, text <https://github.com/{repository()}/releases/download>
+
+# the generic agent this repository sends to a host that has not asked for ours
+task agent
+  like text
+  send back, text <Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36>
+
+# the oldest Node the CLI runs on (task/release.ts NODE_FLOOR)
+task node-floor
+  like text
+  send back, text <22.3.0>
+
+task summary
+  like text
+  send back, text <The Term language: compiler, package manager, test runner and language server>
+
+# how many versions each index lists: this one and the two before it, a rollback's worth
+task keep
+  like number
+  send back, code 3
+
+task signing-key
+  like text
+  save named
+    call variable, text <TERM_DISTRO_KEY>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back, read named
+  send back, text <82273CF783C46701>
+
+task debian-image
+  like text
+  send back, text <term-distro-debian>
+
+task fedora-image
+  like text
+  send back, text <term-distro-fedora>
+
+# how long `docker info` may take to answer before Docker counts as down: a running daemon answers in well under a
+# second, and one whose VM is stopped never does
+task docker-info-timeout
+  like number
+  send back, code 20000
+
+# the bound on one `docker build` or `docker run` (an image's first build downloads its base and packages)
+task docker-timeout
+  like number
+  send back, code 1800000
+
+# the bound on any other child (zip, gpg, which may wait on a passphrase typed at the terminal)
+task run-timeout
+  like number
+  send back, code 600000
+
+# what a Fedora or RHEL machine saves as /etc/yum.repos.d/term.repo. The packages are not signed one by one:
+# repomd.xml is, and it carries the sha256 of every package, so repo_gpgcheck covers each through the index
+task dnf-repo
+  like text
+  send back, text <[term]\nname=term\nbaseurl={site-url()}/rpm\nenabled=1\ngpgcheck=0\nrepo_gpgcheck=1\ngpgkey={site-url()}/term.asc\n>
+
+# what a Debian or Ubuntu machine saves as /etc/apt/sources.list.d/term.list, beside the key at /etc/apt/keyrings
+task apt-list
+  like text
+  send back, text <deb [signed-by=/etc/apt/keyrings/term.asc] {site-url()}/apt stable main\n>
+
+# ---- the shapes ----
+
+# one Linux package of a version: its index (apt or rpm) and its file name
+form linux-package
+  link kind, like text
+  link name, like text
+
+# a file this made, as the report and the winget manifest read it
+form made-file
+  link name, like text
+  link file, like text
+  link bytes, like number
+  link sha256, like text
+
+# a container run: its folders by the path inside, its variables, and the command
+form mount
+  link inside, like text
+  link outside, like text
+
+# what the printer reads: each shape names only the keys the original passed
+form opening-item
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+  link started, like number
+
+form message-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form timed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+
+form first-made-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link bytes, like number
+  link duration, like number
+  link fields, like list, like item-field
+
+form made-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link bytes, like number
+  link fields, like list, like item-field
+
+form fields-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like item-field
+
+form counted-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+
+form timed-fields-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like item-field
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like item-field
+
+form status-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link http, like number
+
+form exit-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link exit, like dynamic
+  link quote, like list, like text
+
+form next-close
+  link verdict, like text
+  link failure, like text
+  link next, like text
+
+form stop-close
+  link verdict, like text
+  link failure, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like tally
+  link next, like text
+
+form message-close
+  link verdict, like text
+  link message, like list, like text
+  link done, like boolean
+
+# ---- the host values Term has no word for ----
+
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# the day as the winget manifest dates a release: the ISO date of now
+bind today
+  like text
+  case node
+    text <new Date().toISOString().slice(0, 10)>
+
+bind parse-json
+  take text, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# whether this process reads a terminal: `process.stdin.isTTY`
+bind stdin-is-terminal
+  like boolean
+  case node
+    text <Boolean(process.stdin.isTTY)>
+
+# the node this program runs on: `process.execPath`
+bind node-program
+  like text
+  case node
+    text <process.execPath>
+
+# the folder a path names, resolved against another
+bind resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+bind recursive-options
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind forced-options
+  like dynamic
+  case node
+    text <<({ recursive: true, force: true })>>
+
+# the options of a child whose output is captured: `execFileSync`'s, with `input` handed to its stdin when it is not
+# empty, and `cwd` when it is not empty. The child is bounded by `timeout` and killed with SIGKILL at it
+bind child-options
+  take cwd, like text
+  take input, like text
+  take timeout, like number
+  like dynamic
+  case node
+    text <<((cwd_, input_, timeout_) => ({ cwd: cwd_ === "" ? undefined : cwd_, encoding: "utf8", input: input_ === "" ? undefined : input_, stdio: [input_ === "" ? "ignore" : "pipe", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, timeout: timeout_, killSignal: "SIGKILL" }))($cwd, $input, $timeout)>>
+
+# `docker info`'s options: its error captured, its time bounded
+bind docker-info-options
+  take timeout, like number
+  like dynamic
+  case node
+    text <<({ encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: $timeout, killSignal: "SIGKILL" })>>
+
+# `tty`'s options: this process's stdin, so it names the terminal this runs on
+bind tty-options
+  like dynamic
+  case node
+    text <<({ stdio: ["inherit", "pipe", "ignore"], encoding: "utf8" })>>
+
+# whether a finished child failed, as `execFileSync` would have thrown: it could not run, or it did not exit 0
+bind child-failed
+  take ran, like dynamic
+  like boolean
+  case node
+    text <<((ran_) => Boolean(ran_.error) || ran_.status !== 0)($ran)>>
+
+# whether its bound ended it
+bind child-timed-out
+  take ran, like dynamic
+  like boolean
+  case node
+    text <<((ran_) => ran_.error?.code === "ETIMEDOUT" || ran_.signal === "SIGKILL")($ran)>>
+
+bind child-missing
+  take ran, like dynamic
+  like boolean
+  case node
+    text <($ran.error?.code === "ENOENT")>
+
+# its exit status, or undefined when a signal or a failure to start ended it
+bind child-status
+  take ran, like dynamic
+  like dynamic
+  case node
+    text <($ran.status ?? undefined)>
+
+bind child-output
+  take ran, like dynamic
+  like text
+  case node
+    text <<((ran_) => `${ran_.stdout ?? ""}${ran_.stderr ?? ""}`)($ran)>>
+
+bind child-error-output
+  take ran, like dynamic
+  like text
+  case node
+    text <<`${$ran.stderr ?? ""}`>>
+
+bind child-stdout
+  take ran, like dynamic
+  like text
+  case node
+    text <String($ran.stdout ?? "")>
+
+# a GET with the generic agent: the host's Response
+bind github-get
+  take url, like text
+  take agent, like text
+  like dynamic
+  case node
+    text <<fetch($url, { headers: { "user-agent": $agent } })>>
+
+bind is-answer-ok
+  take answer, like dynamic
+  like boolean
+  case node
+    text <Boolean($answer.ok)>
+
+bind answer-status
+  take answer, like dynamic
+  like number
+  case node
+    text <$answer.status>
+
+bind answer-json
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.json()>
+
+bind answer-bytes
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$answer.arrayBuffer().then((bytes_) =\> Buffer.from(bytes_))>
+
+bind release-tag
+  take release, like dynamic
+  like text
+  case node
+    text <String($release.tag_name)>
+
+bind file-size
+  take file, like text
+  like number
+  case node
+    text <require("node:fs").statSync($file).size>
+
+bind file-sha256
+  take file, like text
+  like text
+  case node
+    text <require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync($file)).digest("hex")>
+
+# ---- the text ----
+
+task joined
+  take parts, like list, like text
+  take between, like text
+  like text
+  save out, text <>
+  save first, true
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read part
+          save first, false
+        hook miss
+          save out, text <{out}{between}{part}>
+  send back, read out
+
+# the lines of a child's output that hold more than blanks
+task quoted-lines
+  take output, like text
+  like list, like text
+  save lines
+    make list
+  walk list
+    call split
+      read output
+      text <\n>
+    hook next
+      take site, name line
+      fork test
+        hook test
+          call is-unequal
+            call trim
+              read line
+            text <>
+        hook hold
+          call lines/push, read line
+  send back, read lines
+
+# a variable trimmed, the empty text when it is not set
+task trimmed-variable
+  take name, like text
+  like text
+  send back
+    call trim
+      call variable
+        read name
+
+# ---- the root and the folders ----
+
+# TERM_ROOT when it is set, else the nearest folder at or above the working directory holding the root marker,
+# else the working directory
+task term-root
+  like text
+  save named
+    call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+# the folder a path option names, `--<flag> <dir>` (given here as `typed`), else the environment variable, else
+# `fallback`. A typed path resolves against the folder the person typed it in (INIT_CWD, which pnpm sets)
+task given-dir
+  take typed, like text
+  take variable-name, like text
+  take fallback, like text
+  like text
+  save given, read typed
+  fork test
+    hook test
+      call is-equal
+        read given
+        text <>
+    hook hold
+      save given
+        call trimmed-variable
+          read variable-name
+  fork test
+    hook test
+      call is-equal
+        read given
+        text <>
+    hook hold
+      send back, read fallback
+  save from
+    call directory
+  fork test
+    hook test
+      call has-variable, text <INIT_CWD>
+    hook hold
+      save from
+        call variable, text <INIT_CWD>
+  send back
+    call resolved-from
+      read from
+      read given
+
+# ---- running things ----
+
+# A child's output is captured and shown only when it fails, under the item that ran it. Every child is bounded
+# (`timeout`, run-timeout unless the caller names another): one that does not finish is killed and named as such, so
+# a tool waiting on something that never answers stops the run instead of hanging it
+task run-child
+  take command, like text
+  take arguments, like list, like text
+  take cwd, like text
+  take input, like text
+  take timeout, like number
+  like text
+  save ran
+    call node-child/spawn-sync
+      read command
+      read arguments
+      call child-options
+        read cwd
+        read input
+        read timeout
+  fork test
+    hook test
+      call child-failed
+        read ran
+    hook hold
+      save shown
+        make list
+      save at, code 0
+      walk list
+        read arguments
+        hook next
+          take site, name argument
+          fork test
+            hook test
+              call is-below
+                read at
+                code 3
+            hook hold
+              call shown/push, read argument
+          save at
+            call add
+              read at
+              code 1
+      save first-three
+        call joined
+          read shown
+          text < >
+      save said, text <{command} {first-three}>
+      fork test
+        hook test
+          call child-timed-out
+            read ran
+        hook hold
+          save seconds
+            call divide
+              read timeout
+              code 1000
+          save said, text <{said}: no answer within {seconds} s, killed>
+      call report
+        make exit-item
+          bind glyph, text <failed>
+          bind kind, text <problem>
+          bind verb, text <run>
+          bind subject, read said
+          bind exit
+            call child-status
+              read ran
+          bind quote
+            call quoted-lines
+              call child-output
+                read ran
+      call close-run
+        make stop-close
+          bind verdict, text <Stopped>
+          bind failure, text <environment>
+      call exit, code 1
+  send back
+    call child-stdout
+      read ran
+
+task run-plain
+  take command, like text
+  take arguments, like list, like text
+  like text
+  send back
+    call run-child
+      read command
+      read arguments
+      text <>
+      text <>
+      call run-timeout
+
+task container
+  take image, like text
+  take mounts, like list, like mount
+  take version, like text
+  take arguments, like list, like text
+  like void
+  save all
+    make list
+  call all/push, text <run>
+  call all/push, text <--rm>
+  walk list
+    read mounts
+    hook next
+      take site, name one
+      call all/push, text <-v>
+      call all/push, text <{one/outside}:{one/inside}>
+  call all/push, text <-e>
+  call all/push, text <VERSION={version}>
+  call all/push, text <-e>
+  call all/push, text <NODE_FLOOR={node-floor()}>
+  call all/push, text <-e>
+  call all/push, text <SUMMARY={summary()}>
+  call all/push, read image
+  walk list
+    read arguments
+    hook next
+      take site, name one
+      call all/push, read one
+  call run-child
+    text <docker>
+    read all
+    text <>
+    text <>
+    call docker-timeout
+
+# Whether Docker answers at all, asked with a bound before anything is built: `docker info` reaches the daemon, so a
+# socket that accepts and never answers fails here in docker-info-timeout rather than hanging the first build
+task docker-answers
+  like void
+  save arguments
+    make list
+  call arguments/push, text <info>
+  call arguments/push, text <--format>
+  call arguments/push, text <<{{.ServerVersion}}>>
+  save ran
+    call node-child/spawn-sync
+      text <docker>
+      read arguments
+      call docker-info-options
+        call docker-info-timeout
+  fork test
+    hook test
+      call child-failed
+        read ran
+    hook hold
+      save seconds
+        call divide
+          call docker-info-timeout
+          code 1000
+      save said, text <the Docker daemon refused `docker info`: start Docker Desktop>
+      fork test
+        hook test
+          call child-timed-out
+            read ran
+        hook hold
+          save said, text <the Docker daemon does not answer (`docker info`, {seconds} s): start Docker Desktop>
+      fork test
+        hook test
+          call child-missing
+            read ran
+        hook hold
+          save said, text <docker is not installed or not on PATH>
+      call report
+        make exit-item
+          bind glyph, text <failed>
+          bind kind, text <problem>
+          bind verb, text <docker>
+          bind subject, read said
+          bind exit
+            call child-status
+              read ran
+          bind quote
+            call quoted-lines
+              call child-error-output
+                read ran
+      call close-run
+        make next-close
+          bind verdict, text <Stopped before building anything>
+          bind failure, text <environment>
+          bind next, text <start Docker (Docker Desktop, or its daemon), then pnpm term:distro>
+      call exit, code 1
+
+# gpg asks for the key's passphrase through pinentry, which draws on the terminal GPG_TTY names. This run captures
+# gpg's output, so it names the terminal itself; with no terminal (a test's throwaway key in GNUPGHOME has no
+# passphrase) gpg runs in batch mode. APT_PWD, zone's passphrase for this key (`zone deck` / `zone task`), is handed
+# to gpg on its stdin instead, so `zone load deck/task -- pnpm term:distro` signs with no terminal
+task sign
+  take arguments, like list, like text
+  like void
+  save passphrase, text <>
+  fork test
+    hook test
+      call is-equal
+        call variable, text <TERM_DISTRO_KEY>
+        text <>
+    hook hold
+      save passphrase
+        call variable, text <APT_PWD>
+  fork test
+    hook test
+      call is-unequal
+        read passphrase
+        text <>
+    hook hold
+      save all
+        make list
+      call all/push, text <--batch>
+      call all/push, text <--yes>
+      call all/push, text <--pinentry-mode>
+      call all/push, text <loopback>
+      call all/push, text <--passphrase-fd>
+      call all/push, text <0>
+      call all/push, text <--local-user>
+      call all/push
+        call signing-key
+      walk list
+        read arguments
+        hook next
+          take site, name one
+          call all/push, read one
+      call run-child
+        text <gpg>
+        read all
+        text <>
+        read passphrase
+        call run-timeout
+    hook miss
+      call sign-on-terminal
+        read arguments
+
+task sign-on-terminal
+  take arguments, like list, like text
+  like void
+  fork test
+    hook test
+      call and
+        call is-equal
+          call variable, text <GPG_TTY>
+          text <>
+        call stdin-is-terminal
+    hook hold
+      save none
+        make list
+      save named
+        call node-child/spawn-sync
+          text <tty>
+          read none
+          call tty-options
+      # no terminal after all: batch mode below
+      fork test
+        hook test
+          call not
+            call child-failed
+              read named
+        hook hold
+          call set-variable
+            text <GPG_TTY>
+            call trim
+              call child-stdout
+                read named
+  save all
+    make list
+  fork test
+    hook test
+      call is-equal
+        call variable, text <GPG_TTY>
+        text <>
+    hook hold
+      call all/push, text <--batch>
+  call all/push, text <--yes>
+  call all/push, text <--local-user>
+  call all/push
+    call signing-key
+  walk list
+    read arguments
+    hook next
+      take site, name one
+      call all/push, read one
+  call run-plain
+    text <gpg>
+    read all
+
+# ---- the files ----
+
+# the files of `dir` whose names end in `suffix` (every file for the empty suffix), sorted, each with its size and its
+# sha256
+task made-files
+  take dir, like text
+  take suffix, like text
+  like list, like made-file
+  save names
+    make list
+  walk list
+    call node-fs/readdir-sync
+      read dir
+    hook next
+      take site, name one
+      save name
+        call text-of
+          read one
+      fork test
+        hook test
+          call ends-with
+            read name
+            read suffix
+        hook hold
+          call names/push, read name
+  save sorted
+    call sort
+      read names
+      read from-texts
+  save files
+    make list
+  walk list
+    read sorted
+    hook next
+      take site, name name
+      save file
+        call node-path/join
+          read dir
+          read name
+      call files/push
+        make made-file
+          bind name, read name
+          bind file, read file
+          bind bytes
+            call file-size
+              read file
+          bind sha256
+            call file-sha256
+              read file
+  send back, read files
+
+task report-made
+  take verb, like text
+  take files, like list, like made-file
+  take duration, like number
+  like void
+  save first, true
+  walk list
+    read files
+    hook next
+      take site, name one
+      save fields
+        make list
+      call fields/push
+        call field
+          text <sha256>
+          read one/sha256
+      fork test
+        hook test
+          read first
+        hook hold
+          call report
+            make first-made-item
+              bind glyph, text <done>
+              bind verb, read verb
+              bind subject, read one/name
+              bind bytes, read one/bytes
+              bind duration, read duration
+              bind fields, read fields
+          save first, false
+        hook miss
+          call report
+            make made-item
+              bind glyph, text <done>
+              bind verb, read verb
+              bind subject, read one/name
+              bind bytes, read one/bytes
+              bind fields, read fields
+
+# the four Linux packages of one version, by file name. A version's release must hold all four to be listed
+task linux-packages
+  take version, like text
+  like list, like linux-package
+  save all
+    make list
+  call all/push
+    make linux-package
+      bind kind, text <apt>
+      bind name, text <term_{version}_amd64.deb>
+  call all/push
+    make linux-package
+      bind kind, text <apt>
+      bind name, text <term_{version}_arm64.deb>
+  call all/push
+    make linux-package
+      bind kind, text <rpm>
+      bind name, text <term-{version}-1.x86_64.rpm>
+  call all/push
+    make linux-package
+      bind kind, text <rpm>
+      bind name, text <term-{version}-1.aarch64.rpm>
+  send back, read all
+
+# One package where its index names it and the Worker's redirect expects it: apt's under pool/<v>/, dnf's under <v>/
+task place
+  take kind, like text
+  take version, like text
+  take name, like text
+  take from, like text
+  take repo, like text
+  like void
+  save dir
+    call node-path/join
+      read repo
+      text <rpm>
+      read version
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <apt>
+    hook hold
+      save dir
+        call node-path/join
+          read repo
+          text <apt>
+          text <pool>
+          read version
+  call node-fs/mkdir-sync
+    read dir
+    call recursive-options
+  call node-fs/cp-sync
+    read from
+    call node-path/join
+      read dir
+      read name
+
+# ---- the versions ----
+
+# a version's three numbers
+task version-parts
+  take version, like text
+  like list, like number
+  save parts
+    make list
+  walk list
+    call split
+      read version
+      text <.>
+    hook next
+      take site, name part
+      call parts/push
+        call parse-json
+          read part
+  send back, read parts
+
+task compare-versions
+  take a, like text
+  take b, like text
+  like number
+  save x
+    call version-parts
+      read a
+  save y
+    call version-parts
+      read b
+  save at, code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        code 3
+    hook step
+      save difference
+        call subtract
+          call get
+            read x
+            read at
+          call get
+            read y
+            read at
+      fork test
+        hook test
+          call is-unequal
+            read difference
+            code 0
+        hook hold
+          send back, read difference
+      save at
+        call add
+          read at
+          code 1
+  send back, code 0
+
+# newest first
+task newest-first
+  take left, like text
+  take right, like text
+  like ordering
+  send back
+    call from-numbers
+      call compare-versions
+        read right
+        read left
+      code 0
+
+# a release tag as `v<n>.<n>.<n>`, each part one or more digits
+task is-release-tag
+  take tag, like text
+  like boolean
+  fork test
+    hook test
+      call not
+        call starts-with
+          read tag
+          text <v>
+    hook hold
+      send back, false
+  save parts
+    call split
+      call substring
+        read tag
+        code 1
+        call char-count
+          read tag
+      text <.>
+  fork test
+    hook test
+      call is-unequal
+        read parts/length
+        code 3
+    hook hold
+      send back, false
+  walk list
+    read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          call is-equal
+            read part
+            text <>
+        hook hold
+          send back, false
+      save at, code 0
+      walk test
+        hook test
+          call is-below
+            read at
+            call char-count
+              read part
+        hook step
+          save digit
+            call substring
+              read part
+              read at
+              call add
+                read at
+                code 1
+          fork test
+            hook test
+              call not
+                call contains
+                  text <0123456789>
+                  read digit
+            hook hold
+              send back, false
+          save at
+            call add
+              read at
+              code 1
+  send back, true
+
+# whether a release lists an asset of this name
+task has-asset
+  take assets, like list, like dynamic
+  take name, like text
+  like boolean
+  walk list
+    read assets
+    hook next
+      take site, name asset
+      fork test
+        hook test
+          call is-equal
+            call text-of
+              read asset/name
+            read name
+        hook hold
+          send back, true
+  send back, false
+
+task stop-keep
+  take subject, like text
+  take status, like number
+  like void
+  call report
+    make status-item
+      bind glyph, text <failed>
+      bind kind, text <problem>
+      bind verb, text <keep>
+      bind subject, read subject
+      bind http, read status
+  call close-run
+    make stop-close
+      bind verdict, text <Stopped>
+      bind failure, text <environment>
+  call exit, code 1
+
+# The keep - 1 newest versions before `version` whose GitHub release holds all four Linux packages, downloaded into
+# the repository so the index lists them. A release without them (every one before term:distro existed) is passed
+# over, and a GitHub that cannot be asked stops the run: an index that silently lost its older versions would take
+# a rollback away from every machine that reads it
+task earlier-versions
+  mark async
+  take root, like text
+  take version, like text
+  take into, like text
+  like list, like text
+  save response
+    call github-get
+      text <https://api.github.com/repos/{repository()}/releases?per_page=50>
+      call agent
+      wait true
+  fork test
+    hook test
+      call not
+        call is-answer-ok
+          read response
+    hook hold
+      call stop-keep
+        text <GitHub did not list the releases of {repository()}>
+        call answer-status
+          read response
+  save releases
+    call answer-json
+      read response
+      wait true
+  save fitting
+    make list
+  walk list
+    read releases
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-truthy
+            read one/draft
+        hook hold
+          turn next
+      save tag
+        call release-tag
+          read one
+      fork test
+        hook test
+          call not
+            call is-release-tag
+              read tag
+        hook hold
+          turn next
+      save candidate
+        call substring
+          read tag
+          code 1
+          call char-count
+            read tag
+      fork test
+        hook test
+          call not
+            call is-below
+              call compare-versions
+                read candidate
+                read version
+              code 0
+        hook hold
+          turn next
+      save complete, true
+      walk list
+        call linux-packages
+          read candidate
+        hook next
+          take site, name file
+          fork test
+            hook test
+              call not
+                call has-asset
+                  read one/assets
+                  read file/name
+            hook hold
+              save complete, false
+      fork test
+        hook test
+          read complete
+        hook hold
+          call fitting/push, read candidate
+  save sorted
+    call sort
+      read fitting
+      read newest-first
+  save candidates
+    make list
+  walk list
+    read sorted
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-below
+            read candidates/length
+            call subtract
+              call keep
+              code 1
+        hook hold
+          call candidates/push, read one
+  save cache
+    call node-path/join
+      read root
+      text <tmp>
+      text <release>
+      text <distro-cache>
+  call node-fs/mkdir-sync
+    read cache
+    call recursive-options
+  walk list
+    read candidates
+    hook next
+      take site, name candidate
+      walk list
+        call linux-packages
+          read candidate
+        hook next
+          take site, name one
+          save cached
+            call node-path/join
+              read cache
+              read one/name
+          fork test
+            hook test
+              call not
+                call node-fs/exists-sync
+                  read cached
+            hook hold
+              save download
+                call github-get
+                  text <{releases-url()}/v{candidate}/{one/name}>
+                  call agent
+                  wait true
+              fork test
+                hook test
+                  call not
+                    call is-answer-ok
+                      read download
+                hook hold
+                  call stop-keep
+                    text <{one/name} did not download from its release>
+                    call answer-status
+                      read download
+              save bytes
+                call answer-bytes
+                  read download
+                  wait true
+              call node-fs/write-file-sync
+                read cached
+                read bytes
+          call place
+            read one/kind
+            read candidate
+            read one/name
+            read cached
+            read into
+  send back, read candidates
+
+# ---- winget ----
+
+task schema
+  take kind, like text
+  like text
+  send back, text <# yaml-language-server: $schema=https://aka.ms/winget-manifest.{kind}.1.12.0.schema.json\n\n>
+
+# The three manifests of ClueSurf.Term <version>, in the fork's own layout: a zip per architecture, holding a portable
+# term.exe that winget links onto PATH as `term`, and Node from winget itself
+task write-winget
+  take version, like text
+  take zips, like list, like made-file
+  take into, like text
+  like text
+  save dir
+    call node-path/join
+      read into
+      text <manifests>
+      text <c>
+      text <ClueSurf>
+      text <Term>
+      read version
+  save installers
+    make list
+  walk list
+    read zips
+    hook next
+      take site, name zip
+      save arch, text <x64>
+      fork test
+        hook test
+          call contains
+            read zip/name
+            text <arm64>
+        hook hold
+          save arch, text <arm64>
+      save hash
+        call to-upper-case
+          read zip/sha256
+      call installers/push, text <  - Architecture: {arch}\n    InstallerUrl: {releases-url()}/v{version}/{zip/name}\n    InstallerSha256: {hash}>
+  save version-schema
+    call schema, text <version>
+  save installer-schema
+    call schema, text <installer>
+  save locale-schema
+    call schema, text <defaultLocale>
+  call node-fs/mkdir-sync
+    read dir
+    call recursive-options
+  call node-fs/write-file-sync
+    call node-path/join
+      read dir
+      text <ClueSurf.Term.yaml>
+    text <{version-schema}PackageIdentifier: ClueSurf.Term\nPackageVersion: {version}\nDefaultLocale: en-US\nManifestType: version\nManifestVersion: 1.12.0\n>
+  save lines
+    make list
+  call lines/push, text <{installer-schema}PackageIdentifier: ClueSurf.Term>
+  call lines/push, text <PackageVersion: {version}>
+  call lines/push, text <InstallerType: zip>
+  call lines/push, text <NestedInstallerType: portable>
+  call lines/push, text <NestedInstallerFiles:>
+  call lines/push, text <  - RelativeFilePath: term\\bin\\term.exe>
+  call lines/push, text <    PortableCommandAlias: term>
+  call lines/push, text <Commands:>
+  call lines/push, text <  - term>
+  call lines/push, text <Dependencies:>
+  call lines/push, text <  PackageDependencies:>
+  call lines/push, text <    - PackageIdentifier: OpenJS.NodeJS.LTS>
+  call lines/push, text <      MinimumVersion: {node-floor()}>
+  call lines/push, text <ReleaseDate: {today()}>
+  call lines/push, text <Installers:>
+  walk list
+    read installers
+    hook next
+      take site, name one
+      call lines/push, read one
+  call lines/push, text <ManifestType: installer>
+  call lines/push, text <ManifestVersion: 1.12.0>
+  call lines/push, text <>
+  call node-fs/write-file-sync
+    call node-path/join
+      read dir
+      text <ClueSurf.Term.installer.yaml>
+    call joined
+      read lines
+      text <\n>
+  save locale
+    make list
+  call locale/push, text <{locale-schema}PackageIdentifier: ClueSurf.Term>
+  call locale/push, text <PackageVersion: {version}>
+  call locale/push, text <PackageLocale: en-US>
+  call locale/push, text <Publisher: ClueSurf>
+  call locale/push, text <PublisherUrl: https://clue.surf>
+  call locale/push, text <PublisherSupportUrl: https://github.com/cluesurf/term/issues>
+  call locale/push, text <PackageName: term>
+  call locale/push, text <PackageUrl: https://term.surf>
+  call locale/push, text <License: Apache-2.0>
+  call locale/push, text <LicenseUrl: https://github.com/cluesurf/term/blob/make/LICENSE>
+  call locale/push, text <ShortDescription: {summary()}>
+  call locale/push, text <Description: |->
+  call locale/push, text <  The term command: the compiler, the package manager, the test runner and the language server of the Term>
+  call locale/push, text <  language, run on Node.js {node-floor()} or newer.>
+  call locale/push, text <Tags:>
+  call locale/push, text <  - compiler>
+  call locale/push, text <  - programming-language>
+  call locale/push, text <  - term>
+  call locale/push, text <ManifestType: defaultLocale>
+  call locale/push, text <ManifestVersion: 1.12.0>
+  call locale/push, text <>
+  call node-fs/write-file-sync
+    call node-path/join
+      read dir
+      text <ClueSurf.Term.locale.en-US.yaml>
+    call joined
+      read locale
+      text <\n>
+  send back, read dir
+
+# ---- the run ----
+
+task mount-of
+  take inside, like text
+  take outside, like text
+  like mount
+  send back
+    make mount
+      bind inside, read inside
+      bind outside, read outside
+
+task pack
+  mark async
+  take commit, like boolean
+  take site, like text
+  take winget, like text
+  like void
+  save term
+    call term-root
+  # the term.surf site's static files, which Cloudflare serves before its Worker runs: `--site <dir>`, else
+  # TERM_SITE_DIR, else host/site/. The site is not part of this repository, so the person's alias names it
+  save site-public
+    call given-dir
+      read site
+      text <TERM_SITE_DIR>
+      call node-path/join
+        read term
+        text <host>
+        text <site>
+  # the fork of microsoft/winget-pkgs a pull request is opened from: `--winget <dir>`, else TERM_WINGET_FORK, else
+  # host/winget/, for a look at what --commit writes
+  save winget-fork
+    call given-dir
+      read winget
+      text <TERM_WINGET_FORK>
+      call node-path/join
+        read term
+        text <host>
+        text <winget>
+  # the command that deploys the site once its folder is pushed, printed as the second publishing step when the
+  # person's alias names it (TERM_SITE_DEPLOY), and described otherwise
+  save site-deploy
+    call trimmed-variable, text <TERM_SITE_DEPLOY>
+  # the command that makes the GitHub release, printed as the first publishing step when the person's alias names it
+  # (TERM_GITHUB_RELEASE). It is the parent's, not this repository's: this package.json has no such script
+  save github-release
+    call trimmed-variable, text <TERM_GITHUB_RELEASE>
+  save manifest
+    call parse-json
+      call node-fs/read-file-sync
+        call node-path/join
+          read term
+          text <package.json>
+        text <utf8>
+  save version
+    call text-of
+      read manifest/version
+  save release
+    call node-path/join
+      read term
+      text <tmp>
+      text <release>
+      read version
+  save out
+    call node-path/join
+      read release
+      text <distro>
+  save started
+    call now-ms
+  save facts
+    make list
+  call facts/push, text <term {version}>
+  fork test
+    hook test
+      read commit
+    hook hold
+      call facts/push, text <--commit>
+  call open-run
+    make opening-item
+      bind verb, text <distro>
+      bind root, read term
+      bind facts, read facts
+      bind started, read started
+  # the payloads first: this packs what the release built, and builds nothing of its own
+  save wanted
+    make list
+  call wanted/push
+    call node-path/join
+      read release
+      text <term-linux-x64.tar.gz>
+  call wanted/push
+    call node-path/join
+      read release
+      text <term-linux-arm64.tar.gz>
+  call wanted/push
+    call node-path/join
+      read release
+      text <windows-x64>
+      text <term>
+      text <bin>
+      text <term.exe>
+  call wanted/push
+    call node-path/join
+      read release
+      text <windows-arm64>
+      text <term>
+      text <bin>
+      text <term.exe>
+  save missing
+    make list
+  walk list
+    read wanted
+    hook next
+      take site, name file
+      fork test
+        hook test
+          call not
+            call node-fs/exists-sync
+              read file
+        hook hold
+          call missing/push
+            call show-path
+              read file
+              read term
+  fork test
+    hook test
+      call is-above
+        read missing/length
+        code 0
+    hook hold
+      call report
+        make message-item
+          bind glyph, text <failed>
+          bind kind, text <problem>
+          bind verb, text <distro>
+          bind subject, text <The {version} payloads are not built>
+          bind message, read missing
+      call close-run
+        make next-close
+          bind verdict, text <Nothing packed>
+          bind failure, text <usage>
+          bind next, text <pnpm term:release --dry>
+      # the original set process.exitCode to 1 and returned. A booted command's runner sets the exit code from the
+      # command's own end, so the port ends the process here, as every other failure of this run does
+      call exit, code 1
+  # Docker first, with a bound: a Docker Desktop whose Linux VM is down accepts on its socket and never answers, and
+  # `docker build` then waits forever (item term-self-host-001-0444)
+  call docker-answers
+  call node-fs/rm-sync
+    read out
+    call forced-options
+  save packages
+    call node-path/join
+      read out
+      text <packages>
+  call node-fs/mkdir-sync
+    read packages
+    call recursive-options
+  save task-dir
+    call node-path/join
+      read term
+      text <task>
+      text <distro>
+  save imaged
+    call now-ms
+  save images
+    make list
+  call images/push, text <debian>
+  call images/push, text <fedora>
+  walk list
+    read images
+    hook next
+      take site, name name
+      save image
+        call debian-image
+      fork test
+        hook test
+          call is-equal
+            read name
+            text <fedora>
+        hook hold
+          save image
+            call fedora-image
+      save building
+        make list
+      call building/push, text <build>
+      call building/push, text <--quiet>
+      call building/push, text <-t>
+      call building/push, read image
+      call building/push, text <-f>
+      call building/push
+        call node-path/join
+          read task-dir
+          text <{name}.dockerfile>
+      call building/push, read task-dir
+      call run-child
+        text <docker>
+        read building
+        text <>
+        text <>
+        call docker-timeout
+  call report
+    make timed-item
+      bind glyph, text <done>
+      bind verb, text <image>
+      bind subject, text <{debian-image()}, {fedora-image()}>
+      bind duration
+        call subtract
+          call now-ms
+          read imaged
+  save build-mounts
+    make list
+  call build-mounts/push
+    call mount-of
+      text </in>
+      read release
+  call build-mounts/push
+    call mount-of
+      text </out>
+      read packages
+  call build-mounts/push
+    call mount-of
+      text </task>
+      read task-dir
+  save debs
+    call now-ms
+  save deb-build
+    make list
+  call deb-build/push, text <sh>
+  call deb-build/push, text </task/debian.sh>
+  call deb-build/push, text <build>
+  call container
+    call debian-image
+    read build-mounts
+    read version
+    read deb-build
+  call report-made
+    text <deb>
+    call made-files
+      read packages
+      text <.deb>
+    call subtract
+      call now-ms
+      read debs
+  save rpms
+    call now-ms
+  save rpm-build
+    make list
+  call rpm-build/push, text <sh>
+  call rpm-build/push, text </task/fedora.sh>
+  call rpm-build/push, text <build>
+  call container
+    call fedora-image
+    read build-mounts
+    read version
+    read rpm-build
+  call report-made
+    text <rpm>
+    call made-files
+      read packages
+      text <.rpm>
+    call subtract
+      call now-ms
+      read rpms
+  # the Windows zips: the release's own staged folder, `term\` at the top, so winget's nested path is term\bin\term.exe
+  save zipped
+    call now-ms
+  save windows
+    make list
+  call windows/push, text <windows-x64>
+  call windows/push, text <windows-arm64>
+  walk list
+    read windows
+    hook next
+      take site, name name
+      # -X leaves out macOS extra attributes; cwd, not a path inside the archive, decides where `term\` sits
+      save zipping
+        make list
+      call zipping/push, text <-qrX>
+      call zipping/push
+        call node-path/join
+          read packages
+          text <term-{version}-{name}.zip>
+      call zipping/push, text <term>
+      call run-child
+        text <zip>
+        read zipping
+        call node-path/join
+          read release
+          read name
+        text <>
+        call run-timeout
+  save zips
+    call made-files
+      read packages
+      text <.zip>
+  call report-made
+    text <zip>
+    read zips
+    call subtract
+      call now-ms
+      read zipped
+  save manifests
+    call write-winget
+      read version
+      read zips
+      call node-path/join
+        read out
+        text <winget>
+  save winget-fields
+    make list
+  call winget-fields/push
+    call location
+      call show-path
+        read manifests
+        read term
+  call report
+    make fields-item
+      bind glyph, text <done>
+      bind verb, text <winget>
+      bind subject, text <ClueSurf.Term {version}>
+      bind fields, read winget-fields
+  # the repositories: this version's packages, and the versions before it read back from their releases
+  save repo
+    call node-path/join
+      read out
+      text <repo>
+  save fetched
+    call now-ms
+  save earlier
+    call earlier-versions
+      read term
+      read version
+      read repo
+      wait true
+  walk list
+    call linux-packages
+      read version
+    hook next
+      take site, name one
+      call place
+        read one/kind
+        read version
+        read one/name
+        call node-path/join
+          read packages
+          read one/name
+        read repo
+  save kept, text <no earlier release carries its packages>
+  fork test
+    hook test
+      call is-above
+        read earlier/length
+        code 0
+    hook hold
+      save versions
+        call joined
+          read earlier
+          text <, >
+      save kept, text <{versions} from their releases>
+  save listed
+    make list
+  call listed/push
+    call count
+      call add
+        read earlier/length
+        code 1
+      text <versions listed>
+      text <version listed>
+  call report
+    make counted-item
+      bind glyph, text <done>
+      bind verb, text <keep>
+      bind subject, read kept
+      bind duration
+        call subtract
+          call now-ms
+          read fetched
+      bind counts, read listed
+  save indexed
+    call now-ms
+  save apt-mounts
+    make list
+  call apt-mounts/push
+    call mount-of
+      text </repo>
+      call node-path/join
+        read repo
+        text <apt>
+  call apt-mounts/push
+    call mount-of
+      text </task>
+      read task-dir
+  save deb-index
+    make list
+  call deb-index/push, text <sh>
+  call deb-index/push, text </task/debian.sh>
+  call deb-index/push, text <index>
+  call container
+    call debian-image
+    read apt-mounts
+    read version
+    read deb-index
+  save rpm-mounts
+    make list
+  call rpm-mounts/push
+    call mount-of
+      text </repo>
+      call node-path/join
+        read repo
+        text <rpm>
+  call rpm-mounts/push
+    call mount-of
+      text </task>
+      read task-dir
+  save rpm-index
+    make list
+  call rpm-index/push, text <sh>
+  call rpm-index/push, text </task/fedora.sh>
+  call rpm-index/push, text <index>
+  call container
+    call fedora-image
+    read rpm-mounts
+    read version
+    read rpm-index
+  save stable
+    call node-path/join
+      read repo
+      text <apt>
+      text <dists>
+      text <stable>
+  save release-file
+    call node-path/join
+      read stable
+      text <Release>
+  save detached
+    make list
+  call detached/push, text <--armor>
+  call detached/push, text <--detach-sign>
+  call detached/push, text <--output>
+  call detached/push, text <{release-file}.gpg>
+  call detached/push, read release-file
+  call sign, read detached
+  save clear
+    make list
+  call clear/push, text <--clearsign>
+  call clear/push, text <--output>
+  call clear/push
+    call node-path/join
+      read stable
+      text <InRelease>
+  call clear/push, read release-file
+  call sign, read clear
+  save repodata
+    call node-path/join
+      read repo
+      text <rpm>
+      text <repodata>
+  save repomd
+    make list
+  call repomd/push, text <--armor>
+  call repomd/push, text <--detach-sign>
+  call repomd/push, text <--output>
+  call repomd/push
+    call node-path/join
+      read repodata
+      text <repomd.xml.asc>
+  call repomd/push
+    call node-path/join
+      read repodata
+      text <repomd.xml>
+  call sign, read repomd
+  # what term.surf serves: the indexes, the two source files and the key, and no package
+  save public
+    call node-path/join
+      read out
+      text <public>
+  call node-fs/cp-sync
+    call node-path/join
+      read repo
+      text <apt>
+      text <dists>
+    call node-path/join
+      read public
+      text <apt>
+      text <dists>
+    call recursive-options
+  call node-fs/cp-sync
+    read repodata
+    call node-path/join
+      read public
+      text <rpm>
+      text <repodata>
+    call recursive-options
+  call node-fs/write-file-sync
+    call node-path/join
+      read public
+      text <apt>
+      text <term.list>
+    call apt-list
+  call node-fs/write-file-sync
+    call node-path/join
+      read public
+      text <rpm>
+      text <term.repo>
+    call dnf-repo
+  save exporting
+    make list
+  call exporting/push, text <--armor>
+  call exporting/push, text <--export>
+  call exporting/push
+    call signing-key
+  call node-fs/write-file-sync
+    call node-path/join
+      read public
+      text <term.asc>
+    call run-plain
+      text <gpg>
+      read exporting
+  # the installer `curl -fsSL https://term.surf/load | sh` hands over to, rebuilt from installer.tree's port as this
+  # release's tree holds it (task/make-load.tree), so term.surf never serves one built from a source that is gone
+  # (item term-self-host-001-1028). The release built the ports, so make-load runs without make:port
+  save loading
+    make list
+  call loading/push
+    call node-path/join
+      read term
+      text <host>
+      text <line.js>
+  call loading/push, text <boot>
+  call loading/push
+    call node-path/join
+      read term
+      text <task>
+      text <make-load.tree>
+  call loading/push, text <-->
+  call loading/push, text <write>
+  call loading/push, text <--site>
+  call loading/push, read public
+  call run-child
+    call node-program
+    read loading
+    read term
+    text <>
+    call run-timeout
+  save index-fields
+    make list
+  call index-fields/push
+    call field
+      text <key>
+      call signing-key
+  call index-fields/push
+    call location
+      call show-path
+        read public
+        read term
+  call report
+    make timed-fields-item
+      bind glyph, text <done>
+      bind verb, text <index>
+      bind subject, text <apt and dnf, signed, and the installer load.mjs>
+      bind duration
+        call subtract
+          call now-ms
+          read indexed
+      bind fields, read index-fields
+  fork test
+    hook test
+      call not
+        read commit
+    hook hold
+      save all-made
+        call made-files
+          read packages
+          text <>
+      save total
+        make list
+      call total/push
+        call count
+          read all-made/length
+          text <files>
+          text <file>
+      call close-run
+        make counted-close
+          bind verdict, text <Packed, nothing published>
+          bind counts, read total
+          bind next, text <pnpm term:distro --commit>
+      send back
+  # --commit: the files, and nothing in git
+  save served
+    make list
+  call served/push, text <apt>
+  call served/push, text <rpm>
+  call served/push, text <term.asc>
+  call served/push, text <load.mjs>
+  walk list
+    read served
+    hook next
+      take site, name name
+      call node-fs/rm-sync
+        call node-path/join
+          read site-public
+          read name
+        call forced-options
+      call node-fs/cp-sync
+        call node-path/join
+          read public
+          read name
+        call node-path/join
+          read site-public
+          read name
+        call recursive-options
+  save site-fields
+    make list
+  call site-fields/push
+    call location
+      call show-path
+        read site-public
+        read term
+  call report
+    make change-item
+      bind glyph, text <changed>
+      bind kind, text <change>
+      bind verb, text <write>
+      bind subject, text <{site-url()}/apt, /rpm, /term.asc and /load.mjs>
+      bind fields, read site-fields
+  save winget-to
+    call node-path/join
+      read winget-fork
+      text <manifests>
+      text <c>
+      text <ClueSurf>
+      text <Term>
+      read version
+  call node-fs/rm-sync
+    read winget-to
+    call forced-options
+  call node-fs/cp-sync
+    read manifests
+    read winget-to
+    call recursive-options
+  save fork-fields
+    make list
+  call fork-fields/push
+    call location
+      call show-path
+        read winget-to
+        read term
+  call report
+    make change-item
+      bind glyph, text <changed>
+      bind kind, text <change>
+      bind verb, text <write>
+      bind subject, text <ClueSurf.Term {version}>
+      bind fields, read fork-fields
+  save branch, text <cluesurf-term-{version}>
+  save first-step, text <   upload every file of {packages} to the release v{version}>
+  fork test
+    hook test
+      call is-unequal
+        read github-release
+        text <>
+    hook hold
+      save first-step, text <   {github-release} {version} --commit>
+  save deploy-step, text <   then deploy the site that serves this folder>
+  fork test
+    hook test
+      call is-unequal
+        read site-deploy
+        text <>
+    hook hold
+      save deploy-step, text <   {site-deploy}>
+  save steps
+    make list
+  call steps/push, text <1. the GitHub release on {repository()}, which holds every package the indexes and the winget manifests name>
+  call steps/push, text <   (the Term repository pushed first, so the tag names the commit they were built from):>
+  call steps/push, read first-step
+  call steps/push, text <2. term.surf, which then serves the new indexes and installer (a deploy builds from what is pushed):>
+  call steps/push, text <   git -C {site-public} add apt rpm term.asc load.mjs>
+  call steps/push, text <   git -C {site-public} commit -m "term {version} for apt, dnf and the installer">
+  call steps/push, text <   git -C {site-public} push>
+  call steps/push, read deploy-step
+  call steps/push, text <3. the winget pull request, on a branch of its own from upstream:>
+  call steps/push, text <   git -C {winget-fork} fetch upstream master>
+  call steps/push, text <   git -C {winget-fork} switch -c {branch} upstream/master>
+  call steps/push, text <   git -C {winget-fork} add manifests/c/ClueSurf/Term/{version}>
+  call steps/push, text <   git -C {winget-fork} commit -m "New package: ClueSurf.Term version {version}">
+  call steps/push, text <   git -C {winget-fork} push -u origin {branch}>
+  call steps/push, text <   https://github.com/microsoft/winget-pkgs/compare/master...cluesurf:fork-winget-pkgs:{branch}>
+  call close-run
+    make message-close
+      bind verdict, text <Written. Publishing is three steps, in this order>
+      bind message, read steps
+      bind done, true
+
+# ---------------------------------------------------------------- the console
+
+# Pack the release's payloads for apt, dnf and winget. Without --commit nothing leaves tmp/release/<version>/distro/
+hook pack
+  # also write the signed indexes, the installer and the winget manifests into the site and the fork
+  take commit
+    like boolean
+    bind code false
+  # the term.surf site's public folder (else TERM_SITE_DIR, else host/site/)
+  take site
+    like text
+    bind <>
+  # the winget-pkgs fork (else TERM_WINGET_FORK, else host/winget/)
+  take winget
+    like text
+    bind <>
+  task pack

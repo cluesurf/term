@@ -75,7 +75,8 @@ function texts(node: any, out: string[] = []): string[] {
   return out
 }
 
-// The dom docks `<global:html>`, so the native prelude (the one `term boot` prepends) goes first, the way
+// The node dom serializes through dom/native/node/html.tree, and the native prelude (the one `term boot` prepends
+// for any docked global) still goes first, the way
 // test/zone/component.ts does it. The render runtime is inlined into the emitted module, so `element` comes back
 // from the module itself rather than from a separate import.
 async function run(program: any, typescript: string): Promise<any> {

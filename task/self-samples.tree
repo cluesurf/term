@@ -1,0 +1,617 @@
+# The samples of the version commands' guide pages (term.surf, the self and install guides): real output of the
+# version commands. A loopback registry holding two releases, each this machine's release payload with its own
+# version, the loader's install of the older into a scratch home, and each command run as a person would, printed with
+# its command line. Ported from task/self-samples.ts (item term-self-host-001-0719), run by `term boot`.
+#
+# Needs the payload `pnpm run release --dry` writes. Writes nothing outside the system temp directory.
+# Run: node host/line.js boot task/self-samples.tree -- show --site <the term.surf public folder holding `load`>
+#
+# THE ROOT is TERM_ROOT when it is set, else the nearest folder at or above the working directory that holds
+# term/root.ts under task/ (the rule every Term tool reads its root by), as task/distro.tree reads it.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find directory
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find trim
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <@term/call/code/need-load>, name need-load-module
+  load <@term/deck/code/object/sign>, name sign-module
+  load <@term/deck/code/oci/keys>, name keys-module
+  load <@term/deck/code/oci/release>, name release-module
+  load <@term/deck/code/oci/transport>, name transport-module
+  load <@term/deck/test/oci-server>, name oci-server-module
+
+# ---- the host values Term has no word for ----
+
+# the folder a path names, resolved against another
+bind samples-resolved-from
+  take base, like text
+  take given, like text
+  like text
+  case node
+    text <require("node:path").resolve($base, $given)>
+
+# the version package.json names
+bind samples-version
+  take file, like text
+  like text
+  case node
+    text <String(JSON.parse(require("node:fs").readFileSync($file, "utf8")).version)>
+
+# the version two patches on: 2.10.0 is 2.10.2
+bind samples-next
+  take version, like text
+  like text
+  case node
+    text <<$version.replace(/\.(\d+)$/, (_m, patch_) => `.${Number(patch_) + 2}`)>>
+
+# the version a package.json text names, set to another
+bind samples-set-version
+  take text, like text
+  take version, like text
+  like text
+  case node
+    text <<$text.replace(/"version": "[^"]+"/, `"version": "${$version}"`)>>
+
+# a command that must succeed: execFileSync, which raises on a failure, with the variables `extra` adds
+bind samples-run-checked
+  take command, like text
+  take arguments, like list, like text
+  take extra, like dynamic
+  like void
+  case node
+    text <<void require("node:child_process").execFileSync($command, $arguments, { env: { ...process.env, ...$extra } })>>
+
+# no variables added
+bind samples-no-extra
+  like dynamic
+  case node
+    text <<({})>>
+
+bind samples-no-copy-file
+  like dynamic
+  case node
+    text <<({ COPYFILE_DISABLE: "1" })>>
+
+# a file's bytes, as a Buffer
+bind samples-file-bytes
+  take file, like text
+  like dynamic
+  case node
+    text <require("node:fs").readFileSync($file)>
+
+# the loopback registry's transport, signed in as the test server's one user
+bind samples-transport
+  take maker, like dynamic
+  take host, like text
+  like dynamic
+  case node
+    text <<$maker({ host: $host, credentials: async () => ({ kind: "basic", username: "tester", password: "secret" }), retries: 0 })>>
+
+bind samples-ensure-publisher
+  take ensure, like dynamic
+  take transport, like dynamic
+  take keypair, like dynamic
+  like dynamic
+  case node
+    text <<$ensure({ transport: $transport, repository: "cluesurf/term/name", scope: "@term", keypair: $keypair })>>
+
+bind samples-publish-release
+  take publish, like dynamic
+  take transport, like dynamic
+  take version, like text
+  take platform, like text
+  take bytes, like dynamic
+  take keypair, like dynamic
+  like dynamic
+  case node
+    text <<$publish({ transport: $transport, repository: "cluesurf/term/code", package: "@term/code", version: $version, payloads: [{ platform: $platform, bytes: $bytes }], keypair: $keypair })>>
+
+# the environment every command runs in: a scratch home, the loopback registry, a 76 column terminal
+bind samples-environment
+  take home, like text
+  take host, like text
+  like dynamic
+  case node
+    text <<({ ...process.env, HOME: $home, TERM_RELEASE_REGISTRY: `oci://${$host}/cluesurf/term`, TERM_OCI_HOST: $host, TERM_OCI_USERNAME: "tester", TERM_OCI_TOKEN: "secret", TERM_TRUST_DIR: require("node:path").join($home, "trust"), TERM_STORE: require("node:path").join($home, "store"), COLUMNS: "76" })>>
+
+# what a command printed on both streams, whatever it answered: a promise of the text
+bind samples-run
+  take file, like text
+  take arguments, like list, like text
+  take cwd, like text
+  take environment, like dynamic
+  take extra, like dynamic
+  like dynamic
+  case node
+    text <<new Promise((resolve_) => { require("node:child_process").execFile($file, $arguments, { env: { ...$environment, ...$extra }, cwd: $cwd, encoding: "utf8", timeout: 120000 }, (_error, stdout_, stderr_) => resolve_(`${stdout_}${stderr_}`)) })>>
+
+# `KEY=value ` for each variable a command adds, in order
+bind samples-prefix
+  take extra, like dynamic
+  like text
+  case node
+    text <<Object.entries($extra).map(([key_, value_]) => `${key_}=${value_} `).join("")>>
+
+bind samples-one-variable
+  take name, like text
+  take value, like text
+  like dynamic
+  case node
+    text <<({ [$name]: $value })>>
+
+bind samples-loader-variables
+  take host, like text
+  take version, like text
+  like dynamic
+  case node
+    text <<({ TERM_LOAD_REGISTRY: `http://${$host}`, TERM_LOAD_VERSION: $version })>>
+
+bind samples-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+bind samples-join-words
+  take words, like list, like text
+  like text
+  case node
+    text <$words.join(" ")>
+
+# ---- the root and the folders ----
+
+# TERM_ROOT when it is set, else the nearest folder at or above the working directory holding the root marker,
+# else the working directory
+task term-root
+  like text
+  save named
+    call trim
+      call variable, text <TERM_ROOT>
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      send back
+        call samples-resolved-from
+          call directory
+          read named
+  save start
+    call directory
+  save at, read start
+  save found, text <>
+  save looking, true
+  walk test
+    hook test
+      read looking
+    hook step
+      fork test
+        hook test
+          call node-fs/exists-sync
+            call node-path/join
+              read at
+              text <task>
+              text <term>
+              text <root.ts>
+        hook hold
+          save found, read at
+          save looking, false
+        hook miss
+          save up
+            call node-path/dirname
+              read at
+          fork test
+            hook test
+              call is-equal
+                read up
+                read at
+            hook hold
+              save looking, false
+            hook miss
+              save at, read up
+  fork test
+    hook test
+      call is-equal
+        read found
+        text <>
+    hook hold
+      send back, read start
+  send back, read found
+
+# the term.surf public folder: `--site <dir>` (given here as `typed`), else TERM_SITE_DIR, else host/site/ under the
+# root. A typed path resolves against the folder the person typed it in (INIT_CWD, which pnpm sets)
+task site-dir
+  take typed, like text
+  take term, like text
+  like text
+  save given, read typed
+  fork test
+    hook test
+      call is-equal
+        read given
+        text <>
+    hook hold
+      save given
+        call trim
+          call variable, text <TERM_SITE_DIR>
+  fork test
+    hook test
+      call is-equal
+        read given
+        text <>
+    hook hold
+      send back
+        call node-path/join
+          read term
+          text <host>
+          text <site>
+  save from
+    call directory
+  fork test
+    hook test
+      call has-variable, text <INIT_CWD>
+    hook hold
+      save from
+        call variable, text <INIT_CWD>
+  send back
+    call samples-resolved-from
+      read from
+      read given
+
+# ---- the payloads ----
+
+# the release payload at `payload-file`, its package.json and file list rewritten to `version`, packed again
+task payload-of
+  take payload-file, like text
+  take version, like text
+  like dynamic
+  save dir
+    call node-fs/mkdtemp-sync
+      call node-path/join
+        call node-os/tmpdir
+        text <term-payload-{version}->
+  save manifest
+    call node-path/join
+      read dir
+      text <term>
+      text <package.json>
+  save untar
+    make list
+  call untar/push, text <-xzf>
+  call untar/push, read payload-file
+  call untar/push, text <-C>
+  call untar/push, read dir
+  call samples-run-checked
+    text <tar>
+    read untar
+    call samples-no-extra
+  call node-fs/write-file-sync
+    read manifest
+    call samples-set-version
+      call node-fs/read-file-sync
+        read manifest
+        text <utf8>
+      read version
+  # the list a release carries is written last, over what it ships: rewritten here because package.json changed
+  call need-load-module/write-file-list
+    call node-path/join
+      read dir
+      text <term>
+  save packed
+    call node-path/join
+      read dir
+      text <term.tar.gz>
+  save tar
+    make list
+  call tar/push, text <-czf>
+  call tar/push, read packed
+  call tar/push, text <-C>
+  call tar/push, read dir
+  call tar/push, text <term>
+  call samples-run-checked
+    text <tar>
+    read tar
+    call samples-no-copy-file
+  send back
+    call samples-file-bytes
+      read packed
+
+# ---- the run ----
+
+# one command as a person runs it, printed under its command line
+task show
+  mark async
+  take bin, like text
+  take words, like list, like text
+  take cwd, like text
+  take environment, like dynamic
+  take extra, like dynamic
+  like void
+  save all
+    make list
+  walk list
+    read words
+    hook next
+      take site, name word
+      call all/push, read word
+  call all/push, text <--color>
+  call all/push, text <never>
+  save out
+    call samples-run
+      read bin
+      read all
+      read cwd
+      read environment
+      read extra
+      wait true
+  save prefix
+    call samples-prefix
+      read extra
+  save line
+    call samples-join-words
+      read words
+  call log, text <\n$ {prefix}term {line}\n{out}>
+
+task run-commands
+  mark async
+  take loader, like text
+  take host, like text
+  take version, like text
+  take next, like text
+  like void
+  save home
+    call node-fs/realpath-sync
+      call node-fs/mkdtemp-sync
+        call node-path/join
+          call node-os/tmpdir
+          text <term-samples->
+  save environment
+    call samples-environment
+      read home
+      read host
+  save bin
+    call node-path/join
+      read home
+      text <.base>
+      text <@term>
+      text <code>
+      text <call>
+      text <term>
+  save none
+    call samples-no-extra
+  save loading
+    make list
+  call loading/push, read loader
+  call samples-run
+    text <sh>
+    read loading
+    read home
+    read environment
+    call samples-loader-variables
+      read host
+      read version
+    wait true
+  save app
+    call node-path/join
+      read home
+      text <code>
+      text <app>
+  call node-fs/mkdir-sync
+    read app
+    call samples-recursive
+  call node-fs/write-file-sync
+    call node-path/join
+      read app
+      text <deck.tree>
+    text <deck @alice/app\n  mark \<1.0.0\>\n>
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <find>
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <load>
+  call words/push, read next
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <list>
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <--version>
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <+{next}>
+  call words/push, text <--version>
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <need>
+  call words/push, read next
+  call show(read(bin), read(words), read(app), read(environment), read(none))
+  save deck-text
+    call node-fs/read-file-sync
+      call node-path/join
+        read app
+        text <deck.tree>
+      text <utf8>
+  call log, text <\n$ cat deck.tree\n{deck-text}>
+  save lock-text
+    call node-fs/read-file-sync
+      call node-path/join
+        read app
+        text <lock.tree>
+      text <utf8>
+  call log, text <$ cat lock.tree\n{lock-text}>
+  save words
+    make list
+  call words/push, text <--version>
+  call show(read(bin), read(words), read(app), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <show>
+  call show(read(bin), read(words), read(app), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <toss>
+  call words/push, read next
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <--version>
+  save local-need
+    call samples-one-variable
+      text <TERM_NEED>
+      text <local>
+  call show(read(bin), read(words), read(app), read(environment), read(local-need))
+  save words
+    make list
+  call words/push, text <--version>
+  call show(read(bin), read(words), read(app), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <pick>
+  call words/push, read version
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+  save words
+    make list
+  call words/push, text <self>
+  call words/push, text <wash>
+  call words/push, text <--days>
+  call words/push, text <0>
+  call show(read(bin), read(words), read(home), read(environment), read(none))
+
+# the run's failure passed on as it came, once the registry is closed (the original's try / finally)
+bind samples-raise
+  take problem, like dynamic
+  like void
+  case node
+    text <<(() => { throw $problem })()>>
+
+bind samples-recursive
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+task write-samples
+  mark async
+  take site, like text
+  like void
+  save term
+    call term-root
+  # the loader script `curl -fsSL https://term.surf/load | sh` runs, from the term.surf public folder
+  save loader
+    call node-path/join
+      call site-dir
+        read site
+        read term
+      text <load>
+  save version
+    call samples-version
+      call node-path/join
+        read term
+        text <package.json>
+  save next
+    call samples-next
+      read version
+  save platform
+    call samples-text-of
+      call release-module/current-platform
+  save payload-file
+    call node-path/join
+      read term
+      text <tmp>
+      text <release>
+      read version
+      text <term-{platform}.tar.gz>
+  save version-payload
+    call payload-of
+      read payload-file
+      read version
+  save next-payload
+    call payload-of
+      read payload-file
+      read next
+  save server
+    call oci-server-module/start-oci-server
+      wait true
+  save host
+    call samples-text-of
+      read server/host
+  save transport
+    call samples-transport
+      read transport-module/http-transport
+      read host
+  save keypair
+    call sign-module/generate-keypair
+  call samples-ensure-publisher
+    read keys-module/ensure-publisher
+    read transport
+    read keypair
+    wait true
+  call samples-publish-release
+    read release-module/publish-release
+    read transport
+    read version
+    read platform
+    read version-payload
+    read keypair
+    wait true
+  call samples-publish-release
+    read release-module/publish-release
+    read transport
+    read next
+    read platform
+    read next-payload
+    read keypair
+    wait true
+  fork
+    mark unsafe
+    call run-commands
+      read loader
+      read host
+      read version
+      read next
+      wait true
+  halt take
+    take problem
+    call server/close
+      wait true
+    call samples-raise
+      read problem
+  call server/close
+    wait true
+
+# ---------------------------------------------------------------- the console
+
+# Print the version commands' samples, run against a loopback registry
+hook show
+  # the term.surf public folder holding `load` (else TERM_SITE_DIR, else host/site/)
+  take site
+    like text
+    bind <>
+  task write-samples

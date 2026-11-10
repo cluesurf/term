@@ -79,7 +79,7 @@ const node = build('node', PAGE)
 ok('the page compiles for node', node.ok, reasons(node))
 ok(
   'node stashes the title for the SSR shell',
-  bodyOf(node.typescript ?? '', 'setTitle').includes('doc.setTitle('),
+  bodyOf(node.typescript ?? '', 'setTitle').includes('stashTitle('),
   bodyOf(node.typescript ?? '', 'setTitle'),
 )
 
@@ -92,7 +92,7 @@ ok(
 ok(
   "cloudflare stashes like node, not the browser's live document",
   bodyOf(cloudflare.typescript ?? '', 'setTitle').includes(
-    'doc.setTitle(',
+    'stashTitle(',
   ) && !(cloudflare.typescript ?? '').includes('title.set('),
   bodyOf(cloudflare.typescript ?? '', 'setTitle'),
 )

@@ -55,7 +55,7 @@ async function main(): Promise<void> {
 
   const js = (
     await transform(
-      // the dom docks `<global:html>`: the native prelude goes first, as `term boot` prepends it
+      // the native prelude goes first, as `term boot` prepends it (the node dom serializes through dom/native/node/html.tree)
       `${nativePrelude(result.program, 'node', (p: string) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined))}\n${result.typescript}`,
       { loader: 'ts', format: 'esm' },
     )

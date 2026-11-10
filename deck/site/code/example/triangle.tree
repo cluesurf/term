@@ -1,0 +1,32 @@
+
+# The demo triangle for the vibe page: one triangle's three corners and its two shaders, the first render before the
+# lattice geometry (./lattice) replaced its vertices. Ported from runtime/triangle.ts (item term-self-host-001-0715).
+
+load ./native/{platform}/float-array
+  find float-32-array
+
+load @term/base/list
+  find list
+
+# the three corners as the GPU buffer's 32-bit floats
+task triangle-vertices
+  like dynamic
+  send back
+    call float-32-array
+      make list
+        code 0.0
+        code 0.5
+        code -0.5
+        code -0.5
+        code 0.5
+        code -0.5
+
+task vertex-source
+  like text
+  send back
+    text <#version 300 es\nin vec2 pos;\nvoid main() \{\n  gl_Position = vec4(pos, 0.0, 1.0);\n\}>
+
+task fragment-source
+  like text
+  send back
+    text <#version 300 es\nprecision mediump float;\nout vec4 color;\nvoid main() \{\n  color = vec4(0.2, 0.6, 1.0, 1.0);\n\}>

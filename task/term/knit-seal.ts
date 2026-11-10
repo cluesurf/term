@@ -4,7 +4,7 @@
 //
 // It runs the Term ports, emitted under deck/call/host/port/ (pnpm run make:port), the same code the CLI runs.
 //
-// Run: node ../../../../node_modules/tsx/dist/cli.mjs task/term/knit-seal.ts <project> [--commit], from the Term root
+// Run: node node_modules/tsx/dist/cli.mjs task/term/knit-seal.ts <project> [--commit], from the Term root
 //   (the library fixture: test/assurance/library, resealed whenever a library law's text changes)
 
 import path from 'node:path'

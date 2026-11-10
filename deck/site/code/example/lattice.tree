@@ -1,0 +1,480 @@
+
+# Geometry for the {3,4,3,4} vibe-lattice view (../vibe.tree). The vibe substrate is the 24-cell, the D4 coin of 24
+# directions: its vertices are every permutation of (+/-1, +/-1, 0, 0) in 4D, and its edges join the vertex pairs at
+# Euclidean distance sqrt(2), the 96 nearest neighbors. The edge graph is drawn as a 2D shadow on the F4 Coxeter plane,
+# the plane on which the Coxeter element (order h = 12) acts as a rotation, so the shadow carries the lattice's
+# twelve-fold symmetry. Fully deterministic: the same coin always yields the same picture. Ported from
+# runtime/lattice.ts (item term-self-host-001-0715): every product and sum runs in the original's order, so the points
+# are the same doubles on every backend that rounds IEEE 754 the same way.
+
+load @term/base/float
+  find square-root
+  find sine
+  find cosine
+  find absolute
+  find hypotenuse
+  find pi
+  find to-decimal
+
+load @term/base/list
+  find list
+
+# the floats as the host's 32-bit typed array, the vertex data a GPU buffer takes
+load ./native/{platform}/float-array
+  find float-32-array
+
+# the sum of the products of the two vectors' entries, first to last
+task dot
+  take p, like list, like float
+  take q, like list, like float
+  like float
+  save sum, code 0.0
+  walk size
+    bind base, code 0
+    bind head, read p/length
+    hook next
+      take site, name at
+      save sum
+        call add
+          read sum
+          call multiply
+            call get
+              read p
+              read at
+            call get
+              read q
+              read at
+  send back, read sum
+
+task norm
+  take p, like list, like float
+  like float
+  send back
+    call square-root
+      call dot
+        read p
+        read p
+
+# the vector reflected through the hyperplane perpendicular to the root
+task reflect
+  take v, like list, like float
+  take root, like list, like float
+  like list, like float
+  host f
+    call divide
+      call multiply
+        code 2.0
+        call dot
+          read v
+          read root
+      call dot
+        read root
+        read root
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read v/length
+    hook next
+      take site, name at
+      call out/push
+        call subtract
+          call get
+            read v
+            read at
+          call multiply
+            read f
+            call get
+              read root
+              read at
+  send back, read out
+
+# the 24 vertices, the two axes that carry the +/-1 entries chosen first, then their signs
+task build-vertices
+  like list, like list, like float
+  save verts
+    make list
+  save signs
+    make list
+      code 1.0
+      code -1.0
+  walk size
+    bind base, code 0
+    bind head, code 4
+    hook next
+      take site, name a
+      walk size
+        bind base
+          call add
+            read a
+            code 1
+        bind head, code 4
+        hook next
+          take site, name b
+          walk list, read signs
+            hook next
+              take site, name sa
+              walk list, read signs
+                hook next
+                  take site, name sb
+                  save v
+                    make list
+                  walk size
+                    bind base, code 0
+                    bind head, code 4
+                    hook next
+                      take site, name k
+                      save entry, code 0.0
+                      fork test
+                        hook test
+                          call is-equal
+                            read k
+                            read a
+                        hook hold
+                          save entry, read sa
+                      fork test
+                        hook test
+                          call is-equal
+                            read k
+                            read b
+                        hook hold
+                          save entry, read sb
+                      call v/push
+                        read entry
+                  call verts/push
+                    read v
+  send back, read verts
+
+# the F4 Coxeter element c = s0 . s1 . s2 . s3 over the simple roots (two long, two short), s3 applied first
+task coxeter
+  take v, like list, like float
+  take roots, like list, like list, like float
+  like list, like float
+  send back
+    call reflect
+      call reflect
+        call reflect
+          call reflect
+            read v
+            call get
+              read roots
+              code 3
+          call get
+            read roots
+            code 2
+        call get
+          read roots
+          code 1
+      call get
+        read roots
+        code 0
+
+# The projection basis (u, w) of the Coxeter plane, found without an eigensolver: the projector onto the eigenline of
+# eigenvalue exp(i*pi/6) is the phase-weighted sum of the powers of c, so applied to a generic vector it gives a
+# complex vector whose real and imaginary parts span the plane. They are orthonormalized into u and w.
+task projection-basis
+  like list, like list, like float
+  save roots
+    make list
+      make list
+        code 1.0
+        code -1.0
+        code 0.0
+        code 0.0
+      make list
+        code 0.0
+        code 1.0
+        code -1.0
+        code 0.0
+      make list
+        code 0.0
+        code 0.0
+        code 1.0
+        code 0.0
+      make list
+        code -0.5
+        code -0.5
+        code -0.5
+        code -0.5
+  # a generic seed vector, off every symmetry axis
+  save p
+    make list
+      code 1.0
+      code 0.3
+      code -0.7
+      code 0.2
+  # 2*pi / h, h = 12
+  host step
+    call divide
+      call pi
+      code 6.0
+  save re
+    make list
+      code 0.0
+      code 0.0
+      code 0.0
+      code 0.0
+  save im
+    make list
+      code 0.0
+      code 0.0
+      code 0.0
+      code 0.0
+  walk size
+    bind base, code 0
+    bind head, code 12
+    hook next
+      take site, name k
+      host angle
+        call multiply
+          call to-decimal
+            read k
+          read step
+      host c
+        call cosine
+          read angle
+      host s
+        call sine
+          read angle
+      save next-re
+        make list
+      save next-im
+        make list
+      walk size
+        bind base, code 0
+        bind head, code 4
+        hook next
+          take site, name i
+          call next-re/push
+            call add
+              call get
+                read re
+                read i
+              call multiply
+                read c
+                call get
+                  read p
+                  read i
+          call next-im/push
+            call subtract
+              call get
+                read im
+                read i
+              call multiply
+                read s
+                call get
+                  read p
+                  read i
+      save re, read next-re
+      save im, read next-im
+      save p
+        call coxeter
+          read p
+          read roots
+  save u
+    make list
+  walk list, read re
+    hook next
+      take site, name x
+      call u/push
+        call divide
+          read x
+          call norm
+            read re
+  host projected
+    call dot
+      read im
+      read u
+  save wo
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 4
+    hook next
+      take site, name i
+      call wo/push
+        call subtract
+          call get
+            read im
+            read i
+          call multiply
+            read projected
+            call get
+              read u
+              read i
+  save w
+    make list
+  walk list, read wo
+    hook next
+      take site, name x
+      call w/push
+        call divide
+          read x
+          call norm
+            read wo
+  send back
+    make list
+      read u
+      read w
+
+# The edge endpoints, two floats per vertex and two vertices per edge, drawn as lines (each consecutive pair is one
+# segment): every 4D vertex projected onto the Coxeter plane, scaled to fit clip space with a small margin, and the
+# pairs at squared distance 2 kept.
+task edge-points
+  like list, like float
+  host verts
+    call build-vertices
+  host basis
+    call projection-basis
+  host u
+    call get
+      read basis
+      code 0
+  host w
+    call get
+      read basis
+      code 1
+  save flat
+    make list
+  walk list, read verts
+    hook next
+      take site, name v
+      call flat/push
+        make list
+          call dot
+            read v
+            read u
+          call dot
+            read v
+            read w
+  save max-r, code 0.000000001
+  walk list, read flat
+    hook next
+      take site, name point
+      host r
+        call hypotenuse
+          call get
+            read point
+            code 0
+          call get
+            read point
+            code 1
+      fork test
+        hook test
+          call is-above
+            read r
+            read max-r
+        hook hold
+          save max-r, read r
+  host scale
+    call divide
+      code 0.92
+      read max-r
+  save points
+    make list
+  walk size
+    bind base, code 0
+    bind head, read verts/length
+    hook next
+      take site, name i
+      walk size
+        bind base
+          call add
+            read i
+            code 1
+        bind head, read verts/length
+        hook next
+          take site, name j
+          save d2, code 0.0
+          walk size
+            bind base, code 0
+            bind head, code 4
+            hook next
+              take site, name k
+              host diff
+                call subtract
+                  call get
+                    call get
+                      read verts
+                      read i
+                    read k
+                  call get
+                    call get
+                      read verts
+                      read j
+                    read k
+              save d2
+                call add
+                  read d2
+                  call multiply
+                    read diff
+                    read diff
+          fork test
+            hook test
+              call is-below
+                call absolute
+                  call subtract
+                    read d2
+                    code 2.0
+                code 0.000000001
+            hook hold
+              host from
+                call get
+                  read flat
+                  read i
+              host to
+                call get
+                  read flat
+                  read j
+              call points/push
+                call multiply
+                  call get
+                    read from
+                    code 0
+                  read scale
+              call points/push
+                call multiply
+                  call get
+                    read from
+                    code 1
+                  read scale
+              call points/push
+                call multiply
+                  call get
+                    read to
+                    code 0
+                  read scale
+              call points/push
+                call multiply
+                  call get
+                    read to
+                    code 1
+                  read scale
+  send back, read points
+
+# the edge endpoints as the GPU buffer's 32-bit floats
+task lattice-vertices
+  like dynamic
+  send back
+    call float-32-array
+      call edge-points
+
+# the number of vertices to draw, two per edge
+task lattice-count
+  like number
+  host points
+    call edge-points
+  send back
+    call divide
+      read points/length
+      code 2
+
+task vertex-source
+  like text
+  send back
+    text <#version 300 es\nin vec2 pos;\nvoid main() \{\n  gl_Position = vec4(pos, 0.0, 1.0);\n\}>
+
+task fragment-source
+  like text
+  send back
+    text <#version 300 es\nprecision mediump float;\nout vec4 color;\nvoid main() \{\n  color = vec4(0.55, 0.78, 1.0, 1.0);\n\}>

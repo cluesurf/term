@@ -1,8 +1,8 @@
 # One HTML escape for markup a Term task builds as text. Every value that did not come from the page's own literals
 # goes through `escape-html` before it is joined into a body: `<`, `>`, `&`, `"` and `'` each become an entity
 # (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&#39;`), which makes the result safe both as element text and inside an
-# attribute quoted with either quote. The node serializer escapes less, for where it writes (dom/native/node/runtime/
-# html.ts: `escapeText` `&`, `<` and `>`, `escapeAttr` `&` and `"`, every attribute quoted with `"`).
+# attribute quoted with either quote. The node serializer escapes less, for where it writes (dom/native/node/html.tree:
+# text escapes `&`, `<` and `>`, attributes `&` and `"`, every attribute quoted with `"`).
 #
 # PROVEN, NOT ONLY TESTED. The kernel cannot read a text, so the escape is written over glyph.tree's GLYPHS, one per
 # character, and `escape-html` runs that very task, `escape-glyphs`: `glyphs-of` reads each character's glyph, and

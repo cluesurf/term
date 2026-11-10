@@ -135,7 +135,8 @@ async function main(): Promise<void> {
     /makeSignal\("count" in __seed/.test(entryMod.code),
   )
 
-  // the dom module docks `<global:html>`: the native prelude goes in front of whichever module uses a docked global
+  // the native prelude goes in front of whichever module uses a docked global (the node dom's serializer is
+  // dom/native/node/html.tree, which docks none)
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
 

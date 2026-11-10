@@ -1,4 +1,4 @@
-# The image task/distro.ts builds term's .deb packages and the apt index in (task/distro/debian.sh). Built once and
+# The image task/distro.tree builds term's .deb packages and the apt index in (task/distro/debian.sh). Built once and
 # cached by Docker; nothing here is published.
 FROM debian:trixie-slim
 RUN apt-get update \

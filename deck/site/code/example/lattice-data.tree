@@ -1,0 +1,129 @@
+
+# Writes render/lattice.data.js, the baked lattice geometry the live WebGL page (render/index.html) imports: the edge
+# count, the edge endpoints as 32-bit floats to six places, and the two shader sources, all from ./lattice. It is a
+# build output, never edited or tracked. Run: `term boot star code/example/lattice-data.tree` in deck/site, which
+# writes code/example/render/lattice.data.js. `term boot` runs a program in its package root, so a relative
+# LATTICE_DATA_DIR names another folder from deck/site. Ported from the export that read runtime/lattice.ts (item
+# term-self-host-001-0715): its output is the same file, byte for byte.
+
+load @term/base/console
+  find log
+
+load @term/base/environment
+  find directory
+  find variable
+  find has-variable
+
+load @term/base/file
+  find write
+
+load @term/base/path
+  find resolve-path
+
+load @term/base/float
+  find round
+
+load @term/base/float/32
+  find f32-round
+
+load @term/base/json
+  find stringify
+  find from-text
+
+load @term/base/list
+  find list
+
+load ./lattice
+  find edge-points
+  find vertex-source
+  find fragment-source
+
+# the point as the typed array holds it, to six places with no trailing zeros
+task point-text
+  take value, like float
+  like text
+  host kept
+    call divide
+      call round
+        call multiply
+          call f32-round
+            read value
+          code 1000000.0
+      code 1000000.0
+  send back, text <{kept}>
+
+# the text as a JavaScript string literal
+task quoted
+  take value, like text
+  like text
+  send back
+    call stringify
+      call from-text
+        read value
+
+task main
+  host points
+    call edge-points
+  save shown
+    make list
+  walk list, read points
+    hook next
+      take site, name point
+      call shown/push
+        call point-text
+          read point
+  host count
+    call divide
+      read points/length
+      code 2
+  host numbers
+    call shown/join
+      text <,>
+  host vertex
+    call quoted
+      call vertex-source
+  host fragment
+    call quoted
+      call fragment-source
+  save lines
+    make list
+  call lines/push
+    text <// Build artifact: the \{3,4,3,4\} 24-cell F4-Coxeter-shadow geometry, baked from runtime/lattice.ts (the source of>
+  call lines/push
+    text <// truth). The .tree render and this page draw the same numbers. Regenerate by re-running the example geometry export.>
+  call lines/push
+    text <export const count = {count}>
+  call lines/push
+    text <export const vertices = new Float32Array([{numbers}])>
+  call lines/push
+    text <export const vertexSource = {vertex}>
+  call lines/push
+    text <export const fragmentSource = {fragment}>
+  save folder
+    call resolve-path
+      call directory
+      text <code/example/render>
+  fork test
+    hook test
+      call has-variable
+        text <LATTICE_DATA_DIR>
+    hook hold
+      save folder
+        call variable
+          text <LATTICE_DATA_DIR>
+  host out
+    call resolve-path
+      call directory
+      call resolve-path
+        read folder
+        text <lattice.data.js>
+  host body
+    call lines/join
+      text <\n>
+  call write
+    read out
+    text <{body}\n>
+  call log
+    text <wrote {count} vertices -\> {out}>
+
+tick main

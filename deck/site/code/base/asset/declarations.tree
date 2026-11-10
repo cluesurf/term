@@ -1,0 +1,91 @@
+
+# Per-asset configuration the asset sync task reads, the `@term/site` port of the React site-asset declarations. Term
+# sites serve their hashed assets from the same host (`site.clue.surf`) and the same `cluesurfsite` R2 bucket as the
+# React sites, so the declarations stay in lockstep with theirs. Ported from declarations.ts (item
+# term-self-host-001-0715), whose header names the spec, the site asset sync.
+#
+# Two collections:
+#   - `asset-declarations`: CSS emitted into `assets.css` that names the hashed URL of an asset. Today only
+#     `@font-face`, and open to other @-rules that cannot use CSS variables.
+#   - `no-hash-paths`: logical paths served at a stable, unhashed URL on `site.clue.surf`, the files external systems
+#     fetch by exact name (web crawlers, FedCM, OAuth providers).
+
+load @term/base/list
+  find list
+
+# The CSS `src ... format(...)` argument.
+form font-format
+  case opentype
+  case truetype
+  case woff
+  case woff2
+
+# The CSS `font-display` value. A declaration that names none means swap.
+form font-display
+  case auto
+  case block
+  case swap
+  case fallback
+  case optional
+
+form asset-declaration
+  case font-face
+    # the logical asset path key, such as `/CrowMark.otf`
+    link asset, like text
+    # the CSS `font-family` name
+    link font-family, like text
+    link format, like font-format
+    link font-display, like font-display
+    # the CSS `font-weight` and `font-style`, empty when the declaration names none
+    link font-weight, like text, need false
+    link font-style, like text, need false
+
+task asset-declarations
+  like list, like asset-declaration
+  send back
+    make list
+      make font-face
+        bind asset, text </CrowMark.otf>
+        bind font-family, text <CrowMark>
+        bind format
+          make opentype
+        # `optional`, not `swap`. `html, body { font-family: CrowMark }` in the site's `look` stylesheet makes every
+        # element outside a `<text-*>` inherit the brand font directly. With `swap` the browser paints a fallback and
+        # then swaps to the real font once it loads, a visible jolt the Type component's visibility states cannot
+        # hide. With `optional` and the `CrowMark.otf` preload in each site's document shell, the font is usually in
+        # cache by paint and drawn from the first frame. If the preload misses the browser's block window of about
+        # 100 ms, the page keeps the system fallback for this render (no swap, no jolt) and the next navigation uses
+        # the cached font. Endorsed under "Robustness improvements" in the text component optimization notes.
+        bind font-display
+          make optional
+
+# Logical paths served at a stable, unhashed URL on site.clue.surf. For each one the R2 key is the logical path itself
+# with no hash prefix (`/robots.txt` is the key `robots.txt`), the URL is `https://site.clue.surf/<logical-path>`,
+# assets.json still records a hash for change detection (sync re-uploads only when it changes) though the URL never
+# shows it, and assets.previous.json never holds an entry: one live URL per path, a re-upload overwrites in place. Every
+# other file gets the tone-hashed URL. Add to this list deliberately: every entry is a promise to keep its URL forever.
+task no-hash-paths
+  like list, like text
+  send back
+    make list
+      text </robots.txt>
+      text </security.txt>
+      # FedCM's well-known file for Google One Tap
+      text </.well-known/web-identity>
+
+# whether the logical path is served unhashed
+task is-no-hash-path
+  take logical-path, like text
+  like boolean
+  walk list
+    call no-hash-paths
+    hook next
+      take site, name path
+      fork test
+        hook test
+          call is-equal
+            read path
+            read logical-path
+        hook hold
+          send back, true
+  send back, false

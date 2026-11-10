@@ -3,7 +3,7 @@
 # tree, mutate it, serialize it to HTML -- with no platform dependency, so the Worker target reuses
 # the node impl wholesale. Only the HTTP transport (http/native/cloudflare) and asset serving
 # (zone/native/cloudflare) differ per env; the DOM does not. Re-exports the node in-memory dom, whose
-# `<global:html>` serialize / document-shell shim is pure string building (its one filesystem read,
-# the prod asset manifest, degrades to dev asset names on a Worker, which the transport still serves).
+# serializer and document shell (../node/html.tree) are pure string building (its filesystem reads, the
+# prod asset manifest and the build id, degrade to dev asset names on a Worker, which the transport still serves).
 
 bear @term/site/dom/native/node/dom

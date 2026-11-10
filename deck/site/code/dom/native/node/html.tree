@@ -1,0 +1,774 @@
+
+# The server dom's HTML: the in-memory tree (./view's `page-element`) written as HTML text, the document shell around a
+# rendered body, and the per-request stash a route fills (its title, meta tags, proxy source and status), which the
+# shell and the host drain. ./dom serializes through it and ./page stashes and shells through it, so both reach the ONE
+# stash this module holds. ../cloudflare/dom bears ./dom whole, so every bind here carries a `case cloudflare` beside
+# `case node`.
+#
+# SSR render is synchronous per request (route, then serialize, then shell, no wait between), so one module slot is
+# safe: each request fills the stash, the shell reads and clears its title and tags, the host takes the proxy and the
+# status. Ported from runtime/html.ts (item term-self-host-001-0716 of the finish-self-host change),
+# its output byte for byte.
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+load @term/base/list
+  find list
+  find push
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find split
+  find trim
+
+load ./view
+  find page-element
+
+# one attribute, style or meta tag, a name and its value. Not the stdlib `pair` (`first` / `second`): names are
+# package-global, so a second `form pair` here took the stdlib's place in any program that loaded both (`"pair" has no
+# field "name"`)
+form page-pair
+  link name, like text
+  link value, like text
+
+# what the matched route set for this request, drained by the shell and the host. One per process, so shared
+form html-stash
+  mark shared
+  link title
+    like maybe, like text
+  link meta
+    like list, like page-pair
+  link proxy, like text
+  link status
+    like maybe, like number
+
+host stash
+  make html-stash
+    bind title
+      make none
+    bind meta
+      make list
+    bind proxy, text <>
+    bind status
+      make none
+
+# what is read once per process: the asset manifest (the parsed `build/asset-manifest.json`, or null with none) and the
+# import map's script tag
+form html-memo
+  mark shared
+  link manifest-read, like boolean
+  link manifest, like dynamic
+  link import-map-read, like boolean
+  link import-map, like text
+
+host memo
+  make html-memo
+    bind manifest-read, false
+    bind manifest
+      call host-null
+    bind import-map-read, false
+    bind import-map, text <>
+
+# ---- the host's answers ----
+
+# the HTML mode asked for: `TERM_HTML` since the Seed rename, the `SEED_` spelling still honored
+bind html-mode
+  like text
+  case node
+    text <process.env.TERM_HTML ?? process.env.SEED_HTML ?? ''>
+  case cloudflare
+    text <process.env.TERM_HTML ?? process.env.SEED_HTML ?? ''>
+
+bind is-production
+  like boolean
+  case node
+    text <process.env.NODE_ENV === 'production'>
+  case cloudflare
+    text <process.env.NODE_ENV === 'production'>
+
+bind working-directory
+  like text
+  case node
+    text <process.cwd()>
+  case cloudflare
+    text <process.cwd()>
+
+# a constant the Cloudflare cast bakes in, since a Worker has no `build/` to read
+bind baked-global
+  take name, like text
+  like dynamic
+  case node
+    text <(globalThis as Record\<string, unknown\>)[$name]>
+  case cloudflare
+    text <(globalThis as Record\<string, unknown\>)[$name]>
+
+bind is-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+  case cloudflare
+    text <Boolean($value)>
+
+bind host-null
+  like dynamic
+  case node
+    text <null>
+  case cloudflare
+    text <null>
+
+bind parse-json
+  take value, like text
+  like dynamic
+  case node
+    text <JSON.parse($value)>
+  case cloudflare
+    text <JSON.parse($value)>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+  case cloudflare
+    text <JSON.stringify($value)>
+
+# whether a parsed import map lists any import
+bind has-imports
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value.imports && Object.keys($value.imports).length)>
+  case cloudflare
+    text <Boolean($value.imports && Object.keys($value.imports).length)>
+
+# a logical asset path's built name in the manifest, the path itself when there is no manifest or no entry
+bind asset-name
+  take manifest, like dynamic
+  take logical, like text
+  like text
+  case node
+    text <(($manifest && $manifest[$logical]) || $logical)>
+  case cloudflare
+    text <(($manifest && $manifest[$logical]) || $logical)>
+
+# two spaces a level, the pretty layout's indent. The host's repeat: `pad-left` walks code points one by one, 1.4x the
+# shim over a small page
+bind indent
+  take depth, like number
+  like text
+  case node
+    text <'  '.repeat($depth)>
+  case cloudflare
+    text <'  '.repeat($depth)>
+
+# PRETTY in dev (indented, a readable View-Source), COMPACT in prod (the smallest payload). `TERM_HTML=pretty` forces
+# pretty and `TERM_HTML=compact` compact, either way. Pretty is whitespace-SAFE: an element with a text child stays
+# compact, so no rendered whitespace is introduced, and only all-element parents break onto lines
+task pretty-wanted
+  like boolean
+  save mode
+    call html-mode
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <pretty>
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <compact>
+    hook hold
+      send back, false
+  send back
+    call not
+      call is-production
+
+host pretty
+  call pretty-wanted
+
+# dev live reload: a small inline poller of `/base/__id` (bumped on every style rebuild) that reloads the page when it
+# changes. Dev only
+host development
+  call not
+    call is-production
+
+# ---- the stash ----
+
+task stash-title
+  take title, like text
+  save stash/title
+    make some
+      bind value, read title
+
+# last write wins for a name, so a route can override a default
+task stash-meta
+  take name, like text
+  take content, like text
+  save kept
+    make list
+  save found, false
+  walk list, read stash/meta
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call and
+            call not
+              read found
+            call is-equal
+              read entry/name
+              read name
+        hook hold
+          save found, true
+          call push
+            bind list, read kept
+            bind item
+              make page-pair
+                bind name, read name
+                bind value, read content
+        hook miss
+          call push
+            bind list, read kept
+            bind item, read entry
+  fork test
+    hook test
+      call not
+        read found
+    hook hold
+      call push
+        bind list, read kept
+        bind item
+          make page-pair
+            bind name, read name
+            bind value, read content
+  save stash/meta, read kept
+
+task reset-meta
+  save stash/title
+    make none
+  save stash/meta
+    make list
+
+# the proxy source a resource route set (/vibe.pdf): the host fetches and streams that URL's bytes instead of
+# rendering. Read and cleared, so it never leaks to the next request
+task stash-proxy
+  take url, like text
+  save stash/proxy, read url
+
+task take-proxy
+  like text
+  save url, read stash/proxy
+  save stash/proxy, text <>
+  send back, read url
+
+# the status the matched route set (`set-status 404`), read and cleared by the host as the proxy is. 200 when none
+task stash-status
+  take code, like number
+  save stash/status
+    make some
+      bind value, read code
+
+task take-status
+  like number
+  save code, code 200
+  save status, read stash/status
+  fork case, read status
+    case some
+      save code, read status/value
+    case none
+      save skip, code 0
+  save stash/status
+    make none
+  send back, read code
+
+# ---- serializing ----
+
+# a text node's text: `&`, `<` and `>` escaped, quotes kept. A value is coerced to text first: a number reaches here
+# when a value is bound to a numeric getter (an `<img width>`), the way React accepts `width={256}`, so the serializer
+# stays total. The host's regex replace, since Term's `replace-all` splits and joins, 1.3x the shim over a page
+bind escape-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value ?? '').replace(/&/g, '&amp;').replace(/\</g, '&lt;').replace(/\>/g, '&gt;')>
+  case cloudflare
+    text <String($value ?? '').replace(/&/g, '&amp;').replace(/\</g, '&lt;').replace(/\>/g, '&gt;')>
+
+# an attribute value: `&` and `"` escaped, coerced to text first as `escape-text` is
+bind escape-attribute
+  take value, like dynamic
+  like text
+  case node
+    text <String($value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')>
+  case cloudflare
+    text <String($value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')>
+
+# the elements with no end tag and no children
+host void-tags
+  make list
+    text <area>
+    text <base>
+    text <br>
+    text <col>
+    text <embed>
+    text <hr>
+    text <img>
+    text <input>
+    text <link>
+    text <meta>
+    text <param>
+    text <source>
+    text <track>
+    text <wbr>
+
+task is-void
+  take tag, like text
+  like boolean
+  walk list, read void-tags
+    hook next
+      take site, name void
+      fork test
+        hook test
+          call is-equal
+            read void
+            read tag
+        hook hold
+          send back, true
+  send back, false
+
+task open-tag
+  take element, like page-element
+  like text
+  save class-attribute, text <>
+  fork test
+    hook test
+      call is-above
+        read element/classes/length
+        code 0
+    hook hold
+      save class-attribute, text < class="{escape-attribute(join(element/classes, < >))}">
+  save attributes, text <>
+  walk list, read element/attributes
+    hook next
+      take site, name attribute
+      save attributes, text <{attributes} {attribute/name}="{escape-attribute(attribute/value)}">
+  send back, text <\<{element/tag}{class-attribute}{attributes}\>>
+
+# no added whitespace: right for inline content and for prod
+task compact-node
+  take element, like page-element
+  like text
+  fork test
+    hook test
+      call is-equal
+        read element/tag
+        text <>
+    hook hold
+      send back
+        call escape-text
+          read element/text
+  save open
+    call open-tag
+      read element
+  fork test
+    hook test
+      call is-void
+        read element/tag
+    hook hold
+      send back, read open
+  # the children's texts joined once, as the shim's map and join did: a text grown child by child is a rope the next
+  # join must flatten, 1.25x the shim over 2,000 random trees
+  save inner
+    make list
+  walk list, read element/children
+    hook next
+      take site, name child
+      call push
+        bind list, read inner
+        bind item
+          call compact-node
+            read child/handle
+  send back, text <{open}{join(inner, <>)}\</{element/tag}\>>
+
+# block elements indented, inline (has-text) content compact
+task pretty-node
+  take element, like page-element
+  take depth, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read element/tag
+        text <>
+    hook hold
+      send back
+        call escape-text
+          read element/text
+  save pad
+    call indent
+      read depth
+  save open
+    call open-tag
+      read element
+  fork test
+    hook test
+      call is-void
+        read element/tag
+    hook hold
+      send back, text <{pad}{open}>
+  fork test
+    hook test
+      call is-equal
+        read element/children/length
+        code 0
+    hook hold
+      send back, text <{pad}{open}\</{element/tag}\>>
+  save inline, false
+  walk list, read element/children
+    hook next
+      take site, name child
+      fork test
+        hook test
+          call is-equal
+            read child/handle/tag
+            text <>
+        hook hold
+          save inline, true
+          halt
+  fork test
+    hook test, read inline
+    hook hold
+      save inner
+        make list
+      walk list, read element/children
+        hook next
+          take site, name child
+          call push
+            bind list, read inner
+            bind item
+              call compact-node
+                read child/handle
+      send back, text <{pad}{open}{join(inner, <>)}\</{element/tag}\>>
+  save lines
+    make list
+  walk list, read element/children
+    hook next
+      take site, name child
+      call push
+        bind list, read lines
+        bind item
+          call pretty-node
+            read child/handle
+            call add
+              read depth
+              code 1
+  send back, text <{pad}{open}\n{join(lines, <\n>)}\n{pad}\</{element/tag}\>>
+
+# a node's HTML: an element record from `serialize`
+task serialize-node
+  take element, like page-element
+  like text
+  fork test
+    hook test, read pretty
+    hook hold
+      send back
+        call pretty-node
+          read element
+          code 0
+  send back
+    call compact-node
+      read element
+
+# ---- the document shell ----
+
+# the asset manifest maps a logical build path (`style/look.css`, `boot.js`) to its content-hashed name for prod
+# cache-busting. Baked in by the Cloudflare cast, else `build/asset-manifest.json`, else none, read once
+task asset-map
+  like dynamic
+  fork test
+    hook test, read memo/manifest-read
+    hook hold
+      send back, read memo/manifest
+  save memo/manifest-read, true
+  save baked
+    call baked-global
+      text <__SEED_ASSET_MANIFEST__>
+  fork test
+    hook test
+      call is-present
+        read baked
+    hook hold
+      save memo/manifest, read baked
+      send back, read baked
+  fork
+    mark unsafe
+    save file
+      call node-path/join
+        call working-directory
+        text <build>
+        text <asset-manifest.json>
+    save memo/manifest
+      call parse-json
+        call node-fs/read-file-sync
+          read file
+          text <utf8>
+  halt take
+    take problem
+    save memo/manifest
+      call host-null
+  send back, read memo/manifest
+
+# the dev build id (`build/__id`, bumped on every rebuild), a `?v=` cache-buster read fresh per request
+task build-version
+  like text
+  fork
+    mark unsafe
+    save file
+      call node-path/join
+        call working-directory
+        text <build>
+        text <__id>
+    save got
+      call node-fs/read-file-sync
+        read file
+        text <utf8>
+    send back
+      call trim
+        read got
+  halt take
+    take problem
+    send back, text <>
+
+# a logical asset path's public `/base/...` URL: the hashed name in prod, `?v=<build id>` in dev
+task asset-url
+  take logical, like text
+  like text
+  save resolved
+    call asset-name
+      call asset-map
+      read logical
+  save base, text </base/{resolved}>
+  fork test
+    hook test
+      call not
+        call is-production
+    hook hold
+      send back, text <{base}?v={build-version()}>
+  send back, read base
+
+task import-map-markup
+  take parsed, like dynamic
+  like text
+  fork test
+    hook test
+      call has-imports
+        read parsed
+    hook hold
+      send back, text <\<script type="importmap"\>{json-text(parsed)}\</script\>>
+  send back, text <>
+
+# the client bundle loads its npm deps through an import map, inlined before the module script (an import map must
+# precede the first module that uses it). Baked in by the Cloudflare cast, else `build/import-map.json`, else no tag,
+# read once
+task import-map-script
+  like text
+  fork test
+    hook test, read memo/import-map-read
+    hook hold
+      send back, read memo/import-map
+  save memo/import-map-read, true
+  save baked
+    call baked-global
+      text <__SEED_IMPORT_MAP__>
+  fork test
+    hook test
+      call is-present
+        read baked
+    hook hold
+      save memo/import-map
+        call import-map-markup
+          read baked
+      send back, read memo/import-map
+  fork
+    mark unsafe
+    save file
+      call node-path/join
+        call working-directory
+        text <build>
+        text <import-map.json>
+    save parsed
+      call parse-json
+        call node-fs/read-file-sync
+          read file
+          text <utf8>
+    save memo/import-map
+      call import-map-markup
+        read parsed
+  halt take
+    take problem
+    save memo/import-map, text <>
+  send back, read memo/import-map
+
+task dev-reload-script
+  like text
+  fork test
+    hook test, read development
+    hook hold
+      send back, text <<<script>(function(){var id;function p(){fetch("/base/__id",{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){if(id===undefined){id=t}else if(t!==id){location.reload()}}).catch(function(){})}setInterval(p,500)})()</script>>>
+  send back, text <>
+
+# one <meta> tag: og:* and article:* by `property=` (Open Graph), the rest (description, twitter:*, theme-color) by
+# `name=`
+task meta-tag
+  take name, like text
+  take content, like text
+  like text
+  save attribute, text <name>
+  fork test
+    hook test
+      call or
+        call starts-with
+          read name
+          text <og:>
+        call starts-with
+          read name
+          text <article:>
+    hook hold
+      save attribute, text <property>
+  send back, text <\<meta {attribute}="{escape-attribute(name)}" content="{escape-attribute(content)}"\>>
+
+# the whole response: the stylesheet linked as an external file, the client bundle as a module script (both served by
+# the host's static `/base/` route), and the route's title and meta drained into the <head>, the stash cleared for the
+# next request
+task document-shell
+  take body, like text
+  take fallback-title, like(text), fall <ClueSurf>
+  like text
+  save style-href
+    call asset-url
+      text <style/look.css>
+  save script-src
+    call asset-url
+      text <boot.js>
+  save import-map
+    call import-map-script
+  save title, read fallback-title
+  save pending, read stash/title
+  fork case, read pending
+    case some
+      save title, read pending/value
+    case none
+      save skip, code 0
+  save tags
+    make list
+  walk list, read stash/meta
+    hook next
+      take site, name entry
+      call push
+        bind list, read tags
+        bind item
+          call meta-tag
+            read entry/name
+            read entry/value
+  call reset-meta
+  fork test
+    hook test
+      call not
+        read pretty
+    hook hold
+      send back, text <\<!doctype html\>\<html lang="en"\>\<head\>\<meta charset="utf-8"\>\<meta name="viewport" content="width=device-width, initial-scale=1"\>\<link rel="icon" href="/base/logo.svg"\>\<title\>{escape-text(title)}\</title\>{join(tags, <>)}\<link rel="stylesheet" href="{style-href}"\>{import-map}\<script type="module" src="{script-src}"\>\</script\>{dev-reload-script()}\</head\>\<body\>{body}\</body\>\</html\>>
+  # the body indented two more levels, so it nests under <body>
+  save body-lines
+    make list
+  save body-parts
+    call split
+      read body
+      text <\n>
+  walk list, read body-parts
+    hook next
+      take site, name line
+      call push
+        bind list, read body-lines
+        bind item, text <    {line}>
+  save lines
+    make list
+  call push
+    bind list, read lines
+    bind item, text <\<!doctype html\>>
+  call push
+    bind list, read lines
+    bind item, text <\<html lang="en"\>>
+  call push
+    bind list, read lines
+    bind item, text <  \<head\>>
+  call push
+    bind list, read lines
+    bind item, text <    \<meta charset="utf-8"\>>
+  call push
+    bind list, read lines
+    bind item, text <    \<meta name="viewport" content="width=device-width, initial-scale=1"\>>
+  call push
+    bind list, read lines
+    bind item, text <    \<link rel="icon" href="/base/logo.svg"\>>
+  call push
+    bind list, read lines
+    bind item, text <    \<title\>{escape-text(title)}\</title\>>
+  walk list, read tags
+    hook next
+      take site, name tag
+      call push
+        bind list, read lines
+        bind item, text <    {tag}>
+  call push
+    bind list, read lines
+    bind item, text <    \<link rel="stylesheet" href="{style-href}"\>>
+  fork test
+    hook test
+      call is-unequal
+        read import-map
+        text <>
+    hook hold
+      call push
+        bind list, read lines
+        bind item, text <    {import-map}>
+  call push
+    bind list, read lines
+    bind item, text <    \<script type="module" src="{script-src}"\>\</script\>>
+  fork test
+    hook test, read development
+    hook hold
+      call push
+        bind list, read lines
+        bind item, text <    {dev-reload-script()}>
+  call push
+    bind list, read lines
+    bind item, text <  \</head\>>
+  call push
+    bind list, read lines
+    bind item, text <  \<body\>>
+  call push
+    bind list, read lines
+    bind item
+      call join
+        read body-lines
+        text <\n>
+  call push
+    bind list, read lines
+    bind item, text <  \</body\>>
+  call push
+    bind list, read lines
+    bind item, text <\</html\>>
+  send back
+    call join
+      read lines
+      text <\n>
