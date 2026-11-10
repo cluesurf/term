@@ -1,0 +1,4 @@
+# a suite in another folder whose comment names test/server/one.tree, as test/zone/browser.tree named compile.tree
+
+test <three holds>
+  want hold, is-equal add(4, 4), 8

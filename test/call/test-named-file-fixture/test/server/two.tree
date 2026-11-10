@@ -1,0 +1,7 @@
+# this suite's comment names its neighbour, test/server/one.tree, as test/server/run.tree named store-clean.tree
+
+test <two holds>
+  want hold, is-equal add(2, 2), 4
+
+test <two holds again>
+  want hold, is-equal add(3, 3), 6

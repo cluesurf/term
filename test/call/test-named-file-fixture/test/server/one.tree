@@ -1,0 +1,2 @@
+test <one holds>
+  want hold, is-equal add(1, 1), 2
