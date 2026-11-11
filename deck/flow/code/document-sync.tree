@@ -252,7 +252,7 @@ task is-ignored-path
   back false
 
 # The part of a file's path inside the deepest graph root that holds it, or the whole path when none does. A scratch,
-# output or hidden folder ABOVE a package is only where the package sits (a project under ~/tmp, or a gate's TMPDIR
+# output or hidden folder ABOVE a package is only where the package sits (a project under a tmp folder in a home, or a gate's TMPDIR
 # with a tmp segment, as every M3 job's: release 2.10.2), so only the folders inside it are read by is-ignored-path
 task below-graph-root
   take server, like language-server
