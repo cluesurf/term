@@ -75,6 +75,21 @@ const STATUSES = [
 const SECRET_NAME = `term-device-${process.pid}`
 const SECRET = `term-secret-${process.pid}-${Date.now()}`
 
+// What only a person's own session on the Mac holds (release 2.10.2 ran over ssh on the M3, and both failed there):
+// the login keychain, locked to a program started over ssh, and the window server a desktop JVM needs for its
+// clipboard (native-clipboard.kt answers `unavailable` when AWT is headless). Each is probed without asking for
+// anything, and a leg that needs one is skipped with the reason, never failed.
+function macOnly(command: string, args: string[]): { status: number | null; text: string } {
+  const run = spawnSync(command, args, { encoding: 'utf8' })
+  return { status: run.status, text: `${run.stdout ?? ''}${run.stderr ?? ''}`.trim().slice(0, 160) }
+}
+const KEYCHAIN = process.platform === 'darwin' ? macOnly('security', ['show-keychain-info']) : undefined
+const KEYCHAIN_SHUT =
+  KEYCHAIN && KEYCHAIN.status !== 0 ? `the login keychain cannot be written here, as over ssh: ${KEYCHAIN.text}` : undefined
+const SESSION = process.platform === 'darwin' ? macOnly('launchctl', ['managername']) : undefined
+const NO_WINDOWS =
+  SESSION && SESSION.text !== 'Aqua' ? `no window session for a desktop JVM's clipboard (launchctl managername: ${SESSION.text})` : undefined
+
 const phone = (leg: Leg): boolean =>
   leg === 'ios' || leg === 'android' || leg === 'compose-android'
 
@@ -805,14 +820,21 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const named = `${leg} (${toolkit})`
   const android = leg === 'android' || leg === 'compose-android'
 
-  ok(
-    `${named}: the clipboard takes a line and gives it back`,
-    said('clipboard') === `written ${TOKEN}`,
-    said('clipboard') || output.slice(-600),
-  )
+  const clipboardSkipped = leg === 'compose' && NO_WINDOWS !== undefined
+
+  if (clipboardSkipped) {
+    console.log(`skip  ${named}: the clipboard legs (${NO_WINDOWS})`)
+  } else {
+    ok(
+      `${named}: the clipboard takes a line and gives it back`,
+      said('clipboard') === `written ${TOKEN}`,
+      said('clipboard') || output.slice(-600),
+    )
+  }
 
   if (
     (leg === 'macos' || leg === 'compose') &&
+    !clipboardSkipped &&
     process.platform === 'darwin'
   ) {
     const pasted = spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
@@ -1080,6 +1102,8 @@ function judge(leg: Leg, toolkit: string, output: string): void {
       vault.join('|') === 'unavailable||unavailable||unavailable',
       vault.join('|'),
     )
+  } else if (leg === 'macos' && KEYCHAIN_SHUT) {
+    console.log(`skip  ${named}: the vault (${KEYCHAIN_SHUT})`)
   } else {
     ok(
       `${named}: a secret is kept, read back, removed, gone, and a second removal finds nothing`,

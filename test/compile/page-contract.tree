@@ -65,7 +65,7 @@ test <the page compiles for node>
   want hold, node/ok
 
 test <node stashes the title for the SSR shell>
-  want hold, text-contains(body-of(node, <setTitle>), <doc.setTitle(>)
+  want hold, text-contains(body-of(node, <setTitle>), <stashTitle(>)
 
 host cloudflare, build(<cloudflare>, page)
 
@@ -73,7 +73,7 @@ test <the page compiles for cloudflare>
   want hold, cloudflare/ok
 
 test <cloudflare stashes like node, not the browser's live document>
-  want hold, text-contains(body-of(cloudflare, <setTitle>), <doc.setTitle(>)
+  want hold, text-contains(body-of(cloudflare, <setTitle>), <stashTitle(>)
   want hold, cloudflare/ok
   want hold, is-equal(text-contains(cloudflare/emitted, <title.set(>), false)
 

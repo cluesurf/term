@@ -79,7 +79,12 @@ ok(
 )
 ok(
   'the count still borrows its key',
-  /upsert_ref\(key, 0\)/.test(knucRust),
+  // `::<str>` pins the borrowed key's type when it is written `&key` (rust-emit.tree, since f22b8c9d)
+  /upsert_ref(::<str>)?\(&?key, 0\)/.test(knucRust),
+  knucRust
+    .split('\n')
+    .filter(l => /upsert/.test(l))
+    .join(' | '),
 )
 
 // a map counted from a word, answering what `result` declares

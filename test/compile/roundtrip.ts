@@ -1279,7 +1279,7 @@ notify = "7"
 libc = "0.2"
 unicode-normalization = "0.1"
 unicode-segmentation = "1"
-tokio-tungstenite = "0.24"
+tungstenite = "0.24"
 futures-util = "0.3"
 
 `
@@ -4634,7 +4634,7 @@ async function main(): Promise<void> {
 
   // websocket client to a real echo server. The server (RFC 6455 handshake + single-frame text echo) runs in a SEPARATE
   // node process so the blocking execFileSync of each compiled binary does not freeze its event loop. node uses the
-  // global WebSocket, rust tokio-tungstenite, swift URLSessionWebSocketTask, kotlin java.net.http.WebSocket -- each
+  // global WebSocket, rust tungstenite (the stdlib's Cargo.toml, item 1154), swift URLSessionWebSocketTask, kotlin java.net.http.WebSocket -- each
   // behind the one async connect / send / receive interface, buffering frames so send-then-receive never races.
   const wsPortFile = join(dir, 'ws-port.txt')
   const wsServerCode = `const http=require('http'),crypto=require('crypto'),fs=require('fs');function dec(b){const op=b[0]&15,mk=(b[1]&128)!==0;let n=b[1]&127,o=2;if(n===126){n=b.readUInt16BE(2);o=4}else if(n===127){n=Number(b.readBigUInt64BE(2));o=10}let m=Buffer.alloc(0);if(mk){m=b.subarray(o,o+4);o+=4}const p=b.subarray(o,o+n),out=Buffer.alloc(p.length);for(let i=0;i<p.length;i++)out[i]=p[i]^(mk?m[i%4]:0);return{op,d:out.toString('utf8')}}function enc(t){const p=Buffer.from(t,'utf8'),n=p.length;let h;if(n<126)h=Buffer.from([0x81,n]);else{h=Buffer.alloc(4);h[0]=0x81;h[1]=126;h.writeUInt16BE(n,2)}return Buffer.concat([h,p])}const s=http.createServer();s.on('upgrade',(q,sock)=>{const k=q.headers['sec-websocket-key'],a=crypto.createHash('sha1').update(k+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: '+a+'\\r\\n\\r\\n');sock.on('data',b=>{const f=dec(b);if(f.op===8){sock.end();return}if(f.op===1)sock.write(enc(f.d))})});s.listen(0,'127.0.0.1',()=>fs.writeFileSync(process.argv[1],String(s.address().port)))`

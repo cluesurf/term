@@ -18,7 +18,9 @@ load @term/base/text
 
 test <the Term root is the folder holding the package's deck.tree>
   want hold, file-exists(<{term-root()}/deck.tree>)
-  want hold, ends-with(term-root(), <deck/term/deck/term>)
+  # the Term repository's own root, whatever folder a clone sits in (decision term/004): the one holding the gate's
+  # root rule, never a nested package's
+  want hold, file-exists(<{term-root()}/task/term/root.ts>)
 
 test <the built CLI sits at host/line.js inside an install>
   want hold, is-equal(line-in-install, <host/line.js>)

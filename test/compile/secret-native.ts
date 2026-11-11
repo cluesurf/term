@@ -29,7 +29,19 @@ if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
-const NAME = `term-secret-native-${process.pid}`
+// The login keychain is written only in a person's session: over ssh it is locked to the program and every save
+// answers `failed` (release 2.10.2 on the M3). Its settings are read without -w and without a password, and a refusal
+// is a skip with the reason, never a failure of the program under test
+const keychain = spawnSync('security', ['show-keychain-info'], { encoding: 'utf8' })
+
+if (keychain.status !== 0) {
+  console.log(
+    `skip  secret-native  (the login keychain cannot be written here, as over ssh: ${(keychain.stderr ?? '').trim().slice(0, 160)})`,
+  )
+  process.exit(0)
+}
+
+const NAME =`term-secret-native-${process.pid}`
 const SECRET = `term-value-${process.pid}-${Date.now()}`
 
 const PROGRAM = `load @term/site/view/secret

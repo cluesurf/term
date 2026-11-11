@@ -69,11 +69,17 @@ test <a local later given a non-ASCII text is NOT>
 test <a template of an ASCII text and a number IS>
   want hold, proven(<{reader}\ntask go\n  take n, like number\n  like text\n  save s, text \<row \{n\}\>\n  save t, text \<\{s\}!\>\n  send back\n    call first\n      read t\n>, <go>, <t>)
 
-test <a parameter every caller passes ASCII IS>
-  want hold, proven(<{reader}\ntask go\n  like text\n  send back\n    call first\n      text \<abc\>\n>, <first>, <s>)
+# a parameter fact needs every caller in view: only a `mark private` task has them all (term-self-host-001-0059)
+host private-reader, <task first\n  take s, like text\n  like text\n  mark private\n  send back\n    call s/char-at\n      code 0\n>
+
+test <a parameter every caller of a private task passes ASCII IS>
+  want hold, proven(<{private-reader}\ntask go\n  like text\n  send back\n    call first\n      text \<abc\>\n>, <first>, <s>)
+
+test <a parameter of a public task every caller in the build passes ASCII is NOT (it is exported)>
+  want hold, not(proven(<{reader}\ntask go\n  like text\n  send back\n    call first\n      text \<abc\>\n>, <first>, <s>))
 
 test <a parameter one caller passes non-ASCII is NOT>
-  want hold, not(proven(<{reader}\ntask go\n  like text\n  save a\n    call first\n      text \<abc\>\n  send back\n    call first\n      text \<ñ\>\n>, <first>, <s>))
+  want hold, not(proven(<{private-reader}\ntask go\n  like text\n  save a\n    call first\n      text \<abc\>\n  send back\n    call first\n      text \<ñ\>\n>, <first>, <s>))
 
 test <a parameter of a task nothing calls is NOT (a caller the program cannot see)>
   want hold, not(proven(reader, <first>, <s>))
