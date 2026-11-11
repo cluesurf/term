@@ -1,0 +1,178 @@
+# One file as the build compiles it. Ported from call/code/make.ts (`buildable` and `feedGrammarOf`), part 1 of that
+# file. `term make`, `roll`, `hold` and `time` all compile through this, so no command reads a file differently from
+# the build: `term roll` compiled a `mine.tree` as plain Term and printed `unknown-name` for every word of every grammar.
+#
+# A feed GRAMMAR (a `mine.tree` that reads to rules) is not Term code. The build generates the reader it describes and
+# compiles THAT, so a dialect is written once, as the grammar, instead of twice as a grammar and a hand-written reader
+# that drifts from it. A file of `test` blocks is its rewritten text. Anything else is its own text.
+#
+# The SUBSTRATE is inferred, never asked for, and a grammar with no leaf to infer it from is REPORTED rather than
+# guessed at: guessing would emit a reader that compiles and reads the wrong cursor. A `mine.tree` under the `mill`
+# role is a MILL grammar, checked as itself, never a feed grammar.
+#
+# The feed mill is the compiler's port (compile/feed-compile.tree, compile/feed-mill-loads.tree), loaded where
+# compile/feed-mill.ts was docked until term-self-host-001-0954. The test preprocessor is the preprocess lane's
+# port (work/preprocess/test-rewriting.tree), loaded since term-cli-in-term-0065. Where the TypeScript handed back a closure that moves a diagnostic onto the lines as written, this hands back
+# the preprocessor's own answer, and `place-problem` asks it.
+
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/work/preprocess/test-rewriting
+  find readable
+  find readable-text
+
+load @term/make/compile/feed-compile
+  find feed-rule
+  find read-feed-mine-grammar
+  find feed-mine-faults
+  find feed-mine-substrate
+  find compile-feed-mine
+
+load @term/make/compile/feed-mill-loads
+  find feed-mine-loads
+
+dock load
+  load <node:path>, name node-path
+
+# The cursor library a generated reader reads through. Every format grammar reads a cursor from `@term/mill/feed`
+# (deck/mill/code/feed.tree), so this is where `make-text-cursor`, `read-byte` and the rest come from
+host feed-cursor, <@term/mill/feed>
+
+# one file, read for the build
+form build-input
+  # the build refuses it, with these reasons: a grammar with a leaf rule that reads to nothing, or one with no leaf
+  case refused
+    link faults, like list, like text
+  # the text to compile. `generated` when it is a grammar's reader, whose diagnostics are framed against that text;
+  # otherwise `unit` is the test preprocessor's answer, which places a diagnostic on the lines as written
+  case readable
+    link text, like text
+    link generated, like boolean
+    link unit, like dynamic
+
+# a feed grammar read from a file: the grammar, and its leaf rules that read to nothing
+form feed-grammar
+  link grammar, like hash, like text, like list, like feed-rule
+  link faults, like list, like text
+
+# Is this file a feed GRAMMAR, and if so the grammar it reads to? Parsed, never matched on its name alone: a filename
+# is a guess about content. Nothing when it is not one: a 0-byte `mine.tree` placeholder, a file that does not parse,
+# or one that happens to be called that and reads to no rules.
+task feed-grammar-of
+  take file, like text
+  take text, like text
+  like maybe, like feed-grammar
+
+  fork test, is-unequal(node-path/basename(file), <mine.tree>)
+    hold
+      back make none
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back make none
+  save grammar, read-feed-mine-grammar(parsed/tree)
+  fork test, is-above(grammar-size(grammar), 0)
+    hold
+      save faults, feed-mine-faults(parsed/tree)
+      save read, make(feed-grammar, bind(grammar, grammar), bind(faults, faults))
+      back make(some, read)
+  back make none
+
+task grammar-size
+  take grammar, like hash, like text, like list, like feed-rule
+  like number
+  mark private
+
+  back grammar/length()
+
+# A substrate answer that is a text or undefined, as the text or the empty text (`like unknown`, the gradual seam, D1)
+task substrate-text
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# the file as the build compiles it. `role` is the file's role as the build reads it, or the empty text for none
+task buildable
+  take file, like text
+  take source, like text
+  take role, like text
+  like build-input
+
+  save read, make none
+  fork test, is-unequal(role, <mill>)
+    hold
+      save read, feed-grammar-of(file, source)
+  sift read
+    case some
+      link found
+      fork test, is-above(found/faults/length, 0)
+        hold
+          back make(refused, bind(faults, found/faults))
+      save substrate, substrate-text(feed-mine-substrate(found/grammar))
+      fork test, is-equal(substrate, <>)
+        hold
+          save faults, make list
+          faults/push(<cannot tell whether this grammar reads bytes or text. Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. Write one of its leaf rules, or shelve the grammar with `mark draft` until it has one.>)
+          back make(refused, bind(faults, faults))
+      # the grammar's own `load` blocks come through verbatim: a `mine value` may call a real helper, and where that
+      # helper lives is a fact only the grammar knows
+      save loads, feed-mine-loads(file, source)
+      save generated, compile-feed-mine(found/grammar, substrate, feed-cursor, loads)
+      back make(readable, bind(text, generated), bind(generated, true), bind(unit, void))
+    case none
+      save nothing, 0
+  # no snapshots: the build compiles the file as the preprocessor rewrites it with none (readable(source) in make.ts)
+  save unit, readable(source, void)
+  save text, unit-text(unit)
+  back make(readable, bind(text, text), bind(generated, false), bind(unit, unit))
+
+task unit-text
+  take unit, like readable-text
+  like text
+  mark private
+
+  back unit/text
+
+# one problem of a build, whole: the diagnostic, and the text it was compiled from, so its code frame shows the right
+# lines (the test preprocessor rewrote it, or it is a generated grammar reader)
+task place-problem
+  take input, like build-input
+  take diagnostic, like dynamic
+  like dynamic
+
+  sift input
+    case readable
+      link written
+      link was-generated
+      link preprocessed
+      fork test, was-generated
+        hold
+          back make-problem(diagnostic, written)
+      back preprocessed/place(diagnostic)
+    case refused
+      back make-problem(diagnostic, <>)
+
+form build-problem
+  link diagnostic, like dynamic
+  link text, like text
+
+task make-problem
+  take diagnostic, like dynamic
+  take text, like text
+  like dynamic
+  mark private
+
+  back make(build-problem, bind(diagnostic, diagnostic), bind(text, text))

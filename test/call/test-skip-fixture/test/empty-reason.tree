@@ -1,0 +1,3 @@
+test <a skip gives a reason>
+  skip
+  want hold, true

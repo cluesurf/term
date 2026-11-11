@@ -154,9 +154,11 @@ task run
   )
 
   if (result.ok) {
+    // its host is the `view` the routes' file imports: on node the page module bears node's own `view` too, so the
+    // build splits the name by file and the dispatcher reads the one its file reached, `ViewIn<g><k>` (item 1192)
     ok(
       'typescript: the dispatcher is typed, not inferred',
-      /function route\(host: View, request: Request\)/.test(
+      /function route\(host: View(?:In\d+)?, request: Request\)/.test(
         result.typescript,
       ),
       result.typescript.match(/function route\([^)]*\)/)?.[0] ?? '',

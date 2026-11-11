@@ -103,6 +103,7 @@ load ./minting-values
   find with-head-args
   find with-outer-takes
   find refuse-sibling-likes
+  find refuse-like-values
   find refuse-nested-tasks
   find body-steps
   find marked
@@ -929,6 +930,9 @@ task save-of
       link name
       sift init
         case none
+          # no value, so the type is never read: a value written beside it (`save x, like text, read y`) is refused
+          # here rather than lost (item 1203, trap T-0653)
+          refuse-like-values(state, first-at(held, <like>))
           save state/declared/{name}, true
           back one-statement(let-statement(name, unit-value(where), true, no-type(), where))
         case some

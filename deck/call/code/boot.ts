@@ -2,7 +2,6 @@ import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import path from 'path'
 import net from 'net'
-import { fileURLToPath } from 'url'
 import {
   readFileSync,
   writeFileSync,
@@ -17,6 +16,7 @@ import {
 import { build, buildSync, version as esbuildVersion } from 'esbuild'
 import { spawn } from 'node:child_process'
 import { commandRoutes } from '@term/call/code/hook-dispatch'
+import { findInstallRoot } from '@term/call/code/work/need/running-install'
 import type { ChildProcess } from 'node:child_process'
 import { compile } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
@@ -829,10 +829,12 @@ export async function callBoot(input: {
       }
     }
 
-    // the seed CLI's own install dir (the nearest `link/` ancestor of this module), used as a fallback link root so an
-    // app that has not run `term link` itself still resolves `@cluesurf/*` through the install's stdlib links
+    // the CLI's own install dir (the nearest `link/` ancestor of the install's `host/`), used as a fallback link root
+    // so an app that has not run `term link` itself still resolves `@cluesurf/*` through the install's stdlib links.
+    // The install is found by the one walk (work/need/running-install.tree), never this module's own url, which names
+    // the cache folder once a suite docks this module into a test bundle (item 1197, trap T-0577)
     const installRoot = findProjectRoot(
-      path.dirname(fileURLToPath(import.meta.url)),
+      path.join(findInstallRoot(), 'host'),
     )
 
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
@@ -1229,24 +1231,23 @@ export async function callBoot(input: {
       if (cli) {
         // the dispatch engine, placed beside the app so the generated
         // entry and the compiler share ONE implementation of parsing,
-        // help, and execution. The published CLI ships it prebuilt as
-        // `host/dock.mjs` (see make:line); a source checkout builds it
-        // from hook-dispatch.ts directly. Refreshed every build: it is
-        // milliseconds, and a stale copy after an upgrade is a real bug.
-        const here = path.dirname(fileURLToPath(import.meta.url))
-        const shipped = path.join(here, 'dock.mjs')
+        // help, and execution: the install's `host/dock.mjs` (see
+        // make:line). An install without one builds it from its
+        // hook-dispatch.ts. Both are found under the install root, by
+        // the one walk (work/need/running-install.tree), never by this
+        // module's own url, which names the cache folder once a suite
+        // docks this module into a test bundle (item 1197, trap T-0577).
+        // Refreshed every build: it is milliseconds, and a stale copy
+        // after an upgrade is a real bug.
+        const install = findInstallRoot()
+        const shipped = path.join(install, 'host', 'dock.mjs')
 
         if (existsSync(shipped)) {
           copyFileSync(shipped, path.join(out, 'dock.mjs'))
         } else {
           buildSync({
-            // beside this module when it runs from source, and under `deck/` from the bundle in `host/`
             entryPoints: [
-              [
-                path.join(here, 'hook-dispatch.ts'),
-                path.join(here, '../deck/call/code/hook-dispatch.ts'),
-              ].find(existsSync) ??
-                path.join(here, '../deck/call/code/hook-dispatch.ts'),
+              path.join(install, 'deck', 'call', 'code', 'hook-dispatch.ts'),
             ],
             outfile: path.join(out, 'dock.mjs'),
             bundle: true,

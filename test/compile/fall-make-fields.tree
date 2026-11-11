@@ -1,0 +1,41 @@
+note <a parameter's `fall make <form>` default fills the form's own field falls, as a `make` in a body does, on every backend>
+
+# Item term-self-host-001-1202. check/extend.tree filled a construction's omitted fields from their `fall` in every
+# body, but never walked a parameter's default, so `take given, like choice, fall make choice` came out with each field
+# at its type's empty value (`fall true` false, `fall <suite.tree>` empty, `fall 7` zero) on TypeScript, Rust, Swift and
+# Kotlin alike. test/support/running.tree's `run-text` takes its choice that way, so every suite that ran a program
+# through it compiled with `optimize` false (test/compile/arithmetic-masks.tree). A backend whose toolchain is not
+# installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load ../support/running
+  find backends
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains
+
+host program, <form choice\n  link file, like text, fall \<suite.tree\>\n  link optimize, like boolean, fall true\n  link count, like number, fall 7\n\ntask in-body\n  like choice\n  back make choice\n\ntask with-fall\n  take given, like choice, fall make choice\n  like choice\n  back given\n\ntask run\n  like text\n  save a, in-body()\n  save b, with-fall()\n  back \<\{a/optimize\} \{a/file\} \{a/count\} \{b/optimize\} \{b/file\} \{b/count\}\>\n>
+
+test <a defaulted parameter's construction takes each field's own fall>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-fall-make-fields->)
+  host ran, run-text(program, backend, folder, <fall>)
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(ran/state, <ran>)
+  want hold, is-equal(ran/output, <true suite.tree 7 true suite.tree 7>)
+
+# the TypeScript of the default itself, where the empty values showed: the parameter's default record carries the falls
+test <the emitted default record is the form's falls>
+  host out, compile-text(program, make(compile-choice, bind(file, <fall.tree>), bind(project, <.>), bind(project-env, <node>), bind(env, <node>)))
+  want hold, out/ok
+  want hold, contains(out/emitted, <given: Choice = \{ file: "suite.tree", optimize: true, count: 7 \}>)

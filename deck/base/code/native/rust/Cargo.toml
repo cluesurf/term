@@ -51,6 +51,10 @@ tokio-rustls = "0.26"
 rustls-pemfile = "2"
 notify = "7"
 libc = "0.2"
+# the WebSocket client (runtime/websocket.rs over a std TcpStream, item 1154): the blocking library, never
+# tokio-tungstenite, whose connect needs a tokio reactor that Term's own loop does not have. No TLS feature, so a wss://
+# url is refused, as it was before
+tungstenite = "0.24"
 
 [lib]
 path = "lib.rs"

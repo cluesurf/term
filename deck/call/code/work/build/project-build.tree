@@ -1,0 +1,447 @@
+# The merged build of a project: every .tree file compiled to TypeScript under `host/`, mirroring the source tree.
+# Ported from call/code/make.ts (`compileProject`, `appShadowFindings`), part 3 of that file.
+#
+# An optional shared cache makes repeated builds incremental: an unchanged module reuses its parse and mill. An
+# artifact is only WRITTEN when its content changed, so a rebuild touches just the files whose output differs, and
+# tools watching `host/` are not woken for nothing. The answer carries counts plus rendered diagnostics, so the caller
+# decides how to report and whether to fail.
+#
+# The compiler (compile/compile.ts) is TypeScript, docked. The tier-0 tally (check/holding.tree) and the parse memo
+# (compile/loading-parses.tree, through work/cache/compile-store.tree) are the compiler's ports. The diagnostic renderer, face's contract and the manifest's name are the output, inspect and small lanes'
+# ports (work/output/diagnostic-report.tree, work/inspect/contract-finding.tree, work/small/manifest-file.tree), where
+# report.ts, face-contract.ts and manifest-name.ts were docked until term-cli-in-term-0069. The lookups the compiler
+# is handed are the lane's own ports, faced as host functions (host-faces.tree).
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find ends-with
+  find substring
+  find char-count
+
+load ./tree-finding
+  find find-tree-files
+
+load ./deck-finding
+  find make-deck-finder
+
+load ./role-reading
+  find make-role-reader
+  find role-of
+
+load ./build-input
+  find build-input
+  find buildable
+  find place-problem
+
+load ./project-resolving
+  find make-project-resolver
+  find source
+
+load ./kept-answers
+  find build-memo
+  find make-build-memo
+  find resolve-in-build
+
+load ./host-faces
+  find face-build-memo
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
+load ../cache/compile-store
+  find project-cache
+  find make-parse-memo
+
+load ../output/printer
+  find problem-entry
+
+load ../output/diagnostic-report
+  find render-diagnostic
+
+load ../inspect/contract-finding
+  find contract-findings
+  find contract-finding
+
+load ../small/manifest-file
+  find manifest-name-of
+
+# tier 0 over the project's own tasks: obligations written and proven, each kind's count under `kinds`. The tally is
+# check/holding.tree's, where check/holds.ts (`addOwed`) was docked until term-self-host-001-0954
+load @term/make/check/holding
+  find owed
+  find add-owed
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  # node's global scope, for `Object` (a `<global:globalThis>` dock is emitted renamed, traps.md)
+  load <global:global>, name host-global
+
+# what a build did
+form project-build
+  link compiled, like number
+  link written, like number
+  link failed, like number
+  link errors, like list, like text
+  # each file's own warnings, rendered: an unused binding (a misspelled `save` is one), termination, and the rest. A
+  # warning never fails the build
+  link warnings, like list, like text
+  # the same errors and warnings, whole, for the terminal output library to draw as Problem items with their code frames
+  link problems, like list, like problem-entry
+  # a failure with no diagnostic behind it: a grammar that cannot be read, a shadow that breaks face's contract
+  link faults, like list, like text
+  # the claims this project states that nobody has proven: every `rule` carrying `mark open`, sorted
+  link open, like list, like text
+  link obligations, like owed
+
+form folder-options
+  link recursive, like boolean
+
+# a problem in a file other than the one compiled: no text of its own, so its frame is read from disk
+form problem-elsewhere
+  link diagnostic, like dynamic
+
+# Compile every .tree file of the project. `cache` is the compile cache, undefined for the project's own on disk.
+# `platform` is the target; other platforms' native trees are not compiled. Loads resolve for node, as they always have
+task compile-project
+  take root, like text
+  take cache, like dynamic, fall void
+  take platform, like text, fall <node>
+  like project-build
+
+  save store, cache
+  fork test, is-equal(cache, void)
+    hold
+      save store, project-cache(root)
+  save files, find-tree-files(root, platform, root)
+  save obligations, make(owed, bind(total, 0), bind(proven, 0))
+  save memo, make-build-memo(make-project-resolver(root))
+  save resolve, face-build-memo(memo)
+  save deck-of, face-deck-finder(make-deck-finder())
+  save reader, make-role-reader(root)
+  save role-of-file, face-role-reader(reader)
+  # `mark lean` on a role rule, read off the same role files: which units take the lean surface
+  save lean-of-file, face-lean-reader(reader)
+  # ONE PARSE MEMO FOR THE WHOLE PROJECT, not one per file: every entry walks its import closure to work out its cache
+  # key, and that walk runs before the cache can be asked. And one walk per module, however many entries reach it
+  save parsed, make-parse-memo()
+  save walked, make hash
+  save compiled, 0
+  save written, 0
+  save failed, 0
+  save open, make hash
+  save errors, make list
+  save warnings, make list
+  save problems, make list
+  save faults, make list
+  walk files
+    take file
+    # a file of `test` blocks is not plain Term until the test preprocessor has rewritten them into tasks
+    save role, role-text(role-of(reader, file))
+    save unit, buildable(file, node-file/read-file-sync(file, <utf8>), role)
+    sift unit
+      case refused
+        link refusals
+        save failed, add(failed, 1)
+        walk refusals
+          take fault
+          save line, <{node-path/relative(root, file)}: {fault}>
+          errors/push(line)
+          faults/push(line)
+        turn next
+      case readable
+        link unit-text
+        link grammar
+        link preprocessed
+        save options, make(compile-options, bind(resolve, resolve), bind(cache, store), bind(parsed, parsed), bind(walked, walked), bind(deck-of, deck-of), bind(role-of, role-of-file), bind(lean-of, lean-of-file))
+        save result, compile-module/compile(make(compile-source, bind(file, file), bind(text, unit-text)), options)
+        fork test, not(result/ok)
+          hold
+            save failed, add(failed, 1)
+            # each diagnostic as a source frame, the in-memory text for this file's, the file on disk for the rest
+            walk items-of(result/diagnostics)
+              take diagnostic
+              save problem, framed(unit, file, diagnostic)
+              errors/push(render-problem(problem))
+              problems/push(problem)
+            turn next
+        save compiled, add(compiled, 1)
+        # only this file's warnings: every entry's program holds its whole import closure. A grammar's own compile is of
+        # the reader generated from it, whose capture names the generator chose, so an unused one is not the author's
+        walk items-of(result/warnings)
+          take warning
+          fork test, is-own-warning(warning, file, grammar)
+            hold
+              save problem, framed(unit, file, warning)
+              warnings/push(render-problem(problem))
+              problems/push(problem)
+        walk texts-of(claims-of(result))
+          take claim
+          save open/{claim}, true
+        add-result-owed(obligations, result/obligations)
+        # a mill definition is checked, not built: it has no output
+        fork test, is-equal(role, <mill>)
+          hold
+            turn next
+        save wrote, write-artifacts(root, file, result)
+        save written, add(written, wrote)
+  # an app's shadows of face's platform implementations take exactly face's contract, or the build fails
+  walk app-shadow-findings(root, memo)
+    take finding
+    save failed, add(failed, 1)
+    save fault, <{node-path/relative(root, finding/file)}: shadows face's {finding/component} on {finding/rung} and {finding/problem}>
+    errors/push(fault)
+    faults/push(fault)
+  save claims, sorted-texts(open/keys())
+  back make(project-build, bind(compiled, compiled), bind(written, written), bind(failed, failed), bind(errors, errors), bind(warnings, warnings), bind(problems, problems), bind(faults, faults), bind(open, claims), bind(obligations, obligations))
+
+# what the compiler is given to read the source with
+form compile-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link parsed, like dynamic
+  link walked, like hash, like text, like dynamic
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+form compile-source
+  link file, like text
+  link text, like text
+
+# the role the build reads for a file, the empty text for none
+task role-text
+  take role, like maybe, like text
+  like text
+
+  sift role
+    case some
+      link name
+      back name
+    case none
+      back <>
+
+# A problem in this file, framed against what the person wrote; one in another file, against that file on disk
+task framed
+  take unit, like build-input
+  take file, like text
+  take diagnostic, like dynamic
+  like dynamic
+
+  fork test, is-unequal(diagnostic/file, file)
+    hold
+      back make(problem-elsewhere, bind(diagnostic, diagnostic))
+  back place-problem(unit, diagnostic)
+
+task render-problem
+  take problem, like dynamic
+  like text
+
+  back render-diagnostic(problem/diagnostic, problem/text)
+
+# a warning of this file's own, and not an unused binding in a reader generated from a grammar
+task is-own-warning
+  take warning, like dynamic
+  take file, like text
+  take grammar, like boolean
+  like boolean
+
+  fork test, is-unequal(warning/file, file)
+    hold
+      back false
+  fork test, not(grammar)
+    hold
+      back true
+  back is-unequal(warning-name(warning), <unused-binding>)
+
+task warning-name
+  take warning, like dynamic
+  like dynamic
+  mark private
+
+  back warning/name
+
+# the claims a compile left open, none when it reports none
+task claims-of
+  take result, like dynamic
+  like dynamic
+
+  save claims, result/open-claims
+  fork test, is-equal(claims, void)
+    hold
+      back make list
+  back claims
+
+# one compile's tier-0 tally added into the running total. A compile that reports none adds nothing (check/holds.ts
+# `addOwed`, docked until term-self-host-001-0954, asked the host whether the tally was there)
+task add-result-owed
+  take into, like owed
+  take from, like dynamic
+  like void
+
+  fork test, has-owed(from)
+    hold
+      add-owed(into, from)
+
+bind has-owed
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+task items-of
+  take value, like dynamic
+  like list, like dynamic
+
+  back value
+
+task texts-of
+  take value, like dynamic
+  like list, like text
+
+  back value
+
+# texts in the host's default order (UTF-16 units), as `[...set].sort()`
+task sorted-texts
+  take keys, like dynamic
+  like list, like text
+
+  save all, host-global/Array/from(keys)
+  back all/sort()
+
+# Write one file's output under `host/`, mirroring the source: TypeScript, or for a look stylesheet its CSS and its style
+# tables, light and dark, for a host with no CSS engine. Only what changed is written. Answers how many files it wrote
+task write-artifacts
+  take root, like text
+  take file, like text
+  take result, like dynamic
+  like number
+  mark private
+
+  save css, result/css
+  save is-css, is-text(css)
+  save extension, <.ts>
+  save content, result/typescript
+  fork test, is-css
+    hold
+      save extension, <.css>
+      save content, css
+  save out-path, node-path/join(root, <host>, swap-tree(node-path/relative(root, file), extension))
+  save wrote, 0
+  fork test, is-unequal(held-text(out-path), content)
+    hold
+      node-file/mkdir-sync(node-path/dirname(out-path), make(folder-options, bind(recursive, true)))
+      node-file/write-file-sync(out-path, content)
+      save wrote, add(wrote, 1)
+  fork test, is-css
+    hold
+      save tables, make list
+      tables/push(<.style>)
+      tables/push(<.dark.style>)
+      save values, make list
+      values/push(result/style)
+      values/push(result/style-dark)
+      save at, 0
+      walk tables
+        take table-extension
+        save table, values/{at}
+        save at, add(at, 1)
+        fork test, is-equal(table, void)
+          hold
+            turn next
+        save style-path, swap-css(out-path, table-extension)
+        fork test, is-unequal(held-text(style-path), table)
+          hold
+            node-file/write-file-sync(style-path, table)
+            save wrote, add(wrote, 1)
+  back wrote
+
+task is-text
+  take value, like unknown
+  like boolean
+
+  sift value
+    case text
+      back true
+    miss
+      back false
+
+# a file's text, or undefined when it cannot be read
+task held-text
+  take file, like text
+  like dynamic
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    back text
+  halt take
+    take problem
+    back void
+
+# a path with a trailing `.tree` swapped for `extension` (the regular expression /\.tree$/)
+task swap-tree
+  take path, like text
+  take extension, like text
+  like text
+  mark private
+
+  fork test, ends-with(path, <.tree>)
+    hold
+      back <{substring(path, 0, subtract(char-count(path), 5))}{extension}>
+  back path
+
+# a path with a trailing `.css` swapped for `extension` (the regular expression /\.css$/)
+task swap-css
+  take path, like text
+  take extension, like text
+  like text
+  mark private
+
+  fork test, ends-with(path, <.css>)
+    hold
+      back <{substring(path, 0, subtract(char-count(path), 4))}{extension}>
+  back path
+
+# The contract findings for a project's own `code/component/native/` against face's generics, none for face itself.
+# Face's generics are found the way an import finds them
+task app-shadow-findings
+  take root, like text
+  take memo, like build-memo
+  like list, like contract-finding
+
+  # face-contract.ts FACE_NATIVE_PATH
+  save own, node-path/join(root, <code/component/native>)
+  save manifest, node-path/join(root, <deck.tree>)
+  fork test, not(node-file/exists-sync(own))
+    hold
+      back make list
+  fork test, node-file/exists-sync(manifest)
+    hold
+      save named, manifest-name-of(manifest)
+      fork test, is-face(named/unwrap-or(<>))
+        hold
+          back make list
+  sift resolve-in-build(memo, <@term/face/code/component/switch>, node-path/join(root, <deck.tree>), make none)
+    case some
+      link generic
+      back contract-findings(node-path/join(node-path/dirname(generic/file), <native>), own)
+    case none
+      back make list
+
+task is-face
+  take name, like unknown
+  like boolean
+  mark private
+
+  sift name
+    case text
+      back is-equal(name, <@term/face>)
+    miss
+      back false

@@ -352,13 +352,14 @@ task text-prelude
 
 # ---- the prelude texts, each the original's line for line ----
 
-# the helpers a maybe field's read and write call (D10)
+# the helpers a maybe field's read and write call (D10). A read whose none a sift tests by identity hands in the form's
+# frozen constant as `none` (item 1123), so an absent field is that constant and never a second object of the case
 task maybe-field-prelude
   like text
 
   save lines, make list
-  push(lines, <function __termMaybe\<T\>(value: T | undefined): \{ form: "some"; value: T \} | \{ form: "none" \} \{>)
-  push(lines, <  return value === undefined ? \{ form: "none" \} : \{ form: "some", value \}>)
+  push(lines, <function __termMaybe\<T\>(value: T | undefined, none: \{ form: "none" \} = \{ form: "none" \}): \{ form: "some"; value: T \} | \{ form: "none" \} \{>)
+  push(lines, <  return value === undefined ? none : \{ form: "some", value \}>)
   push(lines, <\}>)
   push(lines, <function __termSome\<T\>(maybe: \{ form: "some"; value: T \} | \{ form: "none" \}): T | undefined \{>)
   push(lines, <  return maybe.form === "some" ? maybe.value : undefined>)

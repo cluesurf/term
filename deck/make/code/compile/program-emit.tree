@@ -21,6 +21,8 @@
 #     them, each written back into its list, so the program the result holds carries them on every backend, and the run
 #     holds the program the probes were written into, as the original's spliced one did
 #   - the dictionaries' copy is the original's `structuredClone` (`emit-copy-program`). Natively a value is already a copy
+#   - after the simplifier, a loop test's text length is read once before the loop (ir/hoist-lengths, item 1213 of
+#     term/self-host/change/001), over the program every backend emits from and over the TypeScript's copy
 
 load @term/base/list
   find list
@@ -66,6 +68,9 @@ load ../ir/dictionary
 
 load ../ir/simplifying
   find simplify
+
+load ../ir/hoist-lengths
+  find hoist-lengths
 
 load ../check/lowered
   find check-lowered-members
@@ -470,13 +475,14 @@ task program-emit
       save no-modules, make none
       back emit-pending(raw-kind, program, raw-lowered, file, cover-keys, no-modules)
 
-  # the simplifier, then the view lowering, each over the TypeScript's copy too when the dictionaries made one
+  # the simplifier, the loop tests' lengths read once, then the view lowering, each over the TypeScript's copy too when
+  # the dictionaries made one
   save roots, simplify-roots(run, given, program)
-  save optimized, simplify(program, roots, given/foreign)
+  save optimized, hoist-lengths(simplify(program, roots, given/foreign))
   save ts-optimized, optimized
   fork test, traits
     hold
-      save ts-optimized, simplify(ts-program, roots, given/foreign)
+      save ts-optimized, hoist-lengths(simplify(ts-program, roots, given/foreign))
   save lowered, lower-views(optimized, run/runtime-names)
   save lowered-ts, lowered
   fork test, traits

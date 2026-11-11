@@ -223,13 +223,16 @@ task depth-of
   mark private
   take line, like text
   like number
+  # the length once: a text's length counts code points, a walk over the whole text when it holds an astral one, so
+  # reading it in the loop's test made a long line quadratic (term-self-host-001-1205)
+  save size, read line/length
   save count, code 0
   walk test
     hook test
       call and
         call is-below
           read count
-          read line/length
+          read size
         call is-equal
           call char-at
             read line
@@ -265,12 +268,15 @@ task tokenize
     like token
   save out
     make list
+  # the length once, as in depth-of: read in each loop's test, a 150 KB line holding an astral character never
+  # finished scanning (term-self-host-001-1205)
+  save size, read line/length
   save index, code 0
   walk test
     hook test
       call is-below
         read index
-        read line/length
+        read size
     hook hold
       save glyph
         call char-at
@@ -356,7 +362,7 @@ task tokenize
                   read closed
                 call is-below
                   read index
-                  read line/length
+                  read size
             hook hold
               save inner
                 call char-at
@@ -424,7 +430,7 @@ task tokenize
           call and
             call is-below
               read index
-              read line/length
+              read size
             call not
               call is-break
                 call char-at

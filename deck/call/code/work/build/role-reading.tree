@@ -1,0 +1,294 @@
+# The role a project gives a file: its role file maps globs to mill names (`role host` / `take @/data/**/*.tree`), and
+# the build passes the answer to the compiler so a file's role can override what its content says. Read once per
+# package; a package without a role file answers nothing for every file, and content decides.
+#
+# Ported from call/code/role-of.ts. The caches the TypeScript kept in a closure are the reader's own state here,
+# handed to every lookup. The role grammar is @term/deck's role-reading port, loaded, and the two checks a role
+# file must pass are call/code/role-check.tree.
+
+load @term/base/list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/role-check
+  find note-problem
+  find role-problem
+
+# a manifest's `role` value: the small lane's port, where manifest-name.ts was docked (term-cli-in-term-0069)
+load ../small/manifest-file
+  find manifest-value-of
+
+# the role grammar's reading and matching, @term/deck's role-reading port (term-cli-in-term-0236), where the package
+# manager's face was docked
+load @term/deck/package/role-reading
+  find parse-role-file
+  find match-role-rule
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/package/role-shape
+  find role-rule
+  find role-config
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# one build's role answers: the role config of each package, read once, and the rule each file matched
+form role-reader
+  mark shared
+  link root, like text
+  # the packages already read, and whether each had a role file
+  link read, like hash, like text, like boolean
+  link configs, like hash, like text, like role-config
+  # the files already asked about, and whether each matched a rule
+  link asked, like hash, like text, like boolean
+  link rules, like hash, like text, like role-rule
+
+task make-role-reader
+  take root, like text
+  like role-reader
+
+  back make(role-reader, bind(root, root), bind(read, make hash), bind(configs, make hash), bind(asked, make hash), bind(rules, make hash))
+
+# The package a file belongs to: its nearest ancestor holding a `deck.tree`, else the project root.
+#
+# This is what makes a role file PER PACKAGE. A build pulls in a dependency's source, and that source is written
+# against its OWN package's conventions, and a glob's `@` is the package root, so `@/code/**` in @term/site's role file
+# expands against @term/site's directory, not against whoever is building.
+#
+# The walk stops AT the root, never at a folder as long as the root. A file outside the root (a booted tool's own
+# package, or the CLI's own sources, built from a folder holding no project) climbs to its own `deck.tree`. A length
+# test stopped it as soon as its folder's path was no longer than the root's, so from a deep empty folder
+# call/code/work/item/standard.tree was given that folder's (absent) role file, lost `mark lean`, and its
+# `make standard` with named fields was refused (term-self-host-001-1113).
+task package-root-of
+  take file, like text
+  take root, like text
+  like text
+
+  save root-path, node-path/resolve(root)
+  save dir, node-path/dirname(file)
+  walk test
+    hook test
+      true
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+        hold
+          back dir
+      save up, node-path/dirname(dir)
+      fork test, or(is-equal(up, dir), is-equal(dir, root-path))
+        hold
+          back root
+      save dir, up
+  back root
+
+# a host answer that is a text or undefined, as a maybe (narrowed through `like unknown`, D1)
+task text-or-nothing
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      back make(some, value)
+    miss
+      back make none
+
+# a caught value's message, or the value as text
+task message-of
+  take error, like unknown
+  like text
+  mark private
+
+  save message, error/message
+  sift message
+    case text
+      back message
+    miss
+      back <{error}>
+
+# A role file that cannot be read, or that names a role the compiler does not have, STOPS THE BUILD, naming the file.
+# A misspelled `role hots` over data files built them as code with no warning, and a line the role grammar refused
+# dropped the whole file, every file then falling back to its content.
+task checked-roles
+  take file, like text
+  take root, like text
+  like role-config
+
+  save text, node-file/read-file-sync(file, <utf8>)
+  # a rule's flag is `mark <word>`, and a `note` there is read by nothing
+  save note, note-problem(text, file)
+  fork test, is-unequal(note, <>)
+    hold
+      halt <{note}>
+  save config, make-config(text, file, root)
+  save names, make list
+  walk config/rules
+    take rule
+    names/push(rule/name)
+  save unknown, role-problem(names, file)
+  fork test, is-unequal(unknown, <>)
+    hold
+      halt <{unknown}>
+  back config
+
+# the role grammar's reading of the file, its refusal named by the file
+task make-config
+  take text, like text
+  take file, like text
+  take root, like text
+  like role-config
+  mark private
+
+  fork
+    mark unsafe
+    save config, parse-role-file(text, root, make-grammars())
+    back config
+  halt take
+    take error
+    save message, message-of(error)
+    halt <{file}: {message}>
+
+# The role file of one package: `base/role.tree` by default, `role.tree` at the root as a second default, and a
+# manifest's `role <path>` in front of both. A directory resolves the way every other Term path does: `<dir>/role.tree`,
+# then `<dir>/base.tree`, then `<dir>/note.tree`. Nothing when there is none
+task read-roles
+  take root, like text
+  like maybe, like role-config
+
+  save candidates, make list
+  save manifest-path, node-path/join(root, <deck.tree>)
+  fork test, node-file/exists-sync(manifest-path)
+    hold
+      sift manifest-value-of(manifest-path, <role>)
+        case some
+          link declared
+          fork test, is-unequal(declared, <>)
+            hold
+              save at, node-path/resolve(root, declared)
+              fork test, and(node-file/exists-sync(at), is-folder(at))
+                hold
+                  candidates/push(node-path/join(at, <role.tree>))
+                  candidates/push(node-path/join(at, <base.tree>))
+                  candidates/push(node-path/join(at, <note.tree>))
+                miss
+                  candidates/push(at)
+                  candidates/push(<{at}.tree>)
+        case none
+          save nothing, 0
+  candidates/push(node-path/join(root, <base>, <role.tree>))
+  candidates/push(node-path/join(root, <role.tree>))
+  walk candidates
+    take candidate
+    fork test, node-file/exists-sync(candidate)
+      hold
+        save config, checked-roles(candidate, root)
+        back make(some, config)
+  back make none
+
+# is the path a directory, following links
+task is-folder
+  take at, like text
+  like boolean
+  mark private
+
+  save stat, node-file/stat-sync(at)
+  back stat/is-directory()
+
+# The matched RULE for a file, cached per package and per file, or nothing. The role and the lean flag both read it,
+# so a build that asks for both reads the role files once
+task role-rule-of
+  take reader, like role-reader
+  take file, like text
+  like maybe, like role-rule
+
+  fork test, reader/asked/has(file)
+    hold
+      fork test, reader/asked/get(file)
+        hold
+          back make(some, reader/rules/get(file))
+      back make none
+  save pkg, package-root-of(file, reader/root)
+  fork test, not(reader/read/has(pkg))
+    hold
+      sift read-roles(pkg)
+        case some
+          link config
+          save reader/configs/{pkg}, config
+          save reader/read/{pkg}, true
+        case none
+          save reader/read/{pkg}, false
+  save matched, false
+  fork test, reader/read/get(pkg)
+    hold
+      save config, reader/configs/get(pkg)
+      fork test, is-above(rule-count(config), 0)
+        hold
+          save found, match-role-rule(file, config)
+          sift found
+            case some
+              link one
+              save matched, true
+              save reader/rules/{file}, one
+            case none
+              save nothing, 0
+  save reader/asked/{file}, matched
+  fork test, matched
+    hold
+      back make(some, reader/rules/get(file))
+  back make none
+
+# how many rules a role config holds
+task rule-count
+  take config, like role-config
+  like number
+  mark private
+
+  back config/rules/length
+
+# the role a project gives this file, or nothing, when content decides
+task role-of
+  take reader, like role-reader
+  take file, like text
+  like maybe, like text
+
+  sift role-rule-of(reader, file)
+    case some
+      link rule
+      save name, rule-name(rule)
+      back make(some, name)
+    case none
+      back make none
+
+task rule-name
+  take rule, like role-rule
+  like text
+  mark private
+
+  back rule/name
+
+# Whether a file's role rule carries `mark lean`: the files it matches are read with the lean surface, where a bare
+# head is a call and a property head is a named argument
+task lean-of
+  take reader, like role-reader
+  take file, like text
+  like boolean
+
+  sift role-rule-of(reader, file)
+    case some
+      link rule
+      back marks-of(rule)
+    case none
+      back false
+
+task marks-of
+  take rule, like role-rule
+  like boolean
+  mark private
+
+  save marks, rule/mark
+  back contains(marks, <lean>)

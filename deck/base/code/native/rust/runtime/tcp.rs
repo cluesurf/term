@@ -2,21 +2,70 @@
 // TcpListener (Arc so the handle is Clone, which every emitted struct derives; std's Read and Write are implemented
 // for &TcpStream and accept takes &self, so a shared reference is enough). Reached only through the public TCP API.
 //
-// Every call that can wait (resolve, bind, connect, accept, read, write) is HANDED BACK
-// (note/project/term/decision/001-native-work-hands-back-to-the-loop.md): `crate::__term_hand_back` runs the blocking
-// std call on the runtime's pool and wakes the loop when it answers, as aio.rs does for a read. tokio::net sockets
-// needed a tokio reactor, and a program built as `term make --build` builds one runs on Term's own loop,
-// `__term_block_on`, which has none, so every built program that opened a socket panicked "there is no reactor
-// running" (item 1151).
+// A socket wait holds no pool worker (item 1156, ruled 2026-11-10: Term is identical on every backend). Every socket is
+// non-blocking, and each accept, read and write is a future the program's loop re-polls: an attempt that would block
+// answers pending, so any number of sockets wait at once, as on node, whose sockets are not on libuv's pool either.
+// While it waits it notes a wake time in the loop's `__TERM_WAKE`, as a timer does, so `__term_block_on` sleeps until
+// then and polls again rather than stopping with the defect or spinning: soon at first, backing off to 8 ms while the
+// socket stays quiet. Resolving and binding a listener and connecting, which end on their own, are HANDED BACK
+// (note/project/term/decision/001-native-work-hands-back-to-the-loop.md) through `crate::__term_hand_back`, as aio.rs
+// does for a read. tokio::net sockets needed a tokio reactor, which Term's own loop does not have (item 1151).
 mod tcp {
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
     use std::sync::Arc;
 
+    // the longest a quiet socket waits between two attempts, in microseconds
+    const QUIET_MOST: u64 = 8000;
+
+    // one socket call retried each time the loop polls it, until it no longer would block
+    struct Attempt<T, F: FnMut() -> std::io::Result<T> + Unpin> {
+        call: F,
+        tries: u32,
+    }
+
+    impl<T, F: FnMut() -> std::io::Result<T> + Unpin> std::future::Future for Attempt<T, F> {
+        type Output = std::io::Result<T>;
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<T>> {
+            let this = self.get_mut();
+            loop {
+                match (this.call)() {
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        // the first retry on the next round, then 50 us doubling up to QUIET_MOST
+                        let quiet = if this.tries == 0 {
+                            0
+                        } else {
+                            (50u64 << (this.tries - 1).min(16)).min(QUIET_MOST)
+                        };
+                        this.tries = this.tries.saturating_add(1);
+                        let at = std::time::Instant::now() + std::time::Duration::from_micros(quiet);
+                        crate::__TERM_WAKE.with(|wake| {
+                            wake.set(Some(wake.get().map_or(at, |soonest| soonest.min(at))))
+                        });
+                        cx.waker().wake_by_ref();
+                        return std::task::Poll::Pending;
+                    }
+                    answer => {
+                        crate::__term_progressed();
+                        return std::task::Poll::Ready(answer);
+                    }
+                }
+            }
+        }
+    }
+
+    fn attempt<T, F: FnMut() -> std::io::Result<T> + Unpin>(call: F) -> Attempt<T, F> {
+        Attempt { call, tries: 0 }
+    }
+
     // a listener as tokio::net::TcpListener::bind made it: SO_REUSEADDR on unix (node's listen sets it too), so a
     // server started again at once is not refused while the last one's closed connections wait out TIME_WAIT. std's
     // own bind does not set it. tokio's TcpSocket builds the socket and binds it with no reactor (only its `listen`
-    // registers one), and the bound descriptor becomes a blocking std listener.
+    // registers one), and the bound descriptor becomes a std listener.
     #[cfg(unix)]
     fn bind_listener(address: SocketAddr) -> std::io::Result<TcpListener> {
         use std::os::unix::io::{FromRawFd, IntoRawFd};
@@ -35,14 +84,15 @@ mod tcp {
         if unsafe { libc::listen(descriptor, 1024) } != 0 {
             return Err(std::io::Error::last_os_error());
         }
-        // TcpSocket opens it non-blocking for its reactor, and accept here blocks a pool worker instead
-        listener.set_nonblocking(false)?;
+        listener.set_nonblocking(true)?;
         Ok(listener)
     }
 
     #[cfg(not(unix))]
     fn bind_listener(address: SocketAddr) -> std::io::Result<TcpListener> {
-        TcpListener::bind(address)
+        let listener = TcpListener::bind(address)?;
+        listener.set_nonblocking(true)?;
+        Ok(listener)
     }
 
     // each address the host resolves to, tried in order, as tokio's bind does
@@ -64,9 +114,13 @@ mod tcp {
 
     pub async fn connect(host: String, port: i64, _secure: bool) -> Arc<TcpStream> {
         let at = format!("{}:{}", host, port);
-        let stream = crate::__term_hand_back(move || TcpStream::connect(at))
-            .await
-            .expect("tcp connect");
+        let stream = crate::__term_hand_back(move || {
+            let stream = TcpStream::connect(at)?;
+            stream.set_nonblocking(true)?;
+            Ok::<TcpStream, std::io::Error>(stream)
+        })
+        .await
+        .expect("tcp connect");
         Arc::new(stream)
     }
 
@@ -85,41 +139,28 @@ mod tcp {
     }
 
     pub async fn accept(listener: Arc<TcpListener>) -> Arc<TcpStream> {
-        let (stream, _) = crate::__term_hand_back(move || listener.accept())
-            .await
-            .expect("tcp accept");
+        let (stream, _) = attempt(move || listener.accept()).await.expect("tcp accept");
+        // linux gives an accepted socket blocking mode whatever its listener's, and the BSDs pass the listener's on
+        stream.set_nonblocking(true).expect("tcp accept");
         Arc::new(stream)
     }
 
     // what one read gives, up to 64 KiB, or the empty text at the end of the stream or on an error
     pub async fn read(stream: Arc<TcpStream>) -> String {
-        crate::__term_hand_back(move || {
-            let mut buffer = vec![0u8; 65536];
-            loop {
-                match (&*stream).read(&mut buffer) {
-                    Ok(count) => {
-                        return String::from_utf8_lossy(&buffer[..count]).to_string()
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
-                        continue
-                    }
-                    Err(_) => return String::new(),
-                }
-            }
-        })
-        .await
+        let mut buffer = vec![0u8; 65536];
+        let count = attempt(|| (&*stream).read(&mut buffer)).await;
+        match count {
+            Ok(count) => String::from_utf8_lossy(&buffer[..count]).to_string(),
+            Err(_) => String::new(),
+        }
     }
 
     // how many bytes one write took, 0 on an error
     pub async fn write(stream: Arc<TcpStream>, data: String) -> i64 {
-        crate::__term_hand_back(move || loop {
-            match (&*stream).write(data.as_bytes()) {
-                Ok(count) => return count as i64,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => return 0,
-            }
-        })
-        .await
+        attempt(|| (&*stream).write(data.as_bytes()))
+            .await
+            .map(|count| count as i64)
+            .unwrap_or(0)
     }
 
     // the socket closes when the last Arc to it drops; there is no explicit close.

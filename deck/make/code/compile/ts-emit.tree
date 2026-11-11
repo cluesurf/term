@@ -798,6 +798,29 @@ task maybe-field
     case none
       back false
 
+# a `need false` maybe field's read as a maybe (D10), `member` the host's read of it. Where the maybe's none is tested by
+# identity, the read hands __termMaybe the form's frozen constant (item 1123, trap T-1085): it built a fresh
+# {form: none}, which no guard matches, so a sift with `case none` first ran its some arm with undefined
+task maybe-read
+  take member, like text
+  take field, like maybe, like ts-field
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save st/maybe-field-used, true
+  sift field
+    case some
+      link known
+      save owner, fieldless-owner(<none>, make(some, known/type), facts)
+      fork test, and(is-unequal(owner, <>), facts/identity/has(<{owner}/none>))
+        hold
+          back <__termMaybe({member}, {fieldless-for(<none>, owner, st, facts)})>
+    case none
+      save nothing, 0
+  back <__termMaybe({member})>
+
 # the declared fields of one variant, through the enum the construction was typed as. An overloaded name with no
 # resolved type fills nothing
 task variant-case
@@ -2632,8 +2655,7 @@ task emit-member
           save field, declared-field-of(member-target, member-name, st, facts)
       fork test, maybe-field(field)
         hold
-          save st/maybe-field-used, true
-          back <__termMaybe({emit-member-target(member-target, st, facts)}.{spelled})>
+          back maybe-read(<{emit-member-target(member-target, st, facts)}.{spelled}>, field, st, facts)
       # a plain `need false` field reads as its type's empty value where a TypeScript caller left it out
       sift field
         case some
@@ -4061,8 +4083,7 @@ task emit-match
               save member, <{subject}.{to-member(pair/field)}>
               fork test, maybe-field(declared-one)
                 hold
-                  save st/maybe-field-used, true
-                  push(locals, <{inner-pad}const {local} = __termMaybe({member})>)
+                  push(locals, <{inner-pad}const {local} = {maybe-read(member, declared-one, st, facts)}>)
                 miss
                   save done, false
                   sift declared-one

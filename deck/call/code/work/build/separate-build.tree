@@ -1,0 +1,753 @@
+# Separate compilation for the whole project (`term make --separate`, the default): every module of every entry's
+# closure is checked once against its dependencies' INTERFACES and emitted once into host/.unit/<slug>.ts (imports are
+# sibling-relative, so one artifact serves every importer), with each entry keeping a re-export shim at its classic
+# host/<path>.ts location. Units are cached by content and dependency interface hashes, so a body-only edit in a shared
+# module rebuilds one unit and replays the rest. Ported from call/code/make.ts (`compileProjectSeparate`, `liveRolls`),
+# part 4 of that file. See note/project/term/compiler/incremental-compilation.md and code/compile/separate.ts.
+#
+# The session (build-session.tree) is what one build learns and the next may keep, held by the build graph that
+# build-graph.tree `build-request` is handed (decision 094); a watch keeps one graph across rebuilds, so an edit re-walks
+# only the module it changed. The compiler (compile/compile.ts, compile/separate.ts) is TypeScript, docked, and the
+# tier-0 tally is check/holding.tree. The lane's lookups are handed to the compiler as host functions (host-faces.tree).
+
+load ../output/printer
+  find problem-entry
+
+load @term/base/list
+  find list
+  find join
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find ends-with
+  find starts-with
+  find substring
+  find char-count
+
+load ../small/home-folder
+  find project-home
+
+load ./deck-finding
+  find make-deck-finder
+
+load ./role-reading
+  find make-role-reader
+  find role-of
+
+load ./build-input
+  find buildable
+
+load @term/make/term/hash
+  find hash-key
+
+load ./build-session
+  find build-session
+  find entry-outcome
+  find file-note
+  find resolve-in-session
+  find turn-session
+  find close-session
+  find build-files
+
+load ./explain-store
+  find explain-store
+
+load ./unit-naming
+  find unit-slug
+  find entry-shim
+  find is-whole-file
+
+load ./project-build
+  find add-result-owed
+  find compile-options
+  find compile-source
+  find role-text
+  find framed
+  find render-problem
+  find is-own-warning
+  find claims-of
+  find items-of
+  find texts-of
+  find sorted-texts
+  find is-text
+  find held-text
+
+load ./host-faces
+  find face-session
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+  find face-explain-store
+
+load ../cache/compile-store
+  find project-cache
+
+# face's contract and the manifest's name: the inspect and small lanes' ports, where face-contract.ts and
+# manifest-name.ts were docked (term-cli-in-term-0069)
+load ../inspect/contract-finding
+  find contract-findings
+  find contract-finding
+
+load ../small/manifest-file
+  find manifest-name-of
+
+load @term/make/compile/reach
+  find stale-entries
+
+# the tier-0 tally's record, where check/holds.ts was docked until term-self-host-001-0954 (project-build.tree adds
+# into it)
+load @term/make/check/holding
+  find owed
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/separate>, name separate-module
+
+# what a separate build did: the merged build's answer (project-build.tree), and the units it built and replayed, each
+# built entry's closure key, and the roll of every unit some entry still reaches
+form separate-build
+  link compiled, like number
+  link written, like number
+  link failed, like number
+  link errors, like list, like text
+  link warnings, like list, like text
+  link problems, like list, like problem-entry
+  link faults, like list, like text
+  link open, like list, like text
+  link obligations, like owed
+  link built, like number
+  link reused, like number
+  # each built program entry's closure key, which the roll is cached by (call/code/roll.ts `projectRoll`)
+  link closures, like hash, like text, like text
+  # each unit's roll of its own definitions, which the project's roll is assembled from
+  link rolls, like hash, like text, like dynamic
+
+# what compile/separate.ts is handed
+form separate-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link modules, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+  link parsed, like dynamic
+  link units, like dynamic
+  link walked, like dynamic
+  link explain, like dynamic
+
+form folder-options
+  link recursive, like boolean
+
+# the counter that makes each temp name of the artifact record unique in this process (`write-record`)
+host record-temps, make hash
+
+bind record-process-id
+  like number
+  case node
+    text <process.pid>
+
+# Artifacts are written AS THEY ARE PRODUCED, and this remembers only which paths have been written: a shared module's
+# `.unit` artifact is produced by every entry that imports it, and a set of paths dedupes it at about a hundred bytes an
+# entry where the texts would be tens of kilobytes each (test/compile/build-memory.ts)
+form artifact-writer
+  mark shared
+  link paths, like hash, like text, like boolean
+  link written, like number
+  # each path as this build left it: its stamp after the write, or after the read that found it equal, and the hash of
+  # the bytes the build stands behind. The graph's snapshot notes an artifact by this, so one edited after the build
+  # wrote it is noted moved, never as it stands when the snapshot is written (build-graph.tree `artifact-note`)
+  link notes, like hash, like text, like file-note
+
+# Write an artifact once a build, and only when its content changed, so a rebuild touches only what differs
+task write-artifact
+  take writer, like artifact-writer
+  take out-path, like text
+  take content, like text
+
+  fork test, not(writer/paths/has(out-path))
+    hold
+      save writer/paths/{out-path}, true
+      fork test, is-unequal(held-text(out-path), content)
+        hold
+          node-file/mkdir-sync(node-path/dirname(out-path), make(folder-options, bind(recursive, true)))
+          node-file/write-file-sync(out-path, content)
+          save writer/written, add(writer/written, 1)
+      save writer/notes/{out-path}, written-note(out-path, content)
+
+# an artifact's note as the build left it: its stamp and inode now, just after the write (or the read that found it
+# equal), and the hash of `content`, the bytes the build means it to hold. `missing` when it cannot be asked
+task written-note
+  take out-path, like text
+  take content, like text
+  like file-note
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(out-path)
+    back make(file-note, bind(stamp, <{stat/size}:{stat/mtime-ms}>), bind(inode, <{stat/ino}>), bind(hash, hash-key(content)))
+  halt take
+    take problem
+    back make(file-note, bind(stamp, <missing>), bind(inode, <>), bind(hash, <>))
+
+# Build every program entry of the project. `session` is the build graph's (decision 094: every caller builds through
+# build-graph.tree `build-request`); `cache` the compile cache, undefined for the project's own on disk; `precomputed` each entry's answer already built by a parallel
+# pass (build-separate-parallel.ts), a host map or undefined; `explain` an explain store, or undefined
+task compile-project-separate
+  take root, like text
+  # the graph's session (build-graph.tree `request-project`, the one caller since decision 094): what one build learns
+  # that the next may keep
+  take session, like build-session
+  take cache, like dynamic, fall void
+  take platform, like text, fall <node>
+  take precomputed, like dynamic, fall void
+  take explain, like dynamic, fall void
+  like separate-build
+
+  save store, cache
+  fork test, is-equal(cache, void)
+    hold
+      save store, project-cache(root)
+  # the build's file list, found once a build (build-session.tree `build-files`, decision 084)
+  save files, build-files(session, platform)
+  save resolve, face-session(session)
+  # the entries this build must build again: those whose closure holds a file that moved since the session's last build
+  # (compile/reach.tree). The rest replay what they built to then. Every entry builds when the session cannot say what
+  # moved
+  save stale, make none
+  save turned, turn-session(session, files)
+  sift turned
+    case some
+      link moved
+      save graph, make hash
+      # a module a snapshot's edges hold and this session has not walked reaches what it reached when it was walked: it
+      # has not moved, or it is in `moved` and its entries build again either way (build-graph.tree `load-snapshot`)
+      walk session/edges/keys()
+        take kept-file
+        save graph/{kept-file}, session/edges/get(kept-file)
+      walk session/walked/keys()
+        take walked-file
+        save graph/{walked-file}, edges-of(session/walked/get(walked-file))
+      save reached, make hash
+      walk texts-of(stale-entries(graph, files, moved))
+        take entry
+        save reached/{entry}, true
+      save stale, make(some, reached)
+    case none
+      save nothing, 0
+  save finder, make-deck-finder()
+  save deck-of, face-deck-finder(finder)
+  save reader, make-role-reader(root)
+  save role-of-file, face-role-reader(reader)
+  save lean-of-file, face-lean-reader(reader)
+  # typed where it is made: it is undefined or the explain store's face, a host value either way
+  save unit-explain, like dynamic
+    void
+  fork test, is-unequal(explain, void)
+    hold
+      save unit-explain, face-explain-store(explain)
+  save slug
+    task
+      take module, like text
+      like text
+      back unit-slug(root, module, finder)
+  save modules
+    task
+      take module, like text
+      like text
+      back <./{slug(module)}>
+  save problems, make list
+  save faults, make list
+  save warnings, make list
+  save open, make hash
+  save obligations, make(owed, bind(total, 0), bind(proven, 0))
+  save compiled, 0
+  save failed, 0
+  save built, 0
+  save reused, 0
+  save errors, make list
+  save closures, make hash
+  save writer, make(artifact-writer, bind(paths, make hash), bind(written, 0), bind(notes, make hash))
+  # the artifacts of every entry this build replayed: on disk already, and still this build's (`sweep-artifacts`)
+  save replayed, make hash
+  walk files
+    take file
+    save replay, replay-of(session, stale, file)
+    sift replay
+      case some
+        link outcome
+        save compiled, add(compiled, 1)
+        save reused, add(reused, outcome/units)
+        save closures/{file}, outcome/closure-key
+        walk outcome/artifacts
+          take kept-path
+          save replayed/{kept-path}, true
+        walk outcome/problems
+          take problem
+          problems/push(problem)
+        walk outcome/problems
+          take problem
+          warnings/push(render-problem(problem))
+        walk outcome/open
+          take claim
+          save open/{claim}, true
+        add-result-owed(obligations, outcome/obligations)
+        turn next
+      case none
+        save nothing, 0
+    session/entries/delete(file)
+    # a file of `test` blocks, or a feed grammar, is built as compile-project builds it (`buildable`)
+    save source, node-file/read-file-sync(file, <utf8>)
+    save role, role-text(role-of(reader, file))
+    save unit, buildable(file, source, role)
+    sift unit
+      case refused
+        link refusals
+        save failed, add(failed, 1)
+        walk refusals
+          take fault
+          save line, <{node-path/relative(root, file)}: {fault}>
+          errors/push(line)
+          faults/push(line)
+        turn next
+      case readable
+        link unit-text
+        link grammar
+        link preprocessed
+        # a file that is not a program has no module graph to split: a look stylesheet (CSS), a data file (a JSON
+        # module) and a mill definition (checked, never built). Each goes through compile() exactly as the merged build
+        # sends it, and is written where the merged build writes it
+        fork test, is-whole-file(file, unit-text, role)
+          hold
+            save options, make(compile-options, bind(resolve, resolve), bind(cache, store), bind(parsed, session/parsed), bind(walked, session/walked), bind(deck-of, deck-of), bind(role-of, role-of-file), bind(lean-of, lean-of-file))
+            save one, compile-module/compile(make(compile-source, bind(file, file), bind(text, unit-text)), options)
+            fork test, not(one/ok)
+              hold
+                save failed, add(failed, 1)
+                walk items-of(one/diagnostics)
+                  take diagnostic
+                  save problem, framed(unit, file, diagnostic)
+                  errors/push(render-problem(problem))
+                  problems/push(problem)
+                turn next
+            save compiled, add(compiled, 1)
+            fork test, is-equal(role, <mill>)
+              hold
+                turn next
+            write-whole(writer, root, file, one)
+            turn next
+        # a parallel pass may have built it already, with these same options in a worker. roleOf comes along: a unit
+        # compiled separately has to be asked the same question about its role as one compiled through the merged path,
+        # or the two disagree about whether a `hook` is a command or a route
+        save result, precomputed-of(precomputed, file)
+        fork test, is-equal(result, void)
+          hold
+            save options, make(separate-options, bind(resolve, resolve), bind(cache, store), bind(modules, modules), bind(role-of, role-of-file), bind(lean-of, lean-of-file), bind(deck-of, deck-of), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked), bind(explain, unit-explain))
+            save result, separate-module/compileSeparate(make(compile-source, bind(file, file), bind(text, unit-text)), options)
+        fork test, not(result/ok)
+          hold
+            save failed, add(failed, 1)
+            walk items-of(result/diagnostics)
+              take diagnostic
+              save problem, framed(unit, file, diagnostic)
+              errors/push(render-problem(problem))
+              problems/push(problem)
+            turn next
+        save compiled, add(compiled, 1)
+        save built, add(built, count-of(result/built))
+        save reused, add(reused, count-of(result/reused))
+        # only this file's warnings, as compile-project reports them: a grammar's own compile is of the reader generated
+        # from it, whose unused captures are about code nobody wrote
+        save own, make list
+        walk items-of(result/warnings)
+          take warning
+          fork test, is-own-warning(warning, file, grammar)
+            hold
+              save problem, framed(unit, file, warning)
+              warnings/push(render-problem(problem))
+              problems/push(problem)
+              own/push(problem)
+        walk texts-of(claims-of(result))
+          take claim
+          save open/{claim}, true
+        add-result-owed(obligations, result/obligations)
+        save closure-key, text-of(result/closure-key)
+        # the roll of every unit the entry reaches, for the roll pass
+        walk pairs-of(result/rolls)
+          take labelled
+          save session/rolls/{text-of(labelled/0)}, labelled/1
+        save artifacts, make list
+        walk pairs-of(result/modules)
+          take emitted
+          save unit-path, node-path/join(root, <host>, <.unit>, <{slug(text-of(emitted/0))}.ts>)
+          artifacts/push(unit-path)
+          write-artifact(writer, unit-path, text-of(code-of(emitted/1)))
+        # the entry shim, written by the worker that built the entry when a parallel pass did
+        save shim, result/shim
+        save shim-text, <>
+        fork test, is-text(shim)
+          hold
+            save shim-text, text-of(shim)
+          miss
+            save shim-text, entry-shim(root, file, result/exports, slug)
+        save shim-path, node-path/join(root, <host>, swap-ending(node-path/relative(root, file), <.ts>))
+        artifacts/push(shim-path)
+        write-artifact(writer, shim-path, shim-text)
+        save outcome, make(entry-outcome, bind(problems, own), bind(open, texts-of(claims-of(result))), bind(obligations, result/obligations), bind(units, add(count-of(result/built), count-of(result/reused))), bind(closure-key, closure-key), bind(artifacts, artifacts))
+        save session/entries/{file}, outcome
+        save closures/{file}, closure-key
+  # an app's shadows of face's platform implementations take exactly face's contract, as compile-project holds them
+  walk shadow-findings(root, session)
+    take finding
+    save failed, add(failed, 1)
+    save fault, <{node-path/relative(root, finding/file)}: shadows face's {finding/component} on {finding/rung} and {finding/problem}>
+    errors/push(fault)
+    faults/push(fault)
+  sweep-artifacts(root, writer/paths, replayed)
+  # every artifact as this build left it, for the snapshot (build-graph.tree `artifact-note`)
+  walk writer/notes/keys()
+    take written-path
+    save session/noted/{written-path}, writer/notes/get(written-path)
+  close-session(session)
+  save claims, sorted-texts(open/keys())
+  save rolls, live-rolls(session, closures)
+  back make(separate-build, bind(compiled, compiled), bind(written, writer/written), bind(failed, failed), bind(errors, errors), bind(warnings, warnings), bind(problems, problems), bind(faults, faults), bind(open, claims), bind(obligations, obligations), bind(built, built), bind(reused, reused), bind(closures, closures), bind(rolls, rolls))
+
+form remove-options
+  link force, like boolean
+
+# What the last separate build wrote under host/ is recorded beside the project's cache, one path relative to the
+# project a line, sorted. An artifact the last build wrote and this one does not stand behind (its module was shelved
+# with `mark draft`, moved or removed, or its entry failed) is removed, so host/ after an incremental build is what a
+# clean build of the same sources leaves (item term-self-host-001-0425). The record's first line names the project's
+# root. The record is ADVISORY (decision 077 section 4): one that is missing, unreadable or another root's (a copied or
+# moved project) is lost, and a lost record costs a full sweep, never a stale artifact: every `.ts` file under
+# host/.unit and under each host/ folder this build writes into that this build does not stand behind is removed (item
+# term-self-host-001-0433). call/code/make.ts `sweepArtifacts` is the TypeScript twin, and the two read and write one
+# record
+task sweep-artifacts
+  take root, like text
+  take written, like hash, like text, like boolean
+  take replayed, like hash, like text, like boolean
+  mark private
+
+  save standing, make hash
+  walk written/keys()
+    take one
+    save standing/{node-path/relative(root, one)}, true
+  walk replayed/keys()
+    take one
+    save standing/{node-path/relative(root, one)}, true
+  save now, sorted-texts(standing/keys())
+  save parts, make list
+  parts/push(<artifacts.txt>)
+  save record, project-home(root, parts)
+  save header, <# term artifacts {root}>
+  save before, <>
+  save held, held-text(record)
+  fork test, is-text(held)
+    hold
+      save before, text-of(held)
+  save lines, split(before, <\n>)
+  save host-prefix, <host{node-path/sep}>
+  fork test, is-equal(get(lines, 0), header)
+    hold
+      walk lines
+        take one
+        fork test, and(is-unequal(one, <>), and(not(standing/has(one)), starts-with(one, host-prefix)))
+          hold
+            node-file/rm-sync(node-path/join(root, one), make(remove-options, bind(force, true)))
+    miss
+      sweep-all(root, standing)
+  save text, <{header}\n{join(now, <\n>)}\n>
+  fork test, is-unequal(before, text)
+    hold
+      write-record(record, text)
+
+# THE RECORD IS WRITTEN WHOLE OR NOT AT ALL (item term-self-host-001-0470): a temp beside it named by the process and a
+# counter, then a rename over it, so a build reading it meanwhile reads the last record or this one, never a short list
+# under a valid header (which would skip the sweep of what it lacks and leave a stale artifact no later build sweeps).
+# A write that fails (a full disk, EACCES) never fails the build, as the store's and the snapshot's do not: the record
+# is advisory, and the last one stays or none is there, either of which a later sweep stands behind
+task write-record
+  take record, like text
+  take text, like text
+  mark private
+
+  save at, 0
+  save name, <temp>
+  fork test, record-temps/has(name)
+    hold
+      save at, record-temps/get(name)
+  save record-temps/{name}, add(at, 1)
+  save temp, <{record}.{record-process-id()}.{at}.tmp>
+  fork
+    mark unsafe
+    node-file/mkdir-sync(node-path/dirname(record), make(folder-options, bind(recursive, true)))
+    node-file/write-file-sync(temp, text)
+    node-file/rename-sync(temp, record)
+  halt take
+    take problem
+    fork
+      mark unsafe
+      node-file/unlink-sync(temp)
+    halt take
+      # the temp may not exist
+      take missing
+
+# THE FULL SWEEP, for a lost record: the folders under host/ a build writes into are host/.unit and the first folder of
+# every path it stands behind (host/code for a deck whose code root is ./code), and each `.ts` file in them it does not
+# stand behind is removed. host/'s own files (roll.json) and any other folder are left
+task sweep-all
+  take root, like text
+  take standing, like hash, like text, like boolean
+  mark private
+
+  save sep, node-path/sep
+  save folders, make hash
+  save units-folder, <host{sep}.unit>
+  save folders/{units-folder}, true
+  walk standing/keys()
+    take one
+    save at, split(one, sep)
+    fork test, and(is-above(at/length, 2), is-equal(get(at, 0), <host>))
+      hold
+        save written-folder, <host{sep}{get(at, 1)}>
+        save folders/{written-folder}, true
+  walk folders/keys()
+    take folder
+    save full, node-path/join(root, folder)
+    fork test, node-file/exists-sync(full)
+      hold
+        walk node-file/readdir-sync(full, make(folder-options, bind(recursive, true)))
+          take inside
+          save one, node-path/join(folder, inside)
+          fork test, and(ends-with(one, <.ts>), not(standing/has(one)))
+            hold
+              node-file/rm-sync(node-path/join(root, one), make(remove-options, bind(force, true)))
+
+# an entry the session may replay: one the build need not build again, when the session kept its outcome
+task replay-of
+  take session, like build-session
+  take stale, like maybe, like hash, like text, like boolean
+  take file, like text
+  like maybe, like entry-outcome
+  mark private
+
+  sift stale
+    case some
+      link reached
+      fork test, reached/has(file)
+        hold
+          back make none
+      fork test, session/entries/has(file)
+        hold
+          back make(some, session/entries/get(file))
+      back make none
+    case none
+      back make none
+
+# a walk's edges, none for a module the session has no walk of
+task edges-of
+  take one, like dynamic
+  like list, like text
+  mark private
+
+  fork test, is-equal(one, void)
+    hold
+      back make list
+  save edges, one/edges
+  fork test, is-equal(edges, void)
+    hold
+      back make list
+  back edges
+
+# `precomputed?.get(file)`
+bind precomputed-of
+  take precomputed, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$precomputed?.get($file)>
+
+# the entries of a host map or list of pairs, in its order: `[...value]`, none when it is undefined
+bind pairs-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <(Array.from($value ?? []) as any[])>
+
+task count-of
+  take value, like dynamic
+  like number
+  mark private
+
+  back value/length
+
+task code-of
+  take emit, like dynamic
+  like dynamic
+  mark private
+
+  back emit/code
+
+task text-of
+  take value, like dynamic
+  like text
+  mark private
+
+  back value
+
+# One file compiled whole, written under `host/` where the merged build writes it: TypeScript, or for a look stylesheet
+# its CSS and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
+task write-whole
+  take writer, like artifact-writer
+  take root, like text
+  take file, like text
+  take one, like dynamic
+  mark private
+
+  save css, one/css
+  save is-css, is-text(css)
+  save extension, <.ts>
+  save content, one/typescript
+  fork test, is-css
+    hold
+      save extension, <.css>
+      save content, css
+  save out-path, node-path/join(root, <host>, swap-ending(node-path/relative(root, file), extension))
+  write-artifact(writer, out-path, text-of(content))
+  fork test, is-css
+    hold
+      save style, one/style
+      fork test, is-unequal(style, void)
+        hold
+          write-artifact(writer, swap-css(out-path, <.style>), text-of(style))
+      save dark, one/style-dark
+      fork test, is-unequal(dark, void)
+        hold
+          write-artifact(writer, swap-css(out-path, <.dark.style>), text-of(dark))
+
+# a path with a trailing `.tree` swapped for `extension` (the regular expression /\.tree$/)
+task swap-ending
+  take path, like text
+  take extension, like text
+  like text
+  mark private
+
+  fork test, ends-with(path, <.tree>)
+    hold
+      back <{substring(path, 0, subtract(char-count(path), 5))}{extension}>
+  back path
+
+# a path with a trailing `.css` swapped for `extension` (the regular expression /\.css$/)
+task swap-css
+  take path, like text
+  take extension, like text
+  like text
+  mark private
+
+  fork test, ends-with(path, <.css>)
+    hold
+      back <{substring(path, 0, subtract(char-count(path), 4))}{extension}>
+  back path
+
+# The contract findings for a project's own `code/component/native/` against face's generics, none for face itself.
+# Face's generics are found the way an import finds them, through the session
+task shadow-findings
+  take root, like text
+  take session, like build-session
+  like list, like contract-finding
+  mark private
+
+  # face-contract.ts FACE_NATIVE_PATH
+  save own, node-path/join(root, <code/component/native>)
+  save manifest, node-path/join(root, <deck.tree>)
+  fork test, not(node-file/exists-sync(own))
+    hold
+      back make list
+  fork test, node-file/exists-sync(manifest)
+    hold
+      save named, manifest-name-of(manifest)
+      fork test, is-face(named/unwrap-or(<>))
+        hold
+          back make list
+  save found, resolve-in-session(session, <@term/face/code/component/switch>, node-path/join(root, <deck.tree>), make none)
+  sift found
+    case some
+      link generic
+      back contract-findings(node-path/join(node-path/dirname(generic/file), <native>), own)
+    case none
+      back make list
+
+task is-face
+  take name, like unknown
+  like boolean
+  mark private
+
+  sift name
+    case text
+      back is-equal(name, <@term/face>)
+    miss
+      back false
+
+# The rolls of the units some entry still reaches. The session keeps every unit's roll it was handed, and in a watch an
+# edit that drops an import leaves that unit's roll behind, which no entry builds from any more. Every module's edges
+# are in the session's walk; a unit is labelled by its files, joined by `+` (compile/separate.ts)
+task live-rolls
+  take session, like build-session
+  take closures, like hash, like text, like text
+  like hash, like text, like dynamic
+
+  # every file some entry reaches. The set is the answer, so the order they are visited in is free: a queue
+  save reached, make hash
+  save queue, make list
+  walk closures/keys()
+    take entry
+    queue/push(entry)
+  save at, 0
+  walk test
+    hook test
+      is-below(at, queue/length)
+    hook hold
+      save file, queue/{at}
+      save at, add(at, 1)
+      fork test, not(reached/has(file))
+        hold
+          save reached/{file}, true
+          walk edges-at(session, file)
+            take edge
+            queue/push(edge)
+  save live, make hash
+  walk session/rolls/keys()
+    take label
+    save reaches, false
+    walk split(label, <+>)
+      take one
+      fork test, reached/has(one)
+        hold
+          save reaches, true
+    fork test, reaches
+      hold
+        save live/{label}, session/rolls/get(label)
+  back live
+
+# a module's edges: its walk's this session, else a snapshot's (build-graph.tree `load-snapshot`), else none
+task edges-at
+  take session, like build-session
+  take file, like text
+  like list, like text
+
+  fork test, session/walked/has(file)
+    hold
+      back edges-of(session/walked/get(file))
+  fork test, session/edges/has(file)
+    hold
+      back session/edges/get(file)
+  back make list

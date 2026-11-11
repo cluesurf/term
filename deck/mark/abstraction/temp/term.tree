@@ -1,0 +1,32 @@
+form point
+  link x, like number
+  link y, like number
+
+# a Fibonacci walk modulo 1000, carried as a point made fresh every turn and read back the next
+task run
+  take size, like number
+  like text
+  save p
+    make point
+      bind x, code 0
+      bind y, code 1
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      save p
+        make point
+          bind x, read p/y
+          bind y
+            call modulo
+              call add
+                read p/x
+                read p/y
+              code 1000
+      save total
+        call add
+          read total
+          read p/x
+  send back, text <{{total}}>

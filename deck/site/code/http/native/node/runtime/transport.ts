@@ -5,7 +5,16 @@
 import { Hono } from 'hono'
 // aliased: the seed `serve` task is emitted into the same bundle scope, so the hono adapter must not shadow it
 import { serve as honoServe } from '@hono/node-server'
-import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
+// the namespace, never the named functions: Zstandard came to node:zlib in node 22.15, and a named import of an export
+// the running node lacks stops the whole program at load, every route with it (item 1192, the M3's node 22.14). Without
+// it a packed request is refused and an answer goes out unpacked
+import * as transportZlib from 'node:zlib'
+
+type ZstdCodec = {
+  zstdCompressSync?: (plain: Buffer) => Buffer
+  zstdDecompressSync?: (packed: Buffer, options: { maxOutputLength: number }) => Buffer
+}
+const transportZstd = transportZlib as unknown as ZstdCodec
 
 // tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program, the way a binary asset
 // already travels, since `request.body` and `response.body` are text. A request body is read as bytes, never as
@@ -134,8 +143,15 @@ const transport = {
               .toLowerCase()
               .trim() === 'zstd'
           ) {
+            const unpack = transportZstd.zstdDecompressSync
+
+            // a node with no Zstandard cannot read the body: refused as an encoding it does not take
+            if (!unpack) {
+              return context.body('', 415 as never, { ...NO_STORE })
+            }
+
             try {
-              raw = zstdDecompressSync(raw, {
+              raw = unpack(raw, {
                 maxOutputLength: TREE_CODE_LIMIT,
               })
             } catch {
@@ -190,11 +206,14 @@ const transport = {
         const plain = Buffer.from(out, 'base64')
         const vary = { Vary: 'Accept-Encoding' }
 
+        const pack = transportZstd.zstdCompressSync
+
         if (
+          pack &&
           plain.length >= TREE_CODE_PACK_ABOVE &&
           acceptsZstd(context.req.header('accept-encoding'))
         ) {
-          const packed = zstdCompressSync(plain)
+          const packed = pack(plain)
 
           if (packed.length < plain.length) {
             return context.body(packed as never, status, {

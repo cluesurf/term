@@ -374,6 +374,8 @@ unicode-normalization = "0.1"
 num-bigint = "0.4"
 unicode-segmentation = "1"
 tokio-tungstenite = "0.24"
+# the websocket shim's blocking client over a std TcpStream (item 1154), the same version tokio-tungstenite builds
+tungstenite = "0.24"
 futures-util = "0.3"
 hyper = { version = "1", features = ["server", "client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service"] }

@@ -1,0 +1,96 @@
+note <a loop test's text length is read once before the loop when the loop never writes the text, on every backend>
+
+# Item term-self-host-001-1213. A text's length counts code points, which every backend counts by walking the text, so
+# a loop whose test read `line/length` walked the whole text on each pass. Over a 131,073 code point astral text, the
+# compiler before this item ran 4,096 passes in the first second on TypeScript and Swift, 16,384 on Kotlin and 28,672
+# on Rust. ir/hoist-lengths.tree reads that length into a local before the loop when nothing in the loop writes the
+# text, so the loop below runs all 131,073 passes within a second. A loop that writes the text, in its body or through a
+# closure, keeps reading the length each pass, and so does one whose read sits on the right of an `and`, which only
+# some tests reach. A backend whose toolchain is not installed is the case's own skip.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find emit-text
+
+load ../support/running
+  find backends
+  find backend-env
+  find run-text
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains
+  find split
+
+host program, <load @term/base/clock\n  find now\n\n# a text of 2^doublings astral code points and one ASCII letter\ntask astral\n  take doublings, like number\n  like text\n\n  save line, \<😀\>\n  save k, 0\n  walk test\n    hook test, is-below(k, doublings)\n    hook hold\n      save line, \<\{line\}\{line\}\>\n      save k, add(k, 1)\n  back \<\{line\}a\>\n\n# the passes of a loop whose test reads the text's length and whose body never writes it, cut once it has run a second\ntask count-passes\n  take line, like text\n  like text\n\n  save started, now()\n  save at, 0\n  save slow, false\n  save tick, 0\n  walk test\n    hook test, is-below(at, line/length)\n    hook hold\n      save at, add(at, 1)\n      save tick, add(tick, 1)\n      fork test, is-equal(tick, 4096)\n        hold\n          save tick, 0\n          fork test, is-above(subtract(now(), started), 1000)\n            hold\n              save slow, true\n              halt\n  fork test, slow\n    hold\n      back \<\{at\} slow\>\n  back \<\{at\} fast\>\n\n# a loop that writes its text at the third pass: its test reads the new length\ntask shrinking\n  take line, like text\n  like number\n\n  save at, 0\n  walk test\n    hook test, is-below(at, line/length)\n    hook hold\n      fork test, is-equal(at, 2)\n        hold\n          save line, \<ab\>\n      save at, add(at, 1)\n  back at\n\n# a loop whose length read sits on the right of an `and`, which only some tests reach: it stays in the test\ntask guarded\n  take line, like text\n  like number\n\n  save at, 0\n  walk test\n    hook test, and(is-below(at, 3), is-below(at, line/length))\n    hook hold\n      save at, add(at, 1)\n  back at\n\ntask in-closure\n  take body, like task\n  body()\n\n# a loop whose body writes its text through a closure\ntask closure-shrinking\n  take line, like text\n  like number\n\n  save at, 0\n  walk test\n    hook test, is-below(at, line/length)\n    hook hold\n      fork test, is-equal(at, 2)\n        hold\n          in-closure\n            task shrink\n              save line, \<ab\>\n      save at, add(at, 1)\n  back at\n\ntask run\n  like text\n\n  back \<\{count-passes(astral(17))\} \{count-passes(astral(10))\} \{shrinking(astral(4))\} \{closure-shrinking(astral(4))\} \{guarded(astral(4))\}\>\n>
+
+# the program read lean, for one backend's env
+task choice-for
+  take backend, like text
+  like compile-choice
+
+  back make(compile-choice, bind(file, <loops.tree>), bind(lean, true), bind(project, <.>), bind(project-env, backend-env(backend)), bind(env, backend-env(backend)))
+
+test <the loop over a long astral text runs to its end within a second, and a loop that writes its text reads it again>
+  take backend, like text
+    walk backends()
+  host folder, temp-folder(<term-loop-text-length->)
+  host ran, run-text(program, backend, folder, <loops>, choice-for(backend))
+  fork test, is-equal(ran/state, <skipped>)
+    hold
+      skip <the backend's toolchain is not installed>
+  want hold, is-equal(<{ran/state} {ran/stage} {ran/reason}>, <ran  >)
+  want hold, is-equal(ran/output, <131073 fast 1025 fast 3 3 3>)
+
+# the text one backend emits of the program
+task emitted
+  take backend, like text
+  like text
+
+  host out, compile-text(program, choice-for(backend))
+  fork test, not(out/ok)
+    hold
+      back <refused: {out/messages}>
+  back emit-text(out, backend)
+
+# how many times a text holds a piece
+task count-of
+  take text, like text
+  take piece, like text
+  like number
+
+  back subtract(split(text, piece)/length, 1)
+
+# the emitted loops: count-passes reads the local, and shrinking, closure-shrinking and guarded (whose read sits on the
+# right of an `and`) read the length on each pass
+test <typescript: the loop that never writes its text reads the local made before it>
+  host code, emitted(<typescript>)
+  want hold, is-equal(count-of(code, <const lineLength1: number = __termText_length(line)>), 1)
+  want hold, is-equal(count-of(code, <while (at \< lineLength1)>), 1)
+  want hold, is-equal(count-of(code, <while (at \< __termText_length(line))>), 2)
+  want hold, is-equal(count-of(code, <while (at \< 3 && at \< __termText_length(line))>), 1)
+
+test <rust: the loop that never writes its text reads the local made before it>
+  host code, emitted(<rust>)
+  want hold, is-equal(count-of(code, <let line_length_1 = line.chars().count() as i64;>), 1)
+  want hold, is-equal(count-of(code, <while at \< line_length_1 \{>), 1)
+  want hold, is-equal(count-of(code, <while at \< (line.chars().count() as i64) \{>), 1)
+  want hold, is-equal(count-of(code, <while at \< (line.borrow().clone().chars().count() as i64) \{>), 1)
+  want hold, is-equal(count-of(code, <while (at \< 3) && (at \< (line.chars().count() as i64)) \{>), 1)
+
+test <swift: the loop that never writes its text reads the local made before it>
+  host code, emitted(<swift>)
+  want hold, is-equal(count-of(code, <let lineLength1 = TermText.length(line)>), 1)
+  want hold, is-equal(count-of(code, <while (at \< lineLength1)>), 1)
+  want hold, is-equal(count-of(code, <while (at \< TermText.length(line))>), 2)
+  want hold, is-equal(count-of(code, <while ((at \< 3) && (at \< TermText.length(line)))>), 1)
+
+test <kotlin: the loop that never writes its text reads the local made before it>
+  host code, emitted(<kotlin>)
+  want hold, is-equal(count-of(code, <val lineLength1 = TermText.length(line)>), 1)
+  want hold, is-equal(count-of(code, <while ((at \< lineLength1))>), 1)
+  want hold, is-equal(count-of(code, <while ((at \< TermText.length(line)))>), 2)
+  want hold, is-equal(count-of(code, <while (((at \< 3L) && (at \< TermText.length(line))))>), 1)

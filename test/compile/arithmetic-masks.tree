@@ -1,12 +1,5 @@
 note <one arithmetic vocabulary through masks: add and the rest call a wearing form's own task, on every backend>
 
-# SHELVED until the compile under live host/line.js agrees with the TypeScript one (item term-self-host-001-0653, its
-# log entry of 2026-11-10): there `total`'s `add(a, b)` under `need addition` is emitted as a bare `add(a, b)` and the
-# TypeScript run stops `add is not defined`, where deck/make's TypeScript compile emits `traitArgAdditionT.add(a, b)`.
-# The money, big and others cases fail on typescript only, rust, swift and kotlin pass. A fail-first test never goes
-# live: take this mark out when the two agree.
-mark draft
-
 # Ported from arithmetic-masks.ts by statement (item term-self-host-001-0653), its four runs per backend each a walked
 # test, each backend a case of it, then its two refusals. Decisions-2026-10.md, D5: `add`, `subtract`, `multiply` and
 # `divide` on a form that wears `addition` (and the rest, @term/base/arithmetic) call the form's own task, and in a task

@@ -87,5 +87,5 @@ test <a local at the top of the task, never written, takes a cursor>
 
 # 6. an ASCII text: none, every read is a direct index already
 test <an ASCII text takes none>
-  host ascii, cursors-in(<{head}task scan\n  take s, like text\n  like number\n{loop(sum)}\n\ntask use\n  like number\n  send back\n    call scan\n      text \<abc\>\n>, <scan>)
+  host ascii, cursors-in(<{head}task scan\n  take s, like text\n  like number\n  mark private\n{loop(sum)}\n\ntask use\n  like number\n  send back\n    call scan\n      text \<abc\>\n>, <scan>)
   want hold, is-equal(ascii/length, 0)

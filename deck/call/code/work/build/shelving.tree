@@ -1,0 +1,33 @@
+# Does a .tree file shelve itself? One answer for the build walk, the test runner and every command that walks files,
+# so the three cannot disagree.
+#
+# A file is shelved by a TOP-LEVEL `mark draft` line, anywhere in it (`note draft` is the old spelling and still
+# counts). An indented one belongs to the definition it sits under, not to the file. The reading itself is
+# call/code/draft-mark.tree; this is the port of call/code/draft.ts, which only handed that answer on, and of make.ts's
+# `isDraftTree`, which reads the file first.
+
+load @term/call/draft-mark
+  find declares-draft, name marks-draft
+
+dock load
+  load <node:fs>, name node-file
+
+# does this text shelve its file?
+task declares-draft
+  take text, like text
+  like boolean
+
+  back marks-draft(text)
+
+# does the file at this path shelve itself? A file that cannot be read does not
+task is-draft-tree
+  take file, like text
+  like boolean
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    back marks-draft(text)
+  halt take
+    take error
+    back false

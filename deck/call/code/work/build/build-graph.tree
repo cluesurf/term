@@ -1,0 +1,2172 @@
+# The build graph and the one entry every caller will build through (decision 077 section 3, decision 082). The graph is
+# what one build learns that the next may keep: the session (build-session.tree: the kept load answers with their
+# stamps, the walk, parse and unit memos, each entry's last outcome and closure key, each unit's roll), the editor's
+# unsaved texts that shadow the disk, the cap on the unit memo, and the reverse index of the module graph. `build-request`
+# is the entry: synchronous, no Promise and no in-flight map (decision 068 section 6), its IO through the store it is
+# handed and the build's own readers. A request runs to its end, and a newer one is the next request.
+#
+# Three modes. `project` builds every program entry and writes what a clean build writes (separate-build.tree
+# `compile-project-separate` over the graph's session). `entry` builds one entry from the disk and answers its problems
+# and the compiler's answer, writing nothing. `document` is `entry` with the overlay read first, for the editor.
+#
+# Nothing calls it yet (item term-self-host-001-0409). The callers switch at items 0412 to 0414, and the pair that holds
+# it equal to a clean build is task/term/edit-replay-callers.ts, adapters `graph` and `graph-cap`.
+#
+# The graph persists (item 0410, at the end of this file): `save-snapshot` writes what a session learned after each
+# build, and `load-snapshot` hands it to the next process's session when it validates. term make's separate build reads
+# and writes it already (build-command.tree), and a project request does.
+
+load @term/base/list
+  find list
+  find join
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find split
+  find substring
+  find char-count
+  find index-of
+
+load @term/make/term/hash
+  find hash-key
+
+load ./project-resolving
+  find source
+
+load ./tree-finding
+  find carry-tree-files
+  find for-platform
+
+load ./deck-finding
+  find deck-finder
+  find make-deck-finder
+
+load ./role-reading
+  find role-reader
+  find make-role-reader
+  find role-of
+
+load ./build-input
+  find buildable
+  find build-input
+
+load ./build-session
+  find build-session
+  find file-note
+  find make-build-session
+  find resolve-in-session
+  find turn-session
+  find build-files
+  find forget-files
+
+load ./unit-naming
+  find unit-slug
+  find is-whole-file
+
+load ./project-build
+  find compile-options
+  find compile-source
+  find role-text
+  find framed
+  find is-own-warning
+  find items-of
+  find texts-of
+  find sorted-texts
+  find is-text
+
+load ./host-faces
+  find how-of
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
+load ./separate-build
+  find separate-build
+  find separate-options
+  find compile-project-separate
+  find edges-at
+
+load ../cache/compile-store
+  find project-cache
+  find compiler-versions
+
+load ../small/home-folder
+  find project-home
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/separate>, name separate-module
+  # the store as a document request sees it: no mill or scan write of a file the overlay holds (decision 098 rule 6)
+  load <@term/make/code/compile/cache>, name cache-module
+  # the variables that say only how a process was started, one list with port-build's fingerprint (item 0476)
+  load <@term/call/code/launch-only>, name launch-only-module
+  # node's global scope, for `Object.assign` (a `<global:globalThis>` dock is emitted renamed, traps.md)
+  load <global:global>, name host-global
+
+# what a request asks for
+form build-mode
+  mark text
+  case project
+  case entry
+  case document
+
+form build-ask
+  link mode, like build-mode
+  # the entry or document asked of, the empty text for a project
+  link file, like text
+  link platform, like text
+  # each entry's answer already built by a parallel pass, a host map or undefined (project mode)
+  link precomputed, like dynamic
+  # an explain store, or undefined (project mode)
+  link explain, like dynamic
+  # THE CALLER'S OWN BUILD (decision 094 rule 1), entry mode: the text to compile in place of the file's, compiled as
+  # given (term test's file as its preprocessor rewrote it, with the file's snapshots); the empty text for the disk's,
+  # through `buildable`
+  link text, like text
+  # the platform the compiler emits for (term boot's run/env), the empty text for the compiler's own default
+  link env, like text
+  # hand back the entry's checked program and the stubs it reached (term boot, the language server)
+  link keep-program, like boolean
+  # a resolver function in place of the graph's own (term boot's app resolver), or undefined
+  link resolve, like dynamic
+  # THE ENTRY AS ONE PROGRAM (decision 099), entry mode: compiled whole, as compile/compile.ts `compile()` compiles it,
+  # through the graph's memos, readers and store, for `env`, its `program` and `wake` in the answer's result. Compose's
+  # reload loop asks it, since its Kotlin emitter reads the whole program
+  link whole, like boolean
+
+form build-graph
+  mark shared
+  link root, like text
+  link session, like build-session
+  # the editor's unsaved texts by file, which shadow the disk in a document request. Empty for every other caller
+  link overlay, like hash, like text, like text
+  # how many unit answers the memo holds before it starts over: every keystroke adds one for the edited module
+  link unit-cap, like number
+  # each walked module's importers, as the last project request left the walks: the reverse index of the module graph
+  link importers, like hash, like text, like list, like text
+  # how many requests the graph has answered
+  link generation, like number
+  # THE CALLER'S START (decision 094 rule 3): the moment term make began, when it took the snapshot and found the file
+  # list before the request (`begin-project`), so the request walks once and keeps that start as the racy line. 0 when
+  # the request begins itself
+  link begun, like number
+  # THE CALLER TURNED THE SESSION (decision 097): set by a caller that turned the session itself for a round (term test
+  # after each round's turn, term boot once per process), so an entry request reads the session as the caller left it
+  # and neither walks the project nor turns. The caller clears it when its round ends. False: each entry request walks
+  # and turns, as a lone request must
+  link turned, like boolean
+  # THE READERS BELONG TO THE GRAPH (decision 098 rule 5): the deck finder and the role reader of the root, made with
+  # the graph and made again by a turn that started the session over (a `deck.tree`, `lock.tree` or `role.tree` moved,
+  # or a file came or went), so a request makes neither
+  link finder, like deck-finder
+  link reader, like role-reader
+
+# an entry's or a document's answer: whether it built, its problems as a project build frames them (errors, then its
+# own warnings), a grammar's refusals, and the compiler's answer (its program, surface and units), undefined when refused
+form document-answer
+  link ok, like boolean
+  link problems, like list, like dynamic
+  link faults, like list, like text
+  link result, like dynamic
+
+form build-answer
+  case project-built
+    link build, like separate-build
+  case document-built
+    link answer, like document-answer
+
+task make-build-graph
+  take root, like text
+  take unit-cap, like number, fall 20000
+  like build-graph
+
+  back make(build-graph, bind(root, root), bind(session, make-build-session(root)), bind(overlay, make hash), bind(unit-cap, unit-cap), bind(importers, make hash), bind(generation, 0), bind(begun, 0), bind(turned, false), bind(finder, make-deck-finder()), bind(reader, make-role-reader(root)))
+
+# the editor's text of a file, shadowing the disk until it is dropped. A file new to the overlay that the disk does not
+# hold can answer a relative load that found nothing before, so every walk with such a load is forgotten
+task set-overlay
+  take graph, like build-graph
+  take file, like text
+  take text, like text
+
+  save fresh, and(not(graph/overlay/has(file)), not(node-file/exists-sync(file)))
+  save graph/overlay/{file}, text
+  fork test, fresh
+    hold
+      save none, like list, like text
+        make list
+      forget-walks(graph, none, true)
+
+# a file's unsaved text dropped (saved, or closed). A project request then reads the file from the disk, and the walk
+# the overlay left is moved past by `mark-shadowed`. A file the disk does not hold is gone with it, so every walk that
+# found it through the overlay (`unsaved-at`) is forgotten (item term-self-host-001-0414)
+task drop-overlay
+  take graph, like build-graph
+  take file, like text
+
+  save held, graph/overlay/has(file)
+  graph/overlay/delete(file)
+  # the disk is the file's text again, and was likely just written (a save): its kept stamp is asked again on the next
+  # read, so a graph that does not turn (the language server, decision 098 rule 1) never hands out the text the disk
+  # held before the edit
+  forget-kept-stamp(graph/session, file)
+  fork test, and(held, not(node-file/exists-sync(file)))
+    hold
+      save gone, make list
+      gone/push(file)
+      forget-walks(graph, gone, false)
+
+# Every walk that may answer otherwise now that a file only the overlay holds came or went. The walk memo reuses a walk
+# for its text alone (compile/loading.tree `walk-one`), so a module whose load found a file of `gone` through the
+# overlay, or (`unresolved`) whose load found nothing, kept that answer in a document request after the overlay moved:
+# a load answered by a closed file. Each such walk is forgotten and walked again by the next request, and its stamp set
+# to one no file has, as `mark-shadowed` sets it, so the next project request builds again every entry reaching it
+task forget-walks
+  take graph, like build-graph
+  take gone, like list, like text
+  take unresolved, like boolean
+  mark private
+
+  save session, graph/session
+  save stale, make list
+  walk session/walked/keys()
+    take module
+    save hit, contains(gone, module)
+    walk edges-at(session, module)
+      take edge
+      fork test, contains(gone, edge)
+        hold
+          save hit, true
+    fork test, and(unresolved, has-unresolved-load(session/walked/get(module)))
+      hold
+        save hit, true
+    fork test, hit
+      hold
+        stale/push(module)
+  walk stale
+    take module
+    session/walked/delete(module)
+    fork test, session/stamps/has(module)
+      hold
+        save session/stamps/{module}, <overlay>
+
+# a file's stamp in the session's kept answers forgotten, so the next read asks it again
+task forget-kept-stamp
+  take session, like build-session
+  take file, like text
+  mark private
+
+  session/kept/stamps/delete(file)
+
+# whether a module's walk holds a load that found nothing (compile/loading.tree's `unresolved-load`)
+bind has-unresolved-load
+  take walked, like dynamic
+  like boolean
+  case node
+    text <(($walked)?.diagnostics ?? []).some((one) =\> one?.name === "unresolved-load")>
+
+# THE ENTRY. Every caller's build goes through here
+task build-request
+  take graph, like build-graph
+  take ask, like build-ask
+  take store, like dynamic, fall void
+  like build-answer
+
+  save graph/generation, add(graph/generation, 1)
+  sift ask/mode
+    case project
+      back make(project-built, bind(build, request-project(graph, ask, store)))
+    case entry
+      back make(document-built, bind(answer, request-document(graph, ask, store, false)))
+    case document
+      back make(document-built, bind(answer, request-document(graph, ask, store, true)))
+
+# every program entry built, or replayed from the session where nothing it reaches moved, and written as a clean build
+# writes it
+task request-project
+  take graph, like build-graph
+  take ask, like build-ask
+  take store, like dynamic
+  like separate-build
+  mark private
+
+  save started, graph/begun
+  # a caller that began the request itself (term make: the snapshot taken and the list found before its run opened, the
+  # pool between) has done both, once (decision 094 rule 3)
+  fork test, is-equal(started, 0)
+    hold
+      save snapped, begin-project(graph, host-global/Date/now(), ask/platform)
+      save started, graph/begun
+  save graph/begun, 0
+  cap-units(graph)
+  # a unit left dirty by a document request and saved since goes to the store now, so this request reads it rather than
+  # building it a second time when the capped unit memo has let it go (decision 098 rule 6, item term-self-host-001-0530)
+  fork test, not(is-equal(store, void))
+    hold
+      separate-module/flushHeld(store, clean-test(graph))
+  save built, compile-project-separate(graph/root, graph/session, store, ask/platform, ask/precomputed, ask/explain)
+  index-importers(graph)
+  save-snapshot(graph/session, started)
+  back built
+
+# A project request begun by its caller (decision 094 rule 3): the file list forgotten and found again once (decision
+# 084), carried by the last snapshot when a graph that has built nothing takes it, and `started` kept as the request's
+# start, so the snapshot's racy line is the caller's. Answers whether the snapshot was taken. term make calls it before
+# its run opens, for the file count and the pool's probe, and the request after reads the same list
+task begin-project
+  take graph, like build-graph
+  take started, like number
+  take platform, like text, fall <node>
+  like boolean
+
+  forget-files(graph/session)
+  save graph/begun, started
+  sift graph/session/known
+    case none
+      back load-snapshot(graph/session, started, platform)
+    case some
+      back false
+
+# the ask of a project build: every program entry for `platform`, with each entry's answer a parallel pass built
+# already (a host map or undefined) and an explain store (or undefined)
+task project-ask
+  take platform, like text, fall <node>
+  take precomputed, like dynamic, fall void
+  take explain, like dynamic, fall void
+  like build-ask
+
+  back make(build-ask, bind(mode, make project), bind(file, <>), bind(platform, platform), bind(precomputed, precomputed), bind(explain, explain), bind(text, <>), bind(env, <>), bind(keep-program, false), bind(resolve, void), bind(whole, false))
+
+# the ask of one file built as the caller builds it (decision 094 rule 1): `text` the caller's text (the empty text for
+# the disk's), `env` the platform emitted for (the empty text for the default), `keep-program` whether the checked
+# program is handed back, `resolve` a resolver in place of the graph's own (undefined for none), `whole` the entry
+# compiled as one program (decision 099)
+task entry-ask
+  take file, like text
+  take text, like text, fall <>
+  take env, like text, fall <>
+  take keep-program, like boolean, fall false
+  take resolve, like dynamic, fall void
+  take whole, like boolean, fall false
+  like build-ask
+
+  back make(build-ask, bind(mode, make entry), bind(file, file), bind(platform, <node>), bind(precomputed, void), bind(explain, void), bind(text, text), bind(env, env), bind(keep-program, keep-program), bind(resolve, resolve), bind(whole, whole))
+
+# a project request's build, out of its answer
+task project-built-of
+  take answer, like build-answer
+  like separate-build
+
+  sift answer
+    case project-built
+      link build
+      back build
+    case document-built
+      halt <a project request answered a document>
+
+# an entry or document request's answer, out of its answer
+task document-of
+  take answer, like build-answer
+  like document-answer
+
+  sift answer
+    case document-built
+      link built
+      back built
+    case project-built
+      halt <an entry request answered a project>
+
+# the graph's session as a parallel pass and the compiler read it: its resolver as a function and its memos, by identity
+task graph-face
+  take graph, like build-graph
+  like dynamic
+
+  back face-build-session(graph/session)
+
+# One file built as the project build builds it (separate-build.tree's loop, one turn of it), with nothing written and
+# no outcome kept: an entry's outcome replays only in a project request. `shadow` reads the overlay first
+task request-document
+  take graph, like build-graph
+  take ask, like build-ask
+  take store, like dynamic
+  take shadow, like boolean
+  like document-answer
+  mark private
+
+  save root, graph/root
+  save session, graph/session
+  save cache, store
+  fork test, is-equal(store, void)
+    hold
+      save cache, project-cache-of(root)
+  # The session's turn: a manifest or role change, or a file added or gone, starts it over, as a project request's
+  # would. Its stamps are not closed here, so the next project request still sees every file that moved since the last
+  # project build. A caller that turned the session for its round (decision 097) has done this once for every request
+  fork test, not(graph/turned)
+    hold
+      forget-files(session)
+      sift turn-session(session, build-files(session, ask/platform))
+        case none
+          renew-readers(graph)
+        case some
+          save kept, true
+      forget-files(session)
+  # THE STORE TAKES ONLY CLEAN FILES (decision 098 rule 6): a file the overlay holds is dirty, and neither its unit nor
+  # its mill or scan entry is written; every read passes through
+  save is-clean, every-write()
+  fork test, shadow
+    hold
+      mark-shadowed(graph)
+      save is-clean, clean-test(graph)
+      save cache, cache-module/cleanView(cache, is-clean)
+  cap-units(graph)
+  save file, ask/file
+  save finder, graph/finder
+  save deck-of, face-deck-finder(finder)
+  save reader, graph/reader
+  save role-of-file, face-role-reader(reader)
+  save lean-of-file, face-lean-reader(reader)
+  save resolve, face-graph(graph, shadow)
+  fork test, is-handed(ask/resolve)
+    hold
+      save resolve, ask/resolve
+  # the empty text is no env at all: the compiler tells an env given from none (compile.ts `hasEnv`)
+  save emit-env, env-or-none(ask/env)
+  save keeps-program, is-handed-true(ask/keep-program)
+  save slug
+    task
+      take module, like text
+      like text
+      back unit-slug(root, module, finder)
+  save modules
+    task
+      take module, like text
+      like text
+      back <./{slug(module)}>
+  save problems, like list, like dynamic
+    make list
+  save faults, like list, like text
+    make list
+  save role, role-text(role-of(reader, file))
+  # the caller's text is compiled as given, its problems framed against it (the caller placed it); else the file's
+  # text, as the project build reads it
+  save caller-text, handed-text(ask/text)
+  save unit, make(readable, bind(text, caller-text), bind(generated, true), bind(unit, void))
+  fork test, is-equal(caller-text, <>)
+    hold
+      save unit, buildable(file, text-of-file(graph, file, shadow), role)
+  sift unit
+    case refused
+      link refusals
+      walk refusals
+        take fault
+        faults/push(<{node-path/relative(root, file)}: {fault}>)
+      back make(document-answer, bind(ok, false), bind(problems, problems), bind(faults, faults), bind(result, void))
+    case readable
+      link unit-text
+      link grammar
+      link preprocessed
+      # a file that is not a program, or an entry asked for as one program (decision 099, for `env`)
+      save whole, is-handed-true(ask/whole)
+      fork test, or(whole, is-whole-file(file, unit-text, role))
+        hold
+          save options, make(compile-options, bind(resolve, resolve), bind(cache, cache), bind(parsed, session/parsed), bind(walked, session/walked), bind(deck-of, deck-of), bind(role-of, role-of-file), bind(lean-of, lean-of-file))
+          fork test, whole
+            hold
+              save options, with-env(options, emit-env)
+          save one, compile-module/compile(make(compile-source, bind(file, file), bind(text, unit-text)), options)
+          fork test, not(one/ok)
+            hold
+              walk items-of(one/diagnostics)
+                take diagnostic
+                problems/push(framed(unit, file, diagnostic))
+          back make(document-answer, bind(ok, one/ok), bind(problems, problems), bind(faults, faults), bind(result, one))
+      save options, make(entry-options, bind(resolve, resolve), bind(cache, cache), bind(modules, modules), bind(role-of, role-of-file), bind(lean-of, lean-of-file), bind(deck-of, deck-of), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked), bind(explain, void), bind(env, emit-env), bind(keep-program, keeps-program), bind(is-clean, is-clean))
+      save result, separate-module/compileSeparate(make(compile-source, bind(file, file), bind(text, unit-text)), options)
+      fork test, not(result/ok)
+        hold
+          walk items-of(result/diagnostics)
+            take diagnostic
+            problems/push(framed(unit, file, diagnostic))
+          back make(document-answer, bind(ok, false), bind(problems, problems), bind(faults, faults), bind(result, result))
+      # only this file's warnings, as the project build reports them
+      walk items-of(result/warnings)
+        take warning
+        fork test, is-own-warning(warning, file, and(grammar, is-equal(caller-text, <>)))
+          hold
+            problems/push(framed(unit, file, warning))
+      back make(document-answer, bind(ok, true), bind(problems, problems), bind(faults, faults), bind(result, result))
+
+# what compile/separate.ts is handed for one file: a project build's options, and the platform it emits for (the empty
+# text for the default) and whether it hands back the checked program
+form entry-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link modules, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+  link parsed, like dynamic
+  link units, like dynamic
+  link walked, like dynamic
+  link explain, like dynamic
+  link env, like dynamic
+  link keep-program, like boolean
+  # whether a file is clean (the disk holds the text compiled), in a document request; undefined for every write
+  link is-clean, like dynamic
+
+# no clean test: every write, as term make, test, boot and the pool write
+bind every-write
+  like dynamic
+  case node
+    text <undefined>
+
+# whether a file is clean in this graph: the overlay does not hold it (decision 098 rule 6)
+task clean-test
+  take graph, like build-graph
+  like dynamic
+  mark private
+
+  back
+    task
+      take file, like text
+      like boolean
+      back not(graph/overlay/has(file))
+
+# the readers made again for the root, after a turn that started the session over (decision 098 rule 5), or by a caller
+# told a `deck.tree`, `lock.tree` or `role.tree` moved
+task renew-readers
+  take graph, like build-graph
+
+  save graph/finder, make-deck-finder()
+  save graph/reader, make-role-reader(graph/root)
+
+# THE GRAPH'S OWN READERS AND RESOLVER, as a caller that builds through the graph and also reads files itself sees them
+# (the language server: a file's role, `mark lean`, its deck, and the module a path names), so it never reads a file
+# otherwise than the request does
+task graph-role-of
+  take graph, like build-graph
+  like dynamic
+
+  back face-role-reader(graph/reader)
+
+task graph-lean-of
+  take graph, like build-graph
+  like dynamic
+
+  back face-lean-reader(graph/reader)
+
+task graph-deck-of
+  take graph, like build-graph
+  like dynamic
+
+  back face-deck-finder(graph/finder)
+
+# the session's kept answers as a resolver function, the overlay's text over a file it holds when `shadow`
+task graph-resolver
+  take graph, like build-graph
+  take shadow, like boolean
+  like dynamic
+
+  back face-graph(graph, shadow)
+
+# the graph's store as a document request sees it: no mill or scan write of a file the overlay holds
+task clean-store
+  take graph, like build-graph
+  take store, like dynamic
+  like dynamic
+
+  back cache-module/cleanView(store, clean-test(graph))
+
+# an env the caller named, or undefined for the empty text or none
+bind env-or-none
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(($value) || undefined)>
+
+# compile options with the platform emitted for (undefined for the compiler's default), as `compile()` reads `env`
+bind with-env
+  take options, like dynamic
+  take env, like dynamic
+  like dynamic
+  case node
+    text <((($env) === undefined ? ($options) : \{ ...($options), env: ($env) \}) as any)>
+
+# a value the caller handed, as against undefined or null
+bind is-handed
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) !== undefined && ($value) !== null)>
+
+# a text field the caller may have left out (a TypeScript caller's ask), as the empty text
+bind handed-text
+  take value, like dynamic
+  like text
+  case node
+    text <(($value) ?? "")>
+
+# a flag the caller may have left out, as false
+bind is-handed-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) === true)>
+
+# the project's store, as a project request makes it when it is handed none
+task project-cache-of
+  take root, like text
+  like dynamic
+  mark private
+
+  back project-cache(root)
+
+# A file the overlay shadows was walked with a text the disk does not hold, so its walk's edges may not be the disk's.
+# Its stamp is set to one no file has, so the next project request counts it moved, builds again every entry reaching
+# it and walks it again from the disk. A file no project request walked has no stamp, and no outcome reaches it
+task mark-shadowed
+  take graph, like build-graph
+  mark private
+
+  walk graph/overlay/keys()
+    take file
+    fork test, graph/session/stamps/has(file)
+      hold
+        save graph/session/stamps/{file}, <overlay>
+
+# past its cap the unit memo starts over, and the next build reads its units from the store again
+task cap-units
+  take graph, like build-graph
+  mark private
+
+  fork test, is-above(graph/session/units/size, graph/unit-cap)
+    hold
+      graph/session/units/clear()
+
+# the reverse index from the walks: each module's importers
+task index-importers
+  take graph, like build-graph
+  mark private
+
+  save importers, graph/importers
+  importers/clear()
+  save modules, make hash
+  walk graph/session/edges/keys()
+    take module
+    save modules/{module}, true
+  walk graph/session/walked/keys()
+    take module
+    save modules/{module}, true
+  walk modules/keys()
+    take module
+    walk edges-at(graph/session, module)
+      take edge
+      fork test, not(importers/has(edge))
+        hold
+          save importers/{edge}, make list
+      save held, importers/get(edge)
+      held/push(module)
+
+# the text a request reads of a file: the overlay's when it shadows, else the disk's
+task text-of-file
+  take graph, like build-graph
+  take file, like text
+  take shadow, like boolean
+  like text
+  mark private
+
+  fork test, and(shadow, graph/overlay/has(file))
+    hold
+      back graph/overlay/get(file)
+  back node-file/read-file-sync(file, <utf8>)
+
+# the session's kept answers as a resolver function, with the overlay's text over a file it shadows
+task face-graph
+  take graph, like build-graph
+  take shadow, like boolean
+  like dynamic
+  mark private
+
+  back
+    task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+      sift resolve-in-session(graph/session, path, from, how-of(how))
+        case some
+          link found
+          fork test, and(shadow, graph/overlay/has(found/file))
+            hold
+              back shadowed-source(found, graph/overlay/get(found/file))
+          back found
+        case none
+          fork test, shadow
+            hold
+              back unsaved-at(graph, path, from)
+          back void
+
+# an unsaved text at one of the paths a relative load tries, in the resolver's order (`x.tree`, `x/base.tree`,
+# `x/note.tree`), for a file the disk does not hold yet (flow/code/language-server.tree `unsaved-at`). Undefined for none
+task unsaved-at
+  take graph, like build-graph
+  take import-path, like text
+  take origin, like text
+  like dynamic
+  mark private
+
+  fork test, or(starts-with(import-path, <./>), starts-with(import-path, <../>))
+    miss
+      back void
+  save base, node-path/resolve(node-path/dirname(origin), import-path)
+  save candidates, make list
+  candidates/push(<{base}.tree>)
+  candidates/push(node-path/join(base, <base.tree>))
+  candidates/push(node-path/join(base, <note.tree>))
+  walk candidates
+    take candidate
+    fork test, graph/overlay/has(candidate)
+      hold
+        back make(source, bind(file, candidate), bind(text, graph/overlay/get(candidate)))
+  back void
+
+# a copy of the source with the overlay's text, the file it shadows kept
+task shadowed-source
+  take found, like source
+  take text, like text
+  like source
+  mark private
+
+  save copy, make(source, bind(file, found/file), bind(text, text))
+  # a source holds `shadowed` only when a file was hidden (project-resolving.tree), so the copy does too
+  fork test, is-unequal(found/shadowed, <>)
+    hold
+      save copy/shadowed, found/shadowed
+  back copy
+
+# ---- the snapshot (decision 077 section 7, decision 079) ----
+#
+# What a session learned is written after each build to <project>/.base/@term/code/cache/graph/<compiler>, so a fresh
+# process starts where the last one stopped instead of walking and building every entry again: the file list, each
+# module's and setting's stamp and text hash, each module's edges, each entry's last outcome with its closure key and
+# the stamp and hash of every artifact it stands behind, each unit's roll, for every package reached outside the
+# project its manifest, lock and roles and the listing of each of its folders, and each project folder the file walk
+# went into, so the next process walks only the folders that moved (decision 084). No unit answer and no text: those are
+# in the store and on disk.
+#
+# ADVISORY (decision 077 section 4). A snapshot that is absent, truncated, corrupt (its sum does not match its body),
+# another root's, another compiler's, another environment's, or that finds a package folder listed differently or a
+# package's manifest, lock or roles moved, is ignored whole, and the build runs as a first build: it costs time, never
+# an answer. Otherwise a module that moved is handed to the next turn as moved (`turn-session`), so every entry reaching
+# it builds again, and an entry whose artifact is gone or moved is not replayed, so it builds again and writes it.
+#
+# THE RACY STAMP (git's racy-clean rule): a file whose modification time is not 2 s older than the moment the build that
+# wrote the snapshot started is hashed again, since a write in the same tick as the build's read leaves its stamp as it
+# was. A file whose stamp moved while the build ran is written as `moved`, so the next process builds what reaches it.
+#
+# It is keyed by nothing and keys nothing: no store key reads it, and it is read before the first unit and written after
+# the last, so the ledger (TERM_CACHE_VERIFY) never sees it. Two writers each write a whole file by temp then rename, and
+# the last one wins, which is safe because each is validated on its own.
+#
+# FORMAT 2 (decision 083): the body is JSON under a two-line header (the format line, then the sum of the body), written
+# holding each thing once (`encode-body`, at the end of this file). A file of format 1 is refused whole and written
+# again once. The writer keeps the newest three snapshots of the project and removes the rest (`reclaim-snapshots`).
+
+host snapshot-header, <# term graph 2>
+
+# a file as it is now: its stamp as `stamp-of` spells it (`missing` for none), its inode and modification time
+form file-seen
+  link stamp, like text
+  link inode, like text
+  link mtime, like number
+
+form graph-folder-ask
+  link recursive, like boolean
+
+form graph-listing-ask
+  link with-file-types, like boolean
+
+# the snapshot's body. `stable` is the sum of the body with `generation`, `taken` and `stable` empty, so a build that
+# changed nothing writes nothing
+form graph-snapshot
+  link root, like text
+  link fingerprint, like text
+  link env, like text
+  link generation, like number
+  link taken, like number
+  link stable, like text
+  link known, like text
+  link files, like dynamic
+  link edges, like dynamic
+  link decks, like dynamic
+  link folders, like dynamic
+  link entries, like dynamic
+  link rolls, like dynamic
+  link artifacts, like dynamic
+  # each folder of the project the walk behind the file list went into (tree-finding.tree `folder-note`), so the next
+  # process carries the list forward and walks only the folders that moved (decision 084)
+  link walk, like dynamic
+
+# where the project's snapshot for the running compiler lives
+task snapshot-path
+  take root, like text
+  like text
+
+  save parts, make list
+  parts/push(<cache>)
+  parts/push(<graph>)
+  parts/push(hash-key(compiler-fingerprint()))
+  back project-home(root, parts)
+
+# the running compiler: every cache kind's version (the epoch, the package version and the compiler's sources) and the
+# running bundle's size and modification time, so a rebuilt CLI never reads an older one's outcomes
+task compiler-fingerprint
+  like text
+  mark private
+
+  save bundle, seen-now(running-script())
+  back <{host-global/JSON/stringify(compiler-versions())}|{bundle/stamp}>
+
+bind running-script
+  like text
+  case node
+    text <String(process.argv[1] ?? "")>
+
+# the settings every build reads: `TERM_*` and `SEED_*`, but the verify switch, which changes what is checked and
+# never what is built, and the variables that say only how the process was started (call/code/launch-only.ts, the one
+# list port-build's fingerprint leaves out too): the line lock's (decision 038 section 4a), `TERM_DEPTH`, which term
+# make sets when its run opens while its snapshot is read before that (decision 084), and the terminal emulator's own
+# (`TERM_SESSION_ID` differs in every pane, so a snapshot written in one was refused in every other, item 0476)
+task env-text
+  like text
+  mark private
+
+  save env, host-global/process/env
+  save lines, make list
+  walk sorted-texts(host-global/Object/keys(env))
+    take name
+    fork test, or(starts-with(name, <TERM_>), starts-with(name, <SEED_>))
+      hold
+        fork test, and(not(launch-only(name)), is-unequal(name, <TERM_CACHE_VERIFY>))
+          hold
+            lines/push(<{name}={env/{name}}>)
+  back join(lines, <\n>)
+
+# whether a variable says only how the process was started (call/code/launch-only.ts)
+task launch-only
+  take name, like text
+  like boolean
+  mark private
+
+  back launch-only-module/isLaunchOnly(name)
+
+task seen-now
+  take file, like text
+  like file-seen
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(file)
+    back make(file-seen, bind(stamp, <{stat/size}:{stat/mtime-ms}>), bind(inode, <{stat/ino}>), bind(mtime, stat/mtime-ms))
+  halt take
+    take problem
+    back make(file-seen, bind(stamp, <missing>), bind(inode, <>), bind(mtime, 0))
+
+# a file's text hashed, `missing` when it cannot be read
+task hash-of-file
+  take file, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    back hash-key(node-file/read-file-sync(file, <utf8>))
+  halt take
+    take problem
+    back <missing>
+
+# whether a file is as its note says: `same` (the stamp and inode equal, and older than the racy line, or both
+# missing), `rehashed` (its text hashed again to the same hash) or `moved`
+task check-note
+  take file, like text
+  take note, like dynamic
+  take now, like file-seen
+  take line, like number
+  like text
+  mark private
+
+  fork test, is-equal(note/stamp, <missing>)
+    hold
+      fork test, is-equal(now/stamp, <missing>)
+        hold
+          back <same>
+      back <moved>
+  fork test, or(is-equal(now/stamp, <missing>), is-equal(note/stamp, <moved>))
+    hold
+      back <moved>
+  fork test, and(is-equal(now/stamp, note/stamp), and(is-equal(now/inode, note/inode), is-below(now/mtime, line)))
+    hold
+      back <same>
+  fork test, is-equal(hash-of-file(file), note/hash)
+    hold
+      back <rehashed>
+  back <moved>
+
+# a host object's entries, `[key, value]` each
+task pairs-in
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  back host-global/Object/entries(value)
+
+# a name a folder walk keeps: no hidden folder, no installed packages, no build output or scratch
+task kept-name
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(name, <.>)
+    hold
+      back false
+  back and(is-unequal(name, <node_modules>), and(is-unequal(name, <host>), is-unequal(name, <tmp>)))
+
+# the hash of a folder's listing: its `.tree` files and its folders, by name, sorted. `missing` when it cannot be read
+task listing-hash
+  take folder, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save names, make list
+    save entries, like list, like dynamic
+      node-file/readdir-sync(folder, make(graph-listing-ask, bind(with-file-types, true)))
+    walk entries
+      take entry
+      fork test, kept-name(entry/name)
+        hold
+          fork test, entry/is-directory()
+            hold
+              names/push(<{entry/name}/>)
+            miss
+              fork test, ends-with(entry/name, <.tree>)
+                hold
+                  names/push(entry/name)
+    back hash-key(join(sorted-texts(names), <\n>))
+  halt take
+    take problem
+    back <missing>
+
+# A folder and every folder under it a walk keeps, each with the hash of its listing as `listing-hash` spells it, from
+# one listing of each (`folders-under` and `listing-hash` listed each folder twice, item 0450's profile of the writer)
+task folders-listed
+  take base, like text
+  take into, like hash, like text, like text
+  mark private
+
+  save entries, like list, like dynamic
+    make list
+  save listing, <missing>
+  fork
+    mark unsafe
+    save entries, node-file/readdir-sync(base, make(graph-listing-ask, bind(with-file-types, true)))
+    save names, make list
+    walk entries
+      take entry
+      fork test, kept-name(entry/name)
+        hold
+          fork test, entry/is-directory()
+            hold
+              names/push(<{entry/name}/>)
+            miss
+              fork test, ends-with(entry/name, <.tree>)
+                hold
+                  names/push(entry/name)
+    save listing, hash-key(join(sorted-texts(names), <\n>))
+  halt take
+    take problem
+    save nothing, 0
+  save into/{base}, listing
+  walk entries
+    take entry
+    fork test, and(entry/is-directory(), kept-name(entry/name))
+      hold
+        folders-listed(node-path/join(base, entry/name), into)
+
+# A package's folders as the snapshot this session took noted them (take-snapshot keeps each under its path and a
+# separator), written to `folders` when every one is still at its noted stamp and inode and older than the racy line:
+# then no folder was added or removed under it, so the noted folders are all of them and each listing is as noted.
+# False, writing nothing, when the session took no snapshot or any folder moved
+task carried-folders
+  take session, like build-session
+  take package, like text
+  take line, like number
+  take folders, like hash, like text, like file-note
+  like boolean
+  mark private
+
+  save sep, node-path/sep
+  save own, <{package}{sep}>
+  save found, make list
+  walk session/noted/keys()
+    take key
+    fork test, and(starts-with(key, own), ends-with(key, sep))
+      hold
+        found/push(key)
+  fork test, not(contains(found, own))
+    hold
+      back false
+  save notes, make hash
+  walk found
+    take key
+    save note, session/noted/get(key)
+    # the folder's own path, the separator off its end
+    save folder, node-path/resolve(key)
+    save now, seen-now(folder)
+    fork test, not(and(and(is-equal(now/stamp, note/stamp), is-equal(now/inode, note/inode)), is-below(now/mtime, line)))
+      hold
+        back false
+    save notes/{folder}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
+  walk notes/keys()
+    take folder
+    save folders/{folder}, notes/get(folder)
+  back true
+
+# the package a folder is in: the nearest folder up from it holding a `deck.tree`, the empty text for none
+task package-of
+  take folder, like text
+  take memo, like hash, like text, like text
+  like text
+  mark private
+
+  fork test, memo/has(folder)
+    hold
+      back memo/get(folder)
+  save found, <>
+  fork test, node-file/exists-sync(node-path/join(folder, <deck.tree>))
+    hold
+      save found, folder
+    miss
+      save up, node-path/dirname(folder)
+      fork test, is-unequal(up, folder)
+        hold
+          save found, package-of(up, memo)
+  save memo/{folder}, found
+  back found
+
+# the files that say how a package's modules are read (role-reading.tree `read-roles`, build-session.tree)
+task deck-settings
+  take package, like text
+  like list, like text
+  mark private
+
+  save files, make list
+  files/push(node-path/join(package, <deck.tree>))
+  files/push(node-path/join(package, <lock.tree>))
+  files/push(node-path/join(package, <role.tree>))
+  files/push(node-path/join(package, <base/role.tree>))
+  back files
+
+# THE READER. A session that has built nothing takes the project's last snapshot, when every part of it validates, and
+# answers whether it did. Synchronous, so term make's pool path calls it before the probe (decision 079, item 0428)
+task load-snapshot
+  take session, like build-session
+  take started, like number
+  take platform, like text, fall <node>
+  like boolean
+
+  fork
+    mark unsafe
+    back take-snapshot(session, started, platform)
+  halt take
+    take problem
+    back false
+
+task take-snapshot
+  take session, like build-session
+  take started, like number
+  take platform, like text
+  like boolean
+  mark private
+
+  sift session/known
+    case some
+      back false
+    case none
+      save nothing, 0
+  save path, snapshot-path(session/root)
+  fork test, not(node-file/exists-sync(path))
+    hold
+      back false
+  save text, node-file/read-file-sync(path, <utf8>)
+  save head, <{snapshot-header}\n>
+  save at, char-count(head)
+  fork test, is-below(char-count(text), add(at, 33))
+    hold
+      back false
+  fork test, is-unequal(substring(text, 0, at), head)
+    hold
+      back false
+  save sum, substring(text, at, add(at, 32))
+  save body-text, substring(text, add(at, 33))
+  fork test, is-unequal(hash-key(body-text), sum)
+    hold
+      back false
+  save coded, like dynamic
+    host-global/JSON/parse(body-text)
+  fork test, is-unequal(coded/root, session/root)
+    hold
+      back false
+  fork test, is-unequal(coded/fingerprint, compiler-fingerprint())
+    hold
+      back false
+  fork test, is-unequal(coded/env, env-text())
+    hold
+      back false
+  # every path read back from the table and every problem's text from the disk (decision 083). An entry whose file reads
+  # otherwise than noted is left out, so it builds again
+  save decoded, decode-body(coded, session/root)
+  save body, decoded/body
+  save rehashed, is-above(decoded/dropped, 0)
+  # A snapshot whose file list moved would start the session over at its first turn, emptying the walks term make's
+  # probe made before it, so the roll would reach no module past an entry's own (the replay's roll.json difference of
+  # 2026-10-30). It is refused instead, and the build runs as a first build, which is what a start over costs. The list
+  # is carried from the snapshot's folder notes, walking only the folders that moved, and it is the build's list
+  # whether the snapshot is taken or not (decision 084)
+  save line, subtract(body/taken, 2000)
+  fork test, is-unequal(join(carried-files(session, body, line, platform), <\n>), body/known)
+    hold
+      back false
+  # every folder of a package reached outside the project: a file added or removed there may move where a load lands
+  save noted, make hash
+  walk pairs-in(body/folders)
+    take pair
+    save note, pair/1
+    save now, seen-now(pair/0)
+    fork test, or(is-equal(note/hash, <moved>), is-equal(now/stamp, <missing>))
+      hold
+        back false
+    fork test, not(and(is-equal(now/stamp, note/stamp), is-below(now/mtime, line)))
+      hold
+        fork test, is-unequal(listing-hash(pair/0), note/hash)
+          hold
+            back false
+        save rehashed, true
+    # kept as it validated, under the folder's path and a separator (no file's path), so the writer lists it again only
+    # when it moved (`carried-folders`)
+    save folder-key, <{pair/0}{node-path/sep}>
+    save noted/{folder-key}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
+  # every package's manifest, lock and roles
+  walk pairs-in(body/decks)
+    take pair
+    save state, check-note(pair/0, pair/1, seen-now(pair/0), line)
+    fork test, is-equal(state, <moved>)
+      hold
+        back false
+    fork test, is-equal(state, <rehashed>)
+      hold
+        save rehashed, true
+  # every module and setting, as the next turn will find it: its stamp now where it is as noted, `moved` where not
+  save stamps, make hash
+  walk pairs-in(body/files)
+    take pair
+    save file, pair/0
+    save note, pair/1
+    save now, seen-now(file)
+    save state, check-note(file, note, now, line)
+    # a project setting that moved would start the session over too
+    fork test, and(is-equal(state, <moved>), contains(session/settings, file))
+      hold
+        back false
+    fork test, is-equal(state, <moved>)
+      hold
+        save stamps/{file}, <moved>
+      miss
+        save stamps/{file}, now/stamp
+        fork test, is-unequal(now/stamp, <missing>)
+          hold
+            save noted/{file}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
+        fork test, is-equal(state, <rehashed>)
+          hold
+            save rehashed, true
+  # every artifact an entry stands behind: an entry with one gone or moved builds again
+  save standing, make hash
+  walk pairs-in(body/artifacts)
+    take pair
+    save artifact, pair/0
+    save note, pair/1
+    save now, seen-now(artifact)
+    save state, check-note(artifact, note, now, line)
+    fork test, is-unequal(state, <moved>)
+      hold
+        save standing/{artifact}, true
+        save noted/{artifact}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, note/hash))
+        fork test, is-equal(state, <rehashed>)
+          hold
+            save rehashed, true
+  save entries, make hash
+  walk pairs-in(body/entries)
+    take pair
+    save outcome, like dynamic
+      pair/1
+    save whole, true
+    save paths, like list, like text
+      outcome/artifacts
+    walk paths
+      take artifact
+      fork test, not(standing/has(artifact))
+        hold
+          save whole, false
+    fork test, whole
+      hold
+        save entries/{pair/0}, outcome
+      miss
+        save rehashed, true
+  # it validated: the session takes it whole
+  save session/known, make(some, body/known)
+  walk stamps/keys()
+    take file
+    save session/stamps/{file}, stamps/get(file)
+  walk pairs-in(body/edges)
+    take pair
+    save session/edges/{pair/0}, pair/1
+  walk entries/keys()
+    take file
+    save session/entries/{file}, entries/get(file)
+  walk pairs-in(body/rolls)
+    take pair
+    save session/rolls/{pair/0}, pair/1
+  walk noted/keys()
+    take file
+    save session/noted/{file}, noted/get(file)
+  save session/generation, body/generation
+  save session/snapshot-sum, body/stable
+  fork test, rehashed
+    hold
+      # a file hashed again, or an entry not replayed: the next snapshot is written with a newer racy line
+      save session/snapshot-sum, <>
+  back true
+
+# The build's file list from a snapshot's folder notes (tree-finding.tree `carry-tree-files`), kept in the session as the
+# list the build found (build-session.tree `build-files`). A snapshot with no notes, or a session that found its list
+# already, finds it as a build does
+task carried-files
+  take session, like build-session
+  take body, like dynamic
+  take line, like number
+  take platform, like text
+  like list, like text
+  mark private
+
+  sift session/listing
+    case some
+      back build-files(session, platform)
+    case none
+      save nothing, 0
+  save old, like dynamic
+    body/walk
+  fork test, is-equal(old, void)
+    hold
+      back build-files(session, platform)
+  save notes, make hash
+  save all, make list
+  carry-tree-files(session/root, session/root, old, line, notes, all)
+  save session/listing, make(some, all)
+  save session/folder-notes, notes
+  back for-platform(all, platform, session/root)
+
+# THE WRITER, after a build. A failure to write never fails the build
+task save-snapshot
+  take session, like build-session
+  take started, like number
+
+  fork
+    mark unsafe
+    write-snapshot(session, started)
+  halt take
+    take problem
+    save nothing, 0
+
+# The body a snapshot of the session holds, as the session holds it (`encode-body` writes it). Nothing before a first
+# build
+task snapshot-body
+  take session, like build-session
+  take started, like number
+  like maybe, like graph-snapshot
+
+  save listed, <>
+  sift session/known
+    case some
+      link was
+      save listed, was
+    case none
+      back make none
+  save root, session/root
+  save line, subtract(started, 2000)
+  # every module some entry reaches, by this session's walks and the edges a snapshot left
+  save reached, make hash
+  save queue, make list
+  walk split(listed, <\n>)
+    take file
+    fork test, is-unequal(file, <>)
+      hold
+        queue/push(file)
+  save at, 0
+  walk test
+    hook test
+      is-below(at, queue/length)
+    hook hold
+      save file, queue/{at}
+      save at, add(at, 1)
+      fork test, not(reached/has(file))
+        hold
+          save reached/{file}, true
+          walk edges-at(session, file)
+            take edge
+            queue/push(edge)
+  save files, make hash
+  save edges, make hash
+  save packages, make hash
+  save memo, make hash
+  save prefix, <{root}{node-path/sep}>
+  walk reached/keys()
+    take file
+    save files/{file}, module-note(session, file)
+    save edges/{file}, edges-at(session, file)
+    fork test, not(starts-with(file, prefix))
+      hold
+        save package, package-of(node-path/dirname(file), memo)
+        fork test, and(is-unequal(package, <>), is-unequal(package, root))
+          hold
+            save packages/{package}, true
+  walk session/settings
+    take file
+    save files/{file}, module-note(session, file)
+  save decks, make hash
+  save folders, make hash
+  walk sorted-texts(packages/keys())
+    take package
+    walk deck-settings(package)
+      take file
+      save decks/{file}, setting-note(session, file, line)
+    # a package whose every folder is as the snapshot this session took noted it is not listed again
+    fork test, carried-folders(session, package, line, folders)
+      hold
+        turn next
+    # each folder listed once, for the folders under it and its listing's hash both. Its stamp is asked after, so a
+    # listing that moves between the two leaves a stamp newer than the racy line, written as `moved`
+    save listings, make hash
+    folders-listed(package, listings)
+    walk listings/keys()
+      take folder
+      save now, seen-now(folder)
+      save listing, <moved>
+      fork test, is-below(now/mtime, line)
+        hold
+          save listing, listings/get(folder)
+      save folders/{folder}, make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, listing))
+  save artifacts, make hash
+  walk session/entries/keys()
+    take entry
+    save outcome, session/entries/get(entry)
+    walk outcome/artifacts
+      take artifact
+      fork test, not(artifacts/has(artifact))
+        hold
+          save artifacts/{artifact}, artifact-note(session, artifact)
+  save body, make(graph-snapshot, bind(root, root), bind(fingerprint, compiler-fingerprint()), bind(env, env-text()), bind(generation, 0), bind(taken, 0), bind(stable, <>), bind(known, listed), bind(files, object-of(files)), bind(edges, object-of(edges)), bind(decks, object-of(decks)), bind(folders, object-of(folders)), bind(entries, object-of(session/entries)), bind(rolls, object-of(session/rolls)), bind(artifacts, object-of(artifacts)), bind(walk, object-of(session/folder-notes)))
+  back make(some, body)
+
+task write-snapshot
+  take session, like build-session
+  take started, like number
+  mark private
+
+  sift snapshot-body(session, started)
+    case some
+      link body
+      write-coded(session, encode-body(body), started)
+    case none
+      save nothing, 0
+
+# the body written as `encode-body` writes it, by temp then rename, unless it is the one the session took or last wrote
+task write-coded
+  take session, like build-session
+  take coded, like coded-graph
+  take started, like number
+  mark private
+
+  save root, session/root
+  save stable, hash-key(host-global/JSON/stringify(coded))
+  save path, snapshot-path(root)
+  fork test, and(is-equal(stable, session/snapshot-sum), node-file/exists-sync(path))
+    hold
+      back
+  save generation, add(session/generation, 1)
+  save coded/generation, generation
+  save coded/taken, started
+  save coded/stable, stable
+  save body-text, host-global/JSON/stringify(coded)
+  save text, <{snapshot-header}\n{hash-key(body-text)}\n{body-text}>
+  node-file/mkdir-sync(node-path/dirname(path), make(graph-folder-ask, bind(recursive, true)))
+  save temp, <{path}.{host-global/process/pid}.{started}.tmp>
+  fork
+    mark unsafe
+    node-file/write-file-sync(temp, text)
+    node-file/rename-sync(temp, path)
+  halt take
+    take problem
+    fork
+      mark unsafe
+      node-file/rm-sync(temp, make(graph-remove-ask, bind(force, true)))
+    halt take
+      take missing
+      back
+    back
+  save session/generation, generation
+  save session/snapshot-sum, stable
+  reclaim-snapshots(path)
+
+form graph-remove-ask
+  link force, like boolean
+
+# a module's or setting's note: its stamp as the build first asked it, and its text's hash. `moved` when the file moved
+# while the build ran, so the next process builds what reaches it
+task module-note
+  take session, like build-session
+  take file, like text
+  like file-note
+  mark private
+
+  save was, <moved>
+  fork test, session/stamps/has(file)
+    hold
+      save was, session/stamps/get(file)
+  save now, seen-now(file)
+  fork test, is-unequal(was, now/stamp)
+    hold
+      back make(file-note, bind(stamp, <moved>), bind(inode, <>), bind(hash, <>))
+  fork test, is-equal(now/stamp, <missing>)
+    hold
+      back make(file-note, bind(stamp, <missing>), bind(inode, <>), bind(hash, <>))
+  save kept, carried(session, file, now)
+  fork test, is-unequal(kept, <>)
+    hold
+      back make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, kept))
+  # the text the build walked, which a racy write may have moved past
+  save sum, <>
+  fork test, session/walked/has(file)
+    hold
+      save walk-record, like dynamic
+        session/walked/get(file)
+      save walked-text, walk-record/text
+      fork test, is-text(walked-text)
+        hold
+          save sum, hash-key(walked-text)
+  fork test, is-equal(sum, <>)
+    hold
+      save sum, hash-of-file(file)
+  back make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, sum))
+
+# A package setting's note (a package reached outside the project: its manifest, lock and roles). The build reads them
+# where no stamp is kept, so one modified at or past the racy line (the build's start less 2 s) may have been read
+# before the edit: it is noted `moved`, and the next process refuses the snapshot as it refuses a manifest that moved.
+# Otherwise as it stands on disk now, which is as the build read it (item term-self-host-001-0466)
+task setting-note
+  take session, like build-session
+  take file, like text
+  take line, like number
+  like file-note
+  mark private
+
+  save now, seen-now(file)
+  fork test, is-equal(now/stamp, <missing>)
+    hold
+      back make(file-note, bind(stamp, <missing>), bind(inode, <>), bind(hash, <>))
+  fork test, not(is-below(now/mtime, line))
+    hold
+      back make(file-note, bind(stamp, <moved>), bind(inode, <>), bind(hash, <>))
+  save kept, carried(session, file, now)
+  fork test, is-unequal(kept, <>)
+    hold
+      back make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, kept))
+  back make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, hash-of-file(file)))
+
+# An artifact's note: as this build left it (separate-build.tree `write-artifact` notes its stamp after the write and
+# the hash of the bytes written), or as the snapshot this session took noted it, while it stands at that stamp and
+# inode. `moved` when it stands otherwise (edited after the build wrote it), or nothing noted it, so its entry builds
+# again in the next process and writes it (item term-self-host-001-0466)
+task artifact-note
+  take session, like build-session
+  take file, like text
+  like file-note
+  mark private
+
+  save now, seen-now(file)
+  fork test, is-equal(now/stamp, <missing>)
+    hold
+      back make(file-note, bind(stamp, <missing>), bind(inode, <>), bind(hash, <>))
+  save kept, carried(session, file, now)
+  fork test, is-unequal(kept, <>)
+    hold
+      back make(file-note, bind(stamp, now/stamp), bind(inode, now/inode), bind(hash, kept))
+  back make(file-note, bind(stamp, <moved>), bind(inode, <>), bind(hash, <>))
+
+# the hash the session's snapshot noted for a file still at the same stamp and inode, the empty text for none
+task carried
+  take session, like build-session
+  take file, like text
+  take now, like file-seen
+  like text
+  mark private
+
+  fork test, session/noted/has(file)
+    hold
+      save kept, session/noted/get(file)
+      fork test, and(is-equal(kept/stamp, now/stamp), is-equal(kept/inode, now/inode))
+        hold
+          back kept/hash
+  back <>
+
+# a host map as a plain object, for JSON
+task object-of
+  take table, like dynamic
+  like dynamic
+  mark private
+
+  back host-global/Object/fromEntries(table)
+
+# ---- the snapshot as written (decision 083) ----
+#
+# The body is written holding each thing once. EVERY PATH ONCE: `paths` lists every path the body holds where a path
+# always stands (the file list, the keys of `files`, `edges`, `decks`, `folders`, `artifacts`, `entries` and `walk`, the
+# edges, each entry's artifacts and the files of each roll's unit label), a path under the project's root spelled
+# relative to it, and each of those places holds the path's index. Inside the problems and the rolls, a text that is a
+# table path, or one followed by `:` and a place, is written as the mark, the index and the place, and any other text
+# that starts with the mark is written with the mark once more before it, so no text reads as a reference. NO FILE
+# TEXT: a problem's `text` that hashes as its file's noted hash is written as the file's index under the key `¶text`,
+# and read back from the disk; an entry whose file then reads otherwise is not taken. Decoding the written body gives
+# back the body the session holds, field for field.
+
+host graph-mark, <¶>
+
+# the written body: the same fields, every path as its index into `paths`
+form coded-graph
+  link root, like text
+  link fingerprint, like text
+  link env, like text
+  link generation, like number
+  link taken, like number
+  link stable, like text
+  link paths, like list, like text
+  link known, like list, like number
+  link files, like dynamic
+  link edges, like dynamic
+  link decks, like dynamic
+  link folders, like dynamic
+  link entries, like dynamic
+  link rolls, like dynamic
+  link artifacts, like dynamic
+  link walk, like dynamic
+
+# the paths of a body, each with its index, in the order first met
+form path-table
+  link index, like hash, like text, like number
+  link paths, like list, like text
+
+# a body read back, and how many entries were left out because a problem's file reads otherwise than it was noted
+form decoded-graph
+  link body, like graph-snapshot
+  link dropped, like number
+
+# what a host value is: `list`, `object`, `null` or its `typeof`
+bind kind-of-value
+  take value, like dynamic
+  like text
+  case node
+    text <(Array.isArray($value) ? "list" : $value === null ? "null" : typeof $value)>
+
+# a path's index, the path added at the end when the table lacks it
+task table-add
+  take table, like path-table
+  take path, like text
+  like number
+  mark private
+
+  fork test, table/index/has(path)
+    hold
+      back table/index/get(path)
+  save at, table/paths/length
+  table/paths/push(path)
+  save table/index/{path}, at
+  back at
+
+# a `[key, value]` pair for `Object.fromEntries`
+task pair-of
+  take key, like text
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, like list, like dynamic
+    make list
+  out/push(key)
+  out/push(value)
+  back out
+
+task text-of-value
+  take value, like dynamic
+  like text
+  mark private
+
+  back <{value}>
+
+# a text inside a problem or a roll, as written
+task encode-text
+  take table, like path-table
+  take text, like text
+  like text
+  mark private
+
+  fork test, starts-with(text, graph-mark)
+    hold
+      back <{graph-mark}{text}>
+  fork test, table/index/has(text)
+    hold
+      back <{graph-mark}{table/index/get(text)}>
+  save colon, index-of(text, <:>)
+  fork test, is-above(colon, 0)
+    hold
+      save head, substring(text, 0, colon)
+      fork test, table/index/has(head)
+        hold
+          back <{graph-mark}{table/index/get(head)}{substring(text, colon)}>
+  back text
+
+# a text written by `encode-text`, read back
+task decode-text
+  take paths, like list, like text
+  take text, like text
+  like text
+  mark private
+
+  fork test, not(starts-with(text, graph-mark))
+    hold
+      back text
+  save rest, substring(text, 1)
+  fork test, starts-with(rest, graph-mark)
+    hold
+      back rest
+  save digits, rest
+  save tail, <>
+  save colon, index-of(rest, <:>)
+  fork test, is-minimum(colon, 0)
+    hold
+      save digits, substring(rest, 0, colon)
+      save tail, substring(rest, colon)
+  save at, like dynamic
+    host-global/Number(digits)
+  back <{paths/{at}}{tail}>
+
+# any value inside a problem or a roll, as written: each text and each key by `encode-text`
+task encode-value
+  take table, like path-table
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  save kind, kind-of-value(value)
+  fork test, is-equal(kind, <string>)
+    hold
+      back encode-text(table, text-of-value(value))
+  fork test, is-equal(kind, <list>)
+    hold
+      save out, like list, like dynamic
+        make list
+      walk items-of(value)
+        take item
+        out/push(encode-value(table, item))
+      back out
+  fork test, is-equal(kind, <object>)
+    hold
+      save pairs, make list
+      walk pairs-in(value)
+        take pair
+        pairs/push(pair-of(encode-text(table, text-of-value(pair/0)), encode-value(table, pair/1)))
+      back host-global/Object/fromEntries(pairs)
+  back value
+
+# Any value written by `encode-value`, read back IN PLACE: the value was parsed for this read alone, so each text is
+# put back where it stands and no list or object is made again, but an object holding a key that starts with the mark,
+# which is made again with its keys read back, in their order
+task decode-value
+  take paths, like list, like text
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  save kind, kind-of-value(value)
+  fork test, is-equal(kind, <string>)
+    hold
+      back decode-text(paths, text-of-value(value))
+  fork test, is-equal(kind, <list>)
+    hold
+      save at, 0
+      walk items-of(value)
+        take item
+        put-at(value, at, decode-value(paths, item))
+        save at, add(at, 1)
+      back value
+  fork test, is-equal(kind, <object>)
+    hold
+      save keys, like list, like text
+        host-global/Object/keys(value)
+      save marked, false
+      walk keys
+        take key
+        fork test, starts-with(key, graph-mark)
+          hold
+            save marked, true
+      fork test, marked
+        hold
+          save pairs, make list
+          walk keys
+            take key
+            pairs/push(pair-of(decode-text(paths, key), decode-value(paths, value-at(value, key))))
+          back host-global/Object/fromEntries(pairs)
+      walk keys
+        take key
+        put-at(value, key, decode-value(paths, value-at(value, key)))
+      back value
+  back value
+
+# a host object's or list's member, read and written by its key or index
+bind value-at
+  take holder, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$holder[$key]>
+
+bind put-at
+  take holder, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$holder[$key] = $value>
+
+# a list of paths as their indexes
+task indexes-of
+  take table, like path-table
+  take paths, like dynamic
+  like list, like number
+  mark private
+
+  save out, make list
+  walk texts-of(paths)
+    take path
+    out/push(table-add(table, path))
+  back out
+
+task paths-at
+  take paths, like list, like text
+  take indexes, like dynamic
+  like list, like text
+  mark private
+
+  save out, make list
+  walk items-of(indexes)
+    take at
+    out/push(paths/{at})
+  back out
+
+# an object keyed by paths, keyed by their indexes, its values as they are
+task index-keys
+  take table, like path-table
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(value)
+    take pair
+    pairs/push(pair-of(<{table-add(table, text-of-value(pair/0))}>, pair/1))
+  back host-global/Object/fromEntries(pairs)
+
+task path-keys
+  take paths, like list, like text
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(value)
+    take pair
+    save at, like dynamic
+      host-global/Number(pair/0)
+    pairs/push(pair-of(paths/{at}, pair/1))
+  back host-global/Object/fromEntries(pairs)
+
+# a unit's label (its files joined by `+`) as written: the mark and the files' indexes, or the label escaped when a part
+# is no table path
+task encode-label
+  take table, like path-table
+  take label, like text
+  like text
+  mark private
+
+  save parts, make list
+  walk split(label, <+>)
+    take part
+    fork test, not(table/index/has(part))
+      hold
+        fork test, starts-with(label, graph-mark)
+          hold
+            back <{graph-mark}{label}>
+        back label
+    parts/push(<{table/index/get(part)}>)
+  back <{graph-mark}{join(parts, <+>)}>
+
+task decode-label
+  take paths, like list, like text
+  take label, like text
+  like text
+  mark private
+
+  fork test, not(starts-with(label, graph-mark))
+    hold
+      back label
+  save rest, substring(label, 1)
+  fork test, starts-with(rest, graph-mark)
+    hold
+      back rest
+  save parts, make list
+  walk split(rest, <+>)
+    take digits
+    save at, like dynamic
+      host-global/Number(digits)
+    parts/push(paths/{at})
+  back join(parts, <+>)
+
+# a problem as written: its file's text by reference when it hashes as that file's noted hash
+task encode-problem
+  take table, like path-table
+  take files, like dynamic
+  take problem, like dynamic
+  like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(problem)
+    take pair
+    save key, text-of-value(pair/0)
+    fork test, is-equal(key, <text>)
+      hold
+        save file, problem/diagnostic/file
+        fork test, and(is-text(pair/1), and(is-text(file), table/index/has(text-of-value(file))))
+          hold
+            save note, like dynamic
+              files/{file}
+            fork test, is-unequal(note, void)
+              hold
+                save hash, text-of-value(note/hash)
+                fork test, and(is-unequal(hash, <>), is-equal(hash-key(text-of-value(pair/1)), hash))
+                  hold
+                    pairs/push(pair-of(<{graph-mark}text>, table/index/get(text-of-value(file))))
+                    turn next
+    pairs/push(pair-of(encode-text(table, key), encode-value(table, pair/1)))
+  back host-global/Object/fromEntries(pairs)
+
+# a problem read back, its file's text read from the disk and checked against the hash noted for it (`texts` holds the
+# texts read so far by file). Nothing when a file reads otherwise
+task decode-problem
+  take paths, like list, like text
+  take files, like dynamic
+  take texts, like hash, like text, like text
+  take problem, like dynamic
+  like maybe, like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(problem)
+    take pair
+    save key, text-of-value(pair/0)
+    fork test, is-equal(key, <{graph-mark}text>)
+      hold
+        save at, like dynamic
+          pair/1
+        save file, paths/{at}
+        sift text-on-disk(files, texts, file)
+          case some
+            link text
+            pairs/push(pair-of(<text>, text))
+          case none
+            back make none
+        turn next
+    pairs/push(pair-of(decode-text(paths, key), decode-value(paths, pair/1)))
+  back make(some, host-global/Object/fromEntries(pairs))
+
+# a file's text as its note says it was: read, and hashed as noted
+task text-on-disk
+  take files, like dynamic
+  take texts, like hash, like text, like text
+  take file, like text
+  like maybe, like text
+  mark private
+
+  fork test, texts/has(file)
+    hold
+      back make(some, texts/get(file))
+  save note, like dynamic
+    files/{file}
+  fork test, is-equal(note, void)
+    hold
+      back make none
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    fork test, is-equal(hash-key(text), text-of-value(note/hash))
+      hold
+        save texts/{file}, text
+        back make(some, text)
+    back make none
+  halt take
+    take problem
+    back make none
+
+# an entry's outcome as written: its artifacts by index, its problems by `encode-problem`, the rest by `encode-value`
+task encode-outcome
+  take table, like path-table
+  take files, like dynamic
+  take outcome, like dynamic
+  like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(outcome)
+    take pair
+    save key, text-of-value(pair/0)
+    fork test, is-equal(key, <artifacts>)
+      hold
+        pairs/push(pair-of(key, indexes-of(table, pair/1)))
+        turn next
+    fork test, is-equal(key, <problems>)
+      hold
+        save problems, like list, like dynamic
+          make list
+        walk items-of(pair/1)
+          take problem
+          problems/push(encode-problem(table, files, problem))
+        pairs/push(pair-of(key, problems))
+        turn next
+    pairs/push(pair-of(key, encode-value(table, pair/1)))
+  back host-global/Object/fromEntries(pairs)
+
+task decode-outcome
+  take paths, like list, like text
+  take files, like dynamic
+  take texts, like hash, like text, like text
+  take outcome, like dynamic
+  like maybe, like dynamic
+  mark private
+
+  save pairs, make list
+  walk pairs-in(outcome)
+    take pair
+    save key, text-of-value(pair/0)
+    fork test, is-equal(key, <artifacts>)
+      hold
+        pairs/push(pair-of(key, paths-at(paths, pair/1)))
+        turn next
+    fork test, is-equal(key, <problems>)
+      hold
+        save problems, like list, like dynamic
+          make list
+        walk items-of(pair/1)
+          take problem
+          sift decode-problem(paths, files, texts, problem)
+            case some
+              link decoded
+              problems/push(decoded)
+            case none
+              back make none
+        pairs/push(pair-of(key, problems))
+        turn next
+    pairs/push(pair-of(key, decode-value(paths, pair/1)))
+  back make(some, host-global/Object/fromEntries(pairs))
+
+# THE ENCODER: the body as the session holds it, written with each thing once
+task encode-body
+  take body, like graph-snapshot
+  like coded-graph
+
+  save root, body/root
+  save table, make(path-table, bind(index, make hash), bind(paths, make list))
+  # the table first, from the places that always hold a path, so a text inside a problem or a roll finds every one
+  save known, make list
+  walk split(body/known, <\n>)
+    take file
+    fork test, is-unequal(file, <>)
+      hold
+        known/push(table-add(table, file))
+  save files, index-keys(table, body/files)
+  save edges-pairs, make list
+  walk pairs-in(body/edges)
+    take pair
+    save at, table-add(table, text-of-value(pair/0))
+    edges-pairs/push(pair-of(<{at}>, indexes-of(table, pair/1)))
+  save decks, index-keys(table, body/decks)
+  save folders, index-keys(table, body/folders)
+  save artifacts, index-keys(table, body/artifacts)
+  save walk-notes, index-keys(table, body/walk)
+  walk pairs-in(body/entries)
+    take pair
+    table-add(table, text-of-value(pair/0))
+    save outcome, like dynamic
+      pair/1
+    indexes-of(table, outcome/artifacts)
+  walk pairs-in(body/rolls)
+    take pair
+    walk split(text-of-value(pair/0), <+>)
+      take part
+      table-add(table, part)
+  # then every place that may hold one
+  save entries-pairs, make list
+  walk pairs-in(body/entries)
+    take pair
+    entries-pairs/push(pair-of(<{table/index/get(text-of-value(pair/0))}>, encode-outcome(table, body/files, pair/1)))
+  save rolls-pairs, make list
+  walk pairs-in(body/rolls)
+    take pair
+    rolls-pairs/push(pair-of(encode-label(table, text-of-value(pair/0)), encode-value(table, pair/1)))
+  save prefix, <{root}{node-path/sep}>
+  save spelled, make list
+  walk table/paths
+    take path
+    fork test, starts-with(path, prefix)
+      hold
+        spelled/push(node-path/relative(root, path))
+      miss
+        spelled/push(path)
+  back make(coded-graph, bind(root, root), bind(fingerprint, body/fingerprint), bind(env, body/env), bind(generation, body/generation), bind(taken, body/taken), bind(stable, body/stable), bind(paths, spelled), bind(known, known), bind(files, files), bind(edges, host-global/Object/fromEntries(edges-pairs)), bind(decks, decks), bind(folders, folders), bind(entries, host-global/Object/fromEntries(entries-pairs)), bind(rolls, host-global/Object/fromEntries(rolls-pairs)), bind(artifacts, artifacts), bind(walk, walk-notes))
+
+# THE DECODER: a written body read back as the session held it, each problem's text filled from the disk. An entry with
+# a problem whose file reads otherwise than noted is left out, and counted
+task decode-body
+  take coded, like dynamic
+  take root, like text
+  like decoded-graph
+
+  save paths, make list
+  walk texts-of(coded/paths)
+    take spelled
+    fork test, node-path/is-absolute(spelled)
+      hold
+        paths/push(spelled)
+      miss
+        paths/push(<{root}{node-path/sep}{spelled}>)
+  save files, path-keys(paths, coded/files)
+  save edges-pairs, make list
+  walk pairs-in(coded/edges)
+    take pair
+    save at, like dynamic
+      host-global/Number(pair/0)
+    edges-pairs/push(pair-of(paths/{at}, paths-at(paths, pair/1)))
+  save texts, make hash
+  save dropped, 0
+  save entries-pairs, make list
+  walk pairs-in(coded/entries)
+    take pair
+    save at, like dynamic
+      host-global/Number(pair/0)
+    sift decode-outcome(paths, files, texts, pair/1)
+      case some
+        link outcome
+        entries-pairs/push(pair-of(paths/{at}, outcome))
+      case none
+        save dropped, add(dropped, 1)
+  save rolls-pairs, make list
+  walk pairs-in(coded/rolls)
+    take pair
+    rolls-pairs/push(pair-of(decode-label(paths, text-of-value(pair/0)), decode-value(paths, pair/1)))
+  save body, make(graph-snapshot, bind(root, coded/root), bind(fingerprint, coded/fingerprint), bind(env, coded/env), bind(generation, coded/generation), bind(taken, coded/taken), bind(stable, coded/stable), bind(known, join(paths-at(paths, coded/known), <\n>)), bind(files, files), bind(edges, host-global/Object/fromEntries(edges-pairs)), bind(decks, path-keys(paths, coded/decks)), bind(folders, path-keys(paths, coded/folders)), bind(entries, host-global/Object/fromEntries(entries-pairs)), bind(rolls, host-global/Object/fromEntries(rolls-pairs)), bind(artifacts, path-keys(paths, coded/artifacts)), bind(walk, path-keys(paths, coded/walk)))
+  back make(decoded-graph, bind(body, body), bind(dropped, dropped))
+
+# the project's snapshot read back and decoded, when its header and sum hold, for a test that holds the decoding equal to
+# what the session wrote. Undefined for none
+task decoded-snapshot
+  take root, like text
+  like dynamic
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(snapshot-path(root), <utf8>)
+    save head, <{snapshot-header}\n>
+    save at, char-count(head)
+    save body-text, substring(text, add(at, 33))
+    fork test, is-unequal(hash-key(body-text), substring(text, at, add(at, 32)))
+      hold
+        back void
+    save coded, like dynamic
+      host-global/JSON/parse(body-text)
+    back decode-body(coded, root)/body
+  halt take
+    take problem
+    back void
+
+# Every snapshot of the project but the newest three is removed (decision 083 section 6): the file's name holds the
+# running bundle's stamp, so each rebuild of the CLI starts a new one. The one just written is kept whatever its time, a
+# writer's temp file is left to its writer, and a failure never fails the build
+task reclaim-snapshots
+  take kept, like text
+  mark private
+
+  fork
+    mark unsafe
+    save folder, node-path/dirname(kept)
+    save names, make list
+    save times, make list
+    walk node-file/readdir-sync(folder)
+      take name
+      save full, node-path/join(folder, name)
+      fork test, and(not(ends-with(name, <.tmp>)), is-unequal(full, kept))
+        hold
+          names/push(full)
+          times/push(node-file/stat-sync(full)/mtime-ms)
+    save at, 0
+    walk names
+      take full
+      # newer is a later time, or the same time and a later name
+      save newer, 1
+      save other, 0
+      walk names
+        take one
+        fork test, or(is-above(times/{other}, times/{at}), and(is-equal(times/{other}, times/{at}), is-above-text(one, full)))
+          hold
+            save newer, add(newer, 1)
+        save other, add(other, 1)
+      fork test, is-minimum(newer, 3)
+        hold
+          node-file/rm-sync(full, make(graph-remove-ask, bind(force, true)))
+      save at, add(at, 1)
+  halt take
+    take problem
+    save nothing, 0
+
+bind is-above-text
+  take a, like text
+  take b, like text
+  like boolean
+  case node
+    text <($a \> $b)>

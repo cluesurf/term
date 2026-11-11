@@ -1,4 +1,4 @@
-# rust WebSocket socket operations. Forwards to the linked websocket runtime shim, operating on the socket's tokio-tungstenite stream. receive returns the message form. Internal: reached only through the public WebSocket API.
+# rust WebSocket socket operations. Forwards to the linked websocket runtime shim, operating on the socket's tungstenite WebSocket. receive returns the message form. Internal: reached only through the public WebSocket API.
 
 dock load
   load <global:websocket>, name websocket

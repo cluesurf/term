@@ -1,0 +1,555 @@
+# The project resolver: where a project's `load` lands, and the file's text. Ported from call/code/make.ts
+# (`projectResolver`), part 2 of that file.
+#
+# A load is tried at the project's own `link/` folder, the CLI install's links, the bundled stdlib, the stdlib's
+# sibling packages, the importer's OWN package by its declared name, and the project being built, in that order. A
+# relative load may not leave the importer's package or the project: that confinement is what stops a malicious
+# `load ../../../../etc/passwd` from reading arbitrary files during a compile of untrusted source.
+#
+# The TypeScript kept its caches in a closure and handed back a function. Here they are the resolver's own state, a
+# shared record handed to every lookup (`resolve-in-project`), the way the build lane's other ports keep theirs. The
+# link, stdlib and sibling resolvers are the compiler's (compile/resolve.ts), docked. The native-env rewrite
+# (`native-candidates`, compile/runtime-prelude.tree) is loaded since term-self-host-001-0954, the resolver's env text
+# read as a `native-env` by compile/native-env.tree `native-env-of` (decision 122). An absent answer is `none`, where
+# the TypeScript answered undefined.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load @term/make/package-paths
+  find package-rest
+
+load ./real-paths
+  find safe-real
+  find is-within
+
+load ./tree-finding
+  find resolve-tree-file
+
+# the name a manifest declares: the small lane's port, where manifest-name.ts was docked (term-cli-in-term-0069)
+load ../small/manifest-file
+  find manifest-name-of
+
+# the native-env rewrite, and the one reader that turns the resolver's env text into a `native-env` (decision 122 of
+# term/self-host/change/001-finish-self-host)
+load @term/make/compile/runtime-prelude
+  find native-candidates
+  find named-candidates
+
+load @term/make/compile/native-env
+  find native-env-of
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/resolve>, name resolve-module
+  # node's global scope, for `String.fromCharCode` (a `<global:globalThis>` dock is emitted renamed, traps.md)
+  load <global:global>, name host-global
+
+# a module a load reached: its real path and its text. `shadowed` is the package root's file a code root's file hid,
+# so `term lint` can say so
+form source
+  link file, like text
+  link text, like text
+  link shadowed
+    like text
+    need false
+
+# how one `load` asks for its path: `base <dir>` under it forces the package root
+form load-how
+  link base
+    like text
+    need false
+
+# what the compiler's package path rule is asked: a package directory, the path after its name, and the `base`
+form package-ask
+  link dir, like text
+  link rest, like text
+  link base
+    like text
+    need false
+
+# one project's resolver and everything it has learned. Nothing in it is ever forgotten: files do not change during
+# a compile
+form project-resolver
+  mark shared
+  link root, like text
+  # the target the native imports resolve for (`node`, `browser`, ...)
+  link env, like text
+  # the compiler's resolvers, each a host function, or undefined where there is none (no stdlib beside the compiler,
+  # no fallback link root)
+  link stdlib, like dynamic
+  link sibling, like dynamic
+  link linked, like dynamic
+  link fallback-linked, like dynamic
+  # the project root, real
+  link root-real, like text
+  # the project's manifest, where an app's own face implementations are looked for
+  link root-face, like text
+  # each candidate file read, by its path as asked: its source, or nothing when it could not be read
+  link reads, like hash, like text, like maybe, like source
+  # each directory's package root: the nearest ancestor holding a `deck.tree`, else the project root
+  link package-roots, like hash, like text, like text
+  # each package root's declared name, or nothing
+  link package-names, like hash, like text, like maybe, like text
+  # each whole resolution, by its memo key
+  link answers, like hash, like text, like maybe, like source
+
+# A resolver for the project at `root`, building for `env`. `fallback-link-root` is a second `link/` root tried after
+# the project's own: the CLI passes its install dir, so an app that has not run `term link` still resolves
+# `@cluesurf/*` through the install's links. The empty text is none
+task make-project-resolver
+  take root, like text
+  take env, like text, fall <node>
+  take fallback-link-root, like text, fall <>
+  like project-resolver
+
+  save stdlib, resolve-module/stdlibResolver()
+  save sibling, resolve-module/siblingResolver()
+  save linked, resolve-module/linkResolver(root)
+  save fallback-linked, no-host()
+  fork test, and(is-unequal(fallback-link-root, <>), is-unequal(fallback-link-root, root))
+    hold
+      save fallback-linked, resolve-module/linkResolver(fallback-link-root)
+  save root-real, safe-real(root)
+  save root-face, node-path/join(root-real, <deck.tree>)
+  back make(project-resolver, bind(root, root), bind(env, env), bind(stdlib, stdlib), bind(sibling, sibling), bind(linked, linked), bind(fallback-linked, fallback-linked), bind(root-real, root-real), bind(root-face, root-face), bind(reads, make hash), bind(package-roots, make hash), bind(package-names, make hash), bind(answers, make hash))
+
+# Where a load lands, and its text, or nothing. The native-env rewrite: an import with a `{platform}` slot is tried
+# with each env of the target's chain in the slot, then as the abstract module, and the last answer stands
+task resolve-in-project
+  take resolver, like project-resolver
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+
+  save found, make none
+  walk candidates-of(resolver/env, import-path)
+    take candidate
+    save found, shadow-or-resolve(resolver, candidate, from-file, how)
+    fork test, is-some-source(found)
+      hold
+        back found
+  back found
+
+# the paths a load is tried at for the resolver's env: a text that names a `native-env` reads its fallback chain, any
+# other text is a chain of itself alone, the answer the TypeScript gave such an env
+task candidates-of
+  take env, like text
+  take import-path, like text
+  like list, like text
+  mark private
+
+  sift native-env-of(env)
+    case some
+      link known
+      back native-candidates(known, import-path)
+    case none
+      save alone, make list
+      alone/push(env)
+      back named-candidates(alone, import-path)
+
+task is-some-source
+  take found, like maybe, like source
+  like boolean
+  mark private
+
+  sift found
+    case some
+      back true
+    case none
+      back false
+
+# AN APP SHADOWS A FACE IMPLEMENTATION (native-dom-0025): an import of `@term/face/component/native/...` (or the older
+# `@term/face/code/component/native/...`) first tries the SAME RELATIVE PATH in the project being built, then face's
+# own. It sits under the native-env rewrite, so it applies per rung of the env chain. Building face itself, the
+# project's file IS face's, so nothing changes. note/project/term/app/11-uniform-interface.md
+task shadow-or-resolve
+  take resolver, like project-resolver
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+  mark private
+
+  fork test, and(is-none-text(base-of(how)), is-face-native(import-path))
+    hold
+      fork test, node-file/exists-sync(resolver/root-face)
+        hold
+          fork test, is-not-face(resolver/root-face)
+            hold
+              save own, in-package(resolver, resolver/root-real, substring(import-path, 11, import-path/length), make none)
+              fork test, is-some-source(own)
+                hold
+                  back own
+  back resolve-memoized(resolver, import-path, from-file, how)
+
+task is-face-native
+  take import-path, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(import-path, <@term/face/component/native/>)
+    hold
+      back true
+  back starts-with(import-path, <@term/face/code/component/native/>)
+
+# is the manifest at this path some package other than @term/face (or no package at all)?
+task is-not-face
+  take manifest, like text
+  like boolean
+  mark private
+
+  sift manifest-name-of(manifest)
+    case some
+      link name
+      back is-unequal(name, <@term/face>)
+    case none
+      back true
+
+# the `base` a load asks with, or nothing
+task base-of
+  take how, like maybe, like load-how
+  like maybe, like text
+  mark private
+
+  sift how
+    case some
+      link asked
+      back text-or-nothing(base-field(asked))
+    case none
+      back make none
+
+# the `base` field as it stands, undefined when absent (a read of the need-false field defaults it to the empty text)
+task base-field
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  back asked/base
+
+# undefined, for a host function that is not there
+task no-host
+  like dynamic
+  mark private
+
+  back void
+
+task is-none-text
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back false
+    case none
+      back true
+
+# the load's `how` as the compiler's resolvers take it: the record, or undefined
+task how-value
+  take how, like maybe, like load-how
+  like dynamic
+  mark private
+
+  sift how
+    case some
+      link asked
+      back asked
+    case none
+      back void
+
+# a host answer that is a text or undefined, as a maybe. Narrowed through `like unknown`, the gradual seam (D1): a
+# `sift` on the `dynamic` a dock answers compares it with the word instead (traps.md)
+task text-or-nothing
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      back make(some, value)
+    miss
+      back make none
+
+# a host resolver's answer, a source or undefined, as a maybe
+task source-or-nothing
+  take value, like dynamic
+  like maybe, like source
+  mark private
+
+  fork test, is-equal(value, void)
+    hold
+      back make none
+  back make(some, value)
+
+# ask one of the compiler's resolvers, a host function
+task ask-host
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+  mark private
+
+  back source-or-nothing(resolve(import-path, from-file, how-value(how)))
+
+# The package boundary of a file: the nearest ancestor holding a `deck.tree`, else the project root. A relative
+# import may not escape it. Asked once per import, so remembered per directory
+task package-root-of
+  take resolver, like project-resolver
+  take file, like text
+  like text
+
+  save start, node-path/dirname(file)
+  fork test, resolver/package-roots/has(start)
+    hold
+      back resolver/package-roots/get(start)
+  save dir, start
+  save found, resolver/root-real
+  save going, true
+  walk test
+    hook test
+      going
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+        hold
+          save found, safe-real(dir)
+          save going, false
+        miss
+          save up, node-path/dirname(dir)
+          fork test, is-equal(up, dir)
+            hold
+              save going, false
+            miss
+              save dir, up
+  save resolver/package-roots/{start}, found
+  back found
+
+# The package NAME of a file, from the `deck @scope/name` line of its nearest `deck.tree`. This makes `@/sub/path` a
+# LOCAL-PACKAGE alias for `@scope/name/sub/path`, each sub-package of a monorepo against its own nearest manifest
+task package-name-of
+  take resolver, like project-resolver
+  take file, like text
+  like maybe, like text
+
+  save dir, package-root-of(resolver, file)
+  fork test, resolver/package-names/has(dir)
+    hold
+      back resolver/package-names/get(dir)
+  save name, manifest-name-of(node-path/join(dir, <deck.tree>))
+  save resolver/package-names/{dir}, name
+  back name
+
+# the file at a candidate path, real, and its text, or nothing when it cannot be read (a directory, a link to
+# nothing). A file reached through a symlink is one module, by its real path
+task read-candidate
+  take resolver, like project-resolver
+  take candidate, like text
+  like maybe, like source
+
+  fork test, resolver/reads/has(candidate)
+    hold
+      back resolver/reads/get(candidate)
+  save result, read-source(candidate)
+  save resolver/reads/{candidate}, result
+  back result
+
+task read-source
+  take candidate, like text
+  like maybe, like source
+  mark private
+
+  fork
+    mark unsafe
+    save file, node-file/realpath-sync(candidate)
+    save text, node-file/read-file-sync(candidate, <utf8>)
+    save read, make(source, bind(file, file), bind(text, text))
+    back make(some, read)
+  halt take
+    take problem
+    back make none
+
+# the module a bare path names, in Term's candidate order, read
+task try-file
+  take resolver, like project-resolver
+  take base, like text
+  like maybe, like source
+  mark private
+
+  save candidate, resolve-tree-file(base)
+  fork test, is-equal(candidate, <>)
+    hold
+      back make none
+  back read-candidate(resolver, candidate)
+
+# A package path inside one package directory, by THE rule (compile/resolve.ts `resolvePackagePath`: the code root,
+# then the package root, or `base`). The read is shared, so the file it shadows is reported on a copy of it
+task in-package
+  take resolver, like project-resolver
+  take dir, like text
+  take rest, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+
+  save ask, make(package-ask, bind(dir, dir), bind(rest, rest))
+  sift base-of(how)
+    case some
+      link asked
+      save ask, make(package-ask, bind(dir, dir), bind(rest, rest), bind(base, asked))
+    case none
+      save nothing, 0
+  save hit, resolve-module/resolvePackagePath(ask)
+  sift text-or-nothing(hit/file)
+    case some
+      link file
+      save read, read-candidate(resolver, file)
+      sift read
+        case some
+          link one
+          sift text-or-nothing(hit/shadowed)
+            case some
+              link hidden
+              fork test, is-unequal(hidden, <>)
+                hold
+                  save copy, make(source, bind(file, one/file), bind(text, one/text), bind(shadowed, hidden))
+                  back make(some, copy)
+            case none
+              save nothing, 0
+          back read
+        case none
+          back make none
+    case none
+      back make none
+
+# The whole resolution, remembered. `@/sub/path` is expanded to the importer's package first, so the key holds the
+# concrete path. A package path resolves the same from every importer EXCEPT through the own-package and project
+# fallbacks, which read the importer's package, so it is keyed by that package; a relative path by the importer's
+# directory; and a `base` is part of the question
+task resolve-memoized
+  take resolver, like project-resolver
+  take raw-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+  mark private
+
+  save import-path, raw-path
+  fork test, starts-with(raw-path, <@/>)
+    hold
+      sift package-name-of(resolver, from-file)
+        case some
+          link pkg
+          fork test, is-equal(pkg, <>)
+            hold
+              back make none
+          save import-path, <{pkg}/{substring(raw-path, 2, raw-path/length)}>
+        case none
+          back make none
+  save relative, or(starts-with(import-path, <./>), starts-with(import-path, <../>))
+  save key, <>
+  fork test, relative
+    hold
+      save key, <{node-path/dirname(from-file)}{key-gap()}{import-path}>
+    miss
+      save key, <{package-root-of(resolver, from-file)}{key-gap()}{import-path}>
+  sift base-of(how)
+    case some
+      link asked
+      save key, <{key}{key-gap()}base:{asked}>
+    case none
+      save nothing, 0
+  fork test, resolver/answers/has(key)
+    hold
+      back resolver/answers/get(key)
+  save result, resolve-uncached(resolver, import-path, from-file, relative, how)
+  save resolver/answers/{key}, result
+  back result
+
+# the separator of a memo key's parts: a character no path holds
+task key-gap
+  like text
+  mark private
+
+  back host-global/String/fromCharCode(0)
+
+task resolve-uncached
+  take resolver, like project-resolver
+  take import-path, like text
+  take from-file, like text
+  take relative, like boolean
+  take how, like maybe, like load-how
+  like maybe, like source
+  mark private
+
+  # a relative import resolves against the importing file. `base` names a folder of a PACKAGE and means nothing here,
+  # so a relative load carrying one names nothing
+  fork test, relative
+    hold
+      fork test, not(is-none-text(base-of(how)))
+        hold
+          back make none
+      save resolved, node-path/resolve(node-path/dirname(from-file), import-path)
+      # confine: the resolved file must stay within the importer's package or the project root. Anything escaping
+      # both is not found, never read off the host
+      save bound, package-root-of(resolver, from-file)
+      save resolved-real, safe-real(resolved)
+      fork test, and(not(is-within(resolved-real, bound)), not(is-within(resolved-real, resolver/root-real)))
+        hold
+          back make none
+      back try-file(resolver, resolved)
+  # linked packages first: the project's own links, then the CLI install's links, then the bundled stdlib
+  save from-link, ask-host(resolver/linked, import-path, from-file, how)
+  fork test, is-some-source(from-link)
+    hold
+      back from-link
+  fork test, is-unequal(resolver/fallback-linked, void)
+    hold
+      save from-fallback, ask-host(resolver/fallback-linked, import-path, from-file, how)
+      fork test, is-some-source(from-fallback)
+        hold
+          back from-fallback
+  fork test, is-unequal(resolver/stdlib, void)
+    hold
+      save from-stdlib, ask-host(resolver/stdlib, import-path, from-file, how)
+      fork test, is-some-source(from-stdlib)
+        hold
+          back from-stdlib
+  # any other package in the same tree as the stdlib, by name, after the link dir so a project's own link wins
+  fork test, is-unequal(resolver/sibling, void)
+    hold
+      save from-sibling, ask-host(resolver/sibling, import-path, from-file, how)
+      fork test, is-some-source(from-sibling)
+        hold
+          back from-sibling
+  save named, package-rest(import-path)
+  fork test, not(named/found)
+    hold
+      back make none
+  # the importer's OWN package, by its declared name: a package that imports itself needs no `link/` entry
+  sift package-name-of(resolver, from-file)
+    case some
+      link own
+      fork test, and(is-unequal(own, <>), is-equal(named/pkg, own))
+        hold
+          save within-self, in-package(resolver, package-root-of(resolver, from-file), named/rest, how)
+          fork test, is-some-source(within-self)
+            hold
+              back within-self
+    case none
+      save nothing, 0
+  # `@scope/pkg/sub/path` against the project being built, when nothing else claims the name
+  back in-package(resolver, resolver/root-real, named/rest, how)

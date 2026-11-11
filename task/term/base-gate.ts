@@ -11,6 +11,13 @@
 // test: P (held), F (did not hold), E (raised). So the driver is written once, in Term, and each backend only has to
 // print one call. A file whose test tasks are async gets an async report and an async driver.
 //
+// THE PROGRAM IS THE ONE `term make --build` SHIPS (decision item 1145): each native leg builds the file through
+// compile(), tree-shake on, as `term test --env` builds it, emits it with the program's wake groups and its prelude
+// read off the emitted code, and appends the main compile/native-main.ts writes for `gate-report` (Rust's
+// `__term_block_on` on a 1 GiB stack thread, Kotlin's `termLoop`, Swift's thread and loop entry). Until then the gate
+// milled, bound, checked and simplified by hand with no tree-shake and drove Rust with `#[tokio::main]`, so a form the
+// prune drops, a shim waiting on a tokio waker, read ok here and failed in every built program (trap T-1143).
+//
 // Verdicts per file per backend: `ok` (every letter P), `diff` (the letters differ from node's: a parity bug),
 // `fail` (letters agree with node but some are not P: the test itself is red everywhere), `build` (the toolchain
 // refused the emitted code), `front` (the compiler refused the file for that backend), `skip` (named reason).
@@ -33,20 +40,14 @@ import { parse } from '@term/make/code/parser/tree'
 import { resolvePackagePath, stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { compile } from '@term/make/code/compile/compile'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
-import { resolve as resolveNames } from '@term/make/code/check/resolve'
-import { check } from '@term/make/code/check/infer'
-import { resolveAsync } from '@term/make/code/check/async-resolve'
-import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
-import { expandTemplates, collectTemplates } from '@term/make/code/compile/template'
-import type { Template } from '@term/make/code/compile/template'
+import { entryOf, nativeMain } from '@term/make/code/compile/native-main'
+import { expandTemplates } from '@term/make/code/compile/template'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
-import type { Program } from '@term/make/code/compile/node'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { projectLeanOf } from '@term/call/code/role-of'
 import { TERM_ROOT } from './root'
@@ -369,85 +370,51 @@ function missingShim(sources: Source[], env: Native): string | undefined {
   return undefined
 }
 
-function front(file: string, text: string, env: Native): { source: string; call: string } | { fail: string } | { skip: string } {
+// the program, its prelude and its main, as `term test --env` and `term make --build` build one
+// (deck/call/code/work/testing/native-testing.tree `run-native-test-file`, deck/call/code/native-build.ts)
+function front(file: string, text: string, env: Native): { source: string; main: string } | { fail: string } | { skip: string } {
   try {
-    // what each module imports, so a name two modules define binds per file as `compile` binds it
-    const { sources, scope } = collectModules({ file, text }, withNativeEnv(env, resolver))
+    const resolve = withNativeEnv(env, resolver)
+    // the closure's sources, read only for the shim check below: compile() walks the closure itself
+    const { sources } = collectModules({ file, text }, resolve)
     const unshimmed = missingShim(sources, env)
 
     if (unshimmed) {
       return { skip: `the ${unshimmed} binding has a node runtime and no ${env} one` }
     }
-    const program: Program = []
-    const trees: { file: string; tree: Extract<ReturnType<typeof parse>, { ok: true }> }[] = []
 
-    for (const unit of sources) {
-      const parsed = parse(unit)
+    // the build of record: compile() with tree-shake on, as every built program is (decision item 1145). BG_NO_SIMPLIFY=1
+    // emits the program unsimplified, to tell a simplifier defect from an emitter one
+    const result = compile(
+      { file, text },
+      { resolve, env, leanOf, treeShake: true, ...(process.env.BG_NO_SIMPLIFY ? { optimize: false } : {}) },
+    )
 
-      if (!parsed.ok) {
-        return { fail: `parse ${relative(TERM, unit.file)}: ${parsed.diagnostics[0]?.message ?? ''}` }
-      }
+    if (!result.ok) {
+      const first = result.diagnostics.find(d => d.severity !== 'warning') ?? result.diagnostics[0]
+      const where = first?.span?.file ?? first?.file
+      const at = first && where ? ` (${relative(TERM, where)}:${first.span.start.line + 1})` : ''
 
-      trees.push({ file: unit.file, tree: parsed })
+      return { fail: `compile: ${first?.message ?? ''}${at}` }
     }
 
-    // every module's templates first, as `compile` collects them, so a `fuse` expands a template another file defines
-    // (`integer/32` instantiates the one in `integer/n`)
-    const templates = new Map<string, Template>()
+    const options = { wake: result.wake }
+    const emitted =
+      env === 'rust'
+        ? emitRust(result.program, options)
+        : env === 'swift'
+          ? emitSwift(result.program, options)
+          : emitKotlin(result.program, options)
+    // the shims the emitted code names, as term test reads them
+    const prelude = nativePrelude(result.program, env, readRuntime, emitted)
+    const source = `${prelude}\n${emitted}`
+    const entry = entryOf(env, source, REPORT)
 
-    for (const { tree } of trees) {
-      for (const [name, template] of collectTemplates(tree.tree)) {
-        templates.set(name, template)
-      }
+    if (!entry) {
+      return { fail: `emit: no ${REPORT} taking nothing in the emitted source` }
     }
 
-    for (const { file: unitFile, tree: parsed } of trees) {
-      const unit = { file: unitFile }
-      const built = mill(expandTemplates(parsed.tree, templates), unit.file, undefined, leanOf(unit.file))
-
-      if (!built.ok) {
-        return { fail: `mill ${relative(TERM, unit.file)}: ${built.diagnostics[0]?.message ?? ''}` }
-      }
-
-      stampModule(built.program, unit.file)
-      program.push(...built.program)
-    }
-
-    // module scope, as `compileProgram` binds it (check/bind-modules.ts)
-    const unbound = bindModules(program, scope, file)
-
-    if (unbound.length) {
-      return { fail: `scope: ${unbound[0]?.message ?? ''}` }
-    }
-
-    const unresolved = resolveNames(program, file).filter(d => d.severity !== 'warning')
-
-    if (unresolved.length) {
-      return { fail: `resolve: ${unresolved[0]?.message ?? ''}` }
-    }
-
-    const errors = check(program, file).filter(d => d.severity !== 'warning')
-
-    if (errors.length) {
-      const first = errors[0]
-      const at = first ? ` (${relative(TERM, first.span.file ?? first.file)}:${first.span.start.line + 1})` : ''
-
-      return { fail: `check: ${first?.message ?? ''}${at}` }
-    }
-
-    resolveAsync(program)
-
-    // BG_NO_SIMPLIFY=1 emits the program as checked, to tell a simplifier defect from an emitter one
-    const simple = process.env.BG_NO_SIMPLIFY ? program : simplify(program, new Set([REPORT]))
-    const emitted = env === 'rust' ? emitRust(simple) : env === 'swift' ? emitSwift(simple) : emitKotlin(simple)
-    const prelude = nativePrelude(simple, env, readRuntime)
-    const call = env === 'rust' ? 'gate_report' : 'gateReport'
-
-    if (!new RegExp(`\\b${call}\\b`).test(emitted)) {
-      return { fail: `emit: no ${call} in the emitted source` }
-    }
-
-    return { source: `${prelude}\n${emitted}`, call }
+    return { source, main: nativeMain(env, source, entry) }
   } catch (error) {
     return { fail: `front: ${String(error).slice(0, 200)}` }
   }
@@ -455,7 +422,8 @@ function front(file: string, text: string, env: Native): { source: string; call:
 
 // ---------------------------------------------------------------- toolchains
 
-type Job = { key: string; source: string; call: string; isAsync: boolean }
+// `main` is compile/native-main.ts's main for `gate-report`, the one `term make --build` appends
+type Job = { key: string; source: string; main: string }
 type Outcome = { key: string; out?: string; fail?: string }
 
 const firstError = (text: string, pattern: RegExp): string =>
@@ -522,15 +490,10 @@ async function runRust(batch: Job[]): Promise<Outcome[]> {
   for (const job of batch) {
     const bin = `g_${job.key.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`
     bins.set(bin, job)
-    const value = job.isAsync ? `${job.call}().await` : `${job.call}()`
-    const raising = new RegExp(`fn ${job.call}\\(\\)[^{]*-> std::result::Result`).test(job.source)
-    const shown = raising ? `${value}.unwrap_or_else(|e| e.to_string())` : value
-    const main = job.isAsync
-      ? `#[tokio::main]\nasync fn main() { print!("{}", ${shown}); }\n`
-      : `fn main() { print!("{}", ${shown}); }\n`
+    // the program's own main: an async entry on `__term_block_on`, never a tokio runtime, on a 1 GiB stack thread
     writeFileSync(
       join(proj, 'src', 'bin', `${bin}.rs`),
-      `#![allow(warnings)]\n${job.source}\n${main}`,
+      `#![allow(warnings)]\n${job.source}\n${job.main}\n`,
     )
   }
 
@@ -583,12 +546,8 @@ async function runSwift(batch: Job[]): Promise<Outcome[]> {
     const base = job.key.replace(/[^a-z0-9]+/gi, '_')
     const file = join(dir, `${base}.swift`)
     const exe = join(dir, base)
-    const raising = /func gateReport\(\)[^{]*throws/.test(job.source)
-    const value = `${raising ? 'try ' : ''}${job.isAsync ? 'await ' : ''}gateReport()`
-    const driver = raising
-      ? `do { print(${value}, terminator: "") } catch { print("\\(error)", terminator: "") }\n`
-      : `print(${value}, terminator: "")\n`
-    writeFileSync(file, `${job.source}\n${driver}`)
+    // as deck/call/code/native-build.ts writes a Swift program: Foundation, the source, the program's own main
+    writeFileSync(file, `import Foundation\n${job.source}\n${job.main}\n`)
 
     await new Promise<void>(done => {
       execFile('swiftc', [...flags, '-o', exe, file], { maxBuffer: 64 * 1024 * 1024 }, (error, _o, stderr) => {
@@ -622,15 +581,9 @@ async function runKotlin(batch: Job[]): Promise<Outcome[]> {
     const file = join(dir, `m${index}.kt`)
     files.set(file, job)
     facade.set(file, `p${index}.M${index}Kt`)
-    // a program that waits (`termSleep`) posts its wake-ups to `termLoop`, which only `termLoop.block` drains:
-    // `runBlocking` never runs them, so a test that sleeps hung to the 60 s timeout (exit 143)
-    const driver = job.isAsync
-      ? job.source.includes('object termLoop')
-        ? `fun main() { print(termLoop.block { gateReport() }) }\n`
-        : `fun main() { print(kotlinx.coroutines.runBlocking { gateReport() }) }\n`
-      : `fun main() { print(gateReport()) }\n`
-    // imports hoisted first and the package line put above them: Kotlin wants `package` before any `import`
-    writeFileSync(file, `package p${index}\n\n${hoistKotlinImports(`${job.source}\n${driver}`)}`)
+    // the program's own main (an async entry on `termLoop`, on a 1 GiB stack thread). Imports hoisted first and the
+    // package line put above them: Kotlin wants `package` before any `import`
+    writeFileSync(file, `package p${index}\n\n${hoistKotlinImports(`${job.source}\n${job.main}\n`)}`)
   })
 
   const failed = new Map<string, string>()
@@ -862,7 +815,7 @@ async function main(): Promise<void> {
         continue
       }
 
-      batch.push({ key: rel, source: built.source, call: built.call, isAsync: row.prep.isAsync })
+      batch.push({ key: rel, source: built.source, main: built.main })
     }
 
     const outcomes = env === 'rust' ? await runRust(batch) : env === 'swift' ? await runSwift(batch) : await runKotlin(batch)

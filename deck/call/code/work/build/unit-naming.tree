@@ -1,0 +1,189 @@
+# How a separate build names its units and the files that are not cut into units. Ported from call/code/make.ts
+# (`unitSlug`, `entryShim`, `isWholeFile`), part 3 of that file.
+#
+# A unit's artifact under host/.unit/ is named by its deck's name and its path inside the deck (`_term_base_code_text`),
+# the same from every project: a unit is shared by every project on the machine, so its name cannot depend on which
+# project built it. A file in no deck keeps the path relative to the root. The spelling of the slug and of the entry
+# shim's lines is call/code/make-plan.tree's; the TypeScript names are compile/ts-names.tree's, where compile/typescript.ts
+# was docked until term-self-host-001-0954.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+load @term/call/make-plan
+  find unit-slug-of
+  find entry-shim-text
+  find shim-export
+
+load ./deck-finding
+  find deck-finder
+  find find-deck
+
+load @term/make/compile/ts-names
+  find to-camel
+  find to-pascal
+
+load @term/make/compile/host-data
+  find is-data-tree
+
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/side-files
+  find is-look-tree
+
+dock load
+  load <node:path>, name node-path
+
+# a source handed to the compiler's content tests
+form named-source
+  link file, like text
+  link text, like text
+
+# the stable, flat artifact name of a source module under host/.unit/
+task unit-slug
+  take root, like text
+  take file, like text
+  take finder, like deck-finder
+  like text
+
+  save named, node-path/relative(root, file)
+  sift find-deck(finder, file)
+    case some
+      link deck
+      save named, <{deck/name}/{node-path/relative(deck/root, file)}>
+    case none
+      save nothing, 0
+  back unit-slug-of(named)
+
+# THE ENTRY SHIM: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every public
+# task, constant and type of the entry's closure, each from the module that defines it, so a TypeScript importer keeps
+# its import path and its names. `slug` names a module's unit
+task entry-shim
+  take root, like text
+  take file, like text
+  take exports, like list, like shim-export
+  take slug
+    like task
+      take module, like text
+      like text
+  like text
+
+  save out-path, node-path/join(root, <host>, swap-tree(node-path/relative(root, file)))
+  back entry-shim-text(exports, to-camel, to-pascal, unit-path(root, out-path, slug))
+
+# the import a shim at `out-path` writes for a module's unit
+task unit-path
+  take root, like text
+  take out-path, like text
+  take slug
+    like task
+      take module, like text
+      like text
+  like task
+    take module, like text
+    like text
+    halt failure
+  mark private
+
+  back
+    task
+      take module, like text
+      like text
+      save relative, join(split(node-path/relative(node-path/dirname(out-path), node-path/join(root, <host>, <.unit>, slug(module))), node-path/sep), </>)
+      # `./` or `../` makes it a relative import. A shim at the root of host/ reaches `.unit/x`, which begins with a dot
+      # and is a PACKAGE name all the same, so a bundler left it external and node failed to find it
+      fork test, or(starts-with(relative, <./>), starts-with(relative, <../>))
+        hold
+          back relative
+      back <./{relative}>
+
+# a path with a trailing `.tree` swapped for `.ts` (the regular expression /\.tree$/)
+task swap-tree
+  take path, like text
+  like text
+  mark private
+
+  fork test, ends-with(path, <.tree>)
+    hold
+      back <{substring(path, 0, subtract(char-count(path), 5))}.ts>
+  back path
+
+# A file that is not a program, and so is compiled whole rather than cut into units: a mill definition, a data file, a
+# look stylesheet. `role` is the empty text for none. Both questions are asked of ONE parse (compile/host.ts
+# `isDataFile` and compile/compile.ts `isLookStylesheet` each parsed the file, item term-self-host-001-0437): a text
+# that does not parse is neither
+task is-whole-file
+  take file, like text
+  take text, like text
+  take role, like text
+  like boolean
+
+  fork test, or(is-equal(role, <mill>), is-equal(role, <host>))
+    hold
+      back true
+  back is-whole-parse(role, parse(make(token-source, bind(file, file), bind(text, text))))
+
+# the same, the file parsed by `parse` (the host's function of a `{ file, text }` source to its parse): the build's
+# parse memo, so the probe that compiles the file next parses it no more (item term-self-host-001-0437)
+task is-whole-file-parsed
+  take file, like text
+  take text, like text
+  take role, like text
+  take parse, like dynamic
+  like boolean
+
+  fork test, or(is-equal(role, <mill>), is-equal(role, <host>))
+    hold
+      back true
+  back is-whole-parse(role, units-parse-by(parse, make(named-source, bind(file, file), bind(text, text))))
+
+# whether a parse is of a file compiled whole: a data file (with no role) or a look sheet. A text that does not parse
+# is neither
+task is-whole-parse
+  take role, like text
+  take parsed, like dynamic
+  like boolean
+  mark private
+
+  fork test, not(units-parsed-ok(parsed))
+    hold
+      back false
+  fork test, is-equal(role, <>)
+    hold
+      fork test, is-data-tree(units-parsed-tree(parsed))
+        hold
+          back true
+  back is-look-tree(units-parsed-tree(parsed))
+
+# the host's parse function called on a source
+bind units-parse-by
+  take parse, like dynamic
+  take source, like named-source
+  like dynamic
+  case node
+    text <$parse($source)>
+
+# a parse's answer as the host holds it: whether it read clean, and its tree
+bind units-parsed-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <($parsed.ok === true)>
+
+bind units-parsed-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <($parsed.tree)>

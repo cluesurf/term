@@ -91,10 +91,24 @@ test <a skip outside a test block is refused, naming its line>
   want hold, contains(said(ran), <The name "skip" is not defined>)
   want hold, contains(said(ran), <outside-a-test.tree:3>)
 
-test <a reason that is no text literal fails the test, naming its line>
+test <a reason held in a host or made by a task is a skip with that reason (item 1185)>
+  save ran, run-fixture(make list(<held-reason>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 0 passed · 2 skipped>)
+  want hold, contains(said(ran), <no lamp is lit>)
+  want hold, contains(said(ran), <no rust today>)
+
+test <a reason naming nothing is refused by the build, never a clean build that fails every case>
   save ran, run-fixture(make list(<bad-reason>))
   want hold, is-equal(ran/code, 1)
-  want hold, contains(said(ran), <line 2: a skip takes a text literal>)
+  want hold, contains(said(ran), <reason-here>)
+  want hold, contains(said(ran), <bad-reason.tree:2>)
+  want miss, contains(said(ran), <a skip takes>)
+
+test <a skip that gives no reason fails the test, naming its line>
+  save ran, run-fixture(make list(<empty-reason>))
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <line 2: a skip takes a reason>)
 
 test <a file that defines skip keeps its own word>
   save ran, run-fixture(make list(<own-word>))
@@ -121,6 +135,16 @@ test <rust counts the same, and its failure fails the run>
   want hold, is-equal(ran/code, 1)
   want hold, contains(said(ran), <3 tests · 1 passed · 1 failed · 1 skipped>)
   want hold, contains(said(ran), <term-no-such-tool is not installed>)
+
+test <on rust a reason held in a host or made by a task is a skip with that reason>
+  fork test, is-equal(find-tool(<rustc>), <>)
+    hold
+      skip <rustc is not installed>
+  save ran, run-fixture(make list(<held-reason>, <--env>, <rust>))
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <2 tests · 0 passed · 2 skipped>)
+  want hold, contains(said(ran), <no lamp is lit>)
+  want hold, contains(said(ran), <no rust today>)
 
 test <on rust skips beside a pass exit 0>
   fork test, is-equal(find-tool(<rustc>), <>)

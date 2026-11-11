@@ -2538,7 +2538,25 @@ task import-bound
       save fit, taking(state, group, candidates, arity)
   fork test, is-equal(imported/length, 1)
     hold
-      back renamed-in(group, get(imported, 0))
+      save chosen, renamed-in(group, get(imported, 0))
+      # a call of a name a form's method takes at its arity: the flat program's receiver dispatch sent it to the method
+      # of its first argument's form and left it the imported task otherwise. Bound to the task alone once the name was
+      # split by file, the method was out of reach, so the call is a typed choice among the methods and the task, keyed
+      # by the imported file, as typed-apart's is (term-self-host-001-1006: output-records.tree's
+      # contains(object-keys(value), key), which finds text's contains, refused 'expected text, found list' once
+      # text/string.tree's contains was in the program)
+      fork test, is-minimum(arity, 1)
+        hold
+          save members, methods-taking(state, name, arity)
+          fork test, is-above(members/length, 0)
+            hold
+              save file-at, first-index-of-text(group/files, get(imported, 0))
+              save key, <{name}__anym{group/index}_{arity}_{file-at}>
+              save members, add-text(members, chosen)
+              set-overload(state, key, members)
+              save state/typed-choices, add-text(state/typed-choices, key)
+              back key
+      back chosen
   fork test, is-equal(fit/length, 1)
     hold
       back renamed-in(group, get(fit, 0))
@@ -2638,6 +2656,36 @@ task method-takes
       miss
         save nothing, 0
   back false
+
+# every method of any form named `name` that takes `arity` arguments, its receiver counted, by its own name (`list_join`).
+# The asked name and count are kept apart before the arm, as method-takes does (T-0945)
+task methods-taking
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  like list, like text
+  mark private
+
+  save wanted, name
+  save count, arity
+  save found, make list
+  walk state/program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            fork test, is-equal(owner/name, wanted)
+              hold
+                fork test, and(is-minimum(count, required-count(one)), is-maximum(count, most-count(one)))
+                  hold
+                    save found, add-text(found, name)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back found
 
 task typed-apart
   take state, like walk-state

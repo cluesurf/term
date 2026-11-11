@@ -1,0 +1,64 @@
+# A failing want over a long text reports, astral or not (item term-self-host-001-1205, trap T-0680b). The runner reads
+# its child's report through the host dialect's scanner (deck/host/code/scan.tree), whose tokenize read the line's
+# length in each loop's test. A text's length counts code points, a walk over the whole text once it holds an astral
+# character, so a 150 KB report line holding one never finished. Each case writes a one-test package into a temporary
+# folder and runs it through TERM_TEST_SELF, the `term` under test, with a limit: a regression times out and fails here
+# instead of hanging the gate.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains
+
+load @term/base/text/string
+  find repeat
+
+# a package in a new temporary folder whose one test wants two long texts equal, the last character apart: `unit`
+# repeated `count` times, then <end> or <enx>
+task long-package
+  take unit, like text
+  take count, like number
+  like text
+  mark async
+
+  save folder, temp-folder(<long-want->)
+  save made, run(<mkdir>, make(list, <{folder}/test>))
+  fork test, is-unequal(made/code, 0)
+    hold
+      halt <mkdir {folder}/test exited {made/code}>
+  write-file(<{folder}/deck.tree>, <deck @probe/long-want\n  head \<A failing want over a long text\>\n  mark \<0.0.2\>\n>)
+  save body, repeat(unit, count)
+  write-file(<{folder}/test/probe.tree>, <test \<probe\>\n  want hold, is-equal(\<{body}end\>, \<{body}enx\>)\n>)
+  back folder
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <a failing want over 150 KB holding an astral character reports within the limit>
+  save folder, long-package(<apple,～,𝄞,>, 9000)
+  save ran, run-self(make(list, <test>, <--color>, <never>, <--no-motion>), folder, 60000)
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+  want hold, contains(said(ran), <did not hold>)
+
+test <a failing want over 150 KB of ASCII reports within the limit>
+  save folder, long-package(<apple,pear,fig,>, 10000)
+  save ran, run-self(make(list, <test>, <--color>, <never>, <--no-motion>), folder, 60000)
+  want hold, is-equal(ran/code, 1)
+  want hold, contains(said(ran), <1 test · 0 passed · 1 failed>)
+  want hold, contains(said(ran), <did not hold>)

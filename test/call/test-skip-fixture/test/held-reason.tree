@@ -1,0 +1,14 @@
+host reason, text <no lamp is lit>
+
+task reason-of
+  take name, like text
+  like text
+  back <no {name} today>
+
+test <a reason held in a host>
+  skip read reason
+  want hold, false
+
+test <a reason a task makes>
+  skip reason-of(<rust>)
+  want hold, false

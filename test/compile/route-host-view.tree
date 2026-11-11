@@ -1,0 +1,64 @@
+note <The route dispatcher's host type is bound by import, as a written `like view` is>
+
+# Item 1192. A route table lowers to a dispatcher and a router that take their host `like view`. They were made after
+# the build split every form two files define by file (check/scope.tree), so when the program held two forms named
+# `view` (the terminal host's from memory/view, and one more), both took split names and the dispatcher's bare `view`
+# named nothing: 'the type "view" is not defined (in `dispatch-route`)'. On node the page module
+# (dom/native/node/page) bears node's own `view`, so test/view/terminal-routes built on rust, swift and kotlin and not
+# on TypeScript. The routes now lower first, and the dispatcher's `view` is bound by its file's import. Each case is a
+# compile of the same program on one env, with a second `view` in `./other`, the dom pinned to the terminal host as
+# terminal-routes pins it, and on node its app host too.
+
+load ../support/compiling
+  find compile-choice
+  find compile-text
+  find compiling-rewrite
+  find compiling-source
+
+load @term/base/list
+  find push
+
+host other, <# a second form named `view`, in a file the entry never finds it from\n\nform view\n  link label, like text\n\ntask other-label\n  take one, like view\n  like text\n\n  send back, read one/label\n>
+
+host program, <load @term/site/code/dom/native/terminal/dom\n  find view\n  find paint-screen\n\nload @term/site/code/dom/native/terminal/routes\n  find mount-routes\n\nload ./other\n  find other-label\n\nview home-page\n  take host, like view\n  view span\n    text \<home\>\n\nhook /\n  view home-page\n\ntask run\n  like text\n  save root\n    call mount-routes\n      read route\n      text \<Escape\>\n  send back\n    call paint-screen\n      read root\n      code 4\n      code 1\n>
+
+# the choice for one env: `./other` answered from the text above, the terminal dom, and on node the terminal app host
+task choice-on
+  take env, like text
+  like compile-choice
+
+  save files, make list
+  files/push(make(compiling-source, bind(file, <./other>), bind(text, other), bind(answer, <other.tree>)))
+  save rewrites, make list
+  rewrites/push(make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|view)$>>), bind(into, <native/terminal/$1>)))
+  fork test, is-equal(env, <node>)
+    hold
+      rewrites/push(make(compiling-rewrite, bind(pattern, <<view/native/\{platform\}/host$>>), bind(into, <view/native/rust/host>)))
+  back make(compile-choice, bind(file, <routes.tree>), bind(project, <.>), bind(project-env, env), bind(env, env), bind(files, files), bind(rewrites, rewrites))
+
+# the messages of a compile of the program on `env`, joined, <> when it compiled
+task refusal-on
+  take env, like text
+  like text
+
+  save outcome, compile-text(program, choice-on(env))
+  fork test, outcome/ok
+    hold
+      back <>
+  save said, <>
+  walk outcome/messages
+    take message
+    save said, <{said}{message} | >
+  back <refused: {said}>
+
+test <a route table whose program holds two forms named view compiles on node>
+  want hold, is-equal(refusal-on(<node>), <>)
+
+test <a route table whose program holds two forms named view compiles on rust>
+  want hold, is-equal(refusal-on(<rust>), <>)
+
+test <a route table whose program holds two forms named view compiles on swift>
+  want hold, is-equal(refusal-on(<swift>), <>)
+
+test <a route table whose program holds two forms named view compiles on kotlin>
+  want hold, is-equal(refusal-on(<kotlin>), <>)

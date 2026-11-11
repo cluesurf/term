@@ -398,9 +398,12 @@ task kernel-forms
             bind variant-fields, make hash
             bind descends, make hash
             bind param-forms, make hash
+            bind dynamic, false
+            bind params, param-names-of(one)
         save no-members, make hash
         save no-guards, make list
-        walk-calls(found, body-of(one), no-members, no-guards)
+        save no-hidden, make hash
+        walk-calls(found, body-of(one), no-members, no-guards, no-hidden)
         save callees, edges/get-or-default(name, make list)
         walk found/calls
           take call
@@ -969,6 +972,11 @@ form frame
   # the task's `descends` and `param-forms` (form walked), carried so a call's descent is judged where it was made
   link descends, like hash, like text, like boolean
   link param-forms, like hash, like text, like text
+  # every name bound afresh in this scope or one around it (a match arm's field, a loop's item, a closure's or a
+  # catch's parameter, a `save`, a name a loop writes), `everything` when a write cannot be named. A parameter so
+  # hidden is a different value under the same name, so no argument is smaller than it, or equal to it, by its name
+  # (term-self-host-001-1176)
+  link hidden, like hash, like text, like boolean
 
 form call-at
   link callee, like text
@@ -990,6 +998,11 @@ form walked
   link descends, like hash, like text, like boolean
   # the task's parameters whose declared type names a form of the program, to that form
   link param-forms, like hash, like text, like text
+  # whether the body calls a value no name fixes: a parameter or a local (a task handed in), or the result of an
+  # expression. Such a call may reach any task the program reads as a value (term-self-host-001-1177)
+  link dynamic, like boolean
+  # the task's parameter names, as declared
+  link params, like list, like text
 
 task copy-members
   take members, like hash, like text, like text
@@ -1132,7 +1145,68 @@ task forget
   walk names
     take name
     frame/members/remove(name)
+    save frame/hidden/{name}, true
   save frame/path, without(frame/path, names)
+
+# the names hidden in a scope nested in one whose hidden names are `hidden`, where `names` are bound afresh
+task hidden-with
+  take hidden, like hash, like text, like boolean
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk hidden/keys()
+    take k
+    save out/{k}, true
+  walk names
+    take name
+    save out/{name}, true
+  back out
+
+# is the parameter `param` hidden where the call was made, so that a name equal to it is some other value?
+task param-hidden
+  take frame, like frame
+  take param, like text
+  like boolean
+  mark private
+
+  back or(frame/hidden/has(param), frame/hidden/has(everything()))
+
+# A member chain (`member-of-param`) links each matched field to the NAME of its subject, so a link stays true only
+# while that name means what it meant when the arm was walked. A parameter's name in a link always means the value
+# the task was called with: a subject that is a parameter's name but hidden there (a field or a loop item of that
+# name) is written as a text no name can equal, so the chain stops rather than read the hiding value as the parameter
+# (term-self-host-001-1176)
+task hidden-subject
+  take out, like walked
+  take frame, like frame
+  take subject, like text
+  like text
+  mark private
+
+  fork test, and(contains(out/params, subject), param-hidden(frame, subject))
+    hold
+      back <{rune-to-text(0)}hidden {subject}>
+  back subject
+
+# the members of a branch that binds `names` afresh: those names are members of nothing yet, and a link to one of
+# them that is no parameter's name meant the value it named before, so it is written as a text no name can equal
+task rebound-members
+  take out, like walked
+  take members, like hash, like text, like text
+  take names, like list, like text
+  like hash, like text, like text
+  mark private
+
+  save kept, members-without(members, names)
+  walk kept/keys()
+    take k
+    save target, kept/get(k)
+    fork test, and(contains(names, target), not(contains(out/params, target)))
+      hold
+        save kept/{k}, <{rune-to-text(0)}rebound {target}>
+  back kept
 
 # Walk a statement body, recording every call with a variable callee and every name read as a VALUE. A NAME IS A
 # VALUE ONLY UNTIL IT IS REBOUND: a `save`, an assignment, a closure's or a walk's parameter, or a field of a match on
@@ -1144,6 +1218,7 @@ task walk-calls
   take body, like list, like statement
   take members, like hash, like text, like text
   take guards, like list, like expression
+  take hidden, like hash, like text, like boolean
   like void
   mark private
 
@@ -1153,6 +1228,7 @@ task walk-calls
       bind path, guards
       bind descends, out/descends
       bind param-forms, out/param-forms
+      bind hidden, hidden-with(hidden, make list)
   walk body
     take one
     visit-statement(out, frame, one)
@@ -1260,7 +1336,15 @@ task visit-expression
                   bind frame, frame
                   bind guards, at
               push(out/calls, made)
+            miss
+              # a task handed in: it may be any task the program reads as a value (term-self-host-001-1177)
+              save out/dynamic, true
+        # a method of the value (`xs/push(x)`) is no task of the program
+        case member
+          visit-expression(out, frame, callee, at)
         miss
+          # the value of an expression called (`f(x)(y)`, an inline function): it too may be any task read as a value
+          save out/dynamic, true
           visit-expression(out, frame, callee, at)
       walk args
         take arg
@@ -1319,7 +1403,7 @@ task visit-expression
         take param
         push(names, param/name)
       save unguarded, make list
-      walk-calls(out, body, members-without(frame/members, names), unguarded)
+      walk-calls(out, body, members-without(frame/members, names), unguarded, hidden-with(frame/hidden, names))
     miss
       save nothing, 0
 
@@ -1358,16 +1442,16 @@ task visit-statement
       # inside it, beyond the condition each turn tests
       save written, block-written(body)
       visit-expression(out, frame, cond, without(frame/path, written))
-      walk-calls(out, body, members-without(frame/members, written), joined(without(frame/path, written), one-of(cond)))
+      walk-calls(out, body, members-without(frame/members, written), joined(without(frame/path, written), one-of(cond)), hidden-with(frame/hidden, written))
       forget(frame, written)
     case guard
-      walk-calls(out, body, frame/members, frame/path)
+      walk-calls(out, body, frame/members, frame/path, frame/hidden)
       sift catch
         case some
           link clause
           save caught, make list
           push(caught, clause/name)
-          walk-calls(out, clause/body, members-without(frame/members, caught), without(frame/path, caught))
+          walk-calls(out, clause/body, members-without(frame/members, caught), without(frame/path, caught), hidden-with(frame/hidden, caught))
         case none
           save nothing, 0
       forget(frame, statement-written(node))
@@ -1381,19 +1465,19 @@ task visit-statement
       walk block-written(body)
         take written
         push(bound, written)
-      walk-calls(out, body, members-without(frame/members, bound), without(frame/path, bound))
+      walk-calls(out, body, members-without(frame/members, bound), without(frame/path, bound), hidden-with(frame/hidden, bound))
       forget(frame, block-written(body))
     case if
       save failed, make list
       walk branches
         take branch
         visit-expression(out, frame, branch/cond, joined(frame/path, failed))
-        walk-calls(out, branch/body, frame/members, joined(joined(frame/path, failed), one-of(branch/cond)))
+        walk-calls(out, branch/body, frame/members, joined(joined(frame/path, failed), one-of(branch/cond)), frame/hidden)
         push(failed, negation(branch/cond))
       sift otherwise
         case some
           link last
-          walk-calls(out, last, frame/members, joined(frame/path, failed))
+          walk-calls(out, last, frame/members, joined(frame/path, failed), frame/hidden)
         case none
           save nothing, 0
       # what a branch wrote is a new value after the `if`
@@ -1430,7 +1514,7 @@ task visit-statement
                 save fields, out/variant-fields/get(arm/label)
         # the fields are bound afresh in the branch: members of the subject when it is a plain variable, and of
         # nothing a parameter is when it is not (a field of `g(x)` named `prior` is not the `prior` of an outer match)
-        save branch-members, members-without(frame/members, fields)
+        save branch-members, rebound-members(out, frame/members, fields)
         # only a field that is a structural descent (decisions 114 and 117): a field of a shared form, or a need-false
         # one not typed `like maybe`, is bound afresh and is a member of nothing
         fork test, is-unequal(subject-name, <>)
@@ -1453,12 +1537,12 @@ task visit-statement
               save at, add(at, 1)
               fork test, case-field-descends(frame, subject-name, arm/label, declared-name)
                 hold
-                  save branch-members/{field-name}, subject-name
-        walk-calls(out, arm/body, branch-members, without(frame/path, fields))
+                  save branch-members/{field-name}, hidden-subject(out, frame, subject-name)
+        walk-calls(out, arm/body, branch-members, without(frame/path, fields), hidden-with(frame/hidden, fields))
       sift otherwise
         case some
           link last
-          walk-calls(out, last, frame/members, frame/path)
+          walk-calls(out, last, frame/members, frame/path, frame/hidden)
         case none
           save nothing, 0
       forget(frame, statement-written(node))
@@ -1484,6 +1568,10 @@ task strictly-decreases
   like boolean
   mark private
 
+  # A PARAMETER HIDDEN where the call is made (a match arm's field of the same name, a loop's item) is not the value
+  # the task was called with, so a name equal to it reads some other value (term-self-host-001-1176). A member chain
+  # is still read: each link names the subject as it was bound when its arm was walked, and a hidden subject is
+  # written so that it is no name at all (`hidden-subject`), so the chain stops there
   sift arg
     case variable
       fork test, member-of-param(frame/members, name, param)
@@ -1493,7 +1581,7 @@ task strictly-decreases
       sift target
         case variable
           link target-name
-          back and(is-equal(target-name, param), field-descends(frame, target-name, name))
+          back and(and(is-equal(target-name, param), not(param-hidden(frame, param))), field-descends(frame, target-name, name))
         miss
           back false
     case call
@@ -1509,7 +1597,7 @@ task strictly-decreases
       sift left
         case variable
           link left-name
-          fork test, is-unequal(left-name, param)
+          fork test, or(is-unequal(left-name, param), param-hidden(frame, param))
             hold
               back false
           sift right
@@ -1588,6 +1676,21 @@ task steady-params
       save nothing, 0
   back out
 
+task param-names-of
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      walk params
+        take param
+        push(out, param/name)
+    miss
+      save nothing, 0
+  back out
+
 task param-count
   take one, like statement
   like number
@@ -1635,11 +1738,12 @@ task classify
   fork test, strictly-decreases(arg, param, call/frame, call/guards, proves)
     hold
       back <\<>
-  # the argument is the parameter passed UNCHANGED (a non-increase at this position)
+  # the argument is the parameter passed UNCHANGED (a non-increase at this position), unless a name bound afresh hides
+  # the parameter there
   sift arg
     case variable
       link arg-name
-      fork test, is-equal(arg-name, param)
+      fork test, and(is-equal(arg-name, param), not(param-hidden(call/frame, param)))
         hold
           back <=>
     miss
@@ -1966,9 +2070,12 @@ task termination-verdict
         bind variant-fields, variant-fields
         bind descends, descends
         bind param-forms, param-forms-of(one, form-names)
+        bind dynamic, false
+        bind params, param-names-of(one)
     save no-members, make hash
     save no-guards, make list
-    walk-calls(found, body-of(one), no-members, no-guards)
+    save no-hidden, make hash
+    walk-calls(found, body-of(one), no-members, no-guards, no-hidden)
     save known/walks/{name}, found
     save locals, local-names(one)
     save values, make list
@@ -1988,6 +2095,28 @@ task termination-verdict
       add-text(edges, value)
     save known/value-edges/{name}, values
     save known/edges/{name}, edges
+  # A CALL THROUGH A VALUE (a parameter or a local holding a task, or an expression's result) may reach any task the
+  # program reads as a value, with any argument, so it is an edge read as a value to each of them: `omega(k)` calling
+  # `k(k)`, handed `omega` by `h`, is a cycle through `omega` that no argument shows to end (term-self-host-001-1177)
+  save escaped, make list
+  walk known/order
+    take name
+    walk known/value-edges/get(name)
+      take value
+      add-text(escaped, value)
+  walk known/order
+    take name
+    save walked-one, known/walks/get(name)
+    fork test, walked-one/dynamic
+      hold
+        save edges, known/edges/get(name)
+        save values, known/value-edges/get(name)
+        walk escaped
+          take target
+          add-text(edges, target)
+          add-text(values, target)
+        save known/edges/{name}, edges
+        save known/value-edges/{name}, values
   save ends, make hash
   save self-calls, make hash
   save grouped, make hash
@@ -2401,7 +2530,7 @@ task size-relation
   sift arg
     case variable
       link arg-name
-      fork test, is-equal(arg-name, param)
+      fork test, and(is-equal(arg-name, param), not(param-hidden(call/frame, param)))
         hold
           back <=>
     case record

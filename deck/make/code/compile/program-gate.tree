@@ -1,4 +1,4 @@
-# THE GATE of `compileProgram`, steps 1 to 10: module scope for forms, mask defaults, routes, form extension, the checks
+# THE GATE of `compileProgram`, steps 1 to 10: routes, module scope for forms, mask defaults, form extension, the checks
 # of the program as written (type names, literals, patterns, constants, binds, bodiless calls, private finds, stale
 # finds, traits, duplicate tasks, pending values), the overloads, the roots a hook route and an entry's renamed arities
 # need, the twins, the names, the private references and the shake. It writes the run in place and answers the refusal
@@ -23,6 +23,8 @@
 #     `base/code/debug.tree` (`/(^|\/)base\/code\/debug\.tree$/`)
 #   - the prune's roots also take every form or form case a binding module under native/ finds (ir/prune.tree
 #     binding-finds, items 1144 and 1148)
+#   - the routes lower before the forms are split by file, so the dispatcher's `view` is bound by import like a written
+#     one, and the docks they replaced are bound with the lowered program (item 1192). The original lowered after
 #   - the render runtime the prune pins is `render-names`' fields in their declared order, then `render-support`, as
 #     `Object.values` read the record
 
@@ -684,38 +686,61 @@ task program-gate
     hold
       save route-env, <node>
 
-  # module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
-  # before anything below reads a form by name
-  save form-scope, bind-forms-by-import(run/program, given/scopes, given/naming, deck-roots(run/program, file, deck-of))
-  fork test, is-above(form-scope/diagnostics/length, 0)
-    hold
-      back refusal(form-scope/diagnostics, no-bound())
-  save run/program, form-scope/program
-  fork test, given/has-roots
-    hold
-      root-split-words(run, given/naming)
-
-  # a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
-  save run/program, fill-mask-defaults(run/program, given/scoped, given/emit-only)
-
   # a page route's `task get` was counted and emitted nothing, so it is refused before the routes lower
   save route-methods, check-route-methods(run/program, file)
   fork test, is-above(route-methods/length, 0)
     hold
       back refusal(route-methods, no-bound())
 
-  # ROUTE TABLES LOWER HERE, before names are bound and checked. The docks the lowering replaced are kept for the roll
-  # alone, and the dispatcher and the boot are roots
+  # ROUTE TABLES LOWER HERE, before any name is bound and checked, form names too. The dispatcher and the router name
+  # their host by the form `view`, written in the routes' own file, so it is bound below by that file's import like a
+  # `like view` written there. Lowered after the binding, its bare `view` named nothing once two files defined one and
+  # the split renamed both: on node the page module (dom/native/node/page) bears node's own `view` beside the terminal
+  # host's, so a terminal route table built on every backend but TypeScript (item 1192). The docks the lowering
+  # replaced are kept for the roll alone, and the dispatcher and the boot are roots
   save routed, lower-routes(run/program, route-env)
   save page-docks, dropped-docks(run/program, routed)
-  fork test, is-above(page-docks/length, 0)
+
+  # module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
+  # before anything below reads a form by name. The docks the lowering replaced are bound with the lowered program, after
+  # it, so they read the names it does: the binding rewrites each statement in its place, so the first `routed/length`
+  # are the program and the rest the docks
+  save scoped, make list
+  walk routed
+    take one
+    scoped/push(one)
+  walk page-docks
+    take one
+    scoped/push(one)
+  save form-scope, bind-forms-by-import(scoped, given/scopes, given/naming, deck-roots(run/program, file, deck-of))
+  fork test, is-above(form-scope/diagnostics/length, 0)
     hold
-      save run/page-docks, page-docks
-      save run/program, routed
+      back refusal(form-scope/diagnostics, no-bound())
+  save bound-program, make list
+  save bound-docks, make list
+  save at, 0
+  walk form-scope/program
+    take one
+    fork test, is-below(at, routed/length)
+      hold
+        bound-program/push(one)
+      miss
+        bound-docks/push(one)
+    save at, add(at, 1)
+  save run/program, bound-program
+  fork test, given/has-roots
+    hold
+      root-split-words(run, given/naming)
+  fork test, is-above(bound-docks/length, 0)
+    hold
+      save run/page-docks, bound-docks
       fork test, given/has-roots
         hold
           add-root(run, <route>)
           add-root(run, <boot>)
+
+  # a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
+  save run/program, fill-mask-defaults(run/program, given/scoped, given/emit-only)
 
   # form extension, before any name is bound
   save extended, extend-forms(run/program, file, deck-names(run/program, file, deck-of))

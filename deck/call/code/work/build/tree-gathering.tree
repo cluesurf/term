@@ -1,0 +1,141 @@
+# Which `.tree` files a command (form, lint, time) acts on. Ported from call/code/files.ts.
+#
+# A path may be a FILE, taken as it is, or a DIRECTORY, walked for everything under it, skipping build and dependency
+# folders. With no paths at all the project root is walked.
+#
+# A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: a top-level `mark draft` line in a
+# file, and a `draft.tree` in a directory, which shelves that directory and everything under it. Without this,
+# `term form deck --check` could never reach zero: 32 of the 33 files it could not parse were shelved drafts.
+#
+# A FILE NAMED EXPLICITLY IS ALWAYS TAKEN. Walking a directory is "everything here that counts"; naming a file is a
+# direct request.
+
+load @term/base/text
+  find ends-with
+
+load ./shelving
+  find is-draft-tree
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+form listing-ask
+  link with-file-types, like boolean
+
+# `link` is where `term link` puts a DEPENDENCY's source, and walking into it formats, lints and times another
+# package's files: the three `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own
+# files reported twice. The rest is generated output, dependencies and version control
+task is-skipped-folder
+  take name, like text
+  like boolean
+  mark private
+
+  back or(or(or(is-equal(name, <node_modules>), is-equal(name, <host>)), or(is-equal(name, <tail>), is-equal(name, <link>))), is-equal(name, <.git>))
+
+# where a path leads, following links: 0 for nothing, 1 for a file, 2 for a directory, 3 for anything else
+task kind-at
+  take target, like text
+  like number
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(target)
+    fork test, stat/is-file()
+      hold
+        back 1
+    fork test, stat/is-directory()
+      hold
+        back 2
+    back 3
+  halt take
+    take error
+    back 0
+
+# the `.tree` files a walk from one target takes, in the order the host lists each folder. A listing that cannot be
+# read stops the whole walk, as it did in the TypeScript
+task walk-target
+  take target, like text
+  take named, like boolean
+  like list, like text
+  mark private
+
+  save found, make list
+  save kind, kind-at(target)
+  fork test, is-equal(kind, 1)
+    hold
+      fork test, and(ends-with-tree(target), or(named, not(is-draft-tree(target))))
+        hold
+          found/push(target)
+      back found
+  fork test, not(is-equal(kind, 2))
+    hold
+      back found
+  # a `draft.tree` shelves this directory and everything under it, in one place instead of per file
+  fork test, node-file/exists-sync(node-path/join(target, <draft.tree>))
+    hold
+      back found
+  walk node-file/readdir-sync(target, make(listing-ask, bind(with-file-types, true)))
+    take entry
+    save name, entry-name(entry)
+    fork test, and(entry-is-folder(entry), is-skipped-folder(name))
+      hold
+        turn next
+    walk walk-target(node-path/join(target, name), false)
+      take inner
+      found/push(inner)
+  back found
+
+task ends-with-tree
+  take file, like text
+  like boolean
+  mark private
+
+  back ends-with(file, <.tree>)
+
+task entry-name
+  take entry, like dynamic
+  like text
+  mark private
+
+  back entry/name
+
+task entry-is-folder
+  take entry, like dynamic
+  like boolean
+  mark private
+
+  back entry/is-directory()
+
+# the host's own sort, by UTF-16 unit, as the TypeScript sorted
+task host-sorted
+  take files, like dynamic
+  like list, like text
+  mark private
+
+  back files/sort()
+
+# Collect the `.tree` files the given paths name, each resolved against the root, or walk the root when none is given
+task collect-tree-files
+  mark async
+  take paths, like list, like text
+  take root, like text
+  like list, like text
+
+  save targets, make list
+  save named, is-above(paths/length, 0)
+  fork test, named
+    hold
+      walk paths
+        take one
+        targets/push(node-path/resolve(root, one))
+    miss
+      targets/push(root)
+  save found, make list
+  walk targets
+    take target
+    walk walk-target(target, named)
+      take inner
+      found/push(inner)
+  back host-sorted(found)

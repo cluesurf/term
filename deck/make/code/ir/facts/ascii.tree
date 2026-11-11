@@ -11,7 +11,8 @@
 #   - a call to a task whose every `send back` is ASCII
 #   - a local every value of which is ASCII, or a parameter every call site passes ASCII
 # Solved optimistically for every local, parameter and task, and dropped until stable: a greatest fixed point, so the
-# order the walk drops them in changes nothing. A task never called, or used as a value, takes no fact for its
+# order the walk drops them in changes nothing. A task never called, used as a value, or not `mark private` (so
+# exported, and callable from outside the build or, in the separate build, from another unit) takes no fact for its
 # parameters: a caller the program cannot see may pass anything.
 #
 # Ported from ir/facts/text.ts (self-hosting, 2026-10-06), which stays as the face. The original answered a WeakSet of
@@ -482,8 +483,15 @@ task ascii-texts
     take one
     sift one
       case function
+        link name
+        link params
+        link result
+        link body
+        link private
         save called-count, as-callee/get-or-default(name, 0)
-        save unique, and(and(is-equal(by-name/get(name), 1), is-above(called-count, 0)), is-equal(named/get-or-default(name, 0), called-count))
+        # only a private task: any other is exported (ts-assemble.tree is-exported), and a caller outside the program
+        # may pass it any text (term-self-host-001-0059: a public task called once with <abc> emitted value.length)
+        save unique, and(and(and(is-equal(by-name/get(name), 1), is-above(called-count, 0)), is-equal(named/get-or-default(name, 0), called-count)), is-equal(private, true))
         save taken, make list
         fork test, unique
           hold

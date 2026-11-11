@@ -1,0 +1,49 @@
+note <A constant-mask bitwise-and is between 0 and its mask, also when the task is pure and its call is an application atom>
+
+# Item term-self-host-001-1209. Since item 1070 made the stdlib's bit operations binds, `bitwise-and` from
+# @term/base/bit is a pure task returning a number, so the prover read its call as an application atom
+# (check/nonlinear.tree application-key) before the mask rule in check/inequality.tree called-linear could run, and
+# the atom carried no bounds: deck/base/code/hold/hash.tree's walk `must` (0 to 0xffffffff) went unproven. A fixture
+# loads nothing, so each holds its own pure task named bitwise-and: the mask rule reads the NAME, whatever the body
+# (as test/check/soundness.tree's impure one). Each refusal sits beside the claim that must still be proven.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find refused-as
+
+task choice
+  like compile-choice
+
+  back make(compile-choice, bind(file, <s.tree>))
+
+task proven
+  take text, like text
+  like boolean
+
+  back compile-text(text, choice())/ok
+
+task refused
+  take text, like text
+  take code, like text
+  like boolean
+
+  back refused-as(compile-text(text, choice()), code)
+
+test <a pure bitwise-and stays inside its mask>
+  want hold, proven(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take x, like number\n  like number\n  must\n    call is-minimum\n      read back\n      code 0\n  must\n    call is-maximum\n      read back\n      code 255\n  send back\n    call bitwise-and\n      read x\n      code 255\n>)
+
+test <the mask may come first>
+  want hold, proven(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take x, like number\n  like number\n  must\n    call is-maximum\n      read back\n      code 255\n  send back\n    call bitwise-and\n      code 255\n      read x\n>)
+
+test <a walk keeps a masked value inside the mask on every turn>
+  want hold, proven(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take n, like number\n  like number\n  save h, code 5\n  save i, code 0\n  walk test\n    must\n      call is-minimum\n        read h\n        code 0\n    must\n      call is-maximum\n        read h\n        code 0xffffffff\n    hook test\n      call is-below\n        read i\n        read n\n    hook hold\n      save h\n        call bitwise-and\n          call multiply\n            read h\n            code 33\n          code 0xffffffff\n      save i\n        call increment\n          read i\n  send back, read h\n>)
+
+test <but not below its mask>
+  want hold, refused(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take x, like number\n  like number\n  must\n    call is-maximum\n      read back\n      code 254\n  send back\n    call bitwise-and\n      read x\n      code 255\n>, <unproven>)
+
+test <and a negative mask bounds nothing>
+  want hold, refused(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take x, like number\n  like number\n  must\n    call is-minimum\n      read back\n      code 0\n  send back\n    call bitwise-and\n      read x\n      code -1\n>, <unproven>)
+
+test <and an unmasked value is not bounded by a masked one>
+  want hold, refused(<task bitwise-and\n  take left, like number\n  take right, like number\n  like number\n  send back, read right\n\ntask t\n  take x, like number\n  like number\n  must\n    call is-maximum\n      read back\n      code 255\n  save m\n    call bitwise-and\n      read x\n      code 255\n  send back, read x\n>, <unproven>)

@@ -1,0 +1,464 @@
+# The build's file walk: every `.tree` file of a package that is this package's own Term code, and the file a bare
+# module path names. Ported from call/code/make.ts (`findTreeFiles`, `resolveTreeFile` and the two tests they ask,
+# `isPackageManifest` and `isDraftTree`), part 1 of that file.
+#
+# Which folder entries the walk passes over is call/code/make-plan.tree `walk-skips`, Term since 2026-10-06. Reading a
+# manifest, a role file and a lockfile is the small lane's port of call/code/manifest-name.ts
+# (work/small/manifest-file.tree), loaded since term-cli-in-term-0069.
+#
+# A build finds its list once (decision 084): `find-tree-files-noted` walks for every platform and notes each folder it
+# went into, `carry-tree-files` finds the same list from a snapshot's notes listing only the folders that moved, and
+# `for-platform` narrows either to one platform's build as `find-tree-files` would have walked it.
+
+load @term/base/list
+  find join
+
+load @term/base/text
+  find split
+  find ends-with
+
+load @term/make/term/hash
+  find hash-key
+
+load @term/call/make-plan
+  find walk-skips
+
+load ./shelving
+  find is-draft-tree
+
+load ../small/manifest-file
+  find manifest-name-of
+  find is-role-file-at
+  find is-lockfile-at
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# is this file a package MANIFEST (a top-level `deck <name>` statement, scoped or not), as opposed to a code module
+# that merely shares the name? Parsed, never matched: deck/base/code/deck.tree is a module, and telling them apart by
+# filename skipped the entire stdlib. Unscoped counts: `term wake hello` writes `deck hello`
+task is-package-manifest
+  take file, like text
+  like boolean
+
+  fork test, not(node-file/exists-sync(file))
+    hold
+      back false
+  save named, manifest-name-of(file)
+  back named/is-some()
+
+# does a host answer hold a text (and not undefined)? Narrowed through `like unknown`, the gradual seam (D1)
+task is-text
+  take value, like unknown
+  like boolean
+  mark private
+
+  sift value
+    case text
+      back true
+    miss
+      back false
+
+# the entries of a directory in the order the host lists them, or nothing when it cannot be read
+task entries-of
+  take dir, like text
+  like list, like text
+  mark private
+
+  fork
+    mark unsafe
+    save listed, node-file/readdir-sync(dir)
+    back listed
+  halt take
+    take error
+    back make list
+
+# where a path leads, following links: 0 for nothing (a link to nothing, a path that is gone), 1 for a directory and
+# 2 for anything else
+task kind-of
+  take full, like text
+  like number
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(full)
+    fork test, stat/is-directory()
+      hold
+        back 1
+    back 2
+  halt take
+    take error
+    back 0
+
+# Every `.tree` file under a directory that this build compiles, depth first in the order the host lists each folder.
+#
+# `platform` is the platform being built for, or the empty text for none: when given, other platforms' native trees
+# are skipped (`shared` is kept, it belongs to every target). `root` is the package root the walk started from, so a
+# folder that means something only at the root is told apart.
+task find-tree-files
+  take dir, like text
+  take platform, like text
+  take root, like text
+  like list, like text
+
+  save out, make list
+  save parent, node-path/basename(dir)
+  walk entries-of(dir)
+    take entry
+    # NOTHING HERE IS THIS PACKAGE'S SOURCE: generated output and dependencies, a hidden folder, scratch, `link` at
+    # the root, and another platform's native tree
+    fork test, walk-skips(entry, is-equal(dir, root), parent, platform)
+      hold
+        turn next
+    save full, node-path/join(dir, entry)
+    # a link to nothing (a `link/` entry whose deck was removed) is not a file of this build
+    save kind, kind-of(full)
+    fork test, is-equal(kind, 1)
+      hold
+        fork test, folder-kept(full)
+          hold
+            walk find-tree-files(full, platform, root)
+              take inner
+              out/push(inner)
+        turn next
+    fork test, and(is-equal(kind, 2), ends-with-tree(entry))
+      hold
+        fork test, file-kept(entry, full)
+          hold
+            out/push(full)
+  back out
+
+# does the walk go into this folder
+task folder-kept
+  take full, like text
+  like boolean
+  mark private
+
+  # a `draft.tree` in a directory takes that directory and everything under it out of the build
+  fork test, node-file/exists-sync(node-path/join(full, <draft.tree>))
+    hold
+      back false
+  # a subdirectory holding its own package MANIFEST is a DIFFERENT package, and builds itself
+  fork test, is-package-manifest(node-path/join(full, <deck.tree>))
+    hold
+      back false
+  back true
+
+# is this `.tree` file one the build compiles
+task file-kept
+  take entry, like text
+  take full, like text
+  like boolean
+  mark private
+
+  # a package MANIFEST is read by the package manager and is not Term code. Again: manifest, not filename
+  fork test, and(is-equal(entry, <deck.tree>), is-package-manifest(full))
+    hold
+      back false
+  # a ROLE FILE says which mill reads which file. Configuration, not a program. Content, not filename
+  fork test, is-role-file(full)
+    hold
+      back false
+  # the LOCKFILE is data the package manager writes, not Term code. Content, not filename
+  fork test, and(is-equal(entry, <lock.tree>), is-lockfile(full))
+    hold
+      back false
+  # a file that declares `mark draft` is unfinished and is not built
+  fork test, is-draft-tree(full)
+    hold
+      back false
+  back true
+
+# an entry the noted walk looked at: a folder, or a `.tree` file with whether the build compiles it and its stamp
+form walk-entry
+  link name, like text
+  link folder, like boolean
+  link kept, like boolean
+  link stamp, like text
+
+# A folder the noted walk went into: its stamp, the hash of its listing, whether it holds a link (whose target a listing
+# cannot see, so the folder is always walked again), and each entry the walk looked at, in the host's order
+form folder-note
+  link stamp, like text
+  link listing, like text
+  link linked, like boolean
+  link entries, like list, like walk-entry
+
+# a path as stat sees it, following links: its kind as `kind-of` answers it, its stamp (`size:mtime`, as build-graph.tree
+# `seen-now` spells it) and its modification time
+form entry-seen
+  link kind, like number
+  link stamp, like text
+  link mtime, like number
+
+task seen-at
+  take full, like text
+  like entry-seen
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(full)
+    save kind, 2
+    fork test, stat/is-directory()
+      hold
+        save kind, 1
+    back make(entry-seen, bind(kind, kind), bind(stamp, <{stat/size}:{stat/mtime-ms}>), bind(mtime, stat/mtime-ms))
+  halt take
+    take error
+    back make(entry-seen, bind(kind, 0), bind(stamp, <missing>), bind(mtime, 0))
+
+form typed-listing-ask
+  link with-file-types, like boolean
+
+# a folder's entries with their types, in the order the host lists them, or none when it cannot be read
+task typed-entries-of
+  take dir, like text
+  like maybe, like list, like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save listed, like list, like dynamic
+      node-file/readdir-sync(dir, make(typed-listing-ask, bind(with-file-types, true)))
+    back make(some, listed)
+  halt take
+    take error
+    back make none
+
+# the hash of a folder's listing: every name in the host's order, a folder's ending in `/` and a link's in `@`
+task listing-of
+  take entries, like list, like dynamic
+  like text
+  mark private
+
+  save names, make list
+  walk entries
+    take entry
+    save name, <{entry/name}>
+    fork test, entry/is-symbolic-link()
+      hold
+        save name, <{name}@>
+      miss
+        fork test, entry/is-directory()
+          hold
+            save name, <{name}/>
+    names/push(name)
+  back hash-key(join(names, <\n>))
+
+# does a folder's listing hold a link
+task holds-link
+  take entries, like list, like dynamic
+  like boolean
+  mark private
+
+  walk entries
+    take entry
+    fork test, entry/is-symbolic-link()
+      hold
+        back true
+  back false
+
+# `find-tree-files(dir, <>, root)`, noting each folder it goes into in `notes` by its path, for a later process to carry
+# the list forward from (`carry-tree-files`)
+task find-tree-files-noted
+  take dir, like text
+  take root, like text
+  take notes, like hash, like text, like folder-note
+  like list, like text
+
+  save out, make list
+  walk-noted(dir, root, notes, out)
+  back out
+
+task walk-noted
+  take dir, like text
+  take root, like text
+  take notes, like hash, like text, like folder-note
+  take out, like list, like text
+  mark private
+
+  save seen, seen-at(dir)
+  # a folder that cannot be listed is noted as holding a link, so it is walked again
+  save listed, like list, like dynamic
+    make list
+  save linked, true
+  sift typed-entries-of(dir)
+    case some
+      link found
+      save listed, found
+      save linked, holds-link(found)
+    case none
+      save nothing, 0
+  save items, make list
+  save parent, node-path/basename(dir)
+  walk listed
+    take listed-entry
+    save entry, <{listed-entry/name}>
+    fork test, walk-skips(entry, is-equal(dir, root), parent, <>)
+      hold
+        turn next
+    save full, node-path/join(dir, entry)
+    save at, seen-at(full)
+    fork test, is-equal(at/kind, 1)
+      hold
+        items/push(make(walk-entry, bind(name, entry), bind(folder, true), bind(kept, true), bind(stamp, <>)))
+        fork test, folder-kept(full)
+          hold
+            walk-noted(full, root, notes, out)
+        turn next
+    fork test, and(is-equal(at/kind, 2), ends-with-tree(entry))
+      hold
+        save kept, file-kept(entry, full)
+        items/push(make(walk-entry, bind(name, entry), bind(folder, false), bind(kept, kept), bind(stamp, at/stamp)))
+        fork test, kept
+          hold
+            out/push(full)
+  save notes/{dir}, make(folder-note, bind(stamp, seen/stamp), bind(listing, listing-of(listed)), bind(linked, linked), bind(entries, items))
+
+# The list `find-tree-files-noted` would find now, from the notes an earlier walk left (`old`, by folder, as JSON read
+# them back), noting the folders again in `notes` (decision 084). A folder whose stamp is as noted and older than the
+# racy line `line`, or whose listing hashes as noted, is not listed again: each folder in it is asked again whether the
+# walk goes into it, and each `.tree` file keeps the answer noted when its stamp is as noted and older than the line, or
+# is asked again. A folder not noted, one that holds a link, and one whose listing moved are walked again. Answers how
+# many folders were walked again
+task carry-tree-files
+  take dir, like text
+  take root, like text
+  take old, like dynamic
+  take line, like number
+  take notes, like hash, like text, like folder-note
+  take out, like list, like text
+  like number
+
+  save note, like dynamic
+    old/{dir}
+  save at, seen-at(dir)
+  save same, false
+  fork test, and(is-unequal(note, void), is-equal(at/kind, 1))
+    hold
+      fork test, is-unequal(note/linked, true)
+        hold
+          fork test, and(is-equal(at/stamp, <{note/stamp}>), is-below(at/mtime, line))
+            hold
+              save same, true
+            miss
+              sift typed-entries-of(dir)
+                case some
+                  link found
+                  save same, and(not(holds-link(found)), is-equal(listing-of(found), <{note/listing}>))
+                case none
+                  save nothing, 0
+  fork test, not(same)
+    hold
+      walk-noted(dir, root, notes, out)
+      back 1
+  save walked, 0
+  save items, make list
+  save noted, like list, like dynamic
+    note/entries
+  walk noted
+    take item
+    save name, <{item/name}>
+    save full, node-path/join(dir, name)
+    fork test, is-equal(item/folder, true)
+      hold
+        items/push(make(walk-entry, bind(name, name), bind(folder, true), bind(kept, true), bind(stamp, <>)))
+        fork test, folder-kept(full)
+          hold
+            save walked, add(walked, carry-tree-files(full, root, old, line, notes, out))
+        turn next
+    save seen, seen-at(full)
+    save kept, is-equal(item/kept, true)
+    fork test, not(and(is-equal(seen/stamp, <{item/stamp}>), is-below(seen/mtime, line)))
+      hold
+        save kept, and(is-equal(seen/kind, 2), file-kept(name, full))
+    items/push(make(walk-entry, bind(name, name), bind(folder, false), bind(kept, kept), bind(stamp, seen/stamp)))
+    fork test, kept
+      hold
+        out/push(full)
+  save notes/{dir}, make(folder-note, bind(stamp, at/stamp), bind(listing, <{note/listing}>), bind(linked, false), bind(entries, items))
+  back walked
+
+# The files of an every-platform walk that a build for `platform` compiles: a file under another platform's native
+# folder is passed over, as `find-tree-files` passes over that folder (make-plan.tree `walk-skips`). The empty text is
+# every platform
+task for-platform
+  take files, like list, like text
+  take platform, like text
+  take root, like text
+  like list, like text
+
+  fork test, is-equal(platform, <>)
+    hold
+      back files
+  save out, make list
+  walk files
+    take file
+    fork test, not(under-skipped(file, platform, root))
+      hold
+        out/push(file)
+  back out
+
+# is a file under a folder a walk for `platform` passes over: each folder from the root down, with its parent's name
+task under-skipped
+  take file, like text
+  take platform, like text
+  take root, like text
+  like boolean
+  mark private
+
+  save inside, node-path/relative(root, node-path/dirname(file))
+  fork test, is-equal(inside, <>)
+    hold
+      back false
+  save parent, node-path/basename(root)
+  save first, true
+  walk split(inside, node-path/sep)
+    take part
+    fork test, walk-skips(part, first, parent, platform)
+      hold
+        back true
+    save parent, part
+    save first, false
+  back false
+
+task ends-with-tree
+  take entry, like text
+  like boolean
+  mark private
+
+  back ends-with(entry, <.tree>)
+
+task is-role-file
+  take file, like text
+  like boolean
+  mark private
+
+  back is-role-file-at(file)
+
+task is-lockfile
+  take file, like text
+  like boolean
+  mark private
+
+  back is-lockfile-at(file)
+
+# the on-disk file a bare module path points at, in Term's candidate order (`foo.tree`, then `foo/base.tree`, then
+# `foo/note.tree`), the first that exists, or the empty text when none does. Shared by the build resolver and `term boot`
+task resolve-tree-file
+  take base, like text
+  like text
+
+  save candidates, make list
+  candidates/push(<{base}.tree>)
+  candidates/push(node-path/join(base, <base.tree>))
+  candidates/push(node-path/join(base, <note.tree>))
+  walk candidates
+    take candidate
+    fork test, node-file/exists-sync(candidate)
+      hold
+        back candidate
+  back <>

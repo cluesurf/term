@@ -1,0 +1,238 @@
+# Resolver answers kept beyond the moment they were asked. Ported from call/code/make.ts (`buildResolver`,
+# `keptResolver`), part 2 of that file. Each wraps a project resolver (project-resolving.tree), the only resolver the
+# build wraps; the TypeScript took any resolver function and handed back another, and here the wrapper is a shared
+# record handed to every lookup.
+#
+# A BUILD MEMO answers each (load, file it is in, `base`) once for the life of one build. Every entry's import walk
+# asks the same questions of the same modules, and the project resolver answers each on the filesystem: on @term/bind,
+# 3,091 entries each walking the standard library, that walk was 42 s of a 147 s warm build (2026-10-05).
+#
+# KEPT ANSWERS outlive one build. An answer is a file AND its text. WHICH file a load lands on changes only when a file
+# appears or disappears, which starts a session over (build-session.tree), so that half is kept. The text is kept with
+# the stamp (size and modification time) it was read at, and the first time a build hands a file out its stamp is asked
+# again: a file that moved is read again. Never asked of the project resolver again, because it keeps what it read for
+# its own life and would hand back the old text, which is how the first version of this served an edited module as
+# it was (task/term/edit-replay.ts found it on its first run). A later ask in the same build is a lookup. `turn-kept`
+# starts a build.
+
+load @term/base/maybe
+  find maybe
+
+load ./project-resolving
+  find source
+  find load-how
+  find project-resolver
+  find resolve-in-project
+
+dock load
+  load <node:fs>, name node-file
+  # node's global scope, for `String.fromCharCode` (a `<global:globalThis>` dock is emitted renamed, traps.md)
+  load <global:global>, name host-global
+
+# one build's answers: each question once
+form build-memo
+  mark shared
+  link resolver, like project-resolver
+  link answers, like hash, like text, like maybe, like source
+
+task make-build-memo
+  take resolver, like project-resolver
+  like build-memo
+
+  back make(build-memo, bind(resolver, resolver), bind(answers, make hash))
+
+# the question's key: the path, the file it is asked from, and the `base`, the empty text for none
+task question-key
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like text
+
+  save gap, host-global/String/fromCharCode(0)
+  save base, <>
+  sift how
+    case some
+      link asked
+      save base, text-or-empty(asked-base(asked))
+    case none
+      save nothing, 0
+  back <{import-path}{gap}{from-file}{gap}{base}>
+
+# the `base` field as it stands, undefined when absent (a read of the need-false field defaults it to the empty text)
+task asked-base
+  take asked, like load-how
+  like text
+  mark private
+
+  back asked/base
+
+# a host value that is a text, or the empty text. Narrowed through `like unknown` (D1): a `sift` on a `dynamic`
+# compares it with the word instead (traps.md)
+task text-or-empty
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+task resolve-in-build
+  take memo, like build-memo
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+
+  save key, question-key(import-path, from-file, how)
+  fork test, memo/answers/has(key)
+    hold
+      back memo/answers/get(key)
+  save found, resolve-in-project(memo/resolver, import-path, from-file, how)
+  save memo/answers/{key}, found
+  back found
+
+# a text as it was handed out, and the stamp it was read at
+form kept-text
+  link stamp, like text
+  link text, like text
+
+form kept-answers
+  mark shared
+  link resolver, like project-resolver
+  link answers, like hash, like text, like maybe, like source
+  # each file handed out, the text it was handed out with and the stamp that text was read at
+  link texts, like hash, like text, like kept-text
+  # each file's stamp, asked once a build
+  link stamps, like hash, like text, like text
+
+task make-kept-answers
+  take resolver, like project-resolver
+  like kept-answers
+
+  back make(kept-answers, bind(resolver, resolver), bind(answers, make hash), bind(texts, make hash), bind(stamps, make hash))
+
+# starts a build: every stamp is asked again
+task turn-kept
+  take kept, like kept-answers
+
+  clear-table(kept/stamps)
+
+task clear-table
+  take table, like hash, like text, like text
+  mark private
+
+  table/clear()
+
+# a file's stamp this build: its size and modification time, or `missing`
+task stamp-of
+  take kept, like kept-answers
+  take file, like text
+  like text
+
+  fork test, kept/stamps/has(file)
+    hold
+      back kept/stamps/get(file)
+  save stamp, stat-stamp(file)
+  save kept/stamps/{file}, stamp
+  back stamp
+
+task stat-stamp
+  take file, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(file)
+    back <{stat/size}:{stat/mtime-ms}>
+  halt take
+    take problem
+    back <missing>
+
+# `found` with its file's text as it is now
+task current
+  take kept, like kept-answers
+  take found, like source
+  like source
+  mark private
+
+  save now, stamp-of(kept, found/file)
+  fork test, not(kept/texts/has(found/file))
+    hold
+      save had, make(kept-text, bind(stamp, now), bind(text, found/text))
+      save kept/texts/{found/file}, had
+      back found
+  save had, kept/texts/get(found/file)
+  fork test, is-unequal(had/stamp, now)
+    hold
+      sift read-text(found/file)
+        case some
+          link fresh
+          save had, make(kept-text, bind(stamp, now), bind(text, fresh))
+          save kept/texts/{found/file}, had
+        # gone: the session starts over at its next build, when the file list no longer holds it
+        case none
+          back found
+  fork test, is-equal(had/text, found/text)
+    hold
+      back found
+  back with-text(found, had/text)
+
+# a copy of the source with another text, the file it shadows kept
+task with-text
+  take found, like source
+  take text, like text
+  like source
+  mark private
+
+  save copy, make(source, bind(file, found/file), bind(text, text))
+  # a source holds `shadowed` only when a file was hidden (project-resolving.tree), so the copy does too
+  fork test, is-unequal(found/shadowed, <>)
+    hold
+      save copy/shadowed, found/shadowed
+  back copy
+
+task read-text
+  take file, like text
+  like maybe, like text
+  mark private
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    back make(some, text)
+  halt take
+    take problem
+    back make none
+
+task resolve-kept
+  take kept, like kept-answers
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+
+  save key, question-key(import-path, from-file, how)
+  save found, make none
+  fork test, kept/answers/has(key)
+    hold
+      save found, kept/answers/get(key)
+    miss
+      save found, resolve-in-project(kept/resolver, import-path, from-file, how)
+      save kept/answers/{key}, found
+  sift found
+    case some
+      link handed
+      save now, current(kept, handed)
+      # kept as handed out, so an unchanged file is the same answer every build
+      fork test, is-unequal(now/text, handed/text)
+        hold
+          save fresh, make(some, now)
+          save kept/answers/{key}, fresh
+          back fresh
+      back found
+    case none
+      back make none

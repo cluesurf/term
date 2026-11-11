@@ -1,7 +1,7 @@
-# rust WebSocket implementation. Forwards to the linked websocket runtime shim (tokio-tungstenite). Declares the opaque handle type a socket holds (an Arc-Mutex-wrapped WebSocketStream). Internal: reached only through the public WebSocket API.
+# rust WebSocket implementation. Forwards to the linked websocket runtime shim (tungstenite over a std TcpStream, the connect handed back to the loop, each send and receive re-polled by it). Declares the opaque handle type a socket holds (an Arc-Mutex-wrapped tungstenite WebSocket). Internal: reached only through the public WebSocket API.
 
 dock type
-  load <std::sync::Arc<tokio::sync::Mutex<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>>>, name websocket-handle
+  load <std::sync::Arc<std::sync::Mutex<tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>>>>, name websocket-handle
 
 dock load
   load <global:websocket>, name websocket

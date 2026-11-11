@@ -1,0 +1,69 @@
+
+form join-paths-error, name <std::env::JoinPathsError>
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task description, name <description>
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task source, name <source>
+    note <The lower-level source of this error, if any.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task backtrace, name <backtrace>
+    note <Returns a stack backtrace, if available, of where this error occurred.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like backtrace
+        cite free
+
+  task cause, name <cause>
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free

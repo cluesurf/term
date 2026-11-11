@@ -1,0 +1,80 @@
+# Paths as the build resolver confines them. Ported from call/code/make.ts (`safeReal`, `isWithin`), part 2 of that
+# file.
+#
+# `realpath` throws on a path that does not exist, and a relative import that is not there must not throw: it is a
+# missing file, and the resolver answers nothing. Resolving only what exists would leave a symlinked root (macOS's
+# /var -> /private/var) compared unresolved against a resolved bound, so a missing file under a symlinked project
+# would look like it escapes it. So the longest ancestor that does exist is resolved and the rest is put back. A path
+# with no existing ancestor at all is `path.resolve`'s answer.
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# the real path of `p`, through its longest existing ancestor
+task safe-real
+  take p, like text
+  like text
+
+  save full, node-path/resolve(p)
+  save dir, full
+  # what was cut off the end so far, joined, or the empty text
+  save tail, <>
+  walk test
+    hook test
+      true
+    hook hold
+      save real, real-or-empty(dir)
+      fork test, is-unequal(real, <>)
+        hold
+          fork test, is-equal(tail, <>)
+            hold
+              back real
+          back node-path/join(real, tail)
+      save up, node-path/dirname(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back full
+      save last, node-path/basename(dir)
+      fork test, is-equal(tail, <>)
+        hold
+          save tail, last
+        miss
+          save tail, node-path/join(last, tail)
+      save dir, up
+  back full
+
+# the real path of a path that exists, or the empty text when it cannot be resolved (a real path is never empty)
+task real-or-empty
+  take at, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save real, node-file/realpath-sync(at)
+    back real
+  halt take
+    take problem
+    back <>
+
+# is `child` inside `parent`, or the same path? Compared as written, on normalized paths
+task is-within
+  take child, like text
+  take parent, like text
+  like boolean
+
+  fork test, is-equal(child, parent)
+    hold
+      back true
+  save rel, node-path/relative(parent, child)
+  fork test, is-equal(rel, <>)
+    hold
+      back false
+  fork test, starts-with(rel, <..>)
+    hold
+      back false
+  back not(node-path/is-absolute(rel))

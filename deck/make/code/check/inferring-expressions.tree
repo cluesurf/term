@@ -1092,6 +1092,13 @@ task choose-overload
     push(args-out, arg-found/node)
     push(arg-types, resolve-held(st, arg-found/type))
   save current, with-arguments(node, args-out)
+  # a choice the import binding made between an imported task and the methods of its name is decided by the receiver
+  # alone, as receiver dispatch decided it, before any fit: a `like dynamic` argument fits no parameter here, and the
+  # task it reached before is checked against its arguments as any call is
+  save picked, method-choice-pick(st, callee, candidates, arg-types)
+  fork test, is-unequal(picked, <>)
+    hold
+      back with-callee(current, renamed-variable(callee-of(current), picked))
   save fitting, make list
   walk candidates
     take candidate
@@ -1167,6 +1174,47 @@ task choose-overload
   save written, strip-both-suffixes(callee)
   say(st, make(type-mismatch), expression-span(current), <no overload of "{written}" takes ({args-listed}). It is defined for {shown-listed}>)
   back current
+
+# a typed choice the import binding made between an imported task and the methods of its name (a key holding `__anym`,
+# check/disambiguate.tree import-bound, term-self-host-001-1006), decided as the flat program's receiver dispatch
+# decided it: a method that takes the call's arity and whose settled receiver parameter the first argument's settled
+# type fits, else the task, whatever the other arguments (the call's own check reports them, as it did). An unknown
+# or `like dynamic` receiver pins no form, so it reaches the task. `<>` for any other group
+task method-choice-pick
+  take st, like infer-state
+  take key, like text
+  take candidates, like list, like text
+  take arg-types, like list, like type
+  like text
+  mark private
+
+  fork test, is-below(index-of(key, <__anym>), 0)
+    hold
+      back <>
+  fork test, is-equal(arg-types/length, 0)
+    hold
+      back <>
+  save receiver, resolve-held(st, get(arg-types, 0))
+  fork test, not(is-wild(receiver))
+    hold
+      walk candidates
+        take candidate
+        fork test, and(st/method-files/has(candidate), st/functions/has(candidate))
+          hold
+            save signature, st/functions/get(candidate)
+            fork test, and(is-minimum(arg-types/length, signature/min-args), is-maximum(arg-types/length, signature/params/length))
+              hold
+                save instance, instantiate(signature, st/sub)
+                save param, resolve-held(st, get(instance/params, 0))
+                fork test, and(not(is-wild(param)), fits-type(st, receiver, param))
+                  hold
+                    back candidate
+  walk candidates
+    take candidate
+    fork test, not(st/method-files/has(candidate))
+      hold
+        back candidate
+  back <>
 
 # THE LEAN SURFACE: a lean construction's property heads read as its fields (part 7). A field that came from a property
 # head is a list of that head's children. Where the declared field is not a list, a one-item list is that item and

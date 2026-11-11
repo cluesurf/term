@@ -812,6 +812,45 @@ task constant-mask
     case none
       back make none
 
+# the mask of `bitwise-and(x, k)` or `bitwise-and(k, x)` when k is a whole constant from 0 to 2^53 - 1, so the value is
+# between 0 and k, or none for any other expression
+task mask-of
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  like maybe, like float
+  mark private
+
+  sift expr
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link name
+          fork test, and(is-equal(name, <bitwise-and>), is-equal(args/length, 2))
+            hold
+              save mask-read, constant-mask(state, calls, get(args, 1))
+              sift mask-read
+                case none
+                  save mask-read, constant-mask(state, calls, get(args, 0))
+                case some
+                  link first-mask
+                  save nothing, 0
+              sift mask-read
+                case some
+                  link mask
+                  fork test, and(whole-float(mask), and(is-minimum(mask, 0.0), is-maximum(mask, 9007199254740991.0)))
+                    hold
+                      back make(some, mask)
+                case none
+                  save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
 # translate an expression into a linear form, or none if it is not linear. Side facts (a remainder's range, a fresh
 # atom's bounds) are pushed onto `side` and become extra assumptions
 task to-linear
@@ -860,6 +899,15 @@ task called-linear
         case none
           save nothing, 0
       save made, atom-linear(applied)
+      # a pure `bitwise-and` with a constant mask is an application atom too, and keeps the mask's bounds: since its
+      # bind landed (item 1070) `bitwise-and` is pure, and without them the mask rule below never ran (item 1209)
+      sift mask-of(state, calls, expr)
+        case some
+          link mask
+          push(side, at-least(made, constant-linear(0.0)))
+          push(side, at-most(made, constant-linear(mask)))
+        case none
+          save nothing, 0
       back make(some, made)
     case none
       save nothing, 0
@@ -931,26 +979,15 @@ task called-linear
                       save nothing, 0
                 case none
                   save nothing, 0
-          fork test, and(is-equal(name, <bitwise-and>), is-equal(args/length, 2))
-            hold
-              save mask-read, constant-mask(state, calls, get(args, 1))
-              sift mask-read
-                case none
-                  save mask-read, constant-mask(state, calls, get(args, 0))
-                case some
-                  link first-mask
-                  save nothing, 0
-              sift mask-read
-                case some
-                  link mask
-                  fork test, and(whole-float(mask), and(is-minimum(mask, 0.0), is-maximum(mask, 9007199254740991.0)))
-                    hold
-                      save bits, atom-linear(fresh-key(state, <__and>))
-                      push(side, at-least(bits, constant-linear(0.0)))
-                      push(side, at-most(bits, constant-linear(mask)))
-                      back make(some, bits)
-                case none
-                  save nothing, 0
+          sift mask-of(state, calls, expr)
+            case some
+              link mask
+              save bits, atom-linear(fresh-key(state, <__and>))
+              push(side, at-least(bits, constant-linear(0.0)))
+              push(side, at-most(bits, constant-linear(mask)))
+              back make(some, bits)
+            case none
+              save nothing, 0
         miss
           save nothing, 0
     miss

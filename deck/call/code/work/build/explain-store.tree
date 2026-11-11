@@ -1,0 +1,131 @@
+# What `term make --explain` keeps (note/project/term/incremental-best-in-class.md, step 6): the inputs each unit was
+# last built from, one file per unit under the project's cache, written only when the unit is built. It sits beside the
+# cache rather than in it, because the cache's directories are per compiler version, and "the compiler changed" is one
+# of the things it has to be able to say. Ported from call/code/make.ts (`explainStore`), part 2 of that file.
+#
+# The TypeScript handed back a record of closures (`recall`, `remember`, `reasons`). Here the store is a record and
+# those are tasks taking it. A unit's inputs are the compiler's shape (compile/separate.ts `UnitInputs`: `compiler`,
+# `own`, `read`, `settings`, `names`, `carried`, four of them maps), built and read as host values. The project cache
+# folder is call/code/cache-store.ts's, docked. `carried` was left out of the port when the original gained it, so a
+# recalled unit had none and `term make --explain` stopped on its second build of a unit, reading its keys (item 0910).
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/term/hash
+  find hash-text
+
+load ../cache/compile-store
+  find project-cache-dir
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  # node's global scope, for `JSON`, `Map` and `Array` (a `<global:JSON>` dock beside @term/base/json is prepended
+  # twice, and `<global:globalThis>` is emitted renamed: traps.md)
+  load <global:global>, name host-global
+
+form explain-store
+  # the folder the explanations are kept in
+  link dir, like text
+  # why each unit built was built, filled by the separate build
+  link reasons, like hash, like text, like list, like text
+
+# the inputs as they are written to disk: each map as its entries
+form kept-inputs
+  link compiler, like dynamic
+  link own, like dynamic
+  link read, like dynamic
+  link settings, like dynamic
+  link names, like dynamic
+  link carried, like dynamic
+
+form folder-options
+  link recursive, like boolean
+
+task make-explain-store
+  take root, like text
+  like explain-store
+
+  save dir, node-path/join(project-cache-dir(root), <explain>)
+  back make(explain-store, bind(dir, dir), bind(reasons, make hash))
+
+# the file a unit's explanation is kept in
+task explain-file
+  take store, like explain-store
+  take id, like text
+  like text
+
+  back node-path/join(store/dir, <{hash-text(id)}.json>)
+
+# the inputs a unit was last built from, or nothing when none were kept or they cannot be read
+task recall-explain
+  take store, like explain-store
+  take id, like text
+  like maybe, like dynamic
+
+  fork
+    mark unsafe
+    save kept, host-global/JSON/parse(node-file/read-file-sync(explain-file(store, id), <utf8>))
+    save own, map-of(kept/own)
+    save read, map-of(read-entries(kept/read))
+    save names, map-of(kept/names)
+    save carried, map-of(read-entries(kept/carried))
+    save inputs, host-global/Object/fromEntries(make list)
+    save inputs/compiler, kept/compiler
+    save inputs/own, own
+    save inputs/read, read
+    save inputs/settings, kept/settings
+    save inputs/names, names
+    save inputs/carried, carried
+    back make(some, inputs)
+  halt take
+    take problem
+    back make none
+
+# a map of the entries, as `new Map(entries)` makes it (and refuses what it refuses)
+task map-of
+  take entries, like dynamic
+  like dynamic
+  mark private
+
+  save arguments, make list
+  arguments/push(entries)
+  back host-global/Reflect/construct(host-global/Map, arguments)
+
+# a kept `read` or `carried`, or no entries when the file predates it
+task read-entries
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  fork test, is-equal(value, void)
+    hold
+      back make list
+  back value
+
+# keep the inputs a unit was built from. An explanation is never worth failing a build over
+task remember-explain
+  take store, like explain-store
+  take id, like text
+  take inputs, like dynamic
+
+  fork
+    mark unsafe
+    node-file/mkdir-sync(store/dir, make(folder-options, bind(recursive, true)))
+    save written, make(kept-inputs, bind(compiler, inputs/compiler), bind(own, entries-of(inputs/own)), bind(read, entries-of(inputs/read)), bind(settings, inputs/settings), bind(names, entries-of(inputs/names)), bind(carried, entries-of(inputs/carried)))
+    node-file/write-file-sync(explain-file(store, id), host-global/JSON/stringify(written))
+  halt take
+    take problem
+    save nothing, 0
+
+# a map's entries, as `[...map]` spreads them
+task entries-of
+  take map, like dynamic
+  like dynamic
+  mark private
+
+  back host-global/Array/from(map)

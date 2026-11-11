@@ -1574,6 +1574,7 @@ task type-of-heads
   fork test, not(is-form(value))
     hold
       back make none
+  refuse-like-values(state, value)
   save phrase, make none
   sift word-at(value, <name>)
     case some
@@ -1755,6 +1756,44 @@ task type-of-heads
             save nothing, 0
   save built, named-type(name, args, value-args)
   back make(some, built)
+
+# A `like` holds types only. A word beside its type on one line (`save x, like text, read y`, `like dynamic, f(y)`) is
+# minted as a bare type argument, which no type reads, so it vanished: the save bound nothing and `x` read undefined
+# (item 1203, trap T-0653). A comma after `like text` pops back to the `like`, so what follows is the like's own part,
+# as `like hash, like text` makes the key's type. A nested `like` (`like list, like text`) is a `child`, never an `arg`.
+# ONLY AN `arg` ON THE LIKE'S OWN LINE: one on a line under it is a part some reader does take (`like or` over
+# `text <center>` lines, a callback's `note async`, `free seed`), 2,177 of them in the tree. save-of calls this too,
+# for a save with no value, whose type nothing else reads
+task refuse-like-values
+  take state, like mint-state
+  take value, like maybe, like minted
+
+  save own, span-of(value)
+  save line, own/start/line
+  fork test, not(is-above(line, 0))
+    hold
+      back
+  walk at(value, <arg>)
+    take extra
+    save at-span, span-of(make(some, extra))
+    fork test, is-unequal(at-span/start/line, line)
+      hold
+        turn next
+    save shown, <the part>
+    sift text-of(make(some, extra))
+      case some
+        link word
+        save shown, word
+      case none
+        save nothing, 0
+    # `link handle, like dynamic, mark private` (5 files of deck/site/code/dom/native): a `mark` beside a link's type
+    # mints here too and is dropped the same way, but whether a field takes `mark private` is not this item's to
+    # decide, so it is left to its own item and only values are refused
+    fork test, is-equal(shown, <mark>)
+      hold
+        turn next
+    save hint, <a value goes on its own line under the `save`, or as `save x, <value>` with the type left to inference. A type argument is a nested `like`: `like list, like text`>
+    push-problem(state, span-of(make(some, extra)), <`{shown}` after a `like`'s type is read as part of the type, not as a value, and no type takes it: a comma after `like <type>` makes what follows the `like`'s own part>, make(some, hint))
 
 # a `halt` word under a `like task` that names a form, never one of the words a `halt` statement heads with
 task is-slot-raise

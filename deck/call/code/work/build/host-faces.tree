@@ -1,0 +1,187 @@
+# The build lane's lookups as the host functions the compiler takes. compile/compile.ts and compile/separate.ts are
+# TypeScript and are handed a resolver, a deck finder, a role reader and a lean reader as functions. The lane's ports
+# keep each lookup's state in a record handed to a task (deck-finding, role-reading, project-resolving, kept-answers,
+# build-session), and each face here closes over one such record and answers in the host's shapes: undefined for
+# nothing, a source record or undefined for a load, `{ base }` or undefined for how a load asks.
+#
+# Part 3 of the make.ts port (compileProject) builds through these. The integrate batch hands them to its TypeScript
+# callers the same way.
+
+load @term/base/maybe
+  find maybe
+
+load ./deck-finding
+  find deck-finder
+  find find-deck
+
+load ./role-reading
+  find role-reader
+  find role-of
+  find lean-of
+
+load ./project-resolving
+  find source
+  find load-how
+  find project-resolver
+  find resolve-in-project
+
+load ./kept-answers
+  find build-memo
+  find resolve-in-build
+
+load ./build-session
+  find build-session
+  find resolve-in-session
+
+load ./explain-store
+  find explain-store
+  find recall-explain
+  find remember-explain
+
+# compile/separate.ts `UnitExplain`: why each unit was built, and the inputs it was last built from
+form explain-face
+  link reasons, like hash, like text, like list, like text
+  link recall, like dynamic
+  link remember, like dynamic
+
+# the part of a session a parallel pass reads (build-separate-parallel.ts): the resolver, the parse memo, the walks
+form session-face
+  link resolve, like dynamic
+  link parsed, like dynamic
+  link units, like dynamic
+  link walked, like dynamic
+
+# a load's answer as the host takes it: the source, or undefined
+task host-source
+  take found, like maybe, like source
+  like dynamic
+
+  sift found
+    case some
+      link one
+      back one
+    case none
+      back void
+
+# how a load asks, from the host: undefined, or `{ base }`
+task how-of
+  take how, like dynamic
+  like maybe, like load-how
+
+  fork test, is-equal(how, void)
+    hold
+      back make none
+  back make(some, how)
+
+# a project resolver as a resolver function, what call/code/make.ts `projectResolver` answered
+task face-project-resolver
+  take resolver, like project-resolver
+  like dynamic
+
+  back
+    task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+      back host-source(resolve-in-project(resolver, path, from, how-of(how)))
+
+# a build memo as a resolver function
+task face-build-memo
+  take memo, like build-memo
+  like dynamic
+
+  back
+    task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+      back host-source(resolve-in-build(memo, path, from, how-of(how)))
+
+# a session's kept answers as a resolver function
+task face-session
+  take session, like build-session
+  like dynamic
+
+  back
+    task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+      back host-source(resolve-in-session(session, path, from, how-of(how)))
+
+# a deck finder as `(file) => { name, root } | undefined`
+task face-deck-finder
+  take finder, like deck-finder
+  like dynamic
+
+  back
+    task
+      take file, like text
+      like dynamic
+      sift find-deck(finder, file)
+        case some
+          link place
+          back place
+        case none
+          back void
+
+# a role reader as `(file) => role | undefined`
+task face-role-reader
+  take reader, like role-reader
+  like dynamic
+
+  back
+    task
+      take file, like text
+      like dynamic
+      sift role-of(reader, file)
+        case some
+          link role
+          back role
+        case none
+          back void
+
+# a role reader as `(file) => whether its rule carries mark lean`
+task face-lean-reader
+  take reader, like role-reader
+  like dynamic
+
+  back
+    task
+      take file, like text
+      like boolean
+      back lean-of(reader, file)
+
+# an explain store as compile/separate.ts takes it: the store's own table of reasons, `recall(id)` answering the inputs
+# or undefined, and `remember(id, inputs)`
+task face-explain-store
+  take store, like explain-store
+  like dynamic
+
+  save recall
+    task
+      take id, like text
+      like dynamic
+      sift recall-explain(store, id)
+        case some
+          link inputs
+          back inputs
+        case none
+          back void
+  save remember
+    task
+      take id, like text
+      take inputs, like dynamic
+      like void
+      remember-explain(store, id, inputs)
+  back make(explain-face, bind(reasons, store/reasons), bind(recall, recall), bind(remember, remember))
+
+# a session as a parallel pass reads it: its resolver as a function, and its memos, kept by identity
+task face-build-session
+  take session, like build-session
+  like dynamic
+
+  back make(session-face, bind(resolve, face-session(session)), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked))

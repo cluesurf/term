@@ -139,9 +139,34 @@ task go
   ),
 )
 
+// a parameter fact needs every caller in view: only a `mark private` task has them all (term-self-host-001-0059)
+const privateReader = `task first
+  take s, like text
+  like text
+  mark private
+  send back
+    call s/char-at
+      code 0
+`
+
 ok(
-  'a parameter every caller passes ASCII IS',
+  'a parameter every caller of a private task passes ASCII IS',
   proven(
+    `${privateReader}
+task go
+  like text
+  send back
+    call first
+      text <abc>
+`,
+    'first',
+    's',
+  ),
+)
+
+ok(
+  'a parameter of a public task every caller in the build passes ASCII is NOT (it is exported)',
+  !proven(
     `${reader}
 task go
   like text
@@ -157,7 +182,7 @@ task go
 ok(
   'a parameter one caller passes non-ASCII is NOT',
   !proven(
-    `${reader}
+    `${privateReader}
 task go
   like text
   save a

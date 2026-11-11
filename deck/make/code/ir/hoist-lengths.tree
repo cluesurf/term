@@ -1,0 +1,599 @@
+# A loop test's text length, read once before the loop (item term-self-host-001-1213). A text's length counts code
+# points, which every backend counts by walking the text: Rust `chars().count()`, Swift `unicodeScalars.count`, Kotlin
+# `codePointCount`, and TypeScript's runtime once the text holds a surrogate (trap T-1205). So a loop whose test reads
+# `line/length` walks the whole text every pass, and the loop is quadratic in the text's size (a 150 KB astral text
+# took Swift up to 170 s). This pass reads that length into a `let` just before the loop, and the test reads the local,
+# so one lowering serves every backend.
+#
+# It runs after the simplifier (an inlined body's loops are in place by then) and before the view lowering, over the
+# program every emitter reads. The editor's raw emit and the per-module emit are left as they were.
+#
+# WHEN A READ MOVES. A read in a `while` test of `v/length`, where:
+#   - `v` is a variable bound as a task's local or parameter, and typed a text (backend-shapes `string-read`), so the
+#     read is total and does nothing but count: reading it once before the first test answers what each test read
+#   - nothing in the loop writes `v`: no assignment to it in the test or the body, closures in them included
+#     (backend-shapes `reassigned`)
+#   - no closure and no nested task inside the same top-level task writes a name `v`, since one called from the loop
+#     could write it (a closure reaches only the names of the tasks around it), and `v` is no module-level `let`, which
+#     any task could write
+# or a read of a text literal's length (`<0123456789>/length`), the same text on every pass.
+# and the read runs on every test: never on the right of an `and` or an `or`, nor in a conditional's later branch, where
+# a text absent on the tests that skip it (an omitted optional parameter, on TypeScript) would raise once read ahead.
+# A text is a value on every backend, so no call can change one in place. Anything else keeps its read: a
+# path (`x/line/length`), a list's length (a stored count on every backend, constant time), the loop's `must` and
+# `down`, and a `for-each`, which reads no test. The top level of a file is left as it is: its names are module lets.
+#
+# THE NAME. `<v>-length-<k>`, with `k` the first that makes it a name no node of the program carries, compared as every
+# backend spells it (`a-b`, `a_b` and `ab` are one name to Swift's camel case), as ir/inline-statements.tree makes its
+# names.
+#
+# A LOOP MET TWICE. The pass writes each test where it stands, as ir/cover.tree writes its probes, and the `let` goes
+# before the loop in its block. A test that reads a local this pass made gets that `let` in every block it stands in
+# without one, so a loop the program holds at two places reads a local declared at each.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find replace-all
+  find to-lower-case
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find binding
+  find expression
+  find expression-span
+  find expression-type
+  find number-type
+  find statement
+  find type
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+load ../compile/node-rewrite
+  find copy-expression
+
+load ../compile/backend-shapes
+  find string-read
+  find reassigned
+
+# what one run knows
+form hoist-state
+  mark shared
+  # every module's own `let`, which any task may write
+  link module, like hash, like text, like boolean
+  # the names a hoisted read may never be of in the top-level statement being hoisted: a module's own `let`, or a
+  # name a closure or a nested task inside that statement writes
+  link unsafe, like hash, like text, like boolean
+  # every name a node of the program carries, as the backends spell it
+  link used, like hash, like text, like boolean
+  # each local this pass made, with the read it holds
+  link made, like hash, like text, like expression
+
+# what one loop knows: the names it writes, and the local each text it reads the length of was given
+form loop-reads
+  mark shared
+  link written, like list, like text
+  link names, like hash, like text, like text
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a name as every backend's spelling sees it
+task spelled
+  take name, like text
+  like text
+  mark private
+
+  back to-lower-case(replace-all(replace-all(name, <->, <>), <_>, <>))
+
+task use-name
+  take state, like hoist-state
+  take name, like text
+  mark private
+
+  save key, spelled(name)
+  save state/used/{key}, true
+
+task mark-unsafe
+  take state, like hoist-state
+  take names, like list, like text
+  mark private
+
+  walk names
+    take name
+    save state/unsafe/{name}, true
+
+# ---- what the program holds ----
+
+task statement-names
+  take one, like statement
+  take state, like hoist-state
+  mark private
+
+  sift one
+    case let
+      use-name(state, name)
+    case for-each
+      use-name(state, item)
+      fork test, is-unequal(index, <>)
+        hold
+          use-name(state, index)
+    case match
+      walk cases
+        take arm
+        walk arm/binds
+          take bound
+          use-name(state, bound)
+    case guard
+      sift catch
+        case some
+          link clause
+          use-name(state, clause/name)
+        case none
+          save nothing, 0
+    case function
+      use-name(state, name)
+      walk params
+        take param
+        use-name(state, param/name)
+    miss
+      save nothing, 0
+
+task expression-names
+  take one, like expression
+  take state, like hoist-state
+  mark private
+
+  sift one
+    case variable
+      use-name(state, name)
+    case closure
+      walk params
+        take param
+        use-name(state, param/name)
+    miss
+      save nothing, 0
+
+# every name of the program, and every module's own `let`
+task survey
+  take program, like list, like statement
+  take state, like hoist-state
+  mark private
+
+  walk program
+    take top
+    sift top
+      case let
+        save state/module/{name}, true
+      miss
+        save nothing, 0
+  walk statements-in(program)
+    take inner
+    statement-names(inner, state)
+  walk expressions-in(program)
+    take one
+    expression-names(one, state)
+
+# the names a hoisted read may never be of inside one top-level statement: a module's own `let`, and each name a closure
+# or a task inside it writes, since one may be called from a loop of the task it stands in. A closure reaches only the
+# names of the tasks around it, so a write in another top-level task never stops a read here
+task unsafe-in
+  take single, like list, like statement
+  take state, like hoist-state
+  mark private
+
+  save state/unsafe, make hash
+  walk state/module/keys()
+    take name
+    save state/unsafe/{name}, true
+  save at, 0
+  walk statements-in(single)
+    take inner
+    # a task inside the top-level statement: a nested task, or a method, which may write a name of the task around it
+    fork test, is-above(at, 0)
+      hold
+        sift inner
+          case function
+            mark-unsafe(state, reassigned(body))
+          miss
+            save nothing, 0
+    save at, add(at, 1)
+  walk expressions-in(single)
+    take one
+    sift one
+      case closure
+        mark-unsafe(state, reassigned(body))
+      miss
+        save nothing, 0
+
+# a name no node of the program carries, from `<base>-<k>`
+task fresh-name
+  take state, like hoist-state
+  take base, like text
+  like text
+  mark private
+
+  save k, 1
+  walk test
+    hook test, true
+    hook hold
+      save candidate, <{base}-{k}>
+      save written, spelled(candidate)
+      fork test, not(state/used/has(written))
+        hold
+          save state/used/{written}, true
+          back candidate
+      save k, add(k, 1)
+  back base
+
+# ---- the reads ----
+
+task is-local-binding
+  take given, like maybe, like binding
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case local
+          back true
+        case parameter
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task local-variable
+  take name, like text
+  take at, like span
+  take given, like maybe, like type
+  like expression
+  mark private
+
+  save bound, make binding/local
+  back
+    make expression/variable
+      bind name, name
+      bind binding, make(some, bound)
+      bind span, at
+      bind type, given
+
+# the type a hoisted read is declared at: the read's own, a number where the checker left none
+task read-type
+  take node, like expression
+  like maybe, like type
+  mark private
+
+  save given, expression-type(node)
+  sift given
+    case some
+      back given
+    case none
+      back make(some, number-type())
+
+# a length read of a text the loop never writes, as the local that holds it, made the first time this loop asks
+task hoisted-read
+  take node, like expression
+  take loop, like loop-reads
+  take state, like hoist-state
+  like maybe, like expression
+  mark private
+
+  sift string-read(node)
+    case some
+      link found
+      sift found/target
+        case variable
+          link name
+          link binding
+          fork test, not(is-local-binding(binding))
+            hold
+              back make none
+          fork test, or(state/unsafe/has(name), has-text(loop/written, name))
+            hold
+              back make none
+          save typed, read-type(node)
+          fork test, not(loop/names/has(name))
+            hold
+              save made, fresh-name(state, <{name}-length>)
+              save loop/names/{name}, made
+              save state/made/{made}, copy-expression(node)
+          save made-name, loop/names/get(name)
+          save made-local, local-variable(made-name, expression-span(node), typed)
+          back make(some, made-local)
+        # a literal's length: the same text each pass, keyed by the text itself
+        case string
+          link value
+          save key, <\<{value}\>>
+          fork test, not(loop/names/has(key))
+            hold
+              save made, fresh-name(state, <text-length>)
+              save loop/names/{key}, made
+              save state/made/{made}, copy-expression(node)
+          save made-name, loop/names/get(key)
+          save made-local, local-variable(made-name, expression-span(node), read-type(node))
+          back make(some, made-local)
+        miss
+          back make none
+    case none
+      back make none
+
+# a callee that is the word `and` or `or`
+task is-short-circuit
+  take callee, like expression
+  like boolean
+  mark private
+
+  sift callee
+    case variable
+      back or(is-equal(name, <and>), is-equal(name, <or>))
+    miss
+      back false
+
+# a loop test with each read that may move replaced by its local. `node` is the pass's own copy, written in place
+task hoisted-test
+  take node, like expression
+  take loop, like loop-reads
+  take state, like hoist-state
+  like expression
+  mark private
+
+  sift hoisted-read(node, loop, state)
+    case some
+      link moved
+      back moved
+    case none
+      save nothing, 0
+  sift node
+    # the right side of `and` and `or` runs only on some tests, so a read there stays: a text that is absent on the
+    # tests that skip it (an omitted optional parameter on TypeScript) would raise once read ahead of the loop
+    case binary
+      save node/left, hoisted-test(left, loop, state)
+      save short, false
+      sift op
+        case both
+          save short, true
+        case either
+          save short, true
+        miss
+          save nothing, 0
+      fork test, not(short)
+        hold
+          save node/right, hoisted-test(right, loop, state)
+    case unary
+      save node/operand, hoisted-test(operand, loop, state)
+    # a call's arguments all run, but for an `and` or an `or` left as a call, whose second runs only on some tests
+    case call
+      save short, is-short-circuit(callee)
+      save args-out, make list
+      walk args
+        take arg
+        fork test, and(short, is-above(args-out/length, 0))
+          hold
+            push(args-out, arg)
+          miss
+            push(args-out, hoisted-test(arg, loop, state))
+      save node/args, args-out
+    # only the first branch's test runs on every test of the loop
+    case conditional
+      save at, 0
+      walk branches
+        take branch
+        fork test, is-equal(at, 0)
+          hold
+            save branch/cond, hoisted-test(branch/cond, loop, state)
+        save at, add(at, 1)
+    case await
+      save node/expr, hoisted-test(expr, loop, state)
+    miss
+      save nothing, 0
+  back node
+
+# the locals this pass made that a test reads, each once, in the order read
+task made-reads
+  take cond, like expression
+  take state, like hoist-state
+  like list, like text
+  mark private
+
+  save out, make list
+  save single, make list
+  save probe
+    make statement/expression
+      bind expr, cond
+      bind span, expression-span(cond)
+  push(single, probe)
+  walk expressions-in(single)
+    take one
+    sift one
+      case variable
+        fork test, and(state/made/has(name), not(has-text(out, name)))
+          hold
+            push(out, name)
+      miss
+        save nothing, 0
+  back out
+
+# a block with each `while` test's movable length reads taken out into a `let` just before the loop
+task hoisted-block
+  take block, like list, like statement
+  take state, like hoist-state
+  like list, like statement
+  mark private
+
+  save out, make list
+  # the locals this pass made that the block already declares, so a block met twice gains no second `let`
+  save declared, make list
+  walk block
+    take one
+    sift one
+      case let
+        fork test, state/made/has(name)
+          hold
+            push(declared, name)
+      miss
+        save nothing, 0
+  walk block
+    take one
+    sift one
+      case while
+        link cond
+        save single, make list
+        push(single, one)
+        save loop
+          make loop-reads
+            bind written, reassigned(single)
+            bind names, make hash
+        save tested, hoisted-test(copy-expression(cond), loop, state)
+        save kept-cond, cond
+        fork test, is-above(loop/names/keys()/length, 0)
+          hold
+            save one/cond, tested
+            save kept-cond, tested
+        walk made-reads(kept-cond, state)
+          take made-name
+          fork test, not(has-text(declared, made-name))
+            hold
+              save init, copy-expression(state/made/get(made-name))
+              save declared-read
+                make statement/let
+                  bind name, made-name
+                  bind init, init
+                  bind mutable, false
+                  bind span, expression-span(init)
+                  bind type, read-type(init)
+              push(out, declared-read)
+              push(declared, made-name)
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+task hoisted-maybe-block
+  take block, like maybe, like list, like statement
+  take state, like hoist-state
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save written, hoisted-block(body, state)
+      back make(some, written)
+    case none
+      back make none
+
+# the blocks one statement holds, each hoisted where it stands
+task hoist-statement
+  take one, like statement
+  take state, like hoist-state
+  like statement
+  mark private
+
+  sift one
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/body, hoisted-block(branch/body, state)
+        push(branches-out, branch)
+      save one/branches, branches-out
+      sift otherwise
+        case some
+          save one/otherwise, hoisted-maybe-block(otherwise, state)
+        case none
+          save nothing, 0
+    case while
+      save one/body, hoisted-block(body, state)
+    case match
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, hoisted-block(arm/body, state)
+        push(cases-out, arm)
+      save one/cases, cases-out
+      sift otherwise
+        case some
+          save one/otherwise, hoisted-maybe-block(otherwise, state)
+        case none
+          save nothing, 0
+    case for-each
+      save one/body, hoisted-block(body, state)
+    case guard
+      save one/body, hoisted-block(body, state)
+      sift catch
+        case some
+          link clause
+          save clause/body, hoisted-block(clause/body, state)
+          save one/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case function
+      save one/body, hoisted-block(body, state)
+    miss
+      save nothing, 0
+  back one
+
+task hoist-expression
+  take one, like expression
+  take state, like hoist-state
+  like expression
+  mark private
+
+  sift one
+    case closure
+      save one/body, hoisted-block(body, state)
+    miss
+      save nothing, 0
+  back one
+
+# the program with every movable loop-test length read taken out before its loop, written where it stands
+task hoist-lengths
+  take program, like list, like statement
+  like list, like statement
+
+  save state
+    make hoist-state
+      bind module, make hash
+      bind unsafe, make hash
+      bind used, make hash
+      bind made, make hash
+  survey(program, state)
+  walk program
+    take top
+    save single, make list
+    push(single, top)
+    unsafe-in(single, state)
+    save nested, statements-in(single)
+    save closures, expressions-in(single)
+    walk nested
+      take inner
+      save written, hoist-statement(inner, state)
+    walk closures
+      take inner
+      save written-expression, hoist-expression(inner, state)
+  back program

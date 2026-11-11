@@ -9,7 +9,7 @@
 // Run: npx tsx test/server/wire.ts
 
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -241,6 +241,8 @@ async function session(
     JSON.stringify(cancelled),
   )
 
+  await proofState(label, send, wait, response)
+
   send({ jsonrpc: '2.0', id: 6, method: 'shutdown' })
   await wait(response(6), 20000)
   send({ jsonrpc: '2.0', method: 'exit' })
@@ -258,6 +260,209 @@ async function session(
   if (exited === undefined) {
     child.kill()
   }
+}
+
+type Goal = {
+  name: string
+  status: string
+  detail?: string
+  range: {
+    start: { line: number; character: number }
+    end: { line: number; character: number }
+  }
+}
+
+type ProofAnswer = {
+  uri: string
+  goals: Goal[]
+  focus?: string
+  solved: number
+  total: number
+  done: boolean
+  html: string
+}
+
+// `proof/state` (decision 139): the rules of a document with one proved, one refuted and one open rule, read from the
+// hold diagnostics the server's own analysis placed, and the panel's html
+async function proofState(
+  label: string,
+  send: (...messages: Message[]) => void,
+  wait: (
+    want: (m: Message) => boolean,
+    ms?: number,
+  ) => Promise<Message | undefined>,
+  response: (id: number) => (m: Message) => boolean,
+): Promise<void> {
+  const file = join(process.cwd(), 'test/server/fixture/proof-rules.tree')
+  const uri = pathToFileURL(file).href
+  const text = readFileSync(file, 'utf8')
+  const names = ['doubling-is-adding-twice', 'below-its-square', 'bounded-square']
+
+  send(
+    {
+      jsonrpc: '2.0',
+      method: 'textDocument/didOpen',
+      params: {
+        textDocument: { uri, languageId: 'tree', version: 1, text },
+      },
+    },
+    {
+      jsonrpc: '2.0',
+      id: 20,
+      method: 'proof/state',
+      params: {
+        textDocument: { uri },
+        position: { line: 9, character: 4 },
+      },
+    },
+  )
+  const first = await wait(response(20))
+  const state = first?.result as ProofAnswer | undefined
+  const goals = state?.goals ?? []
+  ok(
+    `${label}: proof/state answers three goals in source order`,
+    goals.map(g => g.name).join() === names.join(),
+    JSON.stringify(first),
+  )
+  ok(
+    `${label}: proof/state statuses are proved, refuted, open`,
+    goals.map(g => g.status).join() === 'proved,refuted,open',
+    JSON.stringify(goals),
+  )
+  ok(
+    `${label}: proof/state refuted detail holds the failing values, proved has none`,
+    goals[1]?.detail?.startsWith('this rule is FALSE: at n = 0') === true &&
+      goals[0]?.detail === undefined &&
+      typeof goals[2]?.detail === 'string',
+    JSON.stringify(goals.map(g => g.detail)),
+  )
+  ok(
+    `${label}: proof/state counts solved 1, total 3, done false`,
+    state?.solved === 1 && state?.total === 3 && state?.done === false,
+    JSON.stringify({ solved: state?.solved, total: state?.total, done: state?.done }),
+  )
+  ok(
+    `${label}: proof/state ranges are each rule's lines`,
+    goals.map(g => `${g.range.start.line}-${g.range.end.line}`).join() ===
+      '4-6,8-10,12-15',
+    JSON.stringify(goals.map(g => g.range)),
+  )
+  ok(
+    `${label}: proof/state focus is the rule under the cursor, marked in the html`,
+    state?.focus === 'below-its-square' &&
+      state.html.includes('<li class="refuted focus">') &&
+      !state.html.includes('<li class="proved focus">'),
+    JSON.stringify(state?.focus),
+  )
+  const html = state?.html ?? ''
+  ok(
+    `${label}: proof/state html holds each name once, escapes the detail, has no script`,
+    names.every(n => html.split(n).length === 2) &&
+      html.includes('(goal: n &lt; n * n)') &&
+      !html.includes('(goal: n < n * n)') &&
+      html.includes('(1/3)') &&
+      !/<script/i.test(html),
+    html,
+  )
+
+  // the false rule made true by an edit: the next answer reads it proved, since the request waits for the settle
+  const fixed = text.replace(
+    'show hold, is-below n, multiply(n, n)',
+    'show hold, is-equal add(n, n), multiply(n, 2)',
+  )
+  send(
+    {
+      jsonrpc: '2.0',
+      method: 'textDocument/didChange',
+      params: {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ text: fixed }],
+      },
+    },
+    {
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'proof/state',
+      params: { textDocument: { uri } },
+    },
+  )
+  const edited = (await wait(response(21)))?.result as ProofAnswer | undefined
+  ok(
+    `${label}: proof/state after an edit reads the corrected rule proved`,
+    edited?.goals.map(g => g.status).join() === 'proved,proved,open' &&
+      edited.solved === 2 &&
+      edited.focus === undefined,
+    JSON.stringify(edited?.goals),
+  )
+
+  // an error the hold pass did not raise: silence is no proof, so the rule with no diagnostic of its own is open
+  const broken = `${fixed}\ntask broken\n  like integer\n  back <x>\n`
+  send(
+    {
+      jsonrpc: '2.0',
+      method: 'textDocument/didChange',
+      params: {
+        textDocument: { uri, version: 3 },
+        contentChanges: [{ text: broken }],
+      },
+    },
+    {
+      jsonrpc: '2.0',
+      id: 22,
+      method: 'proof/state',
+      params: { textDocument: { uri } },
+    },
+  )
+  const stopped = (await wait(response(22)))?.result as ProofAnswer | undefined
+  ok(
+    `${label}: proof/state with another error reads an unflagged rule not checked`,
+    stopped?.goals[0]?.status === 'open' &&
+      stopped.goals[0].detail === 'not checked: the file has other errors' &&
+      stopped.solved === 0 &&
+      stopped.done === false,
+    JSON.stringify(stopped?.goals),
+  )
+
+  send({
+    jsonrpc: '2.0',
+    id: 23,
+    method: 'proof/state',
+    params: {
+      textDocument: { uri: 'file:///nowhere/a&b<c>.tree' },
+      position: { line: 0, character: 0 },
+    },
+  })
+  const unknown = (await wait(response(23)))?.result as ProofAnswer | undefined
+  ok(
+    `${label}: proof/state on an unknown uri is the empty answer, its uri escaped`,
+    Array.isArray(unknown?.goals) &&
+      unknown.goals.length === 0 &&
+      unknown.done === false &&
+      unknown.solved === 0 &&
+      unknown.total === 0 &&
+      typeof unknown.html === 'string' &&
+      unknown.html.includes('a&amp;b&lt;c&gt;.tree') &&
+      !unknown.html.includes('a&b<c>'),
+    JSON.stringify(unknown),
+  )
+
+  send(
+    { jsonrpc: '2.0', id: 24, method: 'proof/state', params: {} },
+    {
+      jsonrpc: '2.0',
+      id: 25,
+      method: 'proof/state',
+      params: { textDocument: { uri } },
+    },
+  )
+  const refused = await wait(response(24), 20000)
+  const next = await wait(response(25))
+  ok(
+    `${label}: proof/state with no textDocument answers -32602, and the server answers the next`,
+    refused?.error?.code === -32602 &&
+      (next?.result as ProofAnswer | undefined)?.total === 3,
+    JSON.stringify([refused, next?.error]),
+  )
 }
 
 await session(

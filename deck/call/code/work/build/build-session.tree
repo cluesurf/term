@@ -1,0 +1,251 @@
+# What a separate build learns that the next one may keep: the unit answers, each module's walk, each load's answer,
+# each module's parse, and each entry's outcome. A watch keeps one for its life
+# (note/project/term/incremental-best-in-class.md, steps 2 and 3). Ported from call/code/make.ts (`buildSession`), part
+# 2 of that file.
+#
+# A module's walk and parse are checked against its text and a load's answer against its file's stamp, so an edit is
+# seen wherever it lands. What a stamp cannot see is a file appearing where a load found nothing, or a manifest or role
+# file changing how every module is read, so either of those starts the session over.
+#
+# The TypeScript handed back a record of closures (`resolve`, `turn`, `close`). Here the session is a shared record and
+# those are tasks taking it. The memos the compiler fills (`parsed`, `units`, `walked`) and the entries and rolls the
+# separate build writes are the record's own tables, kept by identity for the session's life and emptied in place when
+# it starts over. The parse memo is the compiler's port (compile/loading-parses.tree), made by the cache lane's
+# `make-parse-memo` (work/cache/compile-store.tree), where compile/load.ts was docked until term-self-host-001-0954.
+
+load @term/base/list
+  find list
+  find join
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ./project-resolving
+  find source
+  find load-how
+  find make-project-resolver
+
+load ./kept-answers
+  find kept-answers
+  find make-kept-answers
+  find turn-kept
+  find stamp-of
+  find resolve-kept
+
+load ./tree-finding
+  find folder-note
+  find find-tree-files-noted
+  find for-platform
+
+load ../cache/compile-store
+  find make-parse-memo
+
+dock load
+  load <node:path>, name node-path
+
+# an entry's build, as much of it as the next build needs to replay it: its own problems, its open claims, its
+# obligations, and how many units it reached. Its artifacts are already on disk, written when it was built, and their
+# paths are kept, so a build replaying it still stands behind them (separate-build.tree `sweep-artifacts`)
+form entry-outcome
+  link problems, like list, like dynamic
+  link open, like list, like text
+  link obligations, like dynamic
+  link units, like number
+  link closure-key, like text
+  link artifacts, like list, like text
+
+# a file as the graph snapshot last saw it (build-graph.tree `load-snapshot`): its stamp as `stamp-of` spells it, its
+# inode, and the hash of its text, or of its bytes for an artifact
+form file-note
+  link stamp, like text
+  link inode, like text
+  link hash, like text
+
+form build-session
+  mark shared
+  link root, like text
+  # the load answers, kept across builds; replaced when the session starts over
+  link kept, like kept-answers
+  link parsed, like dynamic
+  link units, like hash, like text, like dynamic
+  link walked, like hash, like text, like dynamic
+  # what each entry built to, the last time it built
+  link entries, like hash, like text, like entry-outcome
+  # each unit's roll of its own definitions, by the unit's label, as the entries built this session last carried it.
+  # A replayed entry carries none, so the roll pass reads them here (call/code/roll.ts `projectRoll`)
+  link rolls, like hash, like text, like dynamic
+  # each walked module's stamp as of the last build
+  link stamps, like hash, like text, like text
+  # the files that say how every module is read, rather than being one
+  link settings, like list, like text
+  # the file list of the last build, or nothing before the first
+  link known, like maybe, like text
+  # each module's edges as a snapshot of an earlier process left them, for a module this session has not walked: what
+  # `walked` would hold for it, as far as which entries reach a moved file (build-graph.tree `load-snapshot`)
+  link edges, like hash, like text, like list, like text
+  # each file and artifact as the snapshot taken saw it, so the next snapshot hashes again only what moved
+  link noted, like hash, like text, like file-note
+  # the generation of the snapshot this session was taken from or last wrote, 0 for none
+  link generation, like number
+  # that snapshot's stable sum, the empty text when the next build must write one whatever it finds
+  link snapshot-sum, like text
+  # THE BUILD'S FILE LIST (decision 084), every platform's: found once a build, by `build-files` or carried by a
+  # snapshot (build-graph.tree `take-snapshot`), and read from here by every part of the build. None between builds
+  link listing, like maybe, like list, like text
+  # each folder the walk behind that list went into, which the next snapshot keeps for the next process to carry it
+  link folder-notes, like hash, like text, like folder-note
+  # how many times the session was turned (`turn-session`): a caller that turns once a round reads it to hold that no
+  # request turned it again (decision 097, term test's one turn a round)
+  link turns, like number
+
+task make-build-session
+  take root, like text
+  like build-session
+
+  save kept, make-kept-answers(make-project-resolver(root))
+  save settings, make list
+  settings/push(node-path/join(root, <deck.tree>))
+  settings/push(node-path/join(root, <lock.tree>))
+  settings/push(node-path/join(root, <role.tree>))
+  settings/push(node-path/join(root, <base/role.tree>))
+  save parsed, make-parse-memo()
+  back make(build-session, bind(root, root), bind(kept, kept), bind(parsed, parsed), bind(units, make hash), bind(walked, make hash), bind(entries, make hash), bind(rolls, make hash), bind(stamps, make hash), bind(settings, settings), bind(known, make none), bind(edges, make hash), bind(noted, make hash), bind(generation, 0), bind(snapshot-sum, <>), bind(listing, make none), bind(folder-notes, make hash), bind(turns, 0))
+
+# The files a build for `platform` compiles, the empty text for every platform's (the count term make reports). The
+# build's first ask walks the project, unless a snapshot carried the list already, and every later ask of the same
+# build reads that list (decision 084)
+task build-files
+  take session, like build-session
+  take platform, like text
+  like list, like text
+
+  sift session/listing
+    case some
+      link all
+      back for-platform(all, platform, session/root)
+    case none
+      save nothing, 0
+  save notes, make hash
+  save all, find-tree-files-noted(session/root, session/root, notes)
+  save session/listing, make(some, all)
+  save session/folder-notes, notes
+  back for-platform(all, platform, session/root)
+
+# the build's list forgotten, so the next build finds it again: at a request's start, and at a build's close
+task forget-files
+  take session, like build-session
+
+  save session/listing, make none
+
+# where a load lands this session, and the file's text as it is now
+task resolve-in-session
+  take session, like build-session
+  take import-path, like text
+  take from-file, like text
+  take how, like maybe, like load-how
+  like maybe, like source
+
+  back resolve-kept(session/kept, import-path, from-file, how)
+
+# Starts a build of `files`, and answers which files moved since the last one, of every module that build walked.
+# Nothing when nothing may be replayed: the session's first build, or one that started it over
+task turn-session
+  take session, like build-session
+  take files, like list, like text
+  like maybe, like list, like text
+
+  save session/turns, add(session/turns, 1)
+  turn-kept(session/kept)
+  ask-settings(session)
+  save listed, join(files, <\n>)
+  save moved, make list
+  walk session/stamps/keys()
+    take file
+    fork test, is-unequal(stamp-of(session/kept, file), session/stamps/get(file))
+      hold
+        moved/push(file)
+  fork test, is-known(session/known, listed)
+    hold
+      save setting-moved, false
+      walk moved
+        take file
+        fork test, contains(session/settings, file)
+          hold
+            save setting-moved, true
+      fork test, not(setting-moved)
+        hold
+          back make(some, moved)
+  # the session's first build: nothing it holds can be stale yet (a parallel pass may have walked for it already), but
+  # no entry has an outcome to replay
+  sift session/known
+    case none
+      save session/known, make(some, listed)
+      back make none
+    case some
+      save nothing, 0
+  save session/known, make(some, listed)
+  save session/kept, make-kept-answers(make-project-resolver(session/root))
+  ask-settings(session)
+  empty-table(session/walked)
+  empty-table(session/entries)
+  empty-table(session/rolls)
+  empty-table(session/stamps)
+  empty-table(session/edges)
+  back make none
+
+# Every setting's stamp asked as the build starts, before anything of the build reads the setting, so the stamp the
+# build closes with (`close-session`) and the snapshot notes (build-graph.tree `module-note`) is one from before the
+# read: a setting edited while the build runs is seen as moved by the next turn and the next process, never noted as
+# it stands when the build ends (item term-self-host-001-0466)
+task ask-settings
+  take session, like build-session
+  mark private
+
+  walk session/settings
+    take setting
+    save asked, stamp-of(session/kept, setting)
+
+task is-known
+  take known, like maybe, like text
+  take listed, like text
+  like boolean
+  mark private
+
+  sift known
+    case some
+      link was
+      back is-equal(was, listed)
+    case none
+      back false
+
+# a table emptied in place: the compiler holds it by identity
+task empty-table
+  head t
+  take table, like hash, like text, like t
+  mark private
+
+  table/clear()
+
+# Ends a build: the stamp of every module it walked or a snapshot's edges hold, and of every setting, which the next
+# build's `turn-session` compares against
+task close-session
+  take session, like build-session
+
+  save files, make list
+  walk session/walked/keys()
+    take file
+    files/push(file)
+  # a module a snapshot's edges hold and this session has not walked: its stamp as this build first asked it
+  walk session/edges/keys()
+    take file
+    fork test, not(session/walked/has(file))
+      hold
+        files/push(file)
+  walk session/settings
+    take file
+    files/push(file)
+  walk files
+    take file
+    save session/stamps/{file}, stamp-of(session/kept, file)
+  forget-files(session)

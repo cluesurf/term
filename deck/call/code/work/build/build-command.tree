@@ -1,0 +1,748 @@
+# `term make`: build the project in the current folder. Ported from call/code/make.ts (`callMake`), part 4 of that file.
+#
+# Separate compilation is the default since 2026-10-05: each module is checked once a run against its imports' stubs
+# and cached by its own text and theirs, so an edit rebuilds the edited module and what reads it (separate-build.tree).
+# `merged` asks for the whole-program build (project-build.tree), which agreed with it on every file of every package
+# before the switch (`pnpm term:separate-diff`). A big project's units are built across worker threads first; a pool
+# that cannot start leaves the work to the build on this thread, so a worker problem never breaks `term make`.
+#
+# A package.json `make` script REPLACES the .tree build, which is right when the script IS the build and a blind spot
+# when the package has both, so `trees` asks for the .tree half anyway (task/term/build-all.ts uses it).
+#
+# After the build: the open claims (AN OPEN CLAIM IS NOT A PROVEN ONE, `term hold` is the gate), the tier-0 count, and
+# the roll of the build written to host/roll.json for tools that are not Term. The pools (build-parallel.ts,
+# build-separate-parallel.ts) and the roll (roll.ts) are loaded when they are needed, never before: this module's graph
+# is bundled into the build worker, which must not pull esbuild.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find split
+
+load ./tree-finding
+  find find-tree-files
+
+load ./real-paths
+  find is-within
+
+load ./build-session
+  find build-session
+  find turn-session
+  find build-files
+
+# the build graph and its one entry (decision 077 section 3, decision 094): term make builds through `build-request`
+load ./build-graph
+  find build-graph
+  find make-build-graph
+  find begin-project
+  find build-request
+  find project-ask
+  find project-built-of
+
+load ./explain-store
+  find explain-store
+  find make-explain-store
+
+load ./host-faces
+  find face-build-session
+
+load ./project-build
+  find compile-project
+  find items-of
+  find texts-of
+
+load ./tree-watching
+  find watch-project
+  find watch-script
+
+load ./child-run
+  find run-captured
+  find script-ask
+
+# the pools and the roll: the workers and roll lanes' ports, where build-parallel.ts, build-separate-parallel.ts and
+# roll.ts were imported at run time until term-cli-in-term-0069. No worker bundle reaches this module (only make.tree
+# loads it), so none of them pulls esbuild
+load ../workers/unit-pool
+  find compile-units-parallel
+  find units-answer
+
+load ../workers/file-pool
+  find compile-project-parallel
+
+load ../roll/roll-making
+  find project-roll
+
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find fail-run
+  find field
+  find open-run
+  find output-options
+  find report
+  find report-problems
+
+load @term/call/work/item/event
+  find item-field
+  find tally
+
+load @term/make/compile/reach
+  find stale-entries
+
+# the build line naming each tier-0 kind owed, where check/holds.ts was docked until term-self-host-001-0954
+load @term/make/check/holding
+  find describe-owed
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <node:fs/promises>, name file-promise
+    mark async
+  load <global:global>, name host-global
+
+form folder-options
+  link recursive, like boolean
+
+form run-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form counted-open
+  link verb, like text
+  link root, like text
+  link counts, like list, like tally
+  link facts, like list, like text
+
+form run-close
+  link verdict, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like tally
+
+form said-close
+  link verdict, like text
+  link message, like list, like text
+
+form script-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link exit, like number
+  link quote, like list, like text
+
+form pool-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+  link facts, like list, like text
+
+form failing-pool-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+  link facts, like list, like text
+  link message, like list, like text
+
+form said-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form build-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+  link facts, like list, like text
+
+form open-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link fields, like list, like item-field
+
+form owed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like tally
+  link facts, like list, like text
+
+form written-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+
+# the epoch milliseconds now, `Date.now()`
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# whether a host value is truthy, as `if (value)` reads it
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `Boolean(pkg.scripts?.make)`
+bind has-make-script
+  take pkg, like dynamic
+  like boolean
+  case node
+    text <Boolean($pkg.scripts?.make)>
+
+# the build's own open claims, which both builds report: `'open' in result && Array.isArray(result.open)`
+bind open-claims-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(("open" in $result && Array.isArray($result.open)) ? $result.open : undefined)>
+
+# the tier-0 tally, when the build answered one
+bind owed-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(("obligations" in $result && $result.obligations && typeof $result.obligations === "object") ? $result.obligations : undefined)>
+
+# each unit's roll a pool answered, as one map: the rolls of every result that built
+bind pool-rolls
+  take results, like dynamic
+  like dynamic
+  case node
+    text <new Map([...$results.values()].flatMap((one) =\> (one.ok ? one.rolls : [])))>
+
+# `error instanceof Error ? error.message : String(error)`
+bind message-of
+  take error, like dynamic
+  like text
+  case node
+    text <($error instanceof Error ? $error.message : String($error))>
+
+
+form make-ask
+  link root, like text
+  link ride, like boolean
+  link separate, like boolean
+  link merged, like boolean
+  link explain, like boolean
+  link trees, like boolean
+
+# `input.ride` and the rest: a switch left out is false
+task switch-of
+  take value, like dynamic
+  like boolean
+  mark private
+
+  back is-truthy(value)
+
+# a value as a host value: a local that will hold a record or nothing starts as this
+task as-dynamic
+  take value, like dynamic
+  like dynamic
+  mark private
+
+  back value
+
+task text-of
+  take value, like dynamic
+  like text
+  mark private
+
+  back value
+
+# Build the project. `input` is what the console was asked: `root`, and four switches, each false when left out:
+# `ride` (watch, and build again on every change), `merged` (the whole-program build), `explain` (say why each unit
+# built was built; the build then runs on one thread) and `trees` (the .tree files even beside a package.json `make`
+# script). Never fails: a failure ends the run through the output library
+task call-make
+  take input, like dynamic
+  like void
+  mark async
+
+  save root, text-of(input/root)
+  fork
+    mark unsafe
+    make-project(input, root)
+  halt take
+    take problem
+    fail-run(problem, root)
+
+task make-project
+  take input, like dynamic
+  take root, like text
+  like void
+  mark async
+  mark private
+
+  save ride, switch-of(input/ride)
+  save merged, switch-of(input/merged)
+  save explain-asked, switch-of(input/explain)
+  save trees, switch-of(input/trees)
+  save package-path, node-path/join(root, <package.json>)
+  save has-script, false
+  fork
+    mark unsafe
+    save package-text, file-promise/readFile(package-path, <utf-8>)
+    save has-script, has-make-script(host-global/JSON/parse(package-text))
+  halt take
+    take problem
+    # no package.json
+    save nothing, 0
+  fork test, and(has-script, not(trees))
+    hold
+      fork test, ride
+        hold
+          # watch mode with a custom build: the project's `make` script again on every change, until interrupted
+          watch-script(root)
+        miss
+          # the package's own build: its output quoted under the `run` item, in full when it failed or under
+          # --verbose, the last lines of it otherwise kept out of the way
+          save facts, make list
+          facts/push(<package.json make>)
+          open-run(make(run-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+          save started, now-ms()
+          save args, make list
+          args/push(<run>)
+          args/push(<make>)
+          save run, run-captured(make(script-ask, bind(cmd, <pnpm>), bind(args, args), bind(cwd, root), bind(raw, output-options()/raw)))
+          save glyph, <failed>
+          save verdict, <Its package script failed>
+          fork test, is-equal(run/code, 0)
+            hold
+              save glyph, <done>
+              save verdict, <Built by its package script>
+          save quote, run/lines
+          fork test, and(is-equal(run/code, 0), not(output-options()/verbose))
+            hold
+              save quote, make list
+          report(make(script-item, bind(glyph, glyph), bind(verb, <run>), bind(subject, <pnpm run make>), bind(duration, subtract(now-ms(), started)), bind(exit, run/code), bind(quote, quote)))
+          close-run(make(run-close, bind(verdict, verdict)))
+    miss
+      fork test, ride
+        hold
+          # runs until interrupted
+          watch-project(root, merged)
+        miss
+          build-project(root, merged, explain-asked, has-script)
+
+# the cores this machine has
+task core-count
+  like number
+  mark private
+
+  save cores, node-os/cpus()
+  back cores/length
+
+# The .tree build. Big projects fan out across worker threads; small ones build on this thread, since the worker bundle
+# and its start would outweigh the gain
+task build-project
+  take root, like text
+  take merged, like boolean
+  take explain-asked, like boolean
+  take has-script, like boolean
+  like void
+  mark async
+  mark private
+
+  save started, now-ms()
+  save separate, not(merged)
+  # THE BUILD GRAPH (decision 094): term make builds through build-graph.tree `build-request`, its session the one the
+  # pool reads
+  save graph, make-build-graph(root)
+  save session, graph/session
+  save snapped, false
+  save file-count, 0
+  fork test, separate
+    hold
+      # a fresh process starts from the last build's graph when it validates (build-graph.tree, item 0410), which carries
+      # the file list forward too. The build finds its list once, and every part of it reads the list from the session
+      # (build-session.tree `build-files`, decision 084): the count, the pool's probe and the build. The request after
+      # keeps this start and this list (`begin-project`, decision 094 rule 3)
+      save snapped, begin-project(graph, started)
+      save file-count, build-files(session, <>)/length
+    miss
+      save file-count, find-tree-files(root, <>, root)/length
+  # `--trees` beside a package script is a choice worth saying: the script did not run
+  save open-counts, make list
+  open-counts/push(count(file-count, <files>, <file>))
+  save open-facts, make list
+  fork test, has-script
+    hold
+      open-facts/push(<--trees>)
+  open-run(make(counted-open, bind(verb, <make>), bind(root, root), bind(counts, open-counts), bind(facts, open-facts)))
+  save big, and(is-minimum(file-count, 16), is-above(core-count(), 2))
+  save parallel, and(not(separate), big)
+  save result, as-dynamic(void)
+  # the separate build's own counts, units built against units replayed from the cache, and each unit's roll
+  save counted, false
+  save units-built, 0
+  save units-reused, 0
+  save rolls, as-dynamic(void)
+  fork test, separate
+    hold
+      save precomputed, as-dynamic(void)
+      save pooled, 0
+      save explain, as-dynamic(void)
+      fork test, explain-asked
+        hold
+          save explain, as-dynamic(make-explain-store(root))
+      # a big project's units are built across worker threads first, in dependency order, and the build below then
+      # writes what they answered. A pool that cannot start leaves it to the build
+      fork test, and(not(explain-asked), big)
+        hold
+          fork
+            mark unsafe
+            save pooled-at, now-ms()
+            # only for misses: the store is asked first, and under its floor no worker starts (unit-pool.tree). From a
+            # snapshot, only what a moved file reaches is asked
+            save files, build-files(session, <node>)
+            save probing, pool-probing()
+            fork test, snapped
+              hold
+                save probing, snapshot-probing(session, files)
+            save pool, compile-units-parallel(root, files, face-build-session(session), probing)
+            save precomputed, pool/results
+            save pooled, pool/built
+            fork test, is-above(pool/workers, 0)
+              hold
+                report-pool(pool, pooled-at)
+          halt take
+            take problem
+            save precomputed, as-dynamic(void)
+      # the request writes the snapshot after the build, as it read it before (build-graph.tree `request-project`)
+      save built, project-built-of(build-request(graph, project-ask(<node>, precomputed, explain)))
+      save result, built
+      save counted, true
+      save units-built, add(built/built, pooled)
+      save units-reused, built/reused
+      save rolls, built/rolls
+      # one item per unit built, its reasons under it
+      fork test, explain-asked
+        hold
+          report-reasons(explain, root)
+    miss
+      fork test, parallel
+        hold
+          fork
+            mark unsafe
+            save result, compile-project-parallel(root)
+          halt take
+            take problem
+            save result, compile-project(root)
+        miss
+          save result, compile-project(root)
+  save compiled, result/compiled
+  save failed, result/failed
+  # every error and the project's own warnings, as Problem items with their code frames (section 12)
+  report-problems(result/problems, root, result/faults)
+  save warnings, 0
+  save problem-count, 0
+  walk items-of(result/problems)
+    take problem
+    save problem-count, add(problem-count, 1)
+    fork test, is-equal(severity-of(problem), <warning>)
+      hold
+        save warnings, add(warnings, 1)
+  save error-count, add(subtract(problem-count, warnings), items-of(result/faults)/length)
+  # the default says nothing; the whole-program build says which it was
+  save facts, make list
+  fork test, not(counted)
+    hold
+      facts/push(<merged>)
+  save counts, make list
+  counts/push(count(compiled, <files>, <file>, file-count))
+  save written, result/written
+  fork test, is-unequal(written, void)
+    hold
+      counts/push(count(written, <written>))
+  fork test, counted
+    hold
+      counts/push(count(units-built, <units built>, <unit built>))
+      counts/push(count(units-reused, <reused>))
+  save glyph, <done>
+  fork test, is-above(failed, 0)
+    hold
+      save glyph, <failed>
+  report(make(build-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <typescript>), bind(duration, subtract(now-ms(), started)), bind(counts, counts), bind(facts, facts)))
+  fork test, is-above(failed, 0)
+    hold
+      # a failed build writes no roll, so the last good build's goes: host/ is what a clean failing build leaves
+      # (item term-self-host-001-0429)
+      drop-roll(root)
+      save close-counts, make list
+      close-counts/push(count(error-count, <errors>, <error>))
+      fork test, is-above(warnings, 0)
+        hold
+          close-counts/push(count(warnings, <warnings>, <warning>))
+      close-run(make(counted-close, bind(verdict, <Build failed>), bind(counts, close-counts)))
+    miss
+      fork test, is-equal(compiled, 0)
+        hold
+          save said, make list
+          drop-roll(root)
+          said/push(<There is no .tree file here.>)
+          close-run(make(said-close, bind(verdict, <Nothing to build>), bind(message, said)))
+        miss
+          finish-build(root, result, compiled, warnings, rolls, big)
+
+# a build that did not fail: its open claims, its tier-0 count and its roll, then the run's close
+task finish-build
+  take root, like text
+  take result, like dynamic
+  take compiled, like number
+  take warnings, like number
+  take rolls, like dynamic
+  take big, like boolean
+  like void
+  mark async
+  mark private
+
+  save open-claims, open-claims-of(result)
+  # AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under construction has
+  # to, but the count says so on every build rather than letting it pass in silence. `term hold` is the gate
+  fork test, is-unequal(open-claims, void)
+    hold
+      save claims, texts-of(open-claims)
+      save claim-count, claims/length
+      fork test, is-above(claim-count, 0)
+        hold
+          save noun, <claims are>
+          fork test, is-equal(claim-count, 1)
+            hold
+              save noun, <claim is>
+          save message, make list
+          message/push(join(claims, <, >))
+          save fields, make list
+          fields/push(field(<next>, <term hold>))
+          report(make(open-item, bind(glyph, <warning>), bind(verb, <prove>), bind(subject, <{claim-count} {noun} left open>), bind(message, message), bind(fields, fields)))
+  # TIER 0, counted on every build: what the project's tasks are proven free of with nothing written. The build never
+  # fails on it; `term hold` is the gate, against hold.json
+  save obligations, owed-of(result)
+  fork test, is-unequal(obligations, void)
+    hold
+      fork test, is-above(obligations/total, 0)
+        hold
+          save owed-counts, make list
+          owed-counts/push(count(obligations/proven, <proven>, <>, obligations/total))
+          save owed-facts, make list
+          owed-facts/push(<term hold gates the rest>)
+          # each kind named with its own count: a walk's termination was counted under the first two
+          save described, text-of(describe-owed(obligations))
+          report(make(owed-item, bind(glyph, <info>), bind(verb, <prove>), bind(subject, <tier 0: {described}>), bind(counts, owed-counts), bind(facts, owed-facts)))
+  write-roll(root, rolls, big)
+  save close-counts, make list
+  fork test, is-above(warnings, 0)
+    hold
+      close-counts/push(count(warnings, <warnings>, <warning>))
+  save plural, <s>
+  fork test, is-equal(compiled, 1)
+    hold
+      save plural, <>
+  close-run(make(counted-close, bind(verdict, <{compiled} file{plural} built>), bind(counts, close-counts)))
+
+task severity-of
+  take problem, like dynamic
+  like dynamic
+  mark private
+
+  back problem/diagnostic/severity
+
+# the pool's part of the build, apart: its units, its workers, its time, and what it could not answer
+task report-pool
+  take pool, like units-answer
+  take pooled-at, like number
+  mark private
+
+  save failures, pool/failures
+  save glyph, <done>
+  fork test, is-above(failures/length, 0)
+    hold
+      save glyph, <warning>
+  save counts, make list
+  counts/push(count(pool/jobs, <units>, <unit>))
+  counts/push(count(pool/workers, <workers>, <worker>))
+  # where the time went: the walk before the pool, and the workers' building and rolling, summed
+  save facts, make list
+  facts/push(<walk {seconds(pool/spent/walking)}s>)
+  facts/push(<build {seconds(pool/spent/building)}s of workers>)
+  facts/push(<roll {seconds(pool/spent/rolling)}s of workers>)
+  save duration, subtract(now-ms(), pooled-at)
+  fork test, is-above(failures/length, 0)
+    hold
+      save first, make list
+      save at, 0
+      walk failures
+        take failure
+        fork test, is-below(at, 5)
+          hold
+            first/push(failure)
+        save at, add(at, 1)
+      report(make(failing-pool-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <units in parallel>), bind(duration, duration), bind(counts, counts), bind(facts, facts), bind(message, first)))
+    miss
+      report(make(pool-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <units in parallel>), bind(duration, duration), bind(counts, counts), bind(facts, facts)))
+
+# the pool's options for the separate build: ask the store before starting a worker (decision 077 section 7)
+bind pool-probing
+  like dynamic
+  case node
+    text <(\{ probe: true \})>
+
+# the pool's options from a snapshot: the entries it may leave to the build's replay, and the modules it knows clean
+bind snapshot-probe-options
+  take replay, like dynamic
+  take dirty, like dynamic
+  take known, like dynamic
+  like dynamic
+  case node
+    text <(\{ probe: true, replay: $replay, dirty: $dirty, known: $known \})>
+
+# The pool's options when the session took a snapshot (decision 079 section 3, item 0428). An entry the build will
+# replay (its outcome kept, nothing it reaches moved) is neither walked nor probed, and a library job is probed only when
+# its module reaches a file that moved or the snapshot never saw it. Every other job's answer was stored by the build
+# that wrote the snapshot, and one the store has lost since is built by the build after the pool, so the narrowing can
+# cost a miss's time and never an answer. Which files moved is the session's own turn, which the build then turns again
+# and finds the same (a file that moves in between is one more stale entry, built in this process)
+task snapshot-probing
+  take session, like build-session
+  take files, like list, like text
+  like dynamic
+  mark private
+
+  sift turn-session(session, files)
+    case some
+      link moved
+      save graph, make hash
+      save modules, make list
+      walk session/edges/keys()
+        take kept-file
+        save graph/{kept-file}, session/edges/get(kept-file)
+        modules/push(kept-file)
+      walk moved
+        take moved-file
+        modules/push(moved-file)
+      save dirty, make hash
+      walk texts-of(stale-entries(graph, modules, moved))
+        take reaching
+        save dirty/{reaching}, true
+      save replay, make hash
+      walk files
+        take file
+        fork test, and(session/entries/has(file), not(dirty/has(file)))
+          hold
+            save replay/{file}, true
+      back snapshot-probe-options(replay, dirty, session/edges)
+    case none
+      back pool-probing()
+
+# whole seconds of a span in milliseconds, `Math.round(ms / 1000)`: the nearest, a half rounded up (a Term `divide` of
+# two integers truncates first)
+bind seconds
+  take ms, like dynamic
+  like number
+  case node
+    text <Math.round($ms / 1000)>
+
+# one item per unit built, its reasons under it, each file of its label relative to the project
+task report-reasons
+  take explain, like explain-store
+  take root, like text
+  mark private
+
+  walk explain/reasons/keys()
+    take label
+    save shown, make list
+    walk split(label, <+>)
+      take file
+      fork test, is-within(file, root)
+        hold
+          shown/push(node-path/relative(root, file))
+        miss
+          shown/push(file)
+    report(make(said-item, bind(glyph, <info>), bind(verb, <built>), bind(subject, join(shown, < + >)), bind(message, explain/reasons/get(label))))
+
+# The roll of the build, beside the output, for tools that are not Term: every unit's own entries, which the separate
+# build handed over. A merged build made none, so a big project's units are built across the pool for it: built one
+# entry at a time on this thread, @term/bind's roll took 10 min 37 s of a 12 min 33 s merged build (2026-10-05)
+task write-roll
+  take root, like text
+  take rolls-given, like dynamic
+  take big, like boolean
+  mark async
+  mark private
+
+  fork
+    mark unsafe
+    save rolled-at, now-ms()
+    save rolls, rolls-given
+    fork test, and(is-equal(rolls, void), big)
+      hold
+        fork
+          mark unsafe
+          save roll-graph, make-build-graph(root)
+          save session, face-build-session(roll-graph/session)
+          save pool, compile-units-parallel(root, find-tree-files(root, <node>, root), session)
+          save rolls, pool-rolls(pool/results)
+        halt take
+          take problem
+          save rolls, as-dynamic(void)
+    save rolled, project-roll(root, rolls)
+    save roll, rolled/roll
+    save roll-path, node-path/join(root, <host>, <roll.json>)
+    save text, <{host-global/JSON/stringify(roll, void, 2)}\n>
+    fork test, is-unequal(held-text(roll-path), text)
+      hold
+        node-file/mkdir-sync(node-path/dirname(roll-path), make(folder-options, bind(recursive, true)))
+        node-file/write-file-sync(roll-path, text)
+    save counts, make list
+    counts/push(count(roll/exception/length, <exceptions>, <exception>))
+    counts/push(count(roll/task/length, <tasks>, <task>))
+    counts/push(count(roll/dock/length, <routes>, <route>))
+    counts/push(count(roll/tell/length, <tells>, <tell>))
+    report(make(written-item, bind(glyph, <info>), bind(verb, <write>), bind(subject, <host/roll.json>), bind(duration, subtract(now-ms(), rolled-at)), bind(counts, counts)))
+  halt take
+    take problem
+    save message, make list
+    message/push(message-of(problem))
+    report(make(said-item, bind(glyph, <warning>), bind(verb, <write>), bind(subject, <host/roll.json was not written>), bind(message, message)))
+
+# host/roll.json removed, when there is one: a clean build that fails or finds no file writes none
+task drop-roll
+  take root, like text
+  mark private
+
+  save roll-path, node-path/join(root, <host>, <roll.json>)
+  fork test, node-file/exists-sync(roll-path)
+    hold
+      node-file/unlink-sync(roll-path)
+
+# a file's text, or undefined when it cannot be read
+task held-text
+  take file, like text
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    back text
+  halt take
+    take problem
+    back void

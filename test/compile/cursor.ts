@@ -154,11 +154,13 @@ ok(
   local.join(),
 )
 
-// 6. an ASCII text: none, every read is a direct index already
+// 6. an ASCII text: none, every read is a direct index already. `scan` is private, so `use` is every caller
+// (a public task's parameter is never ASCII, term-self-host-001-0059)
 const ascii = (() => {
   const text = `${head}task scan
   take s, like text
   like number
+  mark private
 ${loop(sum)}
 
 task use

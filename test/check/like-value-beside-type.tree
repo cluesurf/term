@@ -1,0 +1,99 @@
+# `save x, like text, <value>` on one line: the comma after `like text` pops back to the `like`, so the value is the
+# like's own part, a bare type argument no type reads. It compiled clean and bound `x` to undefined (item 1203, trap
+# T-0653). The reader now refuses a `like` that holds anything but types, naming the part and the two ways to write
+# the value: on its own line under the `save`, or `save x, <value>`. Only a part on the like's own line is refused:
+# parts on the lines under a `like` (a union's `text` lines, a callback's `note async`) are read by others.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(lean, true), bind(stdlib, <node>)))
+
+task said
+  take text, like text
+  like text
+
+  back join(built(text)/messages, < | >)
+
+task hints
+  take text, like text
+  like text
+
+  save lines, make list
+  walk built(text)/notes
+    take one
+    lines/push(one/hint)
+  back join(lines, < | >)
+
+# how many messages say it, so one `like` is refused once however often its type is read
+task times-said
+  take text, like text
+  like number
+
+  save count, 0
+  walk built(text)/messages
+    take one
+    fork test, text-contains(one, <is read as part of the type, not as a value>)
+      hold
+        save count, add(count, 1)
+  back count
+
+host head, <form v\n  slot name, like text\n\ntask f\n  take y, like text\n  like text\n\n  back y\n\n>
+
+test <a read beside like text: refused once, naming the read>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, like text, read y\n  back x\n>
+  want hold, text-contains(said(text), <`read` after a `like`'s type is read as part of the type, not as a value>)
+  want hold, is-equal(times-said(text), 1)
+  want hold, text-contains(hints(text), <a value goes on its own line under the `save`, or as `save x, \<value\>`>)
+
+test <a bare local beside like text: refused>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, like text, y\n  back x\n>
+  want hold, text-contains(said(text), <`y` after a `like`'s type is read as part of the type>)
+
+test <a path beside like text: refused>
+  host text, <{head}task probe\n  take w, like v\n  like text\n\n  save x, like text, w/name\n  back x\n>
+  want hold, text-contains(said(text), <`w/name` after a `like`'s type is read as part of the type>)
+
+test <a lean call beside like dynamic: refused>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, like dynamic, f(y)\n  back x\n>
+  want hold, text-contains(said(text), <is read as part of the type, not as a value>)
+
+test <a longhand call beside like dynamic: refused>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, like dynamic, call f, read y\n  back x\n>
+  want hold, text-contains(said(text), <is read as part of the type, not as a value>)
+
+test <the value on its own line under save x, like text: builds>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, like text\n    f(y)\n  back x\n>
+  want hold, is-equal(said(text), <>)
+
+test <save x, value with the type inferred: builds>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save x, f(y)\n  back x\n>
+  want hold, is-equal(said(text), <>)
+
+test <nested type arguments on one line: like list, like text and like hash, like text, like number build>
+  host text, <{head}task probe\n  take y, like text\n  like text\n\n  save xs, like list, like text\n  save xs, make(list)\n  save h, like hash, like text, like number\n  save h, make(hash)\n  back y\n>
+  want hold, is-equal(said(text), <>)
+
+test <parts on the lines under a like, as a union of texts: builds, only a part on the like's own line is refused>
+  host text, <form pick\n  like or\n    text \<a\>\n    text \<b\>\n\ntask probe\n  like text\n\n  back \<a\>\n>
+  want hold, not(text-contains(said(text), <is read as part of the type, not as a value>))
+
+test <a mark beside a link's type, as deck/site's view handles write it: not refused by this rule>
+  host text, <form w\n  link handle, like dynamic, mark private\n\ntask probe\n  like text\n\n  back \<a\>\n>
+  want hold, not(text-contains(said(text), <is read as part of the type, not as a value>))
+
+test <a parameter's type with a word beside it: refused the same way>
+  host text, <{head}task probe\n  take y, like text, read y\n  like text\n\n  back y\n>
+  want hold, text-contains(said(text), <is read as part of the type, not as a value>)

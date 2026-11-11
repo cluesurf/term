@@ -1,3 +1,406 @@
-mark draft
+# THE PROOF VIEW'S ANSWER: `proof/state` for one document (decision 139 of term/self-host/change/001-finish-self-host).
+# Every top-level `rule` of the document, in source order, with where it stands, read from the diagnostics the
+# document's own analysis already placed (the hold pass ran on the same text, so nothing is proven twice), how many are
+# proved of how many, the rule that holds the cursor, and the whole panel as html, so the client only shows it.
+#
+# The status rule (decision 139 rule 2), over the error-severity diagnostics whose range starts inside the rule:
+#   - code 8 whose message starts with the compiler's sentence `this rule is FALSE: at ` is refuted, that message
+#   - else code 8 or 15 is open, the first such message in source order
+#   - else, when the file has an error of any other code, open, `not checked: the file has other errors`, since a
+#     compile that stopped early ran no holds
+#   - else proved
 
-note <Shelved: term-self-host-001-1182 did not land yet, its draft is tmp/self-host/1182/draft/deck/flow/code/proof-state.tree>
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+  find starts-with
+  find trim-start
+  find replace-all
+
+load @term/make/parser/diagnostic
+  find span
+
+load @term/make/compile/node
+  find statement
+
+load @term/call/context-slice
+  find written-name
+
+load ./geometry
+  find lsp-position
+  find lsp-range
+  find mapping
+  find outer-range
+
+load ./analysis
+  find to-range
+
+load ./language-server
+  find language-server
+
+load ./document-analysis
+  find settled
+
+load ./server-reply
+  find respond
+  find uri-of
+  find position-of
+  find position-in
+  find is-position
+
+# one goal on the wire: `detail` is left out of a proved rule
+form proof-goal
+  link name, like text
+  link status, like text
+  link detail
+    like text
+    need false
+  link range, like lsp-range
+
+form proof-answer
+  link uri, like text
+  link goals, like list, like proof-goal
+  link focus
+    like text
+    need false
+  link solved, like number
+  link total, like number
+  link done, like boolean
+  link html, like text
+
+# a rule as the program holds it: its written name and its whole definition in the author's coordinates
+form rule-head
+  link title, like text
+  link place, like lsp-range
+
+# a goal as this module reads it, the detail the empty text when there is none
+form checked-goal
+  link title, like text
+  link status, like text
+  link detail, like text
+  link place, like lsp-range
+
+form goal-verdict
+  link status, like text
+  link detail, like text
+
+# ---- the diagnostics, as they go on the wire ----
+
+bind is-error-diagnostic
+  take one, like dynamic
+  like boolean
+  case node
+    text <($one.severity === 1)>
+
+bind is-code
+  take one, like dynamic
+  take code, like number
+  like boolean
+  case node
+    text <($one.code === $code)>
+
+bind diagnostic-message
+  take one, like dynamic
+  like text
+  case node
+    text <String($one.message)>
+
+bind diagnostic-line
+  take one, like dynamic
+  like number
+  case node
+    text <$one.range.start.line>
+
+bind diagnostic-character
+  take one, like dynamic
+  like number
+  case node
+    text <$one.range.start.character>
+
+# whether a position is inside a range, both ends held
+task holds-position
+  take place, like lsp-range
+  take line, like number
+  take character, like number
+  like boolean
+  mark private
+
+  save after, or(is-above(line, place/start/line), and(is-equal(line, place/start/line), is-minimum(character, place/start/character)))
+  fork test, after
+    miss
+      back false
+  back or(is-below(line, place/end/line), and(is-equal(line, place/end/line), is-maximum(character, place/end/character)))
+
+# an error the hold pass did not raise: the compile may have stopped before any hold ran
+task has-other-errors
+  take diagnostics, like list, like dynamic
+  like boolean
+  mark private
+
+  walk diagnostics
+    take one
+    fork test, is-error-diagnostic(one)
+      miss
+        turn next
+    fork test, or(is-code(one, 8), is-code(one, 15))
+      miss
+        back true
+  back false
+
+# decision 139 rule 2, for one rule
+task verdict-of
+  take place, like lsp-range
+  take diagnostics, like list, like dynamic
+  take others, like boolean
+  like goal-verdict
+  mark private
+
+  save refuted, <>
+  save opened, <>
+  save is-refuted, false
+  save is-opened, false
+  walk diagnostics
+    take one
+    fork test, is-error-diagnostic(one)
+      miss
+        turn next
+    fork test, holds-position(place, diagnostic-line(one), diagnostic-character(one))
+      miss
+        turn next
+    save said, diagnostic-message(one)
+    fork test, and(is-code(one, 8), starts-with(said, <this rule is FALSE: at >))
+      hold
+        fork test, is-equal(is-refuted, false)
+          hold
+            save is-refuted, true
+            save refuted, said
+        turn next
+    fork test, or(is-code(one, 8), is-code(one, 15))
+      hold
+        fork test, is-equal(is-opened, false)
+          hold
+            save is-opened, true
+            save opened, said
+  fork test, is-refuted
+    hold
+      back make(goal-verdict, bind(status, <refuted>), bind(detail, refuted))
+  fork test, is-opened
+    hold
+      back make(goal-verdict, bind(status, <open>), bind(detail, opened))
+  fork test, others
+    hold
+      back make(goal-verdict, bind(status, <open>), bind(detail, <not checked: the file has other errors>))
+  back make(goal-verdict, bind(status, <proved>), bind(detail, <>))
+
+# ---- the rules ----
+
+# whether a statement's head word is `rule`: a rule and a task are both a function to the program
+task is-rule-head
+  take text-rows, like list, like text
+  take line, like number
+  take column, like number
+  like boolean
+  mark private
+
+  fork test, or(is-below(line, 0), is-minimum(line, text-rows/length))
+    hold
+      back false
+  save row, get(text-rows, line)
+  save head, trim-start(substring(row, column))
+  back or(is-equal(head, <rule>), starts-with(head, <rule >))
+
+# a top-level statement as a rule, none for anything else
+task rule-of
+  take one, like statement
+  take text-rows, like list, like text
+  take placing, like mapping
+  like maybe, like rule-head
+  mark private
+
+  sift one
+    case function
+      fork test, is-rule-head(text-rows, span/start/line, span/start/column)
+        miss
+          back make none
+      save place, outer-range(placing, to-range(span))
+      save head, make(rule-head, bind(title, written-name(name)), bind(place, place))
+      back make(some, head)
+    miss
+      back make none
+
+task checked-goals
+  take program, like list, like statement
+  take inner, like text
+  take placing, like mapping
+  take diagnostics, like list, like dynamic
+  like list, like checked-goal
+  mark private
+
+  save text-rows, split(inner, <\n>)
+  save others, has-other-errors(diagnostics)
+  save out, make list
+  walk program
+    take one
+    sift rule-of(one, text-rows, placing)
+      case some
+        link found
+        save verdict, verdict-of(found/place, diagnostics, others)
+        push(out, make(checked-goal, bind(title, found/title), bind(status, verdict/status), bind(detail, verdict/detail), bind(place, found/place)))
+      case none
+        save skipped, true
+  back out
+
+# ---- the panel ----
+
+task escape-html
+  take value, like text
+  like text
+  mark private
+
+  save out, replace-all(value, <&>, <&amp;>)
+  save out, replace-all(out, <\<>, <&lt;>)
+  save out, replace-all(out, <\>>, <&gt;>)
+  back replace-all(out, <">, <&quot;>)
+
+task mark-of
+  take status, like text
+  like text
+  mark private
+
+  fork test, is-equal(status, <proved>)
+    hold
+      back <&#10003;>
+  fork test, is-equal(status, <refuted>)
+    hold
+      back <&#10007;>
+  back <&#9675;>
+
+# decision 139 rule 4: the original InfoView's look, its hammer button and script left out
+task render-html
+  take uri, like text
+  take goals, like list, like checked-goal
+  take focus, like text
+  take solved, like number
+  take total, like number
+  take done, like boolean
+  like text
+  mark private
+
+  save rows, <>
+  save first, true
+  walk goals
+    take goal
+    save classes, goal/status
+    fork test, and(is-unequal(focus, <>), is-equal(goal/title, focus))
+      hold
+        save classes, <{goal/status} focus>
+    save row, <\<li class="{classes}"\>\<span class="mark"\>{mark-of(goal/status)}\</span\> \<b\>{escape-html(goal/title)}\</b\> \<span class="detail"\>{escape-html(goal/detail)}\</span\>\</li\>>
+    fork test, first
+      hold
+        save rows, row
+        save first, false
+      miss
+        save rows, <{rows}\n{row}>
+  save ending, <>
+  fork test, done
+    hold
+      save ending, <, done>
+  save html, <\<!doctype html\>\n\<html\>\n\<head\>\<style\>\n>
+  save html, <{html}  body \{ font-family: var(--vscode-editor-font-family); padding: 8px; \}\n>
+  save html, <{html}  h3 \{ font-weight: 600; \}\n>
+  save html, <{html}  ul \{ list-style: none; padding: 0; \}\n>
+  save html, <{html}  li \{ padding: 4px 0; \}\n>
+  save html, <{html}  .proved .mark \{ color: var(--vscode-testing-iconPassed, green); \}\n>
+  save html, <{html}  .refuted .mark \{ color: var(--vscode-testing-iconFailed, red); \}\n>
+  save html, <{html}  .open .mark \{ color: var(--vscode-descriptionForeground, gray); \}\n>
+  save html, <{html}  .detail \{ color: var(--vscode-descriptionForeground); \}\n>
+  save html, <{html}\</style\>\</head\>\n\<body\>\n>
+  save html, <{html}  \<h3\>{escape-html(uri)} ({solved}/{total}{ending})\</h3\>\n>
+  save html, <{html}  \<ul\>{rows}\</ul\>\n>
+  back <{html}\</body\>\n\</html\>>
+
+# ---- the request ----
+
+# the cursor, when the request carries one
+task cursor-of
+  take params, like dynamic
+  like maybe, like lsp-position
+  mark private
+
+  fork test, is-position(position-in(params))
+    hold
+      save at, position-of(params)
+      back make(some, at)
+  back make none
+
+task proof-answer-of
+  take uri, like text
+  take goals, like list, like checked-goal
+  take cursor, like maybe, like lsp-position
+  like proof-answer
+  mark private
+
+  save focus, <>
+  sift cursor
+    case some
+      link at
+      walk goals
+        take goal
+        fork test, holds-position(goal/place, at/line, at/character)
+          hold
+            save focus, goal/title
+            halt
+    case none
+      save skipped, true
+  save shown, make list
+  save solved, 0
+  walk goals
+    take goal
+    save one, make(proof-goal, bind(name, goal/title), bind(status, goal/status), bind(range, goal/place))
+    fork test, is-unequal(goal/detail, <>)
+      hold
+        save one/detail, goal/detail
+    fork test, is-equal(goal/status, <proved>)
+      hold
+        save solved, add(solved, 1)
+    push(shown, one)
+  save total, goals/length
+  save done, and(is-above(total, 0), is-equal(solved, total))
+  save html, render-html(uri, goals, focus, solved, total, done)
+  save answer, make(proof-answer, bind(uri, uri), bind(goals, shown), bind(solved, solved), bind(total, total), bind(done, done), bind(html, html))
+  fork test, is-unequal(focus, <>)
+    hold
+      save answer/focus, focus
+  back answer
+
+# `proof/state`: answered after the document is settled, so it reflects the latest edit the server has seen. An
+# unknown uri, or a document with no view yet, is the empty answer, never an error
+task proof-state-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save uri, uri-of(params)
+  save cursor, cursor-of(params)
+  save goals, make list
+  sift settled(server, params, outbox)
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          save goals, checked-goals(view/program, view/inner, view/map, view/diagnostics)
+        case none
+          save skipped, true
+    case none
+      save skipped, true
+  back respond(message, proof-answer-of(uri, goals, cursor))

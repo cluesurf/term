@@ -1765,6 +1765,15 @@ task walk-statement
             save param/type, make(some, written)
           case none
             save nothing, 0
+        # a `fall make <form>` default is a construction like any other, so its omitted fields take their own `fall`.
+        # Unwalked, every backend filled them with the type's empty value: `fall true` came out false (item 1202)
+        sift param/fallback
+          case some
+            link param-fallback
+            save filled, walk-expression(state, top, param-fallback)
+            save param/fallback, make(some, filled)
+          case none
+            save nothing, 0
         push(params-out, param)
       save node/params, params-out
       sift result

@@ -1,0 +1,404 @@
+# `term make --watch`: the project's .tree files watched, and the project built again on each change. Ported from
+# call/code/make.ts (`watchTreeFiles`, `watchProject`, `watchScript`, `stopOnInterrupt`), part 4 of that file.
+#
+# A burst of saves is debounced into one rebuild, and while a rebuild runs a further change is coalesced into the next
+# run, so builds never overlap. A watch is a stream (section 11): one `build` item per build, its problems before it,
+# the file that changed as its subject, and the run never closes until ctrl-c, which ends it with exit 130 (section 18).
+# A project whose package.json carries a `make` script is built by that script instead, on every change.
+#
+# The output library (call/code/output.ts) holds the run, and is docked so this shares the run the console opened.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find ends-with
+
+# the build graph and its one entry (decision 077 section 3, decision 094): every rebuild goes through `build-request`
+load ./build-graph
+  find build-graph
+  find make-build-graph
+  find build-request
+  find project-ask
+  find project-built-of
+
+load ./project-build
+  find compile-project
+  find held-text
+
+load ../roll/roll-making
+  find project-roll
+
+load ./child-run
+  find run-captured
+  find script-ask
+
+load ../cache/compile-store
+  find project-cache
+
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find open-run
+  find output-options
+  find report
+  find report-problems
+
+load @term/call/work/item/event
+  find tally
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  # an inherited method (once) is reached only through the global (traps.md)
+  load <global:process>, name host-process
+  load <global:global>, name host-global
+
+# a watch's debounce and its one build at a time
+form watch-state
+  mark shared
+  # the debounce timer, while a change waits out its 30 ms
+  link timer, like dynamic
+  # a change is being handled
+  link running, like boolean
+  # a change came while one was handled, and is handled next
+  link pending, like boolean
+
+form watch-options
+  link recursive, like boolean
+
+# what `watch-tree-files` hands back: `close()` stops the watch
+form watch-stop
+  link close, like dynamic
+
+form run-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form run-interrupted
+  link verdict, like text
+  link failure, like text
+  link uptime, like boolean
+
+form build-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like tally
+
+form run-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link exit, like number
+  link facts, like list, like text
+  link quote, like list, like text
+
+# the epoch milliseconds now, `Date.now()`
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# a host value that is a text, or the empty text: `typeof value === 'string' ? value : ''`
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" ? $value : "")>
+
+# `text.includes(part)`, by UTF-16 unit
+bind text-includes
+  take text, like text
+  take part, like text
+  like boolean
+  case node
+    text <$text.includes($part)>
+
+# a change handed to the watcher's caller, and awaited when it answers a promise
+bind hand-change
+  take handler, like dynamic
+  take name, like text
+  like void
+  case node
+    text <(await $handler($name))>
+
+bind raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+# Watch every `.tree` file under `root`, recursively, and call `on-change` with the changed file's name, debounced, so
+# a burst of saves triggers one call. While a call that answered a promise is in flight a further change is coalesced
+# into the next (no overlapping builds). `ignore` names path segments to skip (generated and dependency folders),
+# `host/` when left out. Answers a handle whose `close()` stops the watch
+task watch-tree-files
+  take root, like text
+  take on-change, like dynamic
+  take ignore-given, like dynamic, fall void
+  like watch-stop
+
+  save ignore, ignore-or-host(ignore-given)
+  save state, make(watch-state, bind(timer, void), bind(running, false), bind(pending, false))
+  save watcher
+    node-file/watch
+      root
+      make(watch-options, bind(recursive, true))
+      task
+        take event, like dynamic
+        take filename, like dynamic
+        like void
+        save name, text-or-empty(filename)
+        fork test, is-watched(name, ignore)
+          hold
+            fork test, is-unequal(state/timer, void)
+              hold
+                host-global/clearTimeout(state/timer)
+            save state/timer
+              host-global/setTimeout
+                task
+                  like void
+                  tick fire(state, on-change, name)
+                30
+  save close
+    task
+      like void
+      watcher/close()
+  back make(watch-stop, bind(close, close))
+
+task ignore-or-host
+  take given, like dynamic
+  like list, like text
+  mark private
+
+  fork test, is-equal(given, void)
+    hold
+      save folders, make list
+      folders/push(<host/>)
+      back folders
+  back given
+
+# a `.tree` file outside every ignored folder
+task is-watched
+  take name, like text
+  take ignore, like list, like text
+  like boolean
+  mark private
+
+  fork test, not(ends-with(name, <.tree>))
+    hold
+      back false
+  walk ignore
+    take folder
+    fork test, text-includes(name, folder)
+      hold
+        back false
+  back true
+
+# Hand one change on, unless one is in flight: then it is handled once that one ends
+task fire
+  take state, like watch-state
+  take on-change, like dynamic
+  take name, like text
+  mark async
+  mark private
+
+  fork test, state/running
+    hold
+      save state/pending, true
+    miss
+      save state/running, true
+      fork
+        mark unsafe
+        hand-change(on-change, name)
+      halt take
+        take problem
+        settle(state, on-change, name)
+        raise-again(problem)
+      settle(state, on-change, name)
+
+# a change handled: the next, if one came meanwhile, starts
+task settle
+  take state, like watch-state
+  take on-change, like dynamic
+  take name, like text
+  mark private
+
+  save state/running, false
+  fork test, state/pending
+    hold
+      save state/pending, false
+      tick fire(state, on-change, name)
+
+# a watch ends on ctrl-c, with its closing item and exit 130 (section 18)
+task stop-on-interrupt
+  mark private
+
+  host-process/once
+    <SIGINT>
+    task
+      like void
+      host-process/exit(close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+
+# Watch the project's .tree files and build it again on each change, until the process is killed. One build graph is
+# kept for the life of the watch: an edit rebuilds the entries it reaches, re-walks the modules it changed, and misses
+# the units whose text or imported surfaces it changed; everything else is answered from memory. Its first build starts
+# from the last snapshot when it validates, as term make's does, and each build writes one (decision 094)
+task watch-project
+  take root, like text
+  take merged, like boolean, fall false
+
+  save cache, project-cache(root)
+  save graph, make-build-graph(root)
+  save facts, make list
+  facts/push(<watching>)
+  fork test, merged
+    hold
+      facts/push(<merged>)
+  open-run(make(run-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+  stop-on-interrupt()
+  build-changed(root, cache, graph, merged, <typescript>)
+  watch-tree-files
+    root
+    task
+      take name, like text
+      like void
+      build-changed(root, cache, graph, merged, name)
+
+# one build of a watch, its problems before its `build` item
+task build-changed
+  take root, like text
+  take cache, like dynamic
+  take graph, like build-graph
+  take merged, like boolean
+  take changed, like text
+  mark private
+
+  save started, now-ms()
+  save compiled, 0
+  save failed, 0
+  save written, 0
+  save problems, make list
+  save faults, make list
+  fork test, merged
+    hold
+      save result, compile-project(root, cache)
+      save compiled, result/compiled
+      save failed, result/failed
+      save written, result/written
+      save problems, result/problems
+      save faults, result/faults
+    miss
+      save result, project-built-of(build-request(graph, project-ask(<node>), cache))
+      save compiled, result/compiled
+      save failed, result/failed
+      save written, result/written
+      save problems, result/problems
+      save faults, result/faults
+      # the roll beside the output, as term make writes it after a build that did not fail (build-command.tree
+      # `write-roll`), so a watched project's host/ is what a clean build leaves (item term-self-host-001-0425)
+      fork test, and(is-equal(failed, 0), is-above(compiled, 0))
+        hold
+          write-watch-roll(root, result/rolls)
+        miss
+          # a failed build writes no roll, so the last good build's goes (item term-self-host-001-0429)
+          drop-watch-roll(root)
+  report-problems(problems, root, faults)
+  save glyph, <done>
+  fork test, is-above(failed, 0)
+    hold
+      save glyph, <failed>
+  save counts, make list
+  counts/push(count(compiled, <files>, <file>, add(compiled, failed)))
+  counts/push(count(written, <written>))
+  report(make(build-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, changed), bind(duration, subtract(now-ms(), started)), bind(counts, counts)))
+
+# host/roll.json from the separate build's rolls, written only when its text changed, as build-command.tree
+# `write-roll` writes it; a roll that cannot be made is said as that task says it and leaves the file as it was
+task write-watch-roll
+  take root, like text
+  take rolls, like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save rolled, project-roll(root, rolls)
+    save roll-path, node-path/join(root, <host>, <roll.json>)
+    save text, <{host-global/JSON/stringify(rolled/roll, void, 2)}\n>
+    fork test, is-unequal(held-text(roll-path), text)
+      hold
+        node-file/mkdir-sync(node-path/dirname(roll-path), make(watch-options, bind(recursive, true)))
+        node-file/write-file-sync(roll-path, text)
+  halt take
+    take problem
+    save message, make list
+    message/push(text-of-problem(problem))
+    report(make(roll-said-item, bind(glyph, <warning>), bind(verb, <write>), bind(subject, <host/roll.json was not written>), bind(message, message)))
+
+# host/roll.json removed, when there is one: a clean build that fails or finds no file writes none
+task drop-watch-roll
+  take root, like text
+  mark private
+
+  save roll-path, node-path/join(root, <host>, <roll.json>)
+  fork test, node-file/exists-sync(roll-path)
+    hold
+      node-file/unlink-sync(roll-path)
+
+form roll-said-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+bind text-of-problem
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# Watch and run the project's own build script (`pnpm run make`) on each change: a project with a custom build is built
+# by it, not by the built-in .tree to host compile
+task watch-script
+  take root, like text
+
+  save facts, make list
+  facts/push(<package.json make>)
+  facts/push(<watching>)
+  open-run(make(run-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+  stop-on-interrupt()
+  tick run-script(root, <pnpm run make>)
+  watch-tree-files
+    root
+    task
+      take name, like text
+      like void
+      run-script(root, name)
+
+# one run of the script, its output quoted under its `run` item: in full when it failed or under --verbose
+task run-script
+  take root, like text
+  take changed, like text
+  mark async
+  mark private
+
+  save started, now-ms()
+  save args, make list
+  args/push(<run>)
+  args/push(<make>)
+  save done, run-captured(make(script-ask, bind(cmd, <pnpm>), bind(args, args), bind(cwd, root), bind(raw, output-options()/raw)))
+  save glyph, <failed>
+  fork test, is-equal(done/code, 0)
+    hold
+      save glyph, <done>
+  save quote, done/lines
+  fork test, and(is-equal(done/code, 0), not(output-options()/verbose))
+    hold
+      save quote, make list
+  save facts, make list
+  facts/push(<pnpm run make>)
+  report(make(run-item, bind(glyph, glyph), bind(verb, <run>), bind(subject, changed), bind(duration, subtract(now-ms(), started)), bind(exit, done/code), bind(facts, facts), bind(quote, quote)))

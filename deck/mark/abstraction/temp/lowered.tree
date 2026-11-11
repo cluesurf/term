@@ -1,0 +1,25 @@
+# the same walk as term.tree, carried in two locals: no record
+task run
+  take size, like number
+  like text
+  save x, code 0
+  save y, code 1
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      save next
+        call modulo
+          call add
+            read x
+            read y
+          code 1000
+      save x, read y
+      save y, read next
+      save total
+        call add
+          read total
+          read x
+  send back, text <{{total}}>

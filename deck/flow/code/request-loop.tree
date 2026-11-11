@@ -64,6 +64,9 @@ load ./call-hierarchy
   find incoming-calls-request
   find outgoing-calls-request
 
+load ./proof-state
+  find proof-state-request
+
 load ./completion
   find completion-request
 
@@ -442,6 +445,10 @@ task handle
   fork test, is-method(message, <callHierarchy/outgoingCalls>)
     hold
       back just(outgoing-calls-request(server, message, message-params(message)))
+  # the proof view's request, sent only by the Term extension (decision 139)
+  fork test, is-method(message, <proof/state>)
+    hold
+      back just(proof-state-request(server, message, message-params(message), outbox))
   # part 5: completion and code actions
   fork test, is-method(message, <textDocument/completion>)
     hold

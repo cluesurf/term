@@ -35,4 +35,11 @@ tmp/
 
 /link
 !/link/lock.tree
+
+# source a common global ignore rule (`build/`, `env/`, `temp/`, `*.sql`) would leave out of every commit and release
+!deck/call/code/work/build/
+!deck/call/test/build/
+!deck/bind/code/rust/std/env/
+!deck/mark/abstraction/temp/
+!task/term/view-catalog-derive.sql
 .claude/CLAUDE.md

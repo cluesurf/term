@@ -1,0 +1,106 @@
+# The deck a source file belongs to: the nearest `deck.tree` up from it that is a MANIFEST, and the `deck <name>` line
+# inside it. This names the `host` of every raise and every roll entry, so the build, the roll and the tests must all
+# use it, or the same exception is `@local/x` in one place and `@term/site/x` in another.
+#
+# Cached per directory, because a build asks for every statement of every file. The cache is the finder's own state,
+# handed to every lookup, where the TypeScript this ports (call/code/deck-of.ts) kept it in a closure.
+#
+# The stdlib also has a code module named deck.tree (`form deck`, the manifest's own shape), which is passed over
+# because it has no top-level `deck <name>` statement.
+
+load @term/base/maybe
+  find maybe
+
+# the name a manifest declares: the small lane's port, where manifest-name.ts was docked (term-cli-in-term-0069)
+load ../small/manifest-file
+  find manifest-name-of
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# where a deck is: its declared name and the directory its manifest sits in
+form deck-place
+  link name, like text
+  link root, like text
+
+# one project's answers, kept for every lookup made through it
+form deck-finder
+  mark shared
+  # the directories already asked about, and whether a deck was found above each
+  link asked, like hash, like text, like boolean
+  # the deck found above a directory, for the directories that have one
+  link places, like hash, like text, like deck-place
+
+task make-deck-finder
+  like deck-finder
+
+  back make(deck-finder, bind(asked, make hash), bind(places, make hash))
+
+# the declared name of the manifest at this path, or nothing when it is not a manifest
+task manifest-name-at
+  take file, like text
+  like maybe, like text
+  mark private
+
+  back manifest-name-of(file)
+
+# a host answer that is a text or undefined, as a maybe. Narrowed through `like unknown`, the gradual seam (D1): a
+# `sift` on the `dynamic` the dock answers compares it with the word instead
+task text-or-nothing
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      back make(some, value)
+    miss
+      back make none
+
+# the deck the file belongs to, or nothing when no directory above it holds a manifest
+task find-deck
+  take finder, like deck-finder
+  take file, like text
+  like maybe, like deck-place
+
+  save dir, node-path/dirname(file)
+  fork test, finder/asked/has(dir)
+    hold
+      fork test, finder/asked/get(dir)
+        hold
+          back make(some, finder/places/get(dir))
+      back make none
+  save found, false
+  save place, make(deck-place, bind(name, <>), bind(root, <>))
+  save at, dir
+  save going, true
+  walk test
+    hook test
+      going
+    hook hold
+      save manifest-path, node-path/join(at, <deck.tree>)
+      fork test, node-file/exists-sync(manifest-path)
+        hold
+          sift manifest-name-at(manifest-path)
+            case some
+              link declared
+              save found, true
+              save place, make(deck-place, bind(name, declared), bind(root, at))
+              save going, false
+            case none
+              save nothing, 0
+      fork test, going
+        hold
+          save parent, node-path/dirname(at)
+          fork test, is-equal(parent, at)
+            hold
+              save going, false
+            miss
+              save at, parent
+  save finder/asked/{dir}, found
+  fork test, found
+    hold
+      save finder/places/{dir}, place
+      back make(some, place)
+  back make none

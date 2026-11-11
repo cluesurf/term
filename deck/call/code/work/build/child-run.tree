@@ -1,0 +1,266 @@
+# A child process run by the build: `term boot`'s server and a project's own `pnpm run make`. Ported from
+# call/code/make.ts (`runCommand`, `runCaptured`), part 4 of that file.
+#
+# `run-command` runs a child in its OWN process group with the terminal passed through, and owns its teardown: ctrl-c
+# or SIGTERM signals the whole group, then kills it if it has not gone within four seconds, and the parent's exit takes
+# it down synchronously, so no grandchild is left holding a port. `run-captured` runs a child for its output: every line
+# it writes, both streams in the order they arrive, and its exit code, never failing. The output is QUOTED under the
+# item that ran it (section 15); `raw` passes it through untouched instead, and then the lines are empty.
+#
+# The waits on a child's end, its exit read as node reports it (`null` for a code when a signal ended it) and the two
+# throws are host values, written as binds.
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:child_process>, name child-process
+  # an inherited method (on, off, once) is reached only through the global (traps.md)
+  load <global:process>, name host-process
+  load <global:global>, name host-global
+
+# a command `run-command` runs: `shell` is true when left out
+form command-ask
+  link cmd, like text
+  link args, like list, like text
+  link cwd, like text
+  link shell
+    like boolean
+    need false
+
+# a command `run-captured` runs: `raw` passes its output through instead of quoting it
+form script-ask
+  link cmd, like text
+  link args, like list, like text
+  link cwd, like text
+  link raw, like boolean
+
+# how a child is spawned
+form detached-options
+  link cwd, like text
+  link stdio, like text
+  link shell, like dynamic
+  link detached, like boolean
+
+form captured-options
+  link cwd, like text
+  link stdio, like text
+  link shell, like boolean
+
+# what a captured child answered: its exit code, and every line it wrote
+form captured
+  link code, like number
+  link lines, like list, like text
+
+# the teardown's one piece of state: the kill timer, once a signal has been forwarded
+form teardown
+  mark shared
+  link timer, like dynamic
+
+# the output read so far: the whole lines, and the part of a line not yet ended
+form capture
+  mark shared
+  link lines, like list, like text
+  link partial, like text
+
+# Until the child ends: `{ closed: true, code, signal }` on its `close`, or `{ closed: false, error }` on its `error`,
+# whichever comes first
+bind child-ended
+  take child, like dynamic
+  like dynamic
+  case node
+    text <(await new Promise((done) =\> \{ $child.on("close", (code, signal) =\> done(\{ closed: true, code, signal \})); $child.on("error", (error) =\> done(\{ closed: false, error \})) \}))>
+
+# a clean exit, or an end by a signal (ctrl-c), is not an error: `code === 0 || code === null || signal`
+bind ended-cleanly
+  take ended, like dynamic
+  like boolean
+  case node
+    text <($ended.code === 0 || $ended.code === null || Boolean($ended.signal))>
+
+# the exit code a captured child reports: `code ?? (signal ? 130 : 1)`
+bind exit-code-of
+  take ended, like dynamic
+  like number
+  case node
+    text <($ended.code ?? ($ended.signal ? 130 : 1))>
+
+# `input.shell ?? true`
+bind shell-of
+  take input, like dynamic
+  like dynamic
+  case node
+    text <($input.shell ?? true)>
+
+bind raise-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+bind raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+# `String(value)`
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# a text cut at each line end, as `text.split('\n')`: always at least one part, the last the unended rest
+bind split-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+# a chunk of a child's output as text, `chunk.toString('utf8')`
+bind text-of-chunk
+  take chunk, like dynamic
+  like text
+  case node
+    text <$chunk.toString("utf8")>
+
+# `stream?.on('data', handler)`: a stream passed through to the terminal is not there
+bind on-data
+  take stream, like dynamic
+  take handler, like dynamic
+  like void
+  case node
+    text <$stream?.on("data", $handler)>
+
+# Take down the child's whole process group, or the lone child when the group cannot be signalled (it already exited)
+task kill-group
+  take child, like dynamic
+  take signal, like text
+  mark private
+
+  save pid, child/pid
+  fork test, is-unequal(pid, void)
+    hold
+      fork
+        mark unsafe
+        host-process/kill(subtract(0, pid), signal)
+      halt take
+        take problem
+        kill-alone(child, signal)
+
+task kill-alone
+  take child, like dynamic
+  take signal, like text
+  mark private
+
+  fork
+    mark unsafe
+    child/kill(signal)
+  halt take
+    take problem
+    # already gone
+    save nothing, 0
+
+# Run a command with the terminal passed through, until it ends. `input` holds `cmd`, `args`, `cwd`, and `shell`, true
+# when left out: through a shell (a PATH lookup of a script shim like `pnpm`). A long-running server sets it false so
+# ctrl-c reaches the process with no shell between. Fails when the child exits with a code other than 0
+task run-command
+  take input, like command-ask
+  like void
+  mark async
+
+  # `detached` puts the child in its OWN process group, so an interrupt can be delivered to the WHOLE group with a
+  # negative pid. The terminal's ctrl-c no longer reaches the child directly, so the parent owns the teardown
+  save options, make(detached-options, bind(cwd, input/cwd), bind(stdio, <inherit>), bind(shell, shell-of(input)), bind(detached, true))
+  save child, child-process/spawn(input/cmd, input/args, options)
+  save state, make(teardown, bind(timer, void))
+  # on ctrl-c or SIGTERM: signal the group, then kill the group if it does not exit within a grace window, so a child
+  # ignoring the signal cannot hang the terminal
+  save forward
+    task
+      take signal, like dynamic
+      like void
+      kill-group(child, signal)
+      fork test, is-equal(state/timer, void)
+        hold
+          save state/timer
+            host-global/setTimeout
+              task
+                like void
+                kill-group(child, <SIGKILL>)
+              4000
+  # never leave an orphan: if the parent exits for ANY reason, force the group down synchronously
+  save on-parent-exit
+    task
+      like void
+      kill-group(child, <SIGKILL>)
+  host-process/on(<SIGINT>, forward)
+  host-process/on(<SIGTERM>, forward)
+  host-process/on(<exit>, on-parent-exit)
+  save ended, child-ended(child)
+  fork test, is-unequal(state/timer, void)
+    hold
+      host-global/clearTimeout(state/timer)
+  host-process/off(<SIGINT>, forward)
+  host-process/off(<SIGTERM>, forward)
+  host-process/off(<exit>, on-parent-exit)
+  fork test, ended/closed
+    hold
+      fork test, not(ended-cleanly(ended))
+        hold
+          raise-error(<Process exited with code {host-text(ended/code)}>)
+    miss
+      raise-again(ended/error)
+
+# The lines a chunk ends, kept; the part after its last line end held for the next
+task take-chunk
+  take state, like capture
+  take chunk, like dynamic
+  mark private
+
+  save decoded, text-of-chunk(chunk)
+  save parts, split-lines(<{state/partial}{decoded}>)
+  save last, subtract(parts/length, 1)
+  save at, 0
+  walk parts
+    take part
+    fork test, is-below(at, last)
+      hold
+        state/lines/push(part)
+    save at, add(at, 1)
+  save state/partial, parts/{last}
+
+# Run a command for its output. Never fails: a child that cannot start answers 127 with the error as its last line.
+# `input` holds `cmd`, `args`, `cwd` and `raw`
+task run-captured
+  take input, like script-ask
+  like captured
+  mark async
+
+  save stdio, <pipe>
+  fork test, input/raw
+    hold
+      save stdio, <inherit>
+  save child, child-process/spawn(input/cmd, input/args, make(captured-options, bind(cwd, input/cwd), bind(stdio, stdio), bind(shell, true)))
+  save state, make(capture, bind(lines, make list), bind(partial, <>))
+  save reader
+    task
+      take chunk, like dynamic
+      like void
+      take-chunk(state, chunk)
+  on-data(child/stdout, reader)
+  on-data(child/stderr, reader)
+  save ended, child-ended(child)
+  fork test, ended/closed
+    hold
+      fork test, is-unequal(state/partial, <>)
+        hold
+          state/lines/push(state/partial)
+      back make(captured, bind(code, exit-code-of(ended)), bind(lines, state/lines))
+  save lines, make list
+  walk state/lines
+    take line
+    lines/push(line)
+  lines/push(host-text(ended/error))
+  back make(captured, bind(code, 127), bind(lines, lines))

@@ -185,6 +185,14 @@ bind skip-literal
   case node
     text <<(/^\s*skip\s+(<.*>)\s*$/.exec($line)?.[1] ?? "")>>
 
+# what a `skip` line gives as its reason when that is no literal (`read x`, `x`, `reason-of(x)`), as written, the empty
+# text when the line gives nothing
+bind skip-expression
+  take line, like text
+  like text
+  case node
+    text <<(/^\s*skip\s+(.*?)\s*$/.exec($line)?.[1] ?? "")>>
+
 # a `walk <list>` line's list as written, the empty text when the walk names none
 bind walk-expression
   take line, like text
@@ -1166,8 +1174,10 @@ bind comma-joined
     text <$texts.join(", ")>
 
 # A line of a test block, a `skip <reason>` made a raise whose note is `skip:<reason>`, which the report reads back as
-# `want:` is read (call/code/test-report.tree, decision 022 T4), on every target. Any other line as written. A `skip`
-# with no text literal is the test's own failure, said when it runs, as a `want` of no known mode is. Outside a test block
+# `want:` is read (call/code/test-report.tree, decision 022 T4), on every target. Any other line as written. A reason
+# that is no literal (a host, a variable, a call) is interpolated into the note, `halt <skip:{read x}>`, so it is a skip
+# with that value on every target and a name it misreads is refused by the build on its line (item 1185). A `skip` that
+# gives nothing is the test's own failure, said when it runs, as a `want` of no known mode is. Outside a test block
 # nothing lowers it, so the build refuses the name there, on its line
 task lowered-skip
   take line, like text
@@ -1181,7 +1191,11 @@ task lowered-skip
   save literal, skip-literal(line)
   fork test, is-equal(literal, <>)
     hold
-      back <{lead}halt \<line {add(at, 1)}: a skip takes a text literal\>>
+      save reason, skip-expression(line)
+      fork test, is-equal(reason, <>)
+        hold
+          back <{lead}halt \<line {add(at, 1)}: a skip takes a reason\>>
+      back <{lead}halt \<skip:\{{reason}\}\>>
   fork test, is-raw-literal(literal)
     hold
       back <{lead}halt \<\<skip:{rewrite-cut(literal, 2)}>
