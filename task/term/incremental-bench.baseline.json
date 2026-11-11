@@ -558,7 +558,17 @@
     },
     "base/cold": {
       "ms": 29047,
-      "built": 583,
+      "built": 586,
+      "raised": {
+        "from": 583,
+        "on": "2026-11-11",
+        "item": "term-self-host-001-1225",
+        "units": [
+          "deck/base/code/native/node/compare.tree (6ba1c7c8, 2026-11-08)",
+          "deck/base/code/native/node/shape.tree (6ba1c7c8, 2026-11-08)",
+          "deck/base/code/test/temp.tree (ce43f656, 2026-11-05)"
+        ]
+      },
       "rssMb": 3269,
       "runs": [
         {
