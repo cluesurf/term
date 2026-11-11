@@ -20,6 +20,7 @@ load @term/base/maybe
 
 load @term/base/text
   find split
+  find substring
 
 load @term/make/fixing
   find units-of
@@ -250,6 +251,28 @@ task is-ignored-path
     save at, add(at, 1)
   back false
 
+# The part of a file's path inside the deepest graph root that holds it, or the whole path when none does. A scratch,
+# output or hidden folder ABOVE a package is only where the package sits (a project under ~/tmp, or a gate's TMPDIR
+# with a tmp segment, as every M3 job's: release 2.10.2), so only the folders inside it are read by is-ignored-path
+task below-graph-root
+  take server, like language-server
+  take file, like text
+  like text
+
+  save best, <>
+  save size, 0
+  walk server/graphs/values()
+    take one
+    save length, units-of(one/root)/length
+    fork test, and(is-under(file, one/root), is-above(length, size))
+      hold
+        save best, one/root
+        save size, length
+  fork test, is-equal(best, <>)
+    hold
+      back file
+  back substring(file, size)
+
 # `/(?:^|[\\/])(?:role|deck)\.tree$/`: a package's role or deck file
 task is-config-file
   take file, like text
@@ -371,7 +394,7 @@ task did-change-watched-files
     take event
     save file, path-for(event-uri(event))
     save kind, event-type(event)
-    fork test, or(is-equal(file, <>), is-ignored-path(file))
+    fork test, or(is-equal(file, <>), is-ignored-path(below-graph-root(server, file)))
       hold
         turn next
     # LSP FileChangeType: 1 created, 2 changed, 3 deleted. A role or deck file is read from DISK by the readers, so

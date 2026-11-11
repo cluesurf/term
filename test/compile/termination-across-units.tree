@@ -227,3 +227,46 @@ test <a mutual recursion across two files is reported, separate>
 test <both builds say the same of a mutual recursion>
   host found, mutual()
   want hold, is-equal(found/merged, found/separate)
+
+# SELF-APPLICATION SPLIT ACROSS TWO UNITS (term-self-host-001-1191): the model's `omega` calls its parameter on itself,
+# and ends in its own unit, where nothing hands it a task. The entry's `t` passes its own parameter to `omega`, and
+# `h` hands `t` to `t`: `t(t)` calls `omega(t)`, which calls `t(t)` again, forever. Only `omega`'s call through a value
+# closes the cycle, and it is in the other unit, so the separate build must carry that call across as the merged build
+# sees it
+host omega, <task omega\n  take k, like dynamic\n  like number\n  send back\n    call k\n      read k\n>
+host self-entry, <load ./omega\n  find omega\n\ntask t\n  take k, like dynamic\n  like number\n  send back\n    call omega\n      read k\n\ntask h\n  like number\n  send back\n    call t\n      read t\n>
+
+task self-applied
+  like verdict
+
+  back cycles(self-entry, make(list, one-file(<omega>, omega)))
+
+task names-t
+  take found, like list, like text
+  like boolean
+
+  back any-holding(found, <"t">)
+
+test <a self-application whose call through a value is in another unit does not end, merged>
+  want hold, names-t(self-applied()/merged)
+
+test <a self-application whose call through a value is in another unit does not end, separate>
+  want hold, names-t(self-applied()/separate)
+
+test <both builds say the same of a self-application across units>
+  host found, self-applied()
+  want hold, is-equal(found/merged, found/separate)
+
+# the control: the same `t` that nothing hands to anything ends in both builds
+host alone-entry, <load ./omega\n  find omega\n\ntask t\n  take k, like dynamic\n  like number\n  send back\n    call omega\n      read k\n>
+
+task omega-alone
+  like verdict
+
+  back cycles(alone-entry, make(list, one-file(<omega>, omega)))
+
+test <a task handed to nothing ends across units, merged>
+  want hold, is-equal(size(omega-alone()/merged), 0)
+
+test <a task handed to nothing ends across units, separate>
+  want hold, is-equal(size(omega-alone()/separate), 0)

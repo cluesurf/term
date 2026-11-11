@@ -21,9 +21,13 @@ import { join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { loadRoleGrammar } from '@term/make/code/compile/mill-load'
-import { projectRoleOf } from '@term/call/code/role-of'
+import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { buildable } from '@term/call/code/make'
-import { runMine, runMint } from '@term/make/code/compile/mill-run'
+import {
+  runMine,
+  runMint,
+  readLeanRules,
+} from '@term/make/code/compile/mill-run'
 import type {
   MineRule,
   MintGrammar,
@@ -515,6 +519,28 @@ async function main(): Promise<void> {
   // ---- programs ----
 
   const roles = new Map<string, string | undefined>()
+  // A file whose role rule carries `mark lean` is read with the lean surface, as the compiler reads it
+  // (compile/mill.ts): the role's lean flag and the grammar's `mark lean` rules both go to the bridge. Without them a
+  // lean property head is built as a call, and a head that names a statement (`note(note)`, a field called `note` in
+  // deck/call/code/work/hook/parsing.tree) is refused, though the build reads it (item term-self-host-001-1224).
+  const leans = new Map<string, boolean>()
+  const leanRules = readLeanRules(
+    parse({ file: 'mine.tree', text: grammar.mineText }).tree as never,
+  )
+  const leanGrammar = { ...grammar, lean: leanRules }
+  const leanOf = new Map<string, ReturnType<typeof projectLeanOf>>()
+  const leanFor = (pkg: string): ReturnType<typeof projectLeanOf> => {
+    const known = leanOf.get(pkg)
+
+    if (known) {
+      return known
+    }
+
+    const made = projectLeanOf(join(DECK, pkg))
+    leanOf.set(pkg, made)
+
+    return made
+  }
 
   // A package's `role.tree` says which mill reads which file. A file whose role is not `code` is read by a
   // different grammar, so comparing it against the code role would answer the wrong question. This is the
@@ -545,6 +571,7 @@ async function main(): Promise<void> {
       // the file's role goes to BOTH readers: `role site` and `role call` change what a `hook` means, and a
       // reader that is not told cannot answer the same way
       roles.set(file, roleFor(name)(file) ?? undefined)
+      leans.set(file, leanFor(name)(file))
       files.push(file)
     }
   }
@@ -625,7 +652,13 @@ async function main(): Promise<void> {
       }
     }
 
-    const built = millByGrammar(expanded, file, role, grammar)
+    const built = millByGrammar(
+      expanded,
+      file,
+      role,
+      leanGrammar,
+      leans.get(file) === true,
+    )
 
     if (!built.ok) {
       bridgeFail++

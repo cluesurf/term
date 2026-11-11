@@ -1206,7 +1206,50 @@ task reads-as
       fork test, is-unequal(top/length, 1)
         hold
           back false
+      # the same parse is not the same program when a `like` takes an `arg` on its own line (holds-like-arg)
+      fork test, holds-like-arg(get(top, 0))
+        hold
+          back false
       back is-equal(shape(get(top, 0)), shape(group-of-nodes(nodes)))
+
+# the parts a `like` takes beside its type by name, as its grammar lists them (deck/mill/code/tree/code/like/mine.tree).
+# Any other headed part there is an `arg`
+task like-parts
+  like list, like text
+  mark private
+
+  back words-of(<or and task like take need fall bind link head wait mark halt drop>)
+
+# does a `like` in this tree hold an `arg` beside its type? The mill refuses one on the like's own line
+# (compile/minting-values.tree refuse-like-values, item 1203) and takes it on a line under the like, while the parse is
+# the same either way: `send back` over `like effect` over `fuse result` and `send back, like effect, fuse result` are
+# one tree. So no layout joins such a `like` onto one line
+task holds-like-arg
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      fork test, is-equal(head-name(value), <like>)
+        hold
+          save at, 2
+          walk test
+            hook test, is-below(at, nodes/length)
+            hook hold
+              save part, get(nodes, at)
+              fork test, and(is-group-node(part), not(has-text(like-parts(), head-name(part))))
+                hold
+                  back true
+              save at, add(at, 1)
+      walk nodes
+        take inner
+        fork test, holds-like-arg(inner)
+          hold
+            back true
+      back false
+    miss
+      back false
 
 task is-metadata-mark
   take group, like node

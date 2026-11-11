@@ -1858,6 +1858,14 @@ form program-calls
   link group-ends, like hash, like text, like boolean
   # each case of ONE field to that field's name, empty when a case of that name has more fields or another field
   link unary, like hash, like text, like text
+  # the tasks each task's own body reads as values, before a call through a value adds any
+  link reads, like hash, like text, like list, like text
+  # each task's strongly connected component over the final edges, named by its first task found, and whether the task
+  # reaches itself (its component holds another task, or it calls itself). Found once per program by
+  # `strong-components`, where a walk of the reach of each task cost the program's every edge once per task, and
+  # a unit's stubs marked `calls-value` made that the separate build's most of an hour (term-self-host-001-1226)
+  link component, like hash, like text, like text
+  link cyclic, like hash, like text, like boolean
 
 task add-text
   take values, like list, like text
@@ -1868,6 +1876,17 @@ task add-text
   fork test, not(contains(values, value))
     hold
       push(values, value)
+
+task copy-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take value
+    push(out, value)
+  back out
 
 # every task `from` can reach through calls and values, the original's depth-first order kept
 task reaches
@@ -1902,14 +1921,90 @@ task scc-of
   like list, like text
   mark private
 
+  # a task `name` reaches is in its group when it shares `name`'s component, which is when it reaches `name` back. The
+  # reach holds no repeats, so the group is in the order the reach found it, as before (term-self-host-001-1226)
   save out, make list
   push(out, name)
+  save mine, known/component/get(name)
   walk reaches(known, name)
     take other
-    fork test, and(is-unequal(other, name), contains(reaches(known, other), name))
+    fork test, and(is-unequal(other, name), is-equal(known/component/get(other), mine))
       hold
-        add-text(out, other)
+        push(out, other)
   back out
+
+# Fill `component` and `cyclic` of `known` once its edges are final (Kosaraju): a walk that orders every task by when
+# its reach is done, then a walk of the edges reversed from the last done, each such walk one component
+task strong-components
+  take known, like program-calls
+  like void
+  mark private
+
+  save visited, make hash
+  save next-edge, make hash
+  save finished, make list
+  walk known/order
+    take root
+    fork test, visited/has(root)
+      hold
+        turn next
+    save visited/{root}, true
+    save nodes, make list
+    push(nodes, root)
+    walk test
+      hook test, is-above(nodes/length, 0)
+      hook hold
+        save node, get(nodes, subtract(nodes/length, 1))
+        save i, next-edge/get-or-default(node, 0)
+        save out, known/edges/get-or-default(node, make list)
+        fork test, is-below(i, out/length)
+          hold
+            save next-edge/{node}, add(i, 1)
+            save target, get(out, i)
+            fork test, not(visited/has(target))
+              hold
+                save visited/{target}, true
+                push(nodes, target)
+          miss
+            save done, nodes/pop()
+            push(finished, done)
+  save reversed, make hash
+  walk known/order
+    take name
+    walk known/edges/get-or-default(name, make list)
+      take target
+      save into, get-or-default(reversed, target, make list)
+      push(into, name)
+      save reversed/{target}, into
+  save sizes, make hash
+  save k, finished/length
+  walk test
+    hook test, is-above(k, 0)
+    hook hold
+      save k, subtract(k, 1)
+      save first, get(finished, k)
+      fork test, not(known/component/has(first))
+        hold
+          save known/component/{first}, first
+          save size, 1
+          save stack, make list
+          push(stack, first)
+          walk test
+            hook test, is-above(stack/length, 0)
+            hook hold
+              save next, stack/pop()
+              walk get-or-default(reversed, next, make list)
+                take caller
+                fork test, not(known/component/has(caller))
+                  hold
+                    save known/component/{caller}, first
+                    save size, add(size, 1)
+                    push(stack, caller)
+          save sizes/{first}, size
+  walk known/order
+    take name
+    save own-edges, known/edges/get-or-default(name, make list)
+    save known/cyclic/{name}, or(is-above(sizes/get(known/component/get(name)), 1), contains(own-edges, name))
 
 task calls-to
   take found, like walked
@@ -1986,14 +2081,33 @@ task is-maybe-type
     miss
       back false
 
-task termination-verdict
+# does a separately compiled task's own unit say `fact` of it (`stub-facts`)
+task stub-says
+  take one, like statement
+  take fact, like text
+  like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, stub
+        hold
+          sift stub-facts
+            case some
+              link facts
+              back contains(facts, fact)
+            case none
+              back false
+      back false
+    miss
+      back false
+
+# every task's calls and the tasks it reads as values, each task that calls through a value given an edge to every task
+# the program reads as one
+task program-calls-of
   take program, like list, like statement
-  take proves
-    like task
-      take assumptions, like list, like inequality
-      take goal, like inequality
-      like boolean
-  like verdicts
+  like program-calls
+  mark private
 
   save known
     make program-calls
@@ -2004,6 +2118,9 @@ task termination-verdict
       bind walks, make hash
       bind group-ends, make hash
       bind unary, make hash
+      bind reads, make hash
+      bind component, make hash
+      bind cyclic, make hash
   save variant-fields, make hash
   save descends, make hash
   save form-names, make hash
@@ -2094,6 +2211,7 @@ task termination-verdict
       take value
       add-text(edges, value)
     save known/value-edges/{name}, values
+    save known/reads/{name}, copy-texts(values)
     save known/edges/{name}, edges
   # A CALL THROUGH A VALUE (a parameter or a local holding a task, or an expression's result) may reach any task the
   # program reads as a value, with any argument, so it is an edge read as a value to each of them: `omega(k)` calling
@@ -2104,6 +2222,32 @@ task termination-verdict
     walk known/value-edges/get(name)
       take value
       add-text(escaped, value)
+  # A SEPARATELY COMPILED TASK has no body here, so its own unit's walk speaks for it (term-self-host-001-1191): a stub
+  # marked `calls-value` calls through a value in its body or below it, and so may reach any task read as a value here,
+  # as an own task that does. The tasks read as values in other units are known only as these marks: a stub that calls
+  # through a value is among them when its own unit read it as one (`valued`), and every such stub is once any unit
+  # read a task of another unit that calls through a value (`hands-value`), since no stub names the task it read.
+  # `omega` in one unit calling `k(k)`, handed `omega` in another, is then the same cycle the merged build sees
+  save handed, false
+  walk known/order
+    take name
+    save one, known/functions/get(name)
+    fork test, stub-says(one, <calls-value>)
+      hold
+        save walked-one, known/walks/get(name)
+        save walked-one/dynamic, true
+    fork test, stub-says(one, <hands-value>)
+      hold
+        save handed, true
+  walk known/order
+    take name
+    save one, known/functions/get(name)
+    fork test, and(stub-says(one, <calls-value>), or(handed, stub-says(one, <valued>)))
+      hold
+        add-text(escaped, name)
+  # each list is kept free of repeats by a set beside it, not by `add-text`'s scan: a unit's stubs marked `calls-value`
+  # are many, each gains every task read as a value, and a scan per edge made the separate build of deck/call run
+  # past its hour (term-self-host-001-1226). The lists hold what `add-text` gave them, in the same order
   walk known/order
     take name
     save walked-one, known/walks/get(name)
@@ -2111,12 +2255,45 @@ task termination-verdict
       hold
         save edges, known/edges/get(name)
         save values, known/value-edges/get(name)
+        save edge-set, text-set(edges)
+        save value-set, text-set(values)
         walk escaped
           take target
-          add-text(edges, target)
-          add-text(values, target)
+          fork test, not(edge-set/has(target))
+            hold
+              save edge-set/{target}, true
+              push(edges, target)
+          fork test, not(value-set/has(target))
+            hold
+              save value-set/{target}, true
+              push(values, target)
         save known/edges/{name}, edges
         save known/value-edges/{name}, values
+  strong-components(known)
+  back known
+
+# the texts of a list as a set
+task text-set
+  take values, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk values
+    take value
+    save out/{value}, true
+  back out
+
+task termination-verdict
+  take program, like list, like statement
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like verdicts
+
+  save known, program-calls-of(program)
   save ends, make hash
   save self-calls, make hash
   save grouped, make hash
@@ -2173,15 +2350,21 @@ task verdict-of
   like boolean
   mark private
 
-  # a separately compiled task: its own unit, which had the body, judged it (`stub-facts`)
+  # a separately compiled task: its own unit, which had the body, judged it (`stub-facts`), unless it reaches itself
+  # here. A stub has no calls of its own, so only a call through a value closes such a cycle, through a task this
+  # program (or a unit below it) reads as a value, which its own unit never saw: not shown to end
+  # (term-self-host-001-1191)
   sift stub-ends(one)
     case some
       link judged
-      back judged
+      fork test, not(judged)
+        hold
+          back false
+      back not(known/cyclic/get(name))
     case none
       save nothing, 0
   # not recursive: trivially terminating
-  fork test, not(contains(reaches(known, name), name))
+  fork test, not(known/cyclic/get(name))
     hold
       back true
   # a recursion through a task read as a value: some member of the group reads a member as a value, so a call may
@@ -2589,6 +2772,85 @@ task rebuilds-within
       back strictly-decreases(inner, param, call/frame, call/guards, proves)
     miss
       back false
+
+# WHAT A UNIT'S STUBS CARRY OF ITS CALLS THROUGH VALUES, per task with a body (term-self-host-001-1191), so a
+# dependent unit sees a cycle through a value that crosses the units whole: `calls-value` when the task calls through a
+# value in its body or in anything it reaches, `valued` when this program reads it as a value, `hands-value` when it
+# reads as a value a task of another unit that calls through one. A task with none of the three is left out
+task value-facts-of
+  take program, like list, like statement
+  like hash, like text, like list, like text
+
+  save known, program-calls-of(program)
+  # every task that calls through a value or reaches one that does: back from each such task along the edges reversed
+  save callers, make hash
+  walk known/order
+    take name
+    walk known/edges/get-or-default(name, make list)
+      take target
+      # a task's edges hold no repeats, so a name comes to `into` once per target with no scan (term-self-host-001-1226)
+      save into, get-or-default(callers, target, make list)
+      push(into, name)
+      save callers/{target}, into
+  save dynamic, make hash
+  save stack, make list
+  walk known/order
+    take name
+    save walked-one, known/walks/get(name)
+    fork test, walked-one/dynamic
+      hold
+        save dynamic/{name}, true
+        push(stack, name)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save next, stack/pop()
+      walk get-or-default(callers, next, make list)
+        take caller
+        fork test, not(dynamic/has(caller))
+          hold
+            save dynamic/{caller}, true
+            push(stack, caller)
+  save valued, make hash
+  walk known/order
+    take name
+    walk known/reads/get-or-default(name, make list)
+      take value
+      save valued/{value}, true
+  save out, make hash
+  walk known/order
+    take name
+    save one, known/functions/get(name)
+    save own, false
+    sift one
+      case function
+        save own, not(stub)
+      miss
+        save nothing, 0
+    fork test, not(own)
+      hold
+        turn next
+    save facts, make list
+    fork test, dynamic/has(name)
+      hold
+        push(facts, <calls-value>)
+    fork test, valued/has(name)
+      hold
+        push(facts, <valued>)
+    save hands, false
+    walk known/reads/get-or-default(name, make list)
+      take value
+      save read-one, known/functions/get(value)
+      fork test, stub-says(read-one, <calls-value>)
+        hold
+          save hands, true
+    fork test, hands
+      hold
+        push(facts, <hands-value>)
+    fork test, is-above(facts/length, 0)
+      hold
+        save out/{name}, facts
+  back out
 
 # the functions whose termination is verified (used to gate transparent definitions in the elaborator)
 task terminating-functions

@@ -80,6 +80,9 @@ load ../check/program-facts
 load ../check/extend
   find exception-form
 
+load ../check/termination
+  find value-facts-of
+
 # what the whole-program analyses found about each task of a checked unit, with every body in hand. A stub carries its
 # own task's share, because a dependent has the stub and not the body, and every one of these analyses reads a callee's
 # body: without them a separately compiled caller was refused what the merged build allowed
@@ -97,6 +100,9 @@ form stub-known
   link fails, like hash, like text, like boolean
   # each rule the arithmetic provers proved in this unit, and how: `field` or `integer`
   link proven, like hash, like text, like text
+  # what the termination check's walk found of each task's calls through values (check/termination `value-facts-of`:
+  # `calls-value`, `valued`, `hands-value`), so a dependent sees a cycle through a value that crosses the units
+  link value-facts, like hash, like text, like list, like text
   # each top-level name this unit's binding renamed (`bump__in0_1`, `sleep__1`, `focus__value0`,
   # `is-given__native0`), to the name it was written with
   link written, like hash, like text, like text
@@ -729,6 +735,7 @@ task stub-known-of
       bind native, as-set(sets/native)
       bind fails, fails
       bind proven, proven
+      bind value-facts, value-facts-of(program)
       bind written, written-names(program)
 
 # one task's share of what its unit found
@@ -763,6 +770,10 @@ task facts-of
   fork test, known/proven/has(name)
     hold
       push(out, <proven-{get-or-default(known/proven, name, <>)}>)
+  save no-value-facts, make list
+  walk get-or-default(known/value-facts, name, no-value-facts)
+    take fact
+    push(out, fact)
   back out
 
 # each once, in increasing order

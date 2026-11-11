@@ -255,9 +255,14 @@ task own-reason
     case function
       fork test, stub
         hold
-          fork test, grounded
+          # its own unit's verdict holds only while no cycle through a value closes here around it, which that unit
+          # never saw: `omega` calling `k(k)`, handed `omega` by this unit (term-self-host-001-1191)
+          fork test, and(grounded, has-text(evidence/terminating, name))
             hold
               back <>
+          fork test, grounded
+            hold
+              back <it is not shown to terminate here, where a task it calls through a value reaches it again>
           back <its unit recorded no kernel verdict for it>
       fork test, not(has-text(evidence/pure, name))
         hold
