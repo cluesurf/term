@@ -47,6 +47,9 @@ import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { projectHome } from '@term/call/code/home'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { Node as TreeNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 import { TERM_ROOT } from './root'
 
 const ENTRY = 'deck/call/code/line/base.tree'
@@ -164,40 +167,65 @@ function groupsOf(entry: string): Map<string, Set<string>> {
     const known = loadsOf.get(file)
     if (known) return known
     const found: string[] = []
-    for (const m of (read(file) ?? '').matchAll(/^load ([^\s,<>]+)/gm)) {
-      const target = resolve(m[1].replaceAll('{platform}', 'rust'), file) as { file: string } | undefined
+    for (const path of topLoadsOf(file)) {
+      const target = resolve(path.replaceAll('{platform}', 'rust'), file) as { file: string } | undefined
       if (target?.file?.endsWith('.tree')) found.push(target.file)
     }
     loadsOf.set(file, found)
     return found
   }
   const groups = new Map<string, Set<string>>()
-  for (const m of readFileSync(entry, 'utf8').matchAll(/^load (@term\/[^\s,]+)/gm)) {
-    const start = resolve(m[1], entry) as { file: string } | undefined
+  for (const path of topLoadsOf(entry)) {
+    if (!path.startsWith('@term/')) continue
+    const start = resolve(path, entry) as { file: string } | undefined
     if (!start) continue
     const seen = new Set([start.file])
     const stack = [start.file]
     while (stack.length) for (const next of loads(stack.pop()!)) if (!seen.has(next)) (seen.add(next), stack.push(next))
     groups.set(
-      m[1].replace('@term/call/work/', ''),
+      path.replace('@term/call/work/', ''),
       new Set([...seen].map(file => relative(TERM_ROOT, file))),
     )
   }
   return groups
 }
 
-// the docks a file writes, from its `dock load` block
+// the head word of a parsed group, as the parser reads it
+function headOf(node: TreeNode | undefined): string | undefined {
+  const first = node?.kind === 'group' ? node.nodes[0] : undefined
+  return first?.kind === 'name' ? renderHead(first) : undefined
+}
+
+// the top-level groups of a file, through the one parser (none when it does not parse)
+function topGroupsOf(file: string): GroupNode[] {
+  const text = read(file)
+  if (text === undefined) return []
+  const parsed = parse({ file, text }) as { ok: boolean; tree?: { nodes: TreeNode[] } }
+  if (!parsed.ok || !parsed.tree) return []
+  return parsed.tree.nodes.filter((node): node is GroupNode => node.kind === 'group')
+}
+
+// the path of each top-level `load <path>` of a file
+function topLoadsOf(file: string): string[] {
+  const paths: string[] = []
+  for (const group of topGroupsOf(file)) {
+    if (headOf(group) !== 'load') continue
+    const path = headOf(group.nodes[1])
+    if (path) paths.push(path)
+  }
+  return paths
+}
+
+// the docks a file writes, from its top-level `dock load` block: each `load <spec>` text literal under it
 function docksOf(file: string): string[] {
   const docks: string[] = []
-  let inDock = false
-  for (const line of (read(join(TERM_ROOT, file)) ?? '').split('\n')) {
-    if (/^dock load\b/.test(line)) {
-      inDock = true
-      continue
+  for (const group of topGroupsOf(join(TERM_ROOT, file))) {
+    if (headOf(group) !== 'dock' || headOf(group.nodes[1]) !== 'load') continue
+    for (const child of group.nodes.slice(2)) {
+      if (child.kind !== 'group' || headOf(child) !== 'load') continue
+      const spec = child.nodes[1] as { kind?: string; parts?: { kind: string; text?: string }[] } | undefined
+      if (spec?.kind === 'text') docks.push((spec.parts ?? []).map(part => part.text ?? '').join(''))
     }
-    if (/^\S/.test(line)) inDock = false
-    const m = inDock ? /^\s+load <([^>]+)>/.exec(line) : undefined
-    if (m) docks.push(m[1])
   }
   return docks
 }

@@ -242,7 +242,7 @@ export function scanFile(input: { root: string; file: string; relative: string; 
 function ignoredDir(relative: string): boolean {
   const parts = relative.split('/')
   const name = parts[parts.length - 1]
-  if (['node_modules', '.git', 'tmp', '.base', '.build', '.unit', '.seed'].includes(name)) {
+  if (['node_modules', '.git', 'tmp', '.base', '.build', '.unit', '.seed', '.term'].includes(name)) {
     return true
   }
   if (parts.length === 1 && ['host', 'hold', 'link'].includes(name)) {

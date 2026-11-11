@@ -28,7 +28,6 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
-const DECK = path.resolve(SEED, '..')
 // resolve through the seed package manager: linked @cluesurf/* packages + the abstract dom API rewritten to the
 // browser native impl by the `browser` env.
 const resolve = projectResolver(SEED, 'browser')
@@ -64,8 +63,8 @@ function makeStubElement(tag: string): any {
 
 async function main(): Promise<void> {
   const entry = path.join(
-    DECK,
-    'term/deck/site/code/test/site/app.tree',
+    SEED,
+    'deck/site/code/test/site/app.tree',
   )
   const result = compile(
     { file: entry, text: fs.readFileSync(entry, 'utf8') },
@@ -151,7 +150,7 @@ async function main(): Promise<void> {
   )
 
   // emit the runnable browser artifacts
-  const web = path.join(DECK, 'term/deck/site/host/web')
+  const web = path.join(SEED, 'deck/site/host/web')
   fs.mkdirSync(web, { recursive: true })
   fs.writeFileSync(path.join(web, 'app.js'), code)
   fs.writeFileSync(

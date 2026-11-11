@@ -36,6 +36,12 @@ tmp/
 /link
 !/link/lock.tree
 
+# the crash logs the CLI writes beside the project it crashed in (call/code/work/output/printer.tree
+# `write-crash-log`), at any depth. They hold this machine's paths, so a global `*.log` rule must not be what keeps
+# them out (release 2.10.2: on a machine with no such rule, `term:self-contained` read them as leaks)
+.term/
+**/.term/
+
 # source a common global ignore rule (`build/`, `env/`, `temp/`, `*.sql`) would leave out of every commit and release
 !deck/call/code/work/build/
 !deck/call/test/build/

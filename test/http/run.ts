@@ -28,15 +28,14 @@ const SEED = path.resolve(
   '../..',
 )
 
-const DECK = path.resolve(SEED, '..')
 // resolve through the seed package manager: linked @cluesurf/* + the abstract http transport rewritten to the node
 // impl by the `node` env.
 const resolve = projectResolver(SEED, 'node')
 
 async function main(): Promise<void> {
   const entry = path.join(
-    DECK,
-    'term/deck/site/code/test/site/api.tree',
+    SEED,
+    'deck/site/code/test/site/api.tree',
   )
 
   const result = compile(

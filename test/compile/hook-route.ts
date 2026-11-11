@@ -536,36 +536,44 @@ slotPassRefused(
   'mark pass under a take is refused',
 )
 
-// zone's own console marks `call`'s and `load`'s last slot (decision cli-in-term/012 part 2)
-const zoneRoot = `${process.cwd()}/../../../zone`
-const zoneFile = `${zoneRoot}/code/line/base.tree`
-const zoneBuilt = compile(
-  { file: zoneFile, text: readFileSync(zoneFile, 'utf8') },
-  { ...asCall, resolve: projectResolver(zoneRoot) },
-)
-ok(
-  "zone's console compiles",
-  zoneBuilt.ok,
-  zoneBuilt.ok
-    ? ''
-    : zoneBuilt.diagnostics
-        .slice(0, 3)
-        .map(d => d.message)
-        .join(' | '),
-)
-const zoneConsole = (zoneBuilt.ok ? zoneBuilt.program : []).find(
-  (s): s is Dock => s.form === 'dock',
-)
-const zonePassing = (zoneConsole?.route.children ?? []).flatMap(route =>
-  route.takes
-    .filter(take => take.passes)
-    .map(take => `${route.path} ${take.name}`),
-)
-ok(
-  'zone call and zone load pass at their list slot, and nothing else does',
-  JSON.stringify(zonePassing) === '["call list","load list"]',
-  JSON.stringify(zonePassing),
-)
+// zone's own console marks `call`'s and `load`'s last slot (decision cli-in-term/012 part 2). @term/zone is its own
+// repository (deck/zone in the parent), so it is read only from TERM_PARENT_ROOT, and skipped without one: the Term
+// repository reads nothing outside its root (decision term/004)
+const PARENT = process.env.TERM_PARENT_ROOT
+
+if (PARENT) {
+  const zoneRoot = `${PARENT}/deck/zone`
+  const zoneFile = `${zoneRoot}/code/line/base.tree`
+  const zoneBuilt = compile(
+    { file: zoneFile, text: readFileSync(zoneFile, 'utf8') },
+    { ...asCall, resolve: projectResolver(zoneRoot) },
+  )
+  ok(
+    "zone's console compiles",
+    zoneBuilt.ok,
+    zoneBuilt.ok
+      ? ''
+      : zoneBuilt.diagnostics
+          .slice(0, 3)
+          .map(d => d.message)
+          .join(' | '),
+  )
+  const zoneConsole = (zoneBuilt.ok ? zoneBuilt.program : []).find(
+    (s): s is Dock => s.form === 'dock',
+  )
+  const zonePassing = (zoneConsole?.route.children ?? []).flatMap(route =>
+    route.takes
+      .filter(take => take.passes)
+      .map(take => `${route.path} ${take.name}`),
+  )
+  ok(
+    'zone call and zone load pass at their list slot, and nothing else does',
+    JSON.stringify(zonePassing) === '["call list","load list"]',
+    JSON.stringify(zonePassing),
+  )
+} else {
+  console.log("skip  zone's console: TERM_PARENT_ROOT is unset, and @term/zone is not in this repository")
+}
 
 // A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with
 // its item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take

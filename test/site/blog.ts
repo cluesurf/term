@@ -30,7 +30,6 @@ const SEED = path.resolve(
   '../..',
 )
 
-const DECK = path.resolve(SEED, '..')
 // resolve through the seed package manager: @cluesurf/site, /bind, /base via the linked packages, and the abstract
 // dom API rewritten to the browser native impl by the `browser` env. No hand-written resolver.
 const resolve = projectResolver(SEED, 'browser')
@@ -110,8 +109,8 @@ function textOf(node: any): string {
 
 async function main(): Promise<void> {
   const entry = path.join(
-    DECK,
-    'term/deck/site/test/site/face/blog.tree',
+    SEED,
+    'deck/site/test/site/face/blog.tree',
   )
 
   const result = compile(
@@ -249,7 +248,7 @@ async function main(): Promise<void> {
   )
 
   // emit runnable artifacts
-  const web = path.join(DECK, 'term/deck/site/host/web-blog')
+  const web = path.join(SEED, 'deck/site/host/web-blog')
   fs.mkdirSync(web, { recursive: true })
   fs.writeFileSync(path.join(web, 'app.js'), code)
   fs.writeFileSync(

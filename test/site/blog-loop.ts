@@ -29,7 +29,6 @@ const SEED = path.resolve(
   '../..',
 )
 
-const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'node')
 // the database is the one DATABASE_URL names, never a default: without it there is nothing to write to
 const CONN = process.env.DATABASE_URL ?? ''
@@ -44,8 +43,8 @@ const PORT = 38571
 
 async function main(): Promise<void> {
   const entry = path.join(
-    DECK,
-    'term/deck/site/test/site/hook/blog.tree',
+    SEED,
+    'deck/site/test/site/hook/blog.tree',
   )
 
   const result = compile(

@@ -1,0 +1,4 @@
+deck @test/flow-proof
+  head <Rules for the proof-state wire test, kept out of the suite's own obligations>
+  mark <0.0.0>
+  lock mit

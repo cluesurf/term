@@ -3,12 +3,12 @@
 // malformed request answered with an error rather than a dead process, a cancelled request, and a clean exit.
 //
 // Run twice: the source entry (deck/flow/code/main.ts under tsx), and the bundle the extension ships
-// (deck/flow/make/server.js under plain node, with no node_modules reachable from it), when it has been built with
-// `node build.mjs` in deck/flow. The bundle is the one an editor runs, and a module that cannot load inside it
+// (deck/flow/make/server.js under plain node, with no node_modules reachable from it), rebuilt from the source by
+// deck/flow's own build first. The bundle is the one an editor runs, and a module that cannot load inside it
 // fails here and nowhere else.
 // Run: npx tsx test/server/wire.ts
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -293,7 +293,7 @@ async function proofState(
   ) => Promise<Message | undefined>,
   response: (id: number) => (m: Message) => boolean,
 ): Promise<void> {
-  const file = join(process.cwd(), 'test/server/fixture/proof-rules.tree')
+  const file = join(process.cwd(), 'test/server/fixture/proof/code/rules.tree')
   const uri = pathToFileURL(file).href
   const text = readFileSync(file, 'utf8')
   const names = ['doubling-is-adding-twice', 'below-its-square', 'bounded-square']
@@ -473,8 +473,28 @@ await session(
 )
 
 const bundle = join(process.cwd(), 'deck/flow/make/server.js')
+const flow = join(process.cwd(), 'deck/flow')
 
-if (existsSync(bundle)) {
+// make/ is build output no git tracks, so a bundle left on disk can be older than the source the first session ran
+// (release 2.10.2: a bundle from before `proof/state` answered -32601 to it). The bundle is rebuilt from the source
+// here, with the package's own build, whenever its esbuild is installed. Without esbuild nothing is measured, never an
+// old bundle.
+const canBuild = existsSync(join(flow, 'node_modules/esbuild'))
+
+if (canBuild) {
+  const built = spawnSync(
+    process.execPath,
+    [join(process.cwd(), 'host/line.js'), 'boot', 'build.tree', '--', 'build'],
+    { cwd: flow, encoding: 'utf8' },
+  )
+  ok(
+    'bundle: deck/flow builds make/server.js from the source',
+    built.status === 0 && existsSync(bundle),
+    `${built.status} ${(built.stderr ?? '').slice(-400)}`,
+  )
+}
+
+if (canBuild && existsSync(bundle)) {
   // started from the bundle's own folder, so nothing in the term workspace's node_modules is on its path by accident
   await session(
     'bundle',
@@ -484,7 +504,7 @@ if (existsSync(bundle)) {
   )
 } else {
   console.log(
-    'skip  bundle: deck/flow/make/server.js is not built (node build.mjs in deck/flow)',
+    'skip  bundle: deck/flow has no esbuild installed, so its make/server.js cannot be built from the source',
   )
 }
 

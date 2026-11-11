@@ -27,15 +27,14 @@ const SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../..',
 )
-const DECK = path.resolve(SEED, '..')
 // resolve through the seed package manager: linked @cluesurf/* packages + the abstract dom API rewritten to the node
 // (SSR / headless) native impl by the `node` env.
 const resolve = projectResolver(SEED, 'node')
 
 async function main(): Promise<void> {
   const entry = path.join(
-    DECK,
-    'term/deck/site/code/test/site/ssr-demo.tree',
+    SEED,
+    'deck/site/code/test/site/ssr-demo.tree',
   )
   // this test calls the dom primitives directly (createElement / createText / ...); compile un-optimized so the
   // specializer does not inline + drop those single-return exports, which only an external caller like this test uses

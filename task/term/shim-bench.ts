@@ -36,7 +36,34 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { cpus, loadavg } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { Node as TreeNode } from '@term/make/code/parser/tree'
 import { TERM_ROOT } from './root'
+
+// the first `load ./x` or `load ../x` a file holds at any depth, through the one parser
+function relativeLoadOf(file: string, text: string): string | undefined {
+  const parsed = parse({ file, text }) as { ok: boolean; tree?: { nodes: TreeNode[] } }
+  if (!parsed.ok || !parsed.tree) fail(`${file} does not parse`)
+  const headOf = (node: TreeNode | undefined): string | undefined => {
+    const first = node?.kind === 'group' ? node.nodes[0] : undefined
+    return first?.kind === 'name' ? renderHead(first) : undefined
+  }
+  const visit = (node: TreeNode): string | undefined => {
+    if (node.kind !== 'group') return undefined
+    const path = headOf(node) === 'load' ? headOf(node.nodes[1]) : undefined
+    if (path?.startsWith('./') || path?.startsWith('../')) return path
+    for (const child of node.nodes.slice(1)) {
+      const found = visit(child)
+      if (found) return found
+    }
+    return undefined
+  }
+  for (const node of parsed.tree!.nodes) {
+    const found = visit(node)
+    if (found) return found
+  }
+  return undefined
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SPECS = join(HERE, 'shim-bench')
@@ -413,7 +440,8 @@ const ENVS: Record<string, Env> = {
     // before the node one
     place(candidate, spec, work) {
       const text = readFileSync(candidate, 'utf8')
-      if (/^\s*load \.\.?\//m.test(text)) fail(`${candidate} loads a relative module: a browser copy cannot follow it`)
+      const near = relativeLoadOf(candidate, text)
+      if (near) fail(`${candidate} loads a relative module (${near}): a browser copy cannot follow it`)
       writeFileSync(join(work, 'candidate.tree'), text.replace(/^(\s*)case browser$/gm, '$1case node'))
       // a browser shim whose code is the node one's (only comments differ) is not copied: a stdlib module in the
       // program's closure that docks the same global would bring the node file in beside the copy, and the two
