@@ -403,7 +403,7 @@ function writeWinget(input: { version: string; zips: Made[]; into: string }): st
       'PackageUrl: https://term.surf',
       'License: Apache-2.0',
       'LicenseUrl: https://github.com/cluesurf/term/blob/make/LICENSE',
-      `ShortDescription: ${SUMMARY}`,
+      `ShortDescription: "${SUMMARY}"`,
       'Description: |-',
       '  The term command: the compiler, the package manager, the test runner and the language server of the Term',
       `  language, run on Node.js ${NODE_FLOOR} or newer.`,

@@ -3,7 +3,7 @@
   "displayName": "Term",
   "icon": "view/term.png",
   "description": "Syntax highlighting and the language server for Term .tree files",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "license": "Apache-2.0",
   "publisher": "cluesurf",
   "private": true,
@@ -95,7 +95,7 @@
   "devDependencies": {
     "@types/node": "^22.19.13",
     "@types/vscode": "^1.84.0",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.1.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3"
   }
