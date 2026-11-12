@@ -1,13 +1,124 @@
-# camera on a browser (device-layer-0003): getUserMedia and a canvas.
-# Conforms to ../camera. The runtime is runtime/native-camera.ts.
-# The permission runtime is docked too: this capability reads its grant through it (../permission).
+# camera on a browser (device-layer-0003): one frame from getUserMedia drawn onto a canvas and made a JPEG, answered as
+# a blob: address the page can show or upload. The browser prompts for the grant itself when it has none. Conforms to
+# ../camera. Ported from runtime/native-camera.ts (term-self-host-001-0730): the host's calls are binds (./media for
+# the stream), the steps and the answers are Term.
 
-dock load
-  load <global:native-camera>, name native-camera
-  load <global:native-permission>, name native-permission
+load ./page-host
+  find page-has-document
+  find page-is-absent
 
-task capture-photo
+load ./media
+  find media-has-ask
+  find media-ask
+  find media-was-refused
+  find media-refusal-name
+  find media-refusal
+  find media-stream
+  find media-stop
+  find media-video
+
+# a muted, inline video element playing the stream
+bind camera-video
+  take stream, like dynamic
+  like dynamic
+  case browser
+    text <((source: MediaStream): HTMLVideoElement =\> \{ const video = document.createElement('video'); video.muted = true; video.playsInline = true; video.srcObject = source; return video \})($stream)>
+
+bind camera-play
+  mark async
+  take video, like dynamic
+  like void
+  case browser
+    text <($video as HTMLVideoElement).play()>
+
+# a canvas the video's size with its frame drawn on it
+bind camera-frame
+  take video, like dynamic
+  like dynamic
+  case browser
+    text <((video: HTMLVideoElement): HTMLCanvasElement =\> \{ const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d')?.drawImage(video, 0, 0); return canvas \})($video)>
+
+# the canvas as a JPEG blob, or nothing
+bind camera-jpeg
+  mark async
+  take canvas, like dynamic
+  like dynamic
+  case browser
+    text <new Promise\<Blob | null\>((settle) =\> ($canvas as HTMLCanvasElement).toBlob(settle, 'image/jpeg', 0.9))>
+
+bind camera-address
+  take blob, like dynamic
   like text
-  send back
-    call native-camera/capture
-      wait true
+  case browser
+    text <URL.createObjectURL($blob as Blob)>
+
+# `photo <blob address>`, or denied, unavailable or failed
+task capture-photo
+  mark async
+  like text
+  fork test
+    hook test
+      call not
+        call page-has-document
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call media-has-ask
+    hook hold
+      send back, text <unavailable>
+  save asked
+    call media-ask
+      call media-video
+  fork test
+    hook test
+      call media-was-refused
+        read asked
+    hook hold
+      send back
+        call media-refusal
+          call media-refusal-name
+            read asked
+  save stream
+    call media-stream
+      read asked
+  save answer, text <failed>
+  fork
+    mark unsafe
+    save answer
+      call photo-of
+        read stream
+  halt take
+    take problem
+    save answer, text <failed>
+  call media-stop
+    read stream
+  send back, read answer
+
+task photo-of
+  mark private
+  mark async
+  take stream, like dynamic
+  like text
+  save video
+    call camera-video
+      read stream
+  call camera-play
+    read video
+  save canvas
+    call camera-frame
+      read video
+  save blob
+    call camera-jpeg
+      read canvas
+  fork test
+    hook test
+      call page-is-absent
+        read blob
+    hook hold
+      send back, text <failed>
+  save address
+    call camera-address
+      read blob
+  send back, text <photo {address}>

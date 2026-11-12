@@ -5,7 +5,7 @@ mark draft
 
 
 form signal
-  link dock, mark private
+  link dock
 
 task make
   like signal

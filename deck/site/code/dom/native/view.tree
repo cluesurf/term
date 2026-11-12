@@ -4,4 +4,4 @@
 # (node/view, memory/view, browser/view, toolkit/view), and the build bears the one for its target through ../view.
 
 form view
-  link handle, like dynamic, mark private
+  link handle, like dynamic

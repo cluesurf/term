@@ -83,8 +83,10 @@ test <and the message names `hook </path>`>
 test <`mark async` still marks a task async, the same as `note async`>
   want hold, is-equal(refusal(<task t\n  mark async\n  like void\n  send back\n>), clean)
 
-test <`link <field>, mark private` still mills, which is most of the real uses>
-  want hold, is-equal(refusal(<form thing\n  link dock, mark private\n  link name, like text\n>), clean)
+# A field takes no mark: Term has no field privacy, and `mark private` on a field was read by nothing (item 1207,
+# decision 1216). It is refused by name, never dropped
+test <`link <field>, mark private` is refused as an unread mark>
+  want hold, text-contains(refusal(<form thing\n  link dock, mark private\n  link name, like text\n>), <unread-mark>)
 
 test <`mark <uuid>` still mills>
   want hold, is-equal(refusal(<form thing\n  mark \<0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19\>\n  link name, like text\n>), clean)

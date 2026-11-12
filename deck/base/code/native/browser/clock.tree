@@ -1,18 +1,32 @@
 
-# The clock. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
-
-dock load
-  load <global:clock>, name clock
+# The clock, over the page's own timers: each host call is a declarative binding inlined at the use site, with no
+# runtime shim. Internal: reached only through the public clock API.
 
 load ./clock/now
   find clock-reading
+  find precise-milliseconds
+
+# the promise of a timer that ends after `duration` milliseconds
+bind timer-ends
+  mark async
+  take duration, like size
+  like void
+  case browser
+    text <new Promise\<void\>((resolve) =\> \{ setTimeout(resolve, $duration) \})>
+
+# whole nanoseconds since the first reading, from the monotonic `performance.now()`. The origin is taken at the first
+# call and kept on globalThis, so every module of the page counts from one zero. The reading is taken once, through the
+# arrow's own parameter, and is the origin itself on the first call
+bind performance-since-origin
+  like number
+  case browser
+    text <((at: number): number =\> Math.round((at - ((globalThis as \{ __term_clock_origin_ms?: number \}).__term_clock_origin_ms ??= at)) * 1e6))(performance.now())>
 
 task delay
   mark async
   take duration, like size
 
-  call clock/delay
-    wait true
+  call timer-ends
     read duration
 
 task now
@@ -24,11 +38,11 @@ task now
 task current-nanoseconds
   like number
   send back
-    call clock/nanoseconds
+    call performance-since-origin
 
 # what the public `clock/now` reads: monotonic whole milliseconds, as on every backend
 # (note/project/term/stdlib/semantics.md)
 task current-time
   like number
   send back
-    call clock/precise
+    call precise-milliseconds

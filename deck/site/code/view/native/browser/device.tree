@@ -1,7 +1,7 @@
-
 # The device's traits in a browser (native-dom-0012): media queries and the window's width, read when asked, and a
 # query's `change` event or a resize to say look again. Conforms to ../device. The `webview` and `cloudflare` envs reach
-# this file through the `browser` rung of their chains; outside a browser every trait reads its default.
+# this file through the `browser` rung of their chains; outside a browser every trait reads its default, the same
+# defaults the memory host gives.
 #
 #   idiom          phone, tablet or desktop: a fine pointer is a desktop, a coarse one a tablet from 600 px of screen
 #   width-class    compact under 600 px of window width, regular from 600
@@ -9,19 +9,324 @@
 #   color-scheme   light or dark, `(prefers-color-scheme: dark)`
 #   reduce-motion  yes or no, `(prefers-reduced-motion: reduce)`
 #   text-scale     the root font size over 16 px
+#
+# Each trait is READ when asked: nothing is cached as truth. `recheck` reads every trait again and reports each one
+# that differs from the last report, and the queries' own `change` events and the window's `resize` only trigger it.
+# Ported from runtime/native-device.ts (term-self-host-001-0730): the window's questions and events are binds, the
+# traits, the recheck and the watcher are Term.
 
 load @term/site/report
   find report-raise
 
-dock load
-  load <global:native-device>, name native-device
+load @term/base/list
+  find list
+  find push
+
+load @term/base/hash
+  find hash
+  find set
+  find get-or-default
+
+load ./page-host
+  find page-has-window
+  find page-has-document
+  find page-listen-window
+  find page-number-text
+  find page-round
+
+bind device-has-match-media
+  like boolean
+  case browser
+    text <(typeof window.matchMedia === 'function')>
+
+bind device-query-matches
+  take query, like text
+  like boolean
+  case browser
+    text <window.matchMedia($query).matches>
+
+bind device-listen-query
+  take query, like text
+  take run
+    like task
+  like void
+  case browser
+    text <window.matchMedia($query).addEventListener('change', $run)>
+
+bind device-screen-shortest
+  like number
+  case browser
+    text <Math.min(window.screen.width, window.screen.height)>
+
+bind device-window-width
+  like number
+  case browser
+    text <window.innerWidth>
+
+bind device-has-computed-style
+  like boolean
+  case browser
+    text <(typeof getComputedStyle === 'function')>
+
+bind device-root-font-size
+  like float
+  case browser
+    text <parseFloat(getComputedStyle(document.documentElement).fontSize)>
+
+bind device-is-finite
+  take value, like float
+  like boolean
+  case browser
+    text <Number.isFinite($value)>
+
+# the one watcher: the handler reports reach, and every trait's last reported value
+form device-watch
+  mark shared
+  link reporting, like boolean
+  link handler
+    like task
+      take name, like text
+      take value, like text
+  link last, like hash, like text, like text
+  link installed, like boolean
+
+host device-watching
+  make device-watch
+    bind reporting, false
+    bind handler
+      task nobody
+        take name, like text
+        take value, like text
+        save skip, code 0
+    bind last
+      make hash
+    bind installed, false
+
+task device-trait-names
+  mark private
+  like list, like text
+  save names
+    make list
+  call push
+    read names
+    text <idiom>
+  call push
+    read names
+    text <width-class>
+  call push
+    read names
+    text <pointer>
+  call push
+    read names
+    text <color-scheme>
+  call push
+    read names
+    text <reduce-motion>
+  call push
+    read names
+    text <text-scale>
+  send back, read names
+
+task device-queries
+  mark private
+  like list, like text
+  save queries
+    make list
+  call push
+    read queries
+    text <(prefers-color-scheme: dark)>
+  call push
+    read queries
+    text <(prefers-reduced-motion: reduce)>
+  call push
+    read queries
+    text <(pointer: fine)>
+  call push
+    read queries
+    text <(pointer: coarse)>
+  send back, read queries
+
+task device-is-live
+  mark private
+  like boolean
+  fork test
+    hook test
+      call page-has-window
+    hook hold
+      send back
+        call device-has-match-media
+  send back, false
+
+task device-matches
+  mark private
+  take query, like text
+  like boolean
+  fork test
+    hook test
+      call device-is-live
+    hook hold
+      send back
+        call device-query-matches
+          read query
+  send back, false
+
+# the root font size over the browser default of 16, to two places, `1` at the default
+task device-text-scale
+  mark private
+  like text
+  fork test
+    hook test
+      call not
+        call page-has-document
+    hook hold
+      send back, text <1>
+  fork test
+    hook test
+      call not
+        call device-has-computed-style
+    hook hold
+      send back, text <1>
+  save size
+    call device-root-font-size
+  fork test
+    hook test
+      call and
+        call device-is-finite
+          read size
+        call is-above
+          read size
+          code 0.0
+    hook hold
+      send back
+        call page-number-text
+          call divide
+            call page-round
+              call multiply
+                call divide
+                  read size
+                  code 16.0
+                code 100.0
+            code 100.0
+  send back, text <1>
 
 task read-trait
   take name, like text
   like text
-  send back
-    call native-device/read-trait
-      read name
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <idiom>
+    hook hold
+      fork test
+        hook test
+          call not
+            call device-is-live
+        hook hold
+          send back, text <phone>
+      fork test
+        hook test
+          call not
+            call device-matches
+              text <(pointer: coarse)>
+        hook hold
+          send back, text <desktop>
+      fork test
+        hook test
+          call is-minimum
+            call device-screen-shortest
+            code 600
+        hook hold
+          send back, text <tablet>
+      send back, text <phone>
+    hook test
+      call is-equal
+        read name
+        text <width-class>
+    hook hold
+      fork test
+        hook test
+          call and
+            call device-is-live
+            call is-minimum
+              call device-window-width
+              code 600
+        hook hold
+          send back, text <regular>
+      send back, text <compact>
+    hook test
+      call is-equal
+        read name
+        text <pointer>
+    hook hold
+      fork test
+        hook test
+          call device-matches
+            text <(pointer: fine)>
+        hook hold
+          send back, text <fine>
+      send back, text <touch>
+    hook test
+      call is-equal
+        read name
+        text <color-scheme>
+    hook hold
+      fork test
+        hook test
+          call device-matches
+            text <(prefers-color-scheme: dark)>
+        hook hold
+          send back, text <dark>
+      send back, text <light>
+    hook test
+      call is-equal
+        read name
+        text <reduce-motion>
+    hook hold
+      fork test
+        hook test
+          call device-matches
+            text <(prefers-reduced-motion: reduce)>
+        hook hold
+          send back, text <yes>
+      send back, text <no>
+    hook test
+      call is-equal
+        read name
+        text <text-scale>
+    hook hold
+      send back
+        call device-text-scale
+  send back, text <no>
+
+# read every trait again, and report each that the browser changed since the last report
+task device-recheck
+  mark private
+  fork test
+    hook test, read device-watching/reporting
+    hook hold
+      walk list
+        call device-trait-names
+        hook next
+          take site, name name
+          save now
+            call read-trait
+              read name
+          fork test
+            hook test
+              call is-unequal
+                call get-or-default
+                  read device-watching/last
+                  read name
+                  text <>
+                read now
+            hook hold
+              call device-watching/last/set
+                read name
+                read now
+              call device-watching/handler
+                read name
+                read now
 
 task watch-traits
   take handler
@@ -30,7 +335,7 @@ task watch-traits
       take value, like text
       halt exception
   like task
-  call native-device/watch
+  save device-watching/handler
     task heard
       take name, like text
       take value, like text
@@ -44,11 +349,41 @@ task watch-traits
         call report-raise
           text <watch-traits>
           read problem
+  save device-watching/reporting, true
+  save last
+    make hash
+  walk list
+    call device-trait-names
+    hook next
+      take site, name name
+      call last/set
+        read name
+        call read-trait
+          read name
+  save device-watching/last, read last
+  fork test
+    hook test
+      call and
+        call not
+          read device-watching/installed
+        call device-is-live
+    hook hold
+      save device-watching/installed, true
+      walk list
+        call device-queries
+        hook next
+          take site, name query
+          call device-listen-query
+            read query
+            read device-recheck
+      call page-listen-window
+        text <resize>
+        read device-recheck
   send back
     task drop
       fork
         mark unsafe
-        call native-device/unwatch
+        save device-watching/reporting, false
       halt take
         take problem
         call report-raise
@@ -59,6 +394,4 @@ task watch-traits
 task change-trait
   take name, like text
   take value, like text
-  call native-device/change-trait
-    read name
-    read value
+  call device-recheck

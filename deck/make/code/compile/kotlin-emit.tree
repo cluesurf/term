@@ -1805,7 +1805,7 @@ task kt-expr
         hold
           needs-add(<stop>, st)
           back <termNegate({long-of(operand, st, facts)})>
-      back <{to-text(unary-op)}{kt-expr(operand, st, facts)}>
+      back <{to-text(unary-op)}{kt-operand(operand, st, facts)}>
     case binary
       back kt-binary(node, st, facts)
     case call
@@ -1957,7 +1957,7 @@ task kt-binary
             hold
               save negate, <!>
           back need(<key>, <{negate}termEqual({kt-expr(left, st, facts)}, {kt-expr(right, st, facts)})>, st)
-      back <({kt-expr(left, st, facts)} {op-text} {kt-expr(right, st, facts)})>
+      back <({kt-operand(left, st, facts)} {op-text} {kt-operand(right, st, facts)})>
     miss
       back <>
 
@@ -3088,6 +3088,28 @@ task kt-target
   sift target
     case call
       fork test, not(is-primary(written))
+        hold
+          back <({written})>
+    miss
+      save nothing, 0
+  back written
+
+# an operand of an operator (`==`, `<`, `&&`, `||`, `!`, ...). A call to a bind is its text in place of the call, and a
+# text that is more than one primary, such as `if (true) $a else $b`, is put in parentheses, or the operator joins its
+# last operand only: `if (true) true else false && false` answers true (item 1204, the rule of kt-target)
+task kt-operand
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save written, kt-expr(node, st, facts)
+  sift node
+    case call
+      link call-callee
+      save name, variable-name-of(call-callee)
+      fork test, and(and(is-unequal(name, <>), facts/binds/has(name)), not(is-primary(written)))
         hold
           back <({written})>
     miss

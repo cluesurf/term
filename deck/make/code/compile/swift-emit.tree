@@ -1238,6 +1238,29 @@ task swift-target
       save nothing, 0
   back written
 
+# an operand of an operator (`==`, `<`, `&&`, `||`, `!`, ...). A call to a bind is its text in place of the call, and a
+# text that is more than one primary, such as `true ? $a : $b`, is put in parentheses, or the operator joins its last
+# operand only (item 1204, the rule of swift-target)
+task swift-operand
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save written, emit-expr(node, field-scope, st, facts)
+  sift node
+    case call
+      link callee
+      save name, variable-name-of(callee)
+      fork test, and(and(is-unequal(name, <>), facts/binds/has(name)), not(is-primary(written)))
+        hold
+          back <({written})>
+    miss
+      save nothing, 0
+  back written
+
 # a type with the receiver's form written `Self`
 task sub-self
   take given, like maybe, like type
@@ -1795,7 +1818,7 @@ task emit-expr
     case unary
       link unary-op
       link operand
-      save operand-text, emit-expr(operand, field-scope, st, facts)
+      save operand-text, swift-operand(operand, field-scope, st, facts)
       save op, to-text(unary-op)
       fork test, starts-with(operand-text, <await >)
         hold
@@ -2039,7 +2062,7 @@ task comparison-operand
   like text
   mark private
 
-  save text, emit-expr(side, field-scope, st, facts)
+  save text, swift-operand(side, field-scope, st, facts)
   fork test, not(or(is-equal(op, <==>), is-equal(op, <!=>)))
     hold
       back text

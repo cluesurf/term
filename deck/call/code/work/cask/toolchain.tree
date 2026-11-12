@@ -118,6 +118,35 @@ task checked-flags
       back answered
   back <>
 
+# What native/toolchain/<script-name> `flags` answers, cold cache or not (item term-self-host-001-1218): the script
+# builds swift-nio and Hummingbird (swift.sh), or resolves coroutines and ktor (kotlin.sh), when the cache is cold or
+# broken, then prints the flags or the classpath. `swift-flags` and the native build's `kotlin-classpath` read the cache
+# only when it is there, so a program importing the stack built in a fresh TMPDIR without it (`no such module
+# 'HTTPTypes'`, `unresolved reference 'io'`). The empty text with no script, or when the script fails
+task stack-flags
+  take script-name, like text
+  like text
+
+  save stdlib, resolve-module/stdlib-base()
+  fork test, not(is-truthy(stdlib))
+    hold
+      back <>
+  save script, node-path/join(stdlib, <code/native/toolchain/{script-name}>)
+  fork test, not(node-fs/exists-sync(script))
+    hold
+      back <>
+  save args, make list
+  args/push(script)
+  args/push(<flags>)
+  save said, node-child/spawn-sync(<bash>, args, make(flags-run, bind(encoding, <utf8>), bind(max-buffer, 67108864)))
+  fork test, is-equal(said/status, 0)
+    hold
+      # the script's stdout, read as utf8 (seam decision 004)
+      save answered, like text
+        read said/stdout
+      back answered
+  back <>
+
 # where the Android SDK and the Kotlin standard library are on this machine, or why the build cannot go on
 task android-tools
   like android-tool-set

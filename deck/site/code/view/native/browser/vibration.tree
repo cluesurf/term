@@ -1,13 +1,138 @@
-# vibration on a browser (device-layer-0006): navigator.vibrate.
-# Conforms to ../vibration. The runtime is runtime/native-vibration.ts.
+# vibration on a browser (device-layer-0006): navigator.vibrate, which Chromium on Android plays and desktop browsers
+# and Safari do not have. Conforms to ../vibration. Ported from runtime/native-vibration.ts (term-self-host-001-0730):
+# the host's question and its one call are binds, the patterns and the answer are Term.
 
-dock load
-  load <global:native-vibration>, name native-vibration
+load @term/base/list
+  find list
+  find push
 
+load ./page-host
+  find page-has-navigator
+
+bind vibration-has-vibrate
+  like boolean
+  case browser
+    text <(typeof navigator.vibrate === 'function')>
+
+bind vibration-play
+  take pattern, like list, like number
+  like boolean
+  case browser
+    text <navigator.vibrate($pattern)>
+
+# each kind's pattern in milliseconds, on and off in turn. An empty pattern is a kind with none
+task vibration-pattern
+  mark private
+  take kind, like text
+  like list, like number
+  save pattern
+    make list
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <light>
+    hook hold
+      call push
+        read pattern
+        code 10
+    hook test
+      call is-equal
+        read kind
+        text <medium>
+    hook hold
+      call push
+        read pattern
+        code 20
+    hook test
+      call is-equal
+        read kind
+        text <heavy>
+    hook hold
+      call push
+        read pattern
+        code 40
+    hook test
+      call is-equal
+        read kind
+        text <success>
+    hook hold
+      call push
+        read pattern
+        code 20
+      call push
+        read pattern
+        code 60
+      call push
+        read pattern
+        code 20
+    hook test
+      call is-equal
+        read kind
+        text <warning>
+    hook hold
+      call push
+        read pattern
+        code 40
+      call push
+        read pattern
+        code 60
+      call push
+        read pattern
+        code 40
+    hook test
+      call is-equal
+        read kind
+        text <error>
+    hook hold
+      call push
+        read pattern
+        code 60
+      call push
+        read pattern
+        code 50
+      call push
+        read pattern
+        code 60
+      call push
+        read pattern
+        code 50
+      call push
+        read pattern
+        code 60
+  send back, read pattern
+
+# `played`, or `unavailable`
 task play-vibration
+  mark async
   take kind, like text
   like text
-  send back
-    call native-vibration/play
+  save pattern
+    call vibration-pattern
       read kind
-      wait true
+  fork test
+    hook test
+      call is-equal
+        read pattern/length
+        code 0
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call vibration-has-vibrate
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call vibration-play
+        read pattern
+    hook hold
+      send back, text <played>
+  send back, text <unavailable>

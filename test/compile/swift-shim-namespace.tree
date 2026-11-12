@@ -71,7 +71,7 @@ task program-text
   take dock-load, like text
   like text
 
-  back <dock type\n  load \<{dock-type}\>, name handle-dock\n{dock-load}\nform handle\n  link dock, like handle-dock, mark private\n\ntask nothing\n  like integer\n  send back, code 1\n>
+  back <dock type\n  load \<{dock-type}\>, name handle-dock\n{dock-load}\nform handle\n  link dock, like handle-dock\n\ntask nothing\n  like integer\n  send back, code 1\n>
 
 task imports
   take out, like compile-outcome

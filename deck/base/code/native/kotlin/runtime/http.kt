@@ -31,7 +31,14 @@ object http {
             for ((name, value) in header) builder.header(name, value)
             val publisher = if (body.isEmpty()) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofString(body)
             builder.method(method, publisher)
-            val client = HttpClient.newBuilder().connectTimeout(wait).build()
+            // HTTP/1.1 on a plain http:// url, as node's fetch, reqwest and URLSession ask (item term-self-host-001-1218).
+            // The JDK client's default is HTTP/2, which on plain http sends an h2c upgrade request, and Ktor's CIO
+            // server (the kotlin network/server) never answered one: every fetch of a Term server timed out. Over
+            // https HTTP/2 is still offered, by ALPN
+            val plain = url.startsWith("http://", ignoreCase = true)
+            val client = HttpClient.newBuilder().connectTimeout(wait)
+                .apply { if (plain) version(HttpClient.Version.HTTP_1_1) }
+                .build()
             val response = termLoop.await(client.sendAsync(builder.build(), java.net.http.HttpResponse.BodyHandlers.ofString()))
             val out = kotlin.collections.mutableListOf("ok", response.statusCode().toString(), response.body())
             for ((name, values) in response.headers().map()) {

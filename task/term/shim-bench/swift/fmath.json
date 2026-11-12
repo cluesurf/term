@@ -1,0 +1,111 @@
+{
+  "shim": "fmath",
+  "candidate": "deck/base/code/native/swift/float.tree",
+  "rounds": 200,
+  "ops": [
+    {
+      "op": "sqrt",
+      "shim_op": "sqrt",
+      "term_op": "float-square-root",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "floor",
+      "shim_op": "floor",
+      "term_op": "float-floor",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "ceil",
+      "shim_op": "ceil",
+      "term_op": "float-ceiling",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "round",
+      "shim_op": "round",
+      "term_op": "float-round",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "pow",
+      "shim_op": "pow",
+      "term_op": "float-power",
+      "arity": 2,
+      "kind": "float",
+      "cases": "float-pairs"
+    },
+    {
+      "op": "abs",
+      "shim_op": "abs",
+      "term_op": "float-absolute",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "sin",
+      "shim_op": "sin",
+      "term_op": "float-sine",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "cos",
+      "shim_op": "cos",
+      "term_op": "float-cosine",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "tan",
+      "shim_op": "tan",
+      "term_op": "float-tangent",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "asin",
+      "shim_op": "asin",
+      "term_op": "float-arc-sine",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "acos",
+      "shim_op": "acos",
+      "term_op": "float-arc-cosine",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "atan",
+      "shim_op": "atan",
+      "term_op": "float-arc-tangent",
+      "arity": 1,
+      "kind": "float",
+      "cases": "float-singles"
+    },
+    {
+      "op": "atan2",
+      "shim_op": "atan2",
+      "term_op": "float-arc-tangent-of",
+      "arity": 2,
+      "kind": "float",
+      "cases": "float-pairs"
+    }
+  ]
+}

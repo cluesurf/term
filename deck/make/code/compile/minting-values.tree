@@ -1763,11 +1763,13 @@ task type-of-heads
 # as `like hash, like text` makes the key's type. A nested `like` (`like list, like text`) is a `child`, never an `arg`.
 # ONLY AN `arg` ON THE LIKE'S OWN LINE: one on a line under it is a part some reader does take (`like or` over
 # `text <center>` lines, a callback's `note async`, `free seed`), 2,177 of them in the tree. save-of calls this too,
-# for a save with no value, whose type nothing else reads
+# for a save with no value, whose type nothing else reads. The like's metadata words are held to refuse-like-marks
+# first, wherever they sit
 task refuse-like-values
   take state, like mint-state
   take value, like maybe, like minted
 
+  refuse-like-marks(state, value)
   save own, span-of(value)
   save line, own/start/line
   fork test, not(is-above(line, 0))
@@ -1786,14 +1788,49 @@ task refuse-like-values
         save shown, word
       case none
         save nothing, 0
-    # `link handle, like dynamic, mark private` (5 files of deck/site/code/dom/native): a `mark` beside a link's type
-    # mints here too and is dropped the same way, but whether a field takes `mark private` is not this item's to
-    # decide, so it is left to its own item and only values are refused
+    # `link handle, like dynamic, mark private` (5 files of deck/site/code/dom/native until item 1207): a `mark` beside
+    # a type mints here too, as a bare part no reader takes, so it is refused as the mark it is (decision 1216)
     fork test, is-equal(shown, <mark>)
       hold
+        save mark-hint, <remove the `mark`: Term has no field privacy, so a field or a parameter takes no mark, and a mark beside a type is read by nothing. The one mark a type reads is `mark async` on a `like task`>
+        push-problem(state, span-of(make(some, extra)), <unread-mark: a `mark` after a `like`'s type is read by nothing, and is dropped>, make(some, mark-hint))
         turn next
     save hint, <a value goes on its own line under the `save`, or as `save x, <value>` with the type left to inference. A type argument is a nested `like`: `like list, like text`>
     push-problem(state, span-of(make(some, extra)), <`{shown}` after a `like`'s type is read as part of the type, not as a value, and no type takes it: a comma after `like <type>` makes what follows the `like`'s own part>, make(some, hint))
+
+# A metadata word beside or under a `like` (`like dynamic, mark open`, `like task` over `mark async`) mints as the
+# like's `note`, read by ONE reader: a `like task`'s `mark async` makes the callback type async (type-of-heads). Any
+# other word there is read by nothing and was dropped in silence, so it is an unread mark (item 1207, decision 1216).
+# A `note <text>` is documentation and passes. Read wherever the word sits, its own line or the like's
+task refuse-like-marks
+  take state, like mint-state
+  take value, like maybe, like minted
+
+  save like-name, <>
+  sift word-at(value, <name>)
+    case some
+      link known
+      save like-name, get(split(known, < >), 0)
+    case none
+      save nothing, 0
+  walk forms-at(value, <note>)
+    take note-form
+    save noted, make(some, note-form)
+    sift first-at(noted, <text>)
+      case some
+        link written
+        sift written
+          case word
+            link word-value
+            fork test, and(is-equal(word-value, <async>), is-equal(like-name, <task>))
+              hold
+                turn next
+            save hint, <remove it: the one mark a type reads is `mark async`, on a `like task`>
+            push-problem(state, span-of(noted), <unread-mark: `mark {word-value}` on a `like {like-name}` is read by nothing, and is dropped>, make(some, hint))
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
 
 # a `halt` word under a `like task` that names a form, never one of the words a `halt` statement heads with
 task is-slot-raise

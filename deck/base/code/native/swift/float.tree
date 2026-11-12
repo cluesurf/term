@@ -1,99 +1,84 @@
-# swift float math (the linked fmath shim). Internal: reached only through the public float API.
+# swift float math as declarative bindings over Foundation and Double, one host expression an op: the fmath shim's
+# expressions, which inline at the use site (decision 132 of term/self-host/change/001). Internal: reached only through
+# the public float API.
 
-dock load
-  load <global:fmath>, name fmath
-
-task float-square-root
+bind float-square-root
   take value, like float
   like float
-  send back
-    call fmath/sqrt
-      read value
+  case swift
+    text <Foundation.sqrt($value)>
 
-task float-floor
+bind float-floor
   take value, like float
   like float
-  send back
-    call fmath/floor
-      read value
+  case swift
+    text <Foundation.floor($value)>
 
-task float-ceiling
+bind float-ceiling
   take value, like float
   like float
-  send back
-    call fmath/ceil
-      read value
+  case swift
+    text <Foundation.ceil($value)>
 
-task float-round
+# half away from zero, Double's default rounding rule
+bind float-round
   take value, like float
   like float
-  send back
-    call fmath/round
-      read value
+  case swift
+    text <($value).rounded()>
 
-task float-power
+bind float-power
   take base, like float
   take exponent, like float
   like float
-  send back
-    call fmath/pow
-      read base
-      read exponent
+  case swift
+    text <Foundation.pow($base, $exponent)>
 
-task float-absolute
+bind float-absolute
   take value, like float
   like float
-  send back
-    call fmath/abs
-      read value
+  case swift
+    text <Swift.abs($value)>
 
-task float-sine
+bind float-sine
   take value, like float
   like float
-  send back
-    call fmath/sin
-      read value
+  case swift
+    text <Foundation.sin($value)>
 
-task float-cosine
+bind float-cosine
   take value, like float
   like float
-  send back
-    call fmath/cos
-      read value
+  case swift
+    text <Foundation.cos($value)>
 
-task float-tangent
+bind float-tangent
   take value, like float
   like float
-  send back
-    call fmath/tan
-      read value
+  case swift
+    text <Foundation.tan($value)>
 
-task float-arc-sine
+bind float-arc-sine
   take value, like float
   like float
-  send back
-    call fmath/asin
-      read value
+  case swift
+    text <Foundation.asin($value)>
 
-task float-arc-cosine
+bind float-arc-cosine
   take value, like float
   like float
-  send back
-    call fmath/acos
-      read value
+  case swift
+    text <Foundation.acos($value)>
 
-task float-arc-tangent
+bind float-arc-tangent
   take value, like float
   like float
-  send back
-    call fmath/atan
-      read value
+  case swift
+    text <Foundation.atan($value)>
 
-task float-arc-tangent-of
+bind float-arc-tangent-of
   take y, like float
   take x, like float
   like float
-  send back
-    call fmath/atan2
-      read y
-      read x
+  case swift
+    text <Foundation.atan2($y, $x)>

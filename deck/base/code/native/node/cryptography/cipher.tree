@@ -1,7 +1,48 @@
-# node AES-256-GCM implementation. Forwards to the linked cipher runtime shim (Web Crypto SubtleCrypto). Key, nonce, plaintext, ciphertext and the additional authenticated data are raw bytes. Internal: reached only through the public cipher API.
+# node AES-256-GCM implementation over the Web Crypto API (SubtleCrypto, globalThis.crypto.subtle on node 16 and
+# later). Key, nonce, plaintext, ciphertext and the additional authenticated data are raw bytes. Encrypt answers
+# ciphertext then the 16-byte GCM tag, and decrypt expects the same layout. Each host call is a declarative binding,
+# inlined at the use site with no runtime shim, each argument read once, and the steps between them are Term.
+# Internal: reached only through the public cipher API.
+#
+# `extra` is the additional authenticated data. It is covered by the tag and is not part of the ciphertext, so a sealed
+# value carries the context it was sealed in and cannot be moved to another slot without failing to open.
+# `additionalData` is a field Web Crypto already defines on AesGcmParams: an empty array authenticates nothing, which is
+# GCM's own default.
 
-dock load
-  load <global:cipher>, name cipher
+# the raw key imported for both directions
+bind import-secret
+  mark async
+  take key, like bytes
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.importKey('raw', ($key) as BufferSource,\{ name: 'AES-GCM' \}, false, ['encrypt', 'decrypt'])>
+
+bind aes-seal
+  mark async
+  take secret, like dynamic
+  take nonce, like bytes
+  take plain, like bytes
+  take extra, like bytes
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.encrypt(\{ name: 'AES-GCM', iv: ($nonce) as BufferSource, additionalData: ($extra) as BufferSource \}, $secret, ($plain) as BufferSource)>
+
+bind aes-open
+  mark async
+  take secret, like dynamic
+  take nonce, like bytes
+  take sealed, like bytes
+  take extra, like bytes
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.decrypt(\{ name: 'AES-GCM', iv: ($nonce) as BufferSource, additionalData: ($extra) as BufferSource \}, $secret, ($sealed) as BufferSource)>
+
+# the bytes of a host ArrayBuffer
+bind bytes-of-buffer
+  take buffer, like dynamic
+  like bytes
+  case node
+    text <new Uint8Array($buffer)>
 
 task encrypt-aes-gcm
   mark async
@@ -10,12 +51,18 @@ task encrypt-aes-gcm
   take plain, like bytes
   take extra, like bytes
   like bytes
-  send back
-    call cipher/encrypt
+  save secret
+    call import-secret
       read key
+  save sealed
+    call aes-seal
+      read secret
       read nonce
       read plain
       read extra
+  send back
+    call bytes-of-buffer
+      read sealed
 
 task decrypt-aes-gcm
   mark async
@@ -24,15 +71,21 @@ task decrypt-aes-gcm
   take sealed, like bytes
   take extra, like bytes
   like bytes
-  send back
-    call cipher/decrypt
+  save secret
+    call import-secret
       read key
+  save opened
+    call aes-open
+      read secret
       read nonce
       read sealed
       read extra
+  send back
+    call bytes-of-buffer
+      read opened
 
 # whether the sealed value opens under this key, nonce and extra. `decrypt` asks first, so a value that does not
-# open raises `refusal` on every backend, where each host failed its own way
+# open raises `refusal` on every backend, where each host failed its own way (node's error carries no `form`)
 task opens-aes-gcm
   mark async
   take key, like bytes
@@ -40,9 +93,17 @@ task opens-aes-gcm
   take sealed, like bytes
   take extra, like bytes
   like boolean
-  send back
-    call cipher/opens
-      read key
+  fork
+    mark unsafe
+    save secret
+      call import-secret
+        read key
+    call aes-open
+      read secret
       read nonce
       read sealed
       read extra
+    send back, true
+  halt take
+    take problem
+    send back, false

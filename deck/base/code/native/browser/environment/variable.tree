@@ -1,44 +1,38 @@
 
-# Environment variables. Forwards to the linked variable runtime shim, which uses origin-scoped local storage in
-# place of a process environment. Internal: reached only through the public environment API.
+# Environment variables: a page has no process environment, so origin-scoped localStorage stands in for it, with the
+# same key and value semantics. Each op is a declarative binding inlined at the use site, with no runtime shim. A
+# missing variable reads as the empty string. Internal: reached only through the public environment API.
 
-dock load
-  load <global:env-variable>, name env-variable
-
-task fetch-variable
+bind fetch-variable
   take name, like text
   like text
+  case browser
+    text <(localStorage.getItem($name) ?? '')>
 
-  send back
-    call env-variable/get
-      read name
-
-task store-variable
+bind store-variable
   take name, like text
   take value, like text
+  like void
+  case browser
+    text <localStorage.setItem($name, $value)>
 
-  call env-variable/set
-    read name
-    read value
-
-task drop-variable
+bind drop-variable
   take name, like text
+  like void
+  case browser
+    text <localStorage.removeItem($name)>
 
-  call env-variable/remove
-    read name
-
-task gather-variables
+# a Term `hash` is a Map on this backend, as on node: a plain object read as a hash with no entries. Every key in
+# storage order, each with its value
+bind gather-variables
   like hash
     like text
     like text
+  case browser
+    text <new Map(Array.from(\{ length: localStorage.length \}, (_, i) =\> localStorage.key(i)).filter((key): key is string =\> key !== null).map((key): [string, string] =\> [key, localStorage.getItem(key) ?? '']))>
 
-  send back
-    call env-variable/list
-
-task holds-variable
+bind holds-variable
   take name, like text
   like boolean
-
-  send back
-    call env-variable/check
-      read name
+  case browser
+    text <(localStorage.getItem($name) !== null)>

@@ -1,8 +1,9 @@
 # kotlin HTTP server: forwards to the linked `server` runtime shim, which is Ktor's CIO engine. Internal: reached
 # only through the public network/server API.
 #
-# `serve` blocks for the life of the process; `start` binds and answers without blocking, and `stop` shuts the
-# engine down. See note/project/term/stdlib/native-async-file-and-server.md.
+# The handler is handed to the shim as `answer-plain` over it (network/server/plain), so the shim names no Term form
+# (item term-self-host-001-1218). `start` answers once the port is bound, `stop` once it is closed. See
+# note/project/term/stdlib/native-async-file-and-server.md.
 
 dock type
   load <runtime.Running>, name server-dock
@@ -15,6 +16,9 @@ load @term/base/network/server/request
 
 load @term/base/network/server/response
   find response
+
+load @term/base/network/server/plain
+  find answer-plain
 
 load @term/base/network/server
   find server
@@ -34,12 +38,33 @@ task server-serve
   call runtime/serve
     read port
     read host
-    read handler
+    task plain
+      take method, like text
+      take url, like text
+      take path, like text
+      take query, like text
+      take headers
+        like hash
+          like text
+          like text
+      take body, like text
+      take dock, like unknown
+      like list, like text
+      send back
+        call answer-plain
+          read handler
+          read method
+          read url
+          read path
+          read query
+          read headers
+          read body
+          read dock
     read secure
     read certificate
     read key
 
-# bind the port and answer, without blocking. The returned server is what `server-stop` shuts down.
+# bind the port and answer once it is bound, without blocking. The returned server is what `server-stop` shuts down.
 task server-start
   mark async
   take port, like size
@@ -56,7 +81,28 @@ task server-start
     call runtime/start
       read port
       read host
-      read handler
+      task plain
+        take method, like text
+        take url, like text
+        take path, like text
+        take query, like text
+        take headers
+          like hash
+            like text
+            like text
+        take body, like text
+        take dock, like unknown
+        like list, like text
+        send back
+          call answer-plain
+            read handler
+            read method
+            read url
+            read path
+            read query
+            read headers
+            read body
+            read dock
       read secure
       read certificate
       read key
@@ -67,6 +113,7 @@ task server-start
       bind host, read host
       bind port, read port
 
+# stop accepting and answer once the port is closed
 task server-stop
   mark async
   take server, like server

@@ -1,24 +1,105 @@
-# open on a browser (device-layer-0008): window.open and navigator.share.
-# Conforms to ../open. The runtime is runtime/native-open.ts.
+# open on a browser (device-layer-0008): an address opens in a new tab or window, and text goes to navigator.share
+# where the browser has it (phones, Safari). Conforms to ../open. Ported from runtime/native-open.ts
+# (term-self-host-001-0730): the host's questions and calls are binds, the answers are Term.
 
-dock load
-  load <global:native-open>, name native-open
+load ./page-host
+  find page-has-navigator
+  find page-has-window
+  find page-is-absent
 
+bind open-has-open
+  like boolean
+  case browser
+    text <(typeof window.open === 'function')>
+
+# whether the browser blocked the window it was asked for
+bind open-is-blocked
+  take address, like text
+  like boolean
+  case browser
+    text <(window.open($address, '_blank', 'noopener') === null)>
+
+bind open-has-share
+  like boolean
+  case browser
+    text <(typeof navigator.share === 'function')>
+
+# the share sheet: nothing when it ended well, else the error it ended with, held in `error` so even a refusal with no
+# reason is one. The async arrow makes a call that throws at once a refusal too, as the shim's `await` in a `try` did
+bind open-share
+  mark async
+  take text, like text
+  like dynamic
+  case browser
+    text <(async (text: string): Promise\<void\> =\> navigator.share(\{ text \}))($text).then(() =\> undefined, (error: unknown) =\> (\{ error \}))>
+
+bind open-refusal-name
+  take ended, like dynamic
+  like text
+  case browser
+    text <String((($ended) as \{ error?: \{ name?: unknown \} \}).error?.name ?? '')>
+
+# opened, or denied when the browser blocked the window, or unavailable outside a browser
 task hand-address
+  mark async
   take address, like text
   like text
-  send back
-    call native-open/address
-      read address
-      wait true
+  fork test
+    hook test
+      call not
+        call page-has-window
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call open-has-open
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call open-is-blocked
+        read address
+    hook hold
+      send back, text <denied>
+  send back, text <opened>
 
+# shown, denied (the browser refused to show it, as it does outside a person's click), or unavailable
 task present-share
+  mark async
   take text, like text
   like text
-  send back
-    call native-open/share
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call open-has-share
+    hook hold
+      send back, text <unavailable>
+  save ended
+    call open-share
       read text
-      wait true
+  fork test
+    hook test
+      call page-is-absent
+        read ended
+    hook hold
+      send back, text <shown>
+  # an AbortError is the person closing the sheet, which was shown; anything else is the sheet never coming up
+  fork test
+    hook test
+      call is-equal
+        call open-refusal-name
+          read ended
+        text <AbortError>
+    hook hold
+      send back, text <shown>
+  send back, text <denied>
 
 # a page holds no file of the person's by path, so it has none to share
 task present-share-file

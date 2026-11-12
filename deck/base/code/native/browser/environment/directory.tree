@@ -1,18 +1,14 @@
 
-# The working directory. Forwards to the linked directory runtime shim, which uses the URL path. Internal: reached
-# only through the public environment API.
+# The working directory: a page has none, so the URL path stands in for it. Each op is a declarative binding inlined at
+# the use site, with no runtime shim. Internal: reached only through the public environment API.
 
-dock load
-  load <global:work-directory>, name work-directory
-
-task working-directory
+bind working-directory
   like text
+  case browser
+    text <location.pathname>
 
-  send back
-    call work-directory/get
-
-task enter-directory
+bind enter-directory
   take path, like text
-
-  call work-directory/set
-    read path
+  like void
+  case browser
+    text <history.pushState(null, '', $path)>

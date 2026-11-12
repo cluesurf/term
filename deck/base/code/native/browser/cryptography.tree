@@ -1,24 +1,67 @@
 
-# Digests and random bytes. Forwards to the linked cryptography runtime shim, which normalises the digest name to the
-# platform spelling. Internal: reached only through the public cryptography API.
+# Digests and random bytes over the page's Web Crypto. The digest name is normalised in Term from the seed spelling
+# (`sha256`) to the Web Crypto spelling (`SHA-256`), and each host call is a declarative binding inlined at the use
+# site, with no runtime shim. `digest` is async because `crypto.subtle` is. Internal: reached only through the public
+# cryptography API.
 
-dock load
-  load <global:cryptography>, name cryptography
+# the digest of the text's UTF-8 bytes, as a host ArrayBuffer
+bind web-digest
+  mark async
+  take name, like text
+  take data, like text
+  like dynamic
+  case browser
+    text <crypto.subtle.digest($name, new TextEncoder().encode($data))>
+
+# lower-case hex, two digits a byte
+bind hex-of-buffer
+  take buffer, like dynamic
+  like text
+  case browser
+    text <Array.from(new Uint8Array($buffer)).map((byte) =\> byte.toString(16).padStart(2, '0')).join('')>
+
+bind host-upper-case
+  take value, like text
+  like text
+  case browser
+    text <($value).toUpperCase()>
+
+# the Web Crypto spelling of a digest name: the four Term spellings mapped, any other name upper-cased
+task web-digest-name
+  take algorithm, like text
+  like text
+  fork test, is-equal(algorithm, <sha256>)
+    hook hold
+      send back, text <SHA-256>
+  fork test, is-equal(algorithm, <sha384>)
+    hook hold
+      send back, text <SHA-384>
+  fork test, is-equal(algorithm, <sha512>)
+    hook hold
+      send back, text <SHA-512>
+  fork test, is-equal(algorithm, <sha1>)
+    hook hold
+      send back, text <SHA-1>
+  send back
+    call host-upper-case
+      read algorithm
 
 task digest
   mark async
   take algorithm, like text
   take data, like text
 
-  send back
-    call cryptography/digest
-      wait true
-      read algorithm
+  save hash
+    call web-digest
+      call web-digest-name
+        read algorithm
       read data
-
-task random-bytes
-  take size, like size
-
   send back
-    call cryptography/random-bytes
-      read size
+    call hex-of-buffer
+      read hash
+
+bind random-bytes
+  take size, like size
+  like bytes
+  case browser
+    text <crypto.getRandomValues(new Uint8Array($size))>

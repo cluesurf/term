@@ -13,7 +13,7 @@ form request
       like text
       like text
   link body, like text
-  link dock, mark private
+  link dock
 
 # the request body as text
 task read

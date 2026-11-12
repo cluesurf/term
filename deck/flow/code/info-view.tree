@@ -1,0 +1,263 @@
+# THE PROOF VIEW in VS Code: a panel beside the editor that shows where each rule of the active `.tree` file stands,
+# as the language server answers `proof/state` (decision 139 of term/self-host/change/001-finish-self-host, rules 5 to
+# 7). The server does all of the work (code/proof-state.tree) and renders the whole panel, so this client only asks and
+# shows the answer's html. extension.tree's `activate` starts it on the one language client it starts.
+#
+# Ported from deck/test/code/vscode/infoview.ts (term-self-host-001-0714). The decisions:
+#   - the open panel is `held-panel`, a list holding it while it is open and empty once it is closed
+#   - the latest request wins: each refresh pushes onto `held-turn`, its number is the length after the push, and an
+#     answer whose number is no longer the length is dropped, so a slow answer for an old cursor never overwrites a newer
+#     one. A failed request leaves the panel as it is and raises nothing into VS Code's event loop
+#   - every vscode touch is a bind, one per call, as in extension.tree
+#   - Diverges (decision 139 rule 6): no hammer button, no `proof/hammer`, no script in the panel
+#   - Diverges (decision 139 rule 5): no keybinding, no second language client, no second language
+
+load @term/base/list
+  find push
+  find pop
+  find get
+
+dock load
+  load <vscode>, name vscode
+
+# the open panel, while it is open
+host held-panel
+  like list
+    like dynamic
+  make list
+
+# one entry per refresh, so a refresh's number is the length right after its push
+host held-turn
+  like list
+    like number
+  make list
+
+# `proof/state` asks with LSP's TextDocumentPositionParams, as every position request the server answers
+form document-ref
+  link uri, like text
+
+form cursor-place
+  link line, like number
+  link character, like number
+
+form proof-params
+  link text-document, like document-ref
+  link position, like cursor-place
+
+# `vscode.commands.registerCommand(name, run)`
+bind register-command
+  take module, like dynamic
+  take name, like text
+  take run
+    like task
+      like void
+  like dynamic
+  case node
+    text <<$module.commands.registerCommand($name, $run)>>
+
+# `vscode.window.onDidChangeTextEditorSelection(run)`
+bind on-selection-change
+  take module, like dynamic
+  take run
+    like task
+      like void
+  like dynamic
+  case node
+    text <<$module.window.onDidChangeTextEditorSelection($run)>>
+
+# `vscode.workspace.onDidSaveTextDocument(run)`
+bind on-document-save
+  take module, like dynamic
+  take run
+    like task
+      like void
+  like dynamic
+  case node
+    text <<$module.workspace.onDidSaveTextDocument($run)>>
+
+# `context.subscriptions.push(command, moved, saved)`, the three the original pushed in one call
+bind keep-subscriptions
+  take context, like dynamic
+  take command, like dynamic
+  take moved, like dynamic
+  take saved, like dynamic
+  like void
+  case node
+    text <<void $context.subscriptions.push($command, $moved, $saved)>>
+
+# `vscode.window.createWebviewPanel(...)` beside the editor, scripts off: the panel holds no script
+bind create-proof-panel
+  take module, like dynamic
+  like dynamic
+  case node
+    text <<$module.window.createWebviewPanel("termProof", "Term Proof", $module.ViewColumn.Beside, { enableScripts: false })>>
+
+# `panel.onDidDispose(run)`
+bind on-panel-dispose
+  take panel, like dynamic
+  take run
+    like task
+      like void
+  like void
+  case node
+    text <<void $panel.onDidDispose($run)>>
+
+# `panel.reveal()`, in the column it is already in
+bind reveal-panel
+  take panel, like dynamic
+  like void
+  case node
+    text <<void $panel.reveal()>>
+
+# `vscode.window.activeTextEditor`, undefined when no editor is active
+bind active-editor
+  take module, like dynamic
+  like dynamic
+  case node
+    text <<$module.window.activeTextEditor>>
+
+bind is-tree-editor
+  take editor, like dynamic
+  like boolean
+  case node
+    text <<($editor !== undefined && $editor !== null && $editor.document.languageId === "tree")>>
+
+# `editor.document.uri.toString()`
+bind document-uri
+  take editor, like dynamic
+  like text
+  case node
+    text <<String($editor.document.uri.toString())>>
+
+bind cursor-line
+  take editor, like dynamic
+  like number
+  case node
+    text <<$editor.selection.active.line>>
+
+bind cursor-character
+  take editor, like dynamic
+  like number
+  case node
+    text <<$editor.selection.active.character>>
+
+# `client.sendRequest("proof/state", params)`, its answer handed to `answered`. A failed request, or a raise in
+# `answered`, ends here: nothing reaches VS Code's event loop
+bind send-proof-state
+  take client, like dynamic
+  take params, like proof-params
+  take answered
+    like task
+      take answer, like dynamic
+      like void
+  like void
+  case node
+    text <<void Promise.resolve().then(() => $client.sendRequest("proof/state", $params)).then($answered).catch(() => undefined)>>
+
+bind has-html
+  take answer, like dynamic
+  like boolean
+  case node
+    text <<(typeof $answer?.html === "string")>>
+
+bind answer-html
+  take answer, like dynamic
+  like text
+  case node
+    text <<String($answer.html)>>
+
+# `panel.webview.html = html`
+bind set-panel-html
+  take panel, like dynamic
+  take html, like text
+  like void
+  case node
+    text <<void ($panel.webview.html = $html)>>
+
+task is-panel-open
+  like boolean
+  mark private
+
+  back is-above(held-panel/length, 0)
+
+# ask the server for the active tree editor's proof state and show its answer, when a panel is open
+task refresh-proof
+  take client, like dynamic
+  like void
+  mark private
+
+  fork test, is-panel-open()
+    miss
+      send back
+  save editor, active-editor(vscode)
+  fork test, is-tree-editor(editor)
+    miss
+      send back
+  push(held-turn, held-turn/length)
+  save turn, held-turn/length
+  save asked
+    make proof-params
+      bind text-document, make(document-ref, bind(uri, document-uri(editor)))
+      bind position, make(cursor-place, bind(line, cursor-line(editor)), bind(character, cursor-character(editor)))
+  send-proof-state
+    client
+    asked
+    task
+      take answer, like dynamic
+      like void
+      fork test, is-equal(turn, held-turn/length)
+        miss
+          send back
+      fork test, is-panel-open()
+        miss
+          send back
+      fork test, has-html(answer)
+        miss
+          send back
+      set-panel-html(get(held-panel, 0), answer-html(answer))
+
+# `term.showProof`: open the panel, or reveal the open one, then refresh it
+task show-proof
+  take client, like dynamic
+  like void
+  mark private
+
+  fork test, is-panel-open()
+    hold
+      reveal-panel(get(held-panel, 0))
+    miss
+      save made, create-proof-panel(vscode)
+      push(held-panel, made)
+      on-panel-dispose
+        made
+        task
+          like void
+          pop(held-panel)
+  refresh-proof(client)
+
+# register the command and the two refresh events on the extension's context, as the original's `activate` did
+task start-proof-view
+  take context, like dynamic
+  take client, like dynamic
+  like void
+
+  save command
+    register-command
+      vscode
+      <term.showProof>
+      task
+        like void
+        show-proof(client)
+  save moved
+    on-selection-change
+      vscode
+      task
+        like void
+        refresh-proof(client)
+  save saved
+    on-document-save
+      vscode
+      task
+        like void
+        refresh-proof(client)
+  keep-subscriptions(context, command, moved, saved)

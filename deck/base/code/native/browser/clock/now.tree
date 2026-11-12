@@ -1,8 +1,17 @@
 
-# The current time. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+# The current time, as declarative bindings with no runtime shim: the wall clock in milliseconds, and the monotonic
+# timer in whole milliseconds, which is immune to the clock being adjusted. Internal: reached only through the public
+# clock API.
 
-dock load
-  load <global:clock>, name clock
+bind wall-milliseconds
+  like number
+  case browser
+    text <Date.now()>
+
+bind precise-milliseconds
+  like number
+  case browser
+    text <Math.floor(performance.now())>
 
 # named for what it is: a top-level `get` shadowed list `get` in every browser build, since names are package-global
 task clock-reading
@@ -14,7 +23,7 @@ task clock-reading
   fork test, read precise
     hook hold
       send back
-        call clock/precise
+        call precise-milliseconds
     hook miss
       send back
-        call clock/now
+        call wall-milliseconds

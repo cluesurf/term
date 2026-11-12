@@ -1,18 +1,14 @@
 
-# The working directory. Forwards to the linked directory runtime shim. Internal: reached only through the public
-# environment API.
+# The working directory of the host process, each op a declarative binding inlined at the use site, with no runtime
+# shim. Internal: reached only through the public environment API.
 
-dock load
-  load <global:work-directory>, name work-directory
-
-task working-directory
+bind working-directory
   like text
+  case node
+    text <process.cwd()>
 
-  send back
-    call work-directory/get
-
-task enter-directory
+bind enter-directory
   take path, like text
-
-  call work-directory/set
-    read path
+  like void
+  case node
+    text <process.chdir($path)>

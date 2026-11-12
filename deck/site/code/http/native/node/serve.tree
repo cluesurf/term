@@ -1,11 +1,8 @@
-
-# Node HTTP transport: hono (via @hono/node-server). `serve` builds a listener whose request handler converts the hono
-# request into our `request`, runs the uniform trie router (`handle-request`), and writes the `response` back. hono owns
-# the socket + request/response plumbing; the matching + dispatch stay in the platform-agnostic `handle-request`. The
-# `<global:transport>` shim wraps hono so it never appears in userland.
-
-dock load
-  load <global:transport>, name runtime
+# Node HTTP transport over node:http (term-self-host-001-0731, ported from runtime/transport.ts, which wrapped hono and
+# @hono/node-server). `serve` listens on the port; each request is turned into our `request`, run through the uniform
+# trie router (`handle-request`), and its `response` written back as hono wrote it: the same status, headers and
+# bytes. The socket and the request and response objects are the host's, reached through binds; every decision about
+# the answer (tree/code, the proxy, a redirect, an asset's type, an HTML page) is Term (../answer-kind).
 
 load ../../http
   find server
@@ -13,20 +10,599 @@ load ../../http
   find response
   find handle-request
 
+load ../answer-kind
+  find answer-path-extension
+  find answer-is-tree-code
+  find answer-is-html
+  find answer-has-type
+  find answer-given-type
+  find answer-is-redirect
+  find asset-type
+  find asset-is-binary
+
+load @term/base/hash
+  find hash
+  find set
+  find get-or-default
+
+# tree/code: a request body is unpacked up to this many bytes, and an answer is packed from this many
+host tree-code-limit, code 67108864
+host tree-code-pack-above, code 256
+
+# a node:http server answering every request through `run`, listening on `port`
+bind node-listen
+  take run
+    like task
+      take incoming, like dynamic
+      take outgoing, like dynamic
+  take port, like number
+  like void
+  case node
+    text <(process.getBuiltinModule('node:http') as typeof import('node:http')).createServer($run).listen($port)>
+
+# in dev, `Cache-Control: no-store` on every answer, so the browser never serves a stale `look.css`, `boot.js` or page
+# after a hot reload. Production keeps normal caching (content-hashed asset names do the busting there)
+bind node-is-production
+  like boolean
+  case node
+    text <(process.env.NODE_ENV === 'production')>
+
+# the request's address as @hono/node-server read it: an absolute form as given, else under its Host
+bind node-incoming-url
+  take incoming, like dynamic
+  like dynamic
+  case node
+    text <((incoming: \{ url?: string; headers: \{ host?: string \} \}): URL =\> \{ const path = incoming.url || ''; return /^https?:\\/\\//.test(path) ? new URL(path) : new URL(`http://$\{incoming.headers.host || 'localhost'\}$\{path\}`) \})($incoming)>
+
+bind node-url-path
+  take url, like dynamic
+  like text
+  case node
+    text <($url as URL).pathname>
+
+# the query string decoded, the last of a repeated name kept, as `new Map(url.searchParams)` keeps it
+bind node-url-query
+  take url, like dynamic
+  like hash, like text, like text
+  case node
+    text <new Map(($url as URL).searchParams)>
+
+bind node-incoming-method
+  take incoming, like dynamic
+  like text
+  case node
+    text <String(($incoming as \{ method?: string \}).method ?? 'GET')>
+
+# the request's headers by lower-case name, repeated ones joined, as a Fetch `Headers` built from the raw pairs gives
+# them (sorted by name)
+bind node-incoming-headers
+  take incoming, like dynamic
+  like hash, like text, like text
+  case node
+    text <((raw: string[]): Map\<string, string\> =\> \{ const headers = new Headers(); for (let at = 0; at \< raw.length; at += 2) \{ if (!raw[at]!.startsWith(':')) headers.append(raw[at]!, raw[at + 1]!) \} const out = new Map\<string, string\>(); headers.forEach((value, name) =\> out.set(name.toLowerCase(), value)); return out \})(($incoming as \{ rawHeaders: string[] \}).rawHeaders)>
+
+# the request's body, every byte
+bind node-incoming-bytes
+  mark async
+  take incoming, like dynamic
+  like dynamic
+  case node
+    text <(async (incoming: AsyncIterable\<Buffer\>): Promise\<Buffer\> =\> \{ const parts: Buffer[] = []; for await (const part of incoming) parts.push(part); return Buffer.concat(parts) \})($incoming)>
+
+# the body as UTF-8 text, as a Fetch body's `text()` reads it (a byte-order mark dropped)
+bind node-bytes-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <new TextDecoder().decode($bytes as Buffer)>
+
+bind node-bytes-base64
+  take bytes, like dynamic
+  like text
+  case node
+    text <($bytes as Buffer).toString('base64')>
+
+bind node-base64-bytes
+  take text, like text
+  like dynamic
+  case node
+    text <Buffer.from($text, 'base64')>
+
+bind node-bytes-length
+  take bytes, like dynamic
+  like number
+  case node
+    text <($bytes as Buffer).length>
+
+bind node-encoding-word
+  take value, like text
+  like text
+  case node
+    text <$value.toLowerCase().trim()>
+
+# Zstandard came to node:zlib in node 22.15: on an older node there is none, read as such, never a raise at load
+bind node-has-zstd
+  like boolean
+  case node
+    text <(typeof (process.getBuiltinModule('node:zlib') as \{ zstdCompressSync?: unknown \}).zstdCompressSync === 'function')>
+
+# the body unpacked, or nothing when it is past the limit or not Zstandard at all
+bind node-zstd-unpack
+  take bytes, like dynamic
+  take limit, like number
+  like dynamic
+  case node
+    text <((bytes: Buffer, limit: number): Buffer | undefined =\> \{ try \{ return (process.getBuiltinModule('node:zlib') as unknown as \{ zstdDecompressSync: (packed: Buffer, options: \{ maxOutputLength: number \}) =\> Buffer \}).zstdDecompressSync(bytes, \{ maxOutputLength: limit \}) \} catch \{ return undefined \} \})($bytes, $limit)>
+
+bind node-zstd-pack
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <(process.getBuiltinModule('node:zlib') as unknown as \{ zstdCompressSync: (plain: Buffer) =\> Buffer \}).zstdCompressSync($bytes as Buffer)>
+
+bind node-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value == null)>
+
+# whether an Accept-Encoding takes zstd, one with `q=0` refusing it
+bind node-accepts-zstd
+  take accept, like text
+  like boolean
+  case node
+    text <$accept.toLowerCase().split(',').some((part: string) =\> part.trim().split(';')[0] === 'zstd' && !/;\\s*q=0(\\.0*)?\\s*$/.test(part.trim()))>
+
+# the upstream of a proxy route, fetched: its bytes and its content type
+bind node-fetch-upstream
+  mark async
+  take address, like text
+  like dynamic
+  case node
+    text <fetch($address).then(async (upstream: Response) =\> (\{ bytes: Buffer.from(await upstream.arrayBuffer()), type: upstream.headers.get('content-type') ?? 'application/octet-stream' \}))>
+
+bind node-upstream-bytes
+  take upstream, like dynamic
+  like dynamic
+  case node
+    text <($upstream as \{ bytes: Buffer \}).bytes>
+
+bind node-upstream-type
+  take upstream, like dynamic
+  like text
+  case node
+    text <($upstream as \{ type: string \}).type>
+
+bind node-text-body
+  take text, like text
+  like dynamic
+  case node
+    text <$text>
+
+bind node-no-body
+  like dynamic
+  case node
+    text <null>
+
+# `second`'s headers over `first`'s, as a JavaScript spread lays them: a name keeps its first place, the later value
+bind node-headers-over
+  take first, like hash, like text, like text
+  take second, like hash, like text, like text
+  like hash, like text, like text
+  case node
+    text <new Map([...$first, ...$second])>
+
+# the answer written as @hono/node-server wrote hono's: the headers in the order given, the body's length unless one
+# was given, then the body (text as UTF-8, or bytes). A HEAD is answered with the headers alone, as hono answers one
+# (its body null, so no length)
+bind node-write
+  take outgoing, like dynamic
+  take status, like number
+  take headers, like hash, like text, like text
+  take body, like dynamic
+  like void
+  case node
+    text <((outgoing: \{ req?: \{ method?: string \}; writeHead: (status: number, headers: Record\<string, string\>) =\> void; end: (body?: string | Uint8Array) =\> void \}, status: number, headers: Map\<string, string\>, given: string | Uint8Array | null): void =\> \{ const body = outgoing.req?.method === 'HEAD' ? null : given; const record: Record\<string, string\> = \{\}; for (const [name, value] of headers) record[name] = value; if (body !== null && !Object.keys(record).some((name) =\> name.toLowerCase() === 'content-length')) record['content-length'] = String(typeof body === 'string' ? Buffer.byteLength(body) : body.byteLength); outgoing.writeHead(status, record); if (body === null) outgoing.end(); else outgoing.end(body) \})($outgoing, $status, $headers, $body)>
+
+# the dev header alone, or nothing in production
+task dev-headers
+  mark private
+  like hash, like text, like text
+  save out
+    make hash
+  fork test
+    hook test
+      call not
+        call node-is-production
+    hook hold
+      call out/set
+        text <Cache-Control>
+        text <no-store>
+  send back, read out
+
+# the dev header, then `given` over it, the shim's `{ ...NO_STORE, ...given }`
+task with-dev
+  mark private
+  take given, like hash, like text, like text
+  like hash, like text, like text
+  send back
+    call node-headers-over
+      call dev-headers
+      read given
+
+# one header, then the dev header over it, the shim's `{ 'Content-Type': type, ...NO_STORE }`
+task typed-dev
+  mark private
+  take type, like text
+  like hash, like text, like text
+  save out
+    make hash
+  call out/set
+    text <Content-Type>
+    read type
+  send back
+    call node-headers-over
+      read out
+      call dev-headers
+
 task serve
   take server, like server
   take port, like u16
+  call node-listen
+    task on-incoming
+      take incoming, like dynamic
+      take outgoing, like dynamic
+      tick answer-incoming
+        read server
+        read incoming
+        read outgoing
+    read port
 
-  save listener
-    call runtime/create-server
-      bind handle
-        task on-request
-          take incoming, like request
-          like response
-          send back
-            call handle-request
-              read server
+# one request answered. A raise anywhere is answered 500, as hono's error handler answered it
+task answer-incoming
+  mark private
+  mark async
+  take server, like server
+  take incoming, like dynamic
+  take outgoing, like dynamic
+  fork
+    mark unsafe
+    call answer-request
+      read server
+      read incoming
+      read outgoing
+  halt take
+    take problem
+    save plain
+      make hash
+    call plain/set
+      text <content-type>
+      text <text/plain; charset=UTF-8>
+    call node-write
+      read outgoing
+      code 500
+      read plain
+      call node-text-body
+        text <Internal Server Error>
+
+# the request read, then answered, or refused before the handler sees it: 415 for a packed tree/code body this node
+# cannot unpack, 413 for one past the limit or not Zstandard at all
+task answer-request
+  mark private
+  mark async
+  take server, like server
+  take incoming, like dynamic
+  take outgoing, like dynamic
+  save url
+    call node-incoming-url
+      read incoming
+  save method
+    call node-incoming-method
+      read incoming
+  save headers
+    call node-incoming-headers
+      read incoming
+  save body, text <>
+  save refused, code 0
+  fork test
+    hook test
+      call and
+        call is-unequal
+          read method
+          text <GET>
+        call is-unequal
+          read method
+          text <HEAD>
+    hook hold
+      fork test
+        hook test
+          call answer-is-tree-code
+            call get-or-default
+              read headers
+              text <content-type>
+              text <>
+        hook hold
+          save raw
+            call node-incoming-bytes
               read incoming
+          fork test
+            hook test
+              call is-equal
+                call node-encoding-word
+                  call get-or-default
+                    read headers
+                    text <content-encoding>
+                    text <>
+                text <zstd>
+            hook hold
+              fork test
+                hook test
+                  call node-has-zstd
+                hook hold
+                  save raw
+                    call node-zstd-unpack
+                      read raw
+                      read tree-code-limit
+                  fork test
+                    hook test
+                      call node-is-absent
+                        read raw
+                    hook hold
+                      save refused, code 413
+                hook miss
+                  save refused, code 415
+          fork test
+            hook test
+              call is-equal
+                read refused
+                code 0
+            hook hold
+              save body
+                call node-bytes-base64
+                  read raw
+        hook miss
+          save body
+            call node-bytes-text
+              call node-incoming-bytes
+                read incoming
+  fork test
+    hook test
+      call is-unequal
+        read refused
+        code 0
+    hook hold
+      call node-write
+        read outgoing
+        read refused
+        call dev-headers
+        call node-text-body
+          text <>
+    hook miss
+      save answer
+        call handle-request
+          read server
+          make request
+            bind method, read method
+            bind path
+              call node-url-path
+                read url
+            bind body, read body
+            bind headers, read headers
+            bind query
+              call node-url-query
+                read url
+      call write-answer
+        read outgoing
+        call node-url-path
+          read url
+        read headers
+        read answer
 
-  call listener/listen
-    bind port, read port
+# the answer written the way the shim chose: tree/code, a typed body, the proxy, a redirect, an asset, a page, or text
+task write-answer
+  mark private
+  mark async
+  take outgoing, like dynamic
+  take path, like text
+  take asked, like hash, like text, like text
+  take answer, like response
+  save out, read answer/body
+  save code, read answer/status
+  save given, read answer/headers
+  save redirect
+    call answer-is-redirect
+      read code
+  save proxied
+    call is-equal
+      read code
+      code 1
+  save extension
+    call answer-path-extension
+      read path
+  save type
+    call asset-type
+      read extension
+  fork test
+    # tree/code: the body is base64 inside the program and bytes on the wire, packed when the client takes zstd
+    hook test
+      call and
+        call answer-is-tree-code
+          call answer-given-type
+            read given
+        call and
+          call not
+            read proxied
+          call not
+            read redirect
+    hook hold
+      call write-tree-code
+        read outgoing
+        read code
+        read given
+        read out
+        call get-or-default
+          read asked
+          text <accept-encoding>
+          text <>
+    # the handler set a type: written as given
+    hook test
+      call and
+        call answer-has-type
+          read given
+        call and
+          call not
+            read proxied
+          call not
+            call and
+              read redirect
+              call is-unequal
+                read out
+                text <>
+    hook hold
+      call node-write
+        read outgoing
+        read code
+        call with-dev
+          read given
+        call node-text-body
+          read out
+    # a proxy resource route (e.g. /vibe.pdf) answers the sentinel status 1 with the source address as its body: its
+    # bytes are fetched and sent through this origin (the page address stays put), with the upstream's content type
+    hook test
+      call and
+        read proxied
+        call is-unequal
+          read out
+          text <>
+    hook hold
+      save upstream
+        call node-fetch-upstream
+          read out
+      call node-write
+        read outgoing
+        code 200
+        call typed-dev
+          call node-upstream-type
+            read upstream
+        call node-upstream-bytes
+          read upstream
+    # a redirect resource route answers a 3xx with the target address as its body: a real redirect
+    hook test
+      call and
+        read redirect
+        call is-unequal
+          read out
+          text <>
+    hook hold
+      save sent
+        make hash
+      call sent/set
+        text <Location>
+        read out
+      call node-write
+        read outgoing
+        read code
+        read sent
+        call node-no-body
+    # a static asset (served from /base/...) gets a content type by extension, so a browser accepts a `.js` module
+    # script and applies a `.css`; a binary one was carried as base64 and goes out as its bytes
+    hook test
+      call is-unequal
+        read type
+        text <>
+    hook hold
+      fork test
+        hook test
+          call asset-is-binary
+            read extension
+        hook hold
+          call node-write
+            read outgoing
+            read code
+            call typed-dev
+              read type
+            call node-base64-bytes
+              read out
+        hook miss
+          call node-write
+            read outgoing
+            read code
+            call typed-dev
+              read type
+            call node-text-body
+              read out
+    # an HTML body goes out as text/html so a browser renders it
+    hook test
+      call answer-is-html
+        read out
+    hook hold
+      call node-write
+        read outgoing
+        read code
+        call node-headers-over
+          call typed-dev
+            text <text/html; charset=UTF-8>
+          read given
+        call node-text-body
+          read out
+    # JSON and plain text go out as text/plain
+    hook miss
+      call node-write
+        read outgoing
+        read code
+        call with-dev
+          read given
+        call node-text-body
+          read out
+
+# a tree/code answer: its bytes, packed with Zstandard when the client takes it, the node has it, the answer is big
+# enough and packing makes it smaller. Either way it says it varies by Accept-Encoding
+task write-tree-code
+  mark private
+  take outgoing, like dynamic
+  take code, like number
+  take given, like hash, like text, like text
+  take out, like text
+  take accept, like text
+  save plain
+    call node-base64-bytes
+      read out
+  save sent
+    call with-dev
+      read given
+  call sent/set
+    text <Vary>
+    text <Accept-Encoding>
+  save body, read plain
+  fork test
+    hook test
+      call and
+        call node-has-zstd
+        call and
+          call is-minimum
+            call node-bytes-length
+              read plain
+            read tree-code-pack-above
+          call node-accepts-zstd
+            read accept
+    hook hold
+      save packed
+        call node-zstd-pack
+          read plain
+      fork test
+        hook test
+          call is-below
+            call node-bytes-length
+              read packed
+            call node-bytes-length
+              read plain
+        hook hold
+          call sent/set
+            text <Content-Encoding>
+            text <zstd>
+          save body, read packed
+  call node-write
+    read outgoing
+    read code
+    read sent
+    read body

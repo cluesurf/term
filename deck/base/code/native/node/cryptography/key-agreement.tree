@@ -1,20 +1,111 @@
-# node X25519 ECDH implementation. Forwards to the linked x25519 runtime shim (Web Crypto X25519). make-key-pair-bytes returns the 32-byte private key and 32-byte public key concatenated (64 raw bytes); the shared secret is raw bytes. Internal: reached only through the public key-agreement API.
+# node X25519 ECDH implementation over the Web Crypto API (globalThis.crypto.subtle on node 18 and later). Keys and the
+# shared secret are raw bytes: a 32-byte private key and a 32-byte public key, a key pair is the two concatenated (64
+# bytes), and the shared secret is the raw 32-byte X25519 output. Web Crypto imports a private key as a PKCS8 DER blob,
+# so the fixed X25519 PKCS8 prefix goes in front of the raw key, and a public key imports as raw bytes. Each host call
+# is a declarative binding, inlined at the use site with no runtime shim, each argument read once, and the steps
+# between them are Term. Internal: reached only through the public key-agreement API.
 
-dock load
-  load <global:x25519>, name x25519
+load @term/base/native/node/bytes
+  find bytes-concat
+
+# the 16 bytes an X25519 PKCS8 private key starts with, before its 32-byte key
+bind x25519-pkcs8-prefix
+  like bytes
+  case node
+    text <new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20])>
+
+bind generate-x25519-pair
+  mark async
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.generateKey(\{ name: 'X25519' \}, true, ['deriveBits'])>
+
+bind x25519-export-private
+  mark async
+  take pair, like dynamic
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.exportKey('pkcs8', ($pair).privateKey)>
+
+bind x25519-export-public
+  mark async
+  take pair, like dynamic
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.exportKey('raw', ($pair).publicKey)>
+
+# the last 32 bytes of a host ArrayBuffer: the key at the end of a PKCS8 private key
+bind x25519-seed-of
+  take buffer, like dynamic
+  like bytes
+  case node
+    text <new Uint8Array($buffer).slice(-32)>
+
+# the bytes of a host ArrayBuffer
+bind x25519-bytes-of
+  take buffer, like dynamic
+  like bytes
+  case node
+    text <new Uint8Array($buffer)>
+
+bind x25519-import-private
+  mark async
+  take blob, like bytes
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.importKey('pkcs8', ($blob) as BufferSource, \{ name: 'X25519' \}, false, ['deriveBits'])>
+
+bind x25519-import-public
+  mark async
+  take raw, like bytes
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.importKey('raw', ($raw) as BufferSource, \{ name: 'X25519' \}, false, [])>
+
+# the 256 shared bits of a private key and the other side's public key
+bind x25519-derive
+  mark async
+  take secret, like dynamic
+  take other, like dynamic
+  like dynamic
+  case node
+    text <globalThis.crypto.subtle.deriveBits(\{ name: 'X25519', public: $other \}, $secret, 256)>
 
 task make-key-pair-bytes
   mark async
   like bytes
+  save pair
+    call generate-x25519-pair
+  save private-blob
+    call x25519-export-private
+      read pair
+  save public-raw
+    call x25519-export-public
+      read pair
   send back
-    call x25519/make-key-pair
+    call bytes-concat
+      call x25519-seed-of
+        read private-blob
+      call x25519-bytes-of
+        read public-raw
 
 task compute-shared-secret
   mark async
   take private-key, like bytes
   take public-key, like bytes
   like bytes
-  send back
-    call x25519/shared-secret
-      read private-key
+  save secret
+    call x25519-import-private
+      call bytes-concat
+        call x25519-pkcs8-prefix
+        read private-key
+  save other
+    call x25519-import-public
       read public-key
+  save bits
+    call x25519-derive
+      read secret
+      read other
+  send back
+    call x25519-bytes-of
+      read bits

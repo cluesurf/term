@@ -13,7 +13,7 @@ load @term/base/maybe
   find maybe
 
 form view
-  link handle, like memory-element, mark private
+  link handle, like memory-element
 
 form memory-element
   mark shared

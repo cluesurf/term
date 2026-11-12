@@ -46,6 +46,7 @@ load ../cask/host-value
 
 load ../cask/toolchain
   find swift-flags
+  find stack-flags
 
 load ./native-value
   find failure-text
@@ -350,6 +351,11 @@ task build-native
       save file, <{stem}.swift>
       save main, native-main(<swift>, source, entry, true)
       node-fs/write-file-sync(file, <import Foundation\n{source}\n{main}\n>)
+      # a program importing swift-nio or Hummingbird is a SwiftPM package (item 1218): the flags give swiftc their
+      # modules, which is enough to typecheck, not their libraries, and the link failed
+      fork test, or(text-holds(source, <import NIO>), text-holds(source, <import Hummingbird>))
+        hold
+          back swift-package-build(stem, <import Foundation\n{source}\n{main}\n>)
       save args, make list
       walk swift-flags()
         take flag, like text
@@ -371,6 +377,14 @@ task build-native
   node-fs/write-file-sync(file, hoist-kotlin-imports(<{source}\n{main}\n>))
   save artifact, <{stem}.jar>
   save classpath, kotlin-classpath()
+  # a program importing ktor or kotlinx has them resolved when the cache is cold (item 1218): the classpath is the
+  # script's last line
+  fork test, and(not(is-truthy(classpath)), or(text-holds(source, <import io.ktor>), text-holds(source, <import kotlinx.>)))
+    hold
+      save resolved, last-line(stack-flags(<kotlin.sh>))
+      fork test, is-truthy(resolved)
+        hold
+          save classpath, resolved
   save args, make list
   args/push(file)
   fork test, is-truthy(classpath)
@@ -434,6 +448,87 @@ task kotlin-classpath
     hold
       back trimmed
   back nothing()
+
+# whether `value` holds `part` anywhere
+bind text-holds
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.includes($part)>
+
+# The program as a SwiftPM package (item term-self-host-001-1218): its manifest is the stdlib's own
+# (code/native/swift/Package.swift, the one native/toolchain/swift.sh builds), its target made the executable, so the
+# two state one dependency list. Every such program builds in ONE scratch folder under the native cache, by its real
+# path (test/compile/server-roundtrip.ts says why), so swift-nio and Hummingbird are fetched and built once; SwiftPM
+# makes a second build there wait for the first. Each program's product is named for its folder, so two built at once
+# never write one executable, which is copied out beside the others' as `stem`
+task swift-package-build
+  take stem, like text
+  take program, like text
+  like built
+  mark private
+
+  fork test, not(have(<swift>))
+    hold
+      back refused-build(<swift is not installed, and the program imports swift-nio or Hummingbird>)
+  save stdlib, resolve-module/stdlib-base()
+  fork test, not(is-truthy(stdlib))
+    hold
+      back refused-build(<the program imports swift-nio or Hummingbird, and there is no stdlib package to build it with>)
+  save manifest, node-path/join(stdlib, <code/native/swift/Package.swift>)
+  fork test, not(node-fs/exists-sync(manifest))
+    hold
+      back refused-build(<the program imports swift-nio or Hummingbird, and {manifest} is not there>)
+  save project, <{stem}-swiftpm>
+  save product, <term-{name-hash(project)}>
+  save sources, node-path/join(project, <Sources>, product)
+  node-fs/mkdir-sync(sources, make(build-folder, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(sources, <main.swift>), program)
+  node-fs/write-file-sync(node-path/join(project, <Package.swift>), program-manifest(<{node-fs/read-file-sync(manifest, <utf8>)}>, product))
+  save cache, variable-or(<TERM_NATIVE_CACHE>, node-path/join(variable-or(<TMPDIR>, node-os/tmpdir()), <term-native>))
+  node-fs/mkdir-sync(cache, make(build-folder, bind(recursive, true)))
+  save scratch, node-path/join(<{node-fs/realpath-sync(cache)}>, <swift>, <programs>)
+  save args, make list
+  args/push(<build>)
+  args/push(<--package-path>)
+  args/push(project)
+  args/push(<--scratch-path>)
+  args/push(scratch)
+  args/push(<-c>)
+  args/push(<release>)
+  args/push(<--product>)
+  args/push(product)
+  save failed, run-tool(<swift>, args, nothing())
+  fork test, is-truthy(failed)
+    hold
+      back refused-build(<{failed}>)
+  node-fs/copy-file-sync(node-path/join(scratch, <release>, product), stem)
+  save command, make list
+  command/push(stem)
+  back built-ok(command, stem)
+
+# the first 12 hex digits of a text's SHA-1
+bind name-hash
+  take value, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:crypto").createHash("sha1").update($value).digest("hex").slice(0, 12)>
+
+# the stdlib's swift manifest with its package and target named `product` and the target an executable
+bind program-manifest
+  take manifest, like text
+  take product, like text
+  like text
+  case node
+    text <$manifest.replace(/name:\s*"TermSwiftRuntime"/, 'name: "' + $product + '"').replace(/\.target\(\s*name:\s*"TermSwiftRuntime"/, '.executableTarget(name: "' + $product + '"').replace(/path:\s*"Sources\/TermSwiftRuntime"/, 'path: "Sources/' + $product + '"')>
+
+# the last line of a text that holds anything, the empty text for none
+bind last-line
+  take value, like text
+  like text
+  case node
+    text <($value.trim().split(String.fromCharCode(10)).pop() ?? "").trim()>
 
 # the class kotlinc puts a file's top-level `main` in: `term-test.kt` is `Term_testKt`
 task kotlin-main-class

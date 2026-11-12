@@ -4,4 +4,4 @@
 # through ../../view.
 
 form view
-  link handle, like dynamic, mark private
+  link handle, like dynamic

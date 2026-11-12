@@ -1,18 +1,252 @@
-# motion on a browser (device-layer-0011): DeviceMotionEvent.
-# Conforms to ../motion. The runtime is runtime/native-motion.ts.
+# motion on a browser (device-layer-0011): one devicemotion event's acceleration with gravity, in metres per second
+# squared. A browser with no accelerometer sends none, so a second without one answers `unavailable`. Conforms to
+# ../motion. Ported from runtime/native-motion.ts (term-self-host-001-0730): the host's questions, the window's events
+# and the timer are binds, the event's text, the waiting and the fan-out (./watch) are Term.
 
 load @term/site/report
   find report-raise
 
-dock load
-  load <global:native-motion>, name native-motion
-  load <global:native-watch>, name native-watch
+load ./watch
+  find watch-join
+  find watch-leave
 
-task sample-motion
+load ./page-host
+  find page-has-window
+  find page-listen-window
+  find page-unlisten-window
+  find page-start-timer
+  find page-stop-timer
+  find page-fixed
+  find page-make-settler
+  find page-settle
+  find page-settled
+
+# how long to wait for the first event, in milliseconds
+host motion-wait, code 1000
+
+bind motion-has-event
+  like boolean
+  case browser
+    text <(typeof DeviceMotionEvent !== 'undefined')>
+
+# whether the event carries all three of x, y and z
+bind motion-is-whole
+  take event, like dynamic
+  like boolean
+  case browser
+    text <((a: DeviceMotionEventAcceleration | null | undefined): boolean =\> !(a?.x == null || a.y == null || a.z == null))(($event as DeviceMotionEvent).accelerationIncludingGravity)>
+
+bind motion-x
+  take event, like dynamic
+  like float
+  case browser
+    text <($event as DeviceMotionEvent).accelerationIncludingGravity!.x!>
+
+bind motion-y
+  take event, like dynamic
+  like float
+  case browser
+    text <($event as DeviceMotionEvent).accelerationIncludingGravity!.y!>
+
+bind motion-z
+  take event, like dynamic
+  like float
+  case browser
+    text <($event as DeviceMotionEvent).accelerationIncludingGravity!.z!>
+
+bind motion-listen
+  take run
+    like task
+      take event, like dynamic
+  like void
+  case browser
+    text <window.addEventListener('devicemotion', $run)>
+
+bind motion-unlisten
+  take run
+    like task
+      take event, like dynamic
+  like void
+  case browser
+    text <window.removeEventListener('devicemotion', $run)>
+
+# `<x> <y> <z>` of one event, or empty text when it carries no acceleration
+task describe-motion
+  mark private
+  take event, like dynamic
   like text
+  fork test
+    hook test
+      call not
+        call motion-is-whole
+          read event
+    hook hold
+      send back, text <>
+  save x
+    call page-fixed
+      call motion-x
+        read event
+      code 2
+  save y
+    call page-fixed
+      call motion-y
+        read event
+      code 2
+  save z
+    call page-fixed
+      call motion-z
+        read event
+      code 2
+  send back, text <{x} {y} {z}>
+
+task motion-is-live
+  mark private
+  like boolean
+  fork test
+    hook test
+      call page-has-window
+    hook hold
+      send back
+        call motion-has-event
+  send back, false
+
+# one sample's listener, timer and promise, held so each end can drop the other
+form motion-sampling
+  mark shared
+  link settler, like dynamic
+  link timer, like dynamic
+  link listener
+    like task
+      take event, like dynamic
+
+# the first event that carries an acceleration answers the sample
+task sample-heard
+  mark private
+  take sampling, like motion-sampling
+  take event, like dynamic
+  save said
+    call describe-motion
+      read event
+  fork test
+    hook test
+      call is-unequal
+        read said
+        text <>
+    hook hold
+      call motion-unlisten
+        read sampling/listener
+      call page-stop-timer
+        read sampling/timer
+      call page-settle
+        read sampling/settler
+        read said
+
+# no event within the wait
+task sample-late
+  mark private
+  take sampling, like motion-sampling
+  call motion-unlisten
+    read sampling/listener
+  call page-settle
+    read sampling/settler
+    text <unavailable>
+
+# `<x> <y> <z>`, or unavailable
+task sample-motion
+  mark async
+  like text
+  fork test
+    hook test
+      call not
+        call motion-is-live
+    hook hold
+      send back, text <unavailable>
+  save sampling
+    make motion-sampling
+      bind settler
+        call page-make-settler
+      bind timer, code 0
+      bind listener
+        task nobody
+          take event, like dynamic
+          save skip, code 0
+  save sampling/listener
+    task heard
+      take event, like dynamic
+      call sample-heard
+        read sampling
+        read event
+  save sampling/timer
+    call page-start-timer
+      task late
+        call sample-late
+          read sampling
+      read motion-wait
+  call motion-listen
+    read sampling/listener
   send back
-    call native-motion/sample
-      wait true
+    call page-settled
+      read sampling/settler
+
+# the subscription: every devicemotion event's acceleration with gravity. `unavailable` once when none comes within a
+# second, as a browser with no accelerometer sends none
+form motion-watching
+  mark shared
+  link heard, like boolean
+
+task start-motion
+  mark private
+  take tell
+    like task
+      take value, like text
+  like task
+  fork test
+    hook test
+      call not
+        call motion-is-live
+    hook hold
+      call tell
+        text <unavailable>
+      send back
+        task stop
+          save skip, code 0
+  save watching
+    make motion-watching
+      bind heard, false
+  save listen
+    task listen
+      take event, like dynamic
+      save said
+        call describe-motion
+          read event
+      fork test
+        hook test
+          call is-unequal
+            read said
+            text <>
+        hook hold
+          save watching/heard, true
+          call tell
+            read said
+  save timer
+    call page-start-timer
+      task late
+        fork test
+          hook test
+            call not
+              read watching/heard
+          hook hold
+            call tell
+              text <unavailable>
+      read motion-wait
+  call motion-listen
+    read listen
+  send back
+    task stop
+      call page-stop-timer
+        read timer
+      call motion-unlisten
+        read listen
 
 task follow-motion
   take handler
@@ -20,9 +254,10 @@ task follow-motion
       take value, like text
       halt exception
   like task
-  # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
+  # the number the drop gives back: one handler leaves, and the subscription ends with the last (./watch)
   save watching
-    call native-motion/watch
+    call watch-join
+      text <motion>
       task heard
         take value, like text
         fork
@@ -34,11 +269,13 @@ task follow-motion
           call report-raise
             text <follow-motion>
             read problem
+      read start-motion
   send back
     task drop
       fork
         mark unsafe
-        call native-motion/unwatch
+        call watch-leave
+          text <motion>
           read watching
       halt take
         take problem

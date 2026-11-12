@@ -5,7 +5,7 @@ mark draft
 
 
 form pool
-  link dock, mark private
+  link dock
   link size, like size
 
 task make

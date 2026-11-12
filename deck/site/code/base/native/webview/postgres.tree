@@ -35,7 +35,7 @@ load @term/base/list
 
 # an opaque handle: the id of a value the cask holds
 form row
-  link handle, mark private
+  link handle
 
 # the items of a json array, as a list whose element the checker knows
 task postgres-items-of

@@ -240,6 +240,7 @@ task field-of
   save list-value, first-at(held, <list>)
   save declared, with-head-args(state, with-outer-takes(state, type-of(state, like-value), link-form), link-form)
   refuse-sibling-likes(state, link-form, declared)
+  refuse-field-marks(state, link-form)
   save field-type, unknown-type()
   sift declared
     case some
@@ -304,6 +305,25 @@ task field-of
       bind positional, positional
       bind width, width
       bind span, make(some, field-span)
+
+# A FIELD TAKES NO MARK: Term has no field privacy (item 1207, decision 1216). `mark private` under a `link`, `slot` or
+# `free`, on its line (`link dock, mark private`) or its own (`link dock` over `like t` and `mark private`), mints as
+# the field's `hide` word, which no reader takes, so the field was public with nothing said. It is an unread mark. A
+# `hide <what>` line mints there too, as a form, and is left alone. Beside the type (`link x, like t, mark private`)
+# the mark is the like's own part, refused by refuse-like-values
+task refuse-field-marks
+  take state, like mint-state
+  take link-form, like minted
+  mark private
+
+  walk at(make(some, link-form), <hide>)
+    take hidden
+    save held, make(some, hidden)
+    fork test, is-form(held)
+      hold
+        turn next
+    save hint, <remove the `mark private`: every field of a form is read wherever the form is. Keep a value from other modules behind tasks of its own module instead>
+    push-problem(state, span-of(held), <unread-mark: `mark private` on a field is read by nothing, and is dropped: Term has no field privacy>, make(some, hint))
 
 # a field read under a `case`, as the case's own field
 task case-field

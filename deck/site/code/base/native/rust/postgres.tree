@@ -12,7 +12,7 @@ dock load
 # abstract module brings its bare `like list` signatures into the same program as these, where they unify with
 # them and turn every list back into an inference variable
 form row
-  link handle, mark private
+  link handle
 
 task connect
   take url, like text

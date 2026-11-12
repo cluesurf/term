@@ -1284,7 +1284,7 @@ function shimText(
     lines.push(
       `# an opaque handle: the id of a value the cask holds`,
       `form ${form}`,
-      '  link handle, mark private',
+      '  link handle',
       '',
     )
   }

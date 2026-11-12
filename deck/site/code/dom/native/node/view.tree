@@ -11,7 +11,7 @@ load @term/base/maybe
   find maybe
 
 form view
-  link handle, like page-element, mark private
+  link handle, like page-element
 
 # one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
 form page-element

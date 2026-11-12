@@ -1,0 +1,66 @@
+note <A value already of unknown type is boxed once on Rust>
+
+# Item 1252. A call to an async task that answers `unknown` is wrapped in an `await` by the async pass, after the
+# checker typed the call, so the await has no type of its own. Rust's box-unknown read that as no kind and boxed the
+# answer again, `Rc<Rc<dyn Any>>`, so a list or a hash of unknown held the outer box and `to-text` of it answered
+# empty text. rust-emit.tree reads the kind through such an await now (held-kind-of-node). Node, swift and kotlin give
+# the same answers.
+
+load @term/base/list
+  find join
+
+load @term/base/text/string
+  find to-text
+
+task echo-job
+  mark async
+  take item, like number
+  take index, like number
+  like unknown
+
+  back is-equal(item, index)
+
+task joined
+  take answers, like list, like unknown
+  like text
+
+  host parts, make list
+  walk answers
+    take answer
+    parts/push(to-text(answer))
+  back join(parts, <,>)
+
+task run-worker
+  take worker
+    like task
+      mark async
+      take item, like number
+      take index, like number
+      like unknown
+  take results, like hash, like number, like unknown
+  like void
+  mark async
+
+  save answer, call(worker, 2, 2)
+  results/set(0, answer)
+  save other, call(worker, 2, 3)
+  results/set(1, other)
+
+test <an awaited unknown answer pushed onto a list reads as text>
+  host got, make list
+  got/push(echo-job(1, 1))
+  got/push(echo-job(1, 2))
+  want hold, is-equal(joined(got), <true,false>)
+
+test <a worker's unknown answer saved and kept in a hash reads as text>
+  host results, make hash
+  run-worker(echo-job, results)
+  host got, make list
+  got/push(results/get(0))
+  got/push(results/get(1))
+  want hold, is-equal(joined(got), <true,false>)
+
+test <an awaited unknown answer kept in a list keeps its count>
+  host got, make list
+  got/push(echo-job(1, 1))
+  want hold, is-equal(got/length, 1)

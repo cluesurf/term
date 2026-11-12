@@ -24,6 +24,14 @@ import io.ktor.server.routing.Routing
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 
+// NO TERM FORM IS NAMED HERE (item term-self-host-001-1218). This file is spliced into the emitted program as source,
+// and a form's name there is not its own: loaded beside network/http, the server's `response` is `Response__in0_1`.
+// The handler is the native module's `answer-plain` over the program's (network/server/plain): the request goes in
+// as its parts (method, url, path, query, headers, body, dock), the response comes back as
+// `[status, body, name, value, ...]`.
+typealias ServerHandler =
+  (String, String, String, String, MutableMap<String, String>, String, Any) -> MutableList<String>
+
 object runtime {
   // a running server: the engine, so `stop` has something to stop, and the port it bound
   class Running(
@@ -35,7 +43,7 @@ object runtime {
   fun serve(
     port: Long,
     host: String,
-    handler: (Request) -> Response,
+    handler: ServerHandler,
     secure: Boolean,
     certificate: String,
     key: String,
@@ -47,12 +55,13 @@ object runtime {
   suspend fun start(
     port: Long,
     host: String,
-    handler: (Request) -> Response,
+    handler: ServerHandler,
     secure: Boolean,
     certificate: String,
     key: String,
   ): Running {
     val engine = build(port, host, handler, secure, certificate, key)
+    // Ktor's start binds before it returns, so the port is taken when `start` answers
     engine.start(wait = false)
 
     return Running(engine, port.toInt())
@@ -65,7 +74,7 @@ object runtime {
   private fun build(
     port: Long,
     host: String,
-    handler: (Request) -> Response,
+    handler: ServerHandler,
     secure: Boolean,
     certificate: String,
     key: String,
@@ -75,6 +84,10 @@ object runtime {
     return embeddedServer(
       CIO,
       configure = {
+        // SO_REUSEADDR, as node's listen, tokio's bind and NIO's server bootstrap set it (item 1206). CIO's default
+        // is off, so a server started again on a port whose last server closed its kept-alive connections was
+        // refused while those connections waited out TIME_WAIT
+        reuseAddress = true
         if (store != null) {
           sslConnector(
             keyStore = store,
@@ -108,28 +121,32 @@ object runtime {
 
             val target = call.request.uri
             val split = target.indexOf('?')
-            val answered =
+            val said =
               handler(
-                Request(
-                  call.request.local.method.value,
-                  target,
-                  if (split >= 0) target.substring(0, split) else target,
-                  if (split >= 0) target.substring(split + 1) else "",
-                  headers,
-                  body,
-                  0L,
-                )
+                call.request.local.method.value,
+                target,
+                if (split >= 0) target.substring(0, split) else target,
+                if (split >= 0) target.substring(split + 1) else "",
+                headers,
+                body,
+                0L,
               )
+
+            // `[status, body, name, value, ...]`; a status that does not read as one is a 500
+            val read = said.getOrNull(0)?.trim()?.toDoubleOrNull()
+            val status = if (read != null && read >= 100.0 && read <= 999.0) read.toInt() else 500
 
             // appended, not set, so repeats survive: several set-cookie headers is the ordinary case and the
             // reason the Term response holds a LIST of headers rather than a map
-            for (header in answered.headers) {
-              call.response.header(header.name, header.value)
+            var at = 2
+            while (at + 1 < said.size) {
+              call.response.header(said[at], said[at + 1])
+              at += 2
             }
 
             call.respondText(
-              answered.body,
-              status = HttpStatusCode.fromValue(answered.status.toInt()),
+              said.getOrNull(1) ?: "",
+              status = HttpStatusCode.fromValue(status),
             )
           }
         }

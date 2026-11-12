@@ -992,7 +992,7 @@ task bump
     )
 
     const through = build(`form element-box
-  link handle, mark private
+  link handle
 
 task set-it
   take node, like element-box

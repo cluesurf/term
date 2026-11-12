@@ -1,19 +1,77 @@
-# The clipboard in a browser (device-layer-0005): navigator.clipboard, which a page reaches only when it is secure and
-# has the browser's grant. Conforms to ../clipboard. Both calls are promises, awaited here.
+# The clipboard in a browser (device-layer-0005): navigator.clipboard, which exists only on a secure page and answers
+# only with the browser's grant (and, for a write, while the page has focus). Outside a browser there is none, and the
+# answers say so. Conforms to ../clipboard. Ported from runtime/native-clipboard.ts (term-self-host-001-0730): the
+# host's question and both calls are binds, the answers are Term.
 
-dock load
-  load <global:native-clipboard>, name native-clipboard
+load ./page-host
+  find page-has-navigator
 
-task read-clipboard-text
+bind clipboard-has-read
+  like boolean
+  case browser
+    text <(typeof navigator.clipboard?.readText === 'function')>
+
+bind clipboard-read
+  mark async
   like text
-  send back
-    call native-clipboard/read
-      wait true
+  case browser
+    text <navigator.clipboard.readText()>
 
+bind clipboard-write
+  mark async
+  take text, like text
+  like void
+  case browser
+    text <navigator.clipboard.writeText($text)>
+
+task clipboard-is-live
+  mark private
+  like boolean
+  fork test
+    hook test
+      call page-has-navigator
+    hook hold
+      send back
+        call clipboard-has-read
+  send back, false
+
+# the text on the clipboard now, or empty text when it holds none or the browser refuses to say
+task read-clipboard-text
+  mark async
+  like text
+  fork test
+    hook test
+      call not
+        call clipboard-is-live
+    hook hold
+      send back, text <>
+  save said, text <>
+  fork
+    mark unsafe
+    save said
+      call clipboard-read
+  halt take
+    take problem
+    save said, text <>
+  send back, read said
+
+# `written`, `denied` (no grant, or the page is not focused) or `unavailable` (no clipboard here)
 task write-clipboard-text
+  mark async
   take text, like text
   like text
-  send back
-    call native-clipboard/write
+  fork test
+    hook test
+      call not
+        call clipboard-is-live
+    hook hold
+      send back, text <unavailable>
+  save answer, text <written>
+  fork
+    mark unsafe
+    call clipboard-write
       read text
-      wait true
+  halt take
+    take problem
+    save answer, text <denied>
+  send back, read answer

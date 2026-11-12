@@ -1,5 +1,5 @@
 // The device traits in a browser (native-dom-0012). The program is compiled for the `browser` env, so the public
-// `view/device` reaches view/native/browser/device and its runtime, and run under Node against a stand-in `window`
+// `view/device` reaches view/native/browser/device (Term, no shim), and run under Node against a stand-in `window`
 // whose media queries the harness flips the way a browser does: the query's `matches` changes, then it fires `change`.
 // The check is the signal's value, light before and dark after, and the other traits read from the queries and the
 // window's width. That a written signal rewrites the view is held by render-native and toolkit-view; this holds that
@@ -133,10 +133,10 @@ ok(
 )
 
 if (result.ok) {
-  // the device runtime only: the browser dom's own shims ride along with the browser env (floating-ui among them), and
-  // this program calls none of them
+  // the view/native/browser runtimes only: the browser dom's own shims ride along with the browser env (floating-ui
+  // among them), and this program calls none of them
   const readRuntime = (file: string): string | undefined =>
-    file.endsWith('/native-device.ts') && existsSync(file)
+    file.includes('/view/native/browser/runtime/') && existsSync(file)
       ? readFileSync(file, 'utf8')
       : undefined
   const prelude = nativePrelude(
@@ -145,9 +145,10 @@ if (result.ok) {
     readRuntime,
     result.typescript,
   )
+  // the device traits are Term since term-self-host-001-0730: no runtime shim is linked for them
   ok(
-    'the browser device runtime is in the prelude',
-    prelude.includes('nativeDevice'),
+    'no browser device runtime in the prelude',
+    !prelude.includes('nativeDevice'),
   )
   const file = join(dir, 'device.ts')
   writeFileSync(

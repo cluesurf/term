@@ -39,30 +39,20 @@ form proof-state-view
   link total, like number
   link done, like boolean
 
-# a view's optional fields, read as the host values they are (an absent one is not the empty text)
-bind goal-view-has-detail
-  take shown, like dynamic
-  like boolean
-  case node
-    text <Boolean($shown.detail)>
-
-bind goal-view-detail
-  take shown, like dynamic
+# a counterexample as the view prints it, `[3,1]`: the values in order, a comma between, in brackets. A view's optional
+# fields are read in Term, where an absent `need false` field is its type's empty value on every backend (stdlib-parity
+# decision 001 rule 1). The four node-only binds that read them as host values (`Boolean($shown.detail)`,
+# `JSON.stringify(...)`) left the file unbuildable on rust, swift and kotlin and raising on the page (item 1243)
+task counterexample-text
+  take values, like list, like number
   like text
-  case node
-    text <$shown.detail>
+  mark private
 
-bind goal-view-has-counterexample
-  take shown, like dynamic
-  like boolean
-  case node
-    text <Boolean($shown.counterexample)>
-
-bind goal-view-counterexample
-  take shown, like dynamic
-  like text
-  case node
-    text <JSON.stringify($shown.counterexample)>
+  host parts, make list
+  walk values
+    take value
+    parts/push(<{value}>)
+  back <[{join(parts, <,>)}]>
 
 # a proof result as a goal view; no result is an open goal with no detail
 task view-of
@@ -146,13 +136,15 @@ task render-info-view
       hold
         save badge, <BAD>
     save line, <  [{badge}] {goal/name}>
-    fork test, and(is-equal(goal/status, <refuted>), goal-view-has-counterexample(goal))
+    host values, goal/counterexample
+    host detail, goal/detail
+    fork test, and(is-equal(goal/status, <refuted>), is-above(values/length, 0))
       hold
-        save line, <{line}  fails at {goal-view-counterexample(goal)}>
+        save line, <{line}  fails at {counterexample-text(values)}>
       miss
-        fork test, goal-view-has-detail(goal)
+        fork test, is-unequal(detail, <>)
           hold
-            save line, <{line}  {goal-view-detail(goal)}>
+            save line, <{line}  {detail}>
     lines/push(line)
 
   back join(lines, <\n>)

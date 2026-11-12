@@ -1,12 +1,6 @@
 
-# The host locale. Forwards to the linked locale runtime shim. Internal: reached only through the public environment
-# API.
-#
-# The shim is bound as `tongue` rather than `locale` so it does not collide with the `locale` form this module
-# returns: a name is package-global, and two things called `locale` shadow each other.
-
-dock load
-  load <global:locale>, name tongue
+# The host locale, from the page's own navigator and Intl, each a declarative binding inlined at the use site, with no
+# runtime shim. Internal: reached only through the public environment API.
 
 load @term/base/environment/language
   find locale
@@ -14,11 +8,27 @@ load @term/base/environment/language
 load @term/base/text
   find split
 
+bind locale-tag
+  like text
+  case browser
+    text <navigator.language>
+
+bind locale-timezone
+  like text
+  case browser
+    text <(Intl.DateTimeFormat().resolvedOptions().timeZone ?? '')>
+
+bind locale-preferred
+  like list
+    like text
+  case browser
+    text <Array.from(navigator.languages)>
+
 task read-locale
   like locale
 
   save tag
-    call tongue/tag
+    call locale-tag
   save parts
     call split
       read tag
@@ -36,7 +46,7 @@ task read-locale
       hook miss
         text <>
   save timezone
-    call tongue/timezone
+    call locale-timezone
 
   send back
     make locale
@@ -49,4 +59,4 @@ task known-locales
   like list
 
   send back
-    call tongue/preferred
+    call locale-preferred

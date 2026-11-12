@@ -1,15 +1,436 @@
-# microphone on a browser (device-layer-0022): getUserMedia, a MediaRecorder, and the recording decoded and written as
-# a WAV. Conforms to ../microphone. The runtime is runtime/native-microphone.ts.
-# The permission runtime is docked too: this capability reads its grant through it (../permission).
+# microphone on a browser (device-layer-0022): one recording from getUserMedia through a MediaRecorder (webm or ogg in
+# Chrome and Firefox, mp4 in Safari), decoded by an OfflineAudioContext at 16,000 samples a second, its channels mixed
+# to one, and written as the same 16-bit PCM WAV every other host writes, answered as a blob: address. The offline
+# context is the one that needs no click: a live AudioContext waits on a gesture before it runs. The browser prompts
+# for the grant itself when it has none. Conforms to ../microphone. Ported from runtime/native-microphone.ts
+# (term-self-host-001-0730): the host's calls are binds (./media for the stream), the steps, the mixing and the WAV's
+# layout are Term.
 
-dock load
-  load <global:native-microphone>, name native-microphone
-  load <global:native-permission>, name native-permission
+load @term/base/list
+  find list
+  find get
 
-task capture-audio
+load @term/base/text
+  find char-code-at
+  find char-count
+
+load ./page-host
+  find page-has-document
+  find page-sleep
+
+load ./media
+  find media-has-ask
+  find media-ask
+  find media-was-refused
+  find media-refusal-name
+  find media-refusal
+  find media-stream
+  find media-stop
+
+# the one format every host writes (../../microphone.tree)
+host recording-rate, code 16000
+
+bind microphone-has-recorder
+  like boolean
+  case browser
+    text <(typeof MediaRecorder !== 'undefined' && typeof OfflineAudioContext !== 'undefined')>
+
+# the sound as it is, as AVAudioRecorder and AudioRecord give it: a call's echo cancelling, noise suppression and gain
+# control are for a voice going out, and suppression takes a steady tone away as noise
+bind microphone-wanted
+  like dynamic
+  case browser
+    text <(\{ audio: \{ echoCancellation: false, noiseSuppression: false, autoGainControl: false \} \})>
+
+# a recorder on the stream, the pieces it hands over, and the promise of its stop
+bind microphone-recorder
+  take stream, like dynamic
+  like dynamic
+  case browser
+    text <((stream: MediaStream): \{ recorder: MediaRecorder; pieces: Blob[]; stopped: Promise\<unknown\> \} =\> \{ const recorder = new MediaRecorder(stream); const pieces: Blob[] = []; recorder.addEventListener('dataavailable', (event: BlobEvent) =\> pieces.push(event.data)); return \{ recorder, pieces, stopped: new Promise((settle) =\> recorder.addEventListener('stop', settle)) \} \})($stream)>
+
+bind microphone-start
+  take recording, like dynamic
+  like void
+  case browser
+    text <($recording as \{ recorder: MediaRecorder \}).recorder.start()>
+
+bind microphone-stop
+  take recording, like dynamic
+  like void
+  case browser
+    text <($recording as \{ recorder: MediaRecorder \}).recorder.stop()>
+
+bind microphone-stopped
+  mark async
+  take recording, like dynamic
+  like void
+  case browser
+    text <($recording as \{ stopped: Promise\<void\> \}).stopped>
+
+# the pieces joined in the recorder's own type, as bytes
+bind microphone-encoded
+  mark async
+  take recording, like dynamic
+  like dynamic
+  case browser
+    text <((recording: \{ recorder: MediaRecorder; pieces: Blob[] \}): Promise\<ArrayBuffer\> =\> new Blob(recording.pieces, \{ type: recording.recorder.mimeType \}).arrayBuffer())($recording)>
+
+bind microphone-decode
+  mark async
+  take encoded, like dynamic
+  take rate, like number
+  like dynamic
+  case browser
+    text <((encoded: ArrayBuffer, rate: number): Promise\<AudioBuffer\> =\> new OfflineAudioContext(1, 1, rate).decodeAudioData(encoded))($encoded, $rate)>
+
+bind audio-length
+  take audio, like dynamic
+  like number
+  case browser
+    text <($audio as AudioBuffer).length>
+
+bind audio-sample-rate
+  take audio, like dynamic
+  like number
+  case browser
+    text <($audio as AudioBuffer).sampleRate>
+
+# each channel's samples, in order
+bind audio-channels
+  take audio, like dynamic
+  like list, like dynamic
+  case browser
+    text <((audio: AudioBuffer): Float32Array[] =\> Array.from(\{ length: audio.numberOfChannels \}, (_, index) =\> audio.getChannelData(index)))($audio)>
+
+bind audio-sample
+  take channel, like dynamic
+  take index, like number
+  like float
+  case browser
+    text <($channel as Float32Array)[$index]!>
+
+# how many channels the mean divides by: one at least, as a float so the division keeps its fraction
+bind audio-mean-count
+  take channels, like list, like dynamic
+  like float
+  case browser
+    text <Math.max(1, $channels.length)>
+
+bind wave-view
+  take size, like number
+  like dynamic
+  case browser
+    text <new DataView(new ArrayBuffer($size))>
+
+bind wave-byte
+  take view, like dynamic
+  take at, like number
+  take value, like number
+  like void
+  case browser
+    text <($view as DataView).setUint8($at, $value)>
+
+bind wave-16
+  take view, like dynamic
+  take at, like number
+  take value, like number
+  like void
+  case browser
+    text <($view as DataView).setUint16($at, $value, true)>
+
+bind wave-32
+  take view, like dynamic
+  take at, like number
+  take value, like number
+  like void
+  case browser
+    text <($view as DataView).setUint32($at, $value, true)>
+
+bind wave-sample
+  take view, like dynamic
+  take at, like number
+  take value, like float
+  like void
+  case browser
+    text <($view as DataView).setInt16($at, $value, true)>
+
+bind wave-blob
+  take view, like dynamic
+  like dynamic
+  case browser
+    text <new Blob([($view as DataView).buffer], \{ type: 'audio/wav' \})>
+
+bind wave-address
+  take blob, like dynamic
+  like text
+  case browser
+    text <URL.createObjectURL($blob as Blob)>
+
+# `text`'s letters, each one byte, from `at`
+task wave-ascii
+  mark private
+  take view, like dynamic
+  take at, like number
+  take text, like text
+  save index, code 0
+  save count
+    call char-count
+      read text
+  walk test
+    hook test
+      call is-below
+        read index
+        read count
+    hook hold
+      call wave-byte
+        read view
+        call add
+          read at
+          read index
+        call char-code-at
+          read text
+          read index
+      save index
+        call add
+          read index
+          code 1
+
+# one sample in 16 bits: the channels' mean, held to -1 through 1, scaled by 0x8000 below zero and 0x7fff above
+task wave-level
+  mark private
+  take channels, like list, like dynamic
+  take index, like number
+  like float
+  save sum, code 0.0
+  walk list, read channels
+    hook next
+      take site, name channel
+      save sum
+        call add
+          read sum
+          call audio-sample
+            read channel
+            read index
+  save held
+    call divide
+      read sum
+      call audio-mean-count
+        read channels
+  # a NaN is held as it is, and written as 0 by setInt16, as the shim's Math.max and Math.min left it
+  fork test
+    hook test
+      call is-above
+        read held
+        code 1.0
+    hook hold
+      save held, code 1.0
+    hook test
+      call is-below
+        read held
+        code -1.0
+    hook hold
+      save held, code -1.0
+  fork test
+    hook test
+      call is-below
+        read held
+        code 0.0
+    hook hold
+      send back
+        call multiply
+          read held
+          code 32768.0
+  send back
+    call multiply
+      read held
+      code 32767.0
+
+# the decoded sound as a WAV: its channels averaged into one, each sample clamped and scaled to 16 bits, behind a
+# RIFF header with a PCM `fmt ` chunk and the `data` chunk, every number little-endian
+task wave-of
+  take audio, like dynamic
+  like dynamic
+  save length
+    call audio-length
+      read audio
+  save rate
+    call audio-sample-rate
+      read audio
+  save channels
+    call audio-channels
+      read audio
+  save data
+    call multiply
+      read length
+      code 2
+  save out
+    call wave-view
+      call add
+        code 44
+        read data
+  call wave-ascii
+    read out
+    code 0
+    text <RIFF>
+  call wave-32
+    read out
+    code 4
+    call add
+      code 36
+      read data
+  call wave-ascii
+    read out
+    code 8
+    text <WAVE>
+  call wave-ascii
+    read out
+    code 12
+    text <fmt >
+  call wave-32
+    read out
+    code 16
+    code 16
+  call wave-16
+    read out
+    code 20
+    code 1
+  call wave-16
+    read out
+    code 22
+    code 1
+  call wave-32
+    read out
+    code 24
+    read rate
+  call wave-32
+    read out
+    code 28
+    call multiply
+      read rate
+      code 2
+  call wave-16
+    read out
+    code 32
+    code 2
+  call wave-16
+    read out
+    code 34
+    code 16
+  call wave-ascii
+    read out
+    code 36
+    text <data>
+  call wave-32
+    read out
+    code 40
+    read data
+  save index, code 0
+  walk test
+    hook test
+      call is-below
+        read index
+        read length
+    hook hold
+      call wave-sample
+        read out
+        call add
+          code 44
+          call multiply
+            read index
+            code 2
+        call wave-level
+          read channels
+          read index
+      save index
+        call add
+          read index
+          code 1
+  send back
+    call wave-blob
+      read out
+
+# the recording itself, once the stream is open: `audio <blob address>`, or a raise for failed
+task record-stream
+  mark private
+  mark async
+  take stream, like dynamic
   take seconds, like number
   like text
-  send back
-    call native-microphone/record
+  save recording
+    call microphone-recorder
+      read stream
+  call microphone-start
+    read recording
+  call page-sleep
+    call multiply
       read seconds
-      wait true
+      code 1000
+  call microphone-stop
+    read recording
+  call microphone-stopped
+    read recording
+  save encoded
+    call microphone-encoded
+      read recording
+  save decoded
+    call microphone-decode
+      read encoded
+      read recording-rate
+  save address
+    call wave-address
+      call wave-of
+        read decoded
+  send back, text <audio {address}>
+
+# `audio <blob address>`, or denied, unavailable or failed
+task capture-audio
+  mark async
+  take seconds, like number
+  like text
+  fork test
+    hook test
+      call not
+        call page-has-document
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call media-has-ask
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call microphone-has-recorder
+    hook hold
+      send back, text <unavailable>
+  save asked
+    call media-ask
+      call microphone-wanted
+  fork test
+    hook test
+      call media-was-refused
+        read asked
+    hook hold
+      send back
+        call media-refusal
+          call media-refusal-name
+            read asked
+  save stream
+    call media-stream
+      read asked
+  save answer, text <failed>
+  fork
+    mark unsafe
+    save answer
+      call record-stream
+        read stream
+        read seconds
+  halt take
+    take problem
+    save answer, text <failed>
+  call media-stop
+    read stream
+  send back, read answer

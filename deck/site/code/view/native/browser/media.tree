@@ -1,0 +1,71 @@
+# A camera or microphone stream in a browser, for the capabilities here that open one (camera, microphone, permission,
+# torch): getUserMedia asked, its refusal read by name, and the stream's tracks stopped (term-self-host-001-0730, from
+# the shims' shared lines). The host calls are binds, the reading of a refusal is Term.
+
+bind media-has-ask
+  like boolean
+  case browser
+    text <(typeof navigator.mediaDevices?.getUserMedia === 'function')>
+
+# getUserMedia answered as `{ stream }` or `{ error }`, never a raise: the async arrow makes a call that throws at once
+# a refusal too, as the shims' `await` inside a `try` did
+bind media-ask
+  mark async
+  take wanted, like dynamic
+  like dynamic
+  case browser
+    text <(async (wanted: MediaStreamConstraints): Promise\<MediaStream\> =\> navigator.mediaDevices.getUserMedia(wanted))($wanted).then((stream: MediaStream) =\> (\{ stream \}), (error: unknown) =\> (\{ error \}))>
+
+bind media-was-refused
+  take asked, like dynamic
+  like boolean
+  case browser
+    text <('error' in ($asked as object))>
+
+# the refusal's name, the shims' `(error as Error).name`
+bind media-refusal-name
+  take asked, like dynamic
+  like text
+  case browser
+    text <String(($asked as \{ error: \{ name?: unknown \} \}).error.name)>
+
+bind media-stream
+  take asked, like dynamic
+  like dynamic
+  case browser
+    text <($asked as \{ stream: MediaStream \}).stream>
+
+bind media-stop
+  take stream, like dynamic
+  like void
+  case browser
+    text <($stream as MediaStream).getTracks().forEach((one: MediaStreamTrack) =\> one.stop())>
+
+bind media-video
+  like dynamic
+  case browser
+    text <(\{ video: true \})>
+
+bind media-audio
+  like dynamic
+  case browser
+    text <(\{ audio: true \})>
+
+# denied, unavailable (no such device) or failed, from a refusal's name
+task media-refusal
+  take name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <NotAllowedError>
+    hook hold
+      send back, text <denied>
+    hook test
+      call is-equal
+        read name
+        text <NotFoundError>
+    hook hold
+      send back, text <unavailable>
+  send back, text <failed>

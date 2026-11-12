@@ -31,6 +31,12 @@
     "view": "resvg --width 1024 view/term.svg view/term.png"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "term.showProof",
+        "title": "Term: Show Proof"
+      }
+    ],
     "iconThemes": [
       {
         "id": "tree",

@@ -21,7 +21,6 @@ load @term/base/network/server/response
 form server
   link dock
     like server-dock
-    mark private
   link host, like text
   link port, like number
 

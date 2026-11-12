@@ -5,7 +5,7 @@ mark draft
 
 
 form sink
-  link dock, mark private
+  link dock
 
 task console
   take

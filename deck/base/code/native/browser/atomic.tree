@@ -1,33 +1,62 @@
-# browser atomic implementation. Forwards to the linked atomic runtime shim (Atomics over a SharedArrayBuffer). Internal: reached only through the public atomic API.
+# browser atomic implementation: Atomics over a BigInt64Array, so the cell holds the same 64-bit integer as Rust's
+# AtomicI64, Swift's and Kotlin's. Shared with a worker when SharedArrayBuffer exists (a cross-origin isolated page), and
+# a plain buffer otherwise, which is enough on one thread. Each host call is a declarative binding inlined at the use
+# site, with no runtime shim. The opaque handle a Term atomic holds is the typed array. Internal: reached only through
+# the public atomic API.
 
 dock type
   load <any>, name atomic-handle
 
-dock load
-  load <global:atomic>, name atomic
-
 load @term/base/atomic
   find atomic
+
+# a new cell holding `initial`, read once through the arrow's own parameter
+bind make-cell
+  take initial, like number
+  like atomic-handle
+  case browser
+    text <((cellInitial: number): BigInt64Array =\> \{ const cell = new BigInt64Array(typeof SharedArrayBuffer === 'function' ? new SharedArrayBuffer(8) : new ArrayBuffer(8)); Atomics.store(cell, 0, BigInt(cellInitial)); return cell \})($initial)>
+
+bind load-cell
+  take cell, like atomic-handle
+  like number
+  case browser
+    text <Number(Atomics.load($cell, 0))>
+
+bind store-cell
+  take cell, like atomic-handle
+  take value, like number
+  like void
+  case browser
+    text <void Atomics.store($cell, 0, BigInt($value))>
+
+# the value after the increase: Atomics.add answers the one before it. `delta` is read once through the parameter
+bind increase-cell
+  take cell, like atomic-handle
+  take delta, like number
+  like number
+  case browser
+    text <((cellHandle: BigInt64Array, cellDelta: bigint): number =\> Number(Atomics.add(cellHandle, 0, cellDelta) + cellDelta))($cell, BigInt($delta))>
 
 task atomics-make
   take initial, like number
   like atomic-handle
   send back
-    call atomic/make
+    call make-cell
       read initial
 
 task atomics-load
   take self, like atomic
   like number
   send back
-    call atomic/load
+    call load-cell
       read self/dock
 
 task atomics-store
   take self, like atomic
   take value, like number
   like void
-  call atomic/store
+  call store-cell
     read self/dock
     read value
 
@@ -36,6 +65,6 @@ task atomics-increase
   take delta, like number
   like number
   send back
-    call atomic/increase
+    call increase-cell
       read self/dock
       read delta

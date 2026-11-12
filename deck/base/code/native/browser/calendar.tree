@@ -1,72 +1,63 @@
-# browser calendar implementation. Forwards to the linked calendar runtime shim (the host Date). All operations are UTC. Internal: reached only through the public calendar API.
+# browser calendar implementation over the host Date, all in UTC. Timestamps are epoch milliseconds. Formatting is
+# Date.toISOString (always millisecond precision, with a Z suffix), and parsing is Date.parse over the same ISO 8601
+# shape. Each op is a declarative binding, inlined at the use site with no runtime shim, each argument read once.
+# Internal: reached only through the public calendar API.
 
-dock load
-  load <global:calendar>, name calendar
-
-task calendar-format
+bind calendar-format
   take millis, like number
   like text
-  send back
-    call calendar/format
-      read millis
+  case browser
+    text <new Date($millis).toISOString()>
 
-task calendar-parse
+bind calendar-parse
   take text, like text
   like number
-  send back
-    call calendar/parse
-      read text
+  case browser
+    text <Date.parse($text)>
 
-task calendar-year
+bind calendar-year
   take millis, like number
   like integer
-  send back
-    call calendar/year
-      read millis
+  case browser
+    text <new Date($millis).getUTCFullYear()>
 
-task calendar-month
+bind calendar-month
   take millis, like number
   like integer
-  send back
-    call calendar/month
-      read millis
+  case browser
+    text <(new Date($millis).getUTCMonth() + 1)>
 
-task calendar-day
+bind calendar-day
   take millis, like number
   like integer
-  send back
-    call calendar/day
-      read millis
+  case browser
+    text <new Date($millis).getUTCDate()>
 
-task calendar-hour
+bind calendar-hour
   take millis, like number
   like integer
-  send back
-    call calendar/hour
-      read millis
+  case browser
+    text <new Date($millis).getUTCHours()>
 
-task calendar-minute
+bind calendar-minute
   take millis, like number
   like integer
-  send back
-    call calendar/minute
-      read millis
+  case browser
+    text <new Date($millis).getUTCMinutes()>
 
-task calendar-second
+bind calendar-second
   take millis, like number
   like integer
-  send back
-    call calendar/second
-      read millis
+  case browser
+    text <new Date($millis).getUTCSeconds()>
 
-task calendar-weekday
+bind calendar-weekday
   take millis, like number
   like integer
-  send back
-    call calendar/weekday
-      read millis
+  case browser
+    text <new Date($millis).getUTCDay()>
 
-task calendar-build
+bind calendar-build
   take year, like integer
   take month, like integer
   take day, like integer
@@ -74,29 +65,21 @@ task calendar-build
   take minute, like integer
   take second, like integer
   like number
-  send back
-    call calendar/build
-      read year
-      read month
-      read day
-      read hour
-      read minute
-      read second
+  case browser
+    text <Date.UTC($year, ($month) - 1, $day, $hour, $minute, $second)>
 
-task calendar-add-months
+# the date moved by whole months, the day of the month kept as Date.setUTCMonth keeps it. Each argument is read once,
+# through the arrow's own parameters
+bind calendar-add-months
   take millis, like number
   take count, like number
   like number
-  send back
-    call calendar/add-months
-      read millis
-      read count
+  case browser
+    text <((calendarMillis: number, calendarCount: number): number =\> \{ const date = new Date(calendarMillis); date.setUTCMonth(date.getUTCMonth() + calendarCount); return date.getTime() \})($millis, $count)>
 
-task calendar-add-years
+bind calendar-add-years
   take millis, like number
   take count, like number
   like number
-  send back
-    call calendar/add-years
-      read millis
-      read count
+  case browser
+    text <((calendarMillis: number, calendarCount: number): number =\> \{ const date = new Date(calendarMillis); date.setUTCFullYear(date.getUTCFullYear() + calendarCount); return date.getTime() \})($millis, $count)>

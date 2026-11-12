@@ -6,7 +6,7 @@ mark draft
 # `term test` (deck/call/code/test-preprocess.ts), held across backends by `pnpm term:base-gate`.
 
 form mock
-  link dock, mark private
+  link dock
 
 task make
   take returns, need false

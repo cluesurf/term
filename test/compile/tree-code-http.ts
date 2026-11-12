@@ -1,5 +1,5 @@
 // tree/code over HTTP, end to end, for a Term app: a Term handler built from @term/site's `code-of-request` and
-// `code-response`, served by the real node transport (site/code/http/native/node/runtime/transport.ts), called with
+// `code-response`, served by the real node transport (site/code/http/native/node/serve.tree), called with
 // fetch. The handler echoes what it reads, so the bytes back must be the canonical bytes of what was sent: plain,
 // packed with `Content-Encoding: zstd` both ways, refused when the packed body is past the limit, and left alone for
 // a client that does not take zstd. The reference codec (compile/host-code.ts) is the oracle.
@@ -52,6 +52,38 @@ const APP = `load @term/site/http/code
 load @term/site/http/http
   find request
   find response
+  find route
+  find route-server
+
+load @term/site/http/serve
+  find serve
+
+load @term/base/list
+  find list
+  find push
+
+# the echo on POST /echo, served by the node transport on the port
+task start
+  take port, like u16
+  save routes
+    make list
+  call push
+    read routes
+    make route
+      bind method, text <POST>
+      bind path, text </echo>
+      bind handle
+        task answer
+          take request, like request
+          take params, like hash, like text, like text
+          like response
+          send back
+            call echo
+              read request
+  call serve
+    call route-server
+      read routes
+    read port
 
 # what a client sent, as tree/code, sent back
 task echo
@@ -182,28 +214,10 @@ async function main(): Promise<void> {
 
   const app = await import(pathToFileURL(appFile).href)
 
-  // the transport the app runs, as written: a prelude fragment, exported here so the test can hold it
-  const shim = readFileSync(
-    join(TERM, 'deck/site/code/http/native/node/runtime/transport.ts'),
-    'utf8',
-  )
-  const transportFile = join(ROOT, 'transport.mjs')
-
-  writeFileSync(
-    transportFile,
-    transformSync(`${shim}\nexport { transport }\n`, {
-      loader: 'ts',
-      format: 'esm',
-    }).code,
-  )
-
-  const { transport } = await import(pathToFileURL(transportFile).href)
+  // the app serves its own echo through the node transport it was built with (Term since term-self-host-001-0731)
   const port = 39000 + Math.floor(Math.random() * 2000)
-  const server = transport.createServer((request: unknown) =>
-    app.echo(request),
-  )
 
-  server.listen(port)
+  app.start(port)
   await new Promise(resolve => setTimeout(resolve, 300))
 
   const url = `http://127.0.0.1:${port}/echo`
@@ -377,7 +391,7 @@ async function main(): Promise<void> {
         app.takesCode(plainAsk) === false,
     )
   } finally {
-    server.close()
+    // the listener ends with the process, in finish
   }
 
   finish()

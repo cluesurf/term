@@ -22,22 +22,63 @@ import NIOPosix
 import NIOSSL
 
 enum runtime {
-  // a running server: how to tell it to stop, and the port it bound
+  // a running server: how to stop it and wait until it has (item 1206), and the port it bound
   final class Running: @unchecked Sendable {
-    var stop: (() -> Void)?
+    var stop: (() async -> Void)?
     let port: Int
-    init(stop: (() -> Void)?, port: Int) {
+    init(stop: (() async -> Void)?, port: Int) {
       self.stop = stop
       self.port = port
     }
   }
 
+  // resumed ONCE, by whichever comes first: the listener bound (onServerRunning), or the server's run ended without
+  // binding (a refused port, a bad certificate). A second resume of a checked continuation is a crash, hence the flag
+  private final class Bound: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var done = false
+
+    func wait() async {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        lock.lock()
+        if done {
+          lock.unlock()
+          continuation.resume()
+        } else {
+          waiting = continuation
+          lock.unlock()
+        }
+      }
+    }
+
+    func signal() {
+      lock.lock()
+      if done {
+        lock.unlock()
+        return
+      }
+      done = true
+      let continuation = waiting
+      waiting = nil
+      lock.unlock()
+      continuation?.resume()
+    }
+  }
+
+  // NO TERM FORM IS NAMED HERE (item term-self-host-001-1218). This file is spliced into the emitted program as
+  // source, and a form's name there is not its own: loaded beside network/http, the server's `response` is
+  // `Response__in0_1`. The handler is the native module's `answer-plain` over the program's (network/server/plain):
+  // the request goes in as its parts (method, url, path, query, headers, body, dock), the response comes back as
+  // `[status, body, name, value, ...]`.
+  typealias Handler = (String, String, String, String, SeedMap<String, String>, String, Any) -> SeedList<String>
+
   // The handler a Term program hands in is a plain closure and Hummingbird runs requests on a concurrent
   // executor, so it is boxed here rather than captured directly. It is not Sendable, which is the same
   // single-thread constraint the rust target has for the same reason.
   private final class Held: @unchecked Sendable {
-    let call: (Request) -> Response
-    init(_ call: @escaping (Request) -> Response) {
+    let call: Handler
+    init(_ call: @escaping Handler) {
       self.call = call
     }
   }
@@ -46,7 +87,7 @@ enum runtime {
   static func serve(
     _ port: Int,
     _ host: String,
-    _ handler: @escaping (Request) -> Response,
+    _ handler: @escaping Handler,
     _ secure: Bool,
     _ certificate: String,
     _ key: String
@@ -65,28 +106,39 @@ enum runtime {
   static func start(
     _ port: Int,
     _ host: String,
-    _ handler: @escaping (Request) -> Response,
+    _ handler: @escaping Handler,
     _ secure: Bool,
     _ certificate: String,
     _ key: String
   ) async -> Running {
     let running = Running(stop: nil, port: port)
     let held = Held(handler)
+    let bound = Bound()
     let task = Task {
-      await run(port, host, held, secure, certificate, key, nil)
+      await run(port, host, held, secure, certificate, key, bound)
+      // a run that ended without binding still lets `start` answer
+      bound.signal()
     }
 
-    running.stop = { task.cancel() }
+    // stop CANCELS the run and WAITS for it to end: the run returns only once Hummingbird has closed its listening
+    // channel, so the port is free when `stop` answers (item 1206). A cancel alone answered at once, with the
+    // listener still open, and a second start on the port raced its close
+    running.stop = {
+      task.cancel()
+      await task.value
+    }
 
-    // give the listener a moment to bind, so the port is taken by the time this answers
-    try? await Task.sleep(nanoseconds: 50_000_000)
+    // answer once the listener is bound, so the port is taken by the time this answers. A fixed 50 ms sleep stood
+    // here, which answered before the bind on a loaded machine and waited for nothing on an idle one
+    await bound.wait()
 
     return running
   }
 
   static func stop(_ server: Running) async {
-    server.stop?()
+    let stop = server.stop
     server.stop = nil
+    await stop?()
   }
 
   // the server's own NIOSSL configuration. It advertises only HTTP/1.1 over ALPN, because this builder speaks only
@@ -120,7 +172,7 @@ enum runtime {
     _ secure: Bool,
     _ certificate: String,
     _ key: String,
-    _ unused: Int?
+    _ bound: Bound?
   ) async {
     let router = Router()
 
@@ -131,7 +183,14 @@ enum runtime {
       .get, .post, .put, .patch, .delete, .head, .options,
     ]
 
+    // "/**" matches one segment or more, never the root, so "/" has its own route (item term-self-host-001-1218): a
+    // GET of "/" answered Hummingbird's own 404 and never reached the handler
     for method in every {
+      router.on("/", method: method) {
+        (request: Hummingbird.Request, _: BasicRequestContext) async throws
+          -> Hummingbird.Response in
+        try await answer(request, handler)
+      }
       router.on("/**", method: method) {
         (request: Hummingbird.Request, _: BasicRequestContext) async throws
           -> Hummingbird.Response in
@@ -167,7 +226,8 @@ enum runtime {
       server: builder,
       configuration: ApplicationConfiguration(
         address: .hostname(host, port: port)
-      )
+      ),
+      onServerRunning: { _ in bound?.signal() }
     )
 
     do {
@@ -198,32 +258,40 @@ enum runtime {
     }
 
     let target = request.uri.string
-    let answered = handler.call(
-      Request(
-        method: request.method.rawValue,
-        url: target,
-        path: request.uri.path,
-        query: request.uri.query ?? "",
-        headers: headers,
-        body: String(buffer: whole),
-        dock: 0
-      )
-    )
+    let said = handler.call(
+      request.method.rawValue,
+      target,
+      request.uri.path,
+      request.uri.query ?? "",
+      headers,
+      String(buffer: whole),
+      0
+    ).data
 
+    // `[status, body, name, value, ...]`; a status that does not read as one is a 500
+    var status = 500
+    if let first = said.first, let read = Double(first.trimmingCharacters(in: .whitespaces)),
+      read >= 100, read <= 999
+    {
+      status = Int(read)
+    }
+    let body = said.count > 1 ? said[1] : ""
     var out = HTTPFields()
 
     // appended, not set, so repeats survive: several set-cookie headers is the ordinary case and the reason the
     // Term response holds a LIST of headers rather than a map
-    for header in answered.headers.data {
-      if let name = HTTPField.Name(header.name) {
-        out.append(HTTPField(name: name, value: header.value))
+    var at = 2
+    while at + 1 < said.count {
+      if let name = HTTPField.Name(said[at]) {
+        out.append(HTTPField(name: name, value: said[at + 1]))
       }
+      at += 2
     }
 
     return Hummingbird.Response(
-      status: HTTPResponse.Status(code: answered.status),
+      status: HTTPResponse.Status(code: status),
       headers: out,
-      body: ResponseBody(byteBuffer: ByteBuffer(string: answered.body))
+      body: ResponseBody(byteBuffer: ByteBuffer(string: body))
     )
   }
 }

@@ -93,14 +93,17 @@ ok(
   refusal('task t\n  mark async\n  like void\n  send back\n') ?? '',
 )
 
+// a field takes no mark: Term has no field privacy, so `mark private` on a field is refused by name (item 1207)
 ok(
-  '`link <field>, mark private` still mills, which is most of the real uses',
+  '`link <field>, mark private` is refused as an unread mark',
+  (
+    refusal(
+      'form thing\n  link dock, mark private\n  link name, like text\n',
+    ) ?? ''
+  ).includes('unread-mark'),
   refusal(
     'form thing\n  link dock, mark private\n  link name, like text\n',
-  ) === undefined,
-  refusal(
-    'form thing\n  link dock, mark private\n  link name, like text\n',
-  ) ?? '',
+  ) ?? 'it milled clean',
 )
 
 ok(

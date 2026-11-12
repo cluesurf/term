@@ -1,73 +1,62 @@
-# node raw byte buffer implementation (Buffer / TextEncoder). Forwards to the linked bytes runtime shim. Internal: reached only through the public bytes API.
+# node raw byte buffer implementation. The currency value is a Uint8Array, and Buffer is a Uint8Array subclass, so node's
+# hex and base64 codecs come with zero copy at the boundary. Each op is a declarative binding over the host's own
+# TextEncoder, TextDecoder, Buffer and Uint8Array, inlined at the use site with no runtime shim. Each argument is read
+# once. Internal: reached only through the public bytes API.
 
-dock load
-  load <global:octets>, name octets
-
-task octets-from-text
+bind octets-from-text
   take text, like text
   like bytes
-  send back
-    call octets/from-text
-      read text
+  case node
+    text <new TextEncoder().encode($text)>
 
-task octets-to-text
+bind octets-to-text
   take value, like bytes
   like text
-  send back
-    call octets/to-text
-      read value
+  case node
+    text <new TextDecoder().decode($value)>
 
-task octets-to-hex
+bind octets-to-hex
   take value, like bytes
   like text
-  send back
-    call octets/to-hex
-      read value
+  case node
+    text <Buffer.from($value).toString('hex')>
 
-task octets-from-hex
+bind octets-from-hex
   take text, like text
   like bytes
-  send back
-    call octets/from-hex
-      read text
+  case node
+    text <new Uint8Array(Buffer.from($text, 'hex'))>
 
-task octets-to-base64
+bind octets-to-base64
   take value, like bytes
   like text
-  send back
-    call octets/to-base64
-      read value
+  case node
+    text <Buffer.from($value).toString('base64')>
 
-task octets-from-base64
+bind octets-from-base64
   take text, like text
   like bytes
-  send back
-    call octets/from-base64
-      read text
+  case node
+    text <new Uint8Array(Buffer.from($text, 'base64'))>
 
-task octets-length
+bind octets-length
   take value, like bytes
   like number
-  send back
-    call octets/length
-      read value
+  case node
+    text <($value).length>
 
-task bytes-concat
+# a new buffer, the left bytes then the right ones. Each side is read once, through the arrow's own parameters
+bind bytes-concat
   take left, like bytes
   take right, like bytes
   like bytes
-  send back
-    call octets/concat
-      read left
-      read right
+  case node
+    text <((bytesL: Uint8Array, bytesR: Uint8Array): Uint8Array =\> \{ const out = new Uint8Array(bytesL.length + bytesR.length); out.set(bytesL, 0); out.set(bytesR, bytesL.length); return out \})($left, $right)>
 
-task bytes-slice
+bind bytes-slice
   take value, like bytes
   take start, like number
   take end, like number
   like bytes
-  send back
-    call octets/slice
-      read value
-      read start
-      read end
+  case node
+    text <($value).slice($start, $end)>

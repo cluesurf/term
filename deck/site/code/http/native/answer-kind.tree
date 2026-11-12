@@ -1,0 +1,152 @@
+# What both web transports (./node/serve, ./cloudflare/serve) decide about an answer before they write it
+# (term-self-host-001-0731, from the two transport shims' shared lines): a content type by file extension, which
+# extensions carry bytes as base64, whether a type is tree/code, and whether a body is an HTML page. The tables and
+# decisions are Term, the host's text questions are binds. `cloudflare` reaches the `browser` cases through its chain.
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/list
+  find list
+  find contains
+
+# the content type of a body served with a known asset extension: a `.js` module script needs it (browsers enforce it
+# strictly) and a `.css` needs text/css to apply
+host asset-types
+  make hash
+    save <css>, <text/css; charset=utf-8>
+    save <js>, <text/javascript; charset=utf-8>
+    save <mjs>, <text/javascript; charset=utf-8>
+    save <json>, <application/json; charset=utf-8>
+    save <svg>, <image/svg+xml>
+    save <png>, <image/png>
+    save <jpg>, <image/jpeg>
+    save <jpeg>, <image/jpeg>
+    save <gif>, <image/gif>
+    save <webp>, <image/webp>
+    save <ico>, <image/x-icon>
+    save <woff>, <font/woff>
+    save <woff2>, <font/woff2>
+    save <ttf>, <font/ttf>
+    save <otf>, <font/otf>
+    save <txt>, <text/plain; charset=utf-8>
+    save <xml>, <application/xml; charset=utf-8>
+    save <avif>, <image/avif>
+    save <bmp>, <image/bmp>
+    save <eot>, <application/vnd.ms-fontobject>
+    save <mp3>, <audio/mpeg>
+    save <wav>, <audio/wav>
+    save <ogg>, <audio/ogg>
+    save <mp4>, <video/mp4>
+    save <webm>, <video/webm>
+    save <mov>, <video/quicktime>
+    save <pdf>, <application/pdf>
+    save <wasm>, <application/wasm>
+  like hash
+    like text
+    like text
+
+# the asset extensions whose body the reader carried as base64 (a text body cannot hold raw bytes), decoded back to
+# bytes before sending. Kept in step with the asset reader's binary set
+host binary-extensions
+  make list
+    text <png>
+    text <jpg>
+    text <jpeg>
+    text <gif>
+    text <webp>
+    text <ico>
+    text <avif>
+    text <bmp>
+    text <woff>
+    text <woff2>
+    text <ttf>
+    text <otf>
+    text <eot>
+    text <mp3>
+    text <wav>
+    text <ogg>
+    text <mp4>
+    text <webm>
+    text <mov>
+    text <pdf>
+    text <wasm>
+  like list
+    like text
+
+# the request path's extension in lower case, or empty text for a path with no dot
+bind answer-path-extension
+  take path, like text
+  like text
+  case node
+    text <((path: string): string =\> \{ const dot = path.lastIndexOf('.'); return dot \>= 0 ? path.slice(dot + 1).toLowerCase() : '' \})($path)>
+  case browser
+    text <((path: string): string =\> \{ const dot = path.lastIndexOf('.'); return dot \>= 0 ? path.slice(dot + 1).toLowerCase() : '' \})($path)>
+
+# tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program
+bind answer-is-tree-code
+  take type, like text
+  like boolean
+  case node
+    text <($type.toLowerCase().split(';')[0]?.trim() === 'application/tree+code')>
+  case browser
+    text <($type.toLowerCase().split(';')[0]?.trim() === 'application/tree+code')>
+
+# an SSR page: the body's first characters say so, since the answer carries no type of its own
+bind answer-is-html
+  take body, like text
+  like boolean
+  case node
+    text <((head: string): boolean =\> head.startsWith('\<!doctype') || head.startsWith('\<html'))($body.trimStart().slice(0, 14).toLowerCase())>
+  case browser
+    text <((head: string): boolean =\> head.startsWith('\<!doctype') || head.startsWith('\<html'))($body.trimStart().slice(0, 14).toLowerCase())>
+
+# whether the handler set a content type, under any case of its name
+bind answer-has-type
+  take headers, like hash, like text, like text
+  like boolean
+  case node
+    text <[...$headers.keys()].some((name: string) =\> name.toLowerCase() === 'content-type')>
+  case browser
+    text <[...$headers.keys()].some((name: string) =\> name.toLowerCase() === 'content-type')>
+
+# the content type the handler set, or empty text
+bind answer-given-type
+  take headers, like hash, like text, like text
+  like text
+  case node
+    text <([...$headers].find(([name]: [string, string]) =\> name.toLowerCase() === 'content-type')?.[1] ?? '')>
+  case browser
+    text <([...$headers].find(([name]: [string, string]) =\> name.toLowerCase() === 'content-type')?.[1] ?? '')>
+
+# a known asset extension's content type, or empty text
+task asset-type
+  take extension, like text
+  like text
+  send back
+    call get-or-default
+      read asset-types
+      read extension
+      text <>
+
+task asset-is-binary
+  take extension, like text
+  like boolean
+  send back
+    call contains
+      read binary-extensions
+      read extension
+
+# a redirect: a 3xx status
+task answer-is-redirect
+  take status, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read status
+        code 300
+      call is-below
+        read status
+        code 400

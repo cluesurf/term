@@ -5,32 +5,18 @@
 # works is the one code/environment.tree already uses, where the native names are `current-directory` and
 # `get-variable` and cannot collide with the `directory` and `variable` they implement.
 
-# Standard user folders. Forwards to the linked folder runtime shim. A browser has no user folders, so every one
-# resolves to the origin. Internal: reached only through the public environment API.
+# Standard user folders. A browser has no user folders, so every one (home, temporary, data, configuration, cache, and
+# any other name, which is the home directory on every platform) resolves to the origin, the only location a page can
+# address. A declarative binding with no runtime shim. Internal: reached only through the public environment API.
 
-dock load
-  load <global:folder>, name folder
+bind page-origin
+  like text
+  case browser
+    text <location.origin>
 
 task read-path
   take kind, like text
   like text
 
-  fork case, read kind
-    case home
-      send back
-        call folder/home
-    case temporary
-      send back
-        call folder/temporary
-    case data
-      send back
-        call folder/data
-    case configuration
-      send back
-        call folder/configuration
-    case cache
-      send back
-        call folder/cache
-  # every other name: the home directory, as on every platform (node/environment/path.tree)
   send back
-    call folder/home
+    call page-origin

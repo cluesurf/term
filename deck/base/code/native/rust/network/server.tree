@@ -1,21 +1,29 @@
 # rust HTTP server: forwards to the linked `server` runtime shim, which is hyper on tokio. Internal: reached only
 # through the public network/server API.
 #
-# `serve` builds its own current-thread runtime and blocks, so a Term rust binary needs no `#[tokio::main]`.
-# `start` binds and answers without blocking, and must be called from inside a LocalSet: the handler a Term
-# program hands in is an `Rc`, which cannot cross a thread. See note/project/term/stdlib/native-async-file-and-server.md.
+# hyper runs on a thread of its own with its own tokio runtime, and each request comes back to the program's own loop
+# (`__term_block_on`), where the handler runs, as it does on node's event loop (item term-self-host-001-1218). The
+# handler is handed to the shim as `answer-plain` over it (network/server/plain), so the shim names no Term form.
+# `start` answers once the port is bound, `stop` once it is closed. See
+# note/project/term/stdlib/native-async-file-and-server.md.
 
 dock type
   load <runtime::Server>, name server-dock
 
+# `serve` is a shim of its own (runtime/server-serve.rs), since `start` and `stop` name the program's executor and a
+# program whose entry only serves has none
 dock load
   load <global:server>, name runtime
+  load <global:server-serve>, name serving
 
 load @term/base/network/server/request
   find request
 
 load @term/base/network/server/response
   find response
+
+load @term/base/network/server/plain
+  find answer-plain
 
 load @term/base/network/server
   find server
@@ -32,15 +40,36 @@ task server-serve
   take certificate, like text
   take key, like text
   like void
-  call runtime/serve
+  call serving/serve
     read port
     read host
-    read handler
+    task plain
+      take method, like text
+      take url, like text
+      take path, like text
+      take query, like text
+      take headers
+        like hash
+          like text
+          like text
+      take body, like text
+      take dock, like unknown
+      like list, like text
+      send back
+        call answer-plain
+          read handler
+          read method
+          read url
+          read path
+          read query
+          read headers
+          read body
+          read dock
     read secure
     read certificate
     read key
 
-# bind the port and answer, without blocking. The returned server is what `server-stop` shuts down.
+# bind the port and answer once it is bound, without blocking. The returned server is what `server-stop` shuts down.
 task server-start
   mark async
   take port, like size
@@ -57,7 +86,28 @@ task server-start
     call runtime/start
       read port
       read host
-      read handler
+      task plain
+        take method, like text
+        take url, like text
+        take path, like text
+        take query, like text
+        take headers
+          like hash
+            like text
+            like text
+        take body, like text
+        take dock, like unknown
+        like list, like text
+        send back
+          call answer-plain
+            read handler
+            read method
+            read url
+            read path
+            read query
+            read headers
+            read body
+            read dock
       read secure
       read certificate
       read key
@@ -68,6 +118,7 @@ task server-start
       bind host, read host
       bind port, read port
 
+# stop accepting and answer once the port is closed
 task server-stop
   mark async
   take server, like server

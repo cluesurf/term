@@ -1,99 +1,84 @@
-# kotlin float math (the linked fmath shim). Internal: reached only through the public float API.
+# kotlin float math as declarative bindings over kotlin.math and java.lang.Math, one host expression an op: the fmath
+# shim's expressions, which inline at the use site (decision 132 of term/self-host/change/001). Internal: reached only
+# through the public float API.
 
-dock load
-  load <global:fmath>, name fmath
-
-task float-square-root
+bind float-square-root
   take value, like float
   like float
-  send back
-    call fmath/sqrt
-      read value
+  case kotlin
+    text <kotlin.math.sqrt($value)>
 
-task float-floor
+bind float-floor
   take value, like float
   like float
-  send back
-    call fmath/floor
-      read value
+  case kotlin
+    text <kotlin.math.floor($value)>
 
-task float-ceiling
+bind float-ceiling
   take value, like float
   like float
-  send back
-    call fmath/ceil
-      read value
+  case kotlin
+    text <kotlin.math.ceil($value)>
 
-task float-round
+# half to even, as kotlin.math.round rounds (the shim's rule, kept)
+bind float-round
   take value, like float
   like float
-  send back
-    call fmath/round
-      read value
+  case kotlin
+    text <kotlin.math.round($value)>
 
-task float-power
+bind float-power
   take base, like float
   take exponent, like float
   like float
-  send back
-    call fmath/pow
-      read base
-      read exponent
+  case kotlin
+    text <Math.pow($base, $exponent)>
 
-task float-absolute
+bind float-absolute
   take value, like float
   like float
-  send back
-    call fmath/abs
-      read value
+  case kotlin
+    text <kotlin.math.abs($value)>
 
-task float-sine
+bind float-sine
   take value, like float
   like float
-  send back
-    call fmath/sin
-      read value
+  case kotlin
+    text <kotlin.math.sin($value)>
 
-task float-cosine
+bind float-cosine
   take value, like float
   like float
-  send back
-    call fmath/cos
-      read value
+  case kotlin
+    text <kotlin.math.cos($value)>
 
-task float-tangent
+bind float-tangent
   take value, like float
   like float
-  send back
-    call fmath/tan
-      read value
+  case kotlin
+    text <kotlin.math.tan($value)>
 
-task float-arc-sine
+bind float-arc-sine
   take value, like float
   like float
-  send back
-    call fmath/asin
-      read value
+  case kotlin
+    text <kotlin.math.asin($value)>
 
-task float-arc-cosine
+bind float-arc-cosine
   take value, like float
   like float
-  send back
-    call fmath/acos
-      read value
+  case kotlin
+    text <kotlin.math.acos($value)>
 
-task float-arc-tangent
+bind float-arc-tangent
   take value, like float
   like float
-  send back
-    call fmath/atan
-      read value
+  case kotlin
+    text <kotlin.math.atan($value)>
 
-task float-arc-tangent-of
+bind float-arc-tangent-of
   take y, like float
   take x, like float
   like float
-  send back
-    call fmath/atan2
-      read y
-      read x
+  case kotlin
+    text <kotlin.math.atan2($y, $x)>

@@ -76,9 +76,14 @@ const server = {
       raw.listen(port, host, () => resolve(raw))
     }),
 
-  // stop a running server, resolving when its port is released
+  // stop a running server, resolving when its port is released: close stops listening at once, and every kept-alive
+  // connection with no request in flight is closed now rather than at its keep-alive timeout, which is what every
+  // backend's stop does (item 1206). node 19 and later's close already closes them; saying it holds every node alike
   stop: (raw: nodeHttp.Server): Promise<void> =>
-    new Promise(resolve => raw.close(() => resolve())),
+    new Promise(resolve => {
+      raw.close(() => resolve())
+      raw.closeIdleConnections()
+    }),
 
   // start a server and keep the process alive (node's http.Server holds the event loop open while listening). The
   // portable `serve` entry point: fire-and-forget on node, a blocking accept loop on the compiled backends.

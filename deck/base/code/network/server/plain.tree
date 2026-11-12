@@ -1,0 +1,59 @@
+# What a compiled backend's server runtime hands a request in, and reads a response out of, in plain values only
+# (item term-self-host-001-1218). Internal: reached only through the native network/server modules.
+#
+# A runtime shim (native/<platform>/network/runtime/server.*) is spliced into the emitted program as source, so a Term
+# form it names must keep its name there. They did not: a program that also loads network/http (its own `response`)
+# has the server's form split by file as `Response__in0_1`, and the rust, swift and kotlin shims that named `Response`
+# did not build. So no shim names a Term form: it calls the task the native module hands it with the request's parts,
+# and reads back a list of text, `[status, body, name, value, name, value, ...]`, as network/http reads its host's.
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find header
+
+# the handler called on a request made of `method` ... `dock`, its response as `[status, body, name, value, ...]`
+task answer-plain
+  take handler
+    like task
+      take request, like request
+      like response
+  take method, like text
+  take url, like text
+  take path, like text
+  take query, like text
+  take headers
+    like hash
+      like text
+      like text
+  take body, like text
+  take dock, like unknown
+  like list, like text
+  save answered
+    call handler
+      make request
+        bind method, read method
+        bind url, read url
+        bind path, read path
+        bind query, read query
+        bind headers, read headers
+        bind body, read body
+        bind dock, read dock
+  save out
+    make list
+  call out/push
+    text <{answered/status}>
+  call out/push
+    read answered/body
+  walk list
+    read answered/headers
+    hook next
+      take site, name one
+      call out/push
+        read one/name
+      call out/push
+        read one/value
+  send back
+    read out

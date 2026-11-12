@@ -4,16 +4,16 @@
 # handles around, never a host primitive. Mirrors the `view` handle in ../dom/view.
 
 form surface
-  link handle, mark private
+  link handle
 
 form shader
-  link handle, mark private
+  link handle
 
 form program
-  link handle, mark private
+  link handle
 
 form gpu-buffer
-  link handle, mark private
+  link handle
 
 # Which stage a shader runs at. A union, never a stringly-typed option (see conventions).
 form shader-kind

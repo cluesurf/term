@@ -12,7 +12,6 @@ form user
   link name, like text
   link secret
     like text
-    mark private
   link home, like place
 
 form shape

@@ -1,20 +1,196 @@
-# location on a browser (device-layer-0004): navigator.geolocation.
-# Conforms to ../location. The runtime is runtime/native-location.ts.
-# The permission runtime is docked too: this capability reads its grant through it (../permission).
+# location on a browser (device-layer-0004): navigator.geolocation, which prompts for the grant itself when it has
+# none. Conforms to ../location. Ported from runtime/native-location.ts (term-self-host-001-0730): the host's calls are
+# binds, the position's text, the answers and the fan-out (./watch) are Term.
 
 load @term/site/report
   find report-raise
 
-dock load
-  load <global:native-location>, name native-location
-  load <global:native-permission>, name native-permission
-  load <global:native-watch>, name native-watch
+load ./watch
+  find watch-join
+  find watch-leave
 
-task read-position
+load ./page-host
+  find page-has-navigator
+  find page-is-absent
+  find page-fixed
+  find page-round
+  find page-number-text
+
+bind location-has-current
+  like boolean
+  case browser
+    text <(typeof navigator.geolocation?.getCurrentPosition === 'function')>
+
+bind location-has-watch
+  like boolean
+  case browser
+    text <(typeof navigator.geolocation?.watchPosition === 'function')>
+
+# one position, answered as `{ at }` or `{ error }`
+bind location-current
+  mark async
+  like dynamic
+  case browser
+    text <new Promise((settle) =\> navigator.geolocation.getCurrentPosition((at: GeolocationPosition) =\> settle(\{ at \}), (error: GeolocationPositionError) =\> settle(\{ error \}), \{ enableHighAccuracy: true, timeout: 10_000 \}))>
+
+# every position the browser reports, to `found`, every failure to `missed`, and the number clearWatch takes
+bind location-watch
+  take found
+    like task
+      take at, like dynamic
+  take missed
+    like task
+      take error, like dynamic
+  like number
+  case browser
+    text <navigator.geolocation.watchPosition($found, $missed, \{ enableHighAccuracy: true \})>
+
+bind location-clear
+  take watching, like number
+  like void
+  case browser
+    text <navigator.geolocation.clearWatch($watching)>
+
+bind location-settled-at
+  take settled, like dynamic
+  like dynamic
+  case browser
+    text <($settled as \{ at?: GeolocationPosition \}).at>
+
+bind location-settled-error
+  take settled, like dynamic
+  like dynamic
+  case browser
+    text <($settled as \{ error?: GeolocationPositionError \}).error>
+
+bind location-latitude
+  take at, like dynamic
+  like float
+  case browser
+    text <($at as GeolocationPosition).coords.latitude>
+
+bind location-longitude
+  take at, like dynamic
+  like float
+  case browser
+    text <($at as GeolocationPosition).coords.longitude>
+
+bind location-accuracy
+  take at, like dynamic
+  like float
+  case browser
+    text <($at as GeolocationPosition).coords.accuracy>
+
+bind location-is-refusal
+  take error, like dynamic
+  like boolean
+  case browser
+    text <((error: GeolocationPositionError): boolean =\> error.code === error.PERMISSION_DENIED)($error)>
+
+# `<latitude> <longitude> <accuracy>`, to six places and the nearest metre
+task describe-position
+  mark private
+  take at, like dynamic
   like text
+  save latitude
+    call page-fixed
+      call location-latitude
+        read at
+      code 6
+  save longitude
+    call page-fixed
+      call location-longitude
+        read at
+      code 6
+  save accuracy
+    call page-number-text
+      call page-round
+        call location-accuracy
+          read at
+  send back, text <{latitude} {longitude} {accuracy}>
+
+task describe-failure
+  mark private
+  take error, like dynamic
+  like text
+  fork test
+    hook test
+      call location-is-refusal
+        read error
+    hook hold
+      send back, text <denied>
+  send back, text <failed>
+
+# `<latitude> <longitude> <accuracy>`, or denied, unavailable or failed
+task read-position
+  mark async
+  like text
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call location-has-current
+    hook hold
+      send back, text <unavailable>
+  save settled
+    call location-current
+  save at
+    call location-settled-at
+      read settled
+  fork test
+    hook test
+      call page-is-absent
+        read at
+    hook hold
+      send back
+        call describe-failure
+          call location-settled-error
+            read settled
   send back
-    call native-location/position
-      wait true
+    call describe-position
+      read at
+
+# the subscription: every position the browser reports, the first included. `denied` or `unavailable` once
+task start-position
+  mark private
+  take tell
+    like task
+      take value, like text
+  like task
+  fork test
+    hook test
+      call or
+        call not
+          call page-has-navigator
+        call not
+          call location-has-watch
+    hook hold
+      call tell
+        text <unavailable>
+      send back
+        task stop
+          save skip, code 0
+  save watching
+    call location-watch
+      task found
+        take at, like dynamic
+        call tell
+          call describe-position
+            read at
+      task missed
+        take error, like dynamic
+        call tell
+          call describe-failure
+            read error
+  send back
+    task stop
+      call location-clear
+        read watching
 
 task follow-position
   take handler
@@ -22,9 +198,10 @@ task follow-position
       take value, like text
       halt exception
   like task
-  # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
+  # the number the drop gives back: one handler leaves, and the subscription ends with the last (./watch)
   save watching
-    call native-location/watch
+    call watch-join
+      text <position>
       task heard
         take value, like text
         fork
@@ -36,11 +213,13 @@ task follow-position
           call report-raise
             text <follow-position>
             read problem
+      read start-position
   send back
     task drop
       fork
         mark unsafe
-        call native-location/unwatch
+        call watch-leave
+          text <position>
           read watching
       halt take
         take problem

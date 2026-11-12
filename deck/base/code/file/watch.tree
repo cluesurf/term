@@ -29,7 +29,6 @@ form watch-event
 form watcher
   link dock
     like watch-dock
-    mark private
   link path, like text
 
 # start watching `path`. With `deep`, everything beneath it too.

@@ -1,18 +1,206 @@
-# battery on a browser (device-layer-0009): navigator.getBattery.
-# Conforms to ../battery. The runtime is runtime/native-battery.ts.
+# battery on a browser (device-layer-0009): navigator.getBattery, which Chromium-based browsers have and Safari and
+# Firefox do not. Conforms to ../battery. Ported from runtime/native-battery.ts (term-self-host-001-0730): the host's
+# calls are binds, the answer, the subscription's steps and the fan-out (./watch) are Term.
 
 load @term/site/report
   find report-raise
 
-dock load
-  load <global:native-battery>, name native-battery
-  load <global:native-watch>, name native-watch
+load ./watch
+  find watch-join
+  find watch-leave
 
-task read-battery
-  like text
+load ./page-host
+  find page-has-navigator
+  find page-is-absent
+  find page-nothing
+  find page-fixed
+
+# the browser's battery manager, a promise, or nothing where it has none
+bind battery-manager
+  like dynamic
+  case browser
+    text <((): Promise\<\{ level: number; charging: boolean \} & EventTarget\> | undefined =\> \{ const read = (navigator as unknown as \{ getBattery?: () =\> Promise\<\{ level: number; charging: boolean \} & EventTarget\> \}).getBattery; return typeof read === 'function' ? read.call(navigator) : undefined \})()>
+
+bind battery-of
+  mark async
+  take manager, like dynamic
+  like dynamic
+  case browser
+    text <$manager>
+
+# `run` with the battery once the manager answers, and nothing waited
+bind battery-then
+  take manager, like dynamic
+  take run
+    like task
+      take battery, like dynamic
+  like void
+  case browser
+    text <void ($manager as Promise\<unknown\>).then($run)>
+
+bind battery-level
+  take battery, like dynamic
+  like float
+  case browser
+    text <($battery as \{ level: number \}).level>
+
+bind battery-charging
+  take battery, like dynamic
+  like boolean
+  case browser
+    text <($battery as \{ charging: boolean \}).charging>
+
+bind battery-listen
+  take battery, like dynamic
+  take event, like text
+  take run
+    like task
+  like void
+  case browser
+    text <($battery as EventTarget).addEventListener($event, $run)>
+
+bind battery-unlisten
+  take battery, like dynamic
+  take event, like text
+  take run
+    like task
+  like void
+  case browser
+    text <($battery as EventTarget).removeEventListener($event, $run)>
+
+task battery-manager-of
+  mark private
+  like dynamic
+  fork test
+    hook test
+      call page-has-navigator
+    hook hold
+      send back
+        call battery-manager
   send back
-    call native-battery/read
-      wait true
+    call page-nothing
+
+# `<level> <state>`, or unavailable
+task read-battery
+  mark async
+  like text
+  save manager
+    call battery-manager-of
+  fork test
+    hook test
+      call page-is-absent
+        read manager
+    hook hold
+      send back, text <unavailable>
+  save battery
+    call battery-of
+      read manager
+  save level
+    call battery-level
+      read battery
+  save state, text <unplugged>
+  fork test
+    hook test
+      call battery-charging
+        read battery
+    hook hold
+      save state, text <charging>
+      fork test
+        hook test
+          call is-minimum
+            read level
+            code 1.0
+        hook hold
+          save state, text <full>
+  save shown
+    call page-fixed
+      read level
+      code 2
+  send back, text <{shown} {state}>
+
+task tell-battery
+  mark private
+  mark async
+  take tell
+    like task
+      take value, like text
+  save now
+    call read-battery
+  call tell
+    read now
+
+# the subscription's end, once the manager has answered (or before it does)
+form battery-watching
+  mark shared
+  link ended, like boolean
+  link end
+    like task
+
+# the subscription: the battery now, and again at every level or charging change. `unavailable` once without one
+task start-battery
+  mark private
+  take tell
+    like task
+      take value, like text
+  like task
+  save manager
+    call battery-manager-of
+  fork test
+    hook test
+      call page-is-absent
+        read manager
+    hook hold
+      call tell
+        text <unavailable>
+      send back
+        task stop
+          save skip, code 0
+  # one task, so the battery drops the very listener it was given
+  save report
+    task report
+      tick tell-battery
+        read tell
+  save watching
+    make battery-watching
+      bind ended, false
+      bind end
+        task end
+          save skip, code 0
+  # an end before the manager answers: the battery, when it comes, is not listened to
+  save watching/end
+    task end
+      save watching/ended, true
+  call battery-then
+    read manager
+    task found
+      take battery, like dynamic
+      fork test
+        hook test
+          call not
+            read watching/ended
+        hook hold
+          call report
+          call battery-listen
+            read battery
+            text <levelchange>
+            read report
+          call battery-listen
+            read battery
+            text <chargingchange>
+            read report
+          save watching/end
+            task end
+              call battery-unlisten
+                read battery
+                text <levelchange>
+                read report
+              call battery-unlisten
+                read battery
+                text <chargingchange>
+                read report
+  send back
+    task stop
+      call watching/end
 
 task follow-battery
   take handler
@@ -20,9 +208,10 @@ task follow-battery
       take value, like text
       halt exception
   like task
-  # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
+  # the number the drop gives back: one handler leaves, and the subscription ends with the last (./watch)
   save watching
-    call native-battery/watch
+    call watch-join
+      text <battery>
       task heard
         take value, like text
         fork
@@ -34,11 +223,13 @@ task follow-battery
           call report-raise
             text <follow-battery>
             read problem
+      read start-battery
   send back
     task drop
       fork
         mark unsafe
-        call native-battery/unwatch
+        call watch-leave
+          text <battery>
           read watching
       halt take
         take problem

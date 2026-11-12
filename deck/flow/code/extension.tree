@@ -10,9 +10,14 @@
 #     pushed, which is the client the original's variable held
 #   - the server and client options, the client's construction, `start` and `stop` are host expressions (binds), one
 #     per call the original made, so VS Code reads the same records
+#   - the proof view (info-view.tree, term-self-host-001-0714) starts on the same client, so one extension holds one
+#     client and one server (decision 139 rule 5)
 
 load @term/base/list
   find push
+
+load ./info-view
+  find start-proof-view
 
 dock load
   load <node:path>, name node-path
@@ -88,6 +93,7 @@ task activate
       client-options(watcher)
   push(held-client, made)
   start-client(made)
+  start-proof-view(context, made)
 
 task deactivate
   like dynamic

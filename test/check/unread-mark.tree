@@ -1,0 +1,106 @@
+# A mark nothing reads is refused wherever it is written, never dropped (item 1207, decision 1216). Term has no field
+# privacy: `link handle, like dynamic, mark private`, the five view handles of deck/site/code/dom/native, compiled
+# clean to the same public field as no mark, and so did `link dock, mark private` and `mark private` on its own line
+# under a link, on every backend. Each is refused as `unread-mark`. The one mark a type reads is `mark async` on a
+# `like task`, which makes the callback type async, beside the type or under it: those still build.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(lean, true), bind(stdlib, <node>)))
+
+task said
+  take text, like text
+  like text
+
+  back join(built(text)/messages, < | >)
+
+task hints
+  take text, like text
+  like text
+
+  save lines, make list
+  walk built(text)/notes
+    take one
+    lines/push(one/hint)
+  back join(lines, < | >)
+
+# how many messages name the rule, so one mark is refused once however often its field or type is read
+task times-said
+  take text, like text
+  like number
+
+  save count, 0
+  walk built(text)/messages
+    take one
+    fork test, text-contains(one, <unread-mark>)
+      hold
+        save count, add(count, 1)
+  back count
+
+host tail, <\ntask probe\n  take w, like text\n  like text\n\n  back w\n>
+
+test <a mark beside a link's type, as deck/site's view handles wrote it: refused once>
+  host text, <form view\n  link handle, like dynamic, mark private\n{tail}>
+  want hold, text-contains(said(text), <unread-mark: a `mark` after a `like`'s type is read by nothing>)
+  want hold, is-equal(times-said(text), 1)
+  want hold, text-contains(hints(text), <Term has no field privacy>)
+
+test <a mark beside a link with no type, `link dock, mark private`: refused once>
+  host text, <form view\n  link dock, mark private\n  link name, like text\n{tail}>
+  want hold, text-contains(said(text), <unread-mark: `mark private` on a field is read by nothing>)
+  want hold, is-equal(times-said(text), 1)
+
+test <a mark on its own line under a link: refused>
+  host text, <form view\n  link dock\n    like dynamic\n    mark private\n{tail}>
+  want hold, text-contains(said(text), <unread-mark: `mark private` on a field is read by nothing>)
+
+test <a mark under a slot: refused>
+  host text, <form view\n  slot dock, mark private\n{tail}>
+  want hold, text-contains(said(text), <unread-mark>)
+
+test <a mark under a case's link: refused>
+  host text, <form view\n  case open\n    link dock, mark private\n  case shut\n{tail}>
+  want hold, text-contains(said(text), <unread-mark>)
+
+test <a metadata word beside a parameter's type: refused, naming it>
+  host text, <task probe\n  take cb, like dynamic, mark open\n  like dynamic\n\n  back cb\n>
+  want hold, text-contains(said(text), <unread-mark: `mark open` on a `like dynamic` is read by nothing>)
+
+test <mark async beside a type that is not a task: refused>
+  host text, <task probe\n  take cb, like dynamic, mark async\n  like dynamic\n\n  back cb\n>
+  want hold, text-contains(said(text), <unread-mark: `mark async` on a `like dynamic`>)
+
+test <a mark beside a save's type: refused>
+  host text, <task probe\n  take w, like text\n  like text\n\n  save x, like text, mark private\n  save x, w\n  back x\n>
+  want hold, text-contains(said(text), <unread-mark>)
+
+test <mark async beside a parameter's like task: read, builds>
+  host text, <task probe\n  take cb, like task, mark async\n  like dynamic\n\n  back cb\n>
+  want hold, is-equal(said(text), <>)
+  want hold, text-contains(built(text)/emitted, <Promise>)
+
+test <mark async under a parameter's like task: read, builds>
+  host text, <task probe\n  take cb\n    like task\n      mark async\n  like dynamic\n\n  back cb\n>
+  want hold, is-equal(said(text), <>)
+  want hold, text-contains(built(text)/emitted, <Promise>)
+
+test <mark async under a link's like task: read, builds>
+  host text, <form view\n  link step\n    like task\n      mark async\n{tail}>
+  want hold, is-equal(said(text), <>)
+
+test <a link with no mark: builds>
+  host text, <form view\n  link handle, like dynamic\n  link dock\n{tail}>
+  want hold, is-equal(said(text), <>)

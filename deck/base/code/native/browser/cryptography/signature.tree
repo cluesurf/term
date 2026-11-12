@@ -1,23 +1,125 @@
-# node Ed25519 implementation. Forwards to the linked eddsa runtime shim (Web Crypto Ed25519). make-key-pair-bytes returns the 32-byte private key and 32-byte public key concatenated (64 raw bytes); messages and signatures are raw bytes. Internal: reached only through the public signature API.
+# browser Ed25519 implementation over the Web Crypto API (globalThis.crypto.subtle, in a secure context). Keys, messages
+# and signatures are raw bytes: a 32-byte private seed and a 32-byte public key, and a key pair is the two
+# concatenated, 64 bytes. Web Crypto imports a private key as a PKCS8 DER blob, so the fixed Ed25519 PKCS8 prefix goes
+# in front of the raw seed, and a public key imports as raw bytes. Each host call is a declarative binding, inlined at
+# the use site with no runtime shim, each argument read once, and the steps between them are Term. Internal: reached
+# only through the public signature API.
 
-dock load
-  load <global:eddsa>, name eddsa
+# the left bytes then the right ones, in a new buffer. Local, so the signature needs no bytes module (the browser bytes
+# module still docks its shim). Each side is read once, through the arrow's own parameters
+bind ed25519-join
+  take left, like bytes
+  take right, like bytes
+  like bytes
+  case browser
+    text <((joinL: Uint8Array, joinR: Uint8Array): Uint8Array =\> \{ const out = new Uint8Array(joinL.length + joinR.length); out.set(joinL, 0); out.set(joinR, joinL.length); return out \})($left, $right)>
+
+# the 16 bytes an Ed25519 PKCS8 private key starts with, before its 32-byte seed
+bind ed25519-pkcs8-prefix
+  like bytes
+  case browser
+    text <new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20])>
+
+bind generate-ed25519-pair
+  mark async
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.generateKey(\{ name: 'Ed25519' \}, true, ['sign', 'verify'])>
+
+bind ed25519-export-private
+  mark async
+  take pair, like dynamic
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.exportKey('pkcs8', ($pair).privateKey)>
+
+bind ed25519-export-public
+  mark async
+  take pair, like dynamic
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.exportKey('raw', ($pair).publicKey)>
+
+# the last 32 bytes of a host ArrayBuffer: the seed at the end of a PKCS8 private key
+bind ed25519-seed-of
+  take buffer, like dynamic
+  like bytes
+  case browser
+    text <new Uint8Array($buffer).slice(-32)>
+
+# the bytes of a host ArrayBuffer
+bind ed25519-bytes-of
+  take buffer, like dynamic
+  like bytes
+  case browser
+    text <new Uint8Array($buffer)>
+
+bind ed25519-import-private
+  mark async
+  take blob, like bytes
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.importKey('pkcs8', ($blob) as BufferSource, \{ name: 'Ed25519' \}, false, ['sign'])>
+
+bind ed25519-import-public
+  mark async
+  take raw, like bytes
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.importKey('raw', ($raw) as BufferSource, \{ name: 'Ed25519' \}, false, ['verify'])>
+
+bind ed25519-sign
+  mark async
+  take secret, like dynamic
+  take message, like bytes
+  like dynamic
+  case browser
+    text <globalThis.crypto.subtle.sign('Ed25519', $secret, ($message) as BufferSource)>
+
+bind ed25519-verify
+  mark async
+  take verifier, like dynamic
+  take signature, like bytes
+  take message, like bytes
+  like boolean
+  case browser
+    text <globalThis.crypto.subtle.verify('Ed25519', $verifier, ($signature) as BufferSource, ($message) as BufferSource)>
 
 task make-key-pair-bytes
   mark async
   like bytes
+  save pair
+    call generate-ed25519-pair
+  save private-blob
+    call ed25519-export-private
+      read pair
+  save public-raw
+    call ed25519-export-public
+      read pair
   send back
-    call eddsa/make-key-pair
+    call ed25519-join
+      call ed25519-seed-of
+        read private-blob
+      call ed25519-bytes-of
+        read public-raw
 
 task sign-message
   mark async
   take private-key, like bytes
   take message, like bytes
   like bytes
-  send back
-    call eddsa/sign
-      read private-key
+  save secret
+    call ed25519-import-private
+      call ed25519-join
+        call ed25519-pkcs8-prefix
+        read private-key
+  save signature
+    call ed25519-sign
+      read secret
       read message
+  send back
+    call ed25519-bytes-of
+      read signature
 
 task verify-message
   mark async
@@ -25,8 +127,11 @@ task verify-message
   take message, like bytes
   take signature, like bytes
   like boolean
-  send back
-    call eddsa/verify
+  save open-key
+    call ed25519-import-public
       read public-key
-      read message
+  send back
+    call ed25519-verify
+      read open-key
       read signature
+      read message

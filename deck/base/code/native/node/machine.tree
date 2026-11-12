@@ -1,24 +1,36 @@
-# Node.js machine implementation. Forwards to the linked machine runtime shim (the host process). Internal: reached only through the public machine API.
+# Node.js machine implementation: node:os docked straight, and the host process's own facts as declarative bindings,
+# with no runtime shim. The names are node's own, so every other backend maps onto them. Internal: reached only through
+# the public machine API.
 
 dock load
-  load <global:machine>, name machine
+  load <node:os>, name machine-os
 
+bind host-platform
+  like text
+  case node
+    text <process.platform>
+
+bind host-architecture
+  like text
+  case node
+    text <process.arch>
+
+# the runtime running the program: `node`, a space, and node's own version (`node v22.23.4`)
+bind host-runtime
+  like text
+  case node
+    text <('node ' + process.version)>
+
+# `os.cpus()` is empty where the platform hides its processors, and a pool of none runs nothing
 task host-cores
   like number
-  send back
-    call machine/cores
-
-task host-platform
-  like text
-  send back
-    call machine/platform
-
-task host-architecture
-  like text
-  send back
-    call machine/architecture
-
-task host-runtime
-  like text
-  send back
-    call machine/runtime
+  save processors
+    call machine-os/cpus
+  fork test
+    hook test
+      call is-below
+        read processors/length
+        code 1
+    hook hold
+      send back, code 1
+  send back, read processors/length

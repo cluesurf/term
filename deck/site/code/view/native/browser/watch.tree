@@ -1,0 +1,309 @@
+# The watchers' fan-out in a browser (device-layer-0016), loaded by every capability here that can be watched
+# (battery, location, motion, network). Many handlers share one subscription per capability: the first watch starts
+# it, the last drop stops it, and a watch made while it runs hears the last answer at once, so every handler is told
+# the current value first. Ported from runtime/native-watch.ts (term-self-host-001-0730): the fan-out is Term, and
+# nothing in it is a host call.
+
+load @term/base/list
+  find list
+  find get
+  find push
+
+# one handler of a capability, and the number its drop gives back
+form watch-handler
+  mark shared
+  link number, like number
+  link run
+    like task
+      take value, like text
+
+# one capability's subscription. `serial` tells it apart from a later one of the same name, which a last drop and a new
+# watch make. `told` says `last` holds an answer
+form watch-topic
+  mark shared
+  link name, like text
+  link serial, like number
+  link handlers
+    like list
+      like watch-handler
+  link last, like text
+  link told, like boolean
+  link stop
+    like task
+
+form watch-board
+  mark shared
+  link topics
+    like list
+      like watch-topic
+  link next, like number
+  link serials, like number
+
+host board
+  make watch-board
+    bind topics
+      make list
+    bind next, code 0
+    bind serials, code 0
+
+# where the capability `name`'s subscription is on the board, or -1
+task topic-at
+  mark private
+  take name, like text
+  like number
+  save at, code 0
+  save found, code -1
+  walk list, read board/topics
+    hook next
+      take site, name topic
+      fork test
+        hook test
+          call and
+            call is-below
+              read found
+              code 0
+            call is-equal
+              read topic/name
+              read name
+        hook hold
+          save found, read at
+      save at
+        call add
+          read at
+          code 1
+  send back, read found
+
+# whether the subscription numbered `serial` is still the one on the board for its name
+task topic-is-current
+  mark private
+  take name, like text
+  take serial, like number
+  like boolean
+  save at
+    call topic-at
+      read name
+  save current, false
+  fork test
+    hook test
+      call is-minimum
+        read at
+        code 0
+    hook hold
+      save topic
+        call get
+          read board/topics
+          read at
+      save current
+        call is-equal
+          read topic/serial
+          read serial
+  send back, read current
+
+# every answer of the subscription goes here: kept as the last, then told to each handler in the order they joined,
+# over a copy of their numbers, since a handler may drop itself or another as it is told
+task tell-topic
+  mark private
+  take topic, like watch-topic
+  take value, like text
+  save topic/last, read value
+  save topic/told, true
+  save numbers
+    make list
+  walk list, read topic/handlers
+    hook next
+      take site, name one
+      call push
+        read numbers
+        read one/number
+  walk list, read numbers
+    hook next
+      take site, name number
+      walk list, read topic/handlers
+        hook next
+          take site, name one
+          fork test
+            hook test
+              call is-equal
+                read one/number
+                read number
+            hook hold
+              call one/run
+                read value
+
+# `handler` added to the capability `name`, and the number that removes it. `start` begins the subscription with the
+# task every answer goes through, and answers the task that ends it
+task watch-join
+  take name, like text
+  take handler
+    like task
+      take value, like text
+  take start
+    like task
+      take tell
+        like task
+          take value, like text
+      like task
+  like number
+  save board/next
+    call add
+      read board/next
+      code 1
+  save number, read board/next
+  save joined
+    make watch-handler
+      bind number, read number
+      bind run, read handler
+  save at
+    call topic-at
+      read name
+  fork test
+    hook test
+      call is-minimum
+        read at
+        code 0
+    hook hold
+      save running
+        call get
+          read board/topics
+          read at
+      call push
+        read running/handlers
+        read joined
+      # a watch made while the subscription runs hears the last answer at once
+      fork test
+        hook test, read running/told
+        hook hold
+          call handler
+            read running/last
+    hook miss
+      call start-topic
+        read name
+        read joined
+        read start
+  send back, read number
+
+# the first handler of `name`: a new subscription, started
+task start-topic
+  mark private
+  take name, like text
+  take joined, like watch-handler
+  take start
+    like task
+      take tell
+        like task
+          take value, like text
+      like task
+  save board/serials
+    call add
+      read board/serials
+      code 1
+  save serial, read board/serials
+  save handlers
+    make list
+  call push
+    read handlers
+    read joined
+  save topic
+    make watch-topic
+      bind name, read name
+      bind serial, read serial
+      bind handlers, read handlers
+      bind last, text <>
+      bind told, false
+      bind stop
+        task nothing
+          save skip, code 0
+  call push
+    read board/topics
+    read topic
+  save stop
+    call start
+      task tell
+        take value, like text
+        call tell-topic
+          read topic
+          read value
+  # a handler told at once may have dropped itself before the subscription's end was known
+  fork test
+    hook test
+      call topic-is-current
+        read name
+        read serial
+    hook hold
+      save topic/stop, read stop
+    hook miss
+      call stop
+
+# the handler numbered `number` leaves the capability `name`, and the last to leave ends the subscription
+task watch-leave
+  take name, like text
+  take number, like number
+  save at
+    call topic-at
+      read name
+  fork test
+    hook test
+      call is-minimum
+        read at
+        code 0
+    hook hold
+      call leave-topic
+        call get
+          read board/topics
+          read at
+        read number
+
+task leave-topic
+  mark private
+  take topic, like watch-topic
+  take number, like number
+  save kept
+    make list
+  save found, false
+  walk list, read topic/handlers
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal
+            read one/number
+            read number
+        hook hold
+          save found, true
+        hook miss
+          call push
+            read kept
+            read one
+  fork test
+    hook test, read found
+    hook hold
+      save topic/handlers, read kept
+      fork test
+        hook test
+          call is-equal
+            read kept/length
+            code 0
+        hook hold
+          call drop-topic
+            read topic
+
+# the last handler left: the subscription leaves the board, and ends
+task drop-topic
+  mark private
+  take topic, like watch-topic
+  save others
+    make list
+  walk list, read board/topics
+    hook next
+      take site, name other
+      fork test
+        hook test
+          call is-unequal
+            read other/serial
+            read topic/serial
+        hook hold
+          call push
+            read others
+            read other
+  save board/topics, read others
+  call topic/stop

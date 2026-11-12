@@ -25,15 +25,20 @@
 //
 // The env seam: node runs the program under node. browser runs it on node's V8 too, with the candidate's `case browser`
 // read as `case node` and the browser shim found first (a copy of native/browser/runtime/<shim>.ts at
-// <work>/runtime/node/, the folder the runtime prelude tries before the stdlib's). rust, swift and kotlin are the next
-// item's (term-self-host-001-1063): each needs its own emit, build and run, and the program shape stays.
+// <work>/runtime/node/, the folder the runtime prelude tries before the stdlib's). rust, swift and kotlin (item
+// term-self-host-001-1063) emit the program for their own backend through `term make --emit <env> --build`: rustc -O
+// (a cargo --release project when the program names a crate, as the stdlib's text and file do), swiftc -O, kotlinc
+// to a jar run by java. Their program is typed: an op's arguments are floats (kind `float`, the only
+// kind a native spec takes until items 1064 to 1066 add theirs), read from a text file of one line a list, `|` between
+// the values, each written as JavaScript writes the number and read by the host's own parser. Kotlin's ops are warmed
+// first, at least 10,000 calls each on both sides, so the JIT has compiled them before any trial is timed.
 //
 // Run from the Term root.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { cpus, loadavg } from 'node:os'
+import { cpus, loadavg, tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse, renderHead } from '@term/make/code/parser/tree'
@@ -72,7 +77,7 @@ const SIZE = 2048
 const RULE = 1.2
 const CASES_VARIABLE = 'TERM_SHIM_BENCH_CASES'
 
-type Kind = 'number' | 'boolean' | 'text' | 'dynamic'
+type Kind = 'number' | 'boolean' | 'text' | 'dynamic' | 'float'
 type Op = { op: string; shim_op: string; term_op: string; arity: number; kind: Kind; cases: string }
 type Spec = { shim: string; candidate: string; rounds: number; ops: Op[] }
 
@@ -157,6 +162,23 @@ function pathText(): string {
   return lead + parts.join('/') + tail
 }
 
+// a float for the fmath ops: the unit range (asin, acos), small and wide magnitudes, halves (round's ties), the
+// edges (signed zero, subnormals, the largest double, NaN, the infinities) and big integers past the safe range
+const FLOAT_EDGES = [
+  0, -0, 1, -1, 0.5, -0.5, 1.5, 2.5, -2.5, Math.PI, Math.PI / 2, -Math.PI, Math.E, 1e-310, 5e-324,
+  1.7976931348623157e308, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 9007199254740993, 1e21,
+]
+function float(): number {
+  switch (int(0, 5)) {
+    case 0: return random() * 2 - 1
+    case 1: return random() * 20 - 10
+    case 2: return int(-50, 50) + pick([0, 0.5, -0.5, 0.25])
+    case 3: return (random() * 2 - 1) * 10 ** int(-300, 300)
+    case 4: return pick(FLOAT_EDGES)
+    default: return random() * 1e6
+  }
+}
+
 // each case is its arguments, then 'plain' or 'record' (a case holding a record, counted apart when it differs)
 const many = (n: number, make: () => unknown[]): unknown[][] => Array.from({ length: n }, make)
 const GENERATORS: Record<string, (n: number) => unknown[][]> = {
@@ -183,6 +205,9 @@ const GENERATORS: Record<string, (n: number) => unknown[][]> = {
   codes: n => many(n, () => [code(), 'plain']),
   'path-singles': n => many(n, () => [pathText(), 'plain']),
   'path-pairs': n => many(n, () => [pathText(), pathText(), 'plain']),
+  'float-singles': n => many(n, () => [float(), 'plain']),
+  // a second argument that is a small integer half the time: pow's integer exponents, atan2's axes
+  'float-pairs': n => many(n, () => [float(), random() < 0.5 ? int(-5, 5) : float(), 'plain']),
 }
 
 // the cases depend only on the shim's global, so two candidates for one shim meet the same cases
@@ -374,10 +399,251 @@ function program(spec: Spec, label: string, load: string): string {
   return out.join('\n')
 }
 
+// ---- the native program: the same checks, timers, trials and lines, typed ----
+
+type NativeName = 'rust' | 'swift' | 'kotlin'
+const NATIVES: NativeName[] = ['rust', 'swift', 'kotlin']
+// a JIT compiles an op only once it is hot: kotlin's ops run this many times on both sides before the first trial
+const WARM_CALLS: Record<NativeName, number> = { rust: 0, swift: 0, kotlin: 10000 }
+
+// a float as the host parsers read it back exactly: the shortest text that round-trips, minus zero kept
+const floatText = (value: unknown): string => {
+  if (typeof value !== 'number') fail(`a native case holds ${JSON.stringify(value)}, not a float`)
+  return Object.is(value, -0) ? '-0' : String(value)
+}
+
+// two lines an op, its first arguments and its second (the first again for a one-argument op), `|` between values
+function nativeCases(spec: Spec, cases: unknown[][][]): string {
+  return spec.ops
+    .flatMap(({ arity }, index) => {
+      const list = cases[index]!
+      const first = list.map(c => floatText(c[0]))
+      return [first.join('|'), arity === 2 ? list.map(c => floatText(c[1])).join('|') : first.join('|')]
+    })
+    .join('\n')
+}
+
+function nativeTimer(task: string, call: string): string {
+  return [
+    `task ${task}`,
+    '  take xs, like list, like float',
+    '  take ys, like list, like float',
+    '  take rounds, like number',
+    '  like number',
+    '',
+    '  save sink, 0',
+    '  save start, read-nanoseconds()',
+    '  save r, 0',
+    '  walk test',
+    '    hook test, is-below(r, rounds)',
+    '    hook hold',
+    '      save i, 0',
+    '      walk test',
+    '        hook test, is-below(i, xs/length)',
+    '        hook hold',
+    '          save x, xs/{i}',
+    '          save y, ys/{i}',
+    `          save out, ${call}`,
+    // every side reads both arguments and compares its answer with the second, so the sink costs the same
+    '          fork test, is-below(out, y)',
+    '            hold',
+    '              save sink, add(sink, 1)',
+    '          save i, add(i, 1)',
+    '      save r, add(r, 1)',
+    '  save took, subtract(read-nanoseconds(), start)',
+    '  fork test, is-equal(sink, -1)',
+    '    hold',
+    '      log(<sink>)',
+    '  back took',
+    '',
+  ].join('\n')
+}
+
+function nativeProgram(spec: Spec, label: string, load: string, native: NativeName): string {
+  for (const { op, kind, arity } of spec.ops) {
+    if (kind !== 'float') fail(`${op}: a native spec takes float ops only, and this one is ${kind}`)
+    if (arity !== 1 && arity !== 2) fail(`${op}: a native op takes one or two arguments`)
+  }
+  const alias = spec.shim
+  const args = (arity: number): string => (arity === 2 ? 'x, y' : 'x')
+  const out: string[] = [
+    `# Generated by task/term/shim-bench.ts: the ${label} shim against its Term candidate, ${SIZE} cases an op, best of`,
+    `# ${TRIALS} trials, in picoseconds a call. Do not edit.`,
+    '',
+    'load @term/base/console\n  find log\n',
+    'load @term/base/clock\n  find read-nanoseconds\n',
+    'load @term/base/list\n  find push\n',
+    'load @term/base/text\n  find split\n',
+    'load @term/base/file\n  find read, name read-cases\n',
+    'load @term/base/environment\n  find variable, name read-variable\n',
+    `dock load\n  load <global:${spec.shim}>, name ${alias}\n`,
+    `load ${load}`,
+    ...[...new Set(spec.ops.map(op => op.term_op))].map(found => `  find ${found}`),
+    '',
+    '# a case as the host reads a float',
+    'bind case-float',
+    '  take value, like text',
+    '  like float',
+    // node and browser never run this program, and a bind must hold a case for every backend
+    '  case node',
+    '    text <Number($value)>',
+    '  case browser',
+    '    text <Number($value)>',
+    '  case rust',
+    '    text <$value.parse::<f64>().unwrap_or(f64::NAN)>',
+    '  case swift',
+    '    text <(Double($value) ?? Double.nan)>',
+    '  case kotlin',
+    '    text <($value).toDouble()>',
+    '',
+    'task floats-of',
+    '  take line, like text',
+    '  like list, like float',
+    '',
+    '  save found, like list, like float',
+    '    make list',
+    '  walk split(line, <|>)',
+    '    take one',
+    '    push(found, case-float(one))',
+    '  back found',
+    '',
+  ]
+  for (const { op, shim_op, term_op, arity } of spec.ops) {
+    const shimCall = `${alias}/${shim_op}(${args(arity)})`
+    const termCall = `${term_op}(${args(arity)})`
+    out.push(
+      [
+        '# every case once: the agreeing ones are kept for timing',
+        `task check-${op}`,
+        '  take xs, like list, like float',
+        '  take ys, like list, like float',
+        '  take kept-x, like list, like float',
+        '  take kept-y, like list, like float',
+        '  like text',
+        '',
+        '  save equal, 0',
+        '  save plain, 0',
+        '  save shown, 0',
+        '  save i, 0',
+        '  walk test',
+        '    hook test, is-below(i, xs/length)',
+        '    hook hold',
+        '      save x, xs/{i}',
+        '      save y, ys/{i}',
+        `      save want, ${shimCall}`,
+        `      save got, ${termCall}`,
+        // NaN answers NaN on both sides: equal
+        '      fork test, or(is-equal(got, want), and(is-unequal(got, got), is-unequal(want, want)))',
+        '        hold',
+        '          save equal, add(equal, 1)',
+        '          push(kept-x, x)',
+        '          push(kept-y, y)',
+        '        miss',
+        '          save plain, add(plain, 1)',
+        '          fork test, is-below(shown, 4)',
+        '            hold',
+        `              log(<  differ ${op} [{x}, {y}] shim {want} term {got}>)`,
+        '              save shown, add(shown, 1)',
+        '      save i, add(i, 1)',
+        '  back <cases {xs/length} equal {equal} disagree {plain} disagree-record 0 unsafe-answer 0>',
+        '',
+      ].join('\n'),
+    )
+    out.push(nativeTimer(`time-shim-${op}`, shimCall))
+    out.push(nativeTimer(`time-term-${op}`, termCall))
+    out.push(nativeTimer(`time-base-${op}`, 'x'))
+  }
+  out.push(
+    [
+      'task best',
+      '  take a, like number',
+      '  take b, like number',
+      '  like number',
+      '',
+      '  fork test, or(is-below(a, 0), is-below(b, a))',
+      '    hold',
+      '      back b',
+      '  back a',
+      '',
+      'task per-call',
+      '  take took, like number',
+      '  take calls, like number',
+      '  like number',
+      '',
+      '  fork test, is-equal(calls, 0)',
+      '    hold',
+      '      back 0',
+      '  back divide(multiply(took, 1000), calls)',
+      '',
+    ].join('\n'),
+  )
+  const warm = WARM_CALLS[native]
+  const run = [
+    'task run',
+    '  mark async',
+    '',
+    `  log(<shim ${label} rounds ${spec.rounds} trials ${TRIALS} warm ${warm}>)`,
+    `  save all, split(read-cases(read-variable(<${CASES_VARIABLE}>)), <\\n>)`,
+  ]
+  spec.ops.forEach(({ op }, index) => {
+    run.push(
+      `  save xs-${op}, floats-of(all/${2 * index})`,
+      `  save ys-${op}, floats-of(all/${2 * index + 1})`,
+      `  save kept-x-${op}, like list, like float`,
+      '    make list',
+      `  save kept-y-${op}, like list, like float`,
+      '    make list',
+      `  save verdict-${op}, check-${op}(xs-${op}, ys-${op}, kept-x-${op}, kept-y-${op})`,
+    )
+    if (warm > 0) {
+      // rounds enough that each side makes at least `warm` calls over the kept cases
+      run.push(
+        `  fork test, is-above(kept-x-${op}/length, 0)`,
+        '    hold',
+        `      save warm-${op}, 1`,
+        '      walk test',
+        `        hook test, is-below(multiply(warm-${op}, kept-x-${op}/length), ${warm})`,
+        '        hook hold',
+        `          save warm-${op}, add(warm-${op}, 1)`,
+        `      save warmed-${op}, add(time-shim-${op}(kept-x-${op}, kept-y-${op}, warm-${op}), time-term-${op}(kept-x-${op}, kept-y-${op}, warm-${op}))`,
+        `      save warmed-${op}, add(warmed-${op}, time-base-${op}(kept-x-${op}, kept-y-${op}, warm-${op}))`,
+        `      fork test, is-equal(warmed-${op}, -1)`,
+        '        hold',
+        '          log(<warm>)',
+      )
+    }
+    const kept = `kept-x-${op}, kept-y-${op}, ${spec.rounds}`
+    run.push(
+      `  save shim-${op}, -1`,
+      `  save term-${op}, -1`,
+      `  save base-${op}, -1`,
+      `  save trial-${op}, 0`,
+      '  walk test',
+      `    hook test, is-below(trial-${op}, ${TRIALS})`,
+      '    hook hold',
+      `      fork test, is-equal(modulo(trial-${op}, 2), 0)`,
+      '        hold',
+      `          save shim-${op}, best(shim-${op}, time-shim-${op}(${kept}))`,
+      `          save term-${op}, best(term-${op}, time-term-${op}(${kept}))`,
+      '        miss',
+      `          save term-${op}, best(term-${op}, time-term-${op}(${kept}))`,
+      `          save shim-${op}, best(shim-${op}, time-shim-${op}(${kept}))`,
+      `      save base-${op}, best(base-${op}, time-base-${op}(${kept}))`,
+      `      save trial-${op}, add(trial-${op}, 1)`,
+      `  save calls-${op}, multiply(kept-x-${op}/length, ${spec.rounds})`,
+      `  log(<op ${spec.shim}/${op} shim-ps {per-call(shim-${op}, calls-${op})} term-ps {per-call(term-${op}, calls-${op})} base-ps {per-call(base-${op}, calls-${op})} {verdict-${op}}>)`,
+    )
+  })
+  out.push(run.join('\n'), '')
+  return out.join('\n')
+}
+
 // ---- the envs ----
 
 type Built = { program: string; cases: string }
 type Env = {
+  // a native env: its program is the typed one, its cases a text file
+  native?: NativeName
   // the candidate as the program loads it: a package path, or a copy in the work folder
   place(candidate: string, spec: Spec, work: string): string
   build(file: string, work: string): string
@@ -388,35 +654,85 @@ type Env = {
 const sha = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const LINE = join(TERM_ROOT, 'host', 'line.js')
 
-function buildNode(file: string, work: string): string {
-  const out = join(work, 'out')
-  mkdirSync(out, { recursive: true })
-  const made = spawnSync(process.execPath, [LINE, 'make', file, '--emit', 'node', '--build', '--out', out, '--color', 'never', '--no-motion'], {
-    cwd: TERM_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 1 << 28,
-  })
-  writeFileSync(join(work, 'build.log'), `${made.stdout ?? ''}${made.stderr ?? ''}`)
-  const built = join(out, 'bench.mjs')
-  if (made.status !== 0 || !existsSync(built)) fail(`the build failed: ${join(work, 'build.log')}`)
-  return built
+// what each target's build leaves in the out folder, named for bench.tree (deck/call/code/native-build.ts)
+const ARTIFACT: Record<string, string> = { node: 'bench.mjs', rust: 'bench', swift: 'bench', kotlin: 'bench.jar' }
+
+function buildFor(target: 'node' | NativeName): (file: string, work: string) => string {
+  return (file, work) => {
+    const out = join(work, 'out')
+    mkdirSync(out, { recursive: true })
+    const made = spawnSync(process.execPath, [LINE, 'make', file, '--emit', target, '--build', '--out', out, '--color', 'never', '--no-motion'], {
+      cwd: TERM_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 1 << 28,
+    })
+    writeFileSync(join(work, 'build.log'), `${made.stdout ?? ''}${made.stderr ?? ''}`)
+    // a rust program that names a crate (the stdlib's text and file reach some) is a cargo project, built --release
+    const cargo = join(out, 'bench-cargo', 'target', 'release', 'bench')
+    const built = target === 'rust' && existsSync(cargo) ? cargo : join(out, ARTIFACT[target]!)
+    if (made.status !== 0 || !existsSync(built)) fail(`the build failed: ${join(work, 'build.log')}`)
+    return built
+  }
+}
+const buildNode = buildFor('node')
+
+// the first line a toolchain prints of its version, for the run's host line
+function versionOf(command: string, args: string[]): string {
+  const ran = spawnSync(command, args, { encoding: 'utf8' })
+  return `${ran.stdout ?? ''}${ran.stderr ?? ''}`.split('\n').find(line => line.trim() !== '')?.trim() ?? `${command} unknown`
 }
 
-function header(): string {
+function header(host: string): string {
   const cpu = cpus()
   const date = new Date().toISOString().slice(0, 16)
-  return `host node ${process.version}\nmachine ${cpu[0]?.model ?? 'unknown'} cores ${cpu.length}\nload ${loadavg()[0]!.toFixed(2)}\ndate ${date}\n`
+  return `host ${host}\nmachine ${cpu[0]?.model ?? 'unknown'} cores ${cpu.length}\nload ${loadavg()[0]!.toFixed(2)}\ndate ${date}\n`
 }
 
-function runNode(built: Built): string {
-  const ran = spawnSync(process.execPath, [built.program], {
+function runCommand(command: string[], built: Built, host: string): string {
+  const ran = spawnSync(command[0]!, command.slice(1), {
     cwd: TERM_ROOT,
     encoding: 'utf8',
     maxBuffer: 1 << 28,
     env: { ...process.env, [CASES_VARIABLE]: built.cases },
   })
   if (ran.status !== 0) fail(`the program exited ${ran.status}:\n${(ran.stderr ?? '').slice(-2000)}`)
-  return header() + ran.stdout
+  return header(host) + ran.stdout
+}
+
+function runNode(built: Built): string {
+  return runCommand([process.execPath, built.program], built, `node ${process.version}`)
+}
+
+// the classpath of the Kotlin backend's runtime, where native-build.ts reads it: absent, the jar runs alone
+function kotlinClasspath(): string | undefined {
+  const file = join(process.env.TERM_NATIVE_CACHE ?? join(process.env.TMPDIR ?? tmpdir(), 'term-native'), 'kotlin', 'classpath.txt')
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() || undefined : undefined
+}
+
+const NATIVE_ENVS: Record<NativeName, Env> = {
+  rust: {
+    native: 'rust',
+    place: (candidate, _spec, work) => packagePath(candidate, work),
+    build: buildFor('rust'),
+    run: built => runCommand([built.program], built, versionOf('rustc', ['--version'])),
+  },
+  swift: {
+    native: 'swift',
+    place: (candidate, _spec, work) => packagePath(candidate, work),
+    build: buildFor('swift'),
+    run: built => runCommand([built.program], built, versionOf('swiftc', ['--version'])),
+  },
+  kotlin: {
+    native: 'kotlin',
+    place: (candidate, _spec, work) => packagePath(candidate, work),
+    build: buildFor('kotlin'),
+    run(built) {
+      // the main class kotlinc names for bench.kt, with the runtime's jars beside the program's
+      const classpath = kotlinClasspath()
+      const command = ['java', '--enable-native-access=ALL-UNNAMED', '-cp', classpath ? `${built.program}:${classpath}` : built.program, 'BenchKt']
+      return runCommand(command, built, `${versionOf('java', ['-version'])}, ${versionOf('kotlinc', ['-version'])}`)
+    },
+  },
 }
 
 // a candidate in the stdlib loads by its package path, so the program meets the module the stdlib itself loads
@@ -426,11 +742,6 @@ function packagePath(candidate: string, work: string): string {
   if (path.startsWith(stdlib)) return `@term/base/${path.slice(stdlib.length).replace(/\.tree$/, '')}`
   const near = relative(work, candidate).replace(/\.tree$/, '')
   return near.startsWith('.') ? near : `./${near}`
-}
-
-const later = (item: string): Env => {
-  const no = (): never => fail(`--env ${envName} is not wired yet: item ${item} adds its emit, build and run`)
-  return { place: no, build: no, run: no }
 }
 
 const ENVS: Record<string, Env> = {
@@ -458,9 +769,7 @@ const ENVS: Record<string, Env> = {
     build: buildNode,
     run: runNode,
   },
-  rust: later('term-self-host-001-1063'),
-  swift: later('term-self-host-001-1063'),
-  kotlin: later('term-self-host-001-1063'),
+  ...NATIVE_ENVS,
 }
 
 // ---- the table ----
@@ -550,8 +859,10 @@ const candidateName = named ? relative(TERM_ROOT, candidate) : spec.candidate
 if (readFileSync(candidate, 'utf8').includes(`<global:${spec.shim}>`)) {
   fail(`${relative(TERM_ROOT, candidate)} still docks <global:${spec.shim}>: name the port's draft with --candidate`)
 }
-const runtimeEnv = envName === 'browser' ? 'browser' : 'node'
-const runtime = join(TERM_ROOT, 'deck/base/code/native', runtimeEnv, 'runtime', `${spec.shim}.ts`)
+// the shim the program docks: the browser's own, a native env's own, else node's
+const runtimeEnv = envName === 'browser' || env.native ? envName : 'node'
+const RUNTIME_EXTENSION: Record<string, string> = { rust: 'rs', swift: 'swift', kotlin: 'kt' }
+const runtime = join(TERM_ROOT, 'deck/base/code/native', runtimeEnv, 'runtime', `${spec.shim}.${RUNTIME_EXTENSION[runtimeEnv] ?? 'ts'}`)
 if (!existsSync(runtime)) fail(`${relative(TERM_ROOT, runtime)} is gone: there is no shim left to time, the baseline stands as the record`)
 
 const work = resolve(TERM_ROOT, flag('--work') ?? join('tmp', 'shim-bench', `${envName}-${shimName}`))
@@ -561,16 +872,17 @@ let built: Built | undefined
 if (LOGS.length === 0) {
   const load = env.place(candidate, spec, work)
   const file = join(work, 'bench.tree')
-  writeFileSync(file, program(spec, label, load))
-  const cases = join(work, 'cases.json')
-  writeFileSync(cases, JSON.stringify(makeCases(spec)))
+  writeFileSync(file, env.native ? nativeProgram(spec, label, load, env.native) : program(spec, label, load))
+  const cases = join(work, env.native ? 'cases.txt' : 'cases.json')
+  writeFileSync(cases, env.native ? nativeCases(spec, makeCases(spec)) : JSON.stringify(makeCases(spec)))
   built = { program: env.build(file, work), cases }
   writeFileSync(
     record,
     `${JSON.stringify({ line_sha256: sha(LINE), candidate: candidateName, candidate_sha256: sha(candidate), runtime: relative(TERM_ROOT, runtime), runtime_sha256: sha(runtime) }, null, 2)}\n`,
   )
   if (BUILD_ONLY) {
-    console.log(`program ${built.program}\ncases ${built.cases}\nrun it with ${CASES_VARIABLE}=<cases> node <program>`)
+    const how = env.native === 'kotlin' ? 'java -cp <program>[:<runtime classpath>] BenchKt' : env.native ? '<program>' : 'node <program>'
+    console.log(`program ${built.program}\ncases ${built.cases}\nrun it with ${CASES_VARIABLE}=<cases> ${how}`)
     process.exit(0)
   }
 } else if (!existsSync(record)) {

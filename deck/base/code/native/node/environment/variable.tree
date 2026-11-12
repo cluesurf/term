@@ -1,44 +1,37 @@
 
-# Environment variables. Forwards to the linked variable runtime shim. Internal: reached only through the public
-# environment API.
+# Environment variables over the host process, each a declarative binding inlined at the use site, with no runtime
+# shim. A missing variable reads as the empty string. Internal: reached only through the public environment API.
 
-dock load
-  load <global:env-variable>, name env-variable
-
-task fetch-variable
+bind fetch-variable
   take name, like text
   like text
+  case node
+    text <(process.env[$name] ?? '')>
 
-  send back
-    call env-variable/get
-      read name
-
-task store-variable
+bind store-variable
   take name, like text
   take value, like text
+  like void
+  case node
+    text <void (process.env[$name] = $value)>
 
-  call env-variable/set
-    read name
-    read value
-
-task drop-variable
+bind drop-variable
   take name, like text
+  like void
+  case node
+    text <void delete process.env[$name]>
 
-  call env-variable/remove
-    read name
-
-task gather-variables
+# a Map, as the hash it promises and the browser's answer: a plain object made every `/get` or `/has` on the answer
+# throw on node, and the emitted TypeScript did not typecheck
+bind gather-variables
   like hash
     like text
     like text
+  case node
+    text <new Map(Object.entries(process.env).filter((entry): entry is [string, string] =\> entry[1] !== undefined))>
 
-  send back
-    call env-variable/list
-
-task holds-variable
+bind holds-variable
   take name, like text
   like boolean
-
-  send back
-    call env-variable/check
-      read name
+  case node
+    text <(process.env[$name] !== undefined)>

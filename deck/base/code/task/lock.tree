@@ -5,10 +5,10 @@ mark draft
 
 
 form lock
-  link dock, mark private
+  link dock
 
 form guard
-  link dock, mark private
+  link dock
 
 task make
   like lock

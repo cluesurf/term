@@ -1,22 +1,201 @@
-# Permissions in a browser (device-layer-0001): the Permissions API to read, and each capability's own request to ask
-# (getUserMedia for the camera, getCurrentPosition for location, Notification.requestPermission). Conforms to
-# ../permission.
+# Permissions in a browser (device-layer-0001): the Permissions API reads a grant (`prompt` is `not-determined`), and
+# each capability's own call asks for it, since a browser prompts only from the call that needs the grant:
+# getUserMedia for the camera and the microphone, getCurrentPosition for location, Notification.requestPermission for
+# notifications. Conforms to ../permission. Ported from runtime/native-permission.ts (term-self-host-001-0730): the
+# host's questions and calls are binds, the names and answers are Term.
 
-dock load
-  load <global:native-permission>, name native-permission
+load ./page-host
+  find page-has-navigator
+
+load ./media
+  find media-has-ask
+  find media-ask
+  find media-was-refused
+  find media-stream
+  find media-stop
+  find media-video
+  find media-audio
+
+bind permission-has-query
+  like boolean
+  case browser
+    text <(typeof navigator.permissions?.query === 'function')>
+
+# the grant's state, or empty text when the browser does not know the name (Firefox and `camera`)
+bind permission-query
+  mark async
+  take query, like text
+  like text
+  case browser
+    text <(async (name: string): Promise\<string\> =\> (await navigator.permissions.query(\{ name: name as PermissionName \})).state)($query).catch(() =\> '')>
+
+bind permission-has-position
+  like boolean
+  case browser
+    text <(typeof navigator.geolocation?.getCurrentPosition === 'function')>
+
+# the browser's location prompt, settled whatever the person answers
+bind permission-ask-position
+  mark async
+  like void
+  case browser
+    text <new Promise\<void\>((settle) =\> navigator.geolocation.getCurrentPosition(() =\> settle(), () =\> settle()))>
+
+bind permission-has-notification
+  like boolean
+  case browser
+    text <(typeof Notification !== 'undefined')>
+
+bind permission-ask-notification
+  mark async
+  like void
+  case browser
+    text <Notification.requestPermission()>
+
+# the Permissions API's name for each capability's grant, or empty text for one it has none for
+task permission-query-name
+  mark private
+  take name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <camera>
+    hook hold
+      send back, text <camera>
+    hook test
+      call is-equal
+        read name
+        text <microphone>
+    hook hold
+      send back, text <microphone>
+    hook test
+      call is-equal
+        read name
+        text <location>
+    hook hold
+      send back, text <geolocation>
+    hook test
+      call is-equal
+        read name
+        text <notification>
+    hook hold
+      send back, text <notifications>
+  send back, text <>
 
 task read-permission
+  mark async
   take name, like text
   like text
-  send back
-    call native-permission/status
+  save query
+    call permission-query-name
       read name
-      wait true
+  fork test
+    hook test
+      call is-equal
+        read query
+        text <>
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call permission-has-query
+    hook hold
+      send back, text <unavailable>
+  save state
+    call permission-query
+      read query
+  fork test
+    hook test
+      call is-equal
+        read state
+        text <>
+    hook hold
+      send back, text <unavailable>
+    hook test
+      call is-equal
+        read state
+        text <prompt>
+    hook hold
+      send back, text <not-determined>
+  send back, read state
 
+# the capability's own prompt, then its grant read again. A refusal is an answer: the status says which
 task ask-permission
+  mark async
   take name, like text
   like text
-  send back
-    call native-permission/request
+  fork
+    mark unsafe
+    call ask-for
       read name
-      wait true
+  halt take
+    take problem
+    save skip, code 0
+  send back
+    call read-permission
+      read name
+
+task ask-for
+  mark private
+  mark async
+  take name, like text
+  save camera
+    call is-equal
+      read name
+      text <camera>
+  save media
+    call or
+      read camera
+      call is-equal
+        read name
+        text <microphone>
+  fork test
+    hook test
+      call and
+        read media
+        call media-has-ask
+    hook hold
+      save wanted
+        call media-audio
+      fork test
+        hook test, read camera
+        hook hold
+          save wanted
+            call media-video
+      save asked
+        call media-ask
+          read wanted
+      fork test
+        hook test
+          call not
+            call media-was-refused
+              read asked
+        hook hold
+          call media-stop
+            call media-stream
+              read asked
+    hook test
+      call and
+        call is-equal
+          read name
+          text <location>
+        call permission-has-position
+    hook hold
+      call permission-ask-position
+    hook test
+      call and
+        call is-equal
+          read name
+          text <notification>
+        call permission-has-notification
+    hook hold
+      call permission-ask-notification

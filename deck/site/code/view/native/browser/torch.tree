@@ -1,21 +1,192 @@
-# torch on a browser (device-layer-0002): a camera track and its torch constraint.
-# Conforms to ../torch. The runtime is runtime/native-torch.ts.
-# The permission runtime is docked too: this capability reads its grant through it (../permission).
+# torch on a browser (device-layer-0002). A browser reaches the torch only through a running camera track whose
+# capabilities include `torch` (Chromium on Android), so turning it on opens the back camera and keeps it open, and
+# turning it off closes it. Anything else answers `unavailable`. Conforms to ../torch. Ported from
+# runtime/native-torch.ts (term-self-host-001-0730): the host's calls are binds (./media for the stream), the state
+# and the answers are Term.
 
-dock load
-  load <global:native-torch>, name native-torch
-  load <global:native-permission>, name native-permission
+load ./page-host
+  find page-has-navigator
+  find page-is-absent
+  find page-nothing
 
+load ./media
+  find media-has-ask
+  find media-ask
+  find media-was-refused
+  find media-refusal-name
+  find media-stream
+  find media-stop
+
+bind torch-back-camera
+  like dynamic
+  case browser
+    text <(\{ video: \{ facingMode: 'environment' \} \})>
+
+# the stream's first video track, or nothing
+bind torch-video-track
+  take stream, like dynamic
+  like dynamic
+  case browser
+    text <($stream as MediaStream).getVideoTracks()[0]>
+
+bind torch-is-capable
+  take track, like dynamic
+  like boolean
+  case browser
+    text <((one: MediaStreamTrack): boolean =\> typeof one.getCapabilities === 'function' && Boolean((one.getCapabilities() as \{ torch?: boolean \}).torch))($track)>
+
+# the torch constraint applied: nothing when it took, else `{ error }`, so its refusal is read by name as
+# getUserMedia's is (./media)
+bind torch-light
+  mark async
+  take track, like dynamic
+  like dynamic
+  case browser
+    text <(async (track: MediaStreamTrack): Promise\<void\> =\> track.applyConstraints(\{ advanced: [\{ torch: true \} as MediaTrackConstraintSet] \}))($track).then(() =\> undefined, (error: unknown) =\> (\{ error \}))>
+
+bind torch-track-stop
+  take track, like dynamic
+  like void
+  case browser
+    text <($track as MediaStreamTrack | undefined)?.stop()>
+
+# the one torch: the track that holds it lit, and whether a camera track here has ever offered a torch. Until one has,
+# the page cannot know there is a torch without opening the camera, so the state reads `unavailable`, which set-torch
+# answers the same way when the track has none
+form torch-hold
+  mark shared
+  link track, like dynamic
+  link seen, like boolean
+
+host torch
+  make torch-hold
+    bind track
+      call page-nothing
+    bind seen, false
+
+# on, off or unavailable
 task read-torch
+  mark async
   like text
-  send back
-    call native-torch/state
-      wait true
+  fork test
+    hook test
+      call not
+        call page-is-absent
+          read torch/track
+    hook hold
+      send back, text <on>
+    hook test, read torch/seen
+    hook hold
+      send back, text <off>
+  send back, text <unavailable>
 
+# the state after, or unavailable, or denied
 task write-torch
+  mark async
   take state, like text
   like text
-  send back
-    call native-torch/set
-      read state
-      wait true
+  fork test
+    hook test
+      call is-unequal
+        read state
+        text <on>
+    hook hold
+      call torch-track-stop
+        read torch/track
+      save torch/track
+        call page-nothing
+      fork test
+        hook test, read torch/seen
+        hook hold
+          send back, text <off>
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call media-has-ask
+    hook hold
+      send back, text <unavailable>
+  save answer, text <unavailable>
+  fork
+    mark unsafe
+    save answer
+      call light-torch
+  halt take
+    take problem
+    save answer, text <unavailable>
+  send back, read answer
+
+task light-torch
+  mark private
+  mark async
+  like text
+  save asked
+    call media-ask
+      call torch-back-camera
+  fork test
+    hook test
+      call media-was-refused
+        read asked
+    hook hold
+      send back
+        call torch-refusal
+          read asked
+  save stream
+    call media-stream
+      read asked
+  save found
+    call torch-video-track
+      read stream
+  fork test
+    hook test
+      call page-is-absent
+        read found
+    hook hold
+      call media-stop
+        read stream
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call torch-is-capable
+          read found
+    hook hold
+      call media-stop
+        read stream
+      send back, text <unavailable>
+  save lit
+    call torch-light
+      read found
+  fork test
+    hook test
+      call not
+        call page-is-absent
+          read lit
+    hook hold
+      send back
+        call torch-refusal
+          read lit
+  save torch/seen, true
+  save torch/track, read found
+  send back, text <on>
+
+# denied for the person's refusal, unavailable for any other
+task torch-refusal
+  mark private
+  take refused, like dynamic
+  like text
+  fork test
+    hook test
+      call is-equal
+        call media-refusal-name
+          read refused
+        text <NotAllowedError>
+    hook hold
+      send back, text <denied>
+  send back, text <unavailable>

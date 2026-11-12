@@ -1,0 +1,66 @@
+note <A call to a bind written as an operand reads the bind's answer>
+
+# Item 1204, the follow-up of 1201. A bind's text is spliced in place of the call, and a text that is more than one
+# primary, such as `if (true) $a else $b`, written bare as an operand had the operator join its last operand only:
+# `if (true) true else false && false` answers true on Kotlin, and Swift refuses `true ? 1 : 2 == 1` at build.
+# Swift and Kotlin put such a text in parentheses as an operand now (swift-emit.tree swift-operand, kotlin-emit.tree
+# kt-operand). TypeScript groups it by precedence already, Rust reads it right. tmp/self-host/1204/probe.ts holds all
+# four backends.
+
+bind pick-n
+  take a, like number
+  take b, like number
+  like number
+  case node
+    text <$a ?? $b>
+  case browser
+    text <$a ?? $b>
+  case rust
+    text <if true \{ $a \} else \{ $b \}>
+  case swift
+    text <true ? $a : $b>
+  case kotlin
+    text <if (true) $a else $b>
+
+bind pick-b
+  take a, like boolean
+  take b, like boolean
+  like boolean
+  case node
+    text <$a ?? $b>
+  case browser
+    text <$a ?? $b>
+  case rust
+    text <if true \{ $a \} else \{ $b \}>
+  case swift
+    text <true ? $a : $b>
+  case kotlin
+    text <if (true) $a else $b>
+
+test <a saved bind answer as an operand>
+  host got, pick-b(true, false)
+  want miss, and(got, false)
+
+test <a bind call on the left of and>
+  want miss, and(pick-b(true, false), false)
+
+test <a bind call on the left of or>
+  want miss, or(pick-b(false, true), false)
+
+test <a bind call under not>
+  want miss, not(pick-b(true, false))
+
+test <a bind call on the left of is-equal>
+  want hold, is-equal(pick-n(1, 2), 1)
+
+test <a bind call on the right of is-equal>
+  want hold, is-equal(1, pick-n(1, 2))
+
+test <a bind call on the left of is-below>
+  want hold, is-below(pick-n(1, 2), 2)
+
+test <a bind call on the left of add>
+  want hold, is-equal(add(pick-n(1, 2), 10), 11)
+
+test <a bind call on the left of divide>
+  want hold, is-equal(divide(pick-n(10, 20), 2), 5)

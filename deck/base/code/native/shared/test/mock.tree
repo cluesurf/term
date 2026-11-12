@@ -17,7 +17,7 @@ form mock-data
 
 # the mock a caller holds: its data rides in the opaque `dock` handle
 form mock
-  link dock, mark private
+  link dock
 
 
 # the mock's data, typed out of the opaque dock handle (the gradual `unknown` coerces at a declared boundary)

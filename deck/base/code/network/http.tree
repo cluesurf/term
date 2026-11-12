@@ -239,4 +239,4 @@ task post
 # `http/response` drains the body once, as text, bytes or json.
 form response
   link status, like number
-  link dock, mark private
+  link dock

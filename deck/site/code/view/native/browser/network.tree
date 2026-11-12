@@ -1,18 +1,151 @@
-# network on a browser (device-layer-0010): navigator.onLine and navigator.connection.
-# Conforms to ../network. The runtime is runtime/native-network.ts.
+# network on a browser (device-layer-0010): navigator.onLine, and the Network Information API's kind where the browser
+# has it (Chromium on Android); elsewhere the kind is `other`. Conforms to ../network. Ported from
+# runtime/native-network.ts (term-self-host-001-0730): the host's questions and the window's events are binds, the
+# answer and the fan-out (./watch) are Term.
 
 load @term/site/report
   find report-raise
 
-dock load
-  load <global:native-network>, name native-network
-  load <global:native-watch>, name native-watch
+load ./watch
+  find watch-join
+  find watch-leave
 
-task read-network
+load ./page-host
+  find page-has-navigator
+  find page-has-window
+  find page-is-absent
+  find page-listen-window
+  find page-unlisten-window
+
+bind network-is-online
+  like boolean
+  case browser
+    text <navigator.onLine>
+
+# the Network Information API's `type`, or nothing where the browser has none
+bind network-connection-type
+  like dynamic
+  case browser
+    text <(navigator as unknown as \{ connection?: \{ type?: string \} \}).connection?.type>
+
+bind network-type-text
+  take type, like dynamic
   like text
+  case browser
+    text <String($type)>
+
+# the shim's kinds: an empty type stays empty, one it does not name is `other`
+task network-kind
+  mark private
+  take type, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read type
+        text <>
+    hook hold
+      send back, text <>
+    hook test
+      call is-equal
+        read type
+        text <wifi>
+    hook hold
+      send back, text <wifi>
+    hook test
+      call is-equal
+        read type
+        text <cellular>
+    hook hold
+      send back, text <cellular>
+    hook test
+      call is-equal
+        read type
+        text <ethernet>
+    hook hold
+      send back, text <wired>
+    hook miss
+      send back, text <other>
+
+# `<online|offline> <kind>`
+task read-network
+  mark async
+  like text
+  fork test
+    hook test
+      call not
+        call page-has-navigator
+    hook hold
+      send back, text <unavailable>
+  fork test
+    hook test
+      call not
+        call network-is-online
+    hook hold
+      send back, text <offline none>
+  save type
+    call network-connection-type
+  fork test
+    hook test
+      call page-is-absent
+        read type
+    hook hold
+      send back, text <online other>
+  save kind
+    call network-kind
+      call network-type-text
+        read type
+  send back, text <online {kind}>
+
+# the network read again and told
+task tell-network
+  mark private
+  mark async
+  take tell
+    like task
+      take value, like text
+  save now
+    call read-network
+  call tell
+    read now
+
+# the subscription: the network now, and again when the window goes online or offline
+task start-network
+  mark private
+  take tell
+    like task
+      take value, like text
+  like task
+  fork test
+    hook test
+      call not
+        call page-has-window
+    hook hold
+      call tell
+        text <unavailable>
+      send back
+        task stop
+          save skip, code 0
+  # one task, so the window drops the very listener it was given
+  save report
+    task report
+      tick tell-network
+        read tell
+  call report
+  call page-listen-window
+    text <online>
+    read report
+  call page-listen-window
+    text <offline>
+    read report
   send back
-    call native-network/read
-      wait true
+    task stop
+      call page-unlisten-window
+        text <online>
+        read report
+      call page-unlisten-window
+        text <offline>
+        read report
 
 task follow-network
   take handler
@@ -20,9 +153,10 @@ task follow-network
       take value, like text
       halt exception
   like task
-  # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
+  # the number the drop gives back: one handler leaves, and the subscription ends with the last (./watch)
   save watching
-    call native-network/watch
+    call watch-join
+      text <network>
       task heard
         take value, like text
         fork
@@ -34,11 +168,13 @@ task follow-network
           call report-raise
             text <follow-network>
             read problem
+      read start-network
   send back
     task drop
       fork
         mark unsafe
-        call native-network/unwatch
+        call watch-leave
+          text <network>
           read watching
       halt take
         take problem

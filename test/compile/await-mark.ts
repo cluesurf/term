@@ -618,10 +618,11 @@ task size-of
   send back, read b/size
 `)
 
+  // Term has no field privacy: `mark private` on a field was read by nothing, and is refused by name (item 1207)
   ok(
-    '4. `mark private` on a field is still field privacy',
-    field.ok,
-    field.ok ? '' : field.why,
+    '4. `mark private` on a field is refused as an unread mark',
+    !field.ok && field.why.includes('unread-mark'),
+    field.ok ? 'it compiled' : field.why,
   )
 
   const privateTask = compile({

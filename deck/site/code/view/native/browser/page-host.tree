@@ -1,0 +1,119 @@
+# The page's host questions and calls that more than one browser capability here makes (term-self-host-001-0730):
+# whether the page has a navigator, a window or a document, the window's events, a timer, and a host number written as
+# text. Each is a declarative binding, one host expression inlined at the use site, with each argument read once, so
+# no runtime shim is linked. Outside a browser (a Worker, the server render) the questions answer false.
+
+bind page-has-navigator
+  like boolean
+  case browser
+    text <(typeof navigator !== 'undefined')>
+
+bind page-has-window
+  like boolean
+  case browser
+    text <(typeof window !== 'undefined')>
+
+bind page-has-document
+  like boolean
+  case browser
+    text <(typeof document !== 'undefined')>
+
+# whether a host value is null or undefined, the shims' `!x`, `x == null` and `x === undefined` on an object
+bind page-is-absent
+  take value, like dynamic
+  like boolean
+  case browser
+    text <($value == null)>
+
+bind page-nothing
+  like dynamic
+  case browser
+    text <undefined>
+
+# a host error's name (NotAllowedError, AbortError), or empty text for a raise that is not an Error
+bind page-error-name
+  take error, like dynamic
+  like text
+  case browser
+    text <String(($error as \{ name?: unknown \} | null)?.name ?? '')>
+
+bind page-listen-window
+  take event, like text
+  take run
+    like task
+  like void
+  case browser
+    text <window.addEventListener($event, $run)>
+
+bind page-unlisten-window
+  take event, like text
+  take run
+    like task
+  like void
+  case browser
+    text <window.removeEventListener($event, $run)>
+
+# `run` once after `wait` milliseconds, and the handle that cancels it
+bind page-start-timer
+  take run
+    like task
+  take wait, like number
+  like dynamic
+  case browser
+    text <setTimeout($run, $wait)>
+
+bind page-stop-timer
+  take timer, like dynamic
+  like void
+  case browser
+    text <clearTimeout($timer)>
+
+# a pause of `wait` milliseconds
+bind page-sleep
+  mark async
+  take wait, like number
+  like void
+  case browser
+    text <new Promise\<void\>((settle) =\> \{ setTimeout(settle, $wait) \})>
+
+# the host's own number writing: `toFixed`, `String` and `Math.round`, so an answer reads digit for digit as the
+# shims wrote it. Floats, so Term's integer checks and truncating division never touch a measurement
+bind page-fixed
+  take value, like float
+  take places, like number
+  like text
+  case browser
+    text <($value).toFixed($places)>
+
+bind page-number-text
+  take value, like float
+  like text
+  case browser
+    text <String($value)>
+
+bind page-round
+  take value, like float
+  like float
+  case browser
+    text <Math.round($value)>
+
+# A promise settled from a callback: the shims' `new Promise(settle => ...)`, made, settled and waited apart, so the
+# callbacks that settle it are Term. A second settle is a no-op, as the host's is
+bind page-make-settler
+  like dynamic
+  case browser
+    text <((): \{ promise: Promise\<string\>; settle: (value: string) =\> void \} =\> \{ let settle: (value: string) =\> void = () =\> \{\}; const promise = new Promise\<string\>((done) =\> \{ settle = done \}); return \{ promise, settle \} \})()>
+
+bind page-settle
+  take settler, like dynamic
+  take value, like text
+  like void
+  case browser
+    text <($settler).settle($value)>
+
+bind page-settled
+  mark async
+  take settler, like dynamic
+  like text
+  case browser
+    text <($settler).promise>

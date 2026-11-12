@@ -1,17 +1,59 @@
-# notification on a browser (device-layer-0007): the Notification API.
-# Conforms to ../notification. The runtime is runtime/native-notification.ts.
-# The permission runtime is docked too: this capability reads its grant through it (../permission).
+# notification on a browser (device-layer-0007): the Notification API, shown only with the grant (request-permission
+# notification). Conforms to ../notification. Ported from runtime/native-notification.ts (term-self-host-001-0730):
+# the host's questions and the one call are binds, the answer is Term.
 
-dock load
-  load <global:native-notification>, name native-notification
-  load <global:native-permission>, name native-permission
+bind notification-is-missing
+  like boolean
+  case browser
+    text <(typeof Notification === 'undefined')>
 
+# granted, denied or default
+bind notification-grant
+  like text
+  case browser
+    text <Notification.permission>
+
+bind notification-show
+  take title, like text
+  take body, like text
+  like void
+  case browser
+    text <new Notification($title, \{ body: $body \})>
+
+# shown, not-determined, denied, unavailable or failed
 task post-notification
+  mark async
   take title, like text
   take body, like text
   like text
-  send back
-    call native-notification/post
+  fork test
+    hook test
+      call notification-is-missing
+    hook hold
+      send back, text <unavailable>
+  save grant
+    call notification-grant
+  fork test
+    hook test
+      call is-equal
+        read grant
+        text <denied>
+    hook hold
+      send back, text <denied>
+    hook test
+      call is-unequal
+        read grant
+        text <granted>
+    hook hold
+      send back, text <not-determined>
+  save answer, text <shown>
+  fork
+    mark unsafe
+    call notification-show
       read title
       read body
-      wait true
+  halt take
+    take problem
+    # a page whose notifications must go through a service worker (Chrome on Android)
+    save answer, text <failed>
+  send back, read answer

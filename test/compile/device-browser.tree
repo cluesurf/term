@@ -1,7 +1,7 @@
 note <The device traits in a browser: compiled for the browser env, run under node against a stand-in window>
 
 # Ported from device-browser.ts by statement (item term-self-host-001-0613), native-dom-0012. The program is compiled for
-# the `browser` env, so the public `view/device` reaches view/native/browser/device and its runtime, and run under node
+# the `browser` env, so the public `view/device` reaches view/native/browser/device (Term, no shim), and run under node
 # against a stand-in `window` whose media queries the harness flips the way a browser does: the query's `matches`
 # changes, then it fires `change`. The check is the signal's value, light before and dark after, and the other traits
 # read from the queries and the window's width. That a written signal rewrites the view is held by render-native and
@@ -90,9 +90,10 @@ task line-at
 test <the program compiles for the browser>
   want hold, built()/ok
 
-test <the browser device runtime is in the prelude>
+# the device traits are Term since term-self-host-001-0730: no runtime shim is linked for them
+test <no browser device runtime in the prelude>
   host out, built()
-  want hold, text-contains(prelude-text(out, <browser>, out/emitted), <nativeDevice>)
+  want hold, not(text-contains(prelude-text(out, <browser>, out/emitted), <nativeDevice>))
 
 test <it runs>
   host said, printed()

@@ -23,7 +23,7 @@ task exit
 # process/child `start` made is held by its runner under `handle`, a number, and keeps the `command` it runs and its
 # `limit` in milliseconds (0 for none), which `wait` names when the limit ends it
 form child
-  link dock, mark private
+  link dock
   link
     id
     like size

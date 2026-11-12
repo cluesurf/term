@@ -1566,7 +1566,7 @@ task box-unknown
   mark private
 
   save form, form-of(value)
-  save kind, kind-of-node(value)
+  save kind, held-kind-of-node(value)
   # a whole number into a `float` slot (a field, a parameter) is made the `f64` there: Term's number is one, rustc
   # refused `0` and an `i64` where an `f64` is (E0308, knit/spend.tree's `bind(dollars, 0)`, term-self-host-001-1094)
   fork test, and(is-equal(kind-of(into), <float>), or(is-equal(form, <integer>), is-equal(kind, <number>)))
@@ -1585,6 +1585,28 @@ task box-unknown
     hold
       back <(std::rc::Rc::\<{spell(expression-type(value), facts)}\>::new({rendered}) as std::rc::Rc\<dyn std::any::Any\>)>
   back <(std::rc::Rc::new({rendered}) as std::rc::Rc\<dyn std::any::Any\>)>
+
+# the kind a value answers, seen through an `await` the async pass wrapped round a call after checking: that await
+# carries no type of its own, so the call inside says what it hands back. Read bare, an awaited call to a task that
+# answers `unknown` read as no kind and boxed a second time, `Rc<Rc<dyn Any>>`, and every read of it saw the outer box
+# (`strings::from_value` answered empty text: map-concurrent's run-lane, term-self-host-001-1252). Only `unknown` is
+# read through: an awaited `dock load` call typed `dynamic` may hand back a plain value from its shim, so it keeps
+# the kind it read before
+task held-kind-of-node
+  take node, like expression
+  like text
+  mark private
+
+  save own, kind-of-node(node)
+  sift node
+    case await
+      link await-expr
+      fork test, and(is-equal(own, <>), is-equal(kind-of-node(await-expr), <unknown>))
+        hold
+          back <unknown>
+      back own
+    miss
+      back own
 
 # An item pushed onto a list of the boxed dynamic boxes as a call's argument does, whichever way the push is written: an
 # identity task taking `unknown` inlines away with the box its call site would have made (term-self-host-001-0532). The
@@ -1618,7 +1640,7 @@ task box-element
     hold
       back rendered
   save form, form-of(item)
-  save held, kind-of-node(item)
+  save held, held-kind-of-node(item)
   fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), is-equal(held, <variable>))
     hold
       back rendered
@@ -5983,8 +6005,10 @@ task emit-let
               save ann, <: {spell-type(made, facts)}>
         miss
           save nothing, 0
-      # a local declared `like unknown` or `like dynamic` boxes its concrete init, and a boxed init is boxed already
-      fork test, and(or(is-equal(kind-of(let-type), <unknown>), is-equal(kind-of(let-type), <dynamic>)), and(is-unequal(init-kind, <unknown>), is-unequal(init-kind, <dynamic>)))
+      # a local declared `like unknown` or `like dynamic` boxes its concrete init, and a boxed init is boxed already,
+      # an awaited call answering `unknown` too (held-kind-of-node, term-self-host-001-1252)
+      save boxed-kind, held-kind-of-node(let-init)
+      fork test, and(or(is-equal(kind-of(let-type), <unknown>), is-equal(kind-of(let-type), <dynamic>)), and(is-unequal(boxed-kind, <unknown>), is-unequal(boxed-kind, <dynamic>)))
         hold
           back <let {mut-of(let-name, st)}{vname(let-name)}: std::rc::Rc\<dyn std::any::Any\> = std::rc::Rc::new({owned(let-init, st, facts)});>
       # a call whose type argument nothing constrains: the argument is any type, so the binding names it `()`

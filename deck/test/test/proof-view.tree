@@ -8,6 +8,7 @@ load ../code/proof-view
   find proof-document
   find proof-state
   find proof-state-view
+  find goal-view
   find proof-hammer
   find render-info-view
 
@@ -117,6 +118,17 @@ test <after hammering, max is proved, return a refuted at an input, the max synt
   want hold, is-equal(status-of(view, <find-max>), <proved>)
   want hold, is-equal(view/solved, 2)
   want miss, view/done
+
+# the panel's two optional parts, read in Term on every backend (item 1243): a refuted goal prints the input that breaks
+# it, a proved one its detail, and an open goal with an empty detail prints neither
+test <the view prints a refuted goal's counterexample and a proved goal's detail>
+  host values, make list(3, 1)
+  host refuted, make(goal-view, bind(name, <first-is-max>), bind(status, <refuted>), bind(counterexample, values))
+  host proved, make(goal-view, bind(name, <max-correct>), bind(status, <proved>), bind(detail, <unsat>))
+  host waiting, make(goal-view, bind(name, <find-max>), bind(status, <open>), bind(detail, <>))
+  host goals, make list(refuted, proved, waiting)
+  host view, make(proof-state-view, bind(uri, <math.tree>), bind(goals, goals), bind(solved, 1), bind(total, 3), bind(done, false))
+  want hold, is-equal(render-info-view(view), <# math.tree  (1/3)\n  [BAD] first-is-max  fails at [3,1]\n  [OK ] max-correct  unsat\n  [...] find-max>)
 
 test <a goal the document lacks stays open, and says so>
   host state, proof-hammer(max-document(), <nowhere>)

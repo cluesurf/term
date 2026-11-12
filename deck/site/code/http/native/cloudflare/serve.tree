@@ -1,13 +1,12 @@
-
-# Cloudflare Workers HTTP transport. Unlike the node transport (which binds a socket via hono +
-# @hono/node-server), a Worker never listens: `serve` returns a Web-standard fetch handler and the
-# Workers runtime invokes it per request. The `<global:transport>` shim's `create-fetch` wraps the
-# uniform router (`handle-request`) in that handler; the matching + dispatch stay in the
-# platform-agnostic `handle-request`, exactly as on node. The emitted Worker entry re-exports the
-# returned handler as `export default`.
-
-dock load
-  load <global:transport>, name runtime
+# Cloudflare Workers HTTP transport (term-self-host-001-0731, ported from runtime/transport.ts). A Worker never
+# listens: `serve` answers a Web-standard `{ fetch(request, env, context) }` handler and the Workers runtime calls it per
+# request. The handler turns the Web Request into our `request`, runs the uniform trie router (`handle-request`), and
+# turns the `response` into a Web Response, mirroring the node transport's tree/code, proxy (status 1), redirect (3xx),
+# asset and page handling (../answer-kind). The Web objects are the host's, reached through binds; every decision is
+# Term. The emitted Worker entry re-exports the handler as `export default`.
+#
+# Static assets (`/base/**`) go to the Worker's ASSETS binding (`env.ASSETS`), the `/base` prefix stripped, so
+# `/base/boot.js` maps to the `build/boot.js` the binding serves: a Worker has no filesystem.
 
 load ../../http
   find server
@@ -15,17 +14,542 @@ load ../../http
   find response
   find handle-request
 
+load ../answer-kind
+  find answer-path-extension
+  find answer-is-tree-code
+  find answer-is-html
+  find answer-has-type
+  find answer-given-type
+  find answer-is-redirect
+  find asset-type
+  find asset-is-binary
+
+load @term/base/hash
+  find hash
+  find set
+  find get-or-default
+
+load @term/base/text/string
+  find starts-with
+
+# the handler object the Workers runtime calls, each request answered by `run`
+bind cloud-fetch-handler
+  take run
+    like task
+      take request, like dynamic
+      take bindings, like dynamic
+      like dynamic
+      mark async
+  like dynamic
+  case cloudflare
+    text <((run: (request: Request, bindings: unknown) =\> Promise\<Response\>) =\> (\{ fetch: (request: Request, bindings: unknown, _context: unknown): Promise\<Response\> =\> run(request, bindings) \}))($run)>
+
+bind cloud-request-url
+  take request, like dynamic
+  like dynamic
+  case cloudflare
+    text <new URL(($request as Request).url)>
+
+bind cloud-url-path
+  take url, like dynamic
+  like text
+  case cloudflare
+    text <($url as URL).pathname>
+
+bind cloud-url-query
+  take url, like dynamic
+  like hash, like text, like text
+  case cloudflare
+    text <new Map(($url as URL).searchParams)>
+
+bind cloud-request-method
+  take request, like dynamic
+  like text
+  case cloudflare
+    text <($request as Request).method>
+
+# the request's headers by lower-case name, as the Web Headers give them
+bind cloud-request-headers
+  take request, like dynamic
+  like hash, like text, like text
+  case cloudflare
+    text <((request: Request): Map\<string, string\> =\> \{ const out = new Map\<string, string\>(); request.headers.forEach((value, name) =\> out.set(name.toLowerCase(), value)); return out \})($request)>
+
+bind cloud-request-text
+  mark async
+  take request, like dynamic
+  like text
+  case cloudflare
+    text <($request as Request).text()>
+
+bind cloud-request-bytes
+  mark async
+  take request, like dynamic
+  like dynamic
+  case cloudflare
+    text <($request as Request).arrayBuffer().then((buffer: ArrayBuffer) =\> new Uint8Array(buffer))>
+
+# the ASSETS binding, or nothing when the Worker has none
+bind cloud-assets
+  take bindings, like dynamic
+  like dynamic
+  case cloudflare
+    text <((bindings: \{ ASSETS?: \{ fetch?: unknown \} \} | null | undefined) =\> (bindings && bindings.ASSETS && typeof bindings.ASSETS.fetch === 'function' ? bindings.ASSETS : null))($bindings as \{ ASSETS?: \{ fetch?: unknown \} \})>
+
+# the asset the binding serves for the request, at its path with `/base` taken off
+bind cloud-asset-fetch
+  mark async
+  take assets, like dynamic
+  take request, like dynamic
+  take url, like dynamic
+  like dynamic
+  case cloudflare
+    text <((assets: \{ fetch(request: Request): Promise\<Response\> \}, request: Request, url: URL): Promise\<Response\> =\> assets.fetch(new Request(new URL((url.pathname.slice('/base'.length) || '/') + url.search, url.origin).toString(), request)))($assets as \{ fetch(request: Request): Promise\<Response\> \}, $request, $url)>
+
+bind cloud-is-absent
+  take value, like dynamic
+  like boolean
+  case cloudflare
+    text <($value == null)>
+
+bind cloud-encoding-word
+  take value, like text
+  like text
+  case cloudflare
+    text <$value.toLowerCase().trim()>
+
+bind cloud-bytes-length
+  take bytes, like dynamic
+  like number
+  case cloudflare
+    text <($bytes as Uint8Array).length>
+
+# one 32 KiB piece of the bytes from `at` as a binary string, small enough to spread as arguments
+bind cloud-bytes-piece
+  take bytes, like dynamic
+  take at, like number
+  like text
+  case cloudflare
+    text <((bytes: Uint8Array, at: number): string =\> String.fromCharCode(...bytes.subarray(at, at + 32768)))($bytes as Uint8Array, $at)>
+
+bind cloud-binary-base64
+  take binary, like text
+  like text
+  case cloudflare
+    text <btoa($binary)>
+
+bind cloud-base64-binary
+  take text, like text
+  like text
+  case cloudflare
+    text <atob($text)>
+
+bind cloud-make-bytes
+  take length, like number
+  like dynamic
+  case cloudflare
+    text <new Uint8Array($length)>
+
+bind cloud-text-length
+  take text, like text
+  like number
+  case cloudflare
+    text <$text.length>
+
+# the byte at `at` set from the binary string's code unit there
+bind cloud-set-byte
+  take bytes, like dynamic
+  take at, like number
+  take binary, like text
+  like void
+  case cloudflare
+    text <((bytes: Uint8Array, at: number, binary: string): void =\> \{ bytes[at] = binary.charCodeAt(at) \})($bytes as Uint8Array, $at, $binary)>
+
+bind cloud-answer
+  take body, like dynamic
+  take status, like number
+  take headers, like hash, like text, like text
+  like dynamic
+  case cloudflare
+    text <((body: BodyInit | null, status: number, headers: Map\<string, string\>): Response =\> new Response(body, \{ status, headers: Object.fromEntries(headers) \}))($body as BodyInit | null, $status, $headers)>
+
+# the upstream of a proxy route, fetched and streamed through with its content type
+bind cloud-proxy
+  mark async
+  take address, like text
+  like dynamic
+  case cloudflare
+    text <fetch($address).then((upstream: Response) =\> new Response(upstream.body, \{ status: 200, headers: \{ 'Content-Type': upstream.headers.get('content-type') ?? 'application/octet-stream' \} \}))>
+
+bind cloud-text-body
+  take text, like text
+  like dynamic
+  case cloudflare
+    text <$text>
+
+bind cloud-no-body
+  like dynamic
+  case cloudflare
+    text <null>
+
+# `second`'s headers over `first`'s, as a JavaScript spread lays them: a name keeps its first place, the later value
+bind cloud-headers-over
+  take first, like hash, like text, like text
+  take second, like hash, like text, like text
+  like hash, like text, like text
+  case cloudflare
+    text <new Map([...$first, ...$second])>
+
+# the bytes as base64, a piece at a time (Workers have `btoa`, not node's Buffer)
+task bytes-base64
+  mark private
+  take bytes, like dynamic
+  like text
+  save binary, text <>
+  save at, code 0
+  save length
+    call cloud-bytes-length
+      read bytes
+  walk test
+    hook test
+      call is-below
+        read at
+        read length
+    hook hold
+      save piece
+        call cloud-bytes-piece
+          read bytes
+          read at
+      save binary, text <{binary}{piece}>
+      save at
+        call add
+          read at
+          code 32768
+  send back
+    call cloud-binary-base64
+      read binary
+
+# base64 decoded into a byte array
+task base64-bytes
+  mark private
+  take text, like text
+  like dynamic
+  save binary
+    call cloud-base64-binary
+      read text
+  save length
+    call cloud-text-length
+      read binary
+  save bytes
+    call cloud-make-bytes
+      read length
+  save at, code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        read length
+    hook hold
+      call cloud-set-byte
+        read bytes
+        read at
+        read binary
+      save at
+        call add
+          read at
+          code 1
+  send back, read bytes
+
+task one-header
+  mark private
+  take name, like text
+  take value, like text
+  like hash, like text, like text
+  save out
+    make hash
+  call out/set
+    read name
+    read value
+  send back, read out
+
 task serve
   take server, like server
   take port, like u16
-
   send back
-    call runtime/create-fetch
-      bind handle
-        task on-request
-          take incoming, like request
-          like response
+    call cloud-fetch-handler
+      task on-request
+        take incoming, like dynamic
+        take bindings, like dynamic
+        like dynamic
+        mark async
+        send back
+          call answer-fetch
+            read server
+            read incoming
+            read bindings
+
+task answer-fetch
+  mark private
+  mark async
+  take server, like server
+  take incoming, like dynamic
+  take bindings, like dynamic
+  like dynamic
+  save url
+    call cloud-request-url
+      read incoming
+  save path
+    call cloud-url-path
+      read url
+  fork test
+    hook test
+      call or
+        call is-equal
+          read path
+          text </base>
+        call starts-with
+          read path
+          text </base/>
+    hook hold
+      save assets
+        call cloud-assets
+          read bindings
+      fork test
+        hook test
+          call cloud-is-absent
+            read assets
+        hook hold
+          save none
+            make hash
           send back
-            call handle-request
-              read server
+            call cloud-answer
+              call cloud-text-body
+                text <>
+              code 404
+              read none
+      send back
+        call cloud-asset-fetch
+          read assets
+          read incoming
+          read url
+  # the router registers GET routes, and a HEAD is a GET without a body (the Workers runtime strips it), dispatched as
+  # GET so the content type is worked out the same
+  save method
+    call cloud-request-method
+      read incoming
+  fork test
+    hook test
+      call is-equal
+        read method
+        text <HEAD>
+    hook hold
+      save method, text <GET>
+  save headers
+    call cloud-request-headers
+      read incoming
+  save body, text <>
+  fork test
+    hook test
+      call is-unequal
+        read method
+        text <GET>
+    hook hold
+      fork test
+        hook test
+          call answer-is-tree-code
+            call get-or-default
+              read headers
+              text <content-type>
+              text <>
+        hook hold
+          # a Worker has no Zstandard decoder it can count on, and reading a packed body as plain bytes would hand the
+          # handler noise: refused
+          fork test
+            hook test
+              call is-equal
+                call cloud-encoding-word
+                  call get-or-default
+                    read headers
+                    text <content-encoding>
+                    text <>
+                text <zstd>
+            hook hold
+              save none
+                make hash
+              send back
+                call cloud-answer
+                  call cloud-text-body
+                    text <>
+                  code 415
+                  read none
+          save body
+            call bytes-base64
+              call cloud-request-bytes
+                read incoming
+        hook miss
+          save body
+            call cloud-request-text
               read incoming
+  save answer
+    call handle-request
+      read server
+      make request
+        bind method, read method
+        bind path, read path
+        bind body, read body
+        bind headers, read headers
+        bind query
+          call cloud-url-query
+            read url
+  send back
+    call web-answer
+      read path
+      read answer
+
+# the response as a Web Response, the way the shim chose: tree/code, a typed body, the proxy, a redirect, an asset, a
+# page, or as it is
+task web-answer
+  mark private
+  mark async
+  take path, like text
+  take answer, like response
+  like dynamic
+  save out, read answer/body
+  save code, read answer/status
+  save given, read answer/headers
+  save redirect
+    call answer-is-redirect
+      read code
+  save proxied
+    call is-equal
+      read code
+      code 1
+  fork test
+    hook test
+      call and
+        call answer-is-tree-code
+          call answer-given-type
+            read given
+        call and
+          call not
+            read proxied
+          call not
+            read redirect
+    hook hold
+      send back
+        call cloud-answer
+          call base64-bytes
+            read out
+          read code
+          call cloud-headers-over
+            read given
+            call one-header
+              text <Vary>
+              text <Accept-Encoding>
+  fork test
+    hook test
+      call and
+        call answer-has-type
+          read given
+        call and
+          call not
+            read proxied
+          call not
+            call and
+              read redirect
+              call is-unequal
+                read out
+                text <>
+    hook hold
+      send back
+        call cloud-answer
+          call cloud-text-body
+            read out
+          read code
+          read given
+  # proxy sentinel (status 1): the upstream address fetched and its bytes streamed through this origin (the page
+  # address stays put), with the upstream's content type
+  fork test
+    hook test
+      call and
+        read proxied
+        call is-unequal
+          read out
+          text <>
+    hook hold
+      send back
+        call cloud-proxy
+          read out
+  # a redirect resource route answers a 3xx with the target address as its body: a real redirect
+  fork test
+    hook test
+      call and
+        read redirect
+        call is-unequal
+          read out
+          text <>
+    hook hold
+      send back
+        call cloud-answer
+          call cloud-no-body
+          read code
+          call one-header
+            text <Location>
+            read out
+  # a body carrying a known asset extension gets its content type (parity with node; the ASSETS binding above is the
+  # main asset path, this covers router-served file bytes). A binary one goes out as its bytes, with 200
+  save extension
+    call answer-path-extension
+      read path
+  save type
+    call asset-type
+      read extension
+  fork test
+    hook test
+      call is-unequal
+        read type
+        text <>
+    hook hold
+      fork test
+        hook test
+          call asset-is-binary
+            read extension
+        hook hold
+          send back
+            call cloud-answer
+              call base64-bytes
+                read out
+              code 200
+              call one-header
+                text <Content-Type>
+                read type
+      send back
+        call cloud-answer
+          call cloud-text-body
+            read out
+          read code
+          call one-header
+            text <Content-Type>
+            read type
+  # the SSR page (an HTML body) goes out as text/html so the browser renders it
+  fork test
+    hook test
+      call answer-is-html
+        read out
+    hook hold
+      send back
+        call cloud-answer
+          call cloud-text-body
+            read out
+          read code
+          call cloud-headers-over
+            call one-header
+              text <Content-Type>
+              text <text/html; charset=utf-8>
+            read given
+  send back
+    call cloud-answer
+      call cloud-text-body
+        read out
+      read code
+      read given

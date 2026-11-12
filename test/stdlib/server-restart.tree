@@ -1,0 +1,119 @@
+note <network/server stop releases the port: a server started, asked through the stdlib fetch (which keeps its connection alive) and stopped, then started again on the same port in the same process, answers the second time, on every backend (item term-self-host-001-1206, trap T-0680)>
+
+load @term/base/code/network/server
+  find start
+  find stop
+
+load @term/base/code/network/server/request
+  find request
+
+load @term/base/code/network/server/response
+  find response
+  find make-ok
+
+load @term/base/code/network/http
+  find fetch
+
+# the body a server started with `word` answers every request with
+task answer-with
+  take word, like text
+  take req, like request
+  like response
+  send back
+    call make-ok
+      read word
+
+# start a server on `port` answering `word`, ask it once, stop it, and answer what it sent (or how the ask failed)
+task ask-once
+  mark async
+  take port, like size
+  take word, like text
+  like text
+  save running
+    call start
+      read port
+      text <127.0.0.1>
+      task handler
+        take req, like request
+        like response
+        send back
+          call answer-with
+            read word
+            read req
+      wait true
+  save got, text <none>
+  fork
+    mark unsafe
+    save answer
+      call fetch
+        text <http://127.0.0.1:{port}/>
+        bind timeout, code 5000
+        wait true
+    save got, text <{answer/status} {answer/body}>
+  halt take
+    take problem
+    fork case, read problem
+      case timeout
+        save got, text <timeout>
+      case outage
+        save got, text <outage>
+      case failure
+        save got, text <failure>
+  call stop
+    read running
+    wait true
+  send back
+    read got
+
+test <a server started again on a stopped server's port answers>
+  save first
+    call ask-once
+      code 47931
+      text <one>
+      wait true
+  save second
+    call ask-once
+      code 47931
+      text <two>
+      wait true
+  want hold
+    call is-equal
+      text <{first} | {second}>
+      text <200 one | 200 two>
+
+test <a third start on the same port answers too>
+  save third
+    call ask-once
+      code 47931
+      text <three>
+      wait true
+  want hold
+    call is-equal
+      read third
+      text <200 three>
+
+test <a server stopped before anyone asked frees its port>
+  save quiet
+    call start
+      code 47932
+      text <127.0.0.1>
+      task handler
+        take req, like request
+        like response
+        send back
+          call answer-with
+            text <quiet>
+            read req
+      wait true
+  call stop
+    read quiet
+    wait true
+  save again
+    call ask-once
+      code 47932
+      text <again>
+      wait true
+  want hold
+    call is-equal
+      read again
+      text <200 again>

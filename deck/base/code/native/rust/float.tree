@@ -1,99 +1,84 @@
-# rust float math (the linked fmath shim). Internal: reached only through the public float API.
+# rust float math as declarative bindings over f64's own methods, one host expression an op: the fmath shim's
+# expressions, which inline at the use site (decision 132 of term/self-host/change/001). Internal: reached only through
+# the public float API.
 
-dock load
-  load <global:fmath>, name fmath
-
-task float-square-root
+bind float-square-root
   take value, like float
   like float
-  send back
-    call fmath/sqrt
-      read value
+  case rust
+    text <(($value) as f64).sqrt()>
 
-task float-floor
+bind float-floor
   take value, like float
   like float
-  send back
-    call fmath/floor
-      read value
+  case rust
+    text <(($value) as f64).floor()>
 
-task float-ceiling
+bind float-ceiling
   take value, like float
   like float
-  send back
-    call fmath/ceil
-      read value
+  case rust
+    text <(($value) as f64).ceil()>
 
-task float-round
+# half away from zero, as f64::round rounds
+bind float-round
   take value, like float
   like float
-  send back
-    call fmath/round
-      read value
+  case rust
+    text <(($value) as f64).round()>
 
-task float-power
+bind float-power
   take base, like float
   take exponent, like float
   like float
-  send back
-    call fmath/pow
-      read base
-      read exponent
+  case rust
+    text <(($base) as f64).powf(($exponent) as f64)>
 
-task float-absolute
+bind float-absolute
   take value, like float
   like float
-  send back
-    call fmath/abs
-      read value
+  case rust
+    text <(($value) as f64).abs()>
 
-task float-sine
+bind float-sine
   take value, like float
   like float
-  send back
-    call fmath/sin
-      read value
+  case rust
+    text <(($value) as f64).sin()>
 
-task float-cosine
+bind float-cosine
   take value, like float
   like float
-  send back
-    call fmath/cos
-      read value
+  case rust
+    text <(($value) as f64).cos()>
 
-task float-tangent
+bind float-tangent
   take value, like float
   like float
-  send back
-    call fmath/tan
-      read value
+  case rust
+    text <(($value) as f64).tan()>
 
-task float-arc-sine
+bind float-arc-sine
   take value, like float
   like float
-  send back
-    call fmath/asin
-      read value
+  case rust
+    text <(($value) as f64).asin()>
 
-task float-arc-cosine
+bind float-arc-cosine
   take value, like float
   like float
-  send back
-    call fmath/acos
-      read value
+  case rust
+    text <(($value) as f64).acos()>
 
-task float-arc-tangent
+bind float-arc-tangent
   take value, like float
   like float
-  send back
-    call fmath/atan
-      read value
+  case rust
+    text <(($value) as f64).atan()>
 
-task float-arc-tangent-of
+bind float-arc-tangent-of
   take y, like float
   take x, like float
   like float
-  send back
-    call fmath/atan2
-      read y
-      read x
+  case rust
+    text <(($y) as f64).atan2(($x) as f64)>

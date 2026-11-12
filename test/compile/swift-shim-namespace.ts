@@ -54,7 +54,7 @@ function program(dockType: string, dockLoad: string): string {
   load <${dockType}>, name handle-dock
 ${dockLoad}
 form handle
-  link dock, like handle-dock, mark private
+  link dock, like handle-dock
 
 task nothing
   like integer

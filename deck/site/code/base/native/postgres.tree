@@ -7,7 +7,7 @@
 
 # an opaque result row (a dynamic record from the database)
 form row
-  link handle, mark private
+  link handle
 
 task connect
   take url, like text

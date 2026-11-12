@@ -104,7 +104,7 @@ task shim-text
     take site, name form-name
     lines/push <# an opaque handle: the id of a value the cask holds>
     lines/push <form {form-name}>
-    lines/push <  link handle, mark private>
+    lines/push <  link handle>
     lines/push <>
 
   save items, <{name}-items-of>

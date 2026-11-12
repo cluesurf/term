@@ -5,14 +5,17 @@ load @term/base/environment/language
 load @term/base/text
   find split
 
-# the locale comes from Intl alone (the locale shim). No `node:os`: nothing here read it, and its dock put a Node
-# builtin into every program reaching the environment API, the browser compiler's bundle among them (item 1170)
-dock load
-  load <global:locale>, name tongue
+# the locale comes from Intl alone, a JavaScript built-in, as a declarative binding with no runtime shim. No `node:os`:
+# nothing here read it, and its dock put a Node builtin into every program reaching the environment API, the browser
+# compiler's bundle among them (item 1170)
+bind locale-options
+  like dynamic
+  case node
+    text <Intl.DateTimeFormat().resolvedOptions()>
 
 task read-locale
   save options
-    call tongue/options
+    call locale-options
   save tag, read options/locale
   save parts
     call split
@@ -49,7 +52,7 @@ task read-locale
 
 task known-locales
   save options
-    call tongue/options
+    call locale-options
   save tag, read options/locale
   send back
     make list
