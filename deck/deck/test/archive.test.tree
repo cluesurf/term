@@ -1,0 +1,223 @@
+note <A version's files as one gzip ustar archive, written, read back and refused where it must be>
+
+# Item term-self-host-001-1043 (decision 129 section 2): code/oci/archive.tree, the one layer of OCI artifact format v2.
+
+load ../code/oci/archive
+  find check-archive-path
+  find write-archive
+  find read-archive
+  find pack-archive
+  find unpack-archive
+
+load ../code/oci/oci-failure
+  find oci-failure-message
+
+bind entry
+  take path, like text
+  take kind, like text
+  take executable, like boolean
+  take value, like text
+  like dynamic
+  case node
+    text <<({ path: $path, kind: $kind, executable: $executable, bytes: Buffer.from($value, "utf8") })>>
+
+bind some-entries
+  like dynamic
+  case node
+    text <<[{ path: "deck.tree", kind: "file", executable: false, bytes: Buffer.from("deck @term/demo\n") }, { path: "code", kind: "directory", executable: false, bytes: Buffer.alloc(0) }, { path: "code/base.tree", kind: "file", executable: false, bytes: Buffer.from("task hello\n") }, { path: "host/line", kind: "file", executable: true, bytes: Buffer.from("#!/bin/sh\n") }, { path: "empty.txt", kind: "file", executable: false, bytes: Buffer.alloc(0) }, { path: "a/" + "b".repeat(120) + "/" + "c".repeat(90) + ".tree", kind: "file", executable: false, bytes: Buffer.alloc(1000, 7) }]>>
+
+bind reversed
+  take items, like dynamic
+  like dynamic
+  case node
+    text <[...$items].reverse()>
+
+bind same-bytes
+  take one, like dynamic
+  take two, like dynamic
+  like boolean
+  case node
+    text <Buffer.compare($one, $two) === 0>
+
+# the entries as one comparable text: path, kind, executable and the bytes' hex, in path order
+bind summary
+  take entries, like dynamic
+  like text
+  case node
+    text <<[...$entries].sort((one, two) => Buffer.compare(Buffer.from(one.path), Buffer.from(two.path))).map(each => `${each.path}|${each.kind}|${each.executable}|${Buffer.from(each.bytes).toString("hex")}`).join("\n")>>
+
+bind is-blocked
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value.length % 512 === 0)>
+
+# the archive with one header's type flag set to `flag` and its checksum made right again, so only the type is wrong
+bind with-flag
+  take bytes, like dynamic
+  take flag, like text
+  like dynamic
+  case node
+    text <<((flagBytes) => { flagBytes.write($flag, 156, "latin1"); flagBytes.fill(32, 148, 156); const flagSum = flagBytes.subarray(0, 512).reduce((flagAt, flagByte) => flagAt + flagByte, 0); flagBytes.write(flagSum.toString(8).padStart(6, "0"), 148, "latin1"); flagBytes[154] = 0; flagBytes[155] = 32; return flagBytes })(Buffer.from($bytes))>>
+
+# the archive with the first header's name field set to `name`, checksum made right again
+bind with-name
+  take bytes, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<((nameBytes) => { nameBytes.fill(0, 0, 100); nameBytes.write($name, 0, "utf8"); nameBytes.fill(32, 148, 156); const nameSum = nameBytes.subarray(0, 512).reduce((nameAt, nameByte) => nameAt + nameByte, 0); nameBytes.write(nameSum.toString(8).padStart(6, "0"), 148, "latin1"); nameBytes[154] = 0; nameBytes[155] = 32; return nameBytes })(Buffer.from($bytes))>>
+
+bind with-byte
+  take bytes, like dynamic
+  take at, like number
+  take value, like number
+  like dynamic
+  case node
+    text <<((byteCopy) => { byteCopy[$at] = $value; return byteCopy })(Buffer.from($bytes))>>
+
+bind cut-short
+  take bytes, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <Buffer.from($bytes).subarray(0, $size)>
+
+# what the system's own tar extracts from the gzip bytes: every file's path and bytes, as `summary` writes them, or the
+# error tar printed. The interop witness: `tar -xzf` reads a v2 layer with no Term
+bind system-tar
+  take bytes, like dynamic
+  like text
+  case node
+    text <<((tarFs, tarPath, tarOs, tarChild) => { const tarDir = tarFs.mkdtempSync(tarPath.join(tarOs.tmpdir(), "archive-")); const tarFile = tarPath.join(tarDir, "layer.tar.gz"); tarFs.writeFileSync(tarFile, $bytes); const tarOut = tarPath.join(tarDir, "out"); tarFs.mkdirSync(tarOut); tarChild.execFileSync("tar", ["-xzf", tarFile, "-C", tarOut]); const tarRows = []; const tarWalk = (tarAt) => { for (const tarName of tarFs.readdirSync(tarPath.join(tarOut, tarAt)).sort()) { const tarRel = tarAt === "" ? tarName : tarAt + "/" + tarName; const tarStat = tarFs.statSync(tarPath.join(tarOut, tarRel)); if (tarStat.isDirectory()) tarWalk(tarRel); else tarRows.push({ path: tarRel, kind: "file", executable: (tarStat.mode & 0o100) !== 0, bytes: tarFs.readFileSync(tarPath.join(tarOut, tarRel)) }) } }; tarWalk(""); return JSON.stringify(tarRows.sort((tarOne, tarTwo) => (tarOne.path < tarTwo.path ? -1 : 1)).map(tarRow => tarRow.path + "|" + tarRow.kind + "|" + tarRow.executable + "|" + tarRow.bytes.toString("hex"))) })(process.getBuiltinModule("node:fs"), process.getBuiltinModule("node:path"), process.getBuiltinModule("node:os"), process.getBuiltinModule("node:child_process"))>>
+
+bind rows-of
+  take entries, like dynamic
+  like text
+  case node
+    text <<JSON.stringify([...$entries].filter(rowEntry => rowEntry.kind === "file").sort((rowOne, rowTwo) => (rowOne.path < rowTwo.path ? -1 : 1)).map(rowEntry => rowEntry.path + "|" + rowEntry.kind + "|" + rowEntry.executable + "|" + Buffer.from(rowEntry.bytes).toString("hex")))>>
+
+bind sorted-rows
+  take rows, like text
+  like text
+  case node
+    text <JSON.stringify(JSON.parse($rows).sort())>
+
+task read-refusal
+  take bytes, like dynamic
+  take limit, like number
+  like text
+
+  fork
+    mark unsafe
+    read-archive(bytes, limit)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+task unpack-refusal
+  take bytes, like dynamic
+  take limit, like number
+  like text
+
+  fork
+    mark unsafe
+    unpack-archive(bytes, limit)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+task write-refusal
+  take entries, like dynamic
+  like text
+
+  fork
+    mark unsafe
+    write-archive(entries)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+task path-refusal
+  take path, like text
+  like text
+
+  fork
+    mark unsafe
+    check-archive-path(path)
+    back <>
+  halt take
+    take cause
+    back oci-failure-message(cause)
+
+bind one
+  take item, like dynamic
+  like dynamic
+  case node
+    text <[$item]>
+
+bind two
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <[$first, $second]>
+
+test <archive: a read gives back every entry written, the long path, the executable bit and the empty file included>
+  save entries, some-entries()
+  save bytes, write-archive(entries)
+  want hold, is-blocked(bytes)
+  want hold, is-equal(summary(read-archive(bytes, 1048576)), summary(entries))
+
+test <archive: the same files give the same bytes whatever order they are given in>
+  save entries, some-entries()
+  want hold, same-bytes(write-archive(entries), write-archive(reversed(entries)))
+  want hold, same-bytes(pack-archive(entries), pack-archive(reversed(entries)))
+
+test <archive: pack then unpack is the identity>
+  save entries, some-entries()
+  want hold, is-equal(summary(unpack-archive(pack-archive(entries), 1048576)), summary(entries))
+
+test <archive: the system tar extracts the packed layer to the same files>
+  save entries, some-entries()
+  want hold, is-equal(system-tar(pack-archive(entries)), sorted-rows(rows-of(entries)))
+
+test <archive: the path rules>
+  want hold, is-equal(path-refusal(<code/base.tree>), <>)
+  want hold, is-equal(path-refusal(<a.b/c..d/e>), <>)
+  want hold, is-unequal(path-refusal(<>), <>)
+  want hold, is-unequal(path-refusal(</etc/passwd>), <>)
+  want hold, is-unequal(path-refusal(<../up>), <>)
+  want hold, is-unequal(path-refusal(<code/../../up>), <>)
+  want hold, is-unequal(path-refusal(<code/./x>), <>)
+  want hold, is-unequal(path-refusal(<code//x>), <>)
+  want hold, is-unequal(path-refusal(<code/>), <>)
+  want hold, is-unequal(path-refusal(<code\\x>), <>)
+  want hold, is-unequal(path-refusal(<c:x>), <>)
+
+test <archive: a write refuses a bad path, a path given twice and a kind that is not a file or a directory>
+  want hold, is-equal(write-refusal(one(entry(<../up>, <file>, false, <x>))), <archive path ../up has an empty, . or .. segment>)
+  want hold, is-equal(write-refusal(two(entry(<x>, <file>, false, <a>), entry(<x>, <file>, false, <b>))), <archive path x is given twice>)
+  want hold, is-equal(write-refusal(one(entry(<x>, <link>, false, <y>))), <archive entry x is a link, not a file or a directory>)
+
+test <archive: a read refuses a .. path, a link, a device, a bad checksum, a cut archive and files over the limit>
+  save bytes, write-archive(one(entry(<code/base.tree>, <file>, false, <task hello>)))
+  want hold, is-equal(read-refusal(with-name(bytes, <../escape>), 1048576), <archive path ../escape has an empty, . or .. segment>)
+  want hold, is-equal(read-refusal(with-name(bytes, </abs>), 1048576), <archive path /abs is absolute>)
+  want hold, is-equal(read-refusal(with-flag(bytes, <2>), 1048576), <archive entry code/base.tree is a symbolic link: only files and directories are allowed>)
+  want hold, is-equal(read-refusal(with-flag(bytes, <1>), 1048576), <archive entry code/base.tree is a hard link: only files and directories are allowed>)
+  want hold, is-equal(read-refusal(with-flag(bytes, <3>), 1048576), <archive entry code/base.tree is a character device: only files and directories are allowed>)
+  want hold, is-equal(read-refusal(with-flag(bytes, <x>), 1048576), <archive entry code/base.tree is a pax header: only files and directories are allowed>)
+  want hold, is-equal(read-refusal(bytes, 1048576), <>)
+  want hold, is-equal(read-refusal(with-byte(bytes, 10, 65), 1048576), <archive header at byte 0 fails its checksum>)
+  want hold, is-equal(read-refusal(cut-short(bytes, 520), 1048576),<archive entry code/base.tree runs past the end of the archive>)
+  want hold, is-equal(read-refusal(cut-short(bytes, 100), 1048576), <archive ends inside a header at byte 0>)
+  want hold, is-equal(read-refusal(bytes, 4), <archive holds more than 4 bytes of files>)
+
+test <archive: an unpack refuses what is not gzip and what states more than the limit>
+  save entries, some-entries()
+  want hold, is-equal(unpack-refusal(write-archive(entries), 1048576), <archive layer is not gzip>)
+  want hold, is-unequal(unpack-refusal(pack-archive(entries), 10), <>)

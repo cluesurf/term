@@ -1,0 +1,218 @@
+note <a compiled module run in this process: its TypeScript made JavaScript, written to a file, imported by its file URL, its exports read and called>
+
+# Items term-self-host-001-1302 and 1303 (suite blockers a and b of change 001). A suite that holds a built module's
+# exports, rather than what a whole program printed, imports the module here, in its own process: hook-task-reach hands
+# the exports to the dispatcher (runCommandLine resolves a task's name to a function), and modules wires an emitted
+# module set and calls its entry. `run-text` (./running) runs a whole program in a child and answers its printed text,
+# which neither can use: a child cannot hand a live function back, and a child that ran the dispatcher itself would
+# need a script of JavaScript in the suite (decision 113 refuses one). So the import is in process, node only, as the
+# originals were: the binds have a `case node` alone.
+#
+# The TypeScript is made JavaScript by esbuild's transform, the dev server's per-module step (loader ts, format esm), as
+# both originals did. A module is written under `folder`, which the suite makes with `temp-folder`, so it is removed
+# when the process ends. node caches a module by its URL: a suite imports one name once, or gives each its own name.
+#
+#   import-text(code, folder, name)       one module: written as `<folder>/<name>.mjs`, imported, its namespace
+#   module-set(modules)                   a per-module compile's `out/modules`, as a list of module-unit
+#   import-modules(units, folder, entry)  each unit written at the file its url names under `folder`, the entry imported
+#   export-of, has-task, export-names, call-export     reading and calling what a module exports
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find starts-with
+  find substring
+
+dock load
+  load <esbuild>, name importing-esbuild
+  load <node:url>, name importing-url
+  load <node:path>, name importing-path
+
+# esbuild's transform options, as the dev server asks them
+form importing-ask
+  link loader, like text
+  link format, like text
+
+form importing-transformed
+  link code, like text
+
+# one module of a per-module compile: the source file the driver keyed it by, its emitted TypeScript, the source files
+# it imports, and the url another module imports it by (the suite's own `modules` answer for the file, set by the suite)
+form module-unit
+  link file, like text
+  link code, like text
+  link imports, like list, like text
+  link url, like text, fall <>
+
+# ---- the host touches ----
+
+# host native: a module imported by its URL, its namespace
+bind importing-import
+  take url, like text
+  like dynamic
+  mark async
+  case node
+    text <(await import($url))>
+
+bind importing-href
+  take found, like dynamic
+  like text
+  case node
+    text <$found.href>
+
+# an export of a module by name, void when it has none
+bind export-of
+  take module, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$module[$name]>
+
+# whether a module exports a task by this name: a function the host can call
+bind has-task
+  take module, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <(typeof $module[$name] === "function")>
+
+# the names a module exports, in its own order
+bind export-names
+  take module, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($module)>
+
+# an exported task called with no values, its answer
+bind call-export
+  take module, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$module[$name]()>
+
+# the source files of a per-module compile's modules, in the driver's order
+bind importing-files
+  take modules, like dynamic
+  like list, like text
+  case node
+    text <Array.from($modules?.keys() ?? [])>
+
+bind importing-code
+  take modules, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($modules.get($file)?.code ?? "")>
+
+bind importing-imports
+  take modules, like dynamic
+  take file, like text
+  like list, like text
+  case node
+    text <($modules.get($file)?.imports ?? [])>
+
+# ---- the tasks ----
+
+# TypeScript as an ES module of JavaScript
+task script-of
+  take code, like text
+  like text
+
+  host ask, make(importing-ask, bind(loader, <ts>), bind(format, <esm>))
+  host done, like importing-transformed
+    call importing-esbuild/transformSync(code, ask)
+  back done/code
+
+# the module at a path imported by its file URL, its namespace
+task import-file
+  take path, like text
+  like dynamic
+  mark async
+
+  back importing-import(importing-href(importing-url/pathToFileURL(path)))
+
+# TypeScript written as `<folder>/<name>.mjs` and imported: its namespace
+task import-text
+  take code, like text
+  take folder, like text
+  take name, like text
+  like dynamic
+  mark async
+
+  save path, importing-path/join(folder, <{name}.mjs>)
+  write-file(path, script-of(code))
+  back import-file(path)
+
+# the modules of a per-module compile (`out/modules` of compile-text), each with its file, code and imports. Empty when
+# the compile gave none
+task module-set
+  take modules, like dynamic
+  like list, like module-unit
+
+  save units, make list
+  walk importing-files(modules)
+    take file, like text
+    units/push(make(module-unit, bind(file, file), bind(code, importing-code(modules, file)), bind(imports, importing-imports(modules, file))))
+  back units
+
+# the unit whose source file is `file`, an empty one when the set has none
+task unit-of
+  take units, like list, like module-unit
+  take file, like text
+  like module-unit
+
+  walk units
+    take one, like module-unit
+    fork test, is-equal(one/file, file)
+      hold
+        back one
+  back make(module-unit, bind(file, <>), bind(code, <>), bind(imports, make list))
+
+# a url as a path under `folder`: a leading `./` or `/` dropped, so `./a.mjs` and `/a.mjs` are both `<folder>/a.mjs`
+task url-path
+  take folder, like text
+  take url, like text
+  like text
+
+  save rest, url
+  fork test, starts-with(rest, <./>)
+    hold
+      save rest, substring(rest, 2)
+  fork test, starts-with(rest, </>)
+    hold
+      save rest, substring(rest, 1)
+  back importing-path/join(folder, rest)
+
+# Every unit written as JavaScript at the file its url names under `folder`, so the modules import each other as the dev
+# server serves them, then the entry unit (by its source file) imported: its namespace. A unit with no url is a failure
+task import-modules
+  take units, like list, like module-unit
+  take folder, like text
+  take entry, like text
+  like dynamic
+  mark async
+
+  save entry-path, <>
+  walk units
+    take one, like module-unit
+    fork test, is-equal(one/url, <>)
+      hold
+        halt <{one/file}: a module unit with no url>
+    save path, url-path(folder, one/url)
+    make-folder(importing-path/dirname(path))
+    write-file(path, script-of(one/code))
+    fork test, is-equal(one/file, entry)
+      hold
+        save entry-path, path
+  fork test, is-equal(entry-path, <>)
+    hold
+      halt <{entry}: not a module of the set>
+  back import-file(entry-path)

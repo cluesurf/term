@@ -35,6 +35,25 @@ bind http-text-of
   case node
     text <String($value)>
 
+# the init fetch takes with no body (fetch refuses a body on GET)
+bind make-fetch-init
+  take method, like text
+  take headers, like dynamic
+  take signal, like dynamic
+  like dynamic
+  case node
+    text <(\{ method: $method, headers: $headers, signal: $signal \})>
+
+# the init fetch takes with a body
+bind make-body-fetch-init
+  take method, like text
+  take headers, like dynamic
+  take signal, like dynamic
+  take body, like text
+  like dynamic
+  case node
+    text <(\{ method: $method, headers: $headers, signal: $signal, body: $body \})>
+
 # what fetch is handed: the method, the headers and the time limit, and the body only when there is one
 task http-init
   take method, like text
@@ -57,16 +76,16 @@ task http-init
         code 0
     hook hold
       send back
-        make object
-          bind method, read method
-          bind headers, read headers
-          bind signal, read signal
-          bind body, read body
+        call make-body-fetch-init
+          read method
+          read headers
+          read signal
+          read body
   send back
-    make object
-      bind method, read method
-      bind headers, read headers
-      bind signal, read signal
+    call make-fetch-init
+      read method
+      read headers
+      read signal
 
 # `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
 # `outage` and the host's own message

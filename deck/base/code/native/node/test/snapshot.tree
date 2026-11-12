@@ -17,6 +17,12 @@ load @term/base/native/shared/test
 load @term/base/native/shared/test/compare
   find deep-equal
 
+# the options node's fs takes to make a whole tree
+bind make-tree-options
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
 task match
   mark async
   take value
@@ -50,8 +56,7 @@ task match
         wait true
         bind path, text <.seed/snapshot>
         bind options
-          make object
-            bind recursive, true
+          call make-tree-options
         halt kink
       save data
         call serialize
@@ -112,8 +117,7 @@ task update
     wait true
     bind path, text <.seed/snapshot>
     bind options
-      make object
-        bind recursive, true
+      call make-tree-options
     halt kink
 
   save data

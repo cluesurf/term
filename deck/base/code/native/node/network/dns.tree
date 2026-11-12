@@ -8,6 +8,12 @@ dock load
 load @term/base/list
   find push
 
+# the options lookup takes to answer every address, not only the first
+bind make-lookup-options
+  like dynamic
+  case node
+    text <(\{ all: true \})>
+
 task dns-resolve
   mark async
   take hostname, like text
@@ -16,8 +22,7 @@ task dns-resolve
   save results, like list, like dynamic
     call dns-lookup/lookup
       read hostname
-      make object
-        bind all, true
+      call make-lookup-options
       wait true
   save out, like list, like text
     make list

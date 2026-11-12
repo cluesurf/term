@@ -1,0 +1,35 @@
+note <a child left running when a test process ends: run only by children-check, in its own term test>
+
+# children-check.tree runs this file in its own `term test`: its one test starts a child through ./children and leaves
+# it running, writes the child's pid to CHILDREN_PID_FILE, then ends the way CHILDREN_END says: <pass>, <raise> (a
+# raise in the test) or <exit> (the process exits in the middle of it). The check then reads whether the child is gone.
+# Run any other way, CHILDREN_END is empty and the test is a skip.
+
+load ./children
+  find start-child
+  find next-line
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/process
+  find exit
+
+test <a child is still running when the test ends>
+  host end, variable(<CHILDREN_END>)
+  fork test, is-equal(end, <>)
+    hold
+      skip <children-check runs this, naming how the process ends>
+  host held, start-child(make list(<sh>, <-c>, <echo $$; exec sleep 60>))
+  host pid, next-line(held, 10000)
+  write-file(variable(<CHILDREN_PID_FILE>), pid)
+  fork test, is-equal(end, <exit>)
+    hold
+      exit(3)
+  fork test, is-equal(end, <raise>)
+    hold
+      halt <left on purpose>
+  want hold, is-unequal(pid, <>)

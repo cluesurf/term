@@ -1,0 +1,94 @@
+note <the in-process module harness itself: a TypeScript module imported, its exports read and called, a module set wired by url>
+
+# Tests of test/support/importing.tree, beside it rather than in it: a loaded file's test blocks are not rewritten (T-0878).
+
+load ./importing
+  find import-text
+  find import-modules
+  find module-set
+  find module-unit
+  find unit-of
+  find url-path
+  find script-of
+  find export-of
+  find has-task
+  find export-names
+  find call-export
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/text
+  find contains, name text-contains
+
+# a module in TypeScript: a typed task, a constant, and a type esbuild must strip
+host typed, <export type Shape = \{ side: number \}\nexport function area(shape: Shape): number \{ return shape.side * shape.side \}\nexport function seven(): number \{ return 7 \}\nexport const named: string = "typed"\n>
+
+# two modules, the entry importing the other by the url it is written at
+host leaf, <export function leaf(): string \{ return "leaf" \}\n>
+host trunk, <import \{ leaf \} from "./leaf.mjs"\nexport function run(): string \{ return "trunk:" + leaf() \}\n>
+
+host folder, temp-folder(<importing-check->)
+
+task typed-module
+  like dynamic
+  mark async
+
+  back import-text(typed, folder, <typed>)
+
+task wired
+  take entry, like text
+  like dynamic
+  mark async
+
+  host units, make list(make(module-unit, bind(file, <leaf.tree>), bind(code, leaf), bind(imports, make list), bind(url, <./leaf.mjs>)), make(module-unit, bind(file, <trunk.tree>), bind(code, trunk), bind(imports, make list(<leaf.tree>)), bind(url, </trunk.mjs>)))
+  back import-modules(units, folder, entry)
+
+test <script-of strips the types and keeps the module an ES module>
+  host done, script-of(typed)
+  want hold, not(text-contains(done, <: Shape>))
+  want hold, text-contains(done, <export>)
+
+test <an imported module's task is called with no values>
+  host module, typed-module()
+  want hold, is-equal(call-export(module, <seven>), 7)
+
+test <has-task is true for an exported function, false for a constant and for a name it lacks>
+  host module, typed-module()
+  want hold, has-task(module, <area>)
+  want hold, not(has-task(module, <named>))
+  want hold, not(has-task(module, <missing>))
+
+test <export-of reads an exported value by name>
+  host module, typed-module()
+  want hold, is-equal(export-of(module, <named>), <typed>)
+
+test <export-names lists what the module exports and no type>
+  host module, typed-module()
+  host names, export-names(module)
+  want hold, is-equal(names/length, 3)
+
+test <url-path drops a leading ./ or / under the folder>
+  want hold, is-equal(url-path(<f>, <./a.mjs>), <f/a.mjs>)
+  want hold, is-equal(url-path(<f>, </a.mjs>), <f/a.mjs>)
+  want hold, is-equal(url-path(<f>, <b/a.mjs>), <f/b/a.mjs>)
+
+test <import-modules writes each unit at its url and the entry imports the other>
+  host module, wired(<trunk.tree>)
+  want hold, is-equal(call-export(module, <run>), <trunk:leaf>)
+
+test <import-modules refuses an entry that is not in the set>
+  save refused, false
+  fork
+    mark unsafe
+    host module, wired(<missing.tree>)
+  halt take
+    take cause
+    save refused, true
+  want hold, refused
+
+test <module-set of no modules is empty, and unit-of finds nothing in it>
+  host units, module-set(void)
+  want hold, is-equal(units/length, 0)
+  host found, unit-of(units, <a.tree>)
+  want hold, is-equal(found/file, <>)

@@ -1,0 +1,682 @@
+# The bundle task (decision 130 section 1, rewritten by decision 152): the ONLY code that knows the bundler. Two
+# operations, `build-bundle` and `transform-code`, run the pinned bundler binary as a process through
+# @term/base/process/run, never a JS API and never a plugin, so it is one implementation on every backend.
+#
+#   - the binary is the one bundling/pin.tree names, fetched on first use into the user store
+#     (`~/.base/@term/code/bundler/<version>/<platform>/`) with the system `curl`, its tarball's sha256 checked against
+#     the pin, then unpacked with the system `tar`. A digest that does not match refuses to run it, and nothing is kept
+#   - only its command line is spoken: the options the nine callers pass once 1283 to 1285 drop their plugins
+#     (entries, format, platform, bundle, outfile, externals, packages external, aliases, defines, minify, sourcemap,
+#     target, tsconfig, banner, metafile) and stage0's stdin entry (decision 140 section 4)
+#   - a stdin entry resolves from the working directory (decision 152 section 3): the command line has no other
+#     resolve directory, so `directory` is both
+#   - every failure is an answer, never a raise: `ok` false with notes, each a file, line and column in the source the
+#     caller named (`entry-name` for a stdin entry or a transform), so a caller reports it against its `.tree` source.
+#     No note, flag or message names the bundler's own name
+#   - the output comes back as text when the caller names no outfile (a scratch file is written and read back), and
+#     the metafile's inputs, in its own order, when `metafile` is asked
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find split
+  find trim
+  find char-count
+  find index-of
+  find last-index-of
+  find substring
+  find ends-with
+  find replace-all
+  find contains
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/time
+  find now
+
+load @term/base/machine
+  find read-platform
+  find read-architecture
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+
+load @term/base/file
+  find read, name read-text
+  find read-bytes
+  find move, name move-file
+
+load @term/base/file/blocking
+  find exists, name path-exists
+
+load @term/base/file/directory
+  find make, name make-directory
+  find remove, name remove-directory
+
+load @term/base/file/temporary
+  find make, name make-temporary
+
+load @term/base/process/run
+  find run, name run-process
+  find run-with-input
+  find run-result
+
+load @term/base/process/current
+  find read, name read-process
+
+load @term/base/cryptography/digest
+  find sha256
+
+load @term/base/bytes
+  find to-hex
+
+load @term/base/json
+  find parse, name parse-json
+  find get-field
+  find object-keys
+
+load @term/call/work/small/home-folder
+  find user-home
+
+load ./bundling/pin
+  find pinned-version
+  find pinned-digest
+
+# ---- the shapes ----
+
+# a name and its value: a define (`process.env.NODE_ENV` to `"production"`) or an alias (a specifier to a file)
+form bundle-pair
+  link name, like text
+  link value, like text
+
+# what a build asks. `entries` empty reads the entry from `entry-text`, named `entry-name`, read with `loader`, and
+# resolved from `directory`. `directory` empty is this process's own. `outfile` empty answers the output as text.
+# `store` empty is the user store
+form bundle-ask
+  link entries, like list, like text
+  link entry-text, like text
+  link entry-name, like text
+  link loader, like text
+  link directory, like text
+  link bundle, like boolean
+  link format, like text
+  link platform, like text
+  link target, like text
+  link outfile, like text
+  link metafile, like boolean
+  link tsconfig, like text
+  link banner, like text
+  link externals, like list, like text
+  link packages-external, like boolean
+  link aliases, like list, like bundle-pair
+  link defines, like list, like bundle-pair
+  link minify, like boolean
+  link sourcemap, like text
+  link store, like text
+
+# what a transform asks: `code` read with `loader`, named `entry-name` in its notes
+form transform-ask
+  link code, like text
+  link loader, like text
+  link format, like text
+  link target, like text
+  link entry-name, like text
+  link store, like text
+
+# one thing the bundler said: `kind` `error` or `warning`, where (`file` empty and `line` 0 when it named no place),
+# and what
+form bundle-note
+  link kind, like text
+  link file, like text
+  link line, like number
+  link column, like number
+  link text, like text
+
+form bundled
+  link ok, like boolean
+  link output, like text
+  link inputs, like list, like text
+  link notes, like list, like bundle-note
+
+form transformed
+  link ok, like boolean
+  link code, like text
+  link notes, like list, like bundle-note
+
+# the binary, ready to run, or why not
+form bundler-ready
+  link ok, like boolean
+  link path, like text
+  link notes, like list, like bundle-note
+
+# a fetch of one platform's tarball: from `source` (any URL `curl` reads), checked against `digest`, into `store`
+form fetch-ask
+  link key, like text
+  link digest, like text
+  link source, like text
+  link store, like text
+
+# ---- the asks, with nothing set ----
+
+# a build of `entries` with every option left out
+task bundle-options
+  take entries, like list, like text
+  like bundle-ask
+
+  back make(bundle-ask, bind(entries, entries), bind(entry-text, <>), bind(entry-name, <>), bind(loader, <>), bind(directory, <>), bind(bundle, false), bind(format, <>), bind(platform, <>), bind(target, <>), bind(outfile, <>), bind(metafile, false), bind(tsconfig, <>), bind(banner, <>), bind(externals, make list), bind(packages-external, false), bind(aliases, make list), bind(defines, make list), bind(minify, false), bind(sourcemap, <>), bind(store, <>))
+
+# a transform of `code` read with `loader`
+task transform-options
+  take code, like text
+  take loader, like text
+  like transform-ask
+
+  back make(transform-ask, bind(code, code), bind(loader, loader), bind(format, <>), bind(target, <>), bind(entry-name, <>), bind(store, <>))
+
+# ---- the pin and the store ----
+
+# `darwin-arm64`, `linux-x64`, `win32-x64`: this machine as the pin and the tarballs name it
+task platform-key
+  like text
+
+  back <{read-platform()}-{read-architecture()}>
+
+# the tarball of `key` at `version` on the npm registry
+task tarball-source
+  take version, like text
+  take key, like text
+  like text
+
+  back <https://registry.npmjs.org/@esbuild/{key}/-/{key}-{version}.tgz>
+
+# where the binary sits inside the tarball
+task tarball-entry
+  take key, like text
+  like text
+
+  fork test, contains(key, <win32>)
+    hold
+      back <package/esbuild.exe>
+  back <package/bin/esbuild>
+
+# the binary's file name in the store
+task binary-name
+  take key, like text
+  like text
+
+  fork test, contains(key, <win32>)
+    hold
+      back <esbuild.exe>
+  back <esbuild>
+
+# the pinned version's folder for this machine under `store`, the user store when it is empty
+task store-folder
+  take store, like text
+  like text
+
+  save version, pinned-version()
+  fork test, is-equal(store, <>)
+    hold
+      back user-home(make list(<bundler>, version, platform-key()))
+  back join-path(join-path(store, version), platform-key())
+
+# On Windows the system's own tar.exe by its full path: Git for Windows puts GNU tar on PATH, which reads the `C:` of
+# `-C C:\...` as a remote host (work/need/version-install.tree `tar-path`)
+task tar-command
+  like text
+
+  fork test, is-unequal(read-platform(), <win32>)
+    hold
+      back <tar>
+  save root, <C:\\Windows>
+  fork test, has-variable(<SystemRoot>)
+    hold
+      save root, variable-of(<SystemRoot>)
+  back join-path(join-path(root, <System32>), <tar.exe>)
+
+# a note with no place
+task plain-note
+  take text, like text
+  like bundle-note
+
+  back make(bundle-note, bind(kind, <error>), bind(file, <>), bind(line, 0), bind(column, 0), bind(text, text))
+
+task one-note
+  take text, like text
+  like list, like bundle-note
+
+  save notes, make list
+  notes/push(plain-note(text))
+  back notes
+
+task not-ready
+  take text, like text
+  like bundler-ready
+
+  back make(bundler-ready, bind(ok, false), bind(path, <>), bind(notes, one-note(text)))
+
+# The pinned binary for this machine under `store` (the user store when empty), fetched the first time
+task ready-bundler
+  take store, like text
+  like bundler-ready
+
+  save key, platform-key()
+  save version, pinned-version()
+  save digest, pinned-digest(key)
+  fork test, is-equal(digest, <>)
+    hold
+      back not-ready(<no bundler is pinned for {key}, so nothing can be bundled on this machine>)
+  back fetch-bundler(make(fetch-ask, bind(key, key), bind(digest, digest), bind(source, tarball-source(version, key)), bind(store, store-folder(store))))
+
+# Fetch one tarball into `store`, check its sha256, unpack the binary and move it into place. A binary already there is
+# answered at once: it was checked when it was fetched. The staging folder sits in the store, so the move is a rename
+# on one volume, and two fetches at once each stage apart and the second move lands the same bytes
+task fetch-bundler
+  take input, like fetch-ask
+  like bundler-ready
+
+  save binary, join-path(input/store, binary-name(input/key))
+  fork test, path-exists(binary)
+    hold
+      back make(bundler-ready, bind(ok, true), bind(path, binary), bind(notes, make list))
+
+  save staging, join-path(input/store, <.stage-{read-process()/id}-{now()}>)
+  make-directory(staging)
+  save answer, staged-fetch(input, staging, binary)
+  remove-directory(staging)
+  back answer
+
+task staged-fetch
+  take input, like fetch-ask
+  take staging, like text
+  take binary, like text
+  like bundler-ready
+  mark private
+
+  save archive, join-path(staging, <package.tgz>)
+  save fetch-args, make list
+  fetch-args/push(<-fsSL>)
+  fetch-args/push(<--retry>)
+  fetch-args/push(<2>)
+  fetch-args/push(<-o>)
+  fetch-args/push(archive)
+  fetch-args/push(input/source)
+  save fetched, ran(<curl>, fetch-args, <>)
+  fork test, is-unequal(fetched/code, 0)
+    hold
+      back not-ready(<the bundler for {input/key} could not be downloaded from {input/source}: {said(fetched)}>)
+
+  save hex, to-hex(sha256(read-bytes(archive)))
+  fork test, is-unequal(hex, input/digest)
+    hold
+      back not-ready(<the bundler download for {input/key} hashes to {hex}, and the pin says {input/digest}. It was not run>)
+
+  save entry, tarball-entry(input/key)
+  save unpack-args, make list
+  unpack-args/push(<-xzf>)
+  unpack-args/push(archive)
+  unpack-args/push(<-C>)
+  unpack-args/push(staging)
+  unpack-args/push(entry)
+  save unpacked, ran(tar-command(), unpack-args, <>)
+  fork test, is-unequal(unpacked/code, 0)
+    hold
+      back not-ready(<the bundler for {input/key} could not be unpacked: {said(unpacked)}>)
+  move-file(join-path(staging, entry), binary)
+  back make(bundler-ready, bind(ok, true), bind(path, binary), bind(notes, make list))
+
+# a command run to its end, with one that cannot start answered as code -1 and its reason, never raised
+task ran
+  take command, like text
+  take arguments, like list, like text
+  take directory, like text
+  like run-result
+  mark private
+
+  save done, make(run-result, bind(code, -1), bind(output, <>), bind(error, <{command} could not start>), bind(signal, 0))
+  fork
+    mark unsafe
+    save done, run-process(command, arguments, directory)
+  halt take
+    take problem
+    save ignored, 0
+  back done
+
+task ran-with-input
+  take command, like text
+  take arguments, like list, like text
+  take input, like text
+  take directory, like text
+  like run-result
+  mark private
+
+  save done, make(run-result, bind(code, -1), bind(output, <>), bind(error, <the bundler could not start>), bind(signal, 0))
+  fork
+    mark unsafe
+    save done, run-with-input(command, arguments, input, directory)
+  halt take
+    take problem
+    save ignored, 0
+  back done
+
+# what a run wrote to standard error, trimmed, else its code
+task said
+  take done, like run-result
+  like text
+  mark private
+
+  save text, trim(done/error)
+  fork test, is-equal(text, <>)
+    hold
+      back <exit code {done/code}>
+  back unnamed(text)
+
+# the bundler's own name, said as "the bundler" wherever its text would carry it
+task unnamed
+  take text, like text
+  like text
+
+  back replace-all(text, <esbuild>, <the bundler>)
+
+# ---- reading what it said ----
+
+# whether `text` is one or more ASCII digits
+task is-whole
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(text, <>)
+    hold
+      back false
+  walk split(text, <>)
+    take one
+    fork test, not(contains(<0123456789>, one))
+      hold
+        back false
+  back true
+
+# The notes in what the bundler wrote to standard error, with color off: a line holding `[ERROR] ` or `[WARNING] `
+# starts a note and its text, and the first `<file>:<line>:<column>:` line after it is its place. A file may hold a
+# colon itself (`C:\`), so the line and column are read from the end
+task notes-of
+  take stderr, like text
+  like list, like bundle-note
+
+  save notes, make list
+  save open, false
+  save placed, false
+  save kind, <>
+  save file, <>
+  save line, 0
+  save column, 0
+  save text, <>
+  walk split(stderr, <\n>)
+    take raw
+    save error-at, index-of(raw, <[ERROR] >)
+    save warning-at, index-of(raw, <[WARNING] >)
+    fork test, or(is-above(error-at, -1), is-above(warning-at, -1))
+      hold
+        fork test, open
+          hold
+            notes/push(make(bundle-note, bind(kind, kind), bind(file, file), bind(line, line), bind(column, column), bind(text, text)))
+        save open, true
+        save placed, false
+        save file, <>
+        save line, 0
+        save column, 0
+        fork test, is-above(error-at, -1)
+          hold
+            save kind, <error>
+            save text, unnamed(trim(substring(raw, add(error-at, 8))))
+          miss
+            save kind, <warning>
+            save text, unnamed(trim(substring(raw, add(warning-at, 10))))
+        turn next
+    fork test, or(not(open), placed)
+      hold
+        turn next
+    save place, trim(raw)
+    fork test, not(ends-with(place, <:>))
+      hold
+        turn next
+    save place, substring(place, 0, subtract(char-count(place), 1))
+    save last, last-index-of(place, <:>)
+    fork test, is-below(last, 1)
+      hold
+        turn next
+    save column-text, substring(place, add(last, 1))
+    save rest, substring(place, 0, last)
+    save middle, last-index-of(rest, <:>)
+    fork test, is-below(middle, 1)
+      hold
+        turn next
+    save line-text, substring(rest, add(middle, 1))
+    fork test, or(not(is-whole(column-text)), not(is-whole(line-text)))
+      hold
+        turn next
+    save file, substring(rest, 0, middle)
+    save line, parse-integer(line-text)
+    save column, parse-integer(column-text)
+    save placed, true
+  fork test, open
+    hold
+      notes/push(make(bundle-note, bind(kind, kind), bind(file, file), bind(line, line), bind(column, column), bind(text, text)))
+  back notes
+
+# the notes of a failed run: those it said, or one holding what it wrote when it said none in the shape above
+task failure-notes
+  take done, like run-result
+  like list, like bundle-note
+  mark private
+
+  save notes, errors-in(notes-of(done/error))
+  fork test, is-above(notes/length, 0)
+    hold
+      back notes
+  back one-note(said(done))
+
+task errors-in
+  take notes, like list, like bundle-note
+  like list, like bundle-note
+  mark private
+
+  save found, make list
+  walk notes
+    take one
+    fork test, is-equal(one/kind, <error>)
+      hold
+        found/push(one)
+  back found
+
+task warnings-in
+  take notes, like list, like bundle-note
+  like list, like bundle-note
+  mark private
+
+  save found, make list
+  walk notes
+    take one
+    fork test, is-equal(one/kind, <warning>)
+      hold
+        found/push(one)
+  back found
+
+# ---- the command line ----
+
+# every flag of a build, for an outfile and a metafile already chosen (`metafile` empty for none)
+task build-arguments
+  take input, like bundle-ask
+  take outfile, like text
+  take metafile, like text
+  like list, like text
+
+  save args, make list
+  fork test, input/bundle
+    hold
+      args/push(<--bundle>)
+  fork test, is-unequal(input/platform, <>)
+    hold
+      args/push(<--platform={input/platform}>)
+  fork test, is-unequal(input/format, <>)
+    hold
+      args/push(<--format={input/format}>)
+  fork test, is-unequal(input/target, <>)
+    hold
+      args/push(<--target={input/target}>)
+  fork test, is-unequal(input/tsconfig, <>)
+    hold
+      args/push(<--tsconfig={input/tsconfig}>)
+  fork test, is-unequal(input/banner, <>)
+    hold
+      args/push(<--banner:js={input/banner}>)
+  fork test, input/packages-external
+    hold
+      args/push(<--packages=external>)
+  walk input/externals
+    take one
+    args/push(<--external:{one}>)
+  walk input/aliases
+    take one
+    args/push(<--alias:{one/name}={one/value}>)
+  walk input/defines
+    take one
+    args/push(<--define:{one/name}={one/value}>)
+  fork test, input/minify
+    hold
+      args/push(<--minify>)
+  fork test, is-equal(input/sourcemap, <external>)
+    hold
+      args/push(<--sourcemap>)
+    miss
+      fork test, is-unequal(input/sourcemap, <>)
+        hold
+          args/push(<--sourcemap={input/sourcemap}>)
+  fork test, is-unequal(metafile, <>)
+    hold
+      args/push(<--metafile={metafile}>)
+  fork test, is-equal(input/entries/length, 0)
+    hold
+      fork test, is-unequal(input/entry-name, <>)
+        hold
+          args/push(<--sourcefile={input/entry-name}>)
+      fork test, is-unequal(input/loader, <>)
+        hold
+          args/push(<--loader={input/loader}>)
+  args/push(<--log-level=warning>)
+  args/push(<--log-limit=0>)
+  args/push(<--color=false>)
+  args/push(<--outfile={outfile}>)
+  walk input/entries
+    take one
+    args/push(one)
+  back args
+
+# every flag of a transform
+task transform-arguments
+  take input, like transform-ask
+  like list, like text
+
+  save args, make list
+  fork test, is-unequal(input/loader, <>)
+    hold
+      args/push(<--loader={input/loader}>)
+  fork test, is-unequal(input/format, <>)
+    hold
+      args/push(<--format={input/format}>)
+  fork test, is-unequal(input/target, <>)
+    hold
+      args/push(<--target={input/target}>)
+  fork test, is-unequal(input/entry-name, <>)
+    hold
+      args/push(<--sourcefile={input/entry-name}>)
+  args/push(<--log-level=warning>)
+  args/push(<--log-limit=0>)
+  args/push(<--color=false>)
+  back args
+
+# ---- the two operations ----
+
+task failed-build
+  take notes, like list, like bundle-note
+  like bundled
+
+  back make(bundled, bind(ok, false), bind(output, <>), bind(inputs, make list), bind(notes, notes))
+
+# Build: `entries` (or the stdin entry), with the options asked. The output is written to `outfile`, or answered as
+# text when there is none. The metafile's inputs are answered when `metafile` is asked
+task build-bundle
+  take input, like bundle-ask
+  like bundled
+
+  save ready, ready-bundler(input/store)
+  fork test, not(ready/ok)
+    hold
+      back failed-build(ready/notes)
+
+  save scratch, make-temporary(<directory>, <term-bundle->)
+  save answer, build-in(input, ready/path, scratch)
+  remove-directory(scratch)
+  back answer
+
+task build-in
+  take input, like bundle-ask
+  take binary, like text
+  take scratch, like text
+  like bundled
+  mark private
+
+  save outfile, input/outfile
+  fork test, is-equal(outfile, <>)
+    hold
+      save outfile, join-path(scratch, <out.js>)
+  save metafile, <>
+  fork test, input/metafile
+    hold
+      save metafile, join-path(scratch, <meta.json>)
+  save args, build-arguments(input, outfile, metafile)
+
+  save done, make(run-result, bind(code, -1), bind(output, <>), bind(error, <>), bind(signal, 0))
+  fork test, is-equal(input/entries/length, 0)
+    hold
+      save done, ran-with-input(binary, args, input/entry-text, input/directory)
+    miss
+      save done, ran(binary, args, input/directory)
+  fork test, is-unequal(done/code, 0)
+    hold
+      back failed-build(failure-notes(done))
+
+  save output, <>
+  fork test, is-equal(input/outfile, <>)
+    hold
+      save output, read-text(outfile)
+  save inputs, make list
+  fork test, input/metafile
+    hold
+      save meta, parse-json(read-text(metafile))
+      walk object-keys(get-field(meta, <inputs>))
+        take one, like text
+        inputs/push(one)
+  back make(bundled, bind(ok, true), bind(output, output), bind(inputs, inputs), bind(notes, warnings-in(notes-of(done/error))))
+
+# Transform: `code`, read with `loader`, to the code it answers on its standard output
+task transform-code
+  take input, like transform-ask
+  like transformed
+
+  save ready, ready-bundler(input/store)
+  fork test, not(ready/ok)
+    hold
+      back make(transformed, bind(ok, false), bind(code, <>), bind(notes, ready/notes))
+  save done, ran-with-input(ready/path, transform-arguments(input), input/code, <>)
+  fork test, is-unequal(done/code, 0)
+    hold
+      back make(transformed, bind(ok, false), bind(code, <>), bind(notes, failure-notes(done)))
+  back make(transformed, bind(ok, true), bind(code, done/output), bind(notes, warnings-in(notes-of(done/error))))

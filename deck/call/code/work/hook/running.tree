@@ -60,8 +60,10 @@ load @term/call/work/hook/deciding
 
 load @term/call/work/hook/refusal
   find said
+  find refusal-said
 
-# the one host side of every console's refusal: what it reads, its writes, its closing at the clock read after them
+# the one host side of every console's refusal: what it reads, its writes, its closing at the clock read after them,
+# read only in run-outcome's outcome-refuse arm (decision 149, item term-self-host-001-1273)
 load @term/call/work/hook/usage
   find refusal-view-of
   find write-said
@@ -210,8 +212,8 @@ task host-handed
     case handed-none
       back make none
 
-# THE RUN: TERM_LINE_NAME, the mark and what a refusal reads from the host (the clock the run opens at among them)
-# read once, the line decided, the outcome run
+# THE RUN: TERM_LINE_NAME and the mark read once, the line decided, the outcome run. What a refusal reads from the host
+# is read only when one is drawn (decision 149)
 task run-command-line
   take input, like run-input
   like number
@@ -219,7 +221,7 @@ task run-command-line
   save name, hook-shown-name(input/name)
   # the compiler's records, read once in the plain form (work/hook/route.tree)
   save routes, plain-routes(input/routes)
-  save ask, make line-ask, name(name), mark(hook-mark(input)), routes(routes), argv(input/argv), words-own(hook-has-refuse(input)), view(refusal-view-of())
+  save ask, make line-ask, name(name), mark(hook-mark(input)), routes(routes), argv(input/argv), words-own(hook-has-refuse(input))
   back run-outcome(input, name, decide(ask))
 
 # one write of an outcome: a line through the input's out or err, or text written to the stream as the printer writes
@@ -256,13 +258,15 @@ task run-outcome
         run-said(input, one)
       back code
     case outcome-refuse
-      link writes
-      link closing
-      walk writes
+      link usage
+      # the refusal drawn from what the host holds now (decision 149), its opening and failed item written
+      save drawn, refusal-said(usage, refusal-view-of())
+      save opening, drawn/writes
+      walk opening
         take one
         run-said(input, one)
       # the closing at the clock read now, once the opening and the failed item are out
-      back close-refusal(closing)
+      back close-refusal(drawn/closing)
     case outcome-hand
       link refusal
       save answer, wait hook-refuse(input, refusal)

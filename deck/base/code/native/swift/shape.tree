@@ -1,4 +1,39 @@
-# swift value shape questions (is-null, is-present, is-text, type-of), through the shape runtime shim (runtime/shape.swift). Internal: shared modules reach it through `@term/base/native/{platform}/shape` and call it as `shape`.
+# swift value shape questions (is-null, is-present, is-text, type-of), through the shape runtime shim (runtime/shape.swift). Internal: shared modules reach it through `@term/base/native/{platform}/shape` and call its tasks by name.
 
 dock load
   load <global:shape>, name shape
+
+# Each task below is one call to the shim it keeps, so a caller finds the task by name and never the dock alias
+# (decision 146 point 1).
+
+# whether the value is present, not null
+task is-present
+  take value, like unknown
+  like boolean
+  send back
+    call shape/is-present
+      bind value, read value
+
+# whether the value is text
+task is-text
+  take value, like unknown
+  like boolean
+  send back
+    call shape/is-text
+      bind value, read value
+
+# whether the value is null
+task is-null
+  take value, like unknown
+  like boolean
+  send back
+    call shape/is-null
+      bind value, read value
+
+# the value's type in Term's words: null, list, text, boolean, number or object
+task type-of
+  take value, like unknown
+  like text
+  send back
+    call shape/type-of
+      bind value, read value

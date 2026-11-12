@@ -5,7 +5,9 @@
 // a global flag, a required slot, a number take defaulting to 1, a list slot) is booted for node (`term boot`) and
 // built for Rust by this checkout's CLI, and every command line below gives the same stdout, stderr and exit code on
 // both. The tasks answer what they were handed as the exit code (greet its times, count its word count), so a call is
-// witnessed by its handed values. Only the refusal's clock (time of day and elapsed time) is masked.
+// witnessed by its handed values. Only the refusal's clock (time of day and elapsed time) is masked. The emitted
+// program reaches no compiler module (item 0160), and the Rust binary spawns neither stty nor date before a call route
+// or the version runs (decision 149, item 1273).
 // Run: npx tsx test/compile/console-native.ts
 
 import { spawnSync } from 'node:child_process'
@@ -95,6 +97,16 @@ ok('rust: term make --emit rust writes the console', emitted.status === 0, tail(
 if (emitted.status === 0) {
   const rs = readFileSync(join(out, 'main.rs'), 'utf8')
   ok('rust: the route table is one thread_local host', /thread_local![^;]*CONSOLE_ROUTES/s.test(rs))
+  // item 0160: the program reaches no compiler module, read for each class term:native-entry reads. The source files
+  // it holds, by the `.at("<task> <package path>:<line>")` mark on each fallible call
+  const reached = new Set([...rs.matchAll(/\.at\("[^ "]+ (@[^ ":]+\/[^ ":]+\/[^":]+):\d+/g)].map(m => m[1]!))
+  const compiler = [...reached].filter(f => f.startsWith('@term/make/'))
+  ok('rust: the program holds the dispatcher (work/hook/deciding.tree)', reached.has('@term/call/code/work/hook/deciding.tree'), [...reached].join(', '))
+  ok('rust: the program reaches no @term/make source', compiler.length === 0 && !rs.includes('@term/make/'), compiler.join(', '))
+  const unsupported = rs.match(/SEED_UNSUPPORTED_BIND_\w+/g) ?? []
+  ok('rust: no bind without a rust case', unsupported.length === 0, [...new Set(unsupported)].join(', '))
+  const foreign = rs.split('\n').filter(l => /^\s*use /.test(l) && !/^\s*use (std|serde_json)::/.test(l))
+  ok('rust: every use names std or serde_json', foreign.length === 0, foreign.join('\n'))
 }
 
 let rustBin: string | undefined
@@ -144,6 +156,41 @@ if (boot.status === 0) {
     ok(`rust: ${shown} exit equals node's`, r.code === n.code, `node ${n.code}, rust ${r.code}`)
     ok(`rust: ${shown} stdout equals node's`, r.out === n.out, `node:\n${n.out}\nrust:\n${r.out}`)
     ok(`rust: ${shown} stderr equals node's`, r.err === n.err, `node:\n${n.err}\nrust:\n${r.err}`)
+  }
+}
+
+// NOTHING RUNS BEFORE THE MATCHED TASK but collecting argv, reading TERM_LINE_NAME and deciding (decision 149, item
+// 1273, 07-the-binary "Startup"): what a refusal draws from (the terminal width by `stty size`, the zone offset by
+// `date +%z`, the home and working folders, the clock) is read only when a refusal is drawn. stty and date are put
+// first on PATH as shims that log each call, then run the real tool. A call route and the version spawn neither (2
+// each before this item); help and a refusal may read what their own output needs, and are only counted
+const realTool = (name: string): string | undefined =>
+  (process.env.PATH ?? '').split(':').map(dir => join(dir, name)).find(f => existsSync(f) && statSync(f).isFile())
+if (rustBin) {
+  const shims = join(out, 'spawn-bin')
+  mkdirSync(shims)
+  const tools = ['stty', 'date'].map(name => [name, realTool(name)] as const)
+  for (const [name, real] of tools)
+    if (real) writeFileSync(join(shims, name), `#!/bin/sh\necho "${name} $*" >> "$SPAWN_LOG"\nexec ${real} "$@"\n`, { mode: 0o755 })
+  ok('spawn: stty and date are found to shim', tools.every(([, real]) => real !== undefined), tools.map(([n, r]) => `${n}=${r}`).join(' '))
+  const spawned = (words: string[]): { code: number | null; calls: string[] } => {
+    const log = join(out, `spawn-${words.join('_').replace(/[^a-z0-9_]/gi, '-') || 'bare'}.log`)
+    writeFileSync(log, '')
+    const ran = spawnSync(rustBin!, words, { cwd, encoding: 'utf8', env: { ...env, SPAWN_LOG: log, PATH: `${shims}:${env.PATH ?? ''}` }, timeout: 60000 })
+    return { code: ran.status, calls: readFileSync(log, 'utf8').split('\n').filter(Boolean) }
+  }
+  for (const words of [['greet', 'bob'], ['greet', 'bob', '--times', '3'], ['greet', '--name', 'al', '--times', '7'], ['count', 'a', 'b', 'c'], ['count']]) {
+    const s = spawned(words)
+    ok(`spawn: rust ${words.join(' ')} spawns nothing before its task`, s.calls.length === 0, `exit ${s.code}, spawned ${s.calls.length}: ${s.calls.join(', ')}`)
+  }
+  // --version answers the mark only once the lowered console is built with one (item 1173): before that it is a
+  // refusal like any unknown flag, which may draw
+  const version = spawned(['--version'])
+  if (version.code === 0) ok('spawn: rust --version spawns nothing', version.calls.length === 0, `spawned ${version.calls.length}: ${version.calls.join(', ')}`)
+  else console.log(`skip  spawn: rust --version (exit ${version.code}: no mark on this console, item 1173)`)
+  for (const words of [['--help'], ['frobnicate'], ['greet']]) {
+    const s = spawned(words)
+    console.log(`note  spawn: rust ${words.join(' ')} exit ${s.code}, spawned ${s.calls.length}${s.calls.length ? `: ${s.calls.join(', ')}` : ''}`)
   }
 }
 

@@ -55,7 +55,7 @@ import {
 } from '@term/make/code/compile/cache'
 import { hashKey } from '@term/make/code/term/hash'
 import * as plan from '@term/call/code/cache-plan'
-import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
+import { cacheScope } from '@term/make/code/compile/cache-scope'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import type { ParseMemo } from '@term/make/code/compile/load'
 
@@ -579,7 +579,7 @@ function compilerSourceHash(kind?: string): string {
   //
   // The file list per kind is GENERATED from the import graph by task/term/cache-scope.ts and held by
   // `pnpm term:cache-scope`, so it cannot drift into a wrong second answer. mill is 14 files, output 61.
-  const scoped = kind ? CACHE_SCOPE[kind] : undefined
+  const scoped = kind ? cacheScope().get(kind) : undefined
 
   if (scoped) {
     for (const file of scoped) {
@@ -717,7 +717,7 @@ export function compilerVersions(): Record<string, string> {
 
   sourceLines = new Map()
 
-  for (const kind of Object.keys(CACHE_SCOPE)) {
+  for (const kind of cacheScope().keys()) {
     out[kind] = compilerVersion(kind)
   }
 

@@ -1,0 +1,162 @@
+note <the hunt command written as a hook, compiled, lowered to a route and dispatched>
+
+# Ported from demo-hook-cli.ts by statement (item term-self-host-001-0584, decision 116). The hook parser
+# (deck/call/code/work/hook/parsing.tree: `command-routes`, `dispatch`, `render-help`) is the subject (decision 106).
+# The fixture, deck/test/code/fixture/hunt-cli.tree, is compiled with a resolver that finds nothing, as the original
+# compiled it, its route pulled out of the program, and the dispatcher run over sample argv: help text carries
+# through, defaults fill in, types coerce, and `--no-` negates. One test per `ok`, in its order. The original stopped
+# at the first two failures; here each test stands alone. It also printed the help, which asserted nothing.
+
+dock load
+  load <@term/call/code/work/hook/parsing>, name hook-parsing
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find file-text
+
+load ../support/walking
+  find field-of
+
+load @term/base/text
+  find contains, name text-contains
+
+host fixture-file, <deck/test/code/fixture/hunt-cli.tree>
+
+task compiled
+  like dynamic
+
+  back compile-text(file-text(fixture-file), make(compile-choice, bind(file, fixture-file), bind(closed, true)))
+
+host out, compiled()
+
+task routes
+  like list, like dynamic
+
+  back hook-parsing/command-routes(out/program)
+
+# host value: whether a host value is there at all
+bind given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined && $value !== null && $value !== false)>
+
+# the route of the hunt command, void when the program lowered none
+task hunt-route
+  like dynamic
+
+  walk routes()
+    take route, like dynamic
+    fork test, is-equal(text-of(field-of(route, <path>)), <hunt>)
+      hold
+        back route
+  back void
+
+# host value: a host value as text, the empty text for none
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <($value === undefined || $value === null ? "" : String($value))>
+
+# the take of the hunt route with this name
+task take-named
+  take name, like text
+  like dynamic
+
+  walk field-of(hunt-route(), <takes>)
+    take one, like dynamic
+    fork test, is-equal(text-of(field-of(one, <name>)), name)
+      hold
+        back one
+  back void
+
+# host value: a host value as JSON, so a number, a boolean and a text stay apart as the original's `===` kept them
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <String(JSON.stringify($value))>
+
+task arg
+  take answer, like dynamic
+  take name, like text
+  like text
+
+  back json-of(field-of(field-of(answer, <args>), name))
+
+task dispatched
+  take argv, like list, like text
+  like dynamic
+
+  back hook-parsing/dispatch(routes(), argv)
+
+test <the .tree hook command compiles>
+  want hold, out/ok
+
+test <the hunt route lowered from the DSL>
+  want hold, given(hunt-route())
+
+# the extended DSL fields carried through the mill
+test <command help (note) lowered>
+  want hold, is-equal(text-of(field-of(hunt-route(), <note>)), <Automated bug-hunt over .tree files>)
+
+test <bound task lowered>
+  host first, field-of(field-of(hunt-route(), <calls>), <0>)
+  host name, text-of(field-of(first, <name>))
+  want hold, or(is-equal(name, <call-hunt>), is-equal(name, <callHunt>))
+
+test <take help (note) lowered>
+  want hold, is-equal(text-of(field-of(take-named(<runs>), <note>)), <Fuzz inputs per seed>)
+
+# the default is the typed literal the mill lowered, its form and its value
+test <take default (bind) lowered>
+  host fallback, field-of(take-named(<runs>), <fallback>)
+  want hold, is-equal(text-of(field-of(fallback, <form>)), <number>)
+  want hold, is-equal(json-of(field-of(fallback, <value>)), <3000>)
+
+test <take type lowered>
+  want hold, is-equal(text-of(field-of(field-of(take-named(<runs>), <type>), <kind>)), <number>)
+
+# dispatch: defaults fill in, types coerce, --no- negates
+test <dispatch resolves the command and the bound task>
+  host d1, dispatched(make list(<hunt>, <deck/base/code>))
+  want hold, given(field-of(d1, <ok>))
+  want hold, is-equal(text-of(field-of(field-of(d1, <command>), <0>)), <hunt>)
+  want hold, given(field-of(d1, <task>))
+
+test <positional binds to glob>
+  host d1, dispatched(make list(<hunt>, <deck/base/code>))
+  want hold, given(field-of(d1, <ok>))
+  want hold, is-equal(arg(d1, <glob>), <"deck/base/code">)
+
+test <defaults fill missing flags>
+  host d1, dispatched(make list(<hunt>, <deck/base/code>))
+  want hold, given(field-of(d1, <ok>))
+  want hold, is-equal(arg(d1, <runs>), <3000>)
+  want hold, is-equal(arg(d1, <seeds>), <4>)
+  want hold, is-equal(arg(d1, <fuzz-timeout>), <90>)
+
+test <explicit number flag coerces and overrides default>
+  host d2, dispatched(make list(<hunt>, <--runs>, <500>, <--seeds>, <2>))
+  want hold, given(field-of(d2, <ok>))
+  want hold, is-equal(arg(d2, <runs>), <500>)
+  want hold, is-equal(arg(d2, <seeds>), <2>)
+
+test <boolean flag sets true>
+  host d3, dispatched(make list(<hunt>, <--json>))
+  want hold, given(field-of(d3, <ok>))
+  want hold, is-equal(arg(d3, <json>), <true>)
+
+test <--no- negates a boolean>
+  host d4, dispatched(make list(<hunt>, <--no-json>))
+  want hold, given(field-of(d4, <ok>))
+  want hold, is-equal(arg(d4, <json>), <false>)
+
+# help renders from the route
+test <render-help includes the command note and option help>
+  host help, hook-parsing/render-help(hunt-route())
+  want hold, text-contains(help, <Automated bug-hunt>)
+  want hold, text-contains(help, <Fuzz inputs per seed>)
+  want hold, text-contains(help, <default 3000>)

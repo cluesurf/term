@@ -1,0 +1,82 @@
+note <the compiler benchmark holds its performance invariants: tokenize near-linear, parse sub-quadratic>
+
+# Ported from demo-bench.ts by statement (item term-self-host-001-0584, decision 116). The original drove
+# deck/test/code/seed-bench.ts and bench.ts, which are Term now: compiler-bench.tree (`run-compiler-bench`) and
+# bench-timing.tree (`scaling`), the subject (decision 106). `run-compiler-bench` reads the original's ask object as
+# the host value it is, so the ask is one record made in a bind. The resolver is the original's,
+# projectResolver(ROOT, 'node', ROOT), taken from test/support/compiling as a compile choice gives it. The checks are
+# the original's three invariants, each failing on a number, one test each in its order. The original also printed
+# the table and the insights, which asserted nothing.
+
+load @term/test/compiler-bench
+  find bench-suite
+  find run-compiler-bench
+
+load @term/test/bench-timing
+  find scaling
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/list
+  find list
+
+# host value: the resolver of the driver's options for a choice
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+# host value: the ask run-compiler-bench reads, the original's object
+bind bench-ask-of
+  take root, like text
+  take resolve, like dynamic
+  like dynamic
+  case node
+    text <(\{ root: $root, resolve: $resolve, iterations: 20 \})>
+
+# host value: a result's name, and a fit's exponent
+bind result-name
+  take result, like dynamic
+  like text
+  case node
+    text <String($result.name)>
+
+bind exponent-of
+  take fit, like dynamic
+  like float
+  case node
+    text <Number($fit.exponent)>
+
+host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>))))
+host suite, run-compiler-bench(bench-ask-of(<.>, resolve))
+
+# the results whose name holds `part`, and starts with `head` (the empty text for any)
+task results-named
+  take part, like text
+  take head, like text
+  like list, like dynamic
+
+  host out, make list
+  walk suite/results
+    take one, like dynamic
+    host name, result-name(one)
+    fork test, and(text-contains(name, part), starts-with(name, head))
+      hold
+        out/push(one)
+  back out
+
+test <tokenize stays near-linear in line length (the cursor fix holds)>
+  want hold, is-below(exponent-of(scaling(results-named(<-char line>, <>))), 1.4)
+
+test <tokenize stays near-linear in file length>
+  want hold, is-below(exponent-of(scaling(results-named(<defs>, <tokenize>))), 1.4)
+
+test <parse stays sub-quadratic in file length>
+  want hold, is-below(exponent-of(scaling(results-named(<defs>, <parse>))), 1.7)

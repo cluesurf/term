@@ -1,0 +1,125 @@
+note <the obligation cache: a cold run checks, a warm run skips, and any change checks again>
+
+# Ported from demo-hold-cache.ts by statement (item term-self-host-001-0584, decision 116). The original drove
+# deck/test/code/hold-incremental.ts and obligation-cache.ts, which are Term now: incremental-hold.tree
+# (`hold-incremental`), obligation-key.tree (`obligation-key`) and obligation-store.tree (the memory and disk stores),
+# the subject (decision 106). `hold-incremental` reads the original's ask object as the host value it is, so the ask
+# is one record made in a bind. The resolver is the original's, projectResolver(ROOT, 'node', ROOT), taken from
+# test/support/compiling as a compile choice gives it. The project is a temporary folder (test/support/temp), removed
+# at exit. One test per `ok`, in its order. The tests after the key's share one file and one memory store, stepped in
+# the original's order, so they run in order as the original's statements did.
+
+load @term/test/incremental-hold
+  find incremental-result
+  find hold-incremental
+
+load @term/test/obligation-key
+  find obligation-key
+
+load @term/test/obligation-store
+  find obligation-cache
+  find memory-obligation-cache
+  find disk-obligation-cache
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+
+load ../support/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:path>, name cache-path
+
+# host value: the resolver of the driver's options for a choice
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+# host value: the ask hold-incremental reads, the original's object
+bind hold-ask
+  take files, like list, like text
+  take resolve, like dynamic
+  take cache, like dynamic
+  take version, like text
+  like dynamic
+  case node
+    text <(\{ files: $files, resolve: $resolve, cache: $cache, version: $version, cross: false \})>
+
+host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>))))
+host version, <test-1>
+
+# ---- key behavior: same inputs, same key; any change, a new key ----
+
+host k1, obligation-key(<a>, make(list, <x>, <y>), version)
+host k2, obligation-key(<a>, make(list, <y>, <x>), version)
+host k3, obligation-key(<a>, make(list, <x>, <z>), version)
+host k4, obligation-key(<a>, make(list, <x>, <y>), <test-2>)
+
+test <key is stable and order-independent>
+  want hold, is-equal(k1, k2)
+
+test <key changes when a dependency changes>
+  want hold, is-unequal(k1, k3)
+
+test <key changes when the toolchain version changes>
+  want hold, is-unequal(k1, k4)
+
+# ---- incremental over a real file in a temporary project ----
+
+host dir, temp-folder(<term-hold->)
+host file, cache-path/join(dir, <sample.tree>)
+host cache, memory-obligation-cache()
+
+task held
+  take store, like dynamic
+  take at-version, like text
+  like incremental-result
+
+  back hold-incremental(hold-ask(make(list, file), resolve, store, at-version))
+
+test <cold run checks the file>
+  write-file(file, <task answer\n  like number\n  send back\n    code 42\n>)
+  host cold, held(cache, version)
+  want hold, is-equal(cold/checked, 1)
+  want hold, is-equal(cold/cached, 0)
+  want hold, cold/ok
+
+test <warm run hits the cache>
+  host warm, held(cache, version)
+  want hold, is-equal(warm/checked, 0)
+  want hold, is-equal(warm/cached, 1)
+  want hold, warm/ok
+
+# change the file: the content hash differs, so it is checked again
+test <editing the file invalidates the cache>
+  write-file(file, <task answer\n  like number\n  send back\n    mark 43\n>)
+  host changed, held(cache, version)
+  want hold, is-equal(changed/checked, 1)
+  want hold, is-equal(changed/cached, 0)
+
+# bump the version: checked again with the same content
+test <a version bump invalidates the cache>
+  host bumped, held(cache, <test-2>)
+  want hold, is-equal(bumped/checked, 1)
+  want hold, is-equal(bumped/cached, 0)
+
+# ---- disk persistence: a fresh store reads the verdicts an earlier one saved ----
+
+test <disk cache persists across process boundaries>
+  host disk-dir, cache-path/join(dir, <.base/@term/code>, <hold>)
+  host first, disk-obligation-cache(disk-dir)
+  host saved, held(first, version)
+  # reopened: it loads the saved entry
+  host second, disk-obligation-cache(disk-dir)
+  host persisted, held(second, version)
+  want hold, is-equal(persisted/cached, 1)
+  want hold, is-equal(persisted/checked, 0)

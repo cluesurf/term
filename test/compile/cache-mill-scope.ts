@@ -1,7 +1,7 @@
 // A MILL CHANGE REBUILDS THE OUTPUT (item term-self-host-001-0343). The output kind's version must move whenever the
 // mill kind's does, or an output entry built by the old mill is served. compile.ts reaches the mill only through
 // ports: unit-mill.tree docks compile/mill.ts, and minting.tree docks the baked code-role grammar
-// (compile/mill-grammar.generated.ts), so the scope walk must follow an emitted port's dock imports.
+// (compile/mill-grammar.tree's port), so the scope walk must follow an emitted port's dock imports.
 //
 // For each mill file below, the test touches it (its mtime only, restored after; the version is a stat of each scoped
 // file), asks a fresh process for every kind's version, and checks that mill and output both moved. Then it builds a
@@ -20,7 +20,9 @@ import {
   compilerVersions,
   sharedCacheStore,
 } from '@term/call/code/cache-store'
-import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
+import { cacheScope } from '@term/make/code/compile/cache-scope'
+
+const CACHE_SCOPE: Record<string, string[]> = Object.fromEntries(cacheScope())
 
 if (process.argv.includes('--versions')) {
   process.stdout.write(JSON.stringify(compilerVersions()))
@@ -44,7 +46,8 @@ const TERM = process.cwd()
 
 // mill files a compile reaches only through a port's dock: the grammar text, the mill face, the mill engine's port
 const MILL_FILES = [
-  'deck/make/code/compile/mill-grammar.generated.ts',
+  'deck/make/code/compile/mill-grammar.tree',
+  'deck/make/host/port/code/compile/mill-grammar.ts',
   'deck/make/code/compile/mill.ts',
   'deck/make/code/compile/mill-run.ts',
   'deck/make/host/port/code/compile/mill-running.ts',

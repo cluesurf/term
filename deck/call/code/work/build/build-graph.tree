@@ -98,6 +98,10 @@ load ../cache/compile-store
 load ../small/home-folder
   find project-home
 
+# the variables that say only how a process was started, one module with port-build's fingerprint (items 0476, 0721)
+load @term/call/code/launch-only
+  find is-launch-only
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -105,8 +109,6 @@ dock load
   load <@term/make/code/compile/separate>, name separate-module
   # the store as a document request sees it: no mill or scan write of a file the overlay holds (decision 098 rule 6)
   load <@term/make/code/compile/cache>, name cache-module
-  # the variables that say only how a process was started, one list with port-build's fingerprint (item 0476)
-  load <@term/call/code/launch-only>, name launch-only-module
   # node's global scope, for `Object.assign` (a `<global:globalThis>` dock is emitted renamed, traps.md)
   load <global:global>, name host-global
 
@@ -841,7 +843,7 @@ bind running-script
     text <String(process.argv[1] ?? "")>
 
 # the settings every build reads: `TERM_*` and `SEED_*`, but the verify switch, which changes what is checked and
-# never what is built, and the variables that say only how the process was started (call/code/launch-only.ts, the one
+# never what is built, and the variables that say only how the process was started (call/code/launch-only.tree, the one
 # list port-build's fingerprint leaves out too): the line lock's (decision 038 section 4a), `TERM_DEPTH`, which term
 # make sets when its run opens while its snapshot is read before that (decision 084), and the terminal emulator's own
 # (`TERM_SESSION_ID` differs in every pane, so a snapshot written in one was refused in every other, item 0476)
@@ -855,18 +857,10 @@ task env-text
     take name
     fork test, or(starts-with(name, <TERM_>), starts-with(name, <SEED_>))
       hold
-        fork test, and(not(launch-only(name)), is-unequal(name, <TERM_CACHE_VERIFY>))
+        fork test, and(not(is-launch-only(name)), is-unequal(name, <TERM_CACHE_VERIFY>))
           hold
             lines/push(<{name}={env/{name}}>)
   back join(lines, <\n>)
-
-# whether a variable says only how the process was started (call/code/launch-only.ts)
-task launch-only
-  take name, like text
-  like boolean
-  mark private
-
-  back launch-only-module/isLaunchOnly(name)
 
 task seen-now
   take file, like text

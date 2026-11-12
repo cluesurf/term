@@ -23,7 +23,7 @@ import {
   compilerVersions,
   sharedCacheStore,
 } from '@term/call/code/cache-store'
-import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
+import { cacheScope } from '@term/make/code/compile/cache-scope'
 
 let ran = 0
 let failed = 0
@@ -133,8 +133,8 @@ function main(): void {
   // Every file the mill level can reach must also be in the output level's set. If one were not, a change to it
   // would move the mill fingerprint and leave output's alone, and the output cache would serve an entry built by
   // a compiler that no longer exists. That is a stale hit, which is the one failure mode worse than a slow build.
-  const millFiles = CACHE_SCOPE['mill'] ?? []
-  const outputFiles = new Set(CACHE_SCOPE['output'] ?? [])
+  const millFiles = cacheScope().get('mill') ?? []
+  const outputFiles = new Set(cacheScope().get('output') ?? [])
   const escaped = millFiles.filter(file => !outputFiles.has(file))
 
   check(

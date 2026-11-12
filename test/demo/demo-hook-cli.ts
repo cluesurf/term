@@ -3,7 +3,7 @@
  *   npx tsx test/demo/demo-hook-cli.ts
  *
  * Compiles fixture/hunt-cli.tree (a `hook` command using the extended
- * DSL: note / bind / typed takes), pulls the lowered DockRoute out of the
+ * DSL: note / bind / typed takes / a slot), pulls the lowered DockRoute out of the
  * compiled program, and runs the real `dispatch` over sample argv -
  * proving the .tree -> route -> dispatch path: help text carries through,
  * defaults fill in, types coerce, and `--no-` negates. This is the CLI
@@ -78,7 +78,14 @@ ok(
 )
 const runs = hunt.takes.find(t => t.name === 'runs')
 ok('take help (note) lowered', runs?.note === 'Fuzz inputs per seed')
-ok('take default (bind) lowered', runs?.fallback === 3000)
+// the default is the typed literal the mill lowered, not the bare number
+const fallback = runs?.fallback as unknown as
+  | { form?: string; value?: unknown }
+  | undefined
+ok(
+  'take default (bind) lowered',
+  fallback?.form === 'number' && fallback?.value === 3000,
+)
 ok('take type lowered', runs?.type?.kind === 'number')
 
 // dispatch: defaults fill in, types coerce, --no- negates

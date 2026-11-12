@@ -1,9 +1,6 @@
 
-load @term/base/native/{platform}/shape
-  find shape
-
 load @term/base/native/{platform}/compare
-  find compare-runtime
+  find deep-equal, name compare-deep-equal
 
 load @term/base/list
   find get
@@ -21,7 +18,7 @@ task deep-equal
   like boolean
 
   send back
-    call compare-runtime/deep-equal
+    call compare-deep-equal
       read a
       read b
 
@@ -110,7 +107,7 @@ task contains-list
           read i
       fork test
         hook test
-          call compare-runtime/deep-equal
+          call compare-deep-equal
             read item
             read value
         hook hold

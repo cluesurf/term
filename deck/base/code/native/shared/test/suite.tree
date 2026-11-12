@@ -1,6 +1,6 @@
 
 load @term/base/native/{platform}/shape
-  find shape
+  find is-null, name shape-is-null
 
 load @term/base/test/suite
   find report
@@ -174,7 +174,7 @@ task suite-run
 
       fork test
         hook test
-          call shape/is-null
+          call shape-is-null
             bind value, read filter
         hook miss
           save matches

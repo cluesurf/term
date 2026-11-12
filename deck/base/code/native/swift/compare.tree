@@ -1,4 +1,73 @@
-# swift structural comparison, through the compare runtime shim (runtime/compare.swift). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call it as `compare-runtime`.
+# swift structural comparison, through the compare runtime shim (runtime/compare.swift). Internal: the test modules reach it through `@term/base/native/{platform}/compare` and call its tasks by name.
 
 dock load
   load <global:compare>, name compare-runtime
+
+# Each task below is one call to the shim it keeps, so a caller finds the task by name and never the dock alias
+# (decision 146 point 1). A later item swaps a body for Term and keeps the name and parameters.
+
+# a and b equal structurally: scalars by value, lists element by element
+task deep-equal
+  take a, like unknown
+  take b, like unknown
+  like boolean
+  send back
+    call compare-runtime/deep-equal
+      read a
+      read b
+
+# whether a value counts as true
+task is-truthy
+  take value, like unknown
+  like boolean
+  send back
+    call compare-runtime/is-truthy
+      read value
+
+# the value when it is text, else empty text
+task as-text
+  take value, like unknown
+  like text
+  send back
+    call compare-runtime/as-text
+      read value
+
+# whether the list holds an item deep-equal to the value
+task contains
+  take list, like unknown
+  take value, like unknown
+  like boolean
+  send back
+    call compare-runtime/contains
+      read list
+      read value
+
+# whether a is a number above b
+task above
+  take a, like unknown
+  take b, like unknown
+  like boolean
+  send back
+    call compare-runtime/above
+      read a
+      read b
+
+# whether a is a number below b
+task below
+  take a, like unknown
+  take b, like unknown
+  like boolean
+  send back
+    call compare-runtime/below
+      read a
+      read b
+
+# the distance between two numbers
+task gap
+  take a, like unknown
+  take b, like unknown
+  like float
+  send back
+    call compare-runtime/gap
+      read a
+      read b

@@ -1,0 +1,297 @@
+# The bundle task (work/bundle/bundling.tree, item term-self-host-001-1047, decisions 130 and 152): the pinned binary
+# fetched into a store of the suite's own and its digest checked, a tarball with another digest refused, a build and a
+# transform of a fixture, and a syntax error read back as a note at its source's line. The store and every fixture live
+# in the suite's temporary folders, so no real home is read or written. The fetch reads registry.npmjs.org.
+#
+# With TERM_BUNDLE_OUT set, two more cases write what the task built for the callers whose options carry no plugin
+# (stage0's pin, the Worker cast, the node native build, the REPL and dev server transform) into that folder, for
+# tmp/self-host/1047/compare.mjs to put beside the JS API's bytes. TERM_BUNDLE_ROOT names the Term root stage0 bundles.
+
+load @term/call/work/bundle/bundling
+  find bundle-options
+  find transform-options
+  find build-bundle
+  find transform-code
+  find ready-bundler
+  find fetch-bundler
+  find fetch-ask
+  find bundle-pair
+  find platform-key
+  find binary-name
+
+load @term/call/work/bundle/bundling/pin
+  find pinned-version
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find trim
+  find contains
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/environment
+  find variable, name variable-of
+  find has-variable
+
+load @term/base/file
+  find write, name write-text
+  find read-bytes
+
+load @term/base/file/blocking
+  find exists, name path-exists
+
+load @term/base/file/directory
+  find make, name make-directory
+
+load @term/base/process/run
+  find run, name run-process
+
+load @term/base/cryptography/digest
+  find sha256
+
+load @term/base/bytes
+  find to-hex
+
+load ../support/temp
+  find temp-folder
+
+# the store every case fetches into, made once for the process
+form bundling-suite
+  mark shared
+  link store, like text
+
+host bundling-now, make(bundling-suite, bind(store, <>))
+
+task suite-store
+  like text
+
+  fork test, is-equal(bundling-now/store, <>)
+    hold
+      save bundling-now/store, temp-folder(<term-bundling->)
+  back bundling-now/store
+
+# a variable's value, the empty text when it is not set
+task setting
+  take name, like text
+  like text
+
+  fork test, has-variable(name)
+    hold
+      back variable-of(name)
+  back <>
+
+# ---- the callers, for compare.mjs ----
+
+# stage0's entry, every specifier written from the Term root (decision 152 section 3), as task/stage0.ts STAGE0_SOURCES
+task stage0-entry
+  like text
+
+  save lines, make list
+  lines/push(<export \{ compile \} from '@term/make/code/compile/compile'>)
+  lines/push(<export \{ collectModules, makeParseMemo \} from '@term/make/code/compile/load'>)
+  lines/push(<export \{ nativePrelude \} from '@term/make/code/compile/native'>)
+  lines/push(<export \{ projectResolver \} from './task/stage0-resolver'>)
+  lines/push(<export \{ projectLeanOf \} from '@term/call/code/role-of'>)
+  lines/push(<export \{ toCamel \} from '@term/make/code/compile/typescript'>)
+  back join(lines, <\n>)
+
+# stage0's bundle of `root` into `out`/stage0.mjs, its inputs into `out`/stage0-inputs.txt. True when nothing is asked
+task stage0-written
+  like boolean
+
+  save out, setting(<TERM_BUNDLE_OUT>)
+  save root, setting(<TERM_BUNDLE_ROOT>)
+  fork test, or(is-equal(out, <>), is-equal(root, <>))
+    hold
+      back true
+  make-directory(out)
+  save asked, bundle-options(make list)
+  save asked/entry-text, stage0-entry()
+  save asked/entry-name, <task/stage0-entry.ts>
+  save asked/loader, <ts>
+  save asked/directory, root
+  save asked/bundle, true
+  save asked/platform, <node>
+  save asked/format, <esm>
+  save asked/target, <node22>
+  save asked/tsconfig, join-path(root, <tsconfig.json>)
+  save asked/banner, <import \{ createRequire as __stage0Require \} from 'node:module'\nconst require = __stage0Require(import.meta.url)>
+  save externals, make list
+  externals/push(<fsevents>)
+  save asked/externals, externals
+  save asked/metafile, true
+  save asked/outfile, join-path(out, <stage0.mjs>)
+  save asked/store, suite-store()
+  save built, build-bundle(asked)
+  fork test, not(built/ok)
+    hold
+      back false
+  write-text(join-path(out, <stage0-inputs.txt>), join(built/inputs, <\n>))
+  back true
+
+# the Worker cast (work/bundle/worker-casting.tree `cast-worker-build`), the node native build
+# (work/native/building.tree) and the transform the REPL and the dev server ask, each on a fixture written into `out`.
+# True when nothing is asked
+task callers-written
+  like boolean
+
+  save out, setting(<TERM_BUNDLE_OUT>)
+  fork test, is-equal(out, <>)
+    hold
+      back true
+
+  save worker, join-path(out, <worker>)
+  make-directory(worker)
+  write-text(join-path(worker, <greet.ts>), <export const greet = (who: string): string =\> 'hello ' + who\n>)
+  write-text(join-path(worker, <app.ts>), <import \{ greet \} from './greet'\n\nexport default \{ fetch: (): string =\> greet(process.env.NODE_ENV ?? 'none') \}\n>)
+  save cast, bundle-options(make list(join-path(worker, <app.ts>)))
+  save cast/outfile, join-path(worker, <term.mjs>)
+  save cast/bundle, true
+  save cast/format, <esm>
+  save cast/platform, <node>
+  save cast/target, <es2022>
+  save defines, make list
+  defines/push(make(bundle-pair, bind(name, <process.env.NODE_ENV>), bind(value, <"production">)))
+  save cast/defines, defines
+  save cast/minify, true
+  save cast/store, suite-store()
+  save cast-built, build-bundle(cast)
+
+  save native, join-path(out, <native>)
+  make-directory(native)
+  write-text(join-path(native, <twice.ts>), <export const twice = (n: number): number =\> n * 2\n>)
+  write-text(join-path(native, <main.ts>), <import \{ join \} from 'node:path'\nimport \{ twice \} from './twice'\n\ntype Pair = \{ a: number \}\nconst pair: Pair = \{ a: twice(21) \}\nconsole.log(join('a', String(pair.a)))\n>)
+  save build, bundle-options(make list(join-path(native, <main.ts>)))
+  save build/directory, native
+  save build/outfile, join-path(native, <term.mjs>)
+  save build/bundle, true
+  save build/platform, <node>
+  save build/format, <esm>
+  save build/store, suite-store()
+  save native-built, build-bundle(build)
+
+  save code, <interface Shape \{ side: number \}\nexport const area = (shape: Shape): number =\> shape.side * shape.side\nexport enum Tone \{ Low, High \}\n>
+  write-text(join-path(out, <transform.ts>), code)
+  save asked, transform-options(code, <ts>)
+  save asked/format, <esm>
+  save asked/store, suite-store()
+  save shaped, transform-code(asked)
+  write-text(join-path(out, <transform-term.js>), shaped/code)
+  back and(cast-built/ok, and(native-built/ok, shaped/ok))
+
+# ---- the cases ----
+
+test <the pinned bundler for this machine is fetched into a store, checked, kept, and answers the pinned version>
+  host store, suite-store()
+  host ready, ready-bundler(store)
+  host again, ready-bundler(store)
+  host done, run-process(ready/path, make(list, <--version>), <>)
+  want hold, ready/ok
+  want hold, is-equal(trim(done/output), pinned-version())
+  want hold, again/ok
+  want hold, is-equal(again/path, ready/path)
+
+test <a tarball whose sha256 is not the pin's is refused and nothing is kept, and the same tarball with its own sha256 is unpacked and runs>
+  host work, temp-folder(<term-bundling-fake->)
+  host key, platform-key()
+  make-directory(join-path(work, <package/bin>))
+  write-text(join-path(work, <package/bin/esbuild>), <#!/bin/sh\necho 9.9.9\n>)
+  run-process(<chmod>, make(list, <755>, join-path(work, <package/bin/esbuild>)), <>)
+  host fake, join-path(work, <fake.tgz>)
+  run-process(<tar>, make(list, <-czf>, fake, <-C>, work, <package>), <>)
+  host store, join-path(work, <store>)
+  host wrong, make(fetch-ask, bind(key, key), bind(digest, <0000000000000000000000000000000000000000000000000000000000000000>), bind(source, <file://{fake}>), bind(store, store))
+  host refused, fetch-bundler(wrong)
+  host kept, path-exists(join-path(store, binary-name(key)))
+  host digest, to-hex(sha256(read-bytes(fake)))
+  host right, make(fetch-ask, bind(key, key), bind(digest, digest), bind(source, <file://{fake}>), bind(store, store))
+  host taken, fetch-bundler(right)
+  host said, run-process(taken/path, make(list), <>)
+  want hold, not(refused/ok)
+  want hold, contains(refused/notes/0/text, <hashes to {digest}>)
+  want hold, not(contains(refused/notes/0/text, <esbuild>))
+  want hold, not(kept)
+  want hold, taken/ok
+  want hold, is-equal(trim(said/output), <9.9.9>)
+
+test <a fixture of two files bundles into one module, and the metafile names both inputs>
+  host work, temp-folder(<term-bundling-build->)
+  write-text(join-path(work, <part.ts>), <export const part: number = 41\n>)
+  write-text(join-path(work, <app.ts>), <import \{ part \} from './part'\n\nexport const value: number = part + 1\n>)
+  host asked, bundle-options(make list(<app.ts>))
+  save asked/directory, work
+  save asked/bundle, true
+  save asked/format, <esm>
+  save asked/platform, <node>
+  save asked/metafile, true
+  save asked/store, suite-store()
+  host built, build-bundle(asked)
+  host inputs, join(built/inputs, <,>)
+  want hold, built/ok
+  want hold, contains(built/output, <part = 41>)
+  want hold, contains(built/output, <export \{>)
+  want hold, is-equal(built/inputs/length, 2)
+  want hold, contains(inputs, <app.ts>)
+  want hold, contains(inputs, <part.ts>)
+
+test <a stdin entry resolves from the working directory and is named by its entry name>
+  host work, temp-folder(<term-bundling-stdin->)
+  write-text(join-path(work, <part.ts>), <export const part: number = 41\n>)
+  host asked, bundle-options(make list)
+  save asked/entry-text, <export \{ part \} from './part'\n>
+  save asked/entry-name, <stdin-entry.ts>
+  save asked/loader, <ts>
+  save asked/directory, work
+  save asked/bundle, true
+  save asked/format, <esm>
+  save asked/metafile, true
+  save asked/store, suite-store()
+  host built, build-bundle(asked)
+  host inputs, join(built/inputs, <,>)
+  want hold, built/ok
+  want hold, contains(built/output, <41>)
+  want hold, contains(inputs, <part.ts>)
+  want hold, contains(inputs, <stdin-entry.ts>)
+
+test <a transform strips the types>
+  host asked, transform-options(<const x: number = 1\n>, <ts>)
+  save asked/format, <esm>
+  save asked/store, suite-store()
+  host shaped, transform-code(asked)
+  want hold, shaped/ok
+  want hold, is-equal(shaped/code, <const x = 1;\n>)
+
+test <a syntax error in a transform is a note at its source's line, in the source's own name>
+  host asked, transform-options(<const a = 1\nconst b = 2\nlet = ;\n>, <ts>)
+  save asked/entry-name, <fixture.tree>
+  save asked/store, suite-store()
+  host shaped, transform-code(asked)
+  want hold, not(shaped/ok)
+  want hold, is-above(shaped/notes/length, 0)
+  want hold, is-equal(shaped/notes/0/kind, <error>)
+  want hold, is-equal(shaped/notes/0/file, <fixture.tree>)
+  want hold, is-equal(shaped/notes/0/line, 3)
+  want hold, is-above(shaped/notes/0/column, -1)
+  want hold, not(contains(shaped/notes/0/text, <esbuild>))
+
+test <a build whose entry does not parse is a note at the file's line>
+  host work, temp-folder(<term-bundling-broken->)
+  write-text(join-path(work, <broken.ts>), <export const a = 1\nexport const = 2\n>)
+  host asked, bundle-options(make list(<broken.ts>))
+  save asked/directory, work
+  save asked/bundle, true
+  save asked/store, suite-store()
+  host built, build-bundle(asked)
+  want hold, not(built/ok)
+  want hold, is-equal(built/notes/0/file, <broken.ts>)
+  want hold, is-equal(built/notes/0/line, 2)
+
+test <stage0's entry bundles through the task (TERM_BUNDLE_OUT and TERM_BUNDLE_ROOT, compared by compare.mjs)>
+  want hold, stage0-written()
+
+test <the Worker cast, the node native build and the transform bundle through the task (TERM_BUNDLE_OUT, compared by compare.mjs)>
+  want hold, callers-written()

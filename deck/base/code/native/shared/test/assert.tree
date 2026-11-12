@@ -1,9 +1,17 @@
 
 load @term/base/native/{platform}/shape
-  find shape
+  find is-text
+  find is-null
+  find type-of
 
 load @term/base/native/{platform}/compare
-  find compare-runtime
+  find is-truthy
+  find deep-equal, name compare-deep-equal
+  find as-text
+  find contains, name compare-contains
+  find above
+  find below
+  find gap
 
 load @term/base/float
   find absolute
@@ -49,7 +57,7 @@ task assert-shared
     hook hold
       fork test
         hook test
-          call compare-runtime/is-truthy
+          call is-truthy
             read value
         hook miss
           call fail
@@ -70,7 +78,7 @@ task assert-shared
     hook hold
       fork test
         hook test
-          call compare-runtime/deep-equal
+          call compare-deep-equal
             read value
             read expected
         hook miss
@@ -116,19 +124,19 @@ task assert-shared
       save has, false
       fork test
         hook test
-          call shape/is-text
+          call is-text
             bind value, read value
         hook hold
           save has
             call contains-text
-              call compare-runtime/as-text
+              call as-text
                 read value
               bind search
-                call compare-runtime/as-text
+                call as-text
                   read expected
         hook miss
           save has
-            call compare-runtime/contains
+            call compare-contains
               read value
               read expected
       fork test
@@ -152,7 +160,7 @@ task assert-shared
     hook hold
       fork test
         hook test
-          call compare-runtime/above
+          call above
             read value
             read expected
         hook miss
@@ -174,7 +182,7 @@ task assert-shared
     hook hold
       fork test
         hook test
-          call compare-runtime/below
+          call below
             read value
             read expected
         hook miss
@@ -195,13 +203,13 @@ task assert-shared
         bind b, text <near>
     hook hold
       save diff
-        call compare-runtime/gap
+        call gap
           read value
           read expected
       save tol, code 0.001
       fork test
         hook test
-          call shape/is-null
+          call is-null
             bind value, read tolerance
         hook miss
           save tol, read tolerance
@@ -228,14 +236,14 @@ task assert-shared
         bind b, text <type>
     hook hold
       host actual-type, like text
-        call shape/type-of
+        call type-of
           bind value, read value
       fork test
         hook test
           call is-equal
             bind a, read actual-type
             bind b
-              call compare-runtime/as-text
+              call as-text
                 read expected
         hook miss
           call fail

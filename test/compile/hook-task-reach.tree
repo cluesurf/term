@@ -1,0 +1,153 @@
+note <a task a console hook names is reached like a call: bound by the console's imports, kept by the shake, run by the dispatcher>
+
+# Ported from hook-task-reach.ts by statement (item term-self-host-001-1302), one test per `ok` in its order. A task a
+# console hook names (`hook build` / `task make`) is reached like a call: bound by what the console's file imported and
+# kept by the shake. The route carried the name as text and the import binding never saw it, so where the name is split
+# by file (two modules define `make`, renamed `make__in<g>_<k>`) the hook reached neither, both were left out of the
+# program, and the command found no task at run time, while the build was clean (term-compiler-0034). The console is
+# built whole, its TypeScript imported in this process (test/support/importing), and its command run through the
+# dispatcher a console runs with. The subjects (decision 106) are the dispatcher's ports, work/hook/parsing and running,
+# docked as test/call/hook.tree docks them. The original ran its later five only when the compile passed: here each
+# reads the same compile, so a refused compile fails all six rather than one.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find statements-of
+
+load ../support/importing
+  find import-text
+  find export-of
+  find has-task
+  find call-export
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+
+dock load
+  load <@term/call/host/port/code/work/hook/parsing>, name reach-parsing
+  load <@term/call/host/port/code/work/hook/running>, name reach-running
+
+# the dispatcher's input, as a TypeScript caller writes it
+form reach-run
+  link name, like text
+  link routes, like dynamic
+  link argv, like list, like text
+  link resolve, like dynamic
+  link out, like dynamic
+  link err, like dynamic
+
+# what a command run answered: its exit code and every line it printed
+form reach-ran
+  link code, like number
+  link shown, like list, like text
+
+# `make` the verb, and another module's `make` of another type, so the name is split by file
+host verb, <task make\n  take name, like text\n  like text\n  send back, text \<made \{name\}\>\n>
+host other, <task make\n  take n, like number\n  like number\n  send back, code 2\n\ntask other\n  like number\n  send back\n    call make\n      code 1\n>
+host console, <load @app/verb\n  find make\n\nload @app/other\n  find other\n\nhook build\n  take name\n    like text\n  task make\n\ntask run\n  like number\n  send back, call other\n>
+
+# the console is the one file of role `call`
+task reach-role
+  take file, like text
+  like text
+
+  fork test, is-equal(file, <console.tree>)
+    hold
+      back <call>
+  back <>
+
+host reach-choice, make(compile-choice, bind(file, <console.tree>), bind(role-of, reach-role), bind(files, make list(make(compiling-source, bind(file, <@app/verb>), bind(text, verb), bind(answer, <verb.tree>)), make(compiling-source, bind(file, <@app/other>), bind(text, other), bind(answer, <other.tree>)))))
+
+host built, compile-text(console, reach-choice)
+
+host routes, reach-parsing/command-routes(built/program)
+
+# the names of the tasks the routes call, in order
+task named-tasks
+  like list, like text
+
+  save named, make list
+  walk routes
+    take route, like dynamic
+    walk route/calls
+      take one, like dynamic
+      named/push(one/name)
+  back named
+
+# the one task the hook names, the empty text when it names none
+task hook-task
+  like text
+
+  save named, named-tasks()
+  fork test, is-equal(named/length, 0)
+    hold
+      back <>
+  back named/0
+
+# whether the program holds a function of this name
+task has-function
+  take name, like text
+  like boolean
+
+  walk statements-of(built)
+    take one
+    fork test, and(is-equal(one/form, <function>), is-equal(one/name, name))
+      hold
+        back true
+  back false
+
+host folder, temp-folder(<term-hook-reach->)
+
+# the console's emitted module, imported in this process
+task app
+  like dynamic
+  mark async
+
+  back import-text(built/emitted, folder, <app>)
+
+# the console's command line run by the dispatcher, each bound task resolved to the module's export by its emitted name
+task run-line
+  take argv, like list, like text
+  like reach-ran
+  mark async
+
+  save module, app()
+  save shown, make list
+  save resolver
+    task
+      take called, like text
+      like dynamic
+      back export-of(module, reach-running/to-camel(called))
+  save said
+    task
+      take line, like text
+      like void
+      shown/push(line)
+  host code, wait reach-running/run-command-line(make(reach-run, bind(name, <console>), bind(routes, routes), bind(argv, argv), bind(resolve, resolver), bind(out, said), bind(err, said)))
+  back make(reach-ran, bind(code, code), bind(shown, shown))
+
+test <a console whose hook names a split task compiles>
+  want hold, built/ok
+
+test <the hook names one task>
+  want hold, is-equal(named-tasks()/length, 1)
+
+test <the task the hook names is in the program>
+  want hold, has-function(hook-task())
+
+test <the emitted module exports it under the name the dispatcher asks for>
+  host module, app()
+  want hold, has-task(module, reach-running/to-camel(hook-task()))
+
+test <the command runs the imported task>
+  host ran, run-line(make list(<build>, <--name>, <x>))
+  want hold, is-equal(ran/code, 0)
+
+test <the other module's make is still its own>
+  host module, app()
+  want hold, is-equal(call-export(module, <run>), 2)

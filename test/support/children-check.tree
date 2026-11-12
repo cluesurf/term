@@ -1,0 +1,271 @@
+note <the long-lived child harness itself: a line server, a prompt, limits, stops, a pseudo-terminal, the end of the test process>
+
+# Tests of test/support/children.tree, beside it rather than in it: a loaded file's test blocks are not rewritten
+# (T-0878). Every child is a small `sh`, `cat`, `sleep` or `script`, or `term test` over ./children-leave, which leaves
+# a child running on purpose and ends its process three ways. A child is proven gone by `kill -0`.
+
+load ./children
+  find held-child
+  find start-child
+  find next-line
+  find wait-for-line
+  find write-child
+  find answer-on
+  find close-child
+  find wait-child
+  find stop-child
+  find stop-children
+  find shell-word
+  find shell-line
+  find pty-command
+
+load ./temp
+  find temp-folder
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/clock
+  find read-nanoseconds
+
+load @term/base/file
+  find read, name read-file
+  find exists, name file-exists
+
+load @term/base/text
+  find contains, name text-contains
+  find trim
+
+load @term/base/rune
+  find rune-to-text
+
+# a line server: says it is ready, answers each line it is sent, and ends on `quit`
+host line-server, <echo ready; while read line; do echo "heard $line"; if [ "$line" = quit ]; then exit 0; fi; done>
+
+# a prompt: asks, and greets the name it is given
+host prompt, <printf 'name? \\n'; read name; echo "hello $name">
+
+# a child that starts a grandchild, says its pid, and waits on it
+host parent, <sleep 30 & echo $!; wait>
+
+# a child that ignores TERM, and so does the sleep it runs
+host stubborn, <trap '' TERM; echo ready; while true; do sleep 0.1; done>
+
+# whether process `pid` is gone within 2 s, by `kill -0`
+task gone
+  take pid, like text
+  like boolean
+
+  save script, <for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do kill -0 {pid} 2\>/dev/null || exit 0; sleep 0.1; done; exit 1>
+  save r, run(<sh>, make list(<-c>, script))
+  back is-equal(r/code, 0)
+
+# milliseconds since `start`, a reading of read-nanoseconds
+task since
+  take start, like number
+  like number
+
+  back divide(subtract(read-nanoseconds(), start), 1000000)
+
+# `sh -c` over a script, as a child's argument list
+task sh-of
+  take script, like text
+  like list, like text
+
+  back make list(<sh>, <-c>, script)
+
+test <a child says it is ready, answers what it is sent, and every line read is kept in order>
+  host held, start-child(sh-of(line-server))
+  want hold, is-equal(wait-for-line(held, <ready>, 10000), <ready>)
+  write-child(held, <ping\n>)
+  want hold, is-equal(wait-for-line(held, <heard>, 10000), <heard ping>)
+  write-child(held, <quit\n>)
+  want hold, is-equal(next-line(held, 10000), <heard quit>)
+  host ended, wait-child(held)
+  want hold, is-equal(ended/code, 0)
+  want hold, is-equal(held/heard, make list(<ready>, <heard ping>, <heard quit>))
+  want hold, not(held/late)
+
+test <a wait reads past lines that do not hold the phrase, keeping them>
+  host held, start-child(sh-of(<echo one; echo two; echo three; sleep 30>))
+  want hold, is-equal(wait-for-line(held, <thr>, 10000), <three>)
+  want hold, is-equal(held/heard, make list(<one>, <two>, <three>))
+  stop-child(held)
+
+test <a prompt is answered once it comes, and the answer is read back>
+  host held, start-child(sh-of(prompt))
+  want hold, is-equal(answer-on(held, <name?>, <ada\n>, 10000), <name? >)
+  want hold, is-equal(wait-for-line(held, <hello>, 10000), <hello ada>)
+  want hold, is-equal(wait-child(held)/code, 0)
+
+test <the end of the stream answers nothing and says ended, not late>
+  host held, start-child(sh-of(<echo only>))
+  want hold, is-equal(wait-for-line(held, <never>, 10000), <>)
+  want hold, held/ended
+  want hold, not(held/late)
+  want hold, is-equal(next-line(held, 10000), <>)
+  want hold, is-equal(wait-child(held)/code, 0)
+
+test <a wait past its limit stops the child hard and answers nothing, late>
+  host start, read-nanoseconds()
+  host held, start-child(sh-of(<echo early; sleep 30>))
+  want hold, is-equal(wait-for-line(held, <never>, 400), <>)
+  want hold, held/late
+  want hold, is-below(since(start), 5000)
+  host ended, wait-child(held)
+  want hold, is-equal(ended/code, 137)
+  want hold, is-equal(held/heard, make list(<early>))
+
+test <a line that comes in time is not late, and its watch never stops the child>
+  host held, start-child(sh-of(<sleep 0.2; echo soon; sleep 1; echo later>))
+  want hold, is-equal(wait-for-line(held, <soon>, 5000), <soon>)
+  want hold, not(held/late)
+  want hold, is-equal(wait-for-line(held, <later>, 5000), <later>)
+  want hold, is-equal(wait-child(held)/code, 0)
+
+# A grandchild left running holds the output pipe, so a stop that missed it would still end, once its `sleep 30` did:
+# the stops below are timed, and must end well before that
+test <a stop reaches the whole group: the grandchild is gone too, at once>
+  host held, start-child(sh-of(parent))
+  host pid, next-line(held, 10000)
+  want hold, is-unequal(pid, <>)
+  host start, read-nanoseconds()
+  host ended, stop-child(held)
+  want hold, is-below(since(start), 5000)
+  want hold, is-equal(ended/code, 143)
+  want hold, is-equal(ended/signal, 15)
+  want hold, gone(pid)
+
+test <a child that ignores TERM is killed two seconds after the stop>
+  host start, read-nanoseconds()
+  host held, start-child(sh-of(stubborn))
+  want hold, is-equal(wait-for-line(held, <ready>, 10000), <ready>)
+  host ended, stop-child(held)
+  want hold, is-equal(ended/code, 137)
+  want hold, is-above(since(start), 1900)
+  want hold, is-below(since(start), 8000)
+
+test <a hard stop kills at once>
+  host held, start-child(sh-of(stubborn))
+  want hold, is-equal(wait-for-line(held, <ready>, 10000), <ready>)
+  want hold, is-equal(stop-child(held, <hard>)/code, 137)
+
+test <stop-children kills every child still running, and leaves the ended alone>
+  host one, start-child(sh-of(parent))
+  host two, start-child(sh-of(parent))
+  host first, next-line(one, 10000)
+  host second, next-line(two, 10000)
+  host start, read-nanoseconds()
+  stop-children()
+  want hold, is-equal(wait-child(one)/code, 137)
+  want hold, is-equal(wait-child(two)/code, 137)
+  want hold, is-below(since(start), 5000)
+  want hold, gone(first)
+  want hold, gone(second)
+  stop-children()
+
+test <closing the input ends a child that reads it to the end>
+  host held, start-child(make list(<cat>))
+  write-child(held, <one\ntwo>)
+  want hold, is-equal(next-line(held, 10000), <one>)
+  close-child(held)
+  want hold, is-equal(next-line(held, 10000), <two>)
+  want hold, is-equal(next-line(held, 10000), <>)
+  want hold, is-equal(wait-child(held)/code, 0)
+
+test <the directory and environment reach the child>
+  host environment
+    make hash
+      save <CHILDREN_CHECK>, <handed>
+  host held, start-child(sh-of(<echo $CHILDREN_CHECK; pwd>), </>, environment)
+  want hold, is-equal(next-line(held, 10000), <handed>)
+  want hold, is-equal(next-line(held, 10000), </>)
+  want hold, is-equal(wait-child(held)/code, 0)
+
+test <a shell word keeps a single quote, and a line joins the words>
+  want hold, is-equal(shell-word(<it's>), <'it'\\''s'>)
+  want hold, is-equal(shell-word(<>), <''>)
+  want hold, is-equal(shell-line(make list(<printf>, <%s\\n>, <a b>)), <'printf' '%s\\n' 'a b'>)
+
+test <the pseudo-terminal command on macOS hands the words through, and on Linux quotes them>
+  host mac, pty-command(make(list, <printf>, <a b>), 30, 6, <darwin>)
+  want hold, is-equal(mac/0, <sh>)
+  want hold, text-contains(mac/2, <script -q /dev/null sh -c 'stty cols 30 rows 6; exec "$0" "$@"' "$@">)
+  want hold, is-equal(mac/4, <printf>)
+  want hold, is-equal(mac/5, <a b>)
+  host linux, pty-command(make(list, <printf>, <a b>), 30, 6, <linux>)
+  want hold, is-equal(linux/2, <cat | script -qfec "$1" /dev/null>)
+  want hold, is-equal(linux/4, <stty cols 30 rows 6; exec 'printf' 'a b'>)
+
+test <a program in the pseudo-terminal sees a terminal of the size asked, and a key typed on its prompt>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host held, start-child(pty-command(sh-of(<tty; stty size; printf 'key? \\n'; read key; echo "got $key">), 30, 6))
+  host device, wait-for-line(held, </dev/>, 10000)
+  want hold, text-contains(device, </dev/>)
+  want hold, is-equal(trim(next-line(held, 10000)), <6 30>)
+  want hold, text-contains(answer-on(held, <key?>, <k\n>, 10000), <key?>)
+  want hold, text-contains(wait-for-line(held, <got>, 10000), <got k>)
+  stop-child(held)
+
+test <ctrl-c typed into the pseudo-terminal interrupts the program in it>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host held, start-child(pty-command(sh-of(<trap 'echo interrupted; exit 7' INT; echo ready; while true; do sleep 0.1; done>), 30, 6))
+  want hold, is-equal(trim(answer-on(held, <ready>, rune-to-text(3), 10000)), <ready>)
+  want hold, text-contains(wait-for-line(held, <interrupted>, 10000), <interrupted>)
+  stop-child(held)
+
+# what one run of the fixture's test left: the pid of the child it started, gone or not once its process ended
+form left-behind
+  link pid, like text
+  link gone, like boolean
+  link said, like text
+
+# run the fixture's one test file in its own `term test`, ending its process the way `end` says (<pass>, <raise> or
+# <exit>). The file name is put together here, so this file never holds it whole (T-0705)
+task leave-by
+  take end, like text
+  like left-behind
+
+  save folder, temp-folder(<children-check->)
+  save pid-file, <{folder}/pid>
+  save environment
+    make hash
+      save <CHILDREN_PID_FILE>, pid-file
+      save <CHILDREN_END>, end
+  save name, <leave>
+  save file, <test/support/children-{name}.tree>
+  save arguments, make list(<test>, file, <--env>, <node>, <--color>, <never>, <--no-motion>)
+  save result, run-self(arguments, <>, 180000, environment)
+  save said, <{result/output}{result/error}>
+  fork test, not(file-exists(pid-file))
+    hold
+      back make(left-behind, bind(pid, <>), bind(gone, false), bind(said, said))
+  save pid, trim(read-file(pid-file))
+  back make(left-behind, bind(pid, pid), bind(gone, gone(pid)), bind(said, said))
+
+test <a child left running is stopped when its test passes and the process ends>
+  host left, leave-by(<pass>)
+  want hold, text-contains(left/said, <· 1 file ·>)
+  want hold, is-unequal(left/pid, <>)
+  want hold, left/gone
+
+test <a child left running is stopped when its test raises>
+  host left, leave-by(<raise>)
+  want hold, text-contains(left/said, <· 1 file ·>)
+  want hold, is-unequal(left/pid, <>)
+  want hold, left/gone
+
+test <a child left running is stopped when its process exits in the middle of a test>
+  host left, leave-by(<exit>)
+  want hold, is-unequal(left/pid, <>)
+  want hold, left/gone

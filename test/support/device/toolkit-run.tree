@@ -16,6 +16,13 @@ note <one Term program on the toolkit hosts: built, run, and what it printed han
 # here the suite judges `output` once the leg answers, so the judge is the suite's own Term. A leg on the simulator or
 # emulator holds the device (./hold) from its first command to its last, never during its build. Nothing here boots a
 # simulator or starts an emulator: a leg whose device is not up is skipped.
+#
+# `run-leg-beside` also takes `beside-launch`, which names a helper to run beside the launch on a simulator or emulator
+# (item 1304): the tapper test/compile/permission-prompt.ts started detached, which reads the screen and taps the
+# platform's dialog while the app waits on it. The helper starts once `before-launch` has run and before the app starts,
+# through ../children (a process group of its own), so the launch and the log read go on beside it. It is stopped once
+# the launch is over (TERM, then KILL), and ../children stops it at exit when a raise ends the leg first. What it wrote
+# is kept on the leg as `beside`. `run-leg` is `run-leg-beside` with no helper.
 
 load ../compiling
   find compile-text
@@ -25,6 +32,11 @@ load ../compiling
 
 load ../running
   find run-tool
+
+load ../children
+  find held-child
+  find start-child
+  find stop-child
 
 load @term/base/process/run
   find run
@@ -119,7 +131,7 @@ form toolkit-check
   link info, like text, fall <>
 
 # a leg's answer: `state` <ran> or <skipped> (with `reason`), the checks it made, what the program printed for the
-# judge, and where its PNG is
+# judge, where its PNG is, and what a helper beside the launch wrote
 form toolkit-leg
   mark shared
   link leg, like text
@@ -131,6 +143,7 @@ form toolkit-leg
     fall make list
   link output, like text, fall <>
   link shot, like text, fall <>
+  link beside, like text, fall <>
 
 bind toolkit-platform
   take seed, like number
@@ -258,6 +271,31 @@ task failed-checks
       hold
         failed/push(<{one/name}: {one/info}>)
   back failed/join(<\n>)
+
+# start the helper `command` names (the program first) beside a launch, kept in `helpers`. An empty command starts none
+task start-helper
+  mark async
+  take helpers, like list, like held-child
+  take command, like list, like text
+  like void
+
+  fork test, is-above(command/length, 0)
+    hold
+      save helper, start-child(command)
+      helpers/push(helper)
+
+# stop every helper once the launch is over, TERM then KILL, keeping on the leg what each wrote. One that already
+# ended is only read
+task stop-helpers
+  mark async
+  take ran, like toolkit-leg
+  take helpers, like list, like held-child
+  like void
+
+  walk helpers
+    take helper, like held-child
+    save ended, stop-child(helper)
+    save ran/beside, <{ran/beside}{ended/output}{ended/error}>
 
 # where a leg's PNG goes
 task shot-of
@@ -410,6 +448,13 @@ task run-ios
       take serial, like text
       take identifier, like text
       like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
   like toolkit-leg
 
   save found, booted-simulator()
@@ -444,7 +489,7 @@ task run-ios
   save failure, <>
   fork
     mark unsafe
-    on-simulator(app, ran, found/udid, host-field-text(bundle, <app>), before-launch)
+    on-simulator(app, ran, found/udid, host-field-text(bundle, <app>), before-launch, beside-launch)
   halt take
     take cause
     save failure, host-cause-text(cause)
@@ -467,6 +512,13 @@ task on-simulator
       take serial, like text
       take identifier, like text
       like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
   like void
 
   save identifier, app/ios-identifier
@@ -478,7 +530,10 @@ task on-simulator
       leg-check(ran, <ios: installs>, false, installed)
       back
   before-launch(<ios>, udid, <>, identifier)
+  save helpers, make list
+  start-helper(helpers, beside-launch(<ios>, udid, <>, identifier))
   save output, launched(udid, identifier)
+  stop-helpers(ran, helpers)
   leg-check(ran, <ios: the app said it exits 0>, text-contains(output, <native-view exit 0>), substring(output, 0, 600))
   save ran/output, output
 
@@ -513,6 +568,13 @@ task run-android
       take serial, like text
       take identifier, like text
       like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
   like toolkit-leg
 
   save found, android-device()
@@ -545,7 +607,7 @@ task run-android
   save held, hold-device(<emulator>, <{app/who} android>)
   fork
     mark unsafe
-    on-emulator(app, ran, found/adb, found/serial, apk, before-launch)
+    on-emulator(app, ran, found/adb, found/serial, apk, before-launch, beside-launch)
   halt take
     take cause
     save failure, host-cause-text(cause)
@@ -584,6 +646,13 @@ task on-emulator
       take serial, like text
       take identifier, like text
       like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
   like void
 
   save identifier, app/android-identifier
@@ -591,8 +660,11 @@ task on-emulator
   save installed, run(adb, make list(<-s>, serial, <install>, <-r>, apk))
   leg-check(ran, <android: installs>, is-equal(installed/code, 0), substring(<{installed/output}{installed/error}>, 0, 400))
   before-launch(<android>, <>, serial, identifier)
+  save helpers, make list
+  start-helper(helpers, beside-launch(<android>, <>, serial, identifier))
   run(adb, make list(<-s>, serial, <shell>, <am>, <start>, <-n>, <{identifier}/.TermActivity>))
   save said, follow-app-log(adb, serial, identifier)
+  stop-helpers(ran, helpers)
   leg-check(ran, <android: the app said it exits 0>, text-contains(said, <native-view exit 0>), said)
   pull-file(adb, serial, </sdcard/Android/data/{identifier}/files/native-dom.png>, ran/shot)
   save ran/output, said
@@ -643,6 +715,13 @@ task run-compose-android-leg
       take serial, like text
       take identifier, like text
       like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
   like toolkit-leg
 
   save shot, shot-of(app, <compose-android>)
@@ -657,13 +736,17 @@ task run-compose-android-leg
   fork test, is-unequal(built/state, <built>)
     hold
       back ran
+  save helpers, make list
+  # the helper starts here and is not waited for: ./compose-android calls `before` as a task that answers nothing at once
   save before
     task
       take serial, like text
       like void
       before-launch(<compose-android>, <>, serial, identifier)
+      tick start-helper(helpers, beside-launch(<compose-android>, <>, serial, identifier))
   save held, hold-device(<emulator>, <{app/who} compose-android>)
   save result, run-compose-android(built/apk, identifier, <compose.png>, shot, before)
+  stop-helpers(ran, helpers)
   release-device(held)
   fork test, is-equal(result/state, <skipped>)
     hold
@@ -713,6 +796,16 @@ task prepare-no-device
 
   back
 
+# what runs beside no launch: no helper
+task no-helper
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like list, like text
+
+  back make list
+
 # one leg of the app's program, skipped with its reason where its toolchain or device is absent. `source-of` gives the
 # program for a leg, writing its PNG at `shot` (on Android a bare file name in the app's own external files directory).
 # `before-launch` runs once the app is installed on a simulator or emulator and before it starts: a grant through
@@ -735,6 +828,35 @@ task run-leg
       like void
   like toolkit-leg
 
+  back run-leg-beside(app, leg, source-of, before-launch, no-helper)
+
+# `run-leg`, with a helper beside the launch on a simulator or emulator (the ios, android and compose-android legs).
+# `beside-launch` answers the helper's command for a leg, the program first, given what `before-launch` is given, and
+# an empty list for none
+task run-leg-beside
+  take app, like toolkit-app
+  take leg, like text
+  take source-of
+    like task
+      take leg, like text
+      take shot, like text
+      like text
+  take before-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like void
+  take beside-launch
+    like task
+      take leg, like text
+      take udid, like text
+      take serial, like text
+      take identifier, like text
+      like list, like text
+  like toolkit-leg
+
   fork test, is-equal(variable(<TERM_WINDOW_AWAY>), <>)
     hold
       set-variable(<TERM_WINDOW_AWAY>, <1>)
@@ -750,16 +872,16 @@ task run-leg
       fork test, not(apple)
         hold
           back skipped-leg(leg, <the iOS simulator is macOS only>)
-      back run-ios(app, source-of, before-launch)
+      back run-ios(app, source-of, before-launch, beside-launch)
   fork test, is-equal(leg, <android>)
     hold
-      back run-android(app, source-of, before-launch)
+      back run-android(app, source-of, before-launch, beside-launch)
   fork test, is-equal(leg, <compose>)
     hold
       back run-compose-leg(app, source-of)
   fork test, is-equal(leg, <compose-android>)
     hold
-      back run-compose-android-leg(app, source-of, before-launch)
+      back run-compose-android-leg(app, source-of, before-launch, beside-launch)
   fork test, or(is-equal(leg, <compose-linux>), is-equal(leg, <compose-windows>))
     hold
       back run-compose-remote-leg(app, leg, source-of)

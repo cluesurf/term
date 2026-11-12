@@ -1,0 +1,120 @@
+note <codegen from verification: a contract in, a verified body emitted as Term, and that Term compiles>
+
+# Ported from demo-emit.ts by statement (item term-self-host-001-0584, decision 116). The original drove
+# deck/test/code/contract.ts, which is Term now: contract-check.tree (`synthesize-contract`, `verify-contract`) over a
+# contract as data (contract-form.tree), whose postcondition is a task where the original's was a closure. The body is
+# emitted by source-emit.tree and compiled as the original compiled it, projectResolver(ROOT, 'node', ROOT): the
+# project the suite runs in. contract.ts's defaults are kept: a bound of 8 and bodies of up to 6 nodes, no proposer
+# but synthesis. One test per contract, as the original's one `ok` each. The original also printed two emitted bodies,
+# which asserted nothing.
+
+load @term/test/contract-check
+  find verify-contract
+  find synthesize-contract
+
+load @term/test/contract-form
+  find contract
+  find anything
+  find any-inputs
+
+load @term/test/repair-loop
+  find proposer
+
+load @term/test/source-emit
+  find seed-task
+  find emit-seed
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/list
+  find list
+
+host one, make list(<a>)
+host two, make list(<a>, <b>)
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-min
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-maximum(output, a), is-maximum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-abs
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, subtract(0, a))))
+
+task is-clamp-low
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  back and(and(is-minimum(output, 0), is-minimum(output, a)), or(is-equal(output, a), is-equal(output, 0)))
+
+# a contract with no refinement and no precondition, the original's shape
+task contract-of
+  take name, like text
+  take names, like list, like text
+  take post
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  like contract
+
+  host refines, make list
+  walk names
+    take each, like text
+    refines/push(anything)
+  back
+    make contract
+      bind name, name
+      bind names, names
+      bind refines, refines
+      bind pre, any-inputs
+      bind post, post
+
+# spec, then a verified body, then that body emitted as Term, then the emitted Term compiled
+task emitted-compiles
+  take task-name, like text
+  take terms, like contract
+  like boolean
+
+  host none, make list
+  host found, synthesize-contract(terms, 8, 6, none)
+  fork test, not(found/ok)
+    hold
+      back false
+  host verified, verify-contract(found/expr, terms, 8)
+  host source, emit-seed(make(seed-task, bind(name, task-name), bind(params, terms/names), bind(body, found/expr)))
+  host out, compile-text(source, make(compile-choice, bind(file, <{task-name}.tree>), bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>)))
+  back and(verified/ok, out/ok)
+
+test <find-max: spec, verified, emitted Term, compiles>
+  want hold, emitted-compiles(<find-max>, contract-of(<max>, two, is-max))
+
+test <find-min: spec, verified, emitted Term, compiles>
+  want hold, emitted-compiles(<find-min>, contract-of(<min>, two, is-min))
+
+test <find-abs: spec, verified, emitted Term, compiles>
+  want hold, emitted-compiles(<find-abs>, contract-of(<abs>, one, is-abs))
+
+test <clamp-low: spec, verified, emitted Term, compiles>
+  want hold, emitted-compiles(<clamp-low>, contract-of(<clamp-low>, one, is-clamp-low))

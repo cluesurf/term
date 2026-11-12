@@ -1,0 +1,578 @@
+note <the per-module TypeScript emit binds a view's runtime calls as render.tree binds them, whatever the entry or a loaded module defines>
+
+# Ported from view-module-split.ts by statement (item term-self-host-001-0699), one test per `ok` in its order
+# (beat-term-0056, decision D020, review 0045 finding 2). Compile's `modules` option (the dev server, and the separate
+# unit build in compile/separate.ts) emits a view through ts-emit's `emit-zone`, which wrote the plain render names, and
+# module-emit's import planner imported the plain names. When the entry (or a loaded module) defines a name render.tree's
+# own runtime also defines, the build splits it by file (`append` and `append__in0_<k>`), so the zone called the entry's
+# own `append`, or an `append` it never imported. Nothing here RUNS the emitted modules or touches a simulator or a
+# window: it reads the entry module's text.
+#
+#   none           nothing split: the output is what it was, the dom's plain `append`, imported plainly
+#   entry-append   the entry defines `append`: the zone calls the dom's, imported under the name the build bound
+#   module-append  a loaded module defines `append`: the zone calls the dom's, the module's glue is another import
+#   entry-scope    the entry defines `remove` and `open-scope`: the zone's scope call and the hot epilogue's `remove`
+#                  call the bound names too
+#
+# The original's loop over its four cases is five tests per case here. Each case is compiled once, by the first test
+# that asks, and kept. A case that does not compile fails its tests, where the original skipped the rest of its checks.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find compiling-rewrite
+  find project-path
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find find-matches
+  find split-at-matches
+  find pattern-match
+
+load @term/base/text
+  find split, name text-split
+  find trim
+  find index-of
+  find substring
+  find ends-with
+  find char-count
+
+load @term/base/list
+  find push
+
+# a fixed folder under the Term root's own tmp/, overwritten each run: a program outside the project root does not bind
+# a relative load (`find append, name glue` of ./extra) and the checker reads the glue call as the dom's
+host here, project-path(<.>, <tmp/view-module-split>)
+host site-root, project-path(<.>, <deck/site/code>)
+host site, <file://{site-root}>
+
+# the memory dom stands in for the toolkit's: nothing is run, and nothing here needs a window
+host memory-rewrite, make(compiling-rewrite, bind(pattern, <<native/\{platform\}/(dom|device|view)$>>), bind(into, <native/memory/$1>))
+
+host view-text, <\nview tally\n  take host, like view\n  view span\n    text \<low\>\n>
+
+host own-text, <\ntask append\n  take first, like text\n  take second, like text\n  like text\n  send back, text \<\{first\}\{second\}\>\n>
+
+host own-scope-text, <\ntask remove\n  take node, like text\n  like text\n  send back, read node\n\ntask open-scope\n  like text\n  send back, text \<scope\>\n>
+
+# today's output for a program where the build split nothing, with the file URLs of this checkout
+task none-expected
+  like text
+
+  back <import \{ append, createElement, remove, serialize \} from "{site}/dom/native/memory/dom.tree"\nimport \{ attachEvent, makeDynamicText, makeElement, makeText, renderEach, show, writeAttribute \} from "{site}/view/render.tree"\nimport \{ closeScope, disposeScope, makeSignal, openScope, readSignal \} from "{site}/view/reactive.tree"\nimport type \{ View \} from "{site}/dom/native/memory/view.tree"\n\nconst hot = typeof __seedHot !== "undefined" ? __seedHot(import.meta.url) : undefined\n\nexport function tally(host: View) \{\n  const __seed = (hot && hot.data.signals && hot.data.signals["tally"]) || \{\}\n  const __scope = openScope()\n  const view0 = makeElement("span")\n  const view1 = makeText("low")\n  append(view0, view1)\n  append(host, view0)\n  closeScope()\n  if (hot) (hot.data.instances || (hot.data.instances = [])).push(\{ zone: "tally", host: host, signals: \{  \}, scope: __scope, nodes: [view0] \})\n\}\n\nexport function run(): string \{\n  const root: View = createElement("main")\n  tally(root)\n  return serialize(root)\n\}\n\n\nif (hot) \{\n  hot.dispose((data) =\> \{\n    data.signals = \{\}\n    data.remount = []\n    for (const inst of (data.instances || [])) \{\n      const snapshot = \{\}\n      for (const key in inst.signals) snapshot[key] = readSignal(inst.signals[key])\n      data.signals[inst.zone] = snapshot\n      disposeScope(inst.scope)\n      for (const node of inst.nodes) remove(node)\n      data.remount.push(\{ zone: inst.zone, host: inst.host \})\n    \}\n    data.instances = []\n  \})\n  hot.accept((mod) =\> \{\n    for (const entry of (hot.data.remount || [])) mod[entry.zone](entry.host)\n    hot.data.remount = []\n  \})\n\}>
+
+# the program's loads: render's make-element, the dom's `view` and the names `dom` holds, each a `find` line after it,
+# the memory dom's create-element and serialize
+task loads-of
+  take dom, like text
+  like text
+
+  back <load @term/site/code/view/render\n  find make-element\n\nload @term/site/code/dom/dom\n  find view{dom}\n\nload @term/site/code/dom/native/memory/dom\n  find create-element\n  find serialize\n>
+
+task run-text
+  take extra, like text
+  like text
+
+  back <\ntask run\n  like text\n  save root\n    call create-element\n      bind tag, text \<main\>\n  call tally\n    read root\n{extra}  send back\n    call serialize\n      read root\n>
+
+# one file of a case, by its name in the case's folder
+form case-file
+  link name, like text
+  link text, like text
+
+# a case compiled: its outcome, and the entry module's TypeScript, <> when it did not compile
+form split-case
+  link out, like compile-outcome
+  link code, like text
+
+form split-cases
+  mark shared
+  link held, like hash, like text, like split-case
+
+host split-held, make(split-cases, bind(held, make hash))
+
+# host value: the driver's `modules` answer is a host Map from a file to its emitted module
+bind module-code
+  take modules, like dynamic
+  take entry, like text
+  like text
+  case node
+    text <($modules?.get($entry)?.code ?? "")>
+
+# the module's import URL the driver is handed for a file
+task module-url
+  take file, like text
+  like text
+
+  back <file://{file}>
+
+task case-files
+  take name, like text
+  like list, like case-file
+
+  save main, <main.tree>
+  save bare, loads-of(<>)
+  fork test, is-equal(name, <none>)
+    hold
+      save loads, loads-of(<\n  find append>)
+      save run, run-text(<>)
+      back make list(make(case-file, bind(name, main), bind(text, <{loads}{view-text}{run}>)))
+  fork test, is-equal(name, <entry-append>)
+    hold
+      save run, run-text(<  save more\n    call append\n      text \<x\>\n      text \<y\>\n>)
+      back make list(make(case-file, bind(name, main), bind(text, <{bare}{own-text}{view-text}{run}>)))
+  fork test, is-equal(name, <module-append>)
+    hold
+      save run, run-text(<  save more\n    call glue\n      text \<x\>\n      text \<y\>\n>)
+      back make list(make(case-file, bind(name, main), bind(text, <{bare}\nload ./extra\n  find append, name glue\n{view-text}{run}>)), make(case-file, bind(name, <extra.tree>), bind(text, own-text)))
+  save run, run-text(<  save more\n    call remove\n      call open-scope\n>)
+  back make list(make(case-file, bind(name, main), bind(text, <{bare}{own-scope-text}{view-text}{run}>)))
+
+# the case's files written to its folder and its entry compiled with modules
+task split-made
+  take name, like text
+  like split-case
+
+  save folder, <{here}/{name}>
+  make-folder(folder)
+  save main-text, <>
+  walk case-files(name)
+    take one, like case-file
+    write-file(<{folder}/{one/name}>, one/text)
+    fork test, is-equal(one/name, <main.tree>)
+      hold
+        save main-text, one/text
+  save entry, <{folder}/main.tree>
+  save out, compile-text(main-text, make(compile-choice, bind(file, entry), bind(project, <.>), bind(project-env, <node>), bind(env, <node>), bind(rewrites, make list(memory-rewrite)), bind(modules, module-url)))
+  save code, <>
+  fork test, out/ok
+    hold
+      save code, module-code(out/modules, entry)
+      write-file(<{folder}/main.module.ts>, code)
+  back make(split-case, bind(out, out), bind(code, code))
+
+# a case, compiled by the first test that asks
+task split
+  take name, like text
+  like split-case
+
+  fork test, split-held/held/has(name)
+    hold
+      back split-held/held/{name}
+  save made, split-made(name)
+  save split-held/held/{name}, made
+  back made
+
+# ---- reading the module ----
+
+# what a module imports, by local name, with the file it comes from (type imports skipped)
+form import-name
+  link name, like text
+  link from, like text
+
+host import-line, make pattern, <<^import \{([^}]*)\} from "([^"]*)">>
+host as-word, make pattern, <<\s+as\s+>>
+host function-line, make pattern, <<^(?:export )?(?:async )?function (\w+)\(>>
+host free-call, make pattern, <<(\w+)\(>>
+host member-or-word, make pattern, <<^[.\w]$>>
+host runtime-names, make pattern, <<^(?:append|makeElement|makeText|openScope|closeScope|makeSignal|readSignal|disposeScope|remove)\w*$>>
+host append-names, make pattern, <<^append\w*$>>
+host remove-names, make pattern, <<^remove\w*$>>
+host scope-names, make pattern, <<^openScope\w*$>>
+host runtime-file, make pattern, <<\/(?:dom\/dom|dom\/native\/[^/]+\/dom|view\/render|view\/reactive)\.tree$>>
+host memory-dom-file, make pattern, <<dom\/native\/memory\/dom\.tree$>>
+host extra-file, make pattern, <<extra\.tree$>>
+host own-append-call, make pattern, <<append\("x", "y"\)>>
+
+task imports-of
+  take code, like text
+  like list, like import-name
+
+  save out, make list
+  walk text-split(code, <\n>)
+    take line, like text
+    walk find-matches(import-line, line)
+      take found, like pattern-match
+      walk text-split(found/groups/0, <,>)
+        take part, like text
+        save pieces, split-at-matches(as-word, trim(part))
+        save last, subtract(pieces/length, 1)
+        out/push(make(import-name, bind(name, pieces/{last}), bind(from, found/groups/1)))
+  back out
+
+# whether a module imports a local name
+task imports-name
+  take imports, like list, like import-name
+  take name, like text
+  like boolean
+
+  walk imports
+    take one, like import-name
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
+
+# the file a local name is imported from, the last import of it winning, <> when it is not imported
+task import-from
+  take imports, like list, like import-name
+  take name, like text
+  like text
+
+  save from, <>
+  walk imports
+    take one, like import-name
+    fork test, is-equal(one/name, name)
+      hold
+        save from, one/from
+  back from
+
+# whether the name is imported from the dom's, render's or reactive's module
+task from-runtime
+  take imports, like list, like import-name
+  take name, like text
+  like boolean
+
+  back matches(runtime-file, import-from(imports, name))
+
+task defines-in
+  take code, like text
+  like list, like text
+
+  save out, make list
+  walk text-split(code, <\n>)
+    take line, like text
+    walk find-matches(function-line, line)
+      take found, like pattern-match
+      out/push(found/groups/0)
+  back out
+
+task defines
+  take code, like text
+  take name, like text
+  like boolean
+
+  walk defines-in(code)
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# whether a match stands free: the character before it is neither a `.` nor a word character
+task stands-free
+  take code, like text
+  take start, like number
+  like boolean
+
+  fork test, is-equal(start, 0)
+    hold
+      back true
+  back not(matches(member-or-word, substring(code, subtract(start, 1), start)))
+
+# every free call of the render runtime's names: not a member call, not a definition
+task calls-in
+  take code, like text
+  like list, like text
+
+  back calls-in(code, runtime-names)
+
+task calls-in
+  take code, like text
+  take names, like pattern
+  like list, like text
+
+  save out, make list
+  walk find-matches(free-call, code)
+    take found, like pattern-match
+    save name, found/groups/0
+    fork test, and(matches(names, name), and(stands-free(code, found/start), not(ends-with(substring(code, 0, found/start), <function >))))
+      hold
+        out/push(name)
+  back out
+
+# the module's own `export function <name>(...)` through its closing brace at the start of a line
+task body-of
+  take code, like text
+  take name, like text
+  like text
+
+  save from, index-of(code, <export function {name}(>)
+  fork test, is-below(from, 0)
+    hold
+      back <>
+  save to, index-of(code, <\n\}\n>, from)
+  fork test, is-below(to, 0)
+    hold
+      back <>
+  back substring(code, from, add(to, 2))
+
+# the hot epilogue onward, the last character when there is none, as the original's slice of -1
+task epilogue-of
+  take code, like text
+  like text
+
+  save at, index-of(code, <if (hot) \{\n  hot.dispose>)
+  fork test, is-below(at, 0)
+    hold
+      back substring(code, subtract(char-count(code), 1))
+  back substring(code, at)
+
+# the free runtime calls neither imported nor defined in the module
+task dangling-of
+  take code, like text
+  like list, like text
+
+  save imports, imports-of(code)
+  save out, make list
+  walk calls-in(code)
+    take call, like text
+    fork test, and(not(imports-name(imports, call)), not(defines(code, call)))
+      hold
+        out/push(call)
+  back out
+
+# the calls of `code` not imported from the runtime's modules
+task loose-of
+  take module, like text
+  take code, like text
+  like list, like text
+
+  save imports, imports-of(module)
+  save out, make list
+  walk calls-in(code)
+    take call, like text
+    fork test, not(from-runtime(imports, call))
+      hold
+        out/push(call)
+  back out
+
+task all-from-memory-dom
+  take imports, like list, like import-name
+  take names, like list, like text
+  like boolean
+
+  walk names
+    take name, like text
+    fork test, not(matches(memory-dom-file, import-from(imports, name)))
+      hold
+        back false
+  back true
+
+task holds-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+
+  walk names
+    take one, like text
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# the local names imported from the loaded module ./extra
+task glue-of
+  take imports, like list, like import-name
+  like list, like text
+
+  save out, make list
+  walk imports
+    take one, like import-name
+    fork test, matches(extra-file, one/from)
+      hold
+        out/push(one/name)
+  back out
+
+# whether the entry's own call of append("x", "y") stands free
+task own-call-free
+  take code, like text
+  like boolean
+
+  walk find-matches(own-append-call, code)
+    take found, like pattern-match
+    fork test, stands-free(code, found/start)
+      hold
+        back true
+  back false
+
+# ---- the five checks of each case ----
+
+task case-compiles
+  take name, like text
+  like boolean
+
+  save made, split(name)
+  back made/out/ok
+
+task case-holds-zone
+  take name, like text
+  like boolean
+
+  save made, split(name)
+  back and(made/out/ok, is-unequal(body-of(made/code, <tally>), <>))
+
+task case-has-no-dangling
+  take name, like text
+  like boolean
+
+  save made, split(name)
+  back and(made/out/ok, is-equal(dangling-of(made/code)/length, 0))
+
+task case-zone-from-runtime
+  take name, like text
+  like boolean
+
+  save made, split(name)
+  back and(made/out/ok, is-equal(loose-of(made/code, body-of(made/code, <tally>))/length, 0))
+
+task case-epilogue-from-runtime
+  take name, like text
+  like boolean
+
+  save made, split(name)
+  save epilogue, calls-in(epilogue-of(made/code))
+  back and(made/out/ok, and(is-equal(epilogue/length, 3), is-equal(loose-of(made/code, epilogue-of(made/code))/length, 0)))
+
+test <none: compiles with modules>
+  want hold, case-compiles(<none>)
+
+test <none: the entry module holds the zone>
+  want hold, case-holds-zone(<none>)
+
+test <none: every free runtime call is imported or defined in the module>
+  want hold, case-has-no-dangling(<none>)
+
+test <none: the zone's runtime calls come from the dom's, render's or reactive's module>
+  want hold, case-zone-from-runtime(<none>)
+
+test <none: the hot epilogue calls the runtime's own readSignal, disposeScope and remove>
+  want hold, case-epilogue-from-runtime(<none>)
+
+test <entry-append: compiles with modules>
+  want hold, case-compiles(<entry-append>)
+
+test <entry-append: the entry module holds the zone>
+  want hold, case-holds-zone(<entry-append>)
+
+test <entry-append: every free runtime call is imported or defined in the module>
+  want hold, case-has-no-dangling(<entry-append>)
+
+test <entry-append: the zone's runtime calls come from the dom's, render's or reactive's module>
+  want hold, case-zone-from-runtime(<entry-append>)
+
+test <entry-append: the hot epilogue calls the runtime's own readSignal, disposeScope and remove>
+  want hold, case-epilogue-from-runtime(<entry-append>)
+
+test <module-append: compiles with modules>
+  want hold, case-compiles(<module-append>)
+
+test <module-append: the entry module holds the zone>
+  want hold, case-holds-zone(<module-append>)
+
+test <module-append: every free runtime call is imported or defined in the module>
+  want hold, case-has-no-dangling(<module-append>)
+
+test <module-append: the zone's runtime calls come from the dom's, render's or reactive's module>
+  want hold, case-zone-from-runtime(<module-append>)
+
+test <module-append: the hot epilogue calls the runtime's own readSignal, disposeScope and remove>
+  want hold, case-epilogue-from-runtime(<module-append>)
+
+test <entry-scope: compiles with modules>
+  want hold, case-compiles(<entry-scope>)
+
+test <entry-scope: the entry module holds the zone>
+  want hold, case-holds-zone(<entry-scope>)
+
+test <entry-scope: every free runtime call is imported or defined in the module>
+  want hold, case-has-no-dangling(<entry-scope>)
+
+test <entry-scope: the zone's runtime calls come from the dom's, render's or reactive's module>
+  want hold, case-zone-from-runtime(<entry-scope>)
+
+test <entry-scope: the hot epilogue calls the runtime's own readSignal, disposeScope and remove>
+  want hold, case-epilogue-from-runtime(<entry-scope>)
+
+test <none: the output is what it was, the dom's plain append imported plainly>
+  host made, split(<none>)
+  want hold, made/out/ok
+  want hold, is-equal(made/code, none-expected())
+
+test <entry-append: the entry keeps its own append>
+  host made, split(<entry-append>)
+  want hold, made/out/ok
+  want hold, defines(made/code, <append>)
+
+test <entry-append: the zone's append call is not the entry's own append>
+  host made, split(<entry-append>)
+  host zone-append, calls-in(body-of(made/code, <tally>), append-names)
+  want hold, made/out/ok
+  want hold, is-equal(zone-append/length, 2)
+  want hold, not(holds-name(zone-append, <append>))
+
+test <entry-append: the zone's append is the dom's, imported under the name the build bound>
+  host made, split(<entry-append>)
+  host imports, imports-of(made/code)
+  host zone-append, calls-in(body-of(made/code, <tally>), append-names)
+  want hold, made/out/ok
+  want hold, all-from-memory-dom(imports, zone-append)
+  want hold, not(imports-name(imports, <append>))
+
+test <entry-append: the entry's own call still reaches its own append>
+  host made, split(<entry-append>)
+  want hold, made/out/ok
+  want hold, own-call-free(made/code)
+
+test <module-append: the zone calls the dom's append>
+  host made, split(<module-append>)
+  host imports, imports-of(made/code)
+  host zone-append, calls-in(body-of(made/code, <tally>), append-names)
+  want hold, made/out/ok
+  want hold, is-equal(zone-append/length, 2)
+  want hold, all-from-memory-dom(imports, zone-append)
+
+test <module-append: the module's own append is imported under another name>
+  host made, split(<module-append>)
+  host zone-append, calls-in(body-of(made/code, <tally>), append-names)
+  host glue, glue-of(imports-of(made/code))
+  want hold, made/out/ok
+  want hold, is-equal(glue/length, 1)
+  want hold, not(holds-name(zone-append, glue/0))
+
+test <module-append: the module's own append is called by the entry's own call>
+  host made, split(<module-append>)
+  host glue, glue-of(imports-of(made/code))
+  want hold, made/out/ok
+  want hold, is-equal(glue/length, 1)
+  want hold, holds-name(calls-in(made/code, append-names), glue/0)
+
+test <entry-scope: the entry keeps its own remove and open-scope>
+  host made, split(<entry-scope>)
+  want hold, made/out/ok
+  want hold, defines(made/code, <remove>)
+  want hold, defines(made/code, <openScope>)
+
+test <entry-scope: the epilogue removes through the dom's remove, not the entry's>
+  host made, split(<entry-scope>)
+  host removes, calls-in(epilogue-of(made/code), remove-names)
+  want hold, made/out/ok
+  want hold, is-equal(removes/length, 1)
+  want hold, is-unequal(removes/0, <remove>)
+  want hold, from-runtime(imports-of(made/code), removes/0)
+
+test <entry-scope: the zone opens its scope through the runtime's, not the entry's>
+  host made, split(<entry-scope>)
+  host scopes, calls-in(body-of(made/code, <tally>), scope-names)
+  want hold, made/out/ok
+  want hold, is-equal(scopes/length, 1)
+  want hold, is-unequal(scopes/0, <openScope>)
+  want hold, from-runtime(imports-of(made/code), scopes/0)

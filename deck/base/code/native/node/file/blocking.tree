@@ -12,6 +12,12 @@ load @term/base/file/blocking
 load @term/base/list
   find push
 
+# the options node's fs takes to read a directory's entries with their kinds
+bind make-entry-options
+  like dynamic
+  case node
+    text <(\{ withFileTypes: true \})>
+
 task blocking-read
   take path, like text
   like text
@@ -62,8 +68,7 @@ task blocking-list
   save entries
     call blocking-fs/readdir-sync
       read path
-      make object
-        bind with-file-types, true
+      call make-entry-options
   walk list, read entries
     hook next
       take site, name entry

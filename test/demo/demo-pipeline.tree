@@ -1,0 +1,161 @@
+note <the whole loop with a proposer standing in for a model: a contract in, proven and compiling Term out>
+
+# Ported from demo-pipeline.ts by statement (item term-self-host-001-0584, decision 116). The original drove
+# deck/test/code/pipeline.ts `autocomplete`, which is Term now: contract-completion.tree (the subject, decision 106).
+# Its hint proposer was a closure over a hint table (gap.ts `hintProposer`), which is a task here fixing its table and
+# calling repair-loop.tree `hint-propose`, as deck/test/test/repair-loop.tree writes it. The resolver is the
+# original's, projectResolver(ROOT, 'node', ROOT), taken from test/support/compiling as a compile choice gives it.
+# contract.ts's defaults are kept: a bound of 8, bodies of up to 6 nodes. One test per `ok`, in its order. The
+# original also printed the proposed source, which asserted nothing.
+
+load @term/test/contract-completion
+  find completion
+  find autocomplete
+  find is-sound
+
+load @term/test/contract-form
+  find contract
+  find anything
+  find any-inputs
+
+load @term/test/repair-loop
+  find gap-report
+  find proposer
+  find hint-propose
+
+load @term/test/expression-grammar
+  find expression
+  find variable-at
+
+load ../support/compiling
+  find compile-choice
+  find compiling-options-of
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+# host value: the resolver of the driver's options for a choice
+bind resolver-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+host resolve, resolver-of(compiling-options-of(make(compile-choice, bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>))))
+
+host one, make list(<a>)
+host two, make list(<a>, <b>)
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-min
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-maximum(output, a), is-maximum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-abs
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, subtract(0, a))))
+
+# a contract with no refinement and no precondition, the original's shape
+task contract-of
+  take name, like text
+  take names, like list, like text
+  take post
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  like contract
+
+  host refines, make list
+  walk names
+    take each, like text
+    refines/push(anything)
+  back
+    make contract
+      bind name, name
+      bind names, names
+      bind refines, refines
+      bind pre, any-inputs
+      bind post, post
+
+# A: the hint is right, max(a, b)
+task good-hint
+  take gap, like gap-report
+  like maybe, like expression
+
+  host larger
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+  host hints, make hash
+  hints/set(<max>, larger)
+  back hint-propose(hints, gap)
+
+# B: the hint is wrong, `return a`
+task bad-hint
+  take gap, like gap-report
+  like maybe, like expression
+
+  host hints, make hash
+  hints/set(<max>, variable-at(0))
+  back hint-propose(hints, gap)
+
+task hinted-by
+  take propose
+    like task
+      take gap, like gap-report
+      like maybe, like expression
+  like list, like proposer
+
+  back make list(make(proposer, bind(name, <ai-hint>), bind(propose, propose)))
+
+task completed
+  take task-name, like text
+  take terms, like contract
+  take proposers, like list, like proposer
+  like completion
+
+  back autocomplete(task-name, terms, resolve, proposers, 8, 6)
+
+test <AI proposal, proven, compiles>
+  host found, completed(<find-max>, contract-of(<max>, two, is-max), hinted-by(good-hint))
+  want hold, is-sound(found)
+  want hold, found/ok
+  want hold, is-equal(found/proposer, <ai-hint>)
+
+test <wrong AI proposal rejected, CEGIS recovers, still sound>
+  host found, completed(<find-max>, contract-of(<max>, two, is-max), hinted-by(bad-hint))
+  want hold, is-sound(found)
+  want hold, found/ok
+  want hold, is-equal(found/proposer, <cegis>)
+
+test <find-min: synthesized, proven, emitted, compiles>
+  host none, make list
+  want hold, is-sound(completed(<find-min>, contract-of(<min>, two, is-min), none))
+
+test <find-abs: synthesized, proven, emitted, compiles>
+  host none, make list
+  want hold, is-sound(completed(<find-abs>, contract-of(<abs>, one, is-abs), none))

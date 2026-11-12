@@ -38,7 +38,7 @@ import {
   KEEP_VERSIONS,
 } from '@term/call/code/cache-store'
 import { legacyUserHome } from '@term/call/code/home'
-import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
+import { cacheScope } from '@term/make/code/compile/cache-scope'
 import { TERM_ROOT } from './root'
 
 // run from the Term root, the way every other term task is (the `@term/*` path aliases resolve there)
@@ -185,7 +185,7 @@ function projectRoots(): { name: string; root: string }[] {
 function main(): void {
   const liveOf = (kind: string): string =>
     versionSlug(compilerVersion(kind))
-  const named = Object.keys(CACHE_SCOPE)
+  const named = [...cacheScope().keys()]
     .sort()
     .map(kind => `${kind} ${liveOf(kind)}`)
     .join(', ')

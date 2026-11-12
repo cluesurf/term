@@ -52,7 +52,7 @@ load @term/call/work/hook/deciding
 
 load @term/call/work/hook/refusal
   find refusal-view
-  find refusal-close
+  find refusal-said
   find refusal-closed
   find said
 
@@ -159,7 +159,8 @@ task console-depth
   back total
 
 # what a refusal reads from the host, as the printer read it when it opened a run: the output the flags' defaults open
-# at this depth, the home and working folders, and the clock the run opens at
+# at this depth, the home and working folders, and the clock. Read only in console-answer's outcome-refuse arm, so a
+# call and the version spawn nothing and read none of it (decision 149, item term-self-host-001-1273)
 task console-view
   like refusal-view
   save options, make run-options, depth(console-depth())
@@ -185,7 +186,7 @@ task console-decide
   take table, like console-table
   like outcome
   save started, read-process()
-  save ask, make line-ask, name(console-name(name)), mark(mark), routes(table/routes), argv(started/arguments), words-own(false), view(console-view())
+  save ask, make line-ask, name(console-name(name)), mark(mark), routes(table/routes), argv(started/arguments), words-own(false)
   back decide(ask)
 
 # one write, as node's run makes it: a line as console.log writes it, raw text as it is
@@ -228,11 +229,12 @@ task console-answer
       console-write-all(writes)
       back code
     case outcome-refuse
-      link writes
-      link closing
-      console-write-all(writes)
+      link usage
+      # the refusal drawn from what the host holds now (decision 149), its opening and failed item written
+      save drawn, refusal-said(usage, console-view())
+      console-write-all(drawn/writes)
       # the closing at the clock read now, once the opening and the failed item are out
-      save closed, refusal-closed(closing, now())
+      save closed, refusal-closed(drawn/closing, now())
       console-write-all(closed/writes)
       back closed/code
     case outcome-hand

@@ -1,0 +1,348 @@
+note <children a test keeps running beside it: a server, a daemon, a program in a pseudo-terminal, stopped however the test ends>
+
+# Item term-self-host-001-1308 (finding/suite-blockers.md group i): what bind-keep, hive, knit and terminal-pty need of a
+# child that runs while the test talks to it. `start-child` starts the command at the head of a group of its own, so a
+# stop reaches everything it started. `wait-for-line` reads its output a line at a time until one holds a phrase, under
+# one limit for the whole wait. `answer-on` writes to its input once a line holding a phrase comes, which is how a
+# prompt is answered or a key typed on a screen. `stop-child` ends it and answers what it wrote that nobody read.
+#
+# Every line read is kept in `heard`, in order, so a test reads back what a server was asked. A wait whose limit passes
+# stops the child hard: it answers <> and `late` reads true. A wait reads only the child's output: its error stream is
+# read by `wait`, at the end.
+#
+# However the test process ends (a pass, a failed want, a raise, an exit, ctrl-c, TERM, HUP), every child still running
+# is stopped with KILL to its group: `stop-children` runs on the process's exit, and a signal ends the process with the
+# shell's code for it, as test/support/temp.tree does. A test may call `stop-children` itself, between cases.
+#
+# A pseudo-terminal comes from the system's `script`, never Python (decision in log.md, item 1308). macOS `script`
+# refuses a socket as its input ("tcgetattr/ioctl: Operation not supported on socket"), which is what node's piped stdin
+# is, so `pty-command` puts a `cat` in front of it: script then reads a pipe, and the pseudo-terminal is sized with
+# `stty` inside it before the program starts. Linux's util-linux `script` runs its program from a `-c` text, quoted here.
+
+load @term/base/process
+  find child
+  find platform
+
+load @term/base/process/child
+  find start, name start-process
+  find read-line, name read-process-line
+  find write, name write-process
+  find close, name close-process
+  find stop, name stop-process
+  find wait, name wait-process
+
+load @term/base/process/run
+  find run-result
+
+load @term/base/clock
+  find sleep
+  find read-nanoseconds
+
+load @term/base/list
+  find push
+
+load @term/base/text
+  find contains, name text-contains
+  find replace-all
+
+dock load
+  load <global:process>, name children-process
+
+# a child a test keeps: the process, every output line read from it so far, whether its stream has ended, and whether
+# the last wait ran past its limit. `turn` counts the waits, so a limit's watch knows when its wait is over
+form held-child
+  mark shared
+  link process, like child
+  link heard, like list, like text
+  link ended, like boolean
+  link late, like boolean
+  link stopped, like boolean
+  link turn, like number
+
+form children-state
+  mark shared
+  link held, like list, like child
+  link hooked, like boolean
+
+host children-now, make(children-state, bind(held, make list), bind(hooked, false))
+
+# KILL every child this process started and that is still running, to its whole group. One already ended is left
+task stop-children
+  like void
+
+  walk children-now/held
+    take one, like child
+    stop-process(one, <hard>)
+
+task children-end-on
+  take signal, like text
+  take code, like number
+  like void
+  mark private
+
+  save stop
+    task
+      like void
+      stop-children()
+      children-process/exit(code)
+  children-process/once(signal, stop)
+
+task children-hook
+  like void
+  mark private
+
+  fork test, children-now/hooked
+    hold
+      back
+  save children-now/hooked, true
+  children-process/on(<exit>, stop-children)
+  children-end-on(<SIGINT>, 130)
+  children-end-on(<SIGTERM>, 143)
+  children-end-on(<SIGHUP>, 129)
+
+# start `argument-list` (the command first) as a child that leads a new process group, stopped when this process ends.
+# `directory`, `environment` and `limit` are `start`'s own (process/child)
+task start-child
+  mark async
+  take argument-list, like list, like text
+  take directory, like text, fall <>
+  take environment
+    like hash, like text, like text
+    need false
+  take limit, like number, fall 0
+  like held-child
+
+  save rest, make list
+  save at, 0
+  walk argument-list
+    take part, like text
+    fork test, is-above(at, 0)
+      hold
+        rest/push(part)
+    save at, add(at, 1)
+  children-hook()
+  save process, start-process(argument-list/0, rest, bind(directory, directory), bind(environment, environment), bind(limit, limit), bind(group, true))
+  push(children-now/held, process)
+  back make(held-child, bind(process, process), bind(heard, make list), bind(ended, false), bind(late, false), bind(stopped, false), bind(turn, 0))
+
+# while wait `turn` is the child's current one, look every 25 ms whether `until` (in nanoseconds) has passed, and if it
+# has, mark the wait late and stop the child hard, which ends the line it waits on
+task watch-limit
+  mark async
+  mark private
+  take held, like held-child
+  take turn, like number
+  take until, like number
+  like void
+
+  fork test, or(is-unequal(held/turn, turn), held/ended)
+    hold
+      back
+  fork test, is-above(read-nanoseconds(), until)
+    hold
+      save held/late, true
+      stop-process(held/process, <hard>)
+      back
+  sleep(25)
+  watch-limit(held, turn, until)
+
+# a new wait on the child, watched for `limit` milliseconds when it is above 0. It answers the wait's turn
+task begin-wait
+  mark private
+  take held, like held-child
+  take limit, like number
+  like number
+
+  save held/turn, add(held/turn, 1)
+  save held/late, false
+  fork test, is-above(limit, 0)
+    hold
+      tick watch-limit(held, held/turn, add(read-nanoseconds(), multiply(limit, 1000000)))
+  back held/turn
+
+# the wait is over: its watch stops at its next look
+task end-wait
+  mark private
+  take held, like held-child
+  like void
+
+  save held/turn, add(held/turn, 1)
+
+# the next line of the child's output, within `limit` milliseconds. At the end of the stream, or past the limit (`late`
+# then reads true), the answer is <> and the child's `ended` reads true
+task next-line
+  mark async
+  take held, like held-child
+  take limit, like number, fall 30000
+  like text
+
+  fork test, held/ended
+    hold
+      back <>
+  begin-wait(held, limit)
+  save got, read-process-line(held/process)
+  end-wait(held)
+  fork test, got/ended
+    hold
+      save held/ended, true
+      back <>
+  push(held/heard, got/line)
+  back got/line
+
+# the first line of the child's output holding `has` (never empty), read within `limit` milliseconds in all. Every line
+# read on the way is kept in `heard`. <> when the stream ended first, or the limit passed (`late` then reads true, and
+# the child is stopped)
+task wait-for-line
+  mark async
+  take held, like held-child
+  take has, like text
+  take limit, like number, fall 30000
+  like text
+
+  fork test, held/ended
+    hold
+      back <>
+  begin-wait(held, limit)
+  save found, <>
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save got, read-process-line(held/process)
+      fork test, got/ended
+        hold
+          save held/ended, true
+          save going, false
+        miss
+          push(held/heard, got/line)
+          fork test, text-contains(got/line, has)
+            hold
+              save found, got/line
+              save going, false
+  end-wait(held)
+  back found
+
+# write `data` to the child's input as it is: a line says its own newline, a key its own bytes
+task write-child
+  mark async
+  take held, like held-child
+  take data, like text
+  like void
+
+  write-process(held/process, data)
+
+# once a line holding `has` comes (within `limit` milliseconds), write `data` to the child's input: a prompt answered,
+# a key typed once the screen is up. It answers the line, <> when none came and nothing was written
+task answer-on
+  mark async
+  take held, like held-child
+  take has, like text
+  take data, like text
+  take limit, like number, fall 30000
+  like text
+
+  save line, wait-for-line(held, has, limit)
+  fork test, is-unequal(line, <>)
+    hold
+      write-process(held/process, data)
+  back line
+
+# close the child's input, so a child reading it to the end goes on
+task close-child
+  mark async
+  take held, like held-child
+  like void
+
+  close-process(held/process)
+
+# KILL the child if it is still there `left` looks of 50 ms from now, unless it was waited out first
+task hard-after
+  mark async
+  mark private
+  take held, like held-child
+  take left, like number
+  like void
+
+  fork test, held/stopped
+    hold
+      back
+  fork test, is-below(left, 1)
+    hold
+      stop-process(held/process, <hard>)
+      back
+  sleep(50)
+  hard-after(held, subtract(left, 1))
+
+# wait for the child to end on its own, answering its code and what it wrote that nobody read
+task wait-child
+  mark async
+  take held, like held-child
+  like run-result
+
+  save result, wait-process(held/process)
+  save held/stopped, true
+  save held/ended, true
+  back result
+
+# end the child: TERM to its group, then KILL two seconds later if it is still there (`way` <hard> sends KILL at once).
+# It answers the child's end as `wait-child` does: code 143 and signal 15 for a child TERM ended
+task stop-child
+  mark async
+  take held, like held-child
+  take way, like text, fall <gentle>
+  like run-result
+
+  stop-process(held/process, way)
+  fork test, is-unequal(way, <hard>)
+    hold
+      tick hard-after(held, 40)
+  back wait-child(held)
+
+# `part` as one word of a POSIX shell: in single quotes, a single quote inside closed, escaped and opened again
+task shell-word
+  take part, like text
+  like text
+
+  back <'{replace-all(part, <'>, <'\\''>)}'>
+
+# the words of `argument-list` as a POSIX shell command line
+task shell-line
+  take argument-list, like list, like text
+  like text
+
+  save words, make list
+  walk argument-list
+    take part, like text
+    words/push(shell-word(part))
+  back words/join(< >)
+
+# `argument-list` (the command first) run in a pseudo-terminal of `columns` by `rows`, as a command for `start-child`.
+# On macOS: `sh -c 'cat | script -q /dev/null sh -c "stty ...; exec $0 $@" "$@"'`, the program's words handed through
+# as the shell's own arguments, so none is quoted. On Linux: util-linux `script -qfec <line> /dev/null`, whose line is
+# the quoted words. Either way the pseudo-terminal echoes what is typed, as a terminal does, and `script` exits with the
+# program's code
+task pty-command
+  take argument-list, like list, like text
+  take columns, like number, fall 80
+  take rows, like number, fall 24
+  take on, like text, fall <>
+  like list, like text
+
+  save system, on
+  fork test, is-equal(system, <>)
+    hold
+      save system, platform()
+  save size, <stty cols {columns} rows {rows}>
+  save command, make list(<sh>, <-c>)
+  fork test, is-equal(system, <darwin>)
+    hold
+      command/push(<cat | script -q /dev/null sh -c '{size}; exec "$0" "$@"' "$@">)
+      command/push(<sh>)
+      walk argument-list
+        take part, like text
+        command/push(part)
+      back command
+  command/push(<cat | script -qfec "$1" /dev/null>)
+  command/push(<sh>)
+  command/push(<{size}; exec {shell-line(argument-list)}>)
+  back command

@@ -51,7 +51,7 @@ dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <@term/make/code/compile/cache>, name compile-cache-module
-  load <@term/make/code/compile/cache-scope.generated>, name cache-scope-module
+  load <@term/make/code/compile/cache-scope>, name cache-scope-module
 
 form folder-ask
   link recursive, like boolean
@@ -193,13 +193,14 @@ bind cache-epoch
   case node
     text <($module).CACHE_EPOCH>
 
-# the files a kind's version is fingerprinted against (compile/cache-scope.generated.ts), for a kind that is given
+# the files a kind's version is fingerprinted against (compile/cache-scope.tree, whose `cache-scope` answers a hash),
+# for a kind that is given
 bind scope-files
   take module, like dynamic
   take kind, like dynamic
   like dynamic
   case node
-    text <(($kind) ? ($module).CACHE_SCOPE[$kind] : undefined)>
+    text <(($kind) ? ($module).cacheScope().get($kind) : undefined)>
 
 bind as-texts
   take value, like dynamic
@@ -211,7 +212,7 @@ bind scope-kinds
   take module, like dynamic
   like list, like text
   case node
-    text <Object.keys(($module).CACHE_SCOPE)>
+    text <[...($module).cacheScope().keys()]>
 
 bind kind-key
   take kind, like dynamic
@@ -501,7 +502,7 @@ task compiler-dirs
   back dirs
 
 # Fingerprint the compiler's own SOURCE, by path, size and mtime: the same from the CLI, from `tsx` and from a worker.
-# A KIND IS FINGERPRINTED AGAINST ONLY THE CODE THAT CAN REACH IT (compile/cache-scope.generated.ts); without a kind,
+# A KIND IS FINGERPRINTED AGAINST ONLY THE CODE THAT CAN REACH IT (compile/cache-scope.tree); without a kind,
 # every `.ts` under the compiler's folders
 task compiler-source-hash
   take kind, like dynamic

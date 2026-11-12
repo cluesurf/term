@@ -1,9 +1,106 @@
 
-# An array-backed list. Forwards to the linked line runtime shim, which owns the iteration: every traversal needs a
-# callback, and a callback cannot be written inline here. Internal: reached only through the public list API.
+# An array-backed list over the host's own array. Each op is a declarative binding, one host expression inlined at the
+# use site, the traversals handing the callback to the host's own loop, so no runtime shim is linked. Internal: reached
+# only through the public list API.
 
-dock load
-  load <global:line>, name line
+bind host-get
+  take self, like dynamic
+  take position, like u32
+  like dynamic
+  case javascript
+    text <($self)[$position]>
+  case node
+    text <($self)[$position]>
+  case browser
+    text <($self)[$position]>
+
+bind host-set
+  take self, like dynamic
+  take position, like u32
+  take item, like dynamic
+  like dynamic
+  case javascript
+    text <(($self)[$position] = $item)>
+  case node
+    text <(($self)[$position] = $item)>
+  case browser
+    text <(($self)[$position] = $item)>
+
+bind host-size
+  take self, like dynamic
+  like u32
+  case javascript
+    text <($self).length>
+  case node
+    text <($self).length>
+  case browser
+    text <($self).length>
+
+bind host-push
+  take self, like dynamic
+  take item, like dynamic
+  like u32
+  case javascript
+    text <($self).push($item)>
+  case node
+    text <($self).push($item)>
+  case browser
+    text <($self).push($item)>
+
+bind host-reverse
+  take self, like dynamic
+  like dynamic
+  case javascript
+    text <($self).reverse()>
+  case node
+    text <($self).reverse()>
+  case browser
+    text <($self).reverse()>
+
+# the callback is read once, in the arrow's own parameter
+bind host-walk
+  take self, like dynamic
+  take step, like dynamic
+  like dynamic
+  case javascript
+    text <((step: (item: unknown, position: number) =\> void) =\> ($self).forEach((item: unknown, position: number) =\> step(item, position)))($step)>
+  case node
+    text <((step: (item: unknown, position: number) =\> void) =\> ($self).forEach((item: unknown, position: number) =\> step(item, position)))($step)>
+  case browser
+    text <((step: (item: unknown, position: number) =\> void) =\> ($self).forEach((item: unknown, position: number) =\> step(item, position)))($step)>
+
+bind host-map
+  take self, like dynamic
+  take hook, like dynamic
+  like dynamic
+  case javascript
+    text <((hook: (item: unknown, position: number) =\> unknown) =\> ($self).map((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case node
+    text <((hook: (item: unknown, position: number) =\> unknown) =\> ($self).map((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case browser
+    text <((hook: (item: unknown, position: number) =\> unknown) =\> ($self).map((item: unknown, position: number) =\> hook(item, position)))($hook)>
+
+bind host-filter
+  take self, like dynamic
+  take hook, like dynamic
+  like dynamic
+  case javascript
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).filter((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case node
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).filter((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case browser
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).filter((item: unknown, position: number) =\> hook(item, position)))($hook)>
+
+bind host-find-first
+  take self, like dynamic
+  take hook, like dynamic
+  like dynamic
+  case javascript
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).find((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case node
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).find((item: unknown, position: number) =\> hook(item, position)))($hook)>
+  case browser
+    text <((hook: (item: unknown, position: number) =\> boolean) =\> ($self).find((item: unknown, position: number) =\> hook(item, position)))($hook)>
 
 form line
   head item-type
@@ -16,7 +113,7 @@ form line
     like item-type
 
     send back
-      call line/get
+      call host-get
         read self/dock
         read position
 
@@ -25,7 +122,7 @@ form line
     take position, like u32
     take item, like item-type
 
-    call line/set
+    call host-set
       read self/dock
       read position
       read item
@@ -35,28 +132,28 @@ form line
     like u32
 
     send back
-      call line/size
+      call host-size
         read self/dock
 
   task push
     take self
     take item, like item-type
 
-    call line/push
+    call host-push
       read self/dock
       read item
 
   task reverse
     take self
 
-    call line/reverse
+    call host-reverse
       read self/dock
 
   task walk
     take self
     take step, like task
 
-    call line/walk
+    call host-walk
       read self/dock
       read step
 
@@ -65,7 +162,7 @@ form line
     take hook, like task
 
     send back
-      call line/map
+      call host-map
         read self/dock
         read hook
 
@@ -74,7 +171,7 @@ form line
     take hook, like task
 
     send back
-      call line/filter
+      call host-filter
         read self/dock
         read hook
 
@@ -83,6 +180,6 @@ form line
     take hook, like task
 
     send back
-      call line/find-first
+      call host-find-first
         read self/dock
         read hook

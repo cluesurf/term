@@ -1,0 +1,223 @@
+note <per-module emit: one ES module per source file, each importing what it uses from the others, and the set runs wired together>
+
+# Ported from modules.ts by statement (item term-self-host-001-1303), one test per `ok` in its order. A two-module program
+# compiles in per-module mode (Tier 2, separate compilation): the entry imports the helper's function and type, the
+# emitted modules are made JavaScript, written each at its url and the entry imported in this process
+# (test/support/importing `import-modules`), so the cross-module imports resolve as the dev server serves them. Then the
+# blog app (deck/site/test/site/hook/blog.tree) compiles per module over the project. The original ran everything after
+# its first test only when the compile passed, and the blog's last four only when the blog compiled: here each reads the
+# same compile, so a refused compile fails them all rather than one.
+#
+# A module's url was `./<hashText(file)>.mjs` (the blog's `/<hashText(file)>.mjs`), a safe file name per source file.
+# Here it is the file's name with every character but a letter or digit made a dash, `./helper-tree.mjs`: only its
+# being one safe name per file, and the same in the import and the written file, was asserted.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compiling-source
+  find file-text
+  find project-path
+
+load ../support/importing
+  find module-set
+  find module-unit
+  find unit-of
+  find import-modules
+  find script-of
+  find call-export
+
+load ../support/reading
+  find lines-of
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/list
+  find push
+  find contains
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+
+load @term/base/pattern
+  find pattern
+  find matches
+  find replace-matches
+
+host helper, <form point\n  link x, like number\n  link y, like number\n\ntask origin-point\n  like point\n  send back\n    make point\n      bind x, code 0\n      bind y, code 0\n\ntask greeting\n  like text\n  send back\n    text \<hi\>\n>
+
+host entry, <load @app/helper\n  find greeting\n  find origin-point\n  find point\n\ntask run\n  like text\n  send back\n    call greeting\n\ntask start-point\n  like point\n  send back\n    call origin-point\n>
+
+# a safe file name per source file: every character but a letter or digit made a dash
+task safe-name
+  take file, like text
+  like text
+
+  back replace-matches(make(pattern, <<[^a-zA-Z0-9]>>), file, <->)
+
+# the url one module imports another by
+task url-for-file
+  take file, like text
+  like text
+
+  back <./{safe-name(file)}.mjs>
+
+# the blog's url, from the site root
+task url-from-root
+  take file, like text
+  like text
+
+  back </{safe-name(file)}.mjs>
+
+host built, compile-text(entry, make(compile-choice, bind(file, <entry.tree>), bind(modules, url-for-file), bind(files, make list(make(compiling-source, bind(file, <@app/helper>), bind(text, helper), bind(answer, <helper.tree>))))))
+
+host units, module-set(built/modules)
+
+# the emitted code of a module by its source file, the empty text when the set has none
+task code-of
+  take file, like text
+  like text
+
+  save one, unit-of(units, file)
+  back one/code
+
+# the source files a module imports, by its source file
+task imports-of
+  take file, like text
+  like list, like text
+
+  save one, unit-of(units, file)
+  back one/imports
+
+host entry-code, code-of(<entry.tree>)
+host helper-code, code-of(<helper.tree>)
+
+# the units with the url each is imported by
+task wired-units
+  like list, like module-unit
+
+  save out, make list
+  walk units
+    take one, like module-unit
+    out/push(make(module-unit, bind(file, one/file), bind(code, one/code), bind(imports, one/imports), bind(url, url-for-file(one/file))))
+  back out
+
+host folder, temp-folder(<seed-modules->)
+
+# the entry module, every module written at its url and the entry imported
+task wired-entry
+  like dynamic
+  mark async
+
+  back import-modules(wired-units(), folder, <entry.tree>)
+
+# true when a line of the code starts with `import `
+task any-import-line
+  take code, like text
+  like boolean
+
+  walk lines-of(code)
+    take line, like text
+    fork test, starts-with(line, <import >)
+      hold
+        back true
+  back false
+
+test <compiles in per-module mode>
+  want hold, built/ok
+
+test <emits one module per source file>
+  want hold, is-equal(units/length, 2)
+
+test <entry records its dependency edge on the helper>
+  want hold, contains(imports-of(<entry.tree>), <helper.tree>)
+
+test <entry imports the cross-module function (greeting)>
+  want hold, matches(make(pattern, <<import \{[^}]*\bgreeting\b>>), entry-code)
+
+test <entry imports the cross-module function (originPoint)>
+  want hold, matches(make(pattern, <<import \{[^}]*\boriginPoint\b>>), entry-code)
+
+test <entry imports the cross-module type (Point)>
+  want hold, matches(make(pattern, <<import type \{[^}]*\bPoint\b>>), entry-code)
+
+test <entry imports from the helper url>
+  want hold, text-contains(entry-code, <"{url-for-file(<helper.tree>)}">)
+
+test <helper exports the function>
+  want hold, matches(make(pattern, <<export (async )?function greeting>>), helper-code)
+
+test <helper has no cross-module import (it defines everything it uses)>
+  want hold, not(any-import-line(helper-code))
+
+test <the wired ESM modules run: run() returns the helper value>
+  host module, wired-entry()
+  want hold, is-equal(call-export(module, <run>), <hi>)
+
+test <the wired ESM modules run: startPoint() builds the cross-module form>
+  host module, wired-entry()
+  host point, call-export(module, <startPoint>)
+  want hold, and(is-equal(point/x, 0), is-equal(point/y, 0))
+
+# ---- real multi-module app: the blog (native delegation + bear + types + methods) ----
+
+host blog-entry, project-path(<.>, <deck/site/test/site/hook/blog.tree>)
+
+host blog, compile-text(file-text(blog-entry), make(compile-choice, bind(file, blog-entry), bind(project, <.>), bind(project-env, <node>), bind(modules, url-from-root)))
+
+host blog-units, module-set(blog/modules)
+
+# whether esbuild turns this TypeScript into JavaScript, as the dev server's per-module transform
+task transpiles
+  take code, like text
+  like boolean
+
+  save done, true
+  fork
+    mark unsafe
+    host script, script-of(code)
+  halt take
+    take cause
+    save done, false
+  back done
+
+# the first unit that does not transpile, by file, the empty text when every one does
+task first-bad
+  like text
+
+  walk blog-units
+    take one, like module-unit
+    fork test, not(transpiles(one/code))
+      hold
+        back one/file
+  back <>
+
+# the code of the first unit whose source file ends with the tail, the empty text when none does
+task code-ending
+  take tail, like text
+  like text
+
+  walk blog-units
+    take one, like module-unit
+    fork test, ends-with(one/file, tail)
+      hold
+        back one/code
+  back <>
+
+test <blog compiles in per-module mode>
+  want hold, blog/ok
+
+test <blog emits many modules (full stdlib + framework graph)>
+  want hold, is-above(blog-units/length, 5)
+
+test <every blog module transpiles to valid JS>
+  want hold, is-equal(first-bad(), <>)
+
+test <post repository imports db functions across modules>
+  want hold, matches(make(pattern, <<import \{[^}]*\b(connect|query|run|field)\b>>), code-ending(<back/post.tree>))
+
+test <api module imports the repository across modules>
+  want hold, matches(make(pattern, <<import \{[^}]*\b(setup|listPosts|getPost|createPost)\b>>), code-ending(<hook/blog.tree>))

@@ -1,0 +1,168 @@
+# The environment variables that say only HOW a process was started, never what a build makes. Every key of a build
+# over the environment leaves them out: task/port-build.tree's compiler fingerprint and work/build/build-graph.tree's
+# env-text, which keys the persisted graph snapshot. One list, so the two cannot drift (item term-self-host-001-0476),
+# and one Term module both load (ruling of term-self-host-001-1165, item 0721). Each of them in a key made the same
+# tree a full rebuild, or a refused snapshot, from another route or terminal:
+#
+#   TERM_LINE_LOCK, TERM_LINE_LOCK_BY   who holds the line lock. make:line hands down a fresh random token every run
+#                                       (traps.md T-0018b)
+#   TERM_PROGRAM, TERM_PROGRAM_VERSION, TERM_SESSION_ID, TERM_FEATURES
+#                                       the terminal emulator's own (iTerm2, Apple Terminal, VS Code), no Term variable.
+#                                       TERM_SESSION_ID differs in every pane (item term-self-host-001-0453)
+#   TERM_DEPTH                          how deep the console's runs nest: output.ts openRun sets it for every child of
+#                                       a Term run, and term make reads its snapshot before its run opens (T-0457)
+#   NODE_PATH                           pnpm's lookup path for the tsx it ran, which differs by where it was started
+#                                       from (item term-self-host-001-0453)
+#   TERM_CENSUS_KEEP, TERM_SUITE        a census run keeps every program it builds, named for its suite
+#                                       (task/term/census-keep.cjs, item term-self-host-001-0508); the build is the same
+#
+# Ported from deck/call/code/launch-only.ts (item term-self-host-001-0721), which goes with this change.
+
+load @term/base/list
+  find list
+  find contains
+  find join
+
+load @term/base/text
+  find split
+  find substring
+  find starts-with
+  find contains, name text-contains
+  find replace-all
+  find char-code-at
+
+load @term/call/code/draft-mark
+  find is-space
+
+task launch-only-names
+  like list, like text
+  mark private
+
+  save names, make list
+  push(names, <TERM_LINE_LOCK>)
+  push(names, <TERM_LINE_LOCK_BY>)
+  push(names, <TERM_PROGRAM>)
+  push(names, <TERM_PROGRAM_VERSION>)
+  push(names, <TERM_SESSION_ID>)
+  push(names, <TERM_FEATURES>)
+  push(names, <TERM_DEPTH>)
+  push(names, <NODE_PATH>)
+  push(names, <TERM_CENSUS_KEEP>)
+  push(names, <TERM_SUITE>)
+  back names
+
+task is-launch-only
+  take name, like text
+  like boolean
+
+  back contains(launch-only-names(), name)
+
+# PART of a variable can be launch-only too. NODE_OPTIONS stays in a key, since a flag in it can change what a compile
+# does (`--conditions` picks other package exports, `--import` and `--require` run code first, `--stack-size` moves
+# where a deep compile overflows), but its V8 heap sizes are left out: `--max-old-space-size` and
+# `--max-semi-space-size` say only how much memory the process may use, and a compile that fits writes the same bytes.
+# A queue check run under a heap cap made port-build a full rebuild, and the next make:line another (traps.md T-1015,
+# item term-self-host-001-1017). `--expose-gc` stays: nothing has shown that no compile reads `gc`.
+#
+# `build-value` answers the text a key holds for the variable, and `has-build-value` whether anything of it is left
+# (only NODE_OPTIONS made of heap flags alone, or empty, leaves nothing). A value holding a quote is kept whole, since
+# its words cannot be split safely on spaces. Only the `=<n>` spelling is a heap flag here: node refuses
+# `--max-old-space-size 6144` in NODE_OPTIONS before any script runs, so no build ever sees that one.
+task build-value
+  take name, like text
+  take value, like text
+  like text
+
+  fork test, or(is-unequal(name, <NODE_OPTIONS>), has-quote(value))
+    hold
+      back value
+  back join(kept-words(value), < >)
+
+task has-build-value
+  take name, like text
+  take value, like text
+  like boolean
+
+  fork test, or(is-unequal(name, <NODE_OPTIONS>), has-quote(value))
+    hold
+      back true
+  back is-above(kept-words(value)/length, 0)
+
+task has-quote
+  take value, like text
+  like boolean
+  mark private
+
+  back or(text-contains(value, <">), text-contains(value, <'>))
+
+# the words of a NODE_OPTIONS value that are not heap flags
+task kept-words
+  take value, like text
+  like list, like text
+  mark private
+
+  save kept, make list
+  walk words(value)
+    take word
+    fork test, not(is-heap-flag(word))
+      hold
+        push(kept, word)
+  back kept
+
+# the words of a text split at runs of white space (every code point `\s` matches), no empty word
+task words
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save word, <>
+  walk split(value, <>)
+    take point
+    fork test, is-space(char-code-at(point, 0))
+      hold
+        fork test, is-unequal(word, <>)
+          hold
+            push(out, word)
+        save word, <>
+      miss
+        save word, <{word}{point}>
+  fork test, is-unequal(word, <>)
+    hold
+      push(out, word)
+  back out
+
+# `--max-old-space-size=<n>` or `--max-semi-space-size=<n>`, each `-` after `--max` also spelled `_`, n one or more
+# digits: the pattern /^--max[-_](old|semi)[-_]space[-_]size=\d+$/ of launch-only.ts
+task is-heap-flag
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(starts-with(word, <--max>))
+    hold
+      back false
+  save rest, replace-all(substring(word, 5), <_>, <->)
+  fork test, starts-with(rest, <-old-space-size=>)
+    hold
+      back all-digits(substring(rest, 16))
+  fork test, starts-with(rest, <-semi-space-size=>)
+    hold
+      back all-digits(substring(rest, 17))
+  back false
+
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(is-below(code, 48), is-above(code, 57))
+      hold
+        back false
+  back true

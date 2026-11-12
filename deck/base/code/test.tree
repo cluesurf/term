@@ -8,7 +8,7 @@ load @term/base/console
 # equality descends structurally through the compare runtime, so `want` needs no equality mask on
 # the element type (rust would otherwise demand PartialEq on `t`)
 load @term/base/native/{platform}/compare
-  find compare-runtime
+  find deep-equal
 
 # the meta object a test block constructs: a name and the work that returns whether it passed
 
@@ -45,7 +45,7 @@ task want
   take expect, like t
   like boolean
   send back
-    call compare-runtime/deep-equal
+    call deep-equal
       read got
       read expect
 
@@ -58,7 +58,7 @@ task deny
   like boolean
   send back
     call is-equal
-      call compare-runtime/deep-equal
+      call deep-equal
         read got
         read expect
       false

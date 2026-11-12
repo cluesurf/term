@@ -68,6 +68,13 @@ load ./toolkit-run
   find entitlements-of
   find run-leg
   find prepare-no-device
+  find run-leg-beside
+  find no-helper
+  find start-helper
+  find stop-helpers
+
+load ../children
+  find held-child
 
 load ../temp
   find temp-folder
@@ -422,3 +429,78 @@ test <a leg with nothing to run it answers skipped, with its reason>
   want hold, is-equal(ran/state, <skipped>)
   want hold, is-equal(ran/reason, <no such leg>)
   want hold, is-equal(ran/checks/length, 0)
+
+# ---- the helper beside a launch (item 1304): fixtures stand in for the tapper and the app, no device is touched ----
+
+load @term/base/process/run
+  find run
+
+load @term/base/text
+  find trim
+
+# whether process `pid` is gone within 2 s, by `kill -0`
+task gone
+  take pid, like text
+  like boolean
+
+  save script, <for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do kill -0 {pid} 2\>/dev/null || exit 0; sleep 0.1; done; exit 1>
+  save r, run(<sh>, make list(<-c>, script))
+  back is-equal(r/code, 0)
+
+# how often a helper was asked for
+form helper-asks
+  mark shared
+  link count, like number
+
+host asked, make(helper-asks, bind(count, 0))
+
+# a beside-launch that counts its asks and names no helper
+task counting-helper
+  take leg, like text
+  take udid, like text
+  take serial, like text
+  take identifier, like text
+  like list, like text
+
+  save asked/count, add(asked/count, 1)
+  back make list
+
+test <no helper names an empty command, and an empty command starts nothing>
+  want hold, is-equal(no-helper(<android>, <>, <emulator-5554>, <surf.term.check>)/length, 0)
+  host ran, leg-of(<android>)
+  host helpers, make list
+  start-helper(helpers, no-helper(<android>, <>, <emulator-5554>, <surf.term.check>))
+  want hold, is-equal(helpers/length, 0)
+  stop-helpers(ran, helpers)
+  want hold, is-equal(ran/beside, <>)
+
+test <a helper runs beside the launch: it taps the prompt the launch waits on, and its words are kept on the leg>
+  host folder, temp-folder(<device-check->)
+  host tapper, make list(<sh>, <-c>, <while [ ! -f {folder}/prompt ]; do sleep 0.1; done; echo "tapped allow"; touch {folder}/tap>)
+  host ran, leg-of(<android>)
+  host helpers, make list
+  start-helper(helpers, tapper)
+  want hold, is-equal(helpers/length, 1)
+  host app, run(<sh>, make list(<-c>, <touch {folder}/prompt; i=0; while [ $i -lt 100 ]; do if [ -f {folder}/tap ]; then echo granted; exit 0; fi; i=$((i+1)); sleep 0.1; done; echo denied; exit 1>))
+  want hold, is-equal(trim(app/output), <granted>)
+  stop-helpers(ran, helpers)
+  want hold, is-equal(ran/beside, <tapped allow\n>)
+
+test <a helper still running once the launch is over is stopped, its group with it>
+  host ran, leg-of(<ios>)
+  host helpers, make list
+  start-helper(helpers, make list(<sh>, <-c>, <echo $$; exec sleep 30>))
+  host app, run(<sh>, make list(<-c>, <sleep 0.3; echo launched>))
+  want hold, is-equal(trim(app/output), <launched>)
+  stop-helpers(ran, helpers)
+  host pid, trim(ran/beside)
+  want hold, is-unequal(pid, <>)
+  want hold, gone(pid)
+
+test <a leg with nothing to run it never asks for its helper>
+  save asked/count, 0
+  host ran, run-leg-beside(plain-app, <compose-mars>, no-source, prepare-no-device, counting-helper)
+  want hold, is-equal(ran/state, <skipped>)
+  want hold, is-equal(ran/reason, <no such leg>)
+  want hold, is-equal(asked/count, 0)
+  want hold, is-equal(ran/beside, <>)

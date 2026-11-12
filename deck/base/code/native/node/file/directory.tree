@@ -11,6 +11,18 @@ load @term/base/list
 load ./metadata
   find metadata-is-directory
 
+# the options node's fs takes to make or read a whole tree
+bind make-tree-options
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# the options node's fs takes to remove a whole tree, a missing path no error
+bind make-remove-options
+  like dynamic
+  case node
+    text <(\{ recursive: true, force: true \})>
+
 task directory-make
   take path, like text
   like void
@@ -18,8 +30,7 @@ task directory-make
     mark unsafe
     call directory-fs/mkdir-sync
       read path
-      make object
-        bind recursive, true
+      call make-tree-options
   halt take
     take problem
 
@@ -30,9 +41,7 @@ task directory-remove
     mark unsafe
     call directory-fs/rm-sync
       read path
-      make object
-        bind recursive, true
-        bind force, true
+      call make-remove-options
   halt take
     take problem
 
@@ -69,8 +78,7 @@ task directory-walk
     save names, like list, like text
       call directory-fs/readdir-sync
         read path
-        make object
-          bind recursive, true
+        call make-tree-options
     walk list, read names
       hook next
         take site, name entry

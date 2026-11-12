@@ -1,0 +1,199 @@
+note <four synthesis paradigms, each ending in a Term task the live compiler accepts>
+
+# Ported from demo-seed-culmination.ts by statement (item term-self-host-001-0584, decision 116). The original drove
+# deck/test/code/synth-extra.ts, which is Term now: synthesis-suite.tree (observational-equivalence enumeration,
+# stochastic search, sketching) and affine-synthesis.tree (the constraint-based exists-forall query, over
+# smt-query.tree's formulas and its one binding, a `z3 -in` child). Each expression is emitted by source-emit.tree and
+# compiled as the original compiled it, projectResolver(ROOT, 'node', ROOT): the project the suite runs in. The
+# searches take synth-extra.ts's defaults, as deck/test/test/synthesis-suite.tree and affine-synthesis.tree spell
+# them. The constraint case skips without the z3 program, as the original skipped it without its z3-solver package.
+# One test per `ok`, in its order. The original also printed one emitted body, which asserted nothing.
+
+load @term/test/synthesis-suite
+  find observational-enum
+  find stochastic-synth
+  find fill-sketch
+
+load @term/test/affine-synthesis
+  find affine-result
+  find constraint-synth
+
+load @term/test/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+
+load @term/test/expression-grammar
+  find expression
+  find condition
+  find variable-at
+  find constant-of
+
+load @term/test/source-emit
+  find seed-task
+  find emit-seed
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/list
+  find list
+
+host names, make list(<a>, <b>)
+
+task max-examples
+  like list, like list, like number
+
+  host out, make list
+  out/push(make list(0, 0))
+  out/push(make list(1, 2))
+  out/push(make list(3, 1))
+  out/push(make list(5, 5))
+  out/push(make list(2, 7))
+  out/push(make list(4, 0))
+  out/push(make list(6, 6))
+  out/push(make list(1, 9))
+  back out
+
+# each example's larger input, the target the examples must meet
+task max-targets
+  like list, like number
+
+  host out, make list
+  walk max-examples()
+    take example, like list, like number
+    host a, get(example, 0)
+    host b, get(example, 1)
+    fork test, is-above(b, a)
+      hold
+        out/push(b)
+      miss
+        out/push(a)
+  back out
+
+# lower an expression to a Term task, then compile it with the live compiler
+task emitted-compiles
+  take name, like text
+  take body, like expression
+  like boolean
+
+  host source, emit-seed(make(seed-task, bind(name, name), bind(params, names), bind(body, body)))
+  host out, compile-text(source, make(compile-choice, bind(file, <{name}.tree>), bind(project, <.>), bind(project-env, <node>), bind(project-link, <.>)))
+  back out/ok
+
+# ---- 1. observational-equivalence enumeration ----
+
+test <observational-equivalence enum, then compiling Term>
+  host found, observational-enum(2, max-examples(), max-targets(), 6)
+  want hold, found/ok
+  want hold, emitted-compiles(<max-by-enum>, found/expr)
+
+# ---- 2. constraint-based exists-forall: f(a, b) = 2a + 3b + 1, then that expression built and emitted ----
+
+task scaled
+  take factor, like number
+  take value, like smt-term
+  like smt-term
+
+  back
+    make times
+      bind left, value-term(factor)
+      bind right, value
+
+task summed
+  take left, like smt-term
+  take right, like smt-term
+  like smt-term
+
+  back
+    make plus
+      bind left, left
+      bind right, right
+
+task two-three-one
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  back related(<=>, output, summed(summed(scaled(2, get(inputs, 0)), scaled(3, get(inputs, 1))), value-term(1)))
+
+# the input `index` added to itself `coefficient` times, as the original wrote a coefficient
+task repeated
+  take coefficient, like number
+  take index, like number
+  like expression
+
+  save out, variable-at(index)
+  save at, 1
+  walk test
+    hook test, is-below(at, coefficient)
+    hook hold
+      save out
+        make add
+          bind left, out
+          bind right, variable-at(index)
+      save at, add(at, 1)
+  back out
+
+task affine-body
+  take coefficients, like list, like number
+  like expression
+
+  host both-inputs
+    make add
+      bind left, repeated(get(coefficients, 0), 0)
+      bind right, repeated(get(coefficients, 1), 1)
+  back
+    make add
+      bind left, both-inputs
+      bind right, constant-of(get(coefficients, 2))
+
+test <constraint-based exists-forall, then compiling Term>
+  fork test, is-equal(find-tool(<z3>), <>)
+    hold
+      skip <no z3>
+  host found, constraint-synth(2, two-three-one, 5)
+  want hold, found/ok
+  want hold, emitted-compiles(<affine-by-smt>, affine-body(found/coefficients))
+
+# ---- 3. stochastic search ----
+
+test <stochastic MCMC, then compiling Term>
+  host found, stochastic-synth(2, max-examples(), max-targets(), 200000, 4, 5)
+  want hold, found/ok
+  want hold, emitted-compiles(<max-by-mcmc>, found/expr)
+
+# ---- 4. sketching ----
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+# `hole >= b ? a : b`
+task max-sketch
+  take hole, like expression
+  like expression
+
+  back
+    make ite
+      bind test
+        make ge
+          bind left, hole
+          bind right, variable-at(1)
+      bind then, variable-at(0)
+      bind else, variable-at(1)
+
+test <sketching, then compiling Term>
+  host found, fill-sketch(max-sketch, 2, is-max, 4, 6)
+  want hold, found/ok
+  want hold, emitted-compiles(<max-by-sketch>, found/expr)

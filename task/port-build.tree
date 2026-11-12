@@ -87,15 +87,19 @@ load @term/base/environment
   find variable
   find has-variable
 
+# the launch-only variables, one module with work/build/build-graph.tree's env-text (items term-self-host-001-0476 and
+# 0721), compiled into this program from its `.tree`, never its port
+load @term/call/code/launch-only
+  find is-launch-only
+  find build-value
+  find has-build-value
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:os>, name node-os
   load <node:child_process>, name node-child
   load <node:url>, name node-url
-  # the launch-only variables, one list with work/build/build-graph.tree's env-text (item term-self-host-001-0476): plain
-  # TypeScript with no imports, never a port
-  load <@term/call/code/launch-only>, name launch-only
 
 # ---- small host values ----
 
@@ -1142,14 +1146,14 @@ task nearest-lock
 
 # THE COMPILER, as content (decision 140 section 2): the manifest schema, stage0's id (the sha256 of the bundle every
 # port compiles with), Node, the launcher's bytes, the running program's own sha (its file is named by it), the
-# nearest lockfile, launch-only.ts (which decides the environment's part), and every TERM_ / SEED_ / NODE_ variable
-# but the launch-only ones. The program is compiled from `.tree` source and imports no port, so no port build can move
+# nearest lockfile, and every TERM_ / SEED_ / NODE_ variable but the launch-only ones. launch-only.tree, which decides
+# the environment's part, is compiled into the program, so the program's sha covers it (item 0721). The program is compiled from `.tree` source and imports no port, so no port build can move
 # it (traps T-1081, T-1096i). A worker runs the same program file, so it has this fingerprint.
 # Nothing when any of it cannot be read, and then nothing is skipped
 #
 # The variables that say only how port-build was started are left out: each of them in it made the same tree a full
 # rebuild of every module from another route or terminal (item term-self-host-001-0453). The list, and why each is on
-# it, is deck/call/code/launch-only.ts, which build-graph.tree's env-text reads too (item term-self-host-001-0476)
+# it, is deck/call/code/launch-only.tree, which build-graph.tree's env-text reads too (item term-self-host-001-0476)
 task fingerprint
   take term, like text
   take stage0-id, like text
@@ -1187,17 +1191,20 @@ task fingerprint
           call and
             call is-build-variable, read name
             call not
-              call launch-only/is-launch-only, read name
+              call is-launch-only, read name
         hook hold
-          save value
-            call launch-only/build-value
-              call variable-pair
-                read name
-                call environment-value, read name
+          save raw
+            call environment-value, read name
           fork test
             hook test
-              call is-something, read value
+              call has-build-value
+                bind name, read name
+                bind value, read raw
             hook hold
+              save value
+                call build-value
+                  bind name, read name
+                  bind value, read raw
               call lines/push, text <env {name}={value}>
   save files
     make list
@@ -1206,13 +1213,6 @@ task fingerprint
       read term
       text <task>
       text <launch.mjs>
-  call files/push
-    call node-path/join
-      read term
-      text <deck>
-      text <call>
-      text <code>
-      text <launch-only.ts>
   save lock
     call nearest-lock, read term
   fork test
@@ -1243,13 +1243,6 @@ bind trimmed-program
   like text
   case node
     text <<$name.replace(/\.ts$/, "")>>
-
-bind variable-pair
-  take name, like text
-  take value, like text
-  like dynamic
-  case node
-    text <<({ name: $name, value: $value })>>
 
 # ---- the jobs ----
 

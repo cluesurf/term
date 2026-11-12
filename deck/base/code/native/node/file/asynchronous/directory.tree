@@ -13,6 +13,18 @@ load @term/base/file/directory
 load @term/base/list
   find push
 
+# the options node's fs takes to make a whole tree
+bind make-tree-options
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+# the options node's fs takes to read a directory's entries with their kinds
+bind make-entry-options
+  like dynamic
+  case node
+    text <(\{ withFileTypes: true \})>
+
 task folder-make
   mark async
   take path, like text
@@ -21,8 +33,7 @@ task folder-make
     mark unsafe
     call walk-fs/mkdir
       read path
-      make object
-        bind recursive, true
+      call make-tree-options
       wait true
   halt take
     take problem
@@ -38,8 +49,7 @@ task folder-entries
     save entries, like list, like dynamic
       call walk-fs/readdir
         read path
-        make object
-          bind with-file-types, true
+        call make-entry-options
         wait true
     send back, read entries
   halt take

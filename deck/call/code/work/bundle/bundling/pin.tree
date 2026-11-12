@@ -1,0 +1,37 @@
+# The bundler's pin (decision 130 section 1, decision 152 section 4): one version, and the sha256 of each platform's
+# npm tarball of it, `@esbuild/<platform>-<version>.tgz` from registry.npmjs.org, keyed by node's platform and
+# architecture names. The version equals the repository's node_modules one, so a bundle made through
+# work/bundle/bundling.tree has the bytes the JS API gave before it. A release moves the version and all six digests
+# together. Read by bundling.tree, and by any cache key that names the bundler's version.
+
+# the pinned version
+task pinned-version
+  like text
+
+  back <0.28.1>
+
+# the sha256 of the tarball for `key` (`darwin-arm64`, `linux-x64`, `win32-x64` ...), lowercase hex, or the empty
+# text for a platform with no pin
+task pinned-digest
+  take key, like text
+  like text
+
+  fork test, is-equal(key, <darwin-arm64>)
+    hold
+      back <5d64cc9bc527d598450b5f8d47ff293eb9f3aea38dd9eff67fd55d228c5ccb43>
+  fork test, is-equal(key, <darwin-x64>)
+    hold
+      back <4cc582287781c171f5ac2d216dc15ab1c40bc83bff59803211a68b66e0c762cb>
+  fork test, is-equal(key, <linux-x64>)
+    hold
+      back <9ed00ab5330c94386f3273eda99a1fb0e8f37cfd6cb5270e4ad2fe3527da3546>
+  fork test, is-equal(key, <linux-arm64>)
+    hold
+      back <2145e9e686c95ee47c1181f83f272f0ff95820e52d7736fdcd9eeb106fd6456a>
+  fork test, is-equal(key, <win32-x64>)
+    hold
+      back <5c5d62da7572b57ddc1fa3caedc36c1218b5d8d02ce9c7ee70e3339fce4453c4>
+  fork test, is-equal(key, <win32-arm64>)
+    hold
+      back <3eec4af19935fd2264601ec149e90e81b680586856a2b1a5473c762f739ef851>
+  back <>

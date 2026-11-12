@@ -1,0 +1,573 @@
+# A version's files as one gzip-compressed ustar archive, written and read back, for OCI artifact format v2 (decision
+# 129 section 2, item term-self-host-001-1043). The archive is the artifact's one layer: `oras pull` then `tar -xzf`
+# reads it with no Term at all.
+#
+#   write-archive(entries)        the POSIX ustar bytes: every entry in path order, then two zero blocks
+#   read-archive(bytes, limit)    the entries back, every rule below checked, no file over `limit` bytes in all
+#   pack-archive(entries)         write-archive, gzipped by @term/base/gzip (the same bytes on every backend)
+#   unpack-archive(bytes, limit)  gunzipped, then read-archive
+#
+# An entry is a host record { path, kind, executable, bytes }: `kind` is `file` or `directory`, `path` is relative and
+# written with `/`, a directory's without the trailing slash, `bytes` a Buffer (empty for a directory).
+#
+# THE PATH RULES, held the same way on both sides, so an archive this writes is one it reads, and a hostile one writes
+# nowhere outside the version's folder: a path is not empty, is at most 255 bytes of UTF-8, does not start with `/`,
+# holds no `\` and no `:`, and no segment of it is empty, `.` or `..`. Two entries never share a path.
+#
+# WHAT A READ REFUSES: a header whose checksum is wrong or whose magic is not `ustar\0` `00`, any entry that is not a
+# regular file or a directory (a hard or symbolic link, a device, a fifo, a pax or GNU extension header), a size that
+# is not octal or runs past the archive, a directory with data, a path the rules refuse, and files over `limit` bytes.
+#
+# The header is deterministic: mode 0644 (0755 for an executable file and for a directory), uid, gid and mtime 0, no
+# user or group name, so the same files give the same archive and the same digest.
+
+load ./oci-failure
+  find oci-failure
+
+load @term/base/gzip
+  find gzip
+  find gunzip
+
+bind archive-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind archive-list
+  like dynamic
+  case node
+    text <[]>
+
+bind archive-push
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.push($item)>
+
+bind archive-at
+  take items, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$items[$index]>
+
+bind archive-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind archive-field
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind archive-entry
+  take path, like text
+  take kind, like text
+  take executable, like boolean
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ path: $path, kind: $kind, executable: $executable, bytes: $bytes })>>
+
+bind archive-empty-bytes
+  like dynamic
+  case node
+    text <Buffer.alloc(0)>
+
+bind archive-alloc
+  take size, like number
+  like dynamic
+  case node
+    text <Buffer.alloc($size)>
+
+bind archive-buffer
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($bytes)>
+
+bind archive-utf8
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+bind archive-is-utf8
+  take bytes, like dynamic
+  like boolean
+  case node
+    text <<(() => { try { new TextDecoder("utf-8", { fatal: true }).decode($bytes); return true } catch { return false } })()>>
+
+bind archive-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind archive-byte
+  take bytes, like dynamic
+  take at, like number
+  like number
+  case node
+    text <$bytes[$at]>
+
+bind archive-slice
+  take bytes, like dynamic
+  take from, like number
+  take to, like number
+  like dynamic
+  case node
+    text <$bytes.subarray($from, $to)>
+
+# a header field's bytes up to its first NUL
+bind archive-cut
+  take bytes, like dynamic
+  take from, like number
+  take to, like number
+  like dynamic
+  case node
+    text <<((cutField) => ((cutEnd) => cutField.subarray(0, cutEnd < 0 ? cutField.length : cutEnd))(cutField.indexOf(0)))($bytes.subarray($from, $to))>>
+
+bind archive-copy
+  take block, like dynamic
+  take at, like number
+  take bytes, like dynamic
+  like void
+  case node
+    text <$bytes.copy($block, $at)>
+
+bind archive-write-ascii
+  take block, like dynamic
+  take at, like number
+  take value, like text
+  like void
+  case node
+    text <$block.write($value, $at, "latin1")>
+
+bind archive-set-byte
+  take block, like dynamic
+  take at, like number
+  take value, like number
+  like void
+  case node
+    text <<($block[$at] = $value)>>
+
+bind archive-octal
+  take value, like number
+  take width, like number
+  like text
+  case node
+    text <$value.toString(8).padStart($width, "0")>
+
+# an octal field's number, -1 when it is empty or holds anything but octal digits (spaces around them are allowed)
+bind archive-octal-of
+  take bytes, like dynamic
+  like number
+  case node
+    text <<((octalText) => (/^[0-7]+$/.test(octalText) ? parseInt(octalText, 8) : -1))($bytes.toString("latin1").trim())>>
+
+bind archive-sum
+  take bytes, like dynamic
+  like number
+  case node
+    text <<$bytes.reduce((sumAt, sumByte) => sumAt + sumByte, 0)>>
+
+bind archive-is-zero
+  take bytes, like dynamic
+  like boolean
+  case node
+    text <<$bytes.every(zeroByte => zeroByte === 0)>>
+
+bind archive-is-executable
+  take mode, like number
+  like boolean
+  case node
+    text <(($mode & 73) !== 0)>
+
+bind archive-padding
+  take size, like number
+  like number
+  case node
+    text <((512 - ($size % 512)) % 512)>
+
+bind archive-join
+  take parts, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind archive-sorted
+  take entries, like dynamic
+  like dynamic
+  case node
+    text <<[...$entries].sort((sortOne, sortTwo) => Buffer.compare(Buffer.from(sortOne.path, "utf8"), Buffer.from(sortTwo.path, "utf8")))>>
+
+bind archive-segments
+  take path, like text
+  like dynamic
+  case node
+    text <$path.split("/")>
+
+bind archive-holds
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.includes($part)>
+
+bind archive-starts
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.startsWith($part)>
+
+bind archive-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind archive-set-has
+  take items, like dynamic
+  take item, like dynamic
+  like boolean
+  case node
+    text <$items.has($item)>
+
+bind archive-set-add
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.add($item)>
+
+# the gzip trailer's ISIZE: the uncompressed length mod 2^32 the writer recorded, -1 when the data is too short
+bind archive-stated-size
+  take bytes, like dynamic
+  like number
+  case node
+    text <<($bytes.length < 18 ? -1 : $bytes.readUInt32LE($bytes.length - 4))>>
+
+# the tar type flag as a readable word, for a refusal
+bind archive-kind-word
+  take flag, like number
+  like text
+  case node
+    text <<({ 49: "hard link", 50: "symbolic link", 51: "character device", 52: "block device", 54: "fifo", 55: "contiguous file", 120: "pax header", 103: "pax global header", 76: "GNU long name", 75: "GNU long link" })[$flag] ?? `entry of type ${$flag}`>>
+
+# the path rules (see the head of this file). Raises oci-failure naming the path and the rule it breaks
+task check-archive-path
+  take path, like text
+  like void
+  halt oci-failure
+
+  fork test, is-equal(archive-length(path), 0)
+    hold
+      halt oci-failure
+        bind thing, <archive entry has an empty path>
+  fork test, is-above(archive-length(archive-utf8(path)), 255)
+    hold
+      halt oci-failure
+        bind thing, <archive path {path} is longer than 255 bytes>
+  fork test, archive-starts(path, </>)
+    hold
+      halt oci-failure
+        bind thing, <archive path {path} is absolute>
+  fork test, or(archive-holds(path, <\\>), archive-holds(path, <:>))
+    hold
+      halt oci-failure
+        bind thing, <archive path {path} holds a backslash or a colon>
+  save segments, archive-segments(path)
+  save count, archive-length(segments)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save segment, archive-at(segments, at)
+      fork test, or(is-equal(segment, <>), or(is-equal(segment, <.>), is-equal(segment, <..>)))
+        hold
+          halt oci-failure
+            bind thing, <archive path {path} has an empty, . or .. segment>
+      save at, add(at, 1)
+
+# where a path's UTF-8 bytes are cut between ustar's prefix (155) and name (100) fields: 0 when the whole path fits the
+# name, else the place of the `/` that ends the prefix
+task archive-cut-place
+  take raw, like dynamic
+  like number
+  halt oci-failure
+
+  save size, archive-length(raw)
+  fork test, not(is-above(size, 100))
+    hold
+      back 0
+  save at, 1
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      fork test, and(is-equal(archive-byte(raw, at), 47), and(not(is-above(at, 155)), and(not(is-above(subtract(subtract(size, at), 1), 100)), is-above(subtract(subtract(size, at), 1), 0))))
+        hold
+          back at
+      save at, add(at, 1)
+  save path, archive-text(raw)
+  halt oci-failure
+    bind thing, <archive path {path} cannot be split into a ustar prefix and name>
+
+# one 512-byte ustar header
+task archive-header
+  take path, like text
+  take kind, like text
+  take executable, like boolean
+  take size, like number
+  like dynamic
+  halt oci-failure
+
+  save written, path
+  fork test, is-equal(kind, <directory>)
+    hold
+      save written, <{path}/>
+  save raw, archive-utf8(written)
+  save cut, archive-cut-place(raw)
+  save block, archive-alloc(512)
+  fork test, is-equal(cut, 0)
+    hold
+      archive-copy(block, 0, raw)
+    miss
+      archive-copy(block, 0, archive-slice(raw, add(cut, 1), archive-length(raw)))
+      archive-copy(block, 345, archive-slice(raw, 0, cut))
+
+  save mode, <0000644>
+  save flag, <0>
+  fork test, is-equal(kind, <directory>)
+    hold
+      save mode, <0000755>
+      save flag, <5>
+    miss
+      fork test, executable
+        hold
+          save mode, <0000755>
+  archive-write-ascii(block, 100, mode)
+  archive-write-ascii(block, 108, <0000000>)
+  archive-write-ascii(block, 116, <0000000>)
+  archive-write-ascii(block, 124, archive-octal(size, 11))
+  archive-write-ascii(block, 136, <00000000000>)
+  archive-write-ascii(block, 148, <        >)
+  archive-write-ascii(block, 156, flag)
+  archive-write-ascii(block, 257, <ustar>)
+  archive-write-ascii(block, 263, <00>)
+  archive-write-ascii(block, 148, archive-octal(archive-sum(block), 6))
+  archive-set-byte(block, 154, 0)
+  archive-set-byte(block, 155, 32)
+  back block
+
+# the entries as ustar bytes, in path order, refusing any path the rules refuse and any path given twice
+task write-archive
+  take entries, like dynamic
+  like dynamic
+  halt oci-failure
+
+  save sorted, archive-sorted(entries)
+  save seen, archive-set()
+  save parts, archive-list()
+  save count, archive-length(sorted)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save entry, archive-at(sorted, at)
+      save path, archive-field(entry, <path>)
+      save kind, archive-field(entry, <kind>)
+      check-archive-path(path)
+      fork test, archive-set-has(seen, path)
+        hold
+          halt oci-failure
+            bind thing, <archive path {path} is given twice>
+      archive-set-add(seen, path)
+      fork test, is-equal(kind, <directory>)
+        hold
+          archive-push(parts, archive-header(path, kind, false, 0))
+        miss
+          fork test, not(is-equal(kind, <file>))
+            hold
+              halt oci-failure
+                bind thing, <archive entry {path} is a {kind}, not a file or a directory>
+          save bytes, archive-field(entry, <bytes>)
+          save size, archive-length(bytes)
+          archive-push(parts, archive-header(path, kind, is-equal(archive-field(entry, <executable>), true), size))
+          archive-push(parts, bytes)
+          archive-push(parts, archive-alloc(archive-padding(size)))
+      save at, add(at, 1)
+  archive-push(parts, archive-alloc(1024))
+  back archive-join(parts)
+
+# ustar bytes read back into entries, every rule checked, and no more than `limit` bytes of file data in all
+task read-archive
+  take bytes, like dynamic
+  take limit, like number
+  like dynamic
+  halt oci-failure
+
+  save size, archive-length(bytes)
+  save entries, archive-list()
+  save seen, archive-set()
+  save total, 0
+  save at, 0
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      fork test, is-above(add(at, 512), size)
+        hold
+          halt oci-failure
+            bind thing, <archive ends inside a header at byte {at}>
+      save block, archive-slice(bytes, at, add(at, 512))
+      fork test, archive-is-zero(block)
+        hold
+          save going, false
+        miss
+          save stated, archive-octal-of(archive-cut(block, 148, 156))
+          save counted, add(subtract(archive-sum(block), archive-sum(archive-slice(block, 148, 156))), 256)
+          fork test, not(is-equal(stated, counted))
+            hold
+              halt oci-failure
+                bind thing, <archive header at byte {at} fails its checksum>
+          fork test, not(archive-is-ustar(block))
+            hold
+              halt oci-failure
+                bind thing, <archive header at byte {at} is not a POSIX ustar header>
+
+          save name, archive-cut(block, 0, 100)
+          save prefix, archive-cut(block, 345, 500)
+          save raw, name
+          fork test, is-above(archive-length(prefix), 0)
+            hold
+              save raw, archive-join(archive-pair(prefix, name))
+          fork test, not(archive-is-utf8(raw))
+            hold
+              halt oci-failure
+                bind thing, <archive header at byte {at} names a path that is not UTF-8>
+          save path, archive-text(raw)
+
+          save flag, archive-byte(block, 156)
+          save kind, <file>
+          fork test, is-equal(flag, 53)
+            hold
+              save kind, <directory>
+              fork test, archive-ends-slash(path)
+                hold
+                  save path, archive-without-slash(path)
+            miss
+              fork test, and(not(is-equal(flag, 48)), not(is-equal(flag, 0)))
+                hold
+                  save word, archive-kind-word(flag)
+                  halt oci-failure
+                    bind thing, <archive entry {path} is a {word}: only files and directories are allowed>
+          check-archive-path(path)
+          fork test, archive-set-has(seen, path)
+            hold
+              halt oci-failure
+                bind thing, <archive path {path} appears twice>
+          archive-set-add(seen, path)
+
+          save length, archive-octal-of(archive-cut(block, 124, 136))
+          fork test, is-below(length, 0)
+            hold
+              halt oci-failure
+                bind thing, <archive entry {path} has a size that is not octal>
+          fork test, and(is-equal(kind, <directory>), is-above(length, 0))
+            hold
+              halt oci-failure
+                bind thing, <archive directory {path} holds data>
+          save start, add(at, 512)
+          fork test, is-above(add(start, length), size)
+            hold
+              halt oci-failure
+                bind thing, <archive entry {path} runs past the end of the archive>
+          save total, add(total, length)
+          fork test, is-above(total, limit)
+            hold
+              halt oci-failure
+                bind thing, <archive holds more than {limit} bytes of files>
+          save mode, archive-octal-of(archive-cut(block, 100, 108))
+          save executable, false
+          fork test, and(is-equal(kind, <file>), and(is-above(mode, 0), archive-is-executable(mode)))
+            hold
+              save executable, true
+          save data, archive-empty-bytes()
+          fork test, is-equal(kind, <file>)
+            hold
+              save data, archive-buffer(archive-slice(bytes, start, add(start, length)))
+          archive-push(entries, archive-entry(path, kind, executable, data))
+          save at, add(add(start, length), archive-padding(length))
+  back entries
+
+# POSIX ustar's magic and version: `ustar` and a NUL, then `00`
+bind archive-is-ustar
+  take block, like dynamic
+  like boolean
+  case node
+    text <<$block.subarray(257, 265).equals(Buffer.from("ustar\u000000", "latin1"))>>
+
+bind archive-pair
+  take one, like dynamic
+  take two, like dynamic
+  like dynamic
+  case node
+    text <<[$one, Buffer.from("/"), $two]>>
+
+bind archive-ends-slash
+  take path, like text
+  like boolean
+  case node
+    text <$path.endsWith("/")>
+
+bind archive-without-slash
+  take path, like text
+  like text
+  case node
+    text <$path.slice(0, -1)>
+
+# the entries as the artifact's one layer: ustar, gzipped the same on every backend
+task pack-archive
+  take entries, like dynamic
+  like dynamic
+  halt oci-failure
+
+  back archive-buffer(gzip(write-archive(entries)))
+
+# the artifact's layer read back. The trailer's stated size is held to `limit` before anything is inflated, and the
+# inflated bytes after, since a hostile writer can state a small size and inflate a large one
+task unpack-archive
+  take bytes, like dynamic
+  take limit, like number
+  like dynamic
+  halt oci-failure
+
+  save stated, archive-stated-size(bytes)
+  fork test, is-below(stated, 0)
+    hold
+      halt oci-failure
+        bind thing, <archive layer is too short to be gzip>
+  save room, add(limit, 1048576)
+  fork test, is-above(stated, room)
+    hold
+      halt oci-failure
+        bind thing, <archive layer states {stated} bytes, over the limit of {room}>
+  save raw, archive-nothing()
+  fork
+    mark unsafe
+    save raw, archive-buffer(gunzip(bytes))
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <archive layer is not gzip>
+  fork test, is-above(archive-length(raw), room)
+    hold
+      halt oci-failure
+        bind thing, <archive layer inflates past the limit of {room}>
+  back read-archive(raw, limit)

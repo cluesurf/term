@@ -8,6 +8,12 @@ dock load
   load <node:path>, name temporary-path
   load <node:crypto>, name temporary-crypto
 
+# the options node's fs takes to make a whole tree
+bind make-tree-options
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
 task temporary-make
   mark async
   take
@@ -39,8 +45,7 @@ task temporary-make
       hook hold
         call temporary-fs/mkdir
           read at
-          make object
-            bind recursive, true
+          call make-tree-options
           wait true
       hook miss
         call temporary-fs/write-file

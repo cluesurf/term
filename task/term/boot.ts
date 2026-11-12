@@ -14,11 +14,18 @@
 // and takes term/host/compile.mjs out of it: stage0, task/stage0.ts's bundle of the release tree (decision 126). The
 // folder holding it goes to `term:fixpoint --stage0 <dir>`, which builds stage1 and stage2 with it.
 //
-// A site with no digest pins no release yet (before 2.10.0 is published): stage0 is then task/stage0.json's bundle,
-// checked against its id in the user home store, and term:fixpoint runs with that pin.
+// A site with no digest is refused: since 0997 boot.tree pins 2.10.0's index digest, and a pin with no digest anchors
+// nothing.
+//
+// --install puts that fetched compile.mjs where task/launch.mjs and port-build load stage0 (decision 140 section 4,
+// item 1274): `.base/@term/code/stage0/<id>/compile.mjs` in the user home, `<id>` being task/stage0.json's id, and only
+// when the fetched bytes hash to that id. It runs no fixpoint. A file already there with those bytes is kept and nothing
+// is fetched. A file there with other bytes is refused and left as it is. A fresh clone is `pnpm install`,
+// `pnpm term:boot --install`, `pnpm run make:line`.
 //
 //   pnpm term:boot                       fetch, verify, then term:fixpoint --stage0 <the fetched folder>
 //   pnpm term:boot --fetch-only          fetch and verify, print the folder, run nothing
+//   pnpm term:boot --install             fetch, verify, install as the pinned stage0, run nothing
 //   pnpm term:boot --boot <file>         another boot.tree (a fixture)
 //   --only <text>, --out <dir>, --jobs <n>, --targets ts,rust   handed to term:fixpoint as they are
 //
@@ -26,8 +33,9 @@
 // TERM_OCI_USERNAME, TERM_OCI_TOKEN, TERM_TRUST_DIR, TERM_TRUSTED_KEYS. The verified payload is kept in the user home,
 // `.base/@term/code/boot/<index digest>/<platform>/term/host/compile.mjs`, never written over with other bytes.
 //
-// Exit 0 when term:fixpoint holds (or the fetch did, with --fetch-only), 1 when a pin is refused (one line naming the
-// digest and the reason) or term:fixpoint finds a difference, 2 on usage, else term:fixpoint's own exit.
+// Exit 0 when term:fixpoint holds (or the fetch did, with --fetch-only, or the install did, with --install), 1 when a
+// pin is refused (one line naming the digest and the reason) or term:fixpoint finds a difference, 2 on usage, else
+// term:fixpoint's own exit.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -36,7 +44,9 @@ import { dirname, join, resolve } from 'node:path'
 import { CALLER_CWD, TERM_ROOT } from './root'
 
 const PACKAGE = '@term/code'
-const USAGE = 'usage: boot.ts [--boot <boot.tree>] [--fetch-only] [--only <text>] [--out <dir>] [--jobs <n>] [--targets ts,rust]'
+const USAGE = 'usage: boot.ts [--boot <boot.tree>] [--fetch-only | --install] [--only <text>] [--out <dir>] [--jobs <n>] [--targets ts,rust]'
+// the stage0 pin port-build and task/launch.mjs read, by its id
+const PIN_FILE = join(TERM_ROOT, 'task', 'stage0.json')
 // the flags handed to term:fixpoint, each with its value
 const PASSED = ['--only', '--out', '--jobs', '--targets']
 // the largest payload a release layer may be, as version-install.tree reads one
@@ -221,25 +231,57 @@ async function fetchPinned(pin: Pin & { digest: string }): Promise<string> {
   return join(target, 'term', 'host')
 }
 
-// no digest pinned yet: task/stage0.json's bundle, checked by its id in the user home store
-async function pinnedStage0(pin: Pin): Promise<void> {
-  const { readPin, stage0Path } = (await import('../stage0')) as {
-    readPin: () => { id: string } | undefined
-    stage0Path: (id: string, ...parts: string[]) => string
-  }
-  const held = readPin()
-
-  if (!held) {
-    throw new Refusal(`${pin.site}: boot.tree pins no digest yet, and task/stage0.json pins no stage0`)
+// task/stage0.json's id: the sha256 of the stage0 bundle port-build and task/launch.mjs load
+function pinnedId(): string {
+  if (!existsSync(PIN_FILE)) {
+    throw new Refusal(`${PIN_FILE}: there is no stage0 pin`)
   }
 
-  const file = stage0Path(held.id, 'compile.mjs')
+  const id = (JSON.parse(readFileSync(PIN_FILE, 'utf8')) as { id?: unknown }).id
 
-  if (!existsSync(file) || sha(readFileSync(file)) !== held.id) {
-    throw new Refusal(`${held.id}: boot.tree pins no digest yet, and task/stage0.json's bundle is not installed as those bytes (pnpm stage0:show)`)
+  if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id)) {
+    throw new Refusal(`${PIN_FILE}: its id is no sha256`)
   }
 
-  console.log(`term:boot: boot.tree pins ${PACKAGE} ${pin.version} with no digest yet: stage0 is task/stage0.json's bundle ${held.id}, checked`)
+  return id
+}
+
+// where stage0 <id> is loaded from: the user home's stage0/<id>/compile.mjs, the one path task/launch.mjs and
+// port-build read (decision 140 section 1)
+async function stage0File(id: string): Promise<string> {
+  const { userHome } = (await import('@term/call/code/home')) as { userHome: (...parts: string[]) => string }
+  return userHome('stage0', id, 'compile.mjs')
+}
+
+// whether stage0 <id> is installed: true when the file holds those bytes, refused when it holds others
+function installed(file: string, id: string): boolean {
+  if (!existsSync(file)) {
+    return false
+  }
+
+  const held = sha(readFileSync(file))
+
+  if (held !== id) {
+    throw new Refusal(`${id}: ${file} holds other bytes (sha256 ${held}), left as it is`)
+  }
+
+  return true
+}
+
+// the fetched compile.mjs installed as the pinned stage0, when its bytes hash to the pin's id
+function install(pin: Pin & { digest: string }, fetched: string, id: string, file: string): void {
+  const bytes = readFileSync(join(fetched, 'compile.mjs'))
+  const got = sha(bytes)
+
+  if (got !== id) {
+    throw new Refusal(`${pin.digest}: ${PACKAGE}@${pin.version}'s compile.mjs is sha256 ${got}, and task/stage0.json pins ${id}`)
+  }
+
+  const staging = `${file}.${process.pid}`
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(staging, bytes)
+  renameSync(staging, file)
+  console.log(`term:boot: installed stage0 ${id} at ${file}`)
 }
 
 async function main(): Promise<void> {
@@ -263,17 +305,38 @@ async function main(): Promise<void> {
     }
   }
 
-  let stage0: string | undefined
+  const installing = argv.includes('--install')
+
+  if (installing && argv.includes('--fetch-only')) {
+    usage('--install and --fetch-only are two ways to run nothing after the fetch: give one')
+  }
+
+  let stage0: string
 
   try {
     const pin = await readBoot(file)
 
     if (pin.digest === undefined) {
-      await pinnedStage0(pin)
-    } else {
-      stage0 = await fetchPinned({ ...pin, digest: pin.digest })
-      console.log(`term:boot: stage0 ${sha(readFileSync(join(stage0, 'compile.mjs')))} at ${stage0}`)
+      throw new Refusal(`${pin.site}: boot.tree pins no image index digest, so it anchors no release`)
     }
+
+    const pinned = { ...pin, digest: pin.digest }
+
+    if (installing) {
+      const id = pinnedId()
+      const target = await stage0File(id)
+
+      if (installed(target, id)) {
+        console.log(`term:boot: stage0 ${id} is installed at ${target}: nothing to do`)
+        return
+      }
+
+      install(pinned, await fetchPinned(pinned), id, target)
+      return
+    }
+
+    stage0 = await fetchPinned(pinned)
+    console.log(`term:boot: stage0 ${sha(readFileSync(join(stage0, 'compile.mjs')))} at ${stage0}`)
   } catch (error) {
     if (error instanceof Refusal) {
       console.error(`term:boot: refused ${error.message}`)
@@ -289,8 +352,8 @@ async function main(): Promise<void> {
   }
 
   const fixpoint = join(TERM_ROOT, 'task', 'term', 'fixpoint.ts')
-  const args = [join(TERM_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'), fixpoint, ...(stage0 ? ['--stage0', stage0] : []), ...passed]
-  console.log(`term:boot: term:fixpoint${stage0 ? ` --stage0 ${stage0}` : ''}${passed.length ? ` ${passed.join(' ')}` : ''}`)
+  const args = [join(TERM_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'), fixpoint, '--stage0', stage0, ...passed]
+  console.log(`term:boot: term:fixpoint --stage0 ${stage0}${passed.length ? ` ${passed.join(' ')}` : ''}`)
   const ran = spawnSync(process.execPath, args, { cwd: TERM_ROOT, stdio: 'inherit' })
 
   process.exitCode = ran.status ?? 3

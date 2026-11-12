@@ -1,11 +1,49 @@
+# Node (SSR) style formatting: `<before>width:<value>px<after>` and the visibility machine's text fragments. Conforms
+# to ../../text-format. Each host call is a declarative binding, one host expression inlined at the use site, and the
+# one decision (no family, no class) is Term, so no runtime shim is linked. The same as the browser impl: the server
+# render needs the same px strings and class tokens.
 
-# Node (SSR) style formatting: `<before>width:<value>px<after>` through the format runtime shim. Conforms to
-# ../../text-format. The shim is docked as <global:format> (the build prepends it next to this impl), so `width-style`
-# lowers to `format.widthStyle`. Identical behavior to the browser impl -- the server render needs the same px strings for
-# the width-dependent columns.
+bind host-width-style
+  take before, like text
+  take value, like number
+  take after, like text
+  like text
+  case node
+    text <($before + "width:" + String($value) + "px" + $after)>
 
-dock load
-  load <global:format>, name format
+# an absent settled opacity reads as 1 (React's `opacity ?? 1`). An explicit 0 stays 0
+bind host-opacity-text
+  take value, like number
+  like text
+  case node
+    text <((value: number): string =\> String(value == null ? 1 : value))($value)>
+
+bind host-duration-text
+  take value, like number
+  like text
+  case node
+    text <(String($value) + "ms")>
+
+# never drives a committed visibility decision on the server (the client renders again), but `now-ms` resolves here too
+bind host-now
+  like number
+  case node
+    text <(typeof performance !== "undefined" ? performance.now() : Date.now())>
+
+# JavaScript's falsy test of the family, as React's buildFontClassName makes it
+bind is-host-blank
+  take value, like text
+  like boolean
+  case node
+    text <(!$value)>
+
+# inner whitespace stripped, so a multi-word family is one token
+bind host-font-class
+  take family, like text
+  take suffix, like text
+  like text
+  case node
+    text <("font-" + ($family).replace(/\\s+/g, "") + $suffix)>
 
 task width-style
   take before, like text
@@ -13,7 +51,7 @@ task width-style
   take after, like text
   like text
   send back
-    call format/width-style
+    call host-width-style
       read before
       read value
       read after
@@ -22,26 +60,33 @@ task opacity-text
   take value, like number
   like text
   send back
-    call format/opacity
+    call host-opacity-text
       read value
 
 task duration-text
   take value, like number
   like text
   send back
-    call format/duration
+    call host-duration-text
       read value
 
 task now-ms
   like number
   send back
-    call format/now
+    call host-now
 
+# no font, no class, as React's buildFontClassName answers
 task font-class-text
   take family, like text
   take suffix, like text
   like text
+  fork test
+    hook test
+      call is-host-blank
+        read family
+    hook hold
+      send back, text <>
   send back
-    call format/font-class
+    call host-font-class
       read family
       read suffix

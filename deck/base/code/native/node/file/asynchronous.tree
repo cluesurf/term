@@ -23,6 +23,20 @@ bind file-no-octets
   case node
     text <new Uint8Array()>
 
+# the options node's fs takes to copy or watch a whole tree when `deep`
+bind make-tree-options
+  take deep, like boolean
+  like dynamic
+  case node
+    text <(\{ recursive: $deep \})>
+
+# the options node's fs takes to remove a path, a whole tree when `deep`, a missing path no error
+bind make-remove-options
+  take deep, like boolean
+  like dynamic
+  case node
+    text <(\{ recursive: $deep, force: true \})>
+
 task file-read
   mark async
   take path, like text
@@ -116,8 +130,8 @@ task file-copy
         call file-fs/cp
           read from
           read to
-          make object
-            bind recursive, true
+          call make-tree-options
+            true
           wait true
       hook miss
         call file-fs/copy-file
@@ -153,9 +167,8 @@ task file-remove
     mark unsafe
     call file-fs/rm
       read path
-      make object
-        bind recursive, read deep
-        bind force, true
+      call make-remove-options
+        read deep
       wait true
   halt take
     take problem
@@ -310,8 +323,8 @@ task watch-open
     save host-watcher
       call file-sync-fs/watch
         read path
-        make object
-          bind recursive, read deep
+        call make-tree-options
+          read deep
         read on-change
     save held/watcher, read host-watcher
     save held/open, true

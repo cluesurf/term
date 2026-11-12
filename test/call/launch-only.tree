@@ -1,0 +1,53 @@
+note <the launch-only variables and NODE_OPTIONS's heap flags leave every build key, the rest stays>
+
+# deck/call/code/launch-only.tree is the subject (item term-self-host-001-0721): the one list port-build's fingerprint
+# and build-graph's env-text leave out (item 0476), and the heap sizes taken out of NODE_OPTIONS (item 1017, T-1015).
+
+load @term/call/code/launch-only
+  find is-launch-only
+  find build-value
+  find has-build-value
+
+test <each launch-only name is launch-only>
+  want hold, is-launch-only(<TERM_LINE_LOCK>)
+  want hold, is-launch-only(<TERM_LINE_LOCK_BY>)
+  want hold, is-launch-only(<TERM_PROGRAM>)
+  want hold, is-launch-only(<TERM_PROGRAM_VERSION>)
+  want hold, is-launch-only(<TERM_SESSION_ID>)
+  want hold, is-launch-only(<TERM_FEATURES>)
+  want hold, is-launch-only(<TERM_DEPTH>)
+  want hold, is-launch-only(<NODE_PATH>)
+  want hold, is-launch-only(<TERM_CENSUS_KEEP>)
+  want hold, is-launch-only(<TERM_SUITE>)
+
+test <a build variable is not launch-only>
+  want miss, is-launch-only(<TERM_ROOT>)
+  want miss, is-launch-only(<NODE_OPTIONS>)
+  want miss, is-launch-only(<TERM_LINE>)
+  want miss, is-launch-only(<term_depth>)
+
+test <any variable but NODE_OPTIONS keeps its value whole, empty too>
+  want hold, is-equal(build-value(<TERM_ROOT>, <--max-old-space-size=6144>), <--max-old-space-size=6144>)
+  want hold, is-equal(build-value(<TERM_ROOT>, <>), <>)
+  want hold, has-build-value(<TERM_ROOT>, <>)
+
+test <NODE_OPTIONS loses its heap sizes, in either spelling>
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--max-old-space-size=6144 --expose-gc>), <--expose-gc>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--conditions=x  --max_semi_space_size=64   --import=y>), <--conditions=x --import=y>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--max-old_space-size=1 --stack-size=900>), <--stack-size=900>)
+  want hold, has-build-value(<NODE_OPTIONS>, <--expose-gc --max-old-space-size=6144>)
+
+test <NODE_OPTIONS of heap sizes alone, or empty, leaves nothing>
+  want miss, has-build-value(<NODE_OPTIONS>, <--max-old-space-size=6144>)
+  want miss, has-build-value(<NODE_OPTIONS>, <--max-old-space-size=6144 --max-semi-space-size=32>)
+  want miss, has-build-value(<NODE_OPTIONS>, <>)
+
+test <a flag only shaped like a heap size stays>
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--max-old-space-size=>), <--max-old-space-size=>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--max-old-space-size=12a>), <--max-old-space-size=12a>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <__max-old-space-size=1>), <__max-old-space-size=1>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--max-new-space-size=1>), <--max-new-space-size=1>)
+
+test <a NODE_OPTIONS holding a quote is kept whole>
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--require "a b.js" --max-old-space-size=1>), <--require "a b.js" --max-old-space-size=1>)
+  want hold, is-equal(build-value(<NODE_OPTIONS>, <--title='x' --max-old-space-size=1>), <--title='x' --max-old-space-size=1>)

@@ -1,10 +1,13 @@
 # WHAT A CONSOLE DOES WITH ITS COMMAND LINE, decided without touching the host (decision 138 rule 1 of
 # term/self-host/change/001-finish-self-host, items term-self-host-001-1120 and 1159): the argv as a list of text, the
-# routes in the plain form (work/hook/route.tree), the name the console is shown by, its mark, and what the run read
-# from the host for a refusal, to an outcome. Help, the version, a group's subcommands, the refusal in term's shape with
-# the nearest command, the required takes left out, and the values a bound task is handed are all chosen here, and
-# every line the console prints is written out here in full. Writing those lines, calling the task and the exit code
-# are the run's (work/hook/running.tree on node), so nothing this file loads, at any depth, holds a bind only node runs.
+# routes in the plain form (work/hook/route.tree), the name the console is shown by and its mark, to an outcome. Help,
+# the version, a group's subcommands, the refusal in term's shape with the nearest command, the required takes left
+# out, and the values a bound task is handed are all chosen here, and every line help, the version or a group prints
+# is written out here in full. A refusal leaves as data, its usage-ask (decision 149, item term-self-host-001-1273):
+# the run reads what drawing it needs from the host (the output, home and working folders, the clock) only in its own
+# outcome-refuse arm, so a call and the version read none of it. Writing, drawing a refusal, calling the task and the
+# exit code are the run's (work/hook/running.tree on node, work/hook/console.tree lowered), so nothing this file loads,
+# at any depth, holds a bind only node runs.
 #
 # Exit codes, as the run gives them: help asked for and the version 0, a bare line (no words) prints the help with 2, a
 # usage error 2 without reaching the task, and a called task's own answer.
@@ -49,21 +52,17 @@ load @term/call/work/hook/refusal
   find usage-ask
   find nearest-command
   find command-guess
-  find refusal-view
-  find refusal-close
-  find refusal-said
   find said
 
 # a command line to decide: the name the console is shown by (the run reads TERM_LINE_NAME), its mark (the empty text
-# when it has none), its routes and words, whether it words a refusal its own way (a `refuse` the run was handed,
-# decision cli-in-term/016 part 2), and what the run read from the host for a refusal in term's shape
+# when it has none), its routes and words, and whether it words a refusal its own way (a `refuse` the run was handed,
+# decision cli-in-term/016 part 2). Nothing in it is read from the host for drawing (decision 149)
 form line-ask
   link name, like text
   link mark, like text
   link routes, like list, like route
   link argv, like list, like text
   link words-own, like boolean
-  link view, like refusal-view
 
 # a value a bound task is handed: a plain take's value (given, its default, or its natural zero), or a maybe take's,
 # some of the value given or none
@@ -74,17 +73,17 @@ form handed
     link given, like arg-value
   case handed-none
 
-# WHAT THE RUN DOES: its writes in order, then the exit code; a refusal in term's shape, its opening and failed item
-# written, then its closing at the clock the run reads after them (work/hook/usage.tree `close-refusal`), which gives
-# the exit code; a usage refusal handed as data to a console that words its own; or the bound task called with its
-# values in its parameters' order, its whole-number answer the exit code
+# WHAT THE RUN DOES: its writes in order, then the exit code; a refusal in term's shape as its usage-ask, which the run
+# draws from what it reads from the host then (work/hook/refusal.tree `refusal-said`), writes its opening and failed
+# item, then its closing at the clock it reads after them, which gives the exit code (decision 149); a usage refusal
+# handed as data to a console that words its own; or the bound task called with its values in its parameters' order,
+# its whole-number answer the exit code
 form outcome
   case outcome-said
     link writes, like list, like said
     link code, like number
   case outcome-refuse
-    link writes, like list, like said
-    link closing, like refusal-close
+    link usage, like usage-ask
   case outcome-hand
     link refusal, like usage-refusal
   case outcome-call
@@ -183,13 +182,11 @@ task no-route-yet
   like maybe, like route
   back make none
 
-# a refusal in term's shape, as its writes
+# a refusal in term's shape, as data: the run draws it (decision 149)
 task refused
-  take ask, like line-ask
   take usage, like usage-ask
   like outcome
-  save drawn, refusal-said(usage, ask/view)
-  back make(outcome-refuse, bind(writes, drawn/writes), bind(closing, drawn/closing))
+  back make(outcome-refuse, bind(usage, usage))
 
 # A line the parse refused, in term's shape (work/hook/refusal.tree): a first word that names no command is said as
 # term says it, with the nearest command to run, and anything else in the dispatcher's own words, with the help to run
@@ -291,7 +288,7 @@ task decide
               back make(outcome-hand, bind(refusal, refusal))
             case none
               save nothing, 0
-      back refused(ask, refuse-booted(name, mark, commands, bare, hit/error))
+      back refused(refuse-booted(name, mark, commands, bare, hit/error))
 
   save chosen, no-route-yet()
   save chosen, hit/route
@@ -351,7 +348,7 @@ task decide-route
         take line
         lines/push line
       save usage, make usage-ask, name(name), mark(ask/mark), message(message), lines(lines), next(<{name} {join(hit/command, < >)} --help>)
-      back refused(ask, usage)
+      back refused(usage)
     case none
       save nothing, 0
 

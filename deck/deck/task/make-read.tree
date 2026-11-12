@@ -1,5 +1,5 @@
-# `pnpm run make:read [--out <file>]`: generate zone's tree-reader shim FROM THE COMPILER. Ported from
-# deck/deck/task/make-read.mjs (item term-self-host-001-1167), run by `term boot` through the package's script.
+# `pnpm run make:read [--out <file>]`: generate zone's tree-reader shim FROM THE COMPILER (item
+# term-self-host-001-1167), run by `term boot` through the package's script.
 #
 # Zone parses `.tree` through the Term compiler, never by hand. The compiler lives in `@term/make`; zone's runtime
 # shims are plain source prepended into the boot bundle. So the bridge is bundled self-contained and written INTO the

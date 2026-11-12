@@ -5,8 +5,9 @@
 #
 # Ported from compile/mint-bridge.ts (`topLevelOf`, `topLevelInOrder`, `bakedGrammar`, `millByGrammar`) and
 # compile/mill.ts (self-hosting, item 0274), which stay as the faces until part 8. The decisions:
-#   - the baked grammar's text is compile/mill-grammar.generated.ts's, docked until item new-0008 ports it (0248
-#     re-points it), and read once per process into a shared cell
+#   - the baked grammar is compile/mill-grammar.tree's, generated Term (task/term/mill-bundle.ts), docked so its
+#     text is one module of the bundle and never inlined into every port that mills, and read once per process into
+#     a shared cell
 #   - the original's `MillResult` union is `mill-result`, its `ok` saying which half holds the answer
 #   - the mint state's `flow` is set before anything lowers, to a closure over the state (decision 033 section 4)
 #   - the top-level captures are ordered by their `at` (decision 042), ties in the order the match holds them
@@ -106,7 +107,7 @@ load ./minting-views
   find view-of
 
 dock load
-  load <@term/make/code/compile/mill-grammar.generated>, name minting-grammar-text
+  load <@term/make/code/compile/mill-grammar>, name minting-grammar-text
 
 # what milling a file answers: the program and the twins beside it when `ok`, else the diagnostics that stopped it
 form mill-result
