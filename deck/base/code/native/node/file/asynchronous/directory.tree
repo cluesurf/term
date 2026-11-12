@@ -1,8 +1,9 @@
 # node asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is `fs.promises.readdir`.
 # Internal: reached only through the public file/directory API.
 
+# node's global is the alias `walk-file` (runtime/walk-file.ts), so no alias line meets the stdlib's own `walk` (D026)
 dock load
-  load <global:walk>, name walk-file
+  load <global:walk-file>, name walk-file
 
 load @term/base/file/directory
   find walk-entry

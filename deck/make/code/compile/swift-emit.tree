@@ -109,6 +109,9 @@ load ./bind
   find render-bind
   find bind-gap
 
+load ./ts-names
+  find is-primary
+
 load ./lowered-members
   find list-length-tasks
 
@@ -1213,7 +1216,27 @@ task view
   fork test, or(and(is-unequal(name, <>), st/plain-names/has(name)), owned-path(target, facts))
     hold
       back emit-expr(target, field-scope, st, facts)
-  back <{emit-expr(target, field-scope, st, facts)}.data>
+  back <{swift-target(target, field-scope, st, facts)}.data>
+
+# the target a member read is written after. A call written as more than one primary, a bind's text such as
+# `true ? $a : $b`, is put in parentheses, or `.size` reads off its last operand only (item 1201)
+task swift-target
+  take target, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save written, emit-expr(target, field-scope, st, facts)
+  sift target
+    case call
+      fork test, not(is-primary(written))
+        hold
+          back <({written})>
+    miss
+      save nothing, 0
+  back written
 
 # a type with the receiver's form written `Self`
 task sub-self
@@ -3048,7 +3071,7 @@ task emit-member
       # a form's tag read as a field: its case's name
       fork test, is-unequal(member-tag, <>)
         hold
-          back <{emit-expr(member-target, field-scope, st, facts)}.termTag>
+          back <{swift-target(member-target, field-scope, st, facts)}.termTag>
       # A PROP READ OFF A CAUGHT VALUE (`problem/link/actual`): read out of each exception form whose link has it
       sift caught-carrier-of(member-target)
         case some
@@ -3108,8 +3131,8 @@ task emit-member
       # a dock module's member with no `-` is the host's spelling (backend-names `host-spelled`)
       fork test, and(and(is-unequal(target-name, <>), facts/aliases/has(target-name)), host-spelled(member-name))
         hold
-          back <{emit-expr(member-target, field-scope, st, facts)}.{member-name}>
-      back <{emit-expr(member-target, field-scope, st, facts)}.{camel(member-name)}>
+          back <{swift-target(member-target, field-scope, st, facts)}.{member-name}>
+      back <{swift-target(member-target, field-scope, st, facts)}.{camel(member-name)}>
     miss
       back <>
 

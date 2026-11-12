@@ -1,0 +1,157 @@
+# One case of test/call/port-trace-descriptor.ts, in a process of its own, since an untrackable read is sticky for the
+# rest of one (item term-self-host-001-1041, decision 140 section 3):
+#
+#   node task/launch.mjs port-trace/probe <case> <dir>
+#
+# It prints one JSON line: whether the module's keys hold the untrackable key, and whether they hold the read of
+# `<dir>/data.txt`. The cases are the test's: loader, import, foreign-fd, write-open, fstat.
+
+load ./code/trace
+  find start-trace
+  find set-recording
+  find begin-module
+  find end-module
+  find untrackable
+  find untraced
+  find real
+
+load @term/base/console
+  find log
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+bind case-name
+  like text
+  case node
+    text <<process.argv[2]>>
+
+bind case-dir
+  like text
+  case node
+    text <<process.argv[3]>>
+
+bind file-url
+  take path, like text
+  like text
+  case node
+    text <<process.getBuiltinModule("node:url").pathToFileURL($path).href>>
+
+bind import-module
+  take url, like text
+  mark async
+  like dynamic
+  case node
+    text <<import($url)>>
+
+bind small-buffer
+  like dynamic
+  case node
+    text <<Buffer.alloc(4)>>
+
+bind verdict
+  take untrackable, like boolean
+  take read, like boolean
+  like text
+  case node
+    text <<JSON.stringify({ untrackable: $untrackable, read: $read })>>
+
+bind nul
+  like text
+  case node
+    text <<"\0">>
+
+task probe
+  mark async
+  like void
+  call start-trace
+  save mode
+    call case-name
+  save dir
+    call case-dir
+  save file
+    call node-path/join
+      read dir
+      text <data.txt>
+  call set-recording, true
+  call begin-module
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <loader>
+    hook hold
+      # node's original readFileSync of a Buffer, which opens and reads through the module object
+      save fs
+        call real
+      call fs/read-file-sync, read file
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <import>
+    hook hold
+      call import-module
+        call file-url
+          call node-path/join
+            read dir
+            text <probe.mjs>
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <foreign-fd>
+    hook hold
+      save fd
+        call untraced
+          task
+            like dynamic
+            send back
+              call node-fs/open-sync
+                read file
+                text <r>
+      call node-fs/read-sync
+        read fd
+        call small-buffer
+        code 0
+        code 4
+        code 0
+      call untraced
+        task
+          like dynamic
+          send back
+            call node-fs/close-sync, read fd
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <write-open>
+    hook hold
+      call node-fs/close-sync
+        call node-fs/open-sync
+          call node-path/join
+            read dir
+            text <written.txt>
+          text <w>
+  fork test
+    hook test
+      call is-equal
+        read mode
+        text <fstat>
+    hook hold
+      save fd
+        call node-fs/open-sync
+          read file
+          text <r>
+      call node-fs/fstat-sync, read fd
+      call node-fs/close-sync, read fd
+  save keys
+    call end-module
+  call log
+    call verdict
+      call keys/includes
+        call untrackable
+      call keys/includes, text <read{nul()}{file}>
+
+tick probe

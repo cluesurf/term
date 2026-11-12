@@ -1,0 +1,4200 @@
+# THE PORT SWITCH, the build half (note/term/self-host/04-the-port-switch.md, self-hosting-0018). Ported from
+# task/port-build.ts (item term-self-host-001-0720), run on stage0 by the fixed launcher (decision 140 of change
+# 001-finish-self-host): `node task/launch.mjs port-build [flag ...]`, which `pnpm run make:port` is.
+#
+# A toolchain module ported to Term lives at `deck/<d>/code/<path>.tree`, and its TypeScript original is DELETED in
+# the same change. The TypeScript that still imports `@term/<d>/code/<path>` then resolves through the second `paths`
+# candidate in tsconfig.json (`./deck/<d>/host/port/*`) to the module this task writes. tsc, tsx and esbuild all read
+# those paths, so nothing else has to know a module moved.
+#
+# WHY NOT `term make`. `term make` writes a module's TypeScript and nothing else, and a module that docks a native shim
+# (`bit`, `clock`) then names a global nobody defines. A ported toolchain module is a LIBRARY imported by TypeScript,
+# so it needs the native prelude written into the module itself, which is what makes it a drop-in. Doing that in
+# `term make` would change every package's output, so it lives here, where only the toolchain's own ports go through.
+#
+# It runs before the CLI is bundled (`pnpm run make:line`), so `host/line.js` always carries the current ports. A
+# module is written only when its content changed.
+#
+# THE SKIP (term-cli-in-term-0002). A module is skipped when its output is provably what a compile would write: the
+# manifest at `.base/@term/code/port-build.json` holds, per module, a hash of its text, the COMPILER FINGERPRINT (below),
+# every observation its own compile made of the disk (port-trace/code/trace.tree: each read's content hash, each
+# existence, stat and directory listing), and its output's hash. A module is skipped only when all of them still hold
+# and its output on disk is that output. Anything missing, unreadable or untrackable compiles. `--full` compiles
+# everything. Since decision 038 the observations are THE MODULE'S OWN: what its compile and its prelude observed, plus
+# what the process observed outside any module, never the running total of the process.
+#
+#   node task/launch.mjs port-build             build every port, report what changed
+#   node task/launch.mjs port-build --check     write nothing, exit 1 if any port's output is missing or stale
+#   node task/launch.mjs port-build --only dev/hmr    only the ports whose path holds the text
+#   node task/launch.mjs port-build --progress  also `progress <done> <total>` on stderr per module
+#   node task/launch.mjs port-build --full      compile every module, skipping none
+#   node task/launch.mjs port-build --explain   also `  skip  <path>` for each module skipped
+#   node task/launch.mjs port-build --verify flow/code/   write nothing, take no lock: exit 1 unless every port whose
+#                                             path holds the text is the output the last build wrote from its source
+#                                             AS IT IS NOW
+#   node task/launch.mjs port-build --stage-check   then STEP 2: every port compiled again with the working tree's
+#                                             compiler (stage1) into tmp/self-host/stage-check/, each output held byte
+#                                             for byte against step 1's. The line lock is freed before step 2
+#   node task/launch.mjs port-build --jobs 4    compile in 4 worker processes (THE JOBS). `--jobs 1` in this process
+#
+# NEVER OLDER OUTPUT OVER NEWER (term-cli-in-term-0151). A module's text is read at its own turn, every `.tree` its
+# compile read is written down (the trace's window), and just before the write each is read again: one that changed
+# compiles the module again from the new text, and after ATTEMPTS the module is not written and is reported `MOVED`.
+#
+# THE MANIFEST LOSES NO ROW (term-cli-in-term-0158). An old entry that saw a file otherwise than this run did is kept
+# with its reads replaced by the one row that never holds (the untrackable key): never skipped, so it compiles next
+# time, while `--verify` still has the text and the output its build wrote. A module this run reached and left
+# unwritten (MOVED, FAIL) keeps its old entry the same way, a FAIL marked `failed`.
+#
+# STAGE0 (decision 036). Every port compiles with STAGE0, the pinned bundle of the compile closure, never with the
+# working tree's compiler, so an edit to a compiler `.tree` rebuilds only the ports whose own text or imports changed.
+# The program loads it by a dynamic import only, after the trace's shim has patched `fs` (decision 140 section 3).
+#
+# THE JOBS. No module's compile waits on another's, so each module's turn is the same task in any process
+# (compile-turn), and the three things that had an order are put back in plan order by this process: the stdout
+# lines, the rows of the table (the trace's adopt), and the entries of the manifest. A worker is this program again,
+# the file TERM_TASK_PROGRAM names, with `--port-worker`, so it has this process's fingerprint. It takes no lock, holds
+# its own trace and does its own write. A compile that THROWS, or a worker that dies, stops the run and exits 1 with no
+# manifest written. TERM_PORT_BUILD_HOLD, port-race's hook, means one process.
+
+load ./port-trace/code/trace
+  find sha
+  find untraced
+  find quiet
+  find observe
+  find start-trace
+  find set-recording
+  find begin-module
+  find end-module
+  find open-window
+  find close-window
+  find forget-outside
+  find sightings
+  find adopt
+  find observations
+  find untrackable
+  find key-op
+  find key-path
+
+load @term/base/console
+  find log
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <node:child_process>, name node-child
+  load <node:url>, name node-url
+  # the launch-only variables, one list with work/build/build-graph.tree's env-text (item term-self-host-001-0476): plain
+  # TypeScript with no imports, never a port
+  load <@term/call/code/launch-only>, name launch-only
+
+# ---- small host values ----
+
+bind build-nothing
+  like dynamic
+  case node
+    text <<undefined>>
+
+bind is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value === undefined)>>
+
+bind is-something
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value !== undefined)>>
+
+bind new-object
+  like dynamic
+  case node
+    text <<({})>>
+
+bind new-map
+  like dynamic
+  case node
+    text <<new Map()>>
+
+bind new-set
+  like dynamic
+  case node
+    text <<new Set()>>
+
+bind new-array
+  like dynamic
+  case node
+    text <<[]>>
+
+bind member
+  take value, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <<$value?.[$key]>>
+
+bind put-member
+  take value, like dynamic
+  take key, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <<void ($value[$key] = $item)>>
+
+bind has-member
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <<Object.prototype.hasOwnProperty.call($value, $key)>>
+
+# an object's [key, value] pairs, in insertion order
+bind member-pairs
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <<Object.entries($value ?? {})>>
+
+bind items-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <<Array.from($value)>>
+
+bind truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <<Boolean($value)>>
+
+bind arguments-of
+  like list, like text
+  case node
+    text <<process.argv.slice(2)>>
+
+bind set-exit-failed
+  like void
+  case node
+    text <<void (process.exitCode = 1)>>
+
+bind exit-failed
+  like boolean
+  case node
+    text <<(process.exitCode === 1)>>
+
+bind exit-now
+  take code, like number
+  like void
+  case node
+    text <<process.exit($code)>>
+
+bind working-directory
+  like text
+  case node
+    text <<process.cwd()>>
+
+bind as-json
+  take value, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($value)>>
+
+bind parse-json
+  take source, like text
+  like dynamic
+  case node
+    text <<JSON.parse($source)>>
+
+bind is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <<Array.isArray($value)>>
+
+bind is-object
+  take value, like dynamic
+  like boolean
+  case node
+    text <<(typeof $value === "object")>>
+
+# the text with its last `count` characters cut off (@term/base's slice counts no position from the end)
+bind cut-end
+  take value, like text
+  take count, like number
+  like text
+  case node
+    text <<$value.slice(0, -$count)>>
+
+bind trimmed-name
+  take path, like text
+  like text
+  case node
+    text <<$path.replace(/\.tree$/, ".ts")>>
+
+bind run-path-of
+  take path, like text
+  like text
+  case node
+    text <<$path.replace(/\.ts$/, "-run.ts")>>
+
+# `mark draft` (or the old `note draft`) on an unindented line ANYWHERE in the file shelves it out of every build
+# (term-self-host-001-0296, traps.md T-0294): the pattern deck/call/code/draft.ts's `declaresDraft` tests
+bind is-shelved
+  take source, like text
+  like boolean
+  case node
+    text <<(/^(mark|note) draft\s*$/m).test($source)>>
+
+# ---- the root, the flags ----
+
+# run from the Term package root, the way every task under task/ is
+task term-root
+  like text
+  send back
+    call working-directory
+
+task flag
+  take name, like text
+  like boolean
+  save words
+    call arguments-of
+  send back
+    call words/includes, read name
+
+# the word after a flag, or nothing
+task flag-value
+  take name, like text
+  like dynamic
+  save words
+    call arguments-of
+  save at
+    call words/index-of, read name
+  fork test
+    hook test
+      call is-below
+        read at
+        code 0
+    hook hold
+      send back
+        call build-nothing
+  send back
+    call member
+      read words
+      call add
+        read at
+        code 1
+
+# `--verify [<path text>]` takes its own filter, the way `--only` does
+task verify-text
+  like dynamic
+  save after
+    call flag-value, text <--verify>
+  fork test
+    hook test
+      call or
+        call is-nothing, read after
+        call starts-with
+          read after
+          text <-->
+    hook hold
+      send back
+        call build-nothing
+  send back, read after
+
+task only-text
+  like dynamic
+  fork test
+    hook test
+      call flag, text <--only>
+    hook hold
+      send back
+        call flag-value, text <--only>
+  fork test
+    hook test
+      call flag, text <--verify>
+    hook hold
+      send back
+        call verify-text
+  send back
+    call build-nothing
+
+# THE WRITE-TIME CHECK: how many times a module whose sources keep changing under it is compiled before it is left
+# unwritten as MOVED
+task attempts
+  like number
+  send back, code 3
+
+# raised whenever what a manifest entry means changes, so an older manifest is read as no manifest. 2: an entry's
+# reads are its own compile's observations (decision 038)
+task schema
+  like number
+  send back, code 2
+
+# ---- the plan ----
+
+form deck-subtrees
+  link deck, like text
+  link subtrees, like list, like text
+
+task deck-of
+  take deck, like text
+  take subtrees, like list, like text
+  like deck-subtrees
+  send back
+    make deck-subtrees
+      bind deck, read deck
+      bind subtrees, read subtrees
+
+# the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call`,
+# `code/browser` is the browser compiler's in-memory disk, `code/work/item` the terminal output standard, `code/line`
+# the console and the top-level `code/work/*.tree` its verbs and its dispatcher. `code/work/*/**`: every FOLDER under
+# code/work (a lane's ports), and `code/work/*` the verb files directly in it
+task decks
+  like list, like deck-subtrees
+  save code
+    make list
+  call code/push, text <code>
+  save call
+    make list
+  call call/push, text <code/work/*/**>
+  call call/push, text <code/work/*>
+  call call/push, text <code/line>
+  call call/push, text <code/browser>
+  call call/push, text <code/*>
+  save all
+    make list
+  call all/push
+    call deck-of
+      text <make>
+      read code
+  call all/push
+    call deck-of
+      text <deck>
+      read code
+  call all/push
+    call deck-of
+      text <flow>
+      read code
+  call all/push
+    call deck-of
+      text <scan>
+      read code
+  call all/push
+    call deck-of
+      text <test>
+      read code
+  call all/push
+    call deck-of
+      text <call>
+      read call
+  send back, read all
+
+task skipped-name
+  take name, like text
+  like boolean
+  save names
+    make list
+  call names/push, text <node_modules>
+  call names/push, text <host>
+  call names/push, text <.base>
+  call names/push, text <tmp>
+  call names/push, text <link>
+  call names/push, text <target>
+  call names/push, text <.build>
+  send back
+    call or
+      call names/includes, read name
+      call ends-with
+        read name
+        text <-cache>
+
+# a folder that is absent, or shelved whole by a `draft.tree` in it, holds nothing
+task closed-folder
+  take dir, like text
+  like boolean
+  save fs
+    call quiet
+  send back
+    call or
+      call not
+        call fs/exists-sync, read dir
+      call fs/exists-sync
+        call node-path/join
+          read dir
+          text <draft.tree>
+
+task sorted-names
+  take dir, like text
+  like list, like text
+  save fs
+    call quiet
+  save names
+    call fs/readdir-sync, read dir
+  send back
+    call names/sort
+
+# every `.tree` under the folder, depth first in name order
+task trees
+  take dir, like text
+  take out, like list, like text
+  like void
+  fork test
+    hook test
+      call closed-folder, read dir
+    hook hold
+      send back
+  save fs
+    call quiet
+  walk list
+    call sorted-names, read dir
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call skipped-name, read name
+        hook hold
+          turn next
+      save full
+        call node-path/join
+          read dir
+          read name
+      save stat
+        call fs/lstat-sync, read full
+      fork test
+        hook test
+          call stat/is-symbolic-link
+        hook hold
+          turn next
+      fork test
+        hook test
+          call stat/is-directory
+        hook hold
+          call trees
+            read full
+            read out
+        hook miss
+          fork test
+            hook test
+              call and
+                call ends-with
+                  read name
+                  text <.tree>
+                call is-unequal
+                  read name
+                  text <draft.tree>
+            hook hold
+              call out/push, read full
+
+# a subtree written `<dir>/*/**` takes every directory directly in `<dir>`, each whole, and no file of `<dir>` itself
+task folders
+  take dir, like text
+  take out, like list, like text
+  like void
+  fork test
+    hook test
+      call closed-folder, read dir
+    hook hold
+      send back
+  save fs
+    call quiet
+  walk list
+    call sorted-names, read dir
+    hook next
+      take site, name name
+      save full
+        call node-path/join
+          read dir
+          read name
+      fork test
+        hook test
+          call skipped-name, read name
+        hook hold
+          turn next
+      save stat
+        call fs/lstat-sync, read full
+      fork test
+        hook test
+          call stat/is-directory
+        hook hold
+          call trees
+            read full
+            read out
+
+# a subtree written `<dir>/*` takes the .tree files directly in that directory and none below it
+task shallow
+  take dir, like text
+  take out, like list, like text
+  like void
+  fork test
+    hook test
+      call closed-folder, read dir
+    hook hold
+      send back
+  save fs
+    call quiet
+  walk list
+    call sorted-names, read dir
+    hook next
+      take site, name name
+      save full
+        call node-path/join
+          read dir
+          read name
+      fork test
+        hook test
+          call and
+            call ends-with
+              read name
+              text <.tree>
+            call is-unequal
+              read name
+              text <draft.tree>
+        hook hold
+          save stat
+            call fs/lstat-sync, read full
+          fork test
+            hook test
+              call and
+                call not
+                  call stat/is-symbolic-link
+                call stat/is-file
+            hook hold
+              call out/push, read full
+
+form plan-file
+  link file, like text
+  link text, like text
+
+form plan-deck
+  link root, like text
+  link files, like list, like plan-file
+
+form planned
+  link decks, like list, like plan-deck
+  # every module not shelved, chosen or not, by its path under the Term root
+  link every, like dynamic
+
+# every module first, so the progress has its total before the first one compiles
+task make-plan
+  take term, like text
+  take only, like dynamic
+  like planned
+  save fs
+    call quiet
+  save plan
+    make list
+  save every
+    call new-set
+  walk list
+    call decks
+    hook next
+      take site, name one
+      save root
+        call node-path/join
+          read term
+          text <deck>
+          read one/deck
+      save files
+        make list
+      walk list
+        read one/subtrees
+        hook next
+          take site, name subtree
+          fork test
+            hook test
+              call ends-with
+                read subtree
+                text </*/**>
+            hook hold
+              call folders
+                call node-path/join
+                  read root
+                  call cut-end
+                    read subtree
+                    code 5
+                read files
+            hook miss
+              fork test
+                hook test
+                  call ends-with
+                    read subtree
+                    text </*>
+                hook hold
+                  call shallow
+                    call node-path/join
+                      read root
+                      call cut-end
+                        read subtree
+                        code 2
+                    read files
+                hook miss
+                  call trees
+                    call node-path/join
+                      read root
+                      read subtree
+                    read files
+      save chosen
+        make list
+      walk list
+        read files
+        hook next
+          take site, name file
+          save source
+            call fs/read-file-sync
+              read file
+              text <utf8>
+          fork test
+            hook test
+              call is-shelved, read source
+            hook hold
+              turn next
+          save name
+            call node-path/relative
+              read term
+              read file
+          call every/add, read name
+          fork test
+            hook test
+              call or
+                call is-nothing, read only
+                call name/includes, read only
+            hook hold
+              call chosen/push
+                make plan-file
+                  bind file, read file
+                  bind text, read source
+      fork test
+        hook test
+          call is-above
+            read chosen/length
+            code 0
+        hook hold
+          call plan/push
+            make plan-deck
+              bind root, read root
+              bind files, read chosen
+  send back
+    make planned
+      bind decks, read plan
+      bind every, read every
+
+# a module's port: under `host/port/`, never `host/` itself, where `term make` writes `host/<path>.ts` WITHOUT the
+# prelude, and two writers on one path left whichever ran last
+task port-path
+  take root, like text
+  take file, like text
+  like text
+  send back
+    call node-path/join
+      read root
+      text <host>
+      text <port>
+      call trimmed-name
+        call node-path/relative
+          read root
+          read file
+
+# a file's sha256, or nothing when it is absent
+task hash-of
+  take path, like text
+  like dynamic
+  save fs
+    call quiet
+  fork test
+    hook test
+      call fs/exists-sync, read path
+    hook hold
+      send back
+        call sha
+          call fs/read-file-sync, read path
+  send back
+    call build-nothing
+
+# a module's text as it is on disk now, or nothing when it is gone or shelved
+task source-of
+  take file, like text
+  like dynamic
+  save fs
+    call quiet
+  save source
+    call build-nothing
+  fork
+    mark unsafe
+    save source
+      call fs/read-file-sync
+        read file
+        text <utf8>
+  halt take
+    take missed
+    send back
+      call build-nothing
+  fork test
+    hook test
+      call is-shelved, read source
+    hook hold
+      send back
+        call build-nothing
+  send back, read source
+
+# ---- the manifest ----
+
+# the last manifest, or nothing when it is absent, unreadable or of another schema
+task read-manifest
+  take path, like text
+  like dynamic
+  save fs
+    call quiet
+  save manifest
+    call build-nothing
+  fork
+    mark unsafe
+    save manifest
+      call parse-json
+        call fs/read-file-sync
+          read path
+          text <utf8>
+  halt take
+    take missed
+    send back
+      call build-nothing
+  fork test
+    hook test
+      call or
+        call is-unequal
+          call member
+            read manifest
+            text <schema>
+          call schema
+        call or
+          call not
+            call is-list
+              call member
+                read manifest
+                text <table>
+          call not
+            call is-object
+              call member
+                read manifest
+                text <modules>
+    hook hold
+      send back
+        call build-nothing
+  send back, read manifest
+
+task manifest-path
+  take term, like text
+  like text
+  send back
+    call node-path/join
+      read term
+      text <.base>
+      text <@term>
+      text <code>
+      text <port-build.json>
+
+# ---- --verify ----
+
+# why the module's port is not the one its last build wrote from its text as it is now, or nothing when it is
+task verify-problem
+  take entry, like dynamic
+  take out, like dynamic
+  take source, like text
+  take run-path, like text
+  like dynamic
+  fork test
+    hook test
+      call is-nothing, read entry
+    hook hold
+      send back, text <no build has recorded it: run port-build>
+  fork test
+    hook test
+      call truthy
+        call member
+          read entry
+          text <failed>
+    hook hold
+      send back, text <its last build failed: run port-build to see why>
+  fork test
+    hook test
+      call is-nothing, read out
+    hook hold
+      send back, text <its port is missing>
+  fork test
+    hook test
+      call is-unequal
+        call member
+          read entry
+          text <text>
+        call sha, read source
+    hook hold
+      send back, text <its source changed after its port was built>
+  fork test
+    hook test
+      call is-unequal
+        call member
+          read entry
+          text <out>
+        read out
+    hook hold
+      send back, text <its port is not the one the last build wrote>
+  save run
+    call member
+      read entry
+      text <run>
+  fork test
+    hook test
+      call and
+        call is-something, read run
+        call is-unequal
+          call hash-of, read run-path
+          read run
+    hook hold
+      send back, text <its run entry is not the one the last build wrote>
+  send back
+    call build-nothing
+
+# `--verify`: each chosen module's port held against the manifest entry the build that wrote it left, the hash of the
+# text it compiled and of the port it wrote. The module's text now must be that text, and its port that port. It
+# reads the module's OWN source only: a change to a module it loads is the skip's business, not this check's. Exit 1
+# on any module that fails
+task verify-ports
+  take term, like text
+  take plan, like list, like plan-deck
+  take manifest, like dynamic
+  like void
+  save good, code 0
+  save bad, code 0
+  save modules
+    call member
+      read manifest
+      text <modules>
+  walk list
+    read plan
+    hook next
+      take site, name one
+      walk list
+        read one/files
+        hook next
+          take site, name planned-file
+          save name
+            call node-path/relative
+              read term
+              read planned-file/file
+          save out-path
+            call port-path
+              read one/root
+              read planned-file/file
+          save problem
+            call verify-problem
+              call member
+                read modules
+                read name
+              call hash-of, read out-path
+              read planned-file/text
+              call run-path-of, read out-path
+          fork test
+            hook test
+              call is-nothing, read problem
+            hook hold
+              save good
+                call add
+                  read good
+                  code 1
+            hook miss
+              save bad
+                call add
+                  read bad
+                  code 1
+              call log, text <  STALE {name}  ({problem})>
+  call log, text <term port-build --verify: {good} current, {bad} stale>
+  fork test
+    hook test
+      call or
+        call is-above
+          read bad
+          code 0
+        call is-equal
+          read good
+          code 0
+    hook hold
+      call set-exit-failed
+
+# ---- host modules, loaded only when the run reaches them ----
+
+bind import-module
+  take url, like text
+  mark async
+  like dynamic
+  case node
+    text <<import($url)>>
+
+bind file-url
+  take path, like text
+  like text
+  case node
+    text <<process.getBuiltinModule("node:url").pathToFileURL($path).href>>
+
+bind raise-text
+  take message, like text
+  like dynamic
+  case node
+    text <<(() => { throw new Error($message) })()>>
+
+# call a function value
+bind apply-one
+  take run, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <<$run($value)>>
+
+# THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time. Under
+# make:line the token it passes down says the lock is ours already. task/term/line-lock.ts, beside this task in the
+# Term repository. A missing lock module is an ERROR, never a skip: with a wrong path every port-build once ran with no
+# lock at all and nothing said so (item term-self-host-001-0475)
+task line-lock-path
+  take term, like text
+  like text
+  send back
+    call node-path/join
+      read term
+      text <task>
+      text <term>
+      text <line-lock.ts>
+
+bind lock-module-of
+  take loaded, like dynamic
+  like dynamic
+  case node
+    text <<($loaded.holdForProcess ? $loaded : $loaded.default)>>
+
+# the lock held for this process, which `--stage-check` frees before its step 2
+task hold-line-lock
+  mark async
+  take term, like text
+  take by, like text
+  like dynamic
+  save fs
+    call quiet
+  save path
+    call line-lock-path, read term
+  fork test
+    hook test
+      call not
+        call fs/exists-sync, read path
+    hook hold
+      call raise-text, text <port-build: the line lock module is not at {path}, so this run cannot take the lock and refuses to compile (decision 002, the make:line lock). Run port-build from its place in the Term repository, beside the task/term/ that holds line-lock.ts>
+  # a CommonJS module (it says why): its exports are the default, and named too where node's lexer finds them
+  save loaded
+    call import-module
+      call file-url, read path
+  save lock
+    call lock-module-of, read loaded
+  send back
+    call lock/hold-for-process
+      read term
+      read by
+
+form stage0-loaded
+  link id, like text
+  link compiler, like dynamic
+
+task stage0-file
+  take id, like text
+  like text
+  send back
+    call node-path/join
+      call node-os/homedir
+      text <.base>
+      text <@term>
+      text <code>
+      text <stage0>
+      read id
+      text <compile.mjs>
+
+# STAGE0: the pinned bundle, loaded at the start of the run, after the trace started, so its reads while it loads are
+# in the trace as the compiler's always were. Only by a dynamic import (decision 140 section 3)
+task load-stage0
+  mark async
+  take term, like text
+  like stage0-loaded
+  save fs
+    call quiet
+  save command, text <pnpm --dir {term} run stage0:pin>
+  save pin-file
+    call node-path/join
+      read term
+      text <task>
+      text <stage0.json>
+  fork test
+    hook test
+      call not
+        call fs/exists-sync, read pin-file
+    hook hold
+      call raise-text, text <stage0 is not pinned (no task/stage0.json). Pin it, which bundles the working tree's compiler: {command}>
+  save pin
+    call parse-json
+      call fs/read-file-sync
+        read pin-file
+        text <utf8>
+  save id
+    read pin/id
+  save file
+    call stage0-file, read id
+  save held, false
+  fork test
+    hook test
+      call fs/exists-sync, read file
+    hook hold
+      save held
+        call is-equal
+          call sha
+            call fs/read-file-sync, read file
+          read id
+  fork test
+    hook test
+      call not, read held
+    hook hold
+      call raise-text, text <stage0 {id} is not installed at {file}. Pin it again from this working tree: {command}>
+  save compiler
+    call import-module
+      call file-url, read file
+  send back
+    make stage0-loaded
+      bind id, read id
+      bind compiler, read compiler
+
+# ---- the compiler fingerprint ----
+
+bind environment-names
+  like list, like text
+  case node
+    text <<Object.keys(process.env).sort()>>
+
+bind environment-value
+  take name, like text
+  like text
+  case node
+    text <<(process.env[$name] ?? "")>>
+
+bind is-build-variable
+  take name, like text
+  like boolean
+  case node
+    text <</^(TERM|SEED|NODE)_/.test($name)>>
+
+bind node-line
+  like text
+  case node
+    text <<`node ${process.version} ${process.platform} ${process.arch}`>>
+
+# the hex digest of a list of lines, each ending in a newline
+bind digest-lines
+  take lines, like list, like text
+  like text
+  case node
+    text <<(() => { const hash = process.getBuiltinModule("node:crypto").createHash("sha256"); for (const line of $lines) hash.update(`${line}\n`); return hash.digest("hex") })()>>
+
+# the nearest pnpm-lock.yaml at or above the folder, or nothing
+task nearest-lock
+  take term, like text
+  like dynamic
+  save fs
+    call quiet
+  save dir, read term
+  save found
+    call build-nothing
+  walk list
+    call endless-rounds
+    hook next
+      take site, name step
+      save candidate
+        call node-path/join
+          read dir
+          text <pnpm-lock.yaml>
+      fork test
+        hook test
+          call fs/exists-sync, read candidate
+        hook hold
+          save found, read candidate
+          halt
+      save up
+        call node-path/dirname, read dir
+      fork test
+        hook test
+          call is-equal
+            read up
+            read dir
+        hook hold
+          halt
+      save dir, read up
+  send back, read found
+
+# THE COMPILER, as content (decision 140 section 2): the manifest schema, stage0's id (the sha256 of the bundle every
+# port compiles with), Node, the launcher's bytes, the running program's own sha (its file is named by it), the
+# nearest lockfile, launch-only.ts (which decides the environment's part), and every TERM_ / SEED_ / NODE_ variable
+# but the launch-only ones. The program is compiled from `.tree` source and imports no port, so no port build can move
+# it (traps T-1081, T-1096i). A worker runs the same program file, so it has this fingerprint.
+# Nothing when any of it cannot be read, and then nothing is skipped
+#
+# The variables that say only how port-build was started are left out: each of them in it made the same tree a full
+# rebuild of every module from another route or terminal (item term-self-host-001-0453). The list, and why each is on
+# it, is deck/call/code/launch-only.ts, which build-graph.tree's env-text reads too (item term-self-host-001-0476)
+task fingerprint
+  take term, like text
+  take stage0-id, like text
+  like dynamic
+  save fs
+    call quiet
+  save program
+    call variable, text <TERM_TASK_PROGRAM>
+  fork test
+    hook test
+      call is-equal
+        read program
+        text <>
+    hook hold
+      send back
+        call build-nothing
+  save lines
+    make list
+  call lines/push, text <schema {schema()}>
+  call lines/push, text <stage0 {stage0-id}>
+  call lines/push
+    call node-line
+  save program-name
+    call node-path/basename, read program
+  save program-sha
+    call trimmed-program, read program-name
+  call lines/push, text <program {program-sha}>  # the launch-only variables are left out: each says how this process was started, never what a compile writes. So
+  # is the launch-only part of one, NODE_OPTIONS's heap sizes (build-value, item term-self-host-001-1017)
+  walk list
+    call environment-names
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call and
+            call is-build-variable, read name
+            call not
+              call launch-only/is-launch-only, read name
+        hook hold
+          save value
+            call launch-only/build-value
+              call variable-pair
+                read name
+                call environment-value, read name
+          fork test
+            hook test
+              call is-something, read value
+            hook hold
+              call lines/push, text <env {name}={value}>
+  save files
+    make list
+  call files/push
+    call node-path/join
+      read term
+      text <task>
+      text <launch.mjs>
+  call files/push
+    call node-path/join
+      read term
+      text <deck>
+      text <call>
+      text <code>
+      text <launch-only.ts>
+  save lock
+    call nearest-lock, read term
+  fork test
+    hook test
+      call is-something, read lock
+    hook hold
+      call files/push, read lock
+  walk list
+    call files/sort
+    hook next
+      take site, name file
+      fork test
+        hook test
+          call not
+            call fs/exists-sync, read file
+        hook hold
+          send back
+            call build-nothing
+      save file-sha
+        call sha
+          call fs/read-file-sync, read file
+      call lines/push, text <file {file} {file-sha}>
+  send back
+    call digest-lines, read lines
+
+bind trimmed-program
+  take name, like text
+  like text
+  case node
+    text <<$name.replace(/\.ts$/, "")>>
+
+bind variable-pair
+  take name, like text
+  take value, like text
+  like dynamic
+  case node
+    text <<({ name: $name, value: $value })>>
+
+# ---- the jobs ----
+
+bind default-jobs
+  like number
+  case node
+    text <<Math.max(1, Math.min(8, process.getBuiltinModule("node:os").availableParallelism() - 4, Math.floor(process.getBuiltinModule("node:os").totalmem() / (6 * 1024 ** 3))))>>
+
+bind whole-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <<(Number.isInteger(Number($value)) && Number($value) >= 1)>>
+
+bind as-number
+  take value, like dynamic
+  like number
+  case node
+    text <<Number($value)>>
+
+
+# `--jobs <n>`, or as many as the machine has cores and memory to spare: four cores left for everything else, and no
+# more workers than its memory holds. The room one worker needs is 6 GB, the heaviest measured (item
+# term-self-host-001-1016), and 8 the most workers worth starting
+task job-count
+  like number
+  fork test
+    hook test
+      call has-variable, text <TERM_PORT_BUILD_HOLD>
+    hook hold
+      send back, code 1
+  fork test
+    hook test
+      call not
+        call flag, text <--jobs>
+    hook hold
+      send back
+        call default-jobs
+  save given
+    call flag-value, text <--jobs>
+  fork test
+    hook test
+      call not
+        call whole-number, read given
+    hook hold
+      call raise-text, text <port-build: --jobs takes a whole number above 0, not {given}>
+  send back
+    call as-number, read given
+
+
+# ---- the port's text ----
+
+# THE PRINTER'S RUN (decision term-cli-in-term-0240). A port is emitted whole, with its own copy of every module it
+# loads, so the run a port prints through is ITS copy of work/output/printer.tree. So every port whose closure holds
+# the printer exports the printer's open-run, close-run, set-output and is-run-open: a module whose import closure
+# holds the printer compiles with the keeper's text after its own, tasks of the module (roots) that call the four.
+# Its names are aliased, so no name the module defines or imports is shadowed. The source on disk is never changed
+task printer-file
+  like text
+  send back, text <deck/call/code/work/output/printer.tree>
+
+# is-run-open is one comparison, and the simplifier inlines it into every caller, so it is kept as a task of the
+# module (port-printer-is-run-open, a root) and exported under the printer's name by printer-exports. The return is
+# spelled the way the module's own mode reads it
+task printer-keeper
+  take lean, like boolean
+  like text
+  save lines
+    make list
+  call lines/push, text <>
+  call lines/push, text <>
+  call lines/push, text <# written by task/port-build.ts, never in the source (decision term-cli-in-term-0240): the printer run tasks a>
+  call lines/push, text <# caller of this port drives>
+  call lines/push, text <load @term/call/work/output/printer>
+  call lines/push, text <  find open-run, name port-printer-open-run>
+  call lines/push, text <  find close-run, name port-printer-close-run>
+  call lines/push, text <  find set-output, name port-printer-set-output>
+  call lines/push, text <  find is-run-open, name port-printer-run-open>
+  call lines/push, text <>
+  call lines/push, text <task port-printer-run>
+  call lines/push, text <  take input, like dynamic>
+  call lines/push, text <  take flags, like dynamic>
+  call lines/push, text <  take tool-version, like text>
+  call lines/push, text <  like void>
+  call lines/push, text <  call port-printer-set-output>
+  call lines/push, text <    read flags>
+  call lines/push, text <    read tool-version>
+  call lines/push, text <  call port-printer-open-run>
+  call lines/push, text <    read input>
+  call lines/push, text <  call port-printer-close-run>
+  call lines/push, text <    read input>
+  call lines/push, text <>
+  call lines/push, text <task port-printer-is-run-open>
+  call lines/push, text <  like boolean>
+  fork test
+    hook test
+      read lean
+    hook hold
+      call lines/push, text <  back port-printer-run-open()>
+    hook miss
+      call lines/push, text <  send back>
+      call lines/push, text <    call port-printer-run-open>
+  call lines/push, text <>
+  send back
+    call lines/join, text <\n>
+
+bind exports-function
+  take content, like text
+  take camel, like text
+  like boolean
+  case node
+    text <<new RegExp(`^export (async )?function ${$camel}\\(`, "m").test($content)>>
+
+# the port's text with the printer's is-run-open exported by its own name when the simplifier inlined it away
+bind printer-exports
+  take content, like text
+  like text
+  case node
+    text <<(!/^export function portPrinterIsRunOpen\(/m.test($content) || /^export (async )?function isRunOpen\(/m.test($content) ? $content : `${$content}\n// the printer's is-run-open, kept by port-build (decision term-cli-in-term-0240)\nexport { portPrinterIsRunOpen as isRunOpen }\n`)>>
+
+# whether a module's import closure holds the printer (the printer's own port keeps every task it defines). The walk is
+# the compile's own (collect-modules), sharing its parse memo and walk memo, so its reads are the compile's reads,
+# nothing is parsed twice, and the compile's walk keeps each module's part
+task holds-printer
+  take compiler, like dynamic
+  take name, like text
+  take source, like dynamic
+  take resolve, like dynamic
+  take parsed, like dynamic
+  take walked, like dynamic
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read name
+        call printer-file
+    hook hold
+      send back, false
+  save collected
+    call compiler/collect-modules
+      read source
+      read resolve
+      read parsed
+      call build-nothing
+      read walked
+  save tail, text </{printer-file()}>
+  walk list
+    read collected/sources
+    hook next
+      take site, name unit
+      fork test
+        hook test
+          call ends-with
+            read unit/file
+            read tail
+        hook hold
+          send back, true
+  send back, false
+
+bind file-key
+  take stat, like dynamic
+  like text
+  case node
+    text <<`${$stat.dev}:${$stat.ino}`>>
+
+# the names a prelude defines (`const <name> =` at a line's start)
+bind prelude-defined
+  take prelude, like dynamic
+  like dynamic
+  case node
+    text <<new Set([...($prelude ?? "").matchAll(/^const ([A-Za-z_$][\w$]*) =/gm)].map((match) => match[1]))>>
+
+# the emitted module declares each native global it calls (`declare const bit: any`) so it typechecks WITHOUT the
+# prelude, and the prelude defines it. Both in one file is TS2451, so the declaration of a name the prelude defines is
+# dropped
+bind drop-declared
+  take typescript, like text
+  take defined, like dynamic
+  like text
+  case node
+    text <<$typescript.split("\n").filter((line) => { const declared = /^declare const ([A-Za-z_$][\w$]*)\s*:/.exec(line); return !declared || !$defined.has(declared[1]) }).join("\n")>>
+
+bind prelude-joined
+  take prelude, like dynamic
+  take body, like text
+  like text
+  case node
+    text <<`${$prelude ? `${$prelude}\n` : ""}${$body}`>>
+
+# THE PORT'S TEXT: the native prelude, then the emitted module. Each runtime shim goes in ONCE (term-cli-in-term-0127):
+# a shim is keyed by the FILE it opens (device and inode), and a second path to a file already given reads as empty,
+# since on a case-insensitive disk `runtime/JSON.ts` opens `runtime/json.ts`. Read through the TRACED `fs`: what the
+# prelude reads is an input of the output like any file the compile read
+task port-content
+  take native-prelude, like dynamic
+  take program, like dynamic
+  take typescript, like text
+  like text
+  save given
+    call new-set
+  save prelude
+    call native-prelude-of
+      read native-prelude
+      read program
+      task
+        take path, like text
+        like dynamic
+        fork test
+          hook test
+            call not
+              call node-fs/exists-sync, read path
+          hook hold
+            send back
+              call build-nothing
+        save q
+          call quiet
+        save stat
+          call q/stat-sync, read path
+        save key
+          call file-key, read stat
+        fork test
+          hook test
+            call given/has, read key
+          hook hold
+            send back, text <>
+        call given/add, read key
+        send back
+          call node-fs/read-file-sync
+            read path
+            text <utf8>
+  save body
+    call drop-declared
+      read typescript
+      call prelude-defined, read prelude
+  send back
+    call prelude-joined
+      read prelude
+      read body
+
+bind native-prelude-of
+  take run, like dynamic
+  take program, like dynamic
+  take reader, like dynamic
+  like dynamic
+  case node
+    text <<$run($program, "node", $reader)>>
+
+# ---- the run entry ----
+
+bind route-with-calls
+  take route, like dynamic
+  take calls, like dynamic
+  take children, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$route, calls: $calls, children: $children })>>
+
+bind call-with-params
+  take call, like dynamic
+  take params, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$call, params: $params })>>
+
+bind param-names
+  take params, like dynamic
+  like dynamic
+  case node
+    text <<$params.map((p) => p.name)>>
+
+# THE CLI COMMAND ROUTES of a program: every top-level `hook` (lowered to a dock statement), each bound call carrying
+# its task's parameter names. work/hook/parsing.tree `command-routes` is its twin in the CLI
+task named-route
+  take params, like dynamic
+  take route, like dynamic
+  like dynamic
+  save calls
+    call new-array
+  walk list
+    read route/calls
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call params/has, read one/name
+        hook hold
+          call calls/push
+            call call-with-params
+              read one
+              call params/get, read one/name
+        hook miss
+          call calls/push, read one
+  save children
+    call new-array
+  walk list
+    read route/children
+    hook next
+      take site, name child
+      call children/push
+        call named-route
+          read params
+          read child
+  send back
+    call route-with-calls
+      read route
+      read calls
+      read children
+
+task command-routes
+  take program, like dynamic
+  like dynamic
+  save params
+    call new-map
+  walk list
+    read program
+    hook next
+      take site, name statement
+      fork test
+        hook test
+          call is-equal
+            read statement/form
+            text <function>
+        hook hold
+          call params/set
+            read statement/name
+            call param-names, read statement/params
+  save routes
+    call new-array
+  walk list
+    read program
+    hook next
+      take site, name statement
+      fork test
+        hook test
+          call is-equal
+            read statement/form
+            text <dock>
+        hook hold
+          call routes/push
+            call named-route
+              read params
+              read statement/route
+  send back, read routes
+
+bind routes-text
+  take routes, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($routes, (key, value) => (key === "span" ? undefined : value))>>
+
+bind task-entries
+  take tasks, like dynamic
+  like list, like text
+  case node
+    text <<[...$tasks].sort(([a], [b]) => a.localeCompare(b)).map(([task, camel]) => `  ${JSON.stringify(task)}: line.${camel},`)>>
+
+bind module-base
+  take name, like text
+  like text
+  case node
+    text <<$name.split("/").pop().replace(/\.tree$/, "")>>
+
+form run-entry
+  link text, like dynamic
+  link missing, like list, like text
+
+# THE RUN ENTRY (term-cli-in-term-0012). A module whose top level declares `hook` commands is a console, and its port
+# alone runs nothing, so beside such a port goes `<name>-run.ts`, which `make:line` bundles: the routes as data, each
+# command's task as the port's export, and the start of the run handed to the console's own `start-console`,
+# `fail-console` and `refuse-console`, with the parsing of a command's flags and the call of its task in the Term
+# dispatcher's `run-command-line` (work/hook/running.tree). Nothing when the module declares no hook; a task some
+# route names that the port does not export is a missing name
+task run-entry-of
+  take compiler, like dynamic
+  take name, like text
+  take content, like text
+  take program, like dynamic
+  like dynamic
+  save routes
+    call command-routes, read program
+  fork test
+    hook test
+      call is-equal
+        read routes/length
+        code 0
+    hook hold
+      send back
+        call build-nothing
+  save tasks
+    call new-map
+  call gather-route-tasks
+    read compiler
+    read routes
+    read tasks
+  # the run entry's own three calls, tasks of the console, checked like the routes'
+  save wanted
+    call new-map
+  walk list
+    call items-of, read tasks
+    hook next
+      take site, name pair
+      call wanted/set
+        read pair/0
+        read pair/1
+  save missing
+    make list
+  save own
+    make list
+  call own/push, text <start-console>
+  call own/push, text <refuse-console>
+  call own/push, text <fail-console>
+  save checked
+    make list
+  walk list
+    call items-of, read tasks
+    hook next
+      take site, name pair
+      call checked/push, read pair
+  walk list
+    read own
+    hook next
+      take site, name task-name
+      call checked/push
+        call two-of
+          read task-name
+          call compiler/to-camel, read task-name
+  walk list
+    read checked
+    hook next
+      take site, name pair
+      fork test
+        hook test
+          call not
+            call exports-function
+              read content
+              read pair/1
+        hook hold
+          call missing/push, read pair/0
+  fork test
+    hook test
+      call is-above
+        read missing/length
+        code 0
+    hook hold
+      send back
+        make run-entry
+          bind text
+            call build-nothing
+          bind missing, read missing
+  save lines
+    make list
+  call lines/push, text <// THE RUN ENTRY of the Term console {name}, written by task/port-build.ts beside its port (term-cli-in-term-0012).>
+  call lines/push, text <// Generated: edit the console or port-build, never this file.>
+  call lines/push, text <import * as line from './{module-base(name)}'>
+  call lines/push, text <<import { runCommandLine } from '@term/call/code/work/hook/running'>>
+  call lines/push, text <>
+  call lines/push, text <const routes = {routes-text(routes)}>
+  call lines/push, text <>
+  call lines/push, text <<const tasks: Record<string, unknown> = {>>
+  walk list
+    call task-entries, read tasks
+    hook next
+      take site, name entry
+      call lines/push, read entry
+  call lines/push, text <<}>>
+  call lines/push, text <>
+  call lines/push, text <const start = line.startConsole(routes, process.argv.slice(2))>
+  call lines/push, text <>
+  call lines/push, text <<if (start.done) {>>
+  call lines/push, text <<  if (start.exit !== 0) {>>
+  call lines/push, text <    process.exit(start.exit)>
+  call lines/push, text <<  }>>
+  call lines/push, text <<} else {>>
+  call lines/push, text <<  try {>>
+  call lines/push, text <<    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined, refuse: line.refuseConsole })>>
+  call lines/push, text <>
+  call lines/push, text <<    if (code !== 0) {>>
+  call lines/push, text <      process.exit(code)>
+  call lines/push, text <<    }>>
+  call lines/push, text <<  } catch (error) {>>
+  call lines/push, text <    process.exit(line.failConsole(error))>
+  call lines/push, text <<  }>>
+  call lines/push, text <<}>>
+  call lines/push, text <>
+  send back
+    make run-entry
+      bind text
+        call lines/join, text <\n>
+      bind missing, read missing
+
+bind two-of
+  take a, like dynamic
+  take b, like dynamic
+  like dynamic
+  case node
+    text <<[$a, $b]>>
+
+# every route's first call's task, depth first, each by its camelCase name
+task gather-route-tasks
+  take compiler, like dynamic
+  take routes, like dynamic
+  take tasks, like dynamic
+  like void
+  walk list
+    read routes
+    hook next
+      take site, name route
+      save first
+        call member
+          read route/calls
+          code 0
+      fork test
+        hook test
+          call and
+            call is-something, read first
+            call truthy, read first/name
+        hook hold
+          call tasks/set
+            read first/name
+            call compiler/to-camel, read first/name
+      call gather-route-tasks
+        read compiler
+        read route/children
+        read tasks
+
+# ---- one module's turn ----
+
+# test/call/port-race.ts only: with TERM_PORT_BUILD_HOLD=<dir>, the first compile of the run writes `<dir>/held` (the
+# module's path) and waits for `<dir>/go` before its write-time check, so the test can edit the source and run a second
+# build inside that gap. A test's hook and nothing else: absent, it does nothing
+form hold-state
+  mark shared
+  link held, like boolean
+
+host holding
+  make hold-state
+    bind held, false
+
+bind clock-now
+  like number
+  case node
+    text <<Date.now()>>
+
+bind nap
+  like void
+  case node
+    text <<void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)>>
+
+task hold-for-test
+  take name, like text
+  like void
+  save dir
+    call variable, text <TERM_PORT_BUILD_HOLD>
+  fork test
+    hook test
+      call or
+        call is-equal
+          read dir
+          text <>
+        read holding/held
+    hook hold
+      send back
+  save holding/held, true
+  save fs
+    call quiet
+  call fs/write-file-sync
+    call node-path/join
+      read dir
+      text <held>
+    read name
+  save until
+    call add
+      call clock-now
+      code 600000
+  save go
+    call node-path/join
+      read dir
+      text <go>
+  walk list
+    call endless
+    hook next
+      take site, name round
+      fork test
+        hook test
+          call or
+            call fs/exists-sync, read go
+            call is-minimum
+              call clock-now
+              read until
+        hook hold
+          halt
+      call nap
+
+# a list long enough for any wait: each round of hold-for-test is a tenth of a second, and it stops at ten minutes
+bind endless
+  like list, like number
+  case node
+    text <<Array.from({ length: 6001 }, (_, at) => at)>>
+
+# THE RUN'S PARSE MEMO (term-self-host-001-1097): one parse memo serves every compile this process makes, one per
+# compiler (stage0, or under --stage-check step 2 the working tree's). Keyed by a file and its exact text, and parsing
+# reads nothing from the disk: the resolver is still made per compile, so every file a module's compile reaches is
+# still READ in that module's own trace (decision 038). The walk memo stays per module
+form parse-state
+  mark shared
+  link memos, like dynamic
+
+host parses
+  make parse-state
+    bind memos
+      call new-map
+
+task run-parse-memo
+  take compiler, like dynamic
+  like dynamic
+  save make-memo
+    read compiler/make-parse-memo
+  save memo
+    call parses/memos/get, read make-memo
+  fork test
+    hook test
+      call is-nothing, read memo
+    hook hold
+      save memo
+        call apply-one
+          read make-memo
+          code 16384
+      call parses/memos/set
+        read make-memo
+        read memo
+  send back, read memo
+
+bind compile-options
+  take resolve, like dynamic
+  take lean, like dynamic
+  take parsed, like dynamic
+  take walked, like dynamic
+  like dynamic
+  case node
+    text <<({ resolve: $resolve, leanOf: $lean, library: true, parsed: $parsed, walked: $walked })>>
+
+bind compile-source
+  take file, like text
+  take source, like text
+  like dynamic
+  case node
+    text <<({ file: $file, text: $source })>>
+
+# the text a module compiles from: its own, and the printer keeper's after it when its closure holds the printer
+task keeper-source
+  take keep, like boolean
+  take lean, like dynamic
+  take file, like text
+  take source, like text
+  like text
+  fork test
+    hook test
+      read keep
+    hook hold
+      save leaning
+        call is-equal
+          call apply-one
+            read lean
+            read file
+          true
+      save keeper
+        call printer-keeper, read leaning
+      send back, text <{source}{keeper}>
+  send back, read source
+
+# the module compiled once: its closure walked for the printer, then the compile, with the keeper's text when it holds
+# the printer
+task compile-once
+  take compiler, like dynamic
+  take root, like text
+  take name, like text
+  take file, like text
+  take source, like text
+  like dynamic
+  # the resolver and the role reader keep what they read, so each is made per compile: shared, a module served from
+  # them would show none of the reads its output rests on (decision 038), and a second attempt would read the old
+  # text
+  save resolve
+    call compiler/project-resolver, read root
+  save lean
+    call compiler/project-lean-of, read root
+  save parsed
+    call run-parse-memo, read compiler
+  save walked
+    call new-map
+  save keep
+    call holds-printer
+      read compiler
+      read name
+      call compile-source
+        read file
+        read source
+      read resolve
+      read parsed
+      read walked
+  save whole
+    call keeper-source
+      read keep
+      read lean
+      read file
+      read source
+  send back
+    call compiler/compile
+      call compile-source
+        read file
+        read whole
+      call compile-options
+        read resolve
+        read lean
+        read parsed
+        read walked
+
+bind make-turn
+  take tally, like text
+  take lines, like list, like text
+  like dynamic
+  case node
+    text <<({ tally: $tally, lines: $lines })>>
+
+bind make-entry
+  take hash, like text
+  take print, like text
+  take out, like text
+  take run, like dynamic
+  like dynamic
+  case node
+    text <<({ text: $hash, fingerprint: $print, out: $out, reads: [], ...($run !== undefined ? { run: $run } : {}) })>>
+
+# a module gone or shelved since the run began
+task gone-turn
+  take name, like text
+  like dynamic
+  save lines
+    make list
+  call lines/push, text <  MOVED {name}  (removed or shelved since this run began: run port-build again)>
+  save turn
+    call make-turn
+      text <moved>
+      read lines
+  call put-member
+    read turn
+    text <left>
+    false
+  send back, read turn
+
+# the first `.tree` the compile read that no longer holds what it held then, other than the module's own file
+task changed-source
+  take file, like text
+  take read, like dynamic
+  like dynamic
+  walk list
+    call items-of, read read
+    hook next
+      take site, name pair
+      fork test
+        hook test
+          call and
+            call is-unequal
+              read pair/0
+              read file
+            call is-unequal
+              call observe
+                text <read>
+                read pair/0
+              read pair/1
+        hook hold
+          send back, read pair/0
+  send back
+    call build-nothing
+
+# ONE MODULE'S TURN, in whichever process compiles it: compile one module, and write its port when it changed. `lines`
+# are its stdout, printed in plan order. `tally` is the count it adds to, `left` that it was reached and left unwritten
+# and whether by a failure, `entry` the manifest entry of the output now on disk, `keys` its observations
+task compile-turn
+  take run, like build-run
+  take root, like text
+  take file, like text
+  take print, like dynamic
+  like dynamic
+  save compiler, read run/compiler
+  save term, read run/term
+  save fs
+    call quiet
+  save lines
+    make list
+  save name
+    call node-path/relative
+      read term
+      read file
+  # the text NOW, not as the plan read it: a full run reaches its last module minutes after it planned
+  save source
+    call source-of, read file
+  fork test
+    hook test
+      call is-nothing, read source
+    hook hold
+      send back
+        call gone-turn, read name
+  save text-hash
+    call sha, read source
+  save out-path
+    call port-path
+      read root
+      read file
+  save run-path
+    call run-path-of, read out-path
+  save result
+    call build-nothing
+  save changed
+    call build-nothing
+  # THE MODULE'S OWN KEY (decision 038): from here to its port's text, everything observed is this module's
+  call begin-module
+  # THE WRITE-TIME CHECK: every `.tree` this compile read, its own text first, is read again once it is done, and a
+  # change compiles it again from the text as it now is
+  save tries
+    make list
+  call tries/push, code 1
+  call tries/push, code 2
+  call tries/push, code 3
+  walk list
+    read tries
+    hook next
+      take site, name attempt
+      call open-window
+      save result
+        call compile-once
+          read compiler
+          read root
+          read name
+          read file
+          read source
+      save read
+        call close-window
+      call hold-for-test, read name
+      # its own text as a text, the way it was compiled; the others by their bytes, the way the trace hashes them
+      save changed, read file
+      fork test
+        hook test
+          call is-equal
+            call source-of, read file
+            read source
+        hook hold
+          save changed
+            call changed-source
+              read file
+              read read
+      fork test
+        hook test
+          call or
+            call is-nothing, read changed
+            call is-equal
+              read attempt
+              call attempts
+        hook hold
+          halt
+      save changed-name
+        call node-path/relative
+          read term
+          read changed
+      call lines/push, text <  again {name}  ({changed-name} changed while it compiled)>
+      save now
+        call source-of, read file
+      fork test
+        hook test
+          call is-nothing, read now
+        hook hold
+          halt
+      save source, read now
+      save text-hash
+        call sha, read source
+  fork test
+    hook test
+      call is-something, read changed
+    hook hold
+      save keys
+        call end-module
+      save changed-name
+        call node-path/relative
+          read term
+          read changed
+      call lines/push, text <  MOVED {name}  ({changed-name} changed while it compiled, {attempts()} times: its port is left as it was, run port-build again)>
+      save turn
+        call make-turn
+          text <moved>
+          read lines
+      call put-member
+        read turn
+        text <left>
+        false
+      call put-member
+        read turn
+        text <keys>
+        read keys
+      send back, read turn
+  fork test
+    hook test
+      call not
+        call truthy, read result/ok
+    hook hold
+      save keys
+        call end-module
+      call lines/push, text <  FAIL  {name}>
+      walk list
+        call result/diagnostics/slice
+          code 0
+          code 3
+        hook next
+          take site, name diagnostic
+          call lines/push, text <        {diagnostic/name}: {diagnostic/message}>
+      send back
+        call failed-turn
+          read lines
+          read keys
+  save content
+    call printer-exports
+      call port-content
+        read compiler/native-prelude
+        read result/program
+        read result/typescript
+  # only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a test
+  # fixture whose hooks name tasks it never defines) is a library like any other port
+  save entry-run
+    call build-nothing
+  fork test
+    hook test
+      call is-equal
+        call node-path/basename, read root
+        text <call>
+    hook hold
+      save entry-run
+        call run-entry-of
+          read compiler
+          read name
+          read content
+          read result/program
+  # the module's key ends with its prelude's reads
+  save keys
+    call end-module
+  save run-text
+    call build-nothing
+  fork test
+    hook test
+      call is-something, read entry-run
+    hook hold
+      fork test
+        hook test
+          call is-above
+            read entry-run/missing/length
+            code 0
+        hook hold
+          save missing-names
+            call entry-run/missing/join, text <, >
+          call lines/push, text <  FAIL  {name}>
+          call lines/push, text <        run-entry: the port exports no task for {missing-names}, which a hook names>
+          send back
+            call failed-turn
+              read lines
+              read keys
+      save run-text, read entry-run/text
+  # the key of this output: the observations of its own compile (decision 038). `reads` is filled from `keys` when
+  # the manifest is written, as rows of its table
+  save entry
+    call build-nothing
+  fork test
+    hook test
+      call is-something, read print
+    hook hold
+      save run-hash
+        call build-nothing
+      fork test
+        hook test
+          call is-something, read run-text
+        hook hold
+          save run-hash
+            call sha, read run-text
+      save entry
+        call make-entry
+          read text-hash
+          read print
+          call sha, read content
+          read run-hash
+  save existing
+    call build-nothing
+  fork test
+    hook test
+      call fs/exists-sync, read out-path
+    hook hold
+      save existing
+        call fs/read-file-sync
+          read out-path
+          text <utf8>
+  save existing-run
+    call build-nothing
+  fork test
+    hook test
+      call and
+        call is-something, read run-text
+        call fs/exists-sync, read run-path
+    hook hold
+      save existing-run
+        call fs/read-file-sync
+          read run-path
+          text <utf8>
+  fork test
+    hook test
+      call and
+        call is-equal
+          read existing
+          read content
+        call is-equal
+          read existing-run
+          read run-text
+    hook hold
+      send back
+        call kept-turn
+          text <unchanged>
+          read lines
+          read keys
+          read entry
+  fork test
+    hook test
+      read run/check
+    hook hold
+      call lines/push, text <  STALE {name}>
+      send back
+        call kept-turn
+          text <stale>
+          read lines
+          read keys
+          call build-nothing
+  call fs/mkdir-sync
+    call node-path/join
+      read out-path
+      text <..>
+    call recursive-option
+  call fs/write-file-sync
+    read out-path
+    read content
+  fork test
+    hook test
+      call is-something, read run-text
+    hook hold
+      call fs/write-file-sync
+        read run-path
+        read run-text
+  call lines/push, text <  built {node-path/relative(term, out-path)}>
+  send back
+    call kept-turn
+      text <built>
+      read lines
+      read keys
+      read entry
+
+bind recursive-option
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+bind failed-turn
+  take lines, like list, like text
+  take keys, like list, like text
+  like dynamic
+  case node
+    text <<({ tally: "failed", left: true, lines: $lines, keys: $keys })>>
+
+bind kept-turn
+  take tally, like text
+  take lines, like list, like text
+  take keys, like list, like text
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <<({ tally: $tally, lines: $lines, keys: $keys, entry: $entry })>>
+
+# ---- the jobs: workers ----
+
+bind on-signals
+  take stop, like dynamic
+  like void
+  case node
+    text <<void ["SIGINT", "SIGTERM", "SIGHUP"].forEach((signal) => process.once(signal, $stop))>>
+
+bind off-signals
+  take stop, like dynamic
+  like void
+  case node
+    text <<void ["SIGINT", "SIGTERM", "SIGHUP"].forEach((signal) => process.off(signal, $stop))>>
+
+bind settle-promise
+  take start, like dynamic
+  mark async
+  like dynamic
+  case node
+    text <<new Promise((done, fail) => $start(done, fail))>>
+
+bind call-none
+  take run, like dynamic
+  like void
+  case node
+    text <<void $run()>>
+
+bind error-of
+  take message, like text
+  like dynamic
+  case node
+    text <<new Error($message)>>
+
+bind fork-worker
+  take program, like text
+  take flags, like list, like text
+  like dynamic
+  case node
+    text <<process.getBuiltinModule("node:child_process").fork($program, [...process.argv.slice(2), ...$flags, "--port-worker"], { execArgv: process.execArgv })>>
+
+bind exit-text
+  take code, like dynamic
+  take signal, like dynamic
+  like text
+  case node
+    text <<($signal ?? `exit ${$code}`)>>
+
+form fan-state
+  mark shared
+  link running, like dynamic
+  link next, like number
+  link failure, like dynamic
+
+form fan-job
+  link at, like number
+  link name, like text
+  link job, like dynamic
+
+# THE JOBS: `work` handed out to at most `count` workers, each answer handed to `arrive` by its place as it finishes.
+# Settles when every worker has gone. A thrown compile or a worker that ends with work in hand rejects it, and every
+# worker stops
+task fan-out
+  mark async
+  take count, like number
+  take flags, like list, like text
+  take work, like list, like fan-job
+  take arrive, like dynamic
+  like void
+  save program
+    call variable, text <TERM_TASK_PROGRAM>
+  save fan
+    make fan-state
+      bind running
+        call new-map
+      bind next, code 0
+      bind failure
+        call build-nothing
+  call settle-promise
+    task
+      take done, like dynamic
+      take fail, like dynamic
+      like void
+      save stop
+        task
+          like void
+          walk list
+            call items-of
+              call fan/running/keys
+            hook next
+              take site, name child
+              call child/kill, text <SIGKILL>
+      save stopped
+        task
+          like void
+          call call-none, read stop
+          call exit-now, code 130
+      call node-process-on
+        text <exit>
+        read stop
+      call on-signals, read stopped
+      save stop-for
+        task
+          take error, like dynamic
+          like void
+          fork test
+            hook test
+              call is-nothing, read fan/failure
+            hook hold
+              save fan/failure, read error
+          call call-none, read stop
+      save give
+        task
+          take child, like dynamic
+          like void
+          save item
+            call member
+              read work
+              read fan/next
+          fork test
+            hook test
+              call is-nothing, read item
+            hook hold
+              call fan/running/set
+                read child
+                call build-nothing
+              call child/disconnect
+              send back
+          save fan/next
+            call add
+              read fan/next
+              code 1
+          call fan/running/set
+            read child
+            read item
+          call child/send, read item/job
+      save starting
+        call minimum-two
+          read count
+          read work/length
+      walk list
+        call count-list, read starting
+        hook next
+          take site, name index
+          save child
+            call fork-worker
+              read program
+              read flags
+          call fan/running/set
+            read child
+            call build-nothing
+          call child/on
+            text <message>
+            task
+              take reply, like dynamic
+              like void
+              fork test
+                hook test
+                  call is-something, read fan/failure
+                hook hold
+                  send back
+              save holding-item
+                call fan/running/get, read child
+              fork test
+                hook test
+                  call is-something, read reply/thrown
+                hook hold
+                  call apply-one
+                    read stop-for
+                    call error-of, text <port-build: {holding-item/name} threw in a worker\n{reply/thrown}>
+                  send back
+              fork test
+                hook test
+                  call is-something, read reply/answer
+                hook hold
+                  call apply-two
+                    read arrive
+                    read holding-item/at
+                    read reply/answer
+                  call apply-one
+                    read give
+                    read child
+                  send back
+              fork test
+                hook test
+                  call truthy, read reply/ready
+                hook hold
+                  call apply-one
+                    read give
+                    read child
+          call child/on
+            text <error>
+            read stop-for
+          call child/on
+            text <exit>
+            task
+              take code, like dynamic
+              take signal, like dynamic
+              like void
+              save held
+                call fan/running/get, read child
+              call fan/running/delete, read child
+              # a worker leaves with exit 0 once told there is no more work, and in no other way
+              fork test
+                hook test
+                  call or
+                    call is-something, read held
+                    call or
+                      call is-below
+                        read fan/next
+                        read work/length
+                      call is-unequal
+                        read code
+                        code 0
+                hook hold
+                  save compiling, text <>
+                  fork test
+                    hook test
+                      call is-something, read held
+                    hook hold
+                      save compiling, text < compiling {held/name}>
+                  save ended
+                    call exit-text
+                      read code
+                      read signal
+                  call apply-one
+                    read stop-for
+                    call error-of, text <port-build: a worker ended ({ended}){compiling}>
+              fork test
+                hook test
+                  call is-equal
+                    read fan/running/size
+                    code 0
+                hook hold
+                  call node-process-off
+                    text <exit>
+                    read stop
+                  call off-signals, read stopped
+                  fork test
+                    hook test
+                      call is-something, read fan/failure
+                    hook hold
+                      call apply-one
+                        read fail
+                        read fan/failure
+                    hook miss
+                      call call-none, read done
+
+bind node-process-on
+  take event, like text
+  take run, like dynamic
+  like void
+  case node
+    text <<void process.on($event, $run)>>
+
+bind node-process-off
+  take event, like text
+  take run, like dynamic
+  like void
+  case node
+    text <<void process.off($event, $run)>>
+
+bind apply-two
+  take run, like dynamic
+  take a, like dynamic
+  take b, like dynamic
+  like dynamic
+  case node
+    text <<$run($a, $b)>>
+
+bind minimum-two
+  take a, like number
+  take b, like number
+  like number
+  case node
+    text <<Math.min($a, $b)>>
+
+bind count-list
+  take count, like number
+  like list, like number
+  case node
+    text <<Array.from({ length: Math.max(0, $count) }, (_, at) => at)>>
+
+# ---- the run ----
+
+form build-run
+  link term, like text
+  link compiler, like dynamic
+  link print, like dynamic
+  link previous, like dynamic
+  link old, like dynamic
+  link jobs, like number
+  link lock, like dynamic
+  link manifest-path, like text
+  link check, like boolean
+
+form build-tally
+  mark shared
+  link counts, like dynamic
+  link done, like number
+  link taken, like number
+  link total, like number
+
+bind new-counts
+  like dynamic
+  case node
+    text <<({ built: 0, unchanged: 0, stale: 0, failed: 0, moved: 0 })>>
+
+bind count-up
+  take counts, like dynamic
+  take tally, like text
+  like void
+  case node
+    text <<void ($counts[$tally]++)>>
+
+# written at once with writeSync: the loop is synchronous, and a `process.stderr.write` to a pipe may wait in node's
+# buffer until it ends, which is the silence this exists to fill
+bind write-progress
+  take done, like number
+  take total, like number
+  like void
+  case node
+    text <<(() => { const bytes = Buffer.from(`progress ${$done} ${$total}\n`); let at = 0; while (at < bytes.length) { try { at += process.getBuiltinModule("node:fs").writeSync(2, bytes, at) } catch (error) { if (error.code !== "EAGAIN") throw error } } })()>>
+
+# sorted indexes as [from, to) ranges
+bind ranges
+  take indexes, like dynamic
+  like dynamic
+  case node
+    text <<(() => { const out = []; for (const index of [...$indexes].sort((a, b) => a - b)) { const last = out[out.length - 1]; if (last && last[1] === index) { last[1] = index + 1 } else if (!last || last[1] < index) { out.push([index, index + 1]) } } return out })()>>
+
+bind with-reads
+  take entry, like dynamic
+  take reads, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$entry, reads: $reads })>>
+
+bind with-failed
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$entry, failed: true })>>
+
+bind make-manifest
+  take schema, like number
+  take table, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <<({ schema: $schema, table: $table, modules: $modules })>>
+
+bind summary-line
+  take counts, like dynamic
+  take check, like boolean
+  like text
+  case node
+    text <<`term port-build: ${$counts.built} built, ${$counts.unchanged} unchanged${$check ? `, ${$counts.stale} stale` : ""}, ${$counts.failed} failed${$counts.moved > 0 ? `, ${$counts.moved} moved` : ""}`>>
+
+bind any-left
+  take counts, like dynamic
+  like boolean
+  case node
+    text <<($counts.failed > 0 || $counts.stale > 0 || $counts.moved > 0)>>
+
+bind process-id
+  like number
+  case node
+    text <<process.pid>>
+
+task main
+  mark async
+  like void
+  call start-trace
+  save term
+    call term-root
+  save verify
+    call flag, text <--verify>
+  save compiler
+    call build-nothing
+  save stage0-id, text <>
+  # STAGE0: `--verify` compiles nothing and loads nothing
+  fork test
+    hook test
+      call not, read verify
+    hook hold
+      save loaded
+        call load-stage0, read term
+      save compiler, read loaded/compiler
+      save stage0-id, read loaded/id
+  save jobs
+    call job-count
+  # port-build's own bookkeeping is no part of any module's trace
+  call set-recording, false
+  save only
+    call only-text
+  # `--verify` writes nothing, so it waits for no one
+  save lock
+    call build-nothing
+  fork test
+    hook test
+      call not, read verify
+    hook hold
+      save by, text <port-build>
+      fork test
+        hook test
+          call is-something, read only
+        hook hold
+          save by, text <port-build --only {only}>
+      save lock
+        call hold-line-lock
+          read term
+          read by
+  save manifest-path
+    call manifest-path, read term
+  save print
+    call build-nothing
+  fork test
+    hook test
+      call not, read verify
+    hook hold
+      save print
+        call fingerprint
+          read term
+          read stage0-id
+  # the last manifest, whose entries this run keeps where it writes none of its own; under `--full` none is skipped
+  save previous
+    call build-nothing
+  fork test
+    hook test
+      call is-something, read print
+    hook hold
+      save previous
+        call read-manifest, read manifest-path
+  save old, read previous
+  fork test
+    hook test
+      call flag, text <--full>
+    hook hold
+      save old
+        call build-nothing
+  call set-recording, true
+  save planned
+    call make-plan
+      read term
+      read only
+  fork test
+    hook test
+      read verify
+    hook hold
+      call set-recording, false
+      call verify-ports
+        read term
+        read planned/decks
+        call read-manifest, read manifest-path
+      send back
+  call build
+    make build-run
+      bind term, read term
+      bind compiler, read compiler
+      bind print, read print
+      bind previous, read previous
+      bind old, read old
+      bind jobs, read jobs
+      bind lock, read lock
+      bind manifest-path, read manifest-path
+      bind check
+        call flag, text <--check>
+    read planned
+
+form order-item
+  link root, like text
+  link file, like text
+  link name, like text
+
+# whether every row of the old manifest an entry's reads name still sees what it saw, each row checked at most once a
+# run
+task reads-hold
+  take old, like dynamic
+  take holds, like dynamic
+  take reads, like dynamic
+  like boolean
+  walk list
+    read reads
+    hook next
+      take site, name range
+      walk list
+        call range-list
+          read range/0
+          read range/1
+        hook next
+          take site, name row
+          save answer
+            call holds/get, read row
+          fork test
+            hook test
+              call is-nothing, read answer
+            hook hold
+              save answer, false
+              save seen
+                call member
+                  read old/table
+                  read row
+              fork test
+                hook test
+                  call and
+                    call is-something, read seen
+                    call is-unequal
+                      read seen/0
+                      call untrackable
+                hook hold
+                  save answer
+                    call is-equal
+                      call observe
+                        call key-op, read seen/0
+                        call key-path, read seen/0
+                      read seen/1
+              call holds/set
+                read row
+                read answer
+          fork test
+            hook test
+              call not, read answer
+            hook hold
+              send back, false
+  send back, true
+
+bind range-list
+  take from, like number
+  take to, like number
+  like list, like number
+  case node
+    text <<Array.from({ length: Math.max(0, $to - $from) }, (_, at) => $from + at)>>
+
+# the number of observations a module's last build made, the biggest when it has none
+bind size-of
+  take reads, like dynamic
+  like number
+  case node
+    text <<($reads === undefined ? Number.MAX_SAFE_INTEGER : $reads.reduce((sum, [from, to]) => sum + to - from, 0))>>
+
+# LONGEST FIRST (term-self-host-001-1097): the workers take the biggest closures first, so the run does not end on one
+# worker compiling the console's whole closure while the others idle. Only the order work is handed out changes
+bind longest-first
+  take compiles, like dynamic
+  take sizes, like dynamic
+  like dynamic
+  case node
+    text <<[...$compiles].sort((a, b) => $sizes.get(b) - $sizes.get(a) || a - b)>>
+
+bind worker-job
+  take root, like text
+  take file, like text
+  take print, like dynamic
+  like dynamic
+  case node
+    text <<({ root: $root, file: $file, print: $print })>>
+
+# the run itself, past the plan
+task build
+  mark async
+  take run, like build-run
+  take planned, like planned
+  like void
+  save term, read run/term
+  save plan, read planned/decks
+  save old, read run/old
+  save previous, read run/previous
+  save print, read run/print
+  save explain
+    call flag, text <--explain>
+  save show-progress
+    call flag, text <--progress>
+  save fs
+    call quiet
+  # the entries written this run, keyed by the module's path under the package. And those carried from the old
+  # manifest, whose `reads` still index its table
+  save fresh
+    call new-object
+  save carried
+    call new-object
+  # the modules this run reached and left unwritten, each with whether its compile failed (THE MANIFEST LOSES NO ROW)
+  save left
+    call new-map
+  # the keys of each module written this run (decision 038), turned into rows of the manifest's table when it is
+  # written
+  save fresh-keys
+    call new-map
+  save order
+    make list
+  walk list
+    read plan
+    hook next
+      take site, name one
+      walk list
+        read one/files
+        hook next
+          take site, name planned-file
+          call order/push
+            make order-item
+              bind root, read one/root
+              bind file, read planned-file/file
+              bind name
+                call node-path/relative
+                  read term
+                  read planned-file/file
+  save tally
+    make build-tally
+      bind counts
+        call new-counts
+      bind done, code 0
+      bind taken, code 0
+      bind total, read order/length
+  save turns
+    call new-array
+  save tell
+    task
+      like void
+      fork test
+        hook test
+          read show-progress
+        hook hold
+          call write-progress
+            read tally/done
+            read tally/total
+  save take-turn
+    task
+      take name, like text
+      take turn, like dynamic
+      like void
+      save keys, read turn/keys
+      fork test
+        hook test
+          call is-something, read turn/rows
+        hook hold
+          save keys
+            call adopt
+              read turn/rows
+              call is-equal
+                read turn/drifted
+                true
+              call is-equal
+                read turn/untrackable
+                true
+      walk list
+        read turn/lines
+        hook next
+          take site, name line
+          call log, read line
+      call count-up
+        read tally/counts
+        read turn/tally
+      fork test
+        hook test
+          call is-something, read turn/left
+        hook hold
+          call left/set
+            read name
+            read turn/left
+      fork test
+        hook test
+          call is-something, read turn/carried
+        hook hold
+          call put-member
+            read carried
+            read name
+            read turn/carried
+      fork test
+        hook test
+          call is-something, read turn/entry
+        hook hold
+          call put-member
+            read fresh
+            read name
+            read turn/entry
+          call fresh-keys/set
+            read name
+            read keys
+  # every module's place in the plan, and its turn taken in that order, whichever finished first (THE JOBS)
+  save arrive
+    task
+      take at, like number
+      take turn, like dynamic
+      like void
+      call put-member
+        read turns
+        read at
+        read turn
+      save tally/done
+        call add
+          read tally/done
+          code 1
+      call call-none, read tell
+      walk list
+        call endless-rounds
+        hook next
+          take site, name round
+          save next-turn
+            call member
+              read turns
+              read tally/taken
+          fork test
+            hook test
+              call not
+                call truthy, read next-turn
+            hook hold
+              halt
+          save planned-item
+            call member
+              read order
+              read tally/taken
+          call apply-two
+            read take-turn
+            read planned-item/name
+            read next-turn
+          call put-member
+            read turns
+            read tally/taken
+            call build-nothing
+          save tally/taken
+            call add
+              read tally/taken
+              code 1
+  call call-none, read tell
+  # THE SKIP, for every module before any compiles: the same compiler, the same text, every observation the compile
+  # that wrote it made still seeing the same thing, and that output on disk now
+  save holds
+    call new-map
+  save compiles
+    make list
+  save at, code -1
+  walk list
+    read order
+    hook next
+      take site, name item
+      save at
+        call add
+          read at
+          code 1
+      save source
+        call source-of, read item/file
+      fork test
+        hook test
+          call is-nothing, read source
+        hook hold
+          call apply-two
+            read arrive
+            read at
+            call gone-turn, read item/name
+          turn next
+      save out-path
+        call port-path
+          read item/root
+          read item/file
+      save run-path
+        call run-path-of, read out-path
+      save last
+        call member
+          call member
+            read old
+            text <modules>
+          read item/name
+      save skip, false
+      fork test
+        hook test
+          call and
+            call is-something, read last
+            call and
+              call is-equal
+                read last/fingerprint
+                read print
+              call is-equal
+                read last/text
+                call sha, read source
+        hook hold
+          fork test
+            hook test
+              call reads-hold
+                read old
+                read holds
+                read last/reads
+            hook hold
+              fork test
+                hook test
+                  call is-equal
+                    call hash-of, read out-path
+                    read last/out
+                hook hold
+                  save skip, true
+                  fork test
+                    hook test
+                      call is-something, read last/run
+                    hook hold
+                      save skip
+                        call is-equal
+                          call hash-of, read run-path
+                          read last/run
+      fork test
+        hook test
+          read skip
+        hook hold
+          save skipped
+            make list
+          fork test
+            hook test
+              read explain
+            hook hold
+              call skipped/push, text <  skip  {item/name}>
+          save turn
+            call make-turn
+              text <unchanged>
+              read skipped
+          call put-member
+            read turn
+            text <carried>
+            read last
+          call apply-two
+            read arrive
+            read at
+            read turn
+        hook miss
+          call compiles/push, read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read run/jobs
+          code 1
+        call is-below
+          read compiles/length
+          code 2
+    hook hold
+      walk list
+        read compiles
+        hook next
+          take site, name index
+          save item
+            call member
+              read order
+              read index
+          call apply-two
+            read arrive
+            read index
+            call compile-turn
+              read run
+              read item/root
+              read item/file
+              read print
+    hook miss
+      save sizes
+        call new-map
+      walk list
+        read compiles
+        hook next
+          take site, name index
+          save item
+            call member
+              read order
+              read index
+          call sizes/set
+            read index
+            call size-of
+              call member
+                call member
+                  call member
+                    read previous
+                    text <modules>
+                  read item/name
+                text <reads>
+      save work
+        make list
+      walk list
+        call longest-first
+          read compiles
+          read sizes
+        hook next
+          take site, name index
+          save item
+            call member
+              read order
+              read index
+          call work/push
+            make fan-job
+              bind at, read index
+              bind name, read item/name
+              bind job
+                call worker-job
+                  read item/root
+                  read item/file
+                  read print
+      save flags
+        make list
+      call fan-out
+        read run/jobs
+        read flags
+        read work
+        read arrive
+  # the manifest: this run's observations first, so a fresh entry's ranges index them as they are, then each row a
+  # carried entry needs. A carried entry, or an old one this run did not reach (`--only`) or reached and left
+  # unwritten (MOVED, FAIL), whose row now disagrees with what this run saw is kept with the row that never holds as
+  # its reads, and compiles next time (THE MANIFEST LOSES NO ROW)
+  fork test
+    hook test
+      call and
+        call not, read run/check
+        call is-something, read print
+    hook hold
+      call set-recording, false
+      call write-manifest
+        read run
+        read planned
+        read fresh
+        read fresh-keys
+        read carried
+        read left
+  call log
+    call summary-line
+      read tally/counts
+      read run/check
+  fork test
+    hook test
+      call any-left, read tally/counts
+    hook hold
+      call set-exit-failed
+  fork test
+    hook test
+      call and
+        call flag, text <--stage-check>
+        call not, read run/check
+    hook hold
+      fork test
+        hook test
+          call exit-failed
+        hook hold
+          call log, text <term port-build --stage-check: step 2 not run, step 1 did not build every port>
+          send back
+      call stage-two
+        read run
+        read plan
+
+bind endless-rounds
+  like list, like number
+  case node
+    text <<Array.from({ length: 1000000 }, (_, at) => at)>>
+
+# the row index of a key in the table being written, a new row on its end when the key is new
+task row-of
+  take table, like dynamic
+  take at, like dynamic
+  take pair, like dynamic
+  like number
+  save index
+    call at/get, read pair/0
+  fork test
+    hook test
+      call is-nothing, read index
+    hook hold
+      save index, read table/length
+      call table/push, read pair
+      call at/set
+        read pair/0
+        read index
+  send back, read index
+
+task write-manifest
+  take run, like build-run
+  take planned, like planned
+  take fresh, like dynamic
+  take fresh-keys, like dynamic
+  take carried, like dynamic
+  take left, like dynamic
+  like void
+  save term, read run/term
+  save previous, read run/previous
+  save never
+    call untrackable
+  save table
+    call observations
+  save at
+    call new-map
+  save row, code 0
+  walk list
+    read table
+    hook next
+      take site, name pair
+      call at/set
+        read pair/0
+        read row
+      save row
+        call add
+          read row
+          code 1
+  save modules
+    call new-object
+  save reached
+    call new-set
+  walk list
+    read planned/decks
+    hook next
+      take site, name one
+      walk list
+        read one/files
+        hook next
+          take site, name planned-file
+          call reached/add
+            call node-path/relative
+              read term
+              read planned-file/file
+  save keep
+    call new-object
+  walk list
+    call member-pairs, read carried
+    hook next
+      take site, name pair
+      call put-member
+        read keep
+        read pair/0
+        read pair/1
+  walk list
+    call member-pairs
+      call member
+        read previous
+        text <modules>
+    hook next
+      take site, name pair
+      save name, read pair/0
+      fork test
+        hook test
+          call and
+            call not
+              call reached/has, read name
+            call planned/every/has, read name
+        hook hold
+          call put-member
+            read keep
+            read name
+            read pair/1
+        hook miss
+          fork test
+            hook test
+              call left/has, read name
+            hook hold
+              fork test
+                hook test
+                  call left/get, read name
+                hook hold
+                  call put-member
+                    read keep
+                    read name
+                    call with-failed, read pair/1
+                hook miss
+                  call put-member
+                    read keep
+                    read name
+                    read pair/1
+  # this run's entries, each by the rows of its own keys (decision 038); an untrackable one by the row that never
+  # holds
+  walk list
+    call member-pairs, read fresh
+    hook next
+      take site, name pair
+      save keys
+        call fresh-keys/get, read pair/0
+      fork test
+        hook test
+          call is-nothing, read keys
+        hook hold
+          save keys
+            make list
+          call keys/push, read never
+      save rows
+        call new-array
+      save whole, true
+      walk list
+        read keys
+        hook next
+          take site, name key
+          save index
+            call at/get, read key
+          fork test
+            hook test
+              call is-nothing, read index
+            hook hold
+              save whole, false
+          call rows/push, read index
+      fork test
+        hook test
+          call or
+            call keys/includes, read never
+            call not, read whole
+        hook hold
+          call put-member
+            read modules
+            read pair/0
+            call with-reads
+              read pair/1
+              call never-reads
+                read table
+                read at
+        hook miss
+          call put-member
+            read modules
+            read pair/0
+            call with-reads
+              read pair/1
+              call ranges, read rows
+  walk list
+    call member-pairs, read keep
+    hook next
+      take site, name pair
+      save entry, read pair/1
+      save rows
+        call new-array
+      save agrees
+        call not
+          call truthy, read entry/failed
+      walk list
+        read entry/reads
+        hook next
+          take site, name range
+          fork test
+            hook test
+              call not, read agrees
+            hook hold
+              halt
+          walk list
+            call range-list
+              read range/0
+              read range/1
+            hook next
+              take site, name index
+              save seen
+                call member
+                  read previous/table
+                  read index
+              fork test
+                hook test
+                  call is-nothing, read seen
+                hook hold
+                  save agrees, false
+                  halt
+              save found
+                call at/get, read seen/0
+              fork test
+                hook test
+                  call is-nothing, read found
+                hook hold
+                  save found, read table/length
+                  call table/push, read seen
+                  call at/set
+                    read seen/0
+                    read found
+                hook miss
+                  fork test
+                    hook test
+                      call is-unequal
+                        call member
+                          call member
+                            read table
+                            read found
+                          code 1
+                        read seen/1
+                    hook hold
+                      save agrees, false
+              call rows/push, read found
+              fork test
+                hook test
+                  call not, read agrees
+                hook hold
+                  halt
+      fork test
+        hook test
+          read agrees
+        hook hold
+          call put-member
+            read modules
+            read pair/0
+            call with-reads
+              read entry
+              call ranges, read rows
+        hook miss
+          call put-member
+            read modules
+            read pair/0
+            call with-reads
+              read entry
+              call never-reads
+                read table
+                read at
+  # a manifest that cannot be written only means the next run compiles more
+  fork
+    mark unsafe
+    save fs
+      call quiet
+    save temporary, text <{run/manifest-path}.{process-id()}>
+    call fs/mkdir-sync
+      call node-path/dirname, read run/manifest-path
+      call recursive-option
+    call fs/write-file-sync
+      read temporary
+      call as-json
+        call make-manifest
+          call schema
+          read table
+          read modules
+    call fs/rename-sync
+      read temporary
+      read run/manifest-path
+  halt take
+    take missed
+    send back
+
+# the one row no skip ever passes, as the reads of an entry, on the table's end when it is not there yet
+task never-reads
+  take table, like dynamic
+  take at, like dynamic
+  like dynamic
+  save never
+    call untrackable
+  save index
+    call at/get, read never
+  fork test
+    hook test
+      call is-nothing, read index
+    hook hold
+      save index, read table/length
+      call table/push
+        call two-of
+          read never
+          text <never>
+      call at/set
+        read never
+        read index
+  send back
+    call one-range, read index
+
+bind one-range
+  take index, like number
+  like dynamic
+  case node
+    text <<[[$index, $index + 1]]>>
+
+# ---- --stage-check, step 2 ----
+
+# STEP 2 of `--stage-check` (decision 030 section 1, 036): every chosen module compiled again with the working tree's
+# compiler, which resolves to the ports step 1 just wrote (stage1), into `tmp/self-host/stage-check/`, and held byte for
+# byte against step 1's port and run entry. The ports on disk are hashed while the lock is still held, then the lock is
+# freed: step 2 writes only its scratch folder, and what it compares against is in memory
+task stage-scratch
+  take term, like text
+  like text
+  send back
+    call node-path/join
+      read term
+      text <tmp>
+      text <self-host>
+      text <stage-check>
+
+bind merge-into
+  take into, like dynamic
+  take from, like dynamic
+  like void
+  case node
+    text <<void Object.assign($into, $from)>>
+
+# the working tree's compile closure, by the specifiers task/stage0.ts names (STAGE0_SOURCES), each a module of the
+# working tree read through tsconfig.json's paths
+task working-compiler
+  mark async
+  take term, like text
+  like dynamic
+  save stage0-module
+    call import-module
+      call file-url
+        call node-path/join
+          read term
+          text <task>
+          text <stage0.ts>
+  save working
+    call new-object
+  walk list
+    call member-pairs
+      call member
+        read stage0-module
+        text <STAGE0_SOURCES>
+    hook next
+      take site, name pair
+      save specifier, read pair/0
+      fork test
+        hook test
+          call starts-with
+            read specifier
+            text <./>
+        hook hold
+          save specifier
+            call file-url
+              call node-path/join
+                read term
+                text <task>
+                text <{specifier}.ts>
+      call merge-into
+        read working
+        call import-module, read specifier
+  send back, read working
+
+# the first line where two texts differ, 1-based, with both lines
+bind first-difference
+  take a, like text
+  take b, like text
+  like text
+  case node
+    text <<(() => { const left = $a.split("\n"); const right = $b.split("\n"); for (let line = 0; line < Math.max(left.length, right.length); line++) { if (left[line] !== right[line]) { return `line ${line + 1}\n          stage0: ${(left[line] ?? "<end>").slice(0, 160)}\n          stage1: ${(right[line] ?? "<end>").slice(0, 160)}` } } return "no line differs (a byte at the end)" })()>>
+
+form stage-readers
+  mark shared
+  link by-root, like dynamic
+
+host stage-reading
+  make stage-readers
+    bind by-root
+      call new-map
+
+bind stage-turn-of
+  take tally, like text
+  take lines, like list, like text
+  like dynamic
+  case node
+    text <<({ tally: $tally, lines: $lines })>>
+
+# one module's turn in step 2, in whichever process compiles it. `gone`: its source went since the run began. Step 2
+# keeps one resolver and one role reader per deck
+task stage-turn
+  take compiler, like dynamic
+  take term, like text
+  take root, like text
+  take file, like text
+  take one, like dynamic
+  like dynamic
+  save fs
+    call quiet
+  save readers
+    call stage-reading/by-root/get, read root
+  fork test
+    hook test
+      call is-nothing, read readers
+    hook hold
+      save readers
+        call two-of
+          call compiler/project-resolver, read root
+          call compiler/project-lean-of, read root
+      call stage-reading/by-root/set
+        read root
+        read readers
+  save resolve, read readers/0
+  save lean, read readers/1
+  save name
+    call node-path/relative
+      read term
+      read file
+  save source
+    call source-of, read file
+  save lines
+    make list
+  fork test
+    hook test
+      call is-nothing, read source
+    hook hold
+      send back
+        call stage-turn-of
+          text <gone>
+          read lines
+  save parsed
+    call run-parse-memo, read compiler
+  save walked
+    call new-map
+  save keep
+    call holds-printer
+      read compiler
+      read name
+      call compile-source
+        read file
+        read source
+      read resolve
+      read parsed
+      read walked
+  save whole
+    call keeper-source
+      read keep
+      read lean
+      read file
+      read source
+  save result
+    call compiler/compile
+      call compile-source
+        read file
+        read whole
+      call compile-options
+        read resolve
+        read lean
+        read parsed
+        read walked
+  fork test
+    hook test
+      call not
+        call truthy, read result/ok
+    hook hold
+      save first
+        call member
+          read result/diagnostics
+          code 0
+      save first-name
+        call value-text
+          call member
+            read first
+            text <name>
+      save first-message
+        call value-text
+          call member
+            read first
+            text <message>
+      call lines/push, text <  FAIL   {name}  (stage1 cannot compile it: {first-name} {first-message})>
+      send back
+        call stage-turn-of
+          text <failed>
+          read lines
+  save content
+    call printer-exports
+      call port-content
+        read compiler/native-prelude
+        read result/program
+        read result/typescript
+  save run-text
+    call build-nothing
+  fork test
+    hook test
+      call is-equal
+        call node-path/basename, read root
+        text <call>
+    hook hold
+      save entry-run
+        call run-entry-of
+          read compiler
+          read name
+          read content
+          read result/program
+      fork test
+        hook test
+          call is-something, read entry-run
+        hook hold
+          save run-text, read entry-run/text
+  save out-path
+    call node-path/join
+      call stage-scratch, read term
+      call node-path/relative
+        read term
+        call port-path
+          read root
+          read file
+  call fs/mkdir-sync
+    call node-path/dirname, read out-path
+    call recursive-option
+  call fs/write-file-sync
+    read out-path
+    read content
+  fork test
+    hook test
+      call is-something, read run-text
+    hook hold
+      call fs/write-file-sync
+        call run-path-of, read out-path
+        read run-text
+  save port-same
+    call is-equal
+      read one/out
+      call sha, read content
+  save run-hash
+    call build-nothing
+  fork test
+    hook test
+      call is-something, read run-text
+    hook hold
+      save run-hash
+        call sha, read run-text
+  save run-same
+    call is-equal
+      read one/run
+      read run-hash
+  fork test
+    hook test
+      call and
+        read port-same
+        read run-same
+    hook hold
+      send back
+        call stage-turn-of
+          text <same>
+          read lines
+  save stage-path
+    call port-path
+      read root
+      read file
+  save which, read stage-path
+  save what, text <its port>
+  save mine, read content
+  fork test
+    hook test
+      read port-same
+    hook hold
+      save which
+        call run-path-of, read stage-path
+      save what, text <its run entry>
+      save mine
+        call value-text, read run-text
+  save theirs, text <>
+  fork test
+    hook test
+      call fs/exists-sync, read which
+    hook hold
+      save theirs
+        call fs/read-file-sync
+          read which
+          text <utf8>
+  call lines/push, text <  DIFFER {name}  ({what}, {first-difference(theirs, mine)})>
+  send back
+    call stage-turn-of
+      text <differ>
+      read lines
+
+bind value-text
+  take value, like dynamic
+  like text
+  case node
+    text <<($value ?? "")>>
+
+bind stage-counts
+  like dynamic
+  case node
+    text <<({ same: 0, differ: 0, failed: 0, gone: 0 })>>
+
+bind stage-one
+  take out, like dynamic
+  take run, like dynamic
+  like dynamic
+  case node
+    text <<({ out: $out, run: $run })>>
+
+bind stage-job
+  take root, like text
+  take file, like text
+  take one, like dynamic
+  like dynamic
+  case node
+    text <<({ root: $root, file: $file, one: $one })>>
+
+bind stage-summary
+  take counts, like dynamic
+  take where, like text
+  like text
+  case node
+    text <<`term port-build --stage-check: step 2 ${$counts.same} same, ${$counts.differ} differ, ${$counts.failed} failed (stage1 output in ${$where})`>>
+
+task stage-two
+  mark async
+  take run, like build-run
+  take plan, like list, like plan-deck
+  like void
+  call set-recording, false
+  save term, read run/term
+  save order
+    make list
+  walk list
+    read plan
+    hook next
+      take site, name one
+      walk list
+        read one/files
+        hook next
+          take site, name planned-file
+          save out-path
+            call port-path
+              read one/root
+              read planned-file/file
+          call order/push
+            call stage-job
+              read one/root
+              read planned-file/file
+              call stage-one
+                call hash-of, read out-path
+                call hash-of
+                  call run-path-of, read out-path
+  fork test
+    hook test
+      call is-something, read run/lock
+    hook hold
+      call run/lock/free
+  save tally
+    make build-tally
+      bind counts
+        call stage-counts
+      bind done, code 0
+      bind taken, code 0
+      bind total, read order/length
+  save turns
+    call new-array
+  save arrive
+    task
+      take at, like number
+      take turn, like dynamic
+      like void
+      call put-member
+        read turns
+        read at
+        read turn
+      walk list
+        call endless-rounds
+        hook next
+          take site, name round
+          save next-turn
+            call member
+              read turns
+              read tally/taken
+          fork test
+            hook test
+              call not
+                call truthy, read next-turn
+            hook hold
+              halt
+          call count-up
+            read tally/counts
+            read next-turn/tally
+          walk list
+            read next-turn/lines
+            hook next
+              take site, name line
+              call log, read line
+          call put-member
+            read turns
+            read tally/taken
+            call build-nothing
+          save tally/taken
+            call add
+              read tally/taken
+              code 1
+  fork test
+    hook test
+      call or
+        call is-equal
+          read run/jobs
+          code 1
+        call is-below
+          read order/length
+          code 2
+    hook hold
+      save compiler
+        call working-compiler, read term
+      save at, code 0
+      walk list
+        read order
+        hook next
+          take site, name job
+          call apply-two
+            read arrive
+            read at
+            call stage-turn
+              read compiler
+              read term
+              read job/root
+              read job/file
+              read job/one
+          save at
+            call add
+              read at
+              code 1
+    hook miss
+      save work
+        make list
+      save at, code 0
+      walk list
+        read order
+        hook next
+          take site, name job
+          call work/push
+            make fan-job
+              bind at, read at
+              bind name
+                call node-path/relative
+                  read term
+                  read job/file
+              bind job, read job
+          save at
+            call add
+              read at
+              code 1
+      save flags
+        make list
+      call flags/push, text <--stage-two>
+      call fan-out
+        read run/jobs
+        read flags
+        read work
+        read arrive
+  call log
+    call stage-summary
+      read tally/counts
+      call node-path/relative
+        read term
+        call stage-scratch, read term
+  fork test
+    hook test
+      call or
+        call is-above
+          call member
+            read tally/counts
+            text <differ>
+          code 0
+        call is-above
+          call member
+            read tally/counts
+            text <failed>
+          code 0
+    hook hold
+      call set-exit-failed
+
+# ---- a worker ----
+
+bind send-reply
+  take reply, like dynamic
+  like void
+  case node
+    text <<void process.send($reply)>>
+
+bind on-disconnect
+  like void
+  case node
+    text <<void process.on("disconnect", () => process.exit(0))>>
+
+bind stack-text
+  take error, like dynamic
+  like text
+  case node
+    text <<($error?.stack ?? String($error))>>
+
+bind ready-reply
+  like dynamic
+  case node
+    text <<({ ready: true })>>
+
+bind answer-reply
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <<({ answer: $answer })>>
+
+bind thrown-reply
+  take error, like dynamic
+  like dynamic
+  case node
+    text <<({ thrown: $error?.stack ?? String($error) })>>
+
+# the turn sent back from a worker: its keys replaced by its own rows, the process's untrackable flag, and whether a
+# key had moved
+bind worker-answer
+  take turn, like dynamic
+  take seen, like dynamic
+  like dynamic
+  case node
+    text <<(() => { const { keys, ...rest } = $turn; return keys ? { ...rest, rows: $seen.rows, untrackable: $seen.untrackable, drifted: keys.includes("untrackable\0") } : rest })()>>
+
+bind worker-keys
+  take turn, like dynamic
+  like dynamic
+  case node
+    text <<($turn.keys ?? [])>>
+
+# a worker of THE JOBS: one job at a time from the process that started it, one answer back, until that process
+# disconnects. What it observed while it loaded is that process's to file, so only its modules' own keys go back
+task port-worker
+  mark async
+  like void
+  call start-trace
+  save term
+    call term-root
+  save two
+    call flag, text <--stage-two>
+  save compiler
+    call build-nothing
+  fork test
+    hook test
+      call not, read two
+    hook hold
+      save loaded
+        call load-stage0, read term
+      save compiler, read loaded/compiler
+  call forget-outside
+  fork test
+    hook test
+      read two
+    hook hold
+      call set-recording, false
+      save compiler
+        call working-compiler, read term
+  save run
+    make build-run
+      bind term, read term
+      bind compiler, read compiler
+      bind print
+        call build-nothing
+      bind previous
+        call build-nothing
+      bind old
+        call build-nothing
+      bind jobs, code 1
+      bind lock
+        call build-nothing
+      bind manifest-path, text <>
+      bind check
+        call flag, text <--check>
+  call on-disconnect
+  call node-process-on
+    text <message>
+    task
+      take job, like dynamic
+      like void
+      fork
+        mark unsafe
+        fork test
+          hook test
+            read two
+          hook hold
+            call send-reply
+              call answer-reply
+                call stage-turn
+                  read compiler
+                  read term
+                  read job/root
+                  read job/file
+                  read job/one
+            send back
+        save turn
+          call compile-turn
+            read run
+            read job/root
+            read job/file
+            read job/print
+        call send-reply
+          call answer-reply
+            call worker-answer
+              read turn
+              call sightings
+                call worker-keys, read turn
+      halt take
+        take error
+        call send-reply
+          call thrown-reply, read error
+  call send-reply
+    call ready-reply
+
+# the one start: a worker of THE JOBS, or the run
+task start
+  mark async
+  like void
+  fork test
+    hook test
+      call flag, text <--port-worker>
+    hook hold
+      call port-worker
+      send back
+  call main
+
+tick start

@@ -178,8 +178,9 @@ function readScan<T>(stored: string | undefined): T | undefined {
 
 // THE CONTENT HASH IS TERM: `hashKey` is deck/make/code/term/hash.tree (SHA-256 cut to 128 bits, decision 080), and the key of every field list and the memo
 // of each text's hash are compile/cache-store.tree. The memo is the process's one `text-hashes` record, shared by
-// every cache, bounded by the size of the texts it holds.
-const TEXT_HASHES = makeTextHashes()
+// every cache and the compile driver (compile/compile.ts hands it in `driver-state`), bounded by the size of the texts
+// it holds.
+export const TEXT_HASHES = makeTextHashes()
 
 // join fields into one hash input with length prefixes, so no concatenation is ambiguous (`a` + `bc` cannot collide
 // with `ab` + `c`). Use for any composite key.

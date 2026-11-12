@@ -1,0 +1,97 @@
+note <a Term session keeps its definitions and evaluates expressions through the real compiler>
+
+# Ported from run.ts by statement (item term-self-host-001-0594, decision 116): the converter left 55 of 85 code lines.
+# deck/call/code/walk.ts `Repl` is the subject (decision 106), on the standard library by the package path rule
+# (`stdlib-resolver`, which walk.ts hands on). The original fed one session through all nine `expect`s, so a later one
+# leaned on the definitions an earlier one added. Here each test opens its own session and feeds it the steps the
+# original's session held by then, one test per `expect` in its order.
+
+dock load
+  load <@term/call/code/walk>, name walk-module
+
+# host value: a class instance of the subject, over the standard library's resolver
+bind new-session
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.Repl($module.stdlibResolver())>
+
+host double-text, <task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 2>
+host quadruple-text, <task quadruple\n  take n, like number\n  like number\n  send back\n    call double\n      call double\n        read n>
+host maybe-text, <load @term/base/code/maybe\n  find maybe>
+
+# a session that has been fed each block in turn, the answers left
+task session-after
+  take blocks, like list, like text
+  like dynamic
+  mark async
+
+  host session, new-session(walk-module)
+  walk blocks
+    take block
+    wait session/feed(block)
+  back session
+
+# what a session fed `before` answers for `block`: its kind and its text
+form answer
+  link kind, like text
+  link text, like text
+
+task answer-of
+  take before, like list, like text
+  take block, like text
+  like answer
+  mark async
+
+  host session, session-after(before)
+  host got, wait session/feed(block)
+  back make(answer, bind(kind, text-of(got/kind)), bind(text, text-of(got/text)))
+
+# host value: an absent text field (a refusal's or an empty answer's) as the empty text
+bind text-of
+  take value, like dynamic
+  like text
+  case node
+    text <($value === undefined ? "" : String($value))>
+
+test <evaluates a bare expression>
+  host got, answer-of(make(list), <call add\n  code 40\n  code 2>)
+  want hold, is-equal(got/kind, <value>)
+  want hold, is-equal(got/text, <42>)
+
+test <accepts a definition>
+  host got, answer-of(make(list), double-text)
+  want hold, is-equal(got/kind, <definition>)
+  want hold, is-equal(got/text, <double>)
+
+test <calls a user-defined task>
+  host got, answer-of(make(list, double-text), <call double\n  code 21>)
+  want hold, is-equal(got/kind, <value>)
+  want hold, is-equal(got/text, <42>)
+
+test <definitions compose>
+  host got, answer-of(make(list, double-text, quadruple-text), <call quadruple\n  code 3>)
+  want hold, is-equal(got/kind, <value>)
+  want hold, is-equal(got/text, <12>)
+
+test <accepts a stdlib load>
+  host got, answer-of(make(list, double-text, quadruple-text), maybe-text)
+  want hold, is-equal(got/kind, <definition>)
+
+test <runs a stdlib method>
+  host got, answer-of(make(list, double-text, quadruple-text, maybe-text), <call unwrap-or\n  make some\n    bind value, code 7\n  code 0>)
+  want hold, is-equal(got/kind, <value>)
+  want hold, is-equal(got/text, <7>)
+
+test <reports an unknown name as an error>
+  host got, answer-of(make(list, double-text, quadruple-text, maybe-text), <read nope>)
+  want hold, is-equal(got/kind, <error>)
+
+test <rejects a broken definition>
+  host got, answer-of(make(list, double-text, quadruple-text, maybe-text), <task oops\n  send back\n    read missing>)
+  want hold, is-equal(got/kind, <error>)
+
+test <session survives a rejected definition>
+  host got, answer-of(make(list, double-text, quadruple-text, maybe-text, <task oops\n  send back\n    read missing>), <call double\n  code 5>)
+  want hold, is-equal(got/kind, <value>)
+  want hold, is-equal(got/text, <10>)

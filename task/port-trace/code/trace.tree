@@ -1,0 +1,577 @@
+# THE READ TRACE behind task/port-build.tree's skip (term-cli-in-term-0002), ported from task/port-trace.ts (item
+# term-self-host-001-0720, decision 140 section 3 of change 001-finish-self-host).
+#
+# A port's output is a function of the compiler (fingerprinted apart) and of every file the compile reads. Rather than
+# predict that set, which spans the load closure, the stdlib, role and lean files, mill grammars, native files the
+# prelude reads and any cache the compiler keeps on disk, this module WATCHES it. Its runtime shim (runtime/fs-trace.ts,
+# the platform half) wraps node's `fs` when the program starts and hands each read, existence, stat and directory call
+# here as its kind and absolute path. Each observation is written down once, as what was seen: a content hash for a
+# read, a yes or no for an existence, a kind and size for a stat, the sorted entries for a directory. A later run makes
+# every observation again and skips a module only when each one still sees the same thing.
+#
+# The shim patches when its module evaluates, which is the program's start, and the program loads stage0 only by a
+# dynamic import after that, so a read stage0 makes while it loads is in the trace.
+#
+# SOUNDNESS (decision 038 of note/project/term/self-host/change/001-finish-self-host/decision/). Each module is keyed
+# by the observations ITS OWN compile made (begin-module / end-module), every one of them, a repeat of an observation an
+# earlier module made first included, so a file read while building module k is no key of module k + 1. That holds
+# only while no in-memory cache carries one module's reads into another, and the decision lists every cache of the
+# stage0 bundle that could: port-build makes the resolver, the role reader and the walk memo per module, and the one
+# cache it cannot reach, resolve.ts `codeRootCache` (keyed by a deck.tree's mtime, which it stats on every call), is
+# attributed here: a stat that sees a file also records that file's read. Whatever the process observed OUTSIDE every
+# module (stage0 loading, port-build between modules) is a key of every later module. A read the shim cannot describe
+# (a descriptor it never saw opened for reading, a write open, a stream, any asynchronous read) marks the process
+# UNTRACKABLE from that point on, and an untrackable module is never skipped.
+#
+# It also keeps, per compile, the `.tree` sources that compile read (open-window / close-window), which port-build
+# checks again just before it writes the port, so a run never writes output of a source that has since changed.
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+dock load
+  load <global:fs-trace>, name fs-trace
+  load <node:crypto>, name node-crypto
+
+# the key an observation is filed under is the operation and the absolute path with a NUL between, and this one is
+# the observation no skip ever passes
+bind untrackable
+  like text
+  case node
+    text <<"untrackable\0">>
+
+bind nul
+  like text
+  case node
+    text <<"\0">>
+
+# a key's operation and path, either side of its first NUL
+bind key-op
+  take key, like text
+  like text
+  case node
+    text <<$key.slice(0, $key.indexOf("\0"))>>
+
+bind key-path
+  take key, like text
+  like text
+  case node
+    text <<$key.slice($key.indexOf("\0") + 1)>>
+
+bind trace-map
+  like dynamic
+  case node
+    text <<new Map()>>
+
+bind trace-set
+  like dynamic
+  case node
+    text <<new Set()>>
+
+bind trace-nothing
+  like dynamic
+  case node
+    text <<undefined>>
+
+bind trace-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value === undefined)>>
+
+# the entries of a Map, or the members of a Set, as a list, in the order first added
+bind trace-items
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <<Array.from($value)>>
+
+# the members of a Set of keys, as a list, in the order first added
+bind key-list
+  take value, like dynamic
+  like list, like text
+  case node
+    text <<Array.from($value)>>
+
+# a thrown error's code, as `throw:<code>`
+bind thrown-text
+  take error, like dynamic
+  like text
+  case node
+    text <<`throw:${$error?.code ?? "unknown"}`>>
+
+# a pair, as the manifest's table holds one
+bind trace-pair
+  take key, like text
+  take saw, like text
+  like dynamic
+  case node
+    text <<[$key, $saw]>>
+
+# a directory's entries as `<name>/<kind>`, sorted, one a line
+bind listing-text
+  take entries, like dynamic
+  like text
+  case node
+    text <<$entries.map((entry) => `${entry.name}/${entry.isFile() ? "f" : entry.isDirectory() ? "d" : entry.isSymbolicLink() ? "l" : "o"}`).sort().join("\n")>>
+
+bind typed-entries
+  like dynamic
+  case node
+    text <<({ withFileTypes: true })>>
+
+bind stat-kind
+  take stat, like dynamic
+  like text
+  case node
+    text <<($stat.isFile() ? "f" : $stat.isDirectory() ? "d" : $stat.isSymbolicLink() ? "l" : "o")>>
+
+# what the trace holds, module state: every distinct observation this process made, in the order first made, with what
+# it saw (`seen`), the open module's own keys (`own`, nothing outside a module), what the process observed outside
+# every module (`outside`), and the open compile's `.tree` sources (`window`, nothing outside a compile)
+form trace-state
+  mark shared
+  link seen, like dynamic
+  link own, like dynamic
+  link outside, like dynamic
+  link window, like dynamic
+
+host state
+  make trace-state
+    bind seen
+      call trace-map
+    bind own
+      call trace-nothing
+    bind outside
+      call trace-set
+    bind window
+      call trace-nothing
+
+task sha
+  take data, like dynamic
+  like text
+  save hash
+    call node-crypto/create-hash, text <sha256>
+  call hash/update, read data
+  send back
+    call hash/digest, text <hex>
+
+# run the program's own IO with nothing handed to the trace
+task untraced
+  take run, like dynamic
+  like dynamic
+  send back
+    call fs-trace/untraced, read run
+
+# the unwrapped `fs`, each call untraced: the program's own IO, never part of a trace
+task quiet
+  like dynamic
+  send back
+    read fs-trace/quiet
+
+# the unwrapped `fs` itself, traced as any caller is when it reaches the module object (node's own `readFileSync` of
+# a Buffer opens through it): test/call/port-trace-descriptor.ts's loader case
+task real
+  like dynamic
+  send back
+    read fs-trace/real
+
+# what the operation sees at the path NOW. The same task records an observation and checks one, so the two can never
+# disagree about what counts as the same
+task observe
+  take op, like text
+  take path, like text
+  like text
+  save fs
+    call quiet
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-equal
+          read op
+          text <read>
+      hook hold
+        send back
+          call sha
+            call fs/read-file-sync, read path
+    fork test
+      hook test
+        call is-equal
+          read op
+          text <exists>
+      hook hold
+        fork test
+          hook test
+            call fs/exists-sync, read path
+          hook hold
+            send back, text <1>
+        send back, text <0>
+    fork test
+      hook test
+        call or
+          call is-equal
+            read op
+            text <stat>
+          call is-equal
+            read op
+            text <lstat>
+      hook hold
+        save stat
+          call fs/stat-sync, read path
+        fork test
+          hook test
+            call is-equal
+              read op
+              text <lstat>
+          hook hold
+            save stat
+              call fs/lstat-sync, read path
+        save kind
+          call stat-kind, read stat
+        # a file's size, which is what a reader could learn of it without reading it. Never its time: the key is
+        # content
+        fork test
+          hook test
+            call stat/is-file
+          hook hold
+            send back, text <{kind}:{stat/size}>
+        send back, read kind
+    fork test
+      hook test
+        call is-equal
+          read op
+          text <list>
+      hook hold
+        send back
+          call listing-text
+            call fs/readdir-sync
+              read path
+              call typed-entries
+    fork test
+      hook test
+        call is-equal
+          read op
+          text <real>
+      hook hold
+        send back
+          call fs/realpath-sync, read path
+    fork test
+      hook test
+        call is-equal
+          read op
+          text <access>
+      hook hold
+        call fs/access-sync, read path
+        send back, text <ok>
+    send back, text <unknown-op>
+  halt take
+    take error
+    send back
+      call thrown-text, read error
+
+# one observation, written down the first time the process makes it, and a key of the module being built (or of every
+# later module, outside one) every time
+task touch
+  take op, like text
+  take at, like text
+  like void
+  save key, text <{op}{nul()}{at}>
+  fork test
+    hook test
+      call not
+        call state/seen/has, read key
+    hook hold
+      call state/seen/set
+        read key
+        call observe
+          read op
+          read at
+  fork test
+    hook test
+      call trace-is-nothing, read state/own
+    hook hold
+      call state/outside/add, read key
+    hook miss
+      call state/own/add, read key
+
+# what the shim hands on: an observation of `kind` at the absolute `at`, or `untrackable`. Its own calls are untraced
+task heard
+  take kind, like text
+  take at, like text
+  like void
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <untrackable>
+    hook hold
+      call state/seen/set
+        call untrackable
+        text <never>
+      send back
+  call touch
+    read kind
+    read at
+  # THE STAT-KEYED CACHE (decision 038): resolve.ts `codeRootOf` stats `<dir>/deck.tree` on every call and reads it
+  # only when its mtime moved, so a module served from that cache shows the stat and never the read. Any stat that sees
+  # a file stands for the read behind it
+  fork test
+    hook test
+      call or
+        call is-equal
+          read kind
+          text <stat>
+        call is-equal
+          read kind
+          text <lstat>
+    hook hold
+      save saw
+        call state/seen/get, text <{kind}{nul()}{at}>
+      fork test
+        hook test
+          call starts-with
+            read saw
+            text <f:>
+        hook hold
+          call touch
+            text <read>
+            read at
+  # THE SOURCES OF ONE COMPILE (term-cli-in-term-0151): while a window is open, every `.tree` file read is written down
+  # with the hash of what it held then, the first read of each, whether or not the trace saw it before (the trace keeps
+  # only a file's FIRST observation in the process)
+  fork test
+    hook test
+      call and
+        call is-equal
+          read kind
+          text <read>
+        call not
+          call trace-is-nothing, read state/window
+    hook hold
+      fork test
+        hook test
+          call and
+            call ends-with
+              read at
+              text <.tree>
+            call not
+              call state/window/has, read at
+        hook hold
+          call state/window/set
+            read at
+            call observe
+              text <read>
+              read at
+
+# start handing every observation here. Called once, before stage0 loads
+task start-trace
+  like void
+  call fs-trace/listen, read heard
+
+# stop or resume recording: port-build pauses it around its own bookkeeping that reaches `fs` through another module
+task set-recording
+  take on, like boolean
+  like void
+  call fs-trace/set-recording, read on
+
+# THE KEY OF ONE MODULE (decision 038): what its own compile observed, and what the process observed outside any
+# module, which every module after it carries
+task begin-module
+  like void
+  save state/own
+    call trace-set
+
+# the module's keys: its own observations, everything observed outside a module so far, and the untrackable key once
+# the process has made a read it cannot describe. Each is checked again now, and one that no longer sees what the
+# process first saw (a file changed while the run went on) gives the untrackable key, so the entry can never claim a
+# file's old content for an output built from its new one. Such a module alone is marked: the process stays
+# trackable for the others
+task end-module
+  like list, like text
+  save keys
+    call trace-set
+  walk list
+    call trace-items, read state/outside
+    hook next
+      take site, name key
+      call keys/add, read key
+  fork test
+    hook test
+      call not
+        call trace-is-nothing, read state/own
+    hook hold
+      walk list
+        call trace-items, read state/own
+        hook next
+          take site, name key
+          call keys/add, read key
+  save state/own
+    call trace-nothing
+  save never
+    call untrackable
+  save moved, false
+  walk list
+    call trace-items, read keys
+    hook next
+      take site, name key
+      fork test
+        hook test
+          call is-equal
+            read key
+            read never
+        hook hold
+          turn next
+      save op
+        call key-op, read key
+      save path
+        call key-path, read key
+      fork test
+        hook test
+          call is-unequal
+            call observe
+              read op
+              read path
+            call state/seen/get, read key
+        hook hold
+          save moved, true
+          halt
+  fork test
+    hook test
+      call or
+        read moved
+        call state/seen/has, read never
+    hook hold
+      call keys/add, read never
+  send back
+    call key-list, read keys
+
+task open-window
+  like void
+  save state/window
+    call trace-map
+
+# the `.tree` sources the closed compile read, each with the hash of what it held then
+task close-window
+  like dynamic
+  save read
+    read state/window
+  fork test
+    hook test
+      call trace-is-nothing, read read
+    hook hold
+      save read
+        call trace-map
+  save state/window
+    call trace-nothing
+  send back, read read
+
+# A WORKER (port-build's THE JOBS). Each worker process has its own trace, and what a module observes there comes back
+# to the process that writes the manifest. What the worker observed while it loaded is the same as what that process
+# observed while it loaded, and that process files it as outside every module, so the worker drops it here and
+# end-module then answers the module's own keys alone
+task forget-outside
+  like void
+  call state/outside/clear
+
+form trace-sightings
+  link rows, like list, like dynamic
+  link untrackable, like boolean
+
+# the module's own keys, each with what this process saw, in the order first made, and whether the process is
+# untrackable
+task sightings
+  take keys, like list, like text
+  like trace-sightings
+  save rows
+    make list
+  save never
+    call untrackable
+  walk list
+    read keys
+    hook next
+      take site, name key
+      fork test
+        hook test
+          call is-unequal
+            read key
+            read never
+        hook hold
+          call rows/push
+            call trace-pair
+              read key
+              call state/seen/get, read key
+  send back
+    make trace-sightings
+      bind rows, read rows
+      bind untrackable
+        call state/seen/has, read never
+
+# one module's observations, made in a worker, taken in as this process would have made them: a row new to the table
+# goes on its end, in the order the module made it, so a build by workers writes the table a build in one process
+# writes. The answer is the module's keys. `moved`: the worker's end-module found a key no longer holding. A row that
+# disagrees with what an earlier module saw is the same fact seen across two processes (a file changed while the run
+# went on), and both mark this module alone, the way end-module does. `untrackable` stays, as it does in one process
+task adopt
+  take rows, like list, like dynamic
+  take moved, like boolean
+  take untrackable-seen, like boolean
+  like list, like text
+  save never
+    call untrackable
+  save keys
+    call trace-set
+  walk list
+    call trace-items, read state/outside
+    hook next
+      take site, name key
+      call keys/add, read key
+  fork test
+    hook test
+      read untrackable-seen
+    hook hold
+      call state/seen/set
+        read never
+        text <never>
+  walk list
+    read rows
+    hook next
+      take site, name row
+      save key
+        read row/0
+      save saw
+        read row/1
+      save held
+        call state/seen/get, read key
+      fork test
+        hook test
+          call trace-is-nothing, read held
+        hook hold
+          call state/seen/set
+            read key
+            read saw
+        hook miss
+          fork test
+            hook test
+              call is-unequal
+                read held
+                read saw
+            hook hold
+              save moved, true
+      call keys/add, read key
+  fork test
+    hook test
+      call or
+        read moved
+        call state/seen/has, read never
+    hook hold
+      call keys/add, read never
+  send back
+    call key-list, read keys
+
+# every observation so far, in the order first made, as `[key, saw]` pairs
+task observations
+  like list, like dynamic
+  send back
+    call trace-items, read state/seen

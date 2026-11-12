@@ -1,0 +1,363 @@
+# WHAT A CONSOLE DOES WITH ITS COMMAND LINE, decided without touching the host (decision 138 rule 1 of
+# term/self-host/change/001-finish-self-host, items term-self-host-001-1120 and 1159): the argv as a list of text, the
+# routes in the plain form (work/hook/route.tree), the name the console is shown by, its mark, and what the run read
+# from the host for a refusal, to an outcome. Help, the version, a group's subcommands, the refusal in term's shape with
+# the nearest command, the required takes left out, and the values a bound task is handed are all chosen here, and
+# every line the console prints is written out here in full. Writing those lines, calling the task and the exit code
+# are the run's (work/hook/running.tree on node), so nothing this file loads, at any depth, holds a bind only node runs.
+#
+# Exit codes, as the run gives them: help asked for and the version 0, a bare line (no words) prints the help with 2, a
+# usage error 2 without reaching the task, and a called task's own answer.
+
+load @term/base/list
+  find join
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
+load @term/base/text
+  find starts-with
+
+load @term/call/work/hook/route
+  find route
+  find route-take
+
+load @term/call/work/hook/route-parsing
+  find split-routes
+  find route-split
+  find program-takes
+  find find-passing-start
+  find parse-line
+  find parsed-line
+  find missing-of
+  find usage-refusal
+  find type-kind
+  find arg-of
+  find arg-value
+  find line-arg
+  find route-named
+
+# term's help layout, the same code term's own console prints through (zone decision 002, item
+# term-self-host-001-0983)
+load @term/call/work/help
+  find help-text
+
+# term's refusal, drawn as the printer draws it
+load @term/call/work/hook/refusal
+  find usage-ask
+  find nearest-command
+  find command-guess
+  find refusal-view
+  find refusal-close
+  find refusal-said
+  find said
+
+# a command line to decide: the name the console is shown by (the run reads TERM_LINE_NAME), its mark (the empty text
+# when it has none), its routes and words, whether it words a refusal its own way (a `refuse` the run was handed,
+# decision cli-in-term/016 part 2), and what the run read from the host for a refusal in term's shape
+form line-ask
+  link name, like text
+  link mark, like text
+  link routes, like list, like route
+  link argv, like list, like text
+  link words-own, like boolean
+  link view, like refusal-view
+
+# a value a bound task is handed: a plain take's value (given, its default, or its natural zero), or a maybe take's,
+# some of the value given or none
+form handed
+  case handed-plain
+    link given, like arg-value
+  case handed-some
+    link given, like arg-value
+  case handed-none
+
+# WHAT THE RUN DOES: its writes in order, then the exit code; a refusal in term's shape, its opening and failed item
+# written, then its closing at the clock the run reads after them (work/hook/usage.tree `close-refusal`), which gives
+# the exit code; a usage refusal handed as data to a console that words its own; or the bound task called with its
+# values in its parameters' order, its whole-number answer the exit code
+form outcome
+  case outcome-said
+    link writes, like list, like said
+    link code, like number
+  case outcome-refuse
+    link writes, like list, like said
+    link closing, like refusal-close
+  case outcome-hand
+    link refusal, like usage-refusal
+  case outcome-call
+    link task-name, like text
+    link values, like list, like handed
+
+task no-writes
+  like list, like said
+  back make list
+
+# one line to the console's out or err, as console.log writes it, and the exit code
+task line-said
+  take stream, like text
+  take line, like text
+  take code, like number
+  like outcome
+  save writes, no-writes()
+  writes/push make(said-line, bind(stream, stream), bind(line, line))
+  back make(outcome-said, bind(writes, writes), bind(code, code))
+
+task no-lines-yet
+  like list, like text
+  back make list
+
+# the takes a bound call is handed, in its parameters' order: each parameter takes the take of its own name, and one no
+# take names takes the take at its position; with no parameter names recorded, the takes in their order
+task ordered-takes
+  take route, like route
+  like list, like route-take
+  save takes, route/takes
+  fork test, not(route/params-given)
+    hold
+      back takes
+  save ordered, make list
+  save names, route/params
+  walk names
+    take param
+    take at
+    save found, false
+    walk takes
+      take one
+      fork test, and(not(found), is-equal(one/name, param))
+        hold
+          ordered/push one
+          save found, true
+    fork test, and(not(found), is-below(at, takes/length))
+      hold
+        ordered/push takes/{at}
+  back ordered
+
+# the value a take hands its task: a maybe take the program's own maybe (none when absent, some of the value when
+# given, decision cli-in-term/008 part 1), a given value itself, and a plain take left out its natural zero: the empty
+# list for a list slot or a list option, false for a boolean, 0 for a number, the empty text for the rest
+task handed-value
+  take one, like route-take
+  take args, like list, like line-arg
+  like handed
+  save given, arg-of(args, one/name)
+  fork test, one/optional
+    hold
+      sift given
+        case some
+          link value-given
+          back make(handed-some, bind(given, value-given))
+        case none
+          back make handed-none
+  sift given
+    case some
+      link held
+      back make(handed-plain, bind(given, held))
+    case none
+      save nothing, 0
+  save kind, type-kind(one)
+  fork test, or(one/variadic, is-equal(kind, <array>))
+    hold
+      back make(handed-plain, bind(given, make(arg-list, bind(items, make list))))
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back make(handed-plain, bind(given, make(arg-flag, bind(on, false))))
+  fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+    hold
+      back make(handed-plain, bind(given, make(arg-number, bind(amount, 0))))
+  back make(handed-plain, bind(given, make(arg-text, bind(given, <>))))
+
+# the help of the deepest command the bare words name, or the program's own, in term's layout (work/help.tree): the
+# program's usage line is its name, as a booted program's root note is its description, not a usage line. The
+# program's global options are its takes, when the console is one program hook
+task help-of
+  take name, like text
+  take split, like route-split
+  take bare, like list, like text
+  like text
+  back help-text(name, <>, program-takes(split), split/commands, bare)
+
+task no-route-yet
+  like maybe, like route
+  back make none
+
+# a refusal in term's shape, as its writes
+task refused
+  take ask, like line-ask
+  take usage, like usage-ask
+  like outcome
+  save drawn, refusal-said(usage, ask/view)
+  back make(outcome-refuse, bind(writes, drawn/writes), bind(closing, drawn/closing))
+
+# A line the parse refused, in term's shape (work/hook/refusal.tree): a first word that names no command is said as
+# term says it, with the nearest command to run, and anything else in the dispatcher's own words, with the help to run
+task refuse-booted
+  take name, like text
+  take mark, like text
+  take commands, like list, like route
+  take bare, like list, like text
+  take error, like text
+  like usage-ask
+  save message, error
+  save next, <{name} --help>
+  save first, <>
+  walk bare
+    take word
+    fork test, and(is-equal(first, <>), not(starts-with(word, <->)))
+      hold
+        save first, word
+  fork test, is-unequal(first, <>)
+    hold
+      save named, route-named(commands, first)
+      sift named
+        case none
+          save message, <There is no command named {first}>
+          save next, nearest-command(make command-guess, name(name), routes(commands), word(first))
+        case some
+          save nothing, 0
+  back make usage-ask, name(name), mark(mark), message(message), lines(no-lines-yet()), next(next)
+
+# THE DECISION over a whole command line
+task decide
+  take ask, like line-ask
+  like outcome
+  save name, ask/name
+  save mark, ask/mark
+  save routes, ask/routes
+  save argv, ask/argv
+  # the commands are the program's nested hooks, when the console is one program hook
+  save split, split-routes(routes)
+  save commands, split/commands
+
+  # strip help flags, remembering that help was asked for, only BEFORE the line's passing words (`passing-start`):
+  # every word after a passing command's path is another console's (`term zone --help` is zone's help, decision
+  # cli-in-term/008), and so is every word from a passing slot's first positional on (decision cli-in-term/012). A
+  # literal `--` ends the console's words the same way
+  save cut, find-passing-start(routes, argv)
+  save dashes, -1
+  walk argv
+    take word
+    take at
+    fork test, and(is-equal(dashes, -1), is-equal(word, <-->))
+      hold
+        save dashes, at
+  fork test, and(is-minimum(dashes, 0), is-below(dashes, cut))
+    hold
+      save cut, dashes
+  # `--version` and `-v` answer the program's mark, as term answers its own: a program with no mark has no version flag
+  save want-help, false
+  save want-version, false
+  save bare, make list
+  walk argv
+    take word
+    take at
+    fork test, is-below(at, cut)
+      hold
+        fork test, or(is-equal(word, <--help>), is-equal(word, <-h>))
+          hold
+            save want-help, true
+          miss
+            fork test, and(is-unequal(mark, <>), or(is-equal(word, <--version>), is-equal(word, <-v>)))
+              hold
+                save want-version, true
+              miss
+                bare/push word
+      miss
+        bare/push word
+
+  fork test, want-help
+    hold
+      back line-said(<out>, help-of(name, split, bare), 0)
+
+  fork test, want-version
+    hold
+      back line-said(<out>, mark, 0)
+
+  fork test, is-equal(bare/length, 0)
+    hold
+      back line-said(<out>, help-of(name, split, bare), 2)
+
+  save hit, parse-line(routes, argv)
+
+  fork test, not(hit/ok)
+    hold
+      fork test, ask/words-own
+        hold
+          sift hit/refusal
+            case some
+              link refusal
+              back make(outcome-hand, bind(refusal, refusal))
+            case none
+              save nothing, 0
+      back refused(ask, refuse-booted(name, mark, commands, bare, hit/error))
+
+  save chosen, no-route-yet()
+  save chosen, hit/route
+  sift chosen
+    case none
+      back make(outcome-said, bind(writes, no-writes()), bind(code, 2))
+    case some
+      link route
+      back decide-route(ask, split, hit, route)
+
+# the accepted line's outcome: a group with no task lists its subcommands, a required take left out is refused, else
+# the bound task is called with its ordered values
+task decide-route
+  take ask, like line-ask
+  take split, like route-split
+  take hit, like parsed-line
+  take route, like route
+  like outcome
+  save name, ask/name
+
+  # a group command with no bound task (like `view code`) lists its subcommands instead of failing opaquely
+  fork test, is-equal(hit/called, <>)
+    hold
+      fork test, is-above(route/children/length, 0)
+        hold
+          back line-said(<out>, help-of(name, split, hit/command), 2)
+      back line-said(<err>, <{name}: {join(hit/command, < >)} has no implementation bound>, 2)
+
+  # enforce declared requirements before the task runs, so the failure names the argument rather than surfacing as a
+  # type error inside
+  save lacking, missing-of(route/takes, hit/args)
+  sift lacking
+    case some
+      link refusal
+      fork test, ask/words-own
+        hold
+          back make(outcome-hand, bind(refusal, refusal))
+      # in term's shape (work/hook/refusal.tree): the first take left out is the item, every other one a line under it
+      save said-lines, make list
+      walk route/takes
+        take one
+        fork test, one/required
+          hold
+            save present, arg-of(hit/args, one/name)
+            sift present
+              case none
+                save tail, <>
+                fork test, is-unequal(one/note, <>)
+                  hold
+                    save tail, < - {one/note}>
+                said-lines/push <missing required \<{one/name}\>{tail}>
+              case some
+                save nothing, 0
+      save message, <Missing a required argument of {name} {join(hit/command, < >)}>
+      save lines, no-lines-yet()
+      walk said-lines
+        take line
+        lines/push line
+      save usage, make usage-ask, name(name), mark(ask/mark), message(message), lines(lines), next(<{name} {join(hit/command, < >)} --help>)
+      back refused(ask, usage)
+    case none
+      save nothing, 0
+
+  save values, make list
+  save takes, ordered-takes(route)
+  walk takes
+    take one
+    values/push handed-value(one, hit/args)
+  back make(outcome-call, bind(task-name, hit/called), bind(values, values))

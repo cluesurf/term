@@ -1,0 +1,92 @@
+note <a recompile error shows the overlay and keeps the app running, and the next good update clears it>
+
+# Ported from failure-recovery.ts by statement (item term-self-host-001-0585, decision 116), one test per `ok` in its
+# order. deck/make/code/dev/hmr-client.tree `apply-hmr` is the subject, over an environment of Term tasks that keep
+# what the client asked of them: each call's name in `calls`, the errors an overlay was shown in `shown`. The original
+# drove one environment through an error and then a good update, and each test here does the same on its own.
+
+load @term/make/dev/hmr-client
+  find apply-hmr
+  find hmr-message
+  find hmr-environment
+  find hmr-change
+
+load @term/base/list
+  find contains
+
+# what the client asked of its environment
+form asked
+  link calls, like list, like text
+  link shown, like list, like text
+
+# an error, then (when `then-good`) an update with no changes, through one environment that keeps what it was asked
+task drive
+  take then-good, like boolean
+  like asked
+  mark async
+
+  host calls, make list
+  host shown, make list
+  save reload
+    task
+      like void
+      calls/push(<reload>)
+  save reimport
+    task
+      take url, like text
+      take stamp, like number
+      like dynamic
+      mark async
+      back nothing()
+  save accept-of
+    task
+      take boundary, like text
+      like dynamic
+      back nothing()
+  save show-error
+    task
+      take errors, like list, like text
+      like void
+      calls/push(<show-error>)
+      walk errors
+        take one, like text
+        shown/push(one)
+  save clear-error
+    task
+      like void
+      calls/push(<clear-error>)
+  save log
+    task
+      take line, like text
+      like void
+      calls/push(<log>)
+  host environment, make(hmr-environment, bind(reload, reload), bind(reimport, reimport), bind(accept-of, accept-of), bind(show-error, show-error), bind(clear-error, clear-error), bind(log, log))
+  apply-hmr(make(error, bind(errors, make(list, <type mismatch on line 7>))), environment)
+  fork test, then-good
+    hold
+      apply-hmr(make(update, bind(updates, no-changes())), environment)
+  back make(asked, bind(calls, calls), bind(shown, shown))
+
+task no-changes
+  like list, like hmr-change
+
+  back make list
+
+# host value: the original's `undefined`, what a boundary with no callback answers
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+test <an error shows the overlay>
+  host seen, drive(false)
+  want hold, is-equal(seen/shown, make(list, <type mismatch on line 7>))
+
+test <an error does NOT reload (state is preserved)>
+  host seen, drive(false)
+  want hold, contains(seen/calls, <show-error>)
+  want hold, not(contains(seen/calls, <reload>))
+
+test <a good update clears the error overlay>
+  host seen, drive(true)
+  want hold, contains(seen/calls, <clear-error>)

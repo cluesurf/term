@@ -1,0 +1,326 @@
+# THE REFUSAL EVERY CONSOLE PRINTS, term's own and every program `term boot` writes, made without touching the host
+# (decision 138 rule 1 of term/self-host/change/001-finish-self-host, items term-self-host-001-1120 and 1159): what was
+# not understood (`usage-ask`), the nearest command to a word that names none (`nearest-command`), and the refusal as
+# text (`refusal-said`, then `refusal-closed`): the opening item under the console's name and version, the failed item,
+# and the closing `The command line was not understood` with the time since the run opened and its `next` field, exit
+# 2 (section 18 of the output standard). The text is drawn by the item library (work/item/) the printer
+# (work/output/printer.tree) draws every run through, so a refusal reads byte for byte as the printer printed it; what
+# the printer read from the host (the decided output, the home folder, the working folder, the clock) comes in as a
+# `refusal-view`, and the clock the closing reads as its own argument. Nothing here loads the printer, so the closure
+# holds no bind only node runs. The one place that reads the host and writes the text on node is work/hook/usage.tree.
+
+load @term/base/text
+  find substring
+  find char-count
+  find to-lower-case
+  find to-upper-case
+
+load @term/call/work/hook/route
+  find route
+
+load @term/call/work/item/standard
+  find standard
+  find make-standard
+
+load @term/call/work/item/layout
+  find line
+
+load @term/call/work/item/event
+  find event
+  find plain-subject
+  find plain-field
+  find blank-event
+
+load @term/call/work/item/format
+  find format-path
+
+load @term/call/work/item/paint
+  find paint-lines
+
+load @term/call/work/item/plain
+  find speak-event
+
+load @term/call/work/item/json
+  find write-json-event
+
+load @term/call/work/item/annotate
+  find annotate-event
+
+load @term/call/work/item/run
+  find run-options
+  find session
+  find make-opening
+  find open-session
+  find draw-opening
+  find step-session
+  find close-session
+  find close-event
+
+load @term/call/work/item/emit
+  find output
+  find nest-lines
+
+# a refusal: the console's name and version, what was not understood (its first line, then the rest), and what to run
+form usage-ask
+  link name, like text
+  link mark, like text
+  link message, like text
+  link lines, like list, like text
+  link next, like text
+
+# a word that names no command, among the commands of a console
+form command-guess
+  link name, like text
+  link routes, like list, like route
+  link word, like text
+
+# WHAT THE PRINTER READS FROM THE HOST, read by the run and handed in: the output a run opened with the flags'
+# defaults at this depth (work/item/emit.tree `open-output`: the style the environment and the terminal decide, the
+# width, the zone), the home folder and the working folder (the opening item's subject), and the clock the run reads
+form refusal-view
+  link output, like output
+  link home, like text
+  link root, like text
+  link clock, like number
+
+# a write the run makes: a line to the console's out or err, the sink adding the line end (as console.log does), or
+# text written to the stream as it is (as the printer writes, work/item/emit.tree). `stream` is <out> or <err>
+form said
+  case said-line
+    link stream, like text
+    link line, like text
+  case said-raw
+    link stream, like text
+    link written, like text
+
+# A REFUSAL IN TWO PARTS, so its closing's elapsed time is real: the opening and the failed item are written first,
+# then the run reads the clock again and closes. `closing` is what the closing needs: the output, the session past the
+# failed item, the run's verb, its `next`, and the clock the run opened at (`started`)
+form refusal-close
+  link output, like output
+  link session, like session
+  link verb, like text
+  link next, like text
+  link started, like number
+
+form refusal-open
+  link writes, like list, like said
+  link closing, like refusal-close
+
+# the closing's writes, in order, and the exit code it gives
+form refusal-text
+  link writes, like list, like said
+  link code, like number
+
+task capitalize
+  take value, like text
+  like text
+
+  back <{to-upper-case(substring(value, 0, 1))}{substring(value, 1)}>
+
+# Levenshtein distance between two words, two rows at a time
+task edit-distance
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  save m, char-count(a)
+  save n, char-count(b)
+  save row, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, n)
+    hook hold
+      row/push j
+      save j, add(j, 1)
+  save i, 1
+  walk test
+    hook test, is-maximum(i, m)
+    hook hold
+      save next, make list
+      next/push i
+      save j, 1
+      walk test
+        hook test, is-maximum(j, n)
+        hook hold
+          save cost, 1
+          fork test, is-equal(substring(a, subtract(i, 1), i), substring(b, subtract(j, 1), j))
+            hold
+              save cost, 0
+          save before, subtract(j, 1)
+          save best, add(row/{j}, 1)
+          save left, add(next/{before}, 1)
+          fork test, is-below(left, best)
+            hold
+              save best, left
+          save across, add(row/{before}, cost)
+          fork test, is-below(across, best)
+            hold
+              save best, across
+          next/push best
+          save j, add(j, 1)
+      save row, next
+      save i, add(i, 1)
+  back row/{n}
+
+# what to run instead of a word that names no command: the nearest command, two edits away at most, else the console
+# alone, which lists its commands
+task nearest-command
+  take guess, like command-guess
+  like text
+
+  save best, <>
+  save distance, 1000
+  save lower, to-lower-case(guess/word)
+  walk guess/routes
+    take one
+    save each, edit-distance(lower, one/path)
+    fork test, is-below(each, distance)
+      hold
+        save distance, each
+        save best, one/path
+  fork test, and(is-maximum(distance, 2), is-unequal(best, <>))
+    hold
+      back <{guess/name} {best}>
+  back <{guess/name}, for the list of commands>
+
+# ---- the refusal as the printer writes it ----
+
+# the writes of one event in the view the flags chose, as work/item/emit.tree `print-event` makes them: a JSON line on
+# stdout under `--log json`, a sentence on stderr under `--plain`, else the painted lines on stderr (each two cells in
+# per level of nesting), then its annotation on stdout under CI
+task event-said
+  take output, like output
+  take one, like event
+  take lines, like list, like line
+  take first, like boolean
+  like list, like said
+
+  save out, make list
+  save options, output/options
+  save room, output/room
+  fork test, options/json
+    hold
+      out/push make(said-raw, bind(stream, <out>), bind(written, <{write-json-event(one, room/offset, room/utc, room/standard)}\n>))
+      back out
+  fork test, options/plain
+    hold
+      out/push make(said-raw, bind(stream, <err>), bind(written, <{speak-event(one, room)}\n>))
+    miss
+      save shown, lines
+      fork test, is-above(options/depth, 0)
+        hold
+          save shown, nest-lines(lines, options/depth, first, room)
+      fork test, is-above(shown/length, 0)
+        hold
+          out/push make(said-raw, bind(stream, <err>), bind(written, paint-lines(shown, output/palette, room/standard)))
+  fork test, output/style/annotate
+    hold
+      save note, annotate-event(one)
+      fork test, is-unequal(note, <>)
+        hold
+          out/push make(said-raw, bind(stream, <out>), bind(written, <{note}\n>))
+  back out
+
+task said-joined
+  take first, like list, like said
+  take second, like list, like said
+  like list, like said
+
+  save out, make list
+  walk first
+    take one
+    out/push one
+  walk second
+    take one
+    out/push one
+  back out
+
+# nothing of the run is on screen yet: no opening (--quiet) and no event (work/item/emit.tree `is-first`)
+task is-unprinted
+  take one, like session
+  like boolean
+
+  back and(is-equal(one/opened, false), is-equal(one/printed, 0))
+
+# A COMMAND LINE REFUSED, as the printer printed it: the run opened under the console's name (the working folder its
+# subject, the tool its name and version) and a failed item with the message capitalized and its other lines, then
+# (`refusal-closed`) the closing with the `next` field, exit 2. The printer's flags are its defaults (a console's
+# refusal reads none), so the run's output is the view's, at the view's depth
+task refusal-said
+  take ask, like usage-ask
+  take view, like refusal-view
+  like refusal-open
+
+  save rules, make-standard()
+  save output, view/output
+  save options, output/options
+  save room, output/room
+  save tool, ask/name
+  fork test, is-unequal(ask/mark, <>)
+    hold
+      save tool, <{ask/name} {ask/mark}>
+
+  # the opening (printer.tree `open-run`, item/emit.tree `begin-run`)
+  save opening, make-opening(ask/name, format-path(view/root, <>, view/home), view/clock, tool)
+  save opening/tallies, make list
+  save opening/facts, make list
+  save started, open-session(ask/name, options)
+  save drawn, draw-opening(started, opening, room)
+  save session, drawn/session
+  save out, make list
+  fork test, or(options/json, is-equal(options/quiet, false))
+    hold
+      save out, said-joined(out, event-said(output, opening, drawn/lines, true))
+
+  # the failed item (printer.tree `report` of a `make-item`)
+  save item, blank-event()
+  save item/glyph, <failed>
+  save item/clock, view/clock
+  save item/kind, <problem>
+  save item/verb, ask/name
+  save item/subject, plain-subject(capitalize(ask/message))
+  save item/message, ask/lines
+  save stepped, step-session(session, item, room, is-equal(options/source, <>))
+  fork test, is-above(stepped/lines/length, 0)
+    hold
+      save out, said-joined(out, event-said(output, item, stepped/lines, is-unprinted(session)))
+    miss
+      fork test, options/json
+        hold
+          save out, said-joined(out, event-said(output, item, stepped/lines, false))
+  save session, stepped/session
+  save closing, make refusal-close, output(output), session(session), verb(ask/name), next(ask/next), started(view/clock)
+  back make refusal-open, writes(out), closing(closing)
+
+# THE CLOSING of a refusal, at the clock the run read once the opening and the failed item were written (printer.tree
+# `close-run`, item/emit.tree `end-run`): `The command line was not understood`, the time since the run opened, the
+# `next` field, the usage failure's exit
+task refusal-closed
+  take pending, like refusal-close
+  take ended, like number
+  like refusal-text
+
+  save rules, make-standard()
+  save output, pending/output
+  save room, output/room
+  save closing, blank-event()
+  save closing/glyph, <info>
+  save closing/clock, ended
+  save closing/verb, pending/verb
+  save closing/subject, plain-subject(<The command line was not understood>)
+  save closing/duration, subtract(ended, pending/started)
+  save closing/message, make list
+  save closing/uptime, false
+  fork test, is-unequal(pending/next, <>)
+    hold
+      save fields, make list
+      fields/push plain-field(rules/fields/next-key, pending/next)
+      save closing/fields, fields
+  save session, pending/session
+  save session/failure, <usage>
+  save closed, close-session(session, closing, room)
+  save shown, close-event(session, closing, room/standard)
+  save out, event-said(output, shown, closed/lines, is-unprinted(session))
+  back make refusal-text, writes(out), code(closed/exit)

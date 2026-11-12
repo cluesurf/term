@@ -1,0 +1,153 @@
+# `file/directory/asynchronous` answers the same on every backend: `list` gives the names in a directory, and with
+# `deep` every path below it relative to it, and `walk` gives every entry beneath it with its kind and its depth. Held
+# by `pnpm term:base-gate`.
+#
+# No backend promises an order (Rust's walk is the platform's, T043), so an answer is held by its length and by each
+# expected entry being in it, never by its order. A walk path is held only by its tail, since a backend may spell the
+# root another way. A walk that yields nothing fails (T043).
+#
+# The fixture is built by `sh` run through `process/run`, as in test/file/watch.tree, so no second async file module
+# is loaded. The directories sit under the system's temporary directory and are left for it to clear: nothing here
+# removes a file.
+
+load @term/base/file/directory/asynchronous
+  find list, name list-folder
+  find walk, name walk-folder
+
+load @term/base/text
+  find ends-with
+
+load @term/base/list
+  find length
+  find contains
+
+load @term/base/process/run
+  find run
+
+# a new directory holding `a.tree` and `inner/b.tree`. It answers the directory's path, printed without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); mkdir "$d/inner"; printf a \> "$d/a.tree"; printf b \> "$d/inner/b.tree"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the fixture tail a walk path ends in, or the whole path when it ends in none
+task tail-of
+  take path, like text
+  like text
+  fork test
+    call ends-with
+      read path
+      text </inner/b.tree>
+    hook hold
+      send back, text <inner/b.tree>
+  fork test
+    call ends-with
+      read path
+      text </inner>
+    hook hold
+      send back, text <inner>
+  fork test
+    call ends-with
+      read path
+      text </a.tree>
+    hook hold
+      send back, text <a.tree>
+  send back, read path
+
+# every walk entry as `tail=kind@depth`
+task describe-walk
+  take path, like text
+  like list
+    like text
+  save entries
+    call walk-folder
+      read path
+  save out
+    make list
+  walk list, read entries
+    hook next
+      take site, name one
+      save tail
+        call tail-of
+          read one/path
+      call out/push
+        text <{{tail}}={{one/kind}}@{{one/depth}}>
+  send back, read out
+
+test <list gives the names in a directory, one level>
+  save dir
+    call make-fixture
+  save names
+    call list-folder
+      read dir
+  want hold
+    call and
+      call is-equal
+        call length
+          read names
+        code 2
+      call and
+        call contains
+          read names
+          text <a.tree>
+        call contains
+          read names
+          text <inner>
+
+test <list with deep gives every path below the directory, relative to it>
+  save dir
+    call make-fixture
+  save names
+    call list-folder
+      read dir
+      true
+  want hold
+    call and
+      call is-equal
+        call length
+          read names
+        code 3
+      call and
+        call and
+          call contains
+            read names
+            text <a.tree>
+          call contains
+            read names
+            text <inner>
+        call contains
+          read names
+          text <inner/b.tree>
+
+test <walk gives every entry beneath the directory with its kind and its depth>
+  save dir
+    call make-fixture
+  save described
+    call describe-walk
+      read dir
+  want hold
+    call and
+      call is-equal
+        call length
+          read described
+        code 3
+      call and
+        call and
+          call contains
+            read described
+            text <a.tree=file@0>
+          call contains
+            read described
+            text <inner=directory@0>
+        call contains
+          read described
+          text <inner/b.tree=file@1>

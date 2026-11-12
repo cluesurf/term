@@ -629,6 +629,39 @@ bind ends-with-tree
   case node
     text <$name.endsWith(".tree")>
 
+# whether a collected file's path ends in the filter, whole segments only, either slash (`real.tree`, `test/real.tree`)
+bind is-path-end
+  take file, like text
+  take filter, like text
+  like boolean
+  case node
+    text <<((file, filter) => { const f = file.split("\\").join("/"); const t = filter.split("\\").join("/"); return f === t || f.endsWith("/" + t) })($file, $filter)>>
+
+# whether a filter names a `.tree` file that is not there (item 1232): no file at it from the working folder or from
+# the root, and no collected file whose path ends in it. Any other filter is a phrase a path or a text holds
+task names-missing-file
+  take root, like text
+  take filter, like text
+  take files, like list, like text
+  like boolean
+  mark private
+
+  fork test, not(ends-with-tree(filter))
+    hold
+      back false
+  fork test, node-file/exists-sync(node-path/resolve(filter))
+    hold
+      back false
+  fork test, node-file/exists-sync(node-path/resolve(root, filter))
+    hold
+      back false
+  walk files
+    take file
+    fork test, is-path-end(file, filter)
+      hold
+        back false
+  back true
+
 # ---- controls ----
 
 # build one control and say whether it was refused as its header expects (test-plan.tree `control-verdict-of`)
@@ -1072,6 +1105,15 @@ task run-seed-tests
         hold
           save closing/next, refusal/next
       set-exit-code(close-run(closing))
+      back
+  # a filter that names a `.tree` file that is not there ran nothing, or only the suites whose text names it, and passed
+  # (item 1232, trap T-0734): a suite or gate that names a moved or misspelled file is refused instead
+  fork test, names-missing-file(root, filter, files)
+    hold
+      report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no file {filter}>)))
+      save message, make list
+      message/push(<A filter ending in .tree names a file: a path from here or from the project root, or the end of a test file's path.>)
+      set-exit-code(close-run(make(close-ask, bind(verdict, <Nothing was tested>), bind(failure, <usage>), bind(message, message))))
       back
   fork test, and(is-equal(files/length, 0), not(ride))
     hold

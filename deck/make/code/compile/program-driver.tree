@@ -11,11 +11,12 @@
 #   - what a phase reads that the run cannot hold as Term reads it (a host function, a host set, node identity, the
 #     checker's switches) comes in `driver-given`, as each phase's own given did, and what compile reads of its options
 #     comes in `compile-reading`. Both are filled by the face
-#   - the modules with no port yet are docks, each named for its module (decision 031 section 3): compile/load (the
-#     import walk, the platform refusals, the scope list), compile/cache (the memoized text hash), check/twin (the twin
-#     refusals) and check/refine (the certificate checker's refusal count). The last three read state of the process
-#     their face holds (item 0972 decides how it reaches here), and compile/loading.tree loaded here makes a `from-text`
-#     call of this closure ambiguous (item 0973)
+#   - no face is docked (decision 142 rule 2 of term/self-host/change/001-finish-self-host, item 1235): the import walk,
+#     the scope list and the platform refusals are compile/loading.tree and compile/loading-parses.tree, the text hash
+#     compile/cache-store.tree, the twin refusals check/admission.tree, and the linear prover check/eliminate.tree. The
+#     state they read (the prover's memo and count, the memo of each text's hash) comes in one `driver-state` record in
+#     `driver-given` (spec.md section 4.8), and the import walk's resolver, scan and walk memo come in `compile-reading`
+#     in the shapes compile/loading.tree takes
 #   - check/overload.ts's two tables are module state the checker reads after the gate: the face's `keep-bound` writes
 #     them from what the binding made, right after the gate, as the gate's face did
 #   - what the two caches build on a miss is a case of a form now compile/cache-store.tree is Term (decision 031 section
@@ -111,11 +112,31 @@ load ../ir/selection
 load ../check/checker-switches
   find checker-switches
 
-dock load
-  load <@term/make/code/compile/load>, name program-driver-load
-  load <@term/make/code/compile/cache>, name program-driver-cache
-  load <@term/make/code/check/twin>, name program-driver-twin
-  load <@term/make/code/check/refine>, name program-driver-refine
+load ./loading
+  find source, name module-source
+  find load-how
+  find import-scan
+  find walked-module
+  find collected
+  find collect-modules
+  find scope-list
+
+load ./loading-parses
+  find platform-refusals
+
+load ./cache-store
+  find text-hashes
+  find content-hash
+
+load ../check/certificate
+  find inequality
+
+load ../check/eliminate
+  find refine-state
+  find proves-in
+
+load ../check/admission
+  find check-twins
 
 # ---- what the driver is handed ----
 
@@ -186,6 +207,16 @@ form driver-given
     like task
       take given, like statement
       like boolean
+  # the run's state
+  link state, like driver-state
+
+# THE RUN'S STATE, made by the driver's caller and passed down (spec.md section 4.8): the linear prover's memo and its
+# count of answers whose certificate did not replay (check/eliminate.tree), and the memo of each module text's hash
+# (compile/cache-store.tree). compile.ts hands the one instance of each it holds, which the phases' checkers share, so a
+# batch build keeps one across its compiles
+form driver-state
+  link refine, like refine-state
+  link hashes, like text-hashes
 
 # what the five phases came to: the refusal that stops the compile, the fast roll, or what the result is built from;
 # the run as the last phase left it, and how many linear refutations the certificate checker refused during it
@@ -198,21 +229,32 @@ form driver-answer
 
 # WHAT COMPILE READS OF ITS OPTIONS, filled by the face (compile.ts `readingOf`)
 form compile-reading
-  # the build's resolver, as the import walk takes it and as a task answering the source it finds
+  # the build's resolver, as the import walk takes it (with how the load asks) and as a task answering the source it
+  # finds
   link has-resolve, like boolean
-  link resolve, like dynamic
+  link resolve-load
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like module-source
   link resolve-source
     like task
       take path, like text
       take origin, like text
       like maybe, like token-source
-  # the build's parse memo, the import scan through the build cache (or none), and the walk memo
+  # the build's parse memo, the import scan (through the build cache when there is one), and the walk memo with whether
+  # the caller keeps it across walks
   link parsed
     like task
       take unit, like token-source
       like parse-result
-  link scan-of, like dynamic
-  link walked, like dynamic
+  link scan
+    like task
+      take given, like module-source
+      like import-scan
+  link walked, like hash, like text, like walked-module
+  link keeps-walked, like boolean
   # the role and lean a file is read with, `<>` and false when none names it
   link role-of
     like task
@@ -266,12 +308,6 @@ form driver-milled
     like list, like diagnostic
     need false
 
-# what the import walk answers (compile/load.ts `collectModules`)
-form driver-collected
-  link sources, like list, like token-source
-  link diagnostics, like list, like diagnostic
-  link scope, like dynamic
-
 # THE GRAPH A COMPILE BUILDS: the entry's closure, read once, and what the cache key and the build take from it
 form compile-graph
   link sources, like list, like token-source
@@ -302,9 +338,25 @@ form driver-tally
 
 # ---- small helpers ----
 
-task as-collected
+# a module as the import walk holds it (compile/loading.tree `source`) and as the phases do (`token-source`): one
+# shape, a file and its text, on TypeScript
+task as-module-source
   take value, like dynamic
-  like driver-collected
+  like module-source
+  mark private
+
+  back value
+
+task as-token-source
+  take value, like dynamic
+  like token-source
+  mark private
+
+  back value
+
+task as-token-sources
+  take value, like dynamic
+  like list, like token-source
   mark private
 
   back value
@@ -312,13 +364,6 @@ task as-collected
 task as-scopes
   take value, like dynamic
   like list, like file-scope
-  mark private
-
-  back value
-
-task as-diagnostics
-  take value, like dynamic
-  like list, like diagnostic
   mark private
 
   back value
@@ -415,6 +460,7 @@ task filed-in
 # when it was given, so the run holds what the original's did
 task start-run
   take input, like program-input
+  take given, like driver-given
   like program-run
 
   save kernel
@@ -433,7 +479,7 @@ task start-run
       bind program, input/program
       bind file, input/file
       bind want-roll, input/want-roll
-      bind uncertified-before, program-driver-refine/uncertified-count()
+      bind uncertified-before, given/state/refine/uncertified
       bind type-name-diagnostics, make list
       bind describes-host, false
       bind literal-warnings, make list
@@ -504,7 +550,7 @@ task run-program
   take given, like driver-given
   like driver-answer
 
-  save run, start-run(input)
+  save run, start-run(input, given)
   save deck-of, given/deck-of
 
   # the gate. check/overload.ts's tables are written as the binding left them, once it ran, refused or not
@@ -622,9 +668,18 @@ task run-program
       bind roll, make none
       bind pending, emitted/pending
       bind run, run
-      bind uncertified, subtract(program-driver-refine/uncertified-count(), run/uncertified-before)
+      bind uncertified, subtract(given/state/refine/uncertified, run/uncertified-before)
 
 # ---- the graph ----
+
+# one module and every module it loads, dependencies first, through the build's resolver, scan and walk memo
+task collected-of
+  take entry, like token-source
+  take reading, like compile-reading
+  like collected
+  mark private
+
+  back collect-modules(as-module-source(entry), reading/resolve-load, reading/scan, reading/walked, reading/keeps-walked)
 
 # THE ENTRY'S CLOSURE, or the load errors that refuse it: every module the entry loads, dependencies first, read once
 task load-graph
@@ -638,12 +693,12 @@ task load-graph
   save load-errors, make list
   fork test, reading/has-resolve
     hold
-      save collected, as-collected(program-driver-load/collect-modules(source, reading/resolve, reading/parsed, reading/scan-of, reading/walked))
-      save sources, collected/sources
-      # compile/load.ts's scope list, since compile/loading.tree's `file-scope` is a form of its own beside
-      # compile/import-scope.tree's, which the phases take, the two one shape on TypeScript
-      save scopes, as-scopes(program-driver-load/scope-list(collected/scope))
-      walk collected/diagnostics
+      save closure, collected-of(source, reading)
+      save sources, as-token-sources(closure/sources)
+      # compile/loading.tree's `file-scope` is a form of its own beside compile/import-scope.tree's, which the phases
+      # take, the two one shape on TypeScript
+      save scopes, as-scopes(scope-list(closure/scope))
+      walk closure/diagnostics
         take found
         fork test, not(is-equal(found/severity, make warning))
           hold
@@ -651,7 +706,20 @@ task load-graph
       # and a module the build's env has no native for, refused at its `{platform}` load by name
       fork test, and(is-equal(load-errors/length, 0), not(is-equal(reading/env, <>)))
         hold
-          push-all(load-errors, as-diagnostics(program-driver-load/platform-refusals(sources, reading/resolve, reading/env, reading/parsed)))
+          save resolve-load, reading/resolve-load
+          save resolve
+            task
+              take path, like text
+              take from, like text
+              like maybe, like module-source
+              back resolve-load(path, from, make none)
+          save parsed, reading/parsed
+          save parse-of
+            task
+              take given, like module-source
+              like parse-result
+              back parsed(as-token-source(given))
+          push-all(load-errors, platform-refusals(closure/sources, resolve, reading/env, parse-of))
 
   # what a coverage build measures: the entry file alone, its keys relative to the folder it is in, or the target
   save cover, reading/cover
@@ -734,9 +802,11 @@ task graph-key
   take source, like token-source
   take reading, like compile-reading
   take graph, like compile-graph
-  take switches, like checker-switches
+  take given, like driver-given
   like text
 
+  save switches, given/switches
+  save hashes, given/state/hashes
   save role-of, reading/role-of
   save lean-of, reading/lean-of
   save key, <>
@@ -752,7 +822,7 @@ task graph-key
     fork test, lean-of(unit/file)
       hold
         save lean-part, <#lean>
-    save unit-key, <{unit/file}@{program-driver-cache/content-hash(unit/text)}{role-part}{lean-part}>
+    save unit-key, <{unit/file}@{content-hash(hashes, unit/text)}{role-part}{lean-part}>
     fork test, is-above(at, 0)
       hold
         save key, <{key}|{unit-key}>
@@ -994,7 +1064,15 @@ task build-graph
           bind answer, make(some, answer)
           bind warnings, spelled
           bind twins, make none
-  save refused, as-diagnostics(program-driver-twin/check-twins(program, twins, source/file))
+  # the linear prover over the run's own memo and count (check/refine.ts `proves`, which check/twin.ts handed in)
+  save refine, given/state/refine
+  save proves
+    task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+      back proves-in(refine, assumptions, goal)
+  save refused, check-twins(program, twins, source/file, proves)
   fork test, is-above(refused/length, 0)
     hold
       back

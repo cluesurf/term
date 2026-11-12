@@ -18,10 +18,14 @@
 # after the command, and its value is the console's (`globals`), never a task's argument.
 #
 # ARGUMENT VALUES ARE TYPED HERE. hook-dispatch.ts held them in one record of `string | boolean | number | string[]`;
-# here an argument is a `line-arg`, its value an `arg-value` of four cases, kept in a list in the order the record's
-# keys took (a key set again keeps its place, a key removed leaves it), so every backend reads one order. The binds
-# (`hook-*`) are where JavaScript's own reading is the behavior kept: Number(), padEnd and length in UTF-16 units,
-# JSON's quoting, and a record's key order.
+# here an argument is a `line-arg`, its value an `arg-value` of five cases, kept in a list in the order the record's
+# keys took (a key set again keeps its place, a key removed leaves it), so every backend reads one order. A `number`
+# take's value is a whole `arg-number`, a `float` take's an `arg-decimal`, since a Term number is an integer natively.
+#
+# JAVASCRIPT'S OWN READINGS ARE THE BEHAVIOR KEPT, written here in plain Term or through @term/base so they read the
+# same on every backend (decision 138 rule 1, item term-self-host-001-1119): Number() of a word (`hook-number-word`),
+# padEnd and length in UTF-16 units (`hook-pad`, `hook-unit-length`), JSON's quoting (`hook-quoted`, @term/base/json),
+# and a record's key order (`hook-key-order`).
 #
 # THREE THINGS ARE NOT OBVIOUS, as in the original. Flags interleave with positionals up to a literal `--` (decision
 # cli-in-term/012 part 1). A slot already filled by its flag does not consume a positional. A last slot marked
@@ -33,6 +37,8 @@ load @term/base/text
   find substring
   find index-of
   find char-count
+  find char-code-at
+  find pad-right
   find contains
 
 load @term/base/list
@@ -42,6 +48,19 @@ load @term/base/maybe
   find maybe
   find some
   find none
+
+load @term/base/json
+  find stringify, name json-written
+  find from-text, name json-of-text
+
+load @term/base/text/number
+  find host-parse-float
+
+load @term/base/float
+  find is-finite
+  find truncate
+  find to-number
+  find to-decimal
 
 load @term/call/work/hook/route
   find route
@@ -58,6 +77,8 @@ form arg-value
     link on, like boolean
   case arg-number
     link amount, like number
+  case arg-decimal
+    link fraction, like float
   case arg-list
     link items, like list, like text
 
@@ -106,54 +127,391 @@ form parsed-line
 # ---- JavaScript's own readings ----
 
 # a text as JSON spells it, which is how the help shows a text default
-bind hook-quoted
+task hook-quoted
   take value, like text
   like text
-  case node
-    text <JSON.stringify($value)>
+  back json-written(json-of-text(value))
 
-# the length of a text in UTF-16 units, as the original measured a flag's name to give it one dash or two
-bind hook-unit-length
+# the length of a text in UTF-16 units, as the original measured a flag's name to give it one dash or two: a code
+# point past U+FFFF is two
+task hook-unit-length
   take value, like text
   like number
-  case node
-    text <$value.length>
-
-# a word read as a number by JavaScript's Number(), NaN for a word that is no number or is only blanks (the
-# original's `value.trim() === ''`, JavaScript's own blanks: Term's trim strips another set)
-bind hook-number-word
-  take word, like text
-  like number
-  case node
-    text <($word.trim() === "" ? NaN : Number($word))>
-
-# names in the order a JavaScript record lists them as keys: the array indexes first, ascending, then the rest as
-# they were set
-bind hook-key-order
-  take names, like list, like text
-  like list, like text
-  case node
-    text <Object.keys(Object.fromEntries($names.map((name_) =\> [name_, 0])))>
+  save units, 0
+  save count, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save units, add(units, 1)
+      fork test, is-above(char-code-at(value, at), 65535)
+        hold
+          save units, add(units, 1)
+      save at, add(at, 1)
+  back units
 
 # a text padded with spaces to a width counted in UTF-16 units, as the original's padEnd
-bind hook-pad
+task hook-pad
   take value, like text
   take width, like number
   like text
-  case node
-    text <$value.padEnd($width)>
+  save fill, subtract(width, hook-unit-length(value))
+  fork test, is-above(fill, 0)
+    hold
+      back <{value}{pad-right(<>, fill, < >)}>
+  back value
 
-bind hook-is-whole
-  take amount, like number
+# a code point JavaScript's Number() and trim() strip: ECMA-262's white space (tab, vertical tab, form feed, space,
+# no-break space, the byte order mark and every space separator) and its line ends
+task hook-is-blank
+  take code, like number
   like boolean
-  case node
-    text <Number.isInteger($amount)>
+  fork test, and(is-minimum(code, 9), is-maximum(code, 13))
+    hold
+      back true
+  fork test, and(is-minimum(code, 8192), is-maximum(code, 8202))
+    hold
+      back true
+  fork test, or(or(is-equal(code, 32), is-equal(code, 160)), or(is-equal(code, 5760), is-equal(code, 65279)))
+    hold
+      back true
+  fork test, or(or(is-equal(code, 8232), is-equal(code, 8233)), or(is-equal(code, 8239), or(is-equal(code, 8287), is-equal(code, 12288))))
+    hold
+      back true
+  back false
 
-bind hook-is-nan
-  take amount, like number
+# is the code point an ASCII digit?
+task hook-is-digit
+  take code, like number
   like boolean
-  case node
-    text <Number.isNaN($amount)>
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+# the value of a digit of this radix (2, 8 or 16), -1 when the code point is none
+task hook-radix-digit
+  take code, like number
+  take radix, like number
+  like number
+  save value, subtract(0, 1)
+  fork test, hook-is-digit(code)
+    hold
+      save value, subtract(code, 48)
+  fork test, and(is-minimum(code, 97), is-maximum(code, 102))
+    hold
+      save value, subtract(code, 87)
+  fork test, and(is-minimum(code, 65), is-maximum(code, 70))
+    hold
+      save value, subtract(code, 55)
+  fork test, is-minimum(value, radix)
+    hold
+      back subtract(0, 1)
+  back value
+
+# the bits a digit of this radix stands for, the highest first
+task hook-digit-bits
+  take value, like number
+  take radix, like number
+  like list, like number
+  save width, 1
+  fork test, is-equal(radix, 8)
+    hold
+      save width, 3
+  fork test, is-equal(radix, 16)
+    hold
+      save width, 4
+  save bits, make list
+  save left, value
+  save place, width
+  walk test
+    hook test, is-above(place, 0)
+    hook hold
+      save place, subtract(place, 1)
+      save weight, 1
+      save step, 0
+      walk test
+        hook test, is-below(step, place)
+        hook hold
+          save weight, multiply(weight, 2)
+          save step, add(step, 1)
+      fork test, is-minimum(left, weight)
+        hold
+          bits/push 1
+          save left, subtract(left, weight)
+        miss
+          bits/push 0
+  back bits
+
+# the digits of a `0x`, `0o` or `0b` literal as Number() reads them: the nearest float to their value, rounded half to
+# even past 53 bits, as JavaScript does. None when a digit is not of the radix or there is none
+task hook-radix-number
+  take digits, like text
+  take radix, like number
+  like maybe, like float
+  save count, char-count(digits)
+  fork test, is-equal(count, 0)
+    hold
+      back make none
+  save bits, make list
+  save started, false
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save value, hook-radix-digit(char-code-at(digits, at), radix)
+      fork test, is-below(value, 0)
+        hold
+          back make none
+      walk hook-digit-bits(value, radix)
+        take bit
+        fork test, or(started, is-equal(bit, 1))
+          hold
+            save started, true
+            bits/push bit
+      save at, add(at, 1)
+  save size, bits/length
+  # the first 53 bits are the significand, exact as an integer, and the rest round it
+  save kept, size
+  fork test, is-above(kept, 53)
+    hold
+      save kept, 53
+  save whole, 0
+  save index, 0
+  walk test
+    hook test, is-below(index, kept)
+    hook hold
+      save whole, add(multiply(whole, 2), bits/{index})
+      save index, add(index, 1)
+  save shift, subtract(size, kept)
+  fork test, is-above(shift, 0)
+    hold
+      save half, is-equal(bits/{kept}, 1)
+      save beyond, false
+      save rest-at, add(kept, 1)
+      walk test
+        hook test, is-below(rest-at, size)
+        hook hold
+          fork test, is-equal(bits/{rest-at}, 1)
+            hold
+              save beyond, true
+          save rest-at, add(rest-at, 1)
+      fork test, and(half, or(beyond, is-equal(modulo(whole, 2), 1)))
+        hold
+          # 2^53 - 1 rounds up to 2^53, written as 2^52 one place higher so the integer stays below 2^53
+          fork test, is-equal(whole, 9007199254740991)
+            hold
+              save whole, 4503599627370496
+              save shift, add(shift, 1)
+            miss
+              save whole, add(whole, 1)
+  save amount, to-decimal(whole)
+  save two, to-decimal(2)
+  save doubled, 0
+  walk test
+    hook test, and(is-below(doubled, shift), is-finite(amount))
+    hook hold
+      save amount, multiply(amount, two)
+      save doubled, add(doubled, 1)
+  back make(some, amount)
+
+# A WORD AS JAVASCRIPT'S Number() READS IT, none for NaN and for a word that is only blanks (the original's
+# `value.trim() === ''`). Blanks around it are dropped, then it is `Infinity` with an optional sign, a `0x`, `0o` or `0b`
+# literal with no sign, or a decimal: an optional sign, digits with an optional point (`5.` and `.5` too, not `.`), and
+# an optional exponent. Anything else, a `_` or a second sign included, is NaN. The grammar is checked here, then
+# @term/base's host-parse-float reads a decimal spelled the one way every host reads alike, rounding to the nearest
+task hook-number-word
+  take word, like text
+  like maybe, like float
+  save count, char-count(word)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, count), hook-is-blank(char-code-at(word, start)))
+    hook hold
+      save start, add(start, 1)
+  save end, count
+  walk test
+    hook test, and(is-above(end, start), hook-is-blank(char-code-at(word, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  fork test, is-equal(start, end)
+    hold
+      back make none
+  save body, substring(word, start, end)
+  save size, char-count(body)
+  save first, char-code-at(body, 0)
+  # a radix literal takes no sign
+  fork test, and(is-above(size, 2), is-equal(first, 48))
+    hold
+      save marker, char-code-at(body, 1)
+      save radix, 0
+      fork test, or(is-equal(marker, 120), is-equal(marker, 88))
+        hold
+          save radix, 16
+      fork test, or(is-equal(marker, 111), is-equal(marker, 79))
+        hold
+          save radix, 8
+      fork test, or(is-equal(marker, 98), is-equal(marker, 66))
+        hold
+          save radix, 2
+      fork test, is-above(radix, 0)
+        hold
+          back hook-radix-number(substring(body, 2), radix)
+  save sign, <>
+  save at, 0
+  fork test, or(is-equal(first, 43), is-equal(first, 45))
+    hold
+      save at, 1
+      fork test, is-equal(first, 45)
+        hold
+          save sign, <->
+  fork test, is-equal(substring(body, at), <Infinity>)
+    hold
+      save endless, host-parse-float(<{sign}Infinity>)
+      back make(some, endless)
+  # the whole digits, the fraction's, and the exponent, each a run of ASCII digits
+  save whole-from, at
+  walk test
+    hook test, and(is-below(at, size), hook-is-digit(char-code-at(body, at)))
+    hook hold
+      save at, add(at, 1)
+  save whole, substring(body, whole-from, at)
+  save fraction, <>
+  fork test, and(is-below(at, size), is-equal(char-code-at(body, at), 46))
+    hold
+      save at, add(at, 1)
+      save fraction-from, at
+      walk test
+        hook test, and(is-below(at, size), hook-is-digit(char-code-at(body, at)))
+        hook hold
+          save at, add(at, 1)
+      save fraction, substring(body, fraction-from, at)
+  fork test, and(is-equal(whole, <>), is-equal(fraction, <>))
+    hold
+      back make none
+  save power, <>
+  fork test, and(is-below(at, size), or(is-equal(char-code-at(body, at), 101), is-equal(char-code-at(body, at), 69)))
+    hold
+      save at, add(at, 1)
+      save power-sign, <>
+      fork test, is-below(at, size)
+        hold
+          save mark-code, char-code-at(body, at)
+          fork test, or(is-equal(mark-code, 43), is-equal(mark-code, 45))
+            hold
+              fork test, is-equal(mark-code, 45)
+                hold
+                  save power-sign, <->
+              save at, add(at, 1)
+      save power-from, at
+      walk test
+        hook test, and(is-below(at, size), hook-is-digit(char-code-at(body, at)))
+        hook hold
+          save at, add(at, 1)
+      fork test, is-equal(at, power-from)
+        hold
+          back make none
+      save power, <e{power-sign}{substring(body, power-from, at)}>
+  fork test, is-below(at, size)
+    hold
+      back make none
+  save written, whole
+  fork test, is-equal(written, <>)
+    hold
+      save written, <0>
+  fork test, is-unequal(fraction, <>)
+    hold
+      save written, <{written}.{fraction}>
+  save parsed, host-parse-float(<{sign}{written}{power}>)
+  back make(some, parsed)
+
+# is the float a whole number, as Number.isInteger: finite, with nothing after the point
+task hook-is-whole
+  take amount, like float
+  like boolean
+  fork test, not(is-finite(amount))
+    hold
+      back false
+  back is-equal(truncate(amount), amount)
+
+# is the name a JavaScript array index, which a record lists before its other keys: `0`, or digits with no leading
+# zero, at most 4294967294
+task hook-is-index
+  take name, like text
+  like boolean
+  save count, char-count(name)
+  fork test, or(is-equal(count, 0), is-above(count, 10))
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, not(hook-is-digit(char-code-at(name, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  fork test, and(is-above(count, 1), is-equal(char-code-at(name, 0), 48))
+    hold
+      back false
+  fork test, is-below(count, 10)
+    hold
+      back true
+  back hook-index-before(name, <4294967295>)
+
+# does index `a` come before index `b`, both digits with no leading zero: the shorter first, else by digit
+task hook-index-before
+  take a, like text
+  take b, like text
+  like boolean
+  save size-a, char-count(a)
+  save size-b, char-count(b)
+  fork test, is-unequal(size-a, size-b)
+    hold
+      back is-below(size-a, size-b)
+  save at, 0
+  walk test
+    hook test, is-below(at, size-a)
+    hook hold
+      save digit-a, char-code-at(a, at)
+      save digit-b, char-code-at(b, at)
+      fork test, is-unequal(digit-a, digit-b)
+        hold
+          back is-below(digit-a, digit-b)
+      save at, add(at, 1)
+  back false
+
+# names in the order a JavaScript record lists them as keys: the array indexes first, ascending, then the rest as
+# they were first set
+task hook-key-order
+  take names, like list, like text
+  like list, like text
+  save indexes, make list
+  save rest, make list
+  walk names
+    take one
+    fork test, hook-is-index(one)
+      hold
+        fork test, not(has-word(indexes, one))
+          hold
+            save placed, make list
+            save put, false
+            walk indexes
+              take held
+              fork test, and(not(put), hook-index-before(one, held))
+                hold
+                  placed/push one
+                  save put, true
+              placed/push held
+            fork test, not(put)
+              hold
+                placed/push one
+            save indexes, placed
+      miss
+        fork test, not(has-word(rest, one))
+          hold
+            rest/push one
+  walk rest
+    take one
+    indexes/push one
+  back indexes
 
 # ---- lists of arguments ----
 
@@ -240,6 +598,9 @@ task host-value-of
     case arg-number
       link figure
       back figure
+    case arg-decimal
+      link part
+      back part
     case arg-list
       link words
       back words
@@ -944,11 +1305,16 @@ task parse-command
             fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
               hold
                 save whole, is-equal(kind, <number>)
-                save figure, hook-number-word(word)
-                save bad, hook-is-nan(figure)
-                fork test, and(whole, not(hook-is-whole(figure)))
-                  hold
-                    save bad, true
+                save reading, hook-number-word(word)
+                save bad, true
+                save figure, to-decimal(0)
+                sift reading
+                  case some
+                    link found
+                    save figure, found
+                    save bad, and(whole, not(hook-is-whole(found)))
+                  case none
+                    save nothing, 0
                 fork test, bad
                   hold
                     save wanted, <a number>
@@ -956,7 +1322,12 @@ task parse-command
                       hold
                         save wanted, <a whole number>
                     back refused-with(command, <--{one/name} takes {wanted}, not "{word}">)
-                save args, put-arg(args, one/name, make(arg-number, bind(amount, figure)))
+                # a whole number is a Term number, and a `float` take keeps the fraction
+                fork test, whole
+                  hold
+                    save args, put-arg(args, one/name, make(arg-number, bind(amount, to-number(figure))))
+                  miss
+                    save args, put-arg(args, one/name, make(arg-decimal, bind(fraction, figure)))
             fork test, is-equal(kind, <boolean>)
               hold
                 fork test, and(is-unequal(word, <true>), is-unequal(word, <false>))

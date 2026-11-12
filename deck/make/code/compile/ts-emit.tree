@@ -2679,7 +2679,9 @@ task emit-member
 
 # the target a member read or a method call is written after. An `await` binds looser than `.`, so `await f(x).def`
 # awaits the promise's own field, which is void: the awaited call is put in parentheses, `(await f(x)).def`, and the
-# read is of the answer, as a call to an async task is waited by default (item 0893)
+# read is of the answer, as a call to an async task is waited by default (item 0893). A call written as more than one
+# primary, a bind's text such as `$result?.[$field] ?? []`, is put in parentheses too, or `.length` reads the `[]` and
+# the read of the call's answer is gone with a clean build (item 1201)
 task emit-member-target
   take target, like expression
   take st, like emit-state
@@ -2691,6 +2693,10 @@ task emit-member-target
   sift target
     case await
       fork test, starts-with(written, <await >)
+        hold
+          back <({written})>
+    case call
+      fork test, not(is-primary(written))
         hold
           back <({written})>
     miss

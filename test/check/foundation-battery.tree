@@ -1,0 +1,94 @@
+note <the foundation battery: every file of the machine-checked foundation passes, each in a process of its own>
+
+# Ported from foundation.sh (item term-self-host-001-0734). The kernel keeps module-level state, so each file of the
+# battery runs in its own process: here the `term` under test runs `term test` on that file's `.tree` port beside it, and
+# the file passes when that run exits 0. foundation.sh ran each TypeScript original under tsx and summed the counts its
+# summary line printed. A file whose line was missing counted as 0 failures there; here a file that does not build, or
+# fails one test, fails its own test. One test per file, in foundation.sh's order.
+
+load @term/test/self
+  find run-self
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find contains, name text-contains
+
+# whether `test/check/<name>.tree` passes in a `term test` of its own. The exit alone is not enough: `term test` of a
+# path that is not there prints "No tests to run" and exits 0, so the run must also say its tests passed (on its error stream, where `term test` reports)
+task passes-alone
+  mark async
+  take name, like text
+  like boolean
+
+  host ran, run-self(make(list, <test>, <test/check/{name}.tree>, <--env>, <node>, <--color>, <never>, <--no-motion>))
+  back and(is-equal(ran/code, 0), text-contains(ran/error, <Tests passed>))
+
+# naturals with induction and arithmetic (the companion self-type kernel)
+test <foundation passes alone>
+  want hold, passes-alone(<foundation>)
+
+# the kernel: universe polymorphism, QTT, the equality groupoid, funext, Sigma, self-types
+test <foundation-judge passes alone>
+  want hold, passes-alone(<foundation-judge>)
+
+# the category laws (composition associative, identity), through observational funext
+test <category-judge passes alone>
+  want hold, passes-alone(<category-judge>)
+
+# self-typed naturals with arithmetic: plus and times type-check and compute
+test <naturals-judge passes alone>
+  want hold, passes-alone(<naturals-judge>)
+
+# self-typed naturals with computation on the judge (the inductive foundation)
+test <naturals2-judge passes alone>
+  want hold, passes-alone(<naturals2-judge>)
+
+# the integers as a self-typed inductive on the judge
+test <integers-judge passes alone>
+  want hold, passes-alone(<integers-judge>)
+
+# integer negation and successor type-check and compute
+test <integer-arithmetic-judge passes alone>
+  want hold, passes-alone(<integer-arithmetic-judge>)
+
+# integer addition and signed subtraction compute, all four sign cases
+test <integer-addition-judge passes alone>
+  want hold, passes-alone(<integer-addition-judge>)
+
+# integer multiplication and the decidable order compute: the integers are an ordered ring
+test <integer-ring-judge passes alone>
+  want hold, passes-alone(<integer-ring-judge>)
+
+# a generic recursive constructor (succ) type-checks and computes, no coercions
+test <succ-judge passes alone>
+  want hold, passes-alone(<succ-judge>)
+
+# the impredicative bottom universe is sound and bounded
+test <large-elim-judge passes alone>
+  want hold, passes-alone(<large-elim-judge>)
+
+# the pinch-point keystone, a structural kernel proof
+test <pinch-judge passes alone>
+  want hold, passes-alone(<pinch-judge>)
+
+# the floor, the ceiling and the pinch-point, through the refinement prover
+test <keystones-refine passes alone>
+  want hold, passes-alone(<keystones-refine>)
+
+# the arrow of time: the integers the one orderable rung
+test <keystones-arrow passes alone>
+  want hold, passes-alone(<keystones-arrow>)
+
+# proof search in one step (assumption, refl, modus ponens), sound on the unreachable
+test <auto-judge passes alone>
+  want hold, passes-alone(<auto-judge>)
+
+# proof search over many steps by forward chaining
+test <search-judge passes alone>
+  want hold, passes-alone(<search-judge>)
+
+# proving a universal by induction, found by the search
+test <induction-judge passes alone>
+  want hold, passes-alone(<induction-judge>)

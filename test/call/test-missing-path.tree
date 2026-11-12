@@ -1,0 +1,79 @@
+note <term test of a .tree path that is not there is refused, never a pass>
+
+# Item term-self-host-001-1232, trap T-0734. A filter ending in `.tree` names a file. When no file is at it, from the
+# working folder or the project root, and no test file's path ends in it, the run refuses and exits 2, a usage refusal as `--case` naming no test is. Before, a moved
+# or misspelled name printed "No tests to run" and exited 0, and a name another suite's comment held ran that suite
+# instead (trap T-0646), so a suite or gate that named it passed. Each case runs the `term` under test (@term/test/self)
+# on a one-test package in a temporary folder whose test passes. Any other filter is still a phrase.
+
+load @term/test/self
+  find run-self
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/text
+  find contains
+
+# a package whose one test passes, at test/real.tree, its comment naming test/gone.tree
+task real-package
+  like text
+  mark async
+
+  save folder, temp-folder(<missing-path->)
+  save made, run(<mkdir>, make(list, <{folder}/test>))
+  fork test, is-unequal(made/code, 0)
+    hold
+      halt <mkdir {folder}/test exited {made/code}>
+  write-file(<{folder}/deck.tree>, <deck @probe/missing-path\n  head \<A package with one passing test\>\n  mark \<0.0.2\>\n>)
+  write-file(<{folder}/test/real.tree>, <# moved here from test/gone.tree\ntest \<probe\>\n  want hold, is-equal(1, 1)\n>)
+  back folder
+
+# `term test <filter>` in the package
+task test-with
+  take filter, like text
+  like run-result
+  mark async
+
+  save folder, real-package()
+  back run-self(make(list, <test>, filter, <--env>, <node>, <--color>, <never>, <--no-motion>), folder, 120000)
+
+# the run prints on either stream
+task said
+  take ran, like run-result
+  like text
+
+  back <{ran/output}{ran/error}>
+
+test <a .tree path that is not there exits 2 and names it>
+  save ran, test-with(<test/missing.tree>)
+  want hold, is-equal(ran/code, 2)
+  want hold, contains(said(ran), <There is no file test/missing.tree>)
+  want hold, not(contains(said(ran), <No tests to run>))
+
+test <a .tree path another test file's text names, that is not there, exits 2>
+  save ran, test-with(<test/gone.tree>)
+  want hold, is-equal(ran/code, 2)
+  want hold, contains(said(ran), <There is no file test/gone.tree>)
+
+test <a .tree path that is there runs it>
+  save ran, test-with(<test/real.tree>)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <Tests passed>)
+
+test <the end of a test file's path still runs it>
+  save ran, test-with(<real.tree>)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <Tests passed>)
+
+test <a filter that is not a .tree name is still a phrase>
+  save ran, test-with(<no-such-phrase>)
+  want hold, is-equal(ran/code, 0)
+  want hold, contains(said(ran), <No tests to run>)

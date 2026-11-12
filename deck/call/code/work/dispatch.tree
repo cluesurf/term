@@ -98,9 +98,13 @@ load @term/call/work/output/printer
   find print-data
   find set-output
 
-# the refusal's shape and the nearest command, shared with every program `term boot` writes (item 0983)
+# the refusal's shape and the nearest command, shared with every program `term boot` writes (item 0983): what was not
+# understood and the nearest command are host-free (work/hook/refusal.tree, item term-self-host-001-1120), the
+# printing is the printer's
 load @term/call/work/hook/usage
   find refuse-usage
+
+load @term/call/work/hook/refusal
   find usage-ask
   find nearest-command
   find command-guess
@@ -420,7 +424,7 @@ task done-with
   like line-start
   back make line-start, done(true), exit(exit), words(make list)
 
-# what to run instead of a word that names no command (work/hook/usage.tree, which every booted program shares)
+# what to run instead of a word that names no command (work/hook/refusal.tree, which every booted program shares)
 task suggest
   take routes, like list, like dock-route
   take word, like text
@@ -428,7 +432,7 @@ task suggest
   back nearest-command(make command-guess, name(<term>), routes(plain-routes(routes)), word(word))
 
 # Wrong command-line usage (section 18): a failed item saying what was not understood, a `next` field with what to
-# run, exit 2, in the shape every booted program refuses in (work/hook/usage.tree). `lines` are the item's message
+# run, exit 2, in the shape every booted program refuses in (work/hook/refusal.tree). `lines` are the item's message
 # lines under the subject, as line.ts split a refusal yargs wrote over several lines (`Invalid values:` and one
 # `Argument:` line per take)
 task usage-failure

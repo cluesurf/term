@@ -134,6 +134,24 @@ task error
   save kind, make type-mismatch
   push(state/diagnostics, diagnose(kind, input))
 
+# the same, with a hint
+task error-hinted
+  take state, like extend-state
+  take top, like statement
+  take at, like span
+  take message, like text
+  take hint, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file-of(top, state/file)
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save kind, make type-mismatch
+  push(state/diagnostics, diagnose(kind, input))
+
 # ---- the forms ----
 
 form record-parts
@@ -1076,7 +1094,9 @@ task fill-slots
             hold
               save plural, <>
           save listed, join(slots, <, >)
-          error(state, top, span, <"{slot-owner}" has {slots/length} slot{plural} ({listed}) and this gives {positional/length} values>)
+          # `make pattern, <x>` takes the parts beside the name as its values (item 0903), so written as an argument it
+          # also takes the call's next argument (item 1186)
+          error-hinted(state, top, span, <"{slot-owner}" has {slots/length} slot{plural} ({listed}) and this gives {positional/length} values>, <the values beside `make {slot-owner}` join it, so as a call's argument it takes the arguments after it too. Close it with `make({slot-owner}, ...)`>)
         miss
           save at, 0
           walk positional

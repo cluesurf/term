@@ -1,0 +1,87 @@
+note <the answers of guarded blocks and of a closure sent back at a raising task type, on TypeScript and Rust>
+
+# Ported from rust-guard-returns.ts by statement (item term-self-host-001-1233), one test per `ok` of each of its three
+# shapes. Item term-self-host-001-1101 of term/self-host/change/001-finish-self-host, found by 1059, one program per
+# shape (T-1091), each held through rustc and RUN against TypeScript's answer:
+#   fresh-guard     a guard in a task answering a fresh list: the body's answer was `Option<Rc<RefCell<Vec<T>>>>`
+#                   while the task answers the `Vec` (E0308: compiler-hunt.tree fuzz-seeds-from, halting.tree
+#                   other-remote-mounts)
+#   nested-guard    a guard inside a guard: the inner match's `return` left the OUTER body with the task's own answer
+#                   where that body answers `Ok(Some(v))` (E0308: build-command.tree write-roll)
+#   raising-closure a closure sent back as a task's result whose declared task type raises was written as a plain
+#                   closure, its `back` lines bare (E0308: unit-naming.tree unit-path)
+# The original's "builds for node" and "builds for rust" lines stood in for these when a compile refused: here a refused
+# compile fails the same tests. No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+host fresh-guard-text, <load @term/base/list\n  find push\n\ntask kept\n  take files, like list, like text\n  like list, like text\n  save out, make list\n  walk files\n    take file\n    fork\n      mark unsafe\n      fork test, is-equal(file, \<bad\>)\n        hold\n          halt \<unreadable\>\n      push(out, file)\n    halt take\n      take problem\n  back out\n\ntask check\n  like text\n  save given, make list\n  push(given, \<a\>)\n  push(given, \<bad\>)\n  push(given, \<b\>)\n  save said, \<\>\n  walk kept(given)\n    take one\n    save said, \<\{said\}\{one\}\>\n  back said\n>
+
+host nested-guard-text, <task found\n  take given, like text\n  like text\n  fork\n    mark unsafe\n    fork\n      mark unsafe\n      fork test, is-equal(given, \<x\>)\n        hold\n          halt \<inner\>\n      back \<inner \{given\}\>\n    halt take\n      take problem\n      back \<caught\>\n  halt take\n    take problem\n  back \<fell\>\n\ntask check\n  like text\n  back \<\{found(\<a\>)\}|\{found(\<x\>)\}\>\n>
+
+host raising-closure-text, <task joiner\n  take tail, like text\n  like task\n    take head, like text\n    like text\n    halt failure\n  save glue, \<\{tail\}\>\n  back\n    task\n      take head, like text\n      like text\n      fork test, is-equal(head, \<\>)\n        hold\n          back glue\n      back \<\{head\}\{glue\}\>\n\ntask check\n  like text\n  save made, joiner(\<!\>)\n  save other, joiner(\<?\>)\n  back \<\{made(\<a\>)\}|\{made(\<\>)\}|\{other(\<b\>)\}\>\n>
+
+# one shape by its name, its `check` printed alone
+task shape
+  take name, like text
+  take text, like text
+  like native-case
+
+  back native-case-of(name, text, make(list, <check>), make(list, call-of(<check>, <check>, <>)))
+
+test <fresh-guard: TypeScript answers>
+  host one, shape(<fresh-guard>, fresh-guard-text)
+  want hold, is-equal(one/typescript, <ab>)
+
+test <fresh-guard: rustc compiles it>
+  host one, shape(<fresh-guard>, fresh-guard-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <fresh-guard: Rust answers what TypeScript does>
+  host one, shape(<fresh-guard>, fresh-guard-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <ab>)
+
+test <nested-guard: TypeScript answers>
+  host one, shape(<nested-guard>, nested-guard-text)
+  want hold, is-equal(one/typescript, <inner a|caught>)
+
+test <nested-guard: rustc compiles it>
+  host one, shape(<nested-guard>, nested-guard-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <nested-guard: Rust answers what TypeScript does>
+  host one, shape(<nested-guard>, nested-guard-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <inner a|caught>)
+
+test <raising-closure: TypeScript answers>
+  host one, shape(<raising-closure>, raising-closure-text)
+  want hold, is-equal(one/typescript, <a!|!|b?>)
+
+test <raising-closure: rustc compiles it>
+  host one, shape(<raising-closure>, raising-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <raising-closure: Rust answers what TypeScript does>
+  host one, shape(<raising-closure>, raising-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <a!|!|b?>)

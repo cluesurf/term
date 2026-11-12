@@ -1,0 +1,123 @@
+note <a file of a package outside the build root takes its own package's role file, whatever the root's path>
+
+# Ported from role-outside-root.ts by statement (item term-self-host-001-1233), one test per `ok` in its order. The role
+# reader (call/code/work/build/role-reading.tree package-root-of, and its original call/code/role-of.ts) climbed from a
+# file toward its `deck.tree` and stopped as soon as the folder's path was no longer than the root's, a test meant for a
+# file under the root. From a deep folder holding no project, the root's path is long, so a file elsewhere stopped at
+# once and was given the root's (absent) role file: a `mark lean` file lost its lean surface, and its `make <form>` with
+# named fields was refused (term-self-host-001-1113).
+#
+# role-of.ts is the subject (decision 106), docked. The CLI is the `term` under test, run from the deep folder with
+# TERM_DEPTH taken out (decision 111 point 3), since a term started under a term run inherits it. The run is async, so
+# the package, the folders and the run are made once, by the first test that asks, and kept.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-folder
+
+load @term/base/process/run
+  find run
+  find run-result
+
+load @term/base/list
+  find push
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+load @term/base/text
+  find char-count
+
+load @term/test/self
+  find self-command
+
+dock load
+  load <@term/call/code/role-of>, name own-role
+
+# a package whose role file reads code/ as lean, and one lean file that builds a form by its field names
+host own-deck, <deck @probe/own\nhead \<Probe\>\nmark \<0.0.2\>\nlink @term/base, mark \<0.0.x\>\n>
+host own-roles, <role code\n  mark lean\n  take @/code/**/*.tree\n>
+host own-item, <form thing\n  link name, like text\n  link size, like number\n\ntask make-thing\n  like thing\n\n  back\n    make thing\n      name \<x\>\n      size 2\n>
+
+# the build root: a folder holding no project, not an ancestor of the package, its path longer than the package's code folder
+host deep-name, <a-folder-whose-path-is-longer-than-the-package-code-folder-it-builds-from>
+
+# the package's code folder, its lean file, the deep root, and the CLI's build of that file from the root
+form outside-case
+  link code, like text
+  link file, like text
+  link deep, like text
+  link made, like run-result
+
+form outside-cases
+  mark shared
+  link held, like hash, like text, like outside-case
+
+host outside-held, make(outside-cases, bind(held, make hash))
+
+task outside-made
+  like outside-case
+
+  save pkg, temp-folder(<term-own->)
+  save code, <{pkg}/code>
+  make-folder(code)
+  write-file(<{pkg}/deck.tree>, own-deck)
+  write-file(<{pkg}/role.tree>, own-roles)
+  save file, <{code}/item.tree>
+  write-file(file, own-item)
+  save far, temp-folder(<term-far->)
+  save deep, <{far}/{deep-name}>
+  make-folder(deep)
+  save out, temp-folder(<term-far-out->)
+  save argument-list, make list(<-u>, <TERM_DEPTH>)
+  walk self-command()
+    take part, like text
+    argument-list/push(part)
+  walk make list(<make>, file, <--emit>, <node>, <--out>, <{out}/item.ts>, <--color>, <never>, <--no-motion>)
+    take part, like text
+    argument-list/push(part)
+  save made, run(<env>, argument-list, bind(directory, deep))
+  back make(outside-case, bind(code, code), bind(file, file), bind(deep, deep), bind(made, made))
+
+# the one case, made by the first test that asks
+task outside
+  like outside-case
+
+  save key, <one>
+  fork test, outside-held/held/has(key)
+    hold
+      back outside-held/held/{key}
+  save made, outside-made()
+  save outside-held/held/{key}, made
+  back made
+
+test <the root is longer than the file folder, so the old length test would stop>
+  host one, outside()
+  want hold, is-above(char-count(one/deep), char-count(one/code))
+
+# 1. the original reader, call/code/role-of.ts
+test <role-of: a file outside the root takes its own package role>
+  host one, outside()
+  host role-of, own-role/project-role-of(one/deep)
+  want hold, is-equal(role-of(one/file), <code>)
+
+test <role-of: a file outside the root keeps its package lean mark>
+  host one, outside()
+  host lean-of, own-role/project-lean-of(one/deep)
+  want hold, is-equal(lean-of(one/file), true)
+
+# 2. the CLI, whose reader is the role-reading.tree port: a build of the lean file from the deep folder
+test <the CLI builds a lean file of an outside package from a deep folder>
+  host one, outside()
+  want hold, is-equal(one/made/code, 0)
+
+test <the CLI reads the outside file as lean>
+  host one, outside()
+  host said, <{one/made/output}\n{one/made/error}>
+  want hold, not(matches(make(pattern, <<has no slots|leaves out>>), said))

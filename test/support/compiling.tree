@@ -37,6 +37,7 @@ dock load
   load <@term/make/code/check/infer>, name compiling-infer
   load <node:path>, name compiling-path
   load <node:fs>, name compiling-fs
+  load <typescript>, name compiling-type-script-package
 
 # `file` is the exact path a load asks for. `answer` is the file it comes back as, <> that same path, for a suite whose
 # modules answer under another name (`@app/x` as `x.tree`).
@@ -772,6 +773,23 @@ bind file-text
   like text
   case node
     text <process.getBuiltinModule("node:fs").readFileSync($path, "utf8")>
+
+# host native: TypeScript's own parser over a text read as a `.ts` module, and its parse errors, each flattened to one
+# line. `parseDiagnostics` is the parser's field (no checker runs), and the package may answer as its default export
+bind compiling-parse-errors
+  take parser, like dynamic
+  take source, like text
+  like list, like text
+  case node
+    text <((ts) =\> ts.createSourceFile("syntax.ts", $source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS).parseDiagnostics.map((d) =\> ts.flattenDiagnosticMessageText(d.messageText, " ")))($parser.default ?? $parser)>
+
+# the parse errors of a text read as TypeScript, as TypeScript words them, empty for a text that parses: the one place
+# a suite reaches the typescript package
+task typescript-syntax-errors
+  take source, like text
+  like list, like text
+
+  back compiling-parse-errors(compiling-type-script-package, source)
 
 # the text one emitter makes of a compiled program, <> for one that was refused: <rust>, <swift>, <kotlin>, <typescript>
 task emit-text

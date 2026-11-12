@@ -266,6 +266,9 @@ form rust-facts
   link scalar-consts, like hash, like text, like boolean
   link text-consts, like hash, like text, like boolean
   link host-struct-of, like hash, like text, like text
+  # the module bindings held in one process-wide `LazyLock` static, each a Sync record or `host` tree (decision 138
+  # rule 4, amended by item 1124)
+  link module-statics, like hash, like text, like boolean
   link phantom-forms, like hash, like text, like text
   link aliases, like hash, like text, like boolean
   link binds, like hash, like text, like statement
@@ -2425,8 +2428,8 @@ task budget-check
   save st/budget-uses, add(st/budget-uses, 1)
   back <{pad(depth)}__term_budget().await;\n>
 
-# the read of a module binding, by its kind. A non-scalar one is cloned out of its thread-local at a type this site does
-# not hold, so it counts as a generic clone (item 0029)
+# the read of a module binding, by its kind. A non-scalar one is cloned out of its static or its thread-local at a type
+# this site does not hold, so it counts as a generic clone (item 0029)
 task module-read
   take name, like text
   take st, like rust-state
@@ -2443,6 +2446,9 @@ task module-read
   fork test, facts/module-slots/has(name)
     hold
       back <{module-const-name(name)}.with(|v| v.borrow().clone().unwrap())>
+  fork test, facts/module-statics/has(name)
+    hold
+      back <(*{module-const-name(name)}).clone()>
   back <{module-const-name(name)}.with(|v| v.clone())>
 
 # whether every mention of `name` in a body is an argument at a position its task takes borrowed or the target of a
@@ -8795,7 +8801,8 @@ task emit-statement
     miss
       back <>
 
-# a module-level binding: a scalar a `const`, a slot an empty `thread_local` cell, anything else a `thread_local`
+# a module-level binding: a scalar a `const`, a slot an empty `thread_local` cell, a Sync record or `host` tree a
+# `LazyLock` static, anything else a `thread_local`
 task module-let
   take node, like statement
   take st, like rust-state
@@ -8829,6 +8836,12 @@ task module-let
           save spelled, facts/host-struct-of/get(let-name)
         miss
           save spelled, spell(given, facts)
+      # A SYNC RECORD OR `host` TREE IS ONE PROCESS-WIDE STATIC, built on its first read on any thread (decision 138
+      # rule 4, amended by item 1124). A list, a hash and anything else not Sync stays a `thread_local`: module lists
+      # and hashes hold state their tasks write, which one shared `Rc` per thread keeps
+      fork test, facts/module-statics/has(let-name)
+        hold
+          back <static {name}: std::sync::LazyLock\<{spelled}\> = std::sync::LazyLock::new(|| {emit-expr(let-init, st, facts)});>
       back <thread_local! \{ static {name}: {spelled} = {emit-expr(let-init, st, facts)}; \}>
     miss
       back <>

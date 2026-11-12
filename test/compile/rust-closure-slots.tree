@@ -1,0 +1,191 @@
+note <closures with no slot to type them, on TypeScript and Rust>
+
+# Ported from rust-closure-slots.ts by statement (item term-self-host-001-1233), one test per `ok` of each of its eight
+# shapes. Items term-self-host-001-1109, 1110 and 1111 of term/self-host/change/001-finish-self-host, found by 1105, one
+# program per shape (T-1091), each held through rustc and RUN against TypeScript's answer:
+#   let-closure      a closure saved in a let, its declared parameter left bare (E0282)
+#   dynamic-closure  a closure sent back as `like dynamic` the same (E0282)
+#   hash-has         a bare text parameter read by `known/has(name)` was taken for `str` (E0277)
+#   handed-on        that closure handed on to a task-typed parameter (E0631)
+#   raising-let      a non-raising closure saved in a let INSIDE a closure and handed to a raising task slot, with no
+#                    `Ok` adapter (E0271, item 1110)
+#   raising-let-top  the same let at a task's own level, the twin that held already
+#   dynamic-async    an async closure declared `like dynamic` whose body falls off its end resolved to `()` (E0271,
+#                    item 1111)
+#   dynamic-sync     its sync twin
+# The original's ONLY and SHOW variables (one shape, the emitted Rust kept) were for a person at a shell and are left out.
+# The "builds for node" and "builds for rust" lines stood in for these when a compile refused: here a refused compile
+# fails the same tests. No rustc is the test's skip.
+
+load ./shared/rust-native
+  find native-case
+  find native-case-of
+  find call-of
+
+host let-closure-text, <task shout\n  take word, like text\n  like text\n  save loud, \<\{word\}!\>\n  back loud\n\ntask check\n  like text\n  save cry\n    task\n      take name, like text\n      like text\n      save said, shout(name)\n      back said\n  back \<\{cry(\<a\>)\}\{cry(\<b\>)\}\>\n>
+
+host dynamic-closure-text, <task maker\n  take tail, like text\n  like dynamic\n  save glue, \<\{tail\}\>\n  back\n    task\n      take head, like text\n      like text\n      save said, shout(\<\{head\}\{glue\}\>)\n      back said\n\ntask shout\n  take word, like text\n  like text\n  save loud, \<\{word\}!\>\n  back loud\n\ntask check\n  like text\n  save made, maker(\<!\>)\n  save other, maker(\<?\>)\n  back \<made\>\n>
+
+host hash-has-text, <task check\n  like text\n  save known, make hash\n  known/set(\<a\>, true)\n  save seen\n    task\n      take name, like text\n      like boolean\n      save found, known/has(name)\n      back found\n  back \<\{seen(\<a\>)\}|\{seen(\<b\>)\}\>\n>
+
+host handed-on-text, <load @term/base/list\n  find push\n\ntask count-kept\n  take names, like list, like text\n  take keep\n    like task\n      take name, like text\n      like boolean\n  like number\n  save n, 0\n  walk names\n    take one\n    fork test, keep(one)\n      hold\n        save n, add(n, 1)\n  back n\n\ntask check\n  like text\n  save known, make hash\n  known/set(\<a\>, true)\n  save seen\n    task\n      take name, like text\n      like boolean\n      save found, known/has(name)\n      back found\n  save given, make list\n  push(given, \<a\>)\n  push(given, \<b\>)\n  push(given, \<a\>)\n  back \<\{count-kept(given, seen)\}\>\n>
+
+host raising-let-text, <task tries\n  take reason, like text\n  take fail\n    like task\n      take reason, like text\n      like boolean\n      halt failure\n  like boolean\n  save said, fail(reason)\n  back said\n\ntask check\n  like text\n  save run\n    task\n      like text\n      save failed-once\n        task\n          take reason, like text\n          like boolean\n          save note, \<\{reason\}?\>\n          back is-equal(note, \<x?\>)\n      save got, tries(\<x\>, failed-once)\n      back \<\{got\}\>\n  save said, run()\n  back \<\{said\}\>\n>
+
+host raising-let-top-text, <task tries\n  take reason, like text\n  take fail\n    like task\n      take reason, like text\n      like boolean\n      halt failure\n  like boolean\n  save said, fail(reason)\n  back said\n\ntask check\n  like text\n  save failed-once\n    task\n      take reason, like text\n      like boolean\n      save note, \<\{reason\}?\>\n      back is-equal(note, \<x?\>)\n  save got, tries(\<x\>, failed-once)\n  back \<\{got\}\>\n>
+
+host dynamic-async-text, <task settle\n  take dir, like text\n  mark async\n  save note, \<\{dir\}/\>\n  save more, \<\{note\}!\>\n\ntask keep-it\n  take given, like dynamic\n  like text\n  save said, \<kept\>\n  back said\n\ntask check\n  like text\n  save dir, \<d\>\n  save starter\n    task\n      like dynamic\n      mark async\n      settle(dir)\n  back keep-it(starter)\n>
+
+host dynamic-sync-text, <task settle\n  take dir, like text\n  save note, \<\{dir\}/\>\n  save more, \<\{note\}!\>\n\ntask keep-it\n  take given, like dynamic\n  like text\n  save said, \<kept\>\n  back said\n\ntask check\n  like text\n  save dir, \<d\>\n  save starter\n    task\n      like dynamic\n      settle(dir)\n  save ran, starter()\n  back keep-it(starter)\n>
+
+# one shape by its name, its `check` printed alone
+task shape
+  take name, like text
+  take text, like text
+  like native-case
+
+  back native-case-of(name, text, make(list, <check>), make(list, call-of(<check>, <check>, <>)))
+
+test <let-closure: TypeScript answers>
+  host one, shape(<let-closure>, let-closure-text)
+  want hold, is-equal(one/typescript, <a!b!>)
+
+test <let-closure: rustc compiles it>
+  host one, shape(<let-closure>, let-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <let-closure: Rust answers what TypeScript does>
+  host one, shape(<let-closure>, let-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <a!b!>)
+
+test <dynamic-closure: TypeScript answers>
+  host one, shape(<dynamic-closure>, dynamic-closure-text)
+  want hold, is-equal(one/typescript, <made>)
+
+test <dynamic-closure: rustc compiles it>
+  host one, shape(<dynamic-closure>, dynamic-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <dynamic-closure: Rust answers what TypeScript does>
+  host one, shape(<dynamic-closure>, dynamic-closure-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <made>)
+
+test <hash-has: TypeScript answers>
+  host one, shape(<hash-has>, hash-has-text)
+  want hold, is-equal(one/typescript, <true|false>)
+
+test <hash-has: rustc compiles it>
+  host one, shape(<hash-has>, hash-has-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <hash-has: Rust answers what TypeScript does>
+  host one, shape(<hash-has>, hash-has-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <true|false>)
+
+test <handed-on: TypeScript answers>
+  host one, shape(<handed-on>, handed-on-text)
+  want hold, is-equal(one/typescript, <2>)
+
+test <handed-on: rustc compiles it>
+  host one, shape(<handed-on>, handed-on-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <handed-on: Rust answers what TypeScript does>
+  host one, shape(<handed-on>, handed-on-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <2>)
+
+test <raising-let: TypeScript answers>
+  host one, shape(<raising-let>, raising-let-text)
+  want hold, is-equal(one/typescript, <true>)
+
+test <raising-let: rustc compiles it>
+  host one, shape(<raising-let>, raising-let-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <raising-let: Rust answers what TypeScript does>
+  host one, shape(<raising-let>, raising-let-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <true>)
+
+test <raising-let-top: TypeScript answers>
+  host one, shape(<raising-let-top>, raising-let-top-text)
+  want hold, is-equal(one/typescript, <true>)
+
+test <raising-let-top: rustc compiles it>
+  host one, shape(<raising-let-top>, raising-let-top-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <raising-let-top: Rust answers what TypeScript does>
+  host one, shape(<raising-let-top>, raising-let-top-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <true>)
+
+test <dynamic-async: TypeScript answers>
+  host one, shape(<dynamic-async>, dynamic-async-text)
+  want hold, is-equal(one/typescript, <kept>)
+
+test <dynamic-async: rustc compiles it>
+  host one, shape(<dynamic-async>, dynamic-async-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <dynamic-async: Rust answers what TypeScript does>
+  host one, shape(<dynamic-async>, dynamic-async-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <kept>)
+
+test <dynamic-sync: TypeScript answers>
+  host one, shape(<dynamic-sync>, dynamic-sync-text)
+  want hold, is-equal(one/typescript, <kept>)
+
+test <dynamic-sync: rustc compiles it>
+  host one, shape(<dynamic-sync>, dynamic-sync-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/state, <ran>)
+
+test <dynamic-sync: Rust answers what TypeScript does>
+  host one, shape(<dynamic-sync>, dynamic-sync-text)
+  fork test, is-equal(one/run/state, <skipped>)
+    hold
+      skip <no rustc>
+  want hold, is-equal(one/run/output, <kept>)

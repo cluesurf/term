@@ -28,6 +28,7 @@ load @term/base/maybe
 load @term/base/text
   find starts-with
   find char-at
+  find to-upper-case
 
 load @term/base/text/unicode
   find to-runes
@@ -150,6 +151,7 @@ load ./program-warnings
 load ./rust-names
   find rust-type-context
   find rust-type
+  find rust-element
   find snake
   find pascal
   find boxable-forms
@@ -170,6 +172,7 @@ load ../check/parallel
   find walk-raises
 
 load ./rust-tables
+  find module-bindings
   find module-bindings-of
   find phantom-forms
   find form-traits-of
@@ -238,6 +241,14 @@ form rust-host-structs
   mark shared
   link defs, like list, like text
   link of, like hash, like text, like text
+  # each struct's field types as Rust spells them, for the Sync test of the statics
+  link fields, like hash, like text, like list, like text
+
+# a struct as the Sync test of the statics reads it: its field types as Rust spells them, and its generic letters,
+# which stand for the type arguments a spelling names beside it
+form rust-sync-struct
+  link fields, like list, like text
+  link letters, like list, like text
 
 # the slice-key walk of one task's body
 form rust-slice-scan
@@ -589,6 +600,7 @@ task name-host-record
       link fields
       save named-fields, make list
       save texts, make list
+      save spellings, make list
       walk fields
         take field
         save inner, field/value
@@ -597,19 +609,25 @@ task name-host-record
             save nested-name, <{base}{pascal(field/name)}>
             save renamed, name-host-record(inner, nested-name, structs, context)
             push(texts, <pub {snake(field/name)}: {nested-name}>)
+            push(spellings, nested-name)
             save named-field
               make field-value
                 bind name, field/name
                 bind value, renamed
             push(named-fields, named-field)
           miss
-            push(texts, <pub {snake(field/name)}: {host-leaf-type(inner, context)}>)
+            save leaf, host-leaf-type(inner, context)
+            push(texts, <pub {snake(field/name)}: {leaf}>)
+            push(spellings, leaf)
             push(named-fields, field)
       save copy/name, base
       save copy/fields, named-fields
       save defs, structs/defs
       push(defs, <#[derive(Clone)] pub struct {base} \{ {join-with(texts, <, >)} \}>)
       save structs/defs, defs
+      save spelled-fields, structs/fields
+      save spelled-fields/{base}, spellings
+      save structs/fields, spelled-fields
     miss
       save idle, 0
   back copy
@@ -648,6 +666,225 @@ task name-host-trees
             push(out, one)
       miss
         push(out, one)
+  back out
+
+# ---- the process-wide statics ----
+
+# the words of a Rust type's spelling: each run of letters, digits and underscores
+task rust-type-words
+  take spelled, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save word, make list
+  walk to-runes(spelled)
+    take code
+    save digit, and(is-above(code, 47), is-below(code, 58))
+    save upper, and(is-above(code, 64), is-below(code, 91))
+    save lower, and(is-above(code, 96), is-below(code, 123))
+    fork test, or(or(digit, upper), or(lower, is-equal(code, 95)))
+      hold
+        push(word, code)
+        turn next
+    fork test, is-above(word/length, 0)
+      hold
+        push(out, from-runes(word))
+        save word, make list
+  fork test, is-above(word/length, 0)
+    hold
+      push(out, from-runes(word))
+  back out
+
+# the words a Sync spelling holds besides its structs: the owned scalars and text, `Vec` and `Box`, and the `std` path
+# they may be written under
+task sync-words
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <std>)
+  push(out, <bool>)
+  push(out, <char>)
+  push(out, <i8>)
+  push(out, <i16>)
+  push(out, <i32>)
+  push(out, <i64>)
+  push(out, <u8>)
+  push(out, <u16>)
+  push(out, <u32>)
+  push(out, <u64>)
+  push(out, <isize>)
+  push(out, <usize>)
+  push(out, <f32>)
+  push(out, <f64>)
+  push(out, <str>)
+  push(out, <String>)
+  push(out, <Vec>)
+  push(out, <Box>)
+  back out
+
+# WHETHER A RUST SPELLING MAY SIT IN A PROCESS-WIDE STATIC (Sync and Send): every word in it is an owned scalar, text,
+# a `Vec` or a `Box`, a generic letter of the struct being read, or a struct of `table` whose own fields are so. An
+# `Rc`, a `RefCell`, a `dyn` value, a `TermShared` handle, the exception carrier and a name `table` does not hold (a
+# native handle, a form left out of it) are not. A struct met again while it is read counts as so, since what makes it
+# Sync is read where it was first met
+task is-sync-spelling
+  take spelled, like text
+  take table, like hash, like text, like rust-sync-struct
+  take letters, like list, like text
+  take seen, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  save plain, sync-words()
+  walk rust-type-words(spelled)
+    take word
+    fork test, or(has-name(plain, word), has-name(letters, word))
+      hold
+        turn next
+    fork test, not(table/has(word))
+      hold
+        back false
+    fork test, seen/has(word)
+      hold
+        turn next
+    save seen/{word}, true
+    save held, table/get(word)
+    walk held/fields
+      take field
+      fork test, not(is-sync-spelling(field, table, held/letters, seen))
+        hold
+          back false
+  back true
+
+# a form field's type as the form's struct spells it: a list the form owns is the plain `Vec`
+task field-spelling
+  take given, like type
+  take owned, like boolean
+  take context, like rust-type-context
+  like text
+  mark private
+
+  fork test, owned
+    hold
+      sift given
+        case array
+          link element
+          back <Vec\<{rust-element(element, context)}\>>
+        miss
+          save idle, 0
+  back spell(given, context)
+
+# THE MODULE BINDINGS HELD IN ONE PROCESS-WIDE `LazyLock` STATIC (decision 138 rule 4, amended by item 1124): a record
+# of a named form or a `host` data tree, literal or computed, whose Rust type is Sync. Each form's struct is read with
+# its fields spelled as compile/rust-forms.tree writes them, a list it owns the plain `Vec`. A `mark shared`, `mark
+# sole` or exception form, a case holding a boxed payload, and a recursive field held in an `Rc` are never Sync. A
+# scalar or text (a `const`), a slot, and a list or hash (an `Rc<RefCell>`, whose tasks write state every reader must
+# see on its thread) are not statics
+task module-statics-of
+  take program, like list, like statement
+  take bindings, like module-bindings
+  take structs, like rust-host-structs
+  take context, like rust-type-context
+  take field-lists, like hash, like text, like boolean
+  take recursive-fields, like hash, like text, like boolean
+  take boxed-forms, like hash, like text, like boolean
+  take payloads, like hash, like text, like text
+  take exception-forms, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save table, make hash
+  walk structs/fields/keys()
+    take host-name
+    save no-letters, make list
+    save table/{host-name}, make(rust-sync-struct, bind(fields, structs/fields/get(host-name)), bind(letters, no-letters))
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        link fields
+        link variants
+        link shared
+        link sole
+        fork test, or(or(shared, sole), exception-forms/has(name))
+          hold
+            turn next
+        save whole, true
+        save spellings, make list
+        walk fields
+          take field
+          push(spellings, field-spelling(field/type, field-lists/has(<{name}/{field/name}>), context))
+        walk variants
+          take variant
+          fork test, payloads/has(<{name}/{variant/name}>)
+            hold
+              save whole, false
+          walk variant/fields
+            take field
+            fork test, recursive-fields/has(<{variant/name}/{field/name}>)
+              hold
+                fork test, boxed-forms/has(name)
+                  hold
+                    push(spellings, <Box\<{spell(field/type, context)}\>>)
+                  miss
+                    save whole, false
+                turn next
+            push(spellings, field-spelling(field/type, field-lists/has(<{variant/name}/{field/name}>), context))
+        fork test, whole
+          hold
+            save letters, make list
+            walk params
+              take param
+              push(letters, to-upper-case(param))
+            save struct-name, pascal(name)
+            save table/{struct-name}, make(rust-sync-struct, bind(fields, spellings), bind(letters, letters))
+      miss
+        save idle, 0
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        link let-mutable
+        link let-span
+        link let-type
+        fork test, or(or(has-name(bindings/slots, let-name), has-name(bindings/scalars, let-name)), out/has(let-name))
+          hold
+            turn next
+        save spelled, <>
+        fork test, structs/of/has(let-name)
+          hold
+            save spelled, structs/of/get(let-name)
+          miss
+            sift expression-type(let-init)
+              case some
+                link known
+                save spelled, spell(known, context)
+              case none
+                save spelled, rust-type(let-type, context)
+        # only a record or a `host` tree: a binding that names no struct (a computed number or text, one of no known
+        # type) stays as it was
+        save names-struct, false
+        walk rust-type-words(spelled)
+          take word
+          fork test, table/has(word)
+            hold
+              save names-struct, true
+        fork test, not(names-struct)
+          hold
+            turn next
+        save no-letters, make list
+        fork test, is-sync-spelling(spelled, table, no-letters, make hash)
+          hold
+            save out/{let-name}, true
+      miss
+        save idle, 0
   back out
 
 # ---- the slice keys ----
@@ -2115,9 +2352,11 @@ task emit-rust-pass
     make rust-host-structs
       bind defs, make list
       bind of, make hash
+      bind fields, make hash
   save program, name-host-trees(program, structs, context)
   # WHAT EACH MODULE BINDING IS, the forms that need a PhantomData marker, the traits each form derives
   save bindings, module-bindings-of(program)
+  save module-statics, module-statics-of(program, bindings, structs, context, field-lists, recursive-fields, boxed-forms, payloads, exception-forms)
   save phantom-table, make hash
   walk phantom-forms(program, context)
     take phantom
@@ -2476,6 +2715,7 @@ task emit-rust-pass
       bind scalar-consts, flags-of(bindings/scalars)
       bind text-consts, flags-of(bindings/texts)
       bind host-struct-of, structs/of
+      bind module-statics, module-statics
       bind phantom-forms, phantom-table
       bind aliases, aliases
       bind binds, binds

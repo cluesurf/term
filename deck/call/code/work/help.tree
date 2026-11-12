@@ -40,6 +40,13 @@ load @term/base/maybe
   find some
   find none
 
+load @term/base/json
+  find stringify, name json-written
+  find from-text, name json-of-text
+
+load @term/base/terminal
+  find terminal-columns
+
 # one column of a row, as cliui holds it: its text, its width (0 when the room left decides), its left and right
 # padding, the empty lines above it, and whether its text is set against the right edge
 form help-column
@@ -55,19 +62,23 @@ form help-row
   link columns, like list, like help-column
   link span, like boolean
 
-# a choice as yargs wrote it, through JSON
-bind help-quoted
+# a choice as yargs wrote it, through JSON (@term/base/json, so it reads the same natively: decision 138 rule 1, item
+# term-self-host-001-1119)
+task help-quoted
   take value, like text
   like text
-  case node
-    text <JSON.stringify($value)>
+  back json-written(json-of-text(value))
 
-# yargs' width: 80, or the terminal's columns when stdout is a narrower terminal (usage.js windowWidth)
-bind help-width
+# yargs' width: `most`, or the terminal's columns when stdout is a narrower terminal (usage.js windowWidth).
+# @term/base's terminal-columns answers 80 when output is no terminal, which is `most` here: `help-text` asks for 80
+task help-width
   take most, like number
   like number
-  case node
-    text <(process.stdout.columns ? Math.min($most, process.stdout.columns) : $most)>
+  save cells, terminal-columns()
+  fork test, and(is-above(cells, 0), is-below(cells, most))
+    hold
+      back cells
+  back most
 
 # ---- cliui ----
 

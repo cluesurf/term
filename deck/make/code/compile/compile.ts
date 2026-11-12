@@ -58,8 +58,13 @@ import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches } from '@term/make/code/check/strict'
 import type { CoverTarget } from '@term/make/code/ir/cover'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
-import { makeParseMemo, scopeList } from '@term/make/code/compile/load'
+import {
+  makeParseMemo,
+  portScan,
+  scopeList,
+} from '@term/make/code/compile/load'
 import type {
+  ImportScan,
   ImportScope,
   ParseMemo,
   Resolver,
@@ -69,9 +74,11 @@ import type {
 import {
   reviveBigint,
   storeBigint,
+  TEXT_HASHES,
   writesOf,
   type CompileCache,
 } from '@term/make/code/compile/cache'
+import { refineState } from '@term/make/code/check/refine'
 import {
   milledUnit as cachedMill,
   output as cachedOutput,
@@ -305,19 +312,15 @@ export function compile(
   }
 
   const cache = options?.cache
-  const graphKey = graphKeyPort(
-    source,
-    reading,
-    loaded.graph,
-    checkerSwitches,
-  )
+  const given = givenOf(options?.deckOf, options?.modules, undefined)
+  const graphKey = graphKeyPort(source, reading, loaded.graph, given)
 
   // what the build captures, one `graph-job` (decision 031 section 6): the closure the cache runs on a miss holds it
   const job = {
     source,
     reading,
     graph: loaded.graph,
-    given: givenOf(options?.deckOf, options?.modules, undefined),
+    given,
   }
 
   const build = (): CompileResult =>
@@ -409,24 +412,51 @@ export function sideFile(
 }
 
 // WHAT COMPILE READS OF ITS OPTIONS, as the driver takes it: one parse memo for the load and the build, the cache's
-// two closures, and every option with whether it was given
+// closures, the import walk's resolver, scan and walk memo in compile/loading.tree's shapes, and every option with
+// whether it was given
 function readingOf(options?: CompileOptions): CompileReading {
   const parsed = options?.parsed ?? makeParseMemo()
   const cache = options?.cache
   const cover = options?.cover
+  const resolve = options?.resolve
 
   return {
-    hasResolve: options?.resolve !== undefined,
-    resolve: options?.resolve,
-    resolveSource: resolverTask(options?.resolve),
+    hasResolve: resolve !== undefined,
+    resolveLoad: (
+      path: string,
+      from: string,
+      how: Maybe<{ base?: string }>,
+    ) => {
+      const found = resolve?.(
+        path,
+        from,
+        how.form === 'some' ? how.value : undefined,
+      )
+
+      return found ? { form: 'some', value: found } : { form: 'none' }
+    },
+    resolveSource: resolverTask(resolve),
     parsed,
-    scanOf: cache
-      ? (unit: Source, compute: () => unknown) =>
-          writesOf(cache, unit.file, () =>
-            cachedScan(cache.state, unit.file, unit.text, compute),
-          )
-      : undefined,
-    walked: options?.walked,
+    scan: portScan(
+      parsed,
+      cache
+        ? (unit, compute) =>
+            writesOf(
+              cache,
+              unit.file,
+              () =>
+                cachedScan(
+                  cache.state,
+                  unit.file,
+                  unit.text,
+                  compute,
+                ) as ImportScan,
+            )
+        : undefined,
+    ),
+    // a fresh memo per walk when the caller keeps none (compile/load.ts `collectModules`)
+    walked: options?.walked ?? new Map(),
+    keepsWalked: options?.walked !== undefined,
     roleOf: file => options?.roleOf?.(file) ?? '',
     leanOf: file => options?.leanOf?.(file) ?? false,
     hasEnv: options?.env !== undefined,
@@ -463,8 +493,8 @@ function readingOf(options?: CompileOptions): CompileReading {
 }
 
 // WHAT A PHASE TAKES AS THE HOST HOLDS IT: the deck lookup, the per-module URL and the emitted files' set, the
-// checker's switches, check/overload.ts's two tables (module state the checker reads after the gate), node identity
-// and ir/simplify.ts's host-global test
+// checker's switches, check/overload.ts's two tables (module state the checker reads after the gate), node identity,
+// ir/simplify.ts's host-global test and the run's state
 function givenOf(
   deckOf:
     | ((file: string) => { name: string; root: string } | undefined)
@@ -487,6 +517,9 @@ function givenOf(
     sameNode: (left: unknown, right: unknown) => left === right,
     foreign: (statement: Statement) =>
       statement.form === 'let' && statement.foreign !== undefined,
+    // the run's state, the one instance of each this process holds: check/refine.ts's prover state, which holds.ts and
+    // totality.ts share, and compile/cache.ts's text hashes, which every cache shares (decision 142 rule 2)
+    state: { refine: refineState, hashes: TEXT_HASHES },
   } as DriverGiven
 }
 

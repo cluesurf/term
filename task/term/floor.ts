@@ -225,6 +225,8 @@ const HOST_SCRIPTS = new Set([
   'task/distro/debian.sh',
   'task/distro/fedora.sh',
   'task/launcher/term.go',
+  // runs the Term build tasks on stage0 before any `term` exists (decision 140, item term-self-host-001-0720)
+  'task/launch.mjs',
 ])
 
 const STRAY = new Set([

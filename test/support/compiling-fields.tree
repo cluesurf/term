@@ -15,6 +15,7 @@ load ./compiling
   find statements-of
   find project-path
   find file-text
+  find typescript-syntax-errors
 
 load @term/base/list
   find contains
@@ -167,6 +168,12 @@ test <roll and cover answer on the outcome when asked>
 test <role is one role for every file>
   want hold, compile-text(plain)/ok
   want hold, not(compile-text(plain, make(compile-choice, bind(role, <host>)))/ok)
+
+test <typescript-syntax-errors answers empty for a text that parses, and names the error of one that does not>
+  want hold, is-equal(typescript-syntax-errors(<let markers = ([] as number[])\n;\{\n  const at = 1\n\}\n>)/length, 0)
+  host errors, typescript-syntax-errors(<let markers = ([] as number[])\n\{\n  const at = 1\n\}\n>)
+  want hold, is-above(errors/length, 0)
+  want hold, contains(errors, <'=\>' expected.>)
 
 test <a path under a root and the text of a file reach a real module>
   host path, project-path(<deck/make>, <code/compile/program-gate-probe.tree>)

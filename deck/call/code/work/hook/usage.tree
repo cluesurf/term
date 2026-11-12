@@ -1,156 +1,111 @@
-# How a console refuses a command line it does not understand: one failed item naming what was not understood, the
-# closing `The command line was not understood` with a `next` field saying what to run, exit 2 (section 18 of the
-# output standard). Term's own console (work/dispatch.tree) and every program `term boot` writes (work/hook/running.tree,
-# shipped as host/dock.mjs) refuse through these tasks, so the two cannot drift (zone decision 002, item
-# term-self-host-001-0983). The help both print is work/help.tree's `help-text`.
+# How a console refuses a command line it does not understand, on node: one failed item naming what was not
+# understood, the closing `The command line was not understood` with a `next` field saying what to run, exit 2
+# (section 18 of the output standard). Every console refuses through these tasks, term's own (work/dispatch.tree,
+# `refuse-usage`) and every program `term boot` writes (work/hook/running.tree, shipped as host/dock.mjs,
+# `close-refusal` after work/hook/deciding.tree's `decide` drew the opening), and the text is work/hook/refusal.tree's,
+# host-free, so there is one refusal and it cannot drift (zone decision 002, item term-self-host-001-0983; decision 138
+# rule 1 of term/self-host/change/001-finish-self-host, items term-self-host-001-1120 and 1159). The help both print
+# is work/help.tree's `help-text`.
 #
-# The run is the printer's (work/output/printer.tree): a refusal opens it under the console's own name and version,
-# reports, and closes it. The flags were not understood, so the run prints as the defaults say.
+# This file is the host side: what the printer read when it opened a run (TERM_DEPTH, the output the flags' defaults
+# open, the home and working folders, the clock), the writes as the printer made them (item/emit.tree's raw writes),
+# the clock again for the closing, and the exit code the printer's closing set.
 
-load @term/base/text
-  find substring
-  find char-count
-  find to-lower-case
-  find to-upper-case
+load @term/call/work/hook/refusal
+  find usage-ask
+  find refusal-view
+  find refusal-close
+  find refusal-said
+  find refusal-closed
+  find said
 
-# the plain route form, so the refusal loads nothing from @term/make (decision 138 rule 1 of
-# term/self-host/change/001-finish-self-host, item term-self-host-001-1118)
-load @term/call/work/hook/route
-  find route
+# the output a run opens, and the raw writes the printer makes, as the item library does them on every backend
+load @term/call/work/item/emit
+  find open-output
+  find print-data
+  find print-raw-error
 
-load @term/call/work/output/printer
-  find set-output
-  find open-run
-  find report
-  find close-run
+load @term/call/work/item/run
+  find run-options
 
-dock load
-  load <global:process>, name usage-process
-  load <global:JSON>, name usage-json
+load @term/call/work/item/standard
+  find make-standard
 
-# a refusal: the console's name and version, what was not understood (its first line, then the rest), and what to run
-form usage-ask
-  link name, like text
-  link mark, like text
-  link message, like text
-  link lines, like list, like text
-  link next, like text
+load @term/base/environment
+  find directory, name working-directory
 
-# a word that names no command, among the commands of a console
-form command-guess
-  link name, like text
-  link routes, like list, like route
-  link word, like text
+load @term/base/time
+  find now
 
-form usage-opening
-  link verb, like text
-  link root, like text
-  link tool, like text
-
-form usage-item
-  link glyph, like text
-  link kind, like text
-  link verb, like text
-  link subject, like text
-  link message, like list, like text
-
-form usage-close
-  link verdict, like text
-  link next, like text
-  link failure, like text
-
-# a host value as text, the empty text when it is none
-task usage-text
-  take value, like unknown
-  like text
-  mark private
-
-  sift value
-    case text
-      back value
-    miss
-      back <>
-
-# the working directory, the empty text when the host gives none
-task usage-root
-  like text
-  mark private
-
-  back usage-text(usage-process/cwd())
-
-task capitalize
-  take value, like text
-  like text
-  mark private
-
-  back <{to-upper-case(substring(value, 0, 1))}{substring(value, 1)}>
-
-# Levenshtein distance between two words, two rows at a time
-task edit-distance
-  take a, like text
-  take b, like text
+# how deep in other Term runs this one is, TERM_DEPTH as the printer reads it (work/output/printer.tree `read-depth`)
+bind usage-depth
   like number
-  mark private
+  case node
+    text <Math.max(0, Number(process.env.TERM_DEPTH ?? 0) || 0)>
 
-  save m, char-count(a)
-  save n, char-count(b)
-  save row, make list
-  save j, 0
-  walk test
-    hook test, is-maximum(j, n)
-    hook hold
-      row/push j
-      save j, add(j, 1)
-  save i, 1
-  walk test
-    hook test, is-maximum(i, m)
-    hook hold
-      save next, make list
-      next/push i
-      save j, 1
-      walk test
-        hook test, is-maximum(j, n)
-        hook hold
-          save cost, 1
-          fork test, is-equal(substring(a, subtract(i, 1), i), substring(b, subtract(j, 1), j))
-            hold
-              save cost, 0
-          save before, subtract(j, 1)
-          save best, add(row/{j}, 1)
-          save left, add(next/{before}, 1)
-          fork test, is-below(left, best)
-            hold
-              save best, left
-          save across, add(row/{before}, cost)
-          fork test, is-below(across, best)
-            hold
-              save best, across
-          next/push best
-          save j, add(j, 1)
-      save row, next
-      save i, add(i, 1)
-  back row/{n}
-
-# what to run instead of a word that names no command: the nearest command, two edits away at most, else the console
-# alone, which lists its commands
-task nearest-command
-  take guess, like command-guess
+# the home folder, which the opening item's subject is shown under as `~` (printer.tree `show-path`)
+bind usage-home
   like text
+  case node
+    text <process.getBuiltinModule('node:os').homedir()>
 
-  save best, <>
-  save distance, 1000
-  save lower, to-lower-case(guess/word)
-  walk guess/routes
+# the process's exit code, set as the printer's closing set it (printer.tree `close-run`)
+bind usage-set-exit-code
+  take code, like number
+  like void
+  case node
+    text <void (process.exitCode = $code)>
+
+# what a refusal reads from the host, as the printer read it when it opened a run: the output the flags' defaults
+# open at this depth, the home and working folders, and the clock the run opens at
+task refusal-view-of
+  like refusal-view
+
+  save options, make run-options, depth(usage-depth())
+  save output, open-output(options, make-standard())
+  back make refusal-view, output(output), home(usage-home()), root(working-directory()), clock(now())
+
+# one write, as the printer made it: text to stdout or stderr as it is, a line with its end
+task write-said
+  take one, like said
+  like void
+
+  sift one
+    case said-raw
+      link stream
+      link written
+      fork test, is-equal(stream, <out>)
+        hold
+          print-data(written)
+        miss
+          print-raw-error(written)
+    case said-line
+      link stream
+      link line
+      fork test, is-equal(stream, <out>)
+        hold
+          print-data(<{line}\n>)
+        miss
+          print-raw-error(<{line}\n>)
+
+task write-all
+  take writes, like list, like said
+  like void
+
+  walk writes
     take one
-    save each, edit-distance(lower, one/path)
-    fork test, is-below(each, distance)
-      hold
-        save distance, each
-        save best, one/path
-  fork test, and(is-maximum(distance, 2), is-unequal(best, <>))
-    hold
-      back <{guess/name} {best}>
-  back <{guess/name}, for the list of commands>
+    write-said(one)
+
+# the closing of a refusal whose opening and failed item are written: the clock read now, so the time since the run
+# opened is real, the closing written, the exit code set and answered
+task close-refusal
+  take pending, like refusal-close
+  like number
+
+  save closed, refusal-closed(pending, now())
+  write-all(closed/writes)
+  usage-set-exit-code(closed/code)
+  back closed/code
 
 # A command line refused: the run opened under the console's name, a failed item with the message capitalized and its
 # other lines, and the closing with the `next` field, exit 2
@@ -158,12 +113,6 @@ task refuse-usage
   take ask, like usage-ask
   like number
 
-  save tool, ask/name
-  fork test, is-unequal(ask/mark, <>)
-    hold
-      save tool, <{ask/name} {ask/mark}>
-  set-output(usage-json/parse(<\{\}>), ask/mark)
-  open-run(make usage-opening, verb(ask/name), root(usage-root()), tool(tool))
-  report(make usage-item, glyph(<failed>), kind(<problem>), verb(ask/name), subject(capitalize(ask/message)), message(ask/lines))
-  save code, close-run(make usage-close, verdict(<The command line was not understood>), next(ask/next), failure(<usage>))
-  back code
+  save opened, refusal-said(ask, refusal-view-of())
+  write-all(opened/writes)
+  back close-refusal(opened/closing)

@@ -1,0 +1,492 @@
+note <term hunt fails closed: a check that did not run is never reported as a pass>
+
+# Ported from hunt.test.ts by statement (item term-self-host-001-0583, decision 116), one test per vitest `it`, named
+# `<describe>: <it>`, its `expect`s the test's wants in order. The subject is ../code/compiler-hunt.tree
+# `hunt-seed-compiler` and `render-hunt`, with ../code/compiler-fuzzing.tree's `shrink-input`, `minimize-crash` and
+# `fuzz-corpus` (Term modules, loaded). Every case is a shape that shipped as a silent pass. A fuzz child is stood in for
+# by a one-line node script, so each failure mode is exact. Each body is a raw literal, the
+# original's text with its JavaScript string escapes as they were.
+
+load ../code/compiler-hunt
+  find hunt-seed-compiler
+  find render-hunt
+  find hunt-result
+  find hunt-term-root-above
+
+load ../code/compiler-fuzzing
+  find shrink-input
+  find minimize-crash
+  find fuzz-corpus
+  find fuzz-source
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+  find contains
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+dock load
+  load <@term/make/code/compile/compile>, name hunt-compiling
+  load <global:process>, name hunt-process
+
+# a fuzz entry as seed-hunt.ts typed it: a command and its arguments
+form fuzz-entry
+  link command, like text
+  link args, like list, like text
+
+# what hunt-seed-compiler reads, the original's option names
+form hunt-ask
+  link root, like text
+  link resolve, like dynamic
+  link files
+    like list, like text
+    need false
+  link glob
+    like text
+    need false
+  link runs, like number
+  link seeds, like number
+  link fuzz-timeout-sec
+    like number
+    need false
+  link perf-budget-ms
+    like number
+    need false
+  link fuzz-entry
+    like dynamic
+    need false
+
+form hunt-project
+  link root, like text
+  link files, like list, like text
+
+form compile-choice
+  link resolve, like dynamic
+
+# host value: the original's `undefined`
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# the resolver every case compiles with: nothing answers a load (`() => undefined`)
+task none
+  take path, like text
+  take from, like text
+  like dynamic
+
+  back nothing()
+
+# a project of one file in a new temporary folder
+task project
+  like hunt-project
+
+  host root, temp-folder(<hunt-test->)
+  host file, <{root}/answer.tree>
+  write-file(file, <task answer\n  like number\n  send back\n    code 42\n>)
+  back make(hunt-project, bind(root, root), bind(files, make(list, file)))
+
+# a fake fuzz child: node running `body` from a script file of its own, handed the campaign args after it. The
+# original ran it as `node -e <body>`, where the args start at argv[1]: the script's first line drops its own path
+# from argv, so each body reads them where it did
+task child
+  take body, like text
+  like fuzz-entry
+
+  host script, <{temp-folder(<hunt-child->)}/child.cjs>
+  write-file(script, <process.argv.splice(1, 1)\n{body}\n>)
+  back make(fuzz-entry, bind(command, hunt-process/exec-path), bind(args, make(list, script)))
+
+# a child that writes a well-formed report: argv after `-e` is [reportOut, probeFile, runs, seed, corpus]
+host writes-report-body, <<require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: Number(process.argv[3]), crashes: [], codesSeen: [], corpusGrew: 0}))>>
+
+# a hunt of `files` (or a glob when `glob` is not empty) with this fuzz entry
+task hunt
+  take files, like list, like text
+  take root, like text
+  take seeds, like number
+  take entry, like dynamic
+  like hunt-result
+  mark async
+
+  back hunt-seed-compiler(make(hunt-ask, bind(root, root), bind(resolve, none), bind(files, files), bind(runs, 5), bind(seeds, seeds), bind(fuzz-entry, entry)))
+
+task unrun-text
+  take result, like hunt-result
+  like text
+
+  back join(result/unrun, <\n>)
+
+# ---- term hunt fails closed ----
+
+test <term hunt fails closed: passes only when every check ran on at least one input>
+  host p, project()
+  host result, hunt(p/files, p/root, 2, child(writes-report-body))
+  want hold, is-equal(result/unrun/length, 0)
+  want hold, is-equal(result/corpus/files, 1)
+  want hold, is-equal(result/corpus/compiled, 1)
+  want hold, is-equal(result/fuzz/runs, 10)
+  want hold, is-equal(result/backends, make(list, <typescript>, <rust>, <kotlin>, <swift>))
+  want hold, result/ok
+  want hold, contains(render-hunt(result), <hunt CLEAN: 1 file(s) read, 10 fuzz run(s), 4 backend(s) emitted>)
+
+test <term hunt fails closed: fails when no file was read>
+  host p, project()
+  host result, hunt(make(list), p/root, 1, child(writes-report-body))
+  want hold, not(result/ok)
+  want hold, is-equal(result/findings, 0)
+  want hold, contains(unrun-text(result), <no .tree files read>)
+  want hold, contains(render-hunt(result), <hunt INCOMPLETE>)
+  want hold, not(contains(render-hunt(result), <CLEAN>))
+
+test <term hunt fails closed: fails when a glob names a directory with no .tree files>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(glob, <missing>), bind(runs, 5), bind(seeds, 1), bind(fuzz-entry, child(writes-report-body))))
+  want hold, not(result/ok)
+  want hold, contains(unrun-text(result), <no .tree files read under missing>)
+
+test <term hunt fails closed: fails when the fuzz child exits non-zero>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, child(<<process.stderr.write('Cannot find module fuzz-campaign.ts'); process.exit(3)>>))
+  want hold, not(result/ok)
+  want hold, is-equal(result/fuzz/runs, 0)
+  want hold, contains(unrun-text(result), <fuzz seed 1: the campaign exited 3: Cannot find module>)
+  want hold, contains(render-hunt(result), <NOTHING FUZZED>)
+
+test <term hunt fails closed: fails when the fuzz child exits 0 but writes no report>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, child(<>))
+  want hold, not(result/ok)
+  want hold, contains(unrun-text(result), <wrote no report>)
+
+test <term hunt fails closed: fails when the fuzz command cannot start>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, make(fuzz-entry, bind(command, <{p/root}/no-such-binary>), bind(args, make list)))
+  want hold, not(result/ok)
+  want hold, contains(unrun-text(result), <could not start>)
+
+test <term hunt fails closed: fails when the campaigns executed zero runs>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, child(<<require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 0, crashes: [], codesSeen: [], corpusGrew: 0}))>>))
+  want hold, not(result/ok)
+  want hold, contains(unrun-text(result), <executed zero runs>)
+
+test <term hunt fails closed: fails when asked for zero seeds>
+  host p, project()
+  host result, hunt(p/files, p/root, 0, child(writes-report-body))
+  want hold, not(result/ok)
+  want hold, contains(unrun-text(result), <nothing was fuzzed>)
+
+test <term hunt fails closed: reports a hang, with the input that hung, as a finding>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(fuzz-timeout-sec, 1), bind(fuzz-entry, child(<<require('fs').writeFileSync(process.argv[2], 'task loop'); for (;;) {}>>))))
+  want hold, not(result/ok)
+  want hold, is-equal(result/findings, 1)
+  want hold, is-equal(result/hangs/length, 1)
+  host hang, like dynamic
+    get(result/hangs, 0)
+  want hold, is-equal(hang/input, <task loop>)
+  want hold, contains(render-hunt(result), <hunt FOUND 1 issue>)
+
+test <term hunt fails closed: reports a crash signature from a campaign as a finding>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, child(<<require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'x', error: 'TypeError: boom\n  at y', generation: 0}], codesSeen: [], corpusGrew: 0}))>>))
+  want hold, not(result/ok)
+  want hold, is-equal(result/crashes/found/length, 1)
+  host first, like dynamic
+    get(result/crashes/found, 0)
+  want hold, is-equal(first/signature, <TypeError: boom>)
+  # the program that raised it comes with it, so the crash can be reproduced without fuzzing again
+  want hold, is-equal(first/input, <x>)
+  want hold, matches(make(pattern, <<TypeError: boom\n\s+\| x>>), render-hunt(result))
+
+test <term hunt fails closed: a watchdog that fires before the first input is a run that did not happen, not a hang>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(fuzz-timeout-sec, 1), bind(fuzz-entry, child(<<for (;;) {}>>))))
+  want hold, not(result/ok)
+  want hold, is-equal(result/hangs/length, 0)
+  want hold, contains(unrun-text(result), <watchdog fired before the campaign wrote its first input>)
+
+# the campaign from source, as `source-fuzz-entry` answers when the module runs from its port: fuzz-entry.ts beside it
+# under tsx, with the Term root's tsconfig. Here the module runs inside term test's bundle, where no fuzz-entry.ts is
+# beside it (trap T-0577), so the entry is named from the Term root above the working folder
+task source-entry
+  like fuzz-entry
+
+  host root, hunt-term-root-above(hunt-process/cwd())
+  back make(fuzz-entry, bind(command, <npx>), bind(args, make(list, <tsx>, <--tsconfig>, <{root}/tsconfig.json>, <{root}/deck/test/host/port/code/fuzz-entry.ts>)))
+
+test <term hunt fails closed: runs the real fuzz campaign from source>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 20), bind(seeds, 1), bind(fuzz-timeout-sec, 120), bind(fuzz-entry, source-entry())))
+  want hold, is-equal(unrun-text(result), <>)
+  want hold, is-equal(result/fuzz/seeds-run, 1)
+  want hold, is-equal(result/fuzz/runs, 20)
+  want hold, is-equal(result/fuzz/corpus-added, 1)
+  want hold, result/ok
+
+# ---- crashes are shrunk ----
+
+# A crash is reported SHRUNK: the smallest program that still raises its signature, by delta debugging over lines and
+# then words. The failure here is stated exactly, so the shrink is held to an answer rather than to "smaller"
+
+host shrink-fixture, <task a\n  call x y boom z\n  save q\n    read r\nanchor here now\n  back 1>
+
+# whether some line holds `word` as a whole word (its words split at spaces)
+task has-word
+  take text, like text
+  take word, like text
+  like boolean
+
+  walk split(text, <\n>)
+    take line, like text
+    walk split(line, < >)
+      take part, like text
+      fork test, is-equal(part, word)
+        hold
+          back true
+  back false
+
+# whether some line holds `phrase` anywhere in it
+task has-phrase
+  take text, like text
+  take phrase, like text
+  like boolean
+
+  walk split(text, <\n>)
+    take line, like text
+    fork test, contains(line, phrase)
+      hold
+        back true
+  back false
+
+# fails while some line holds the word `boom` and some line holds `anchor`
+task fails
+  take text, like text
+  like boolean
+
+  back and(has-word(text, <boom>), has-phrase(text, <anchor>))
+
+# the parts but the one at `drop`
+task without
+  take parts, like list, like text
+  take drop, like number
+  like list, like text
+
+  host kept, make list
+  save at, 0
+  walk parts
+    take part, like text
+    fork test, is-unequal(at, drop)
+      hold
+        kept/push(part)
+    save at, add(at, 1)
+  back kept
+
+# a line's leading spaces
+task indent-of
+  take line, like text
+  like text
+
+  save indent, <>
+  walk split(line, <>)
+    take point, like text
+    fork test, is-unequal(point, < >)
+      hold
+        back indent
+    save indent, <{indent} >
+  back indent
+
+# a line's words, split at spaces, empty parts left out
+task words-of
+  take line, like text
+  like list, like text
+
+  host words, make list
+  walk split(line, < >)
+    take part, like text
+    fork test, is-unequal(part, <>)
+      hold
+        words/push(part)
+  back words
+
+# no single line can leave `small` and it still fail
+task no-line-can-leave
+  take small, like text
+  like boolean
+
+  host lines, split(small, <\n>)
+  save at, 0
+  walk lines
+    take line, like text
+    fork test, fails(join(without(lines, at), <\n>))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# no single word of any line can leave `small` and it still fail, the line's indentation kept
+task no-word-can-leave
+  take small, like text
+  like boolean
+
+  host lines, split(small, <\n>)
+  save at, 0
+  walk lines
+    take line, like text
+    host indent, indent-of(line)
+    host words, words-of(line)
+    save drop, 0
+    walk words
+      take word, like text
+      host fewer, make list
+      walk without(lines, at)
+        take other, like text
+        fewer/push(other)
+      host rebuilt, make list
+      save row, 0
+      walk lines
+        take each, like text
+        fork test, is-equal(row, at)
+          hold
+            rebuilt/push(<{indent}{join(without(words, drop), < >)}>)
+          miss
+            rebuilt/push(each)
+        save row, add(row, 1)
+      fork test, fails(join(rebuilt, <\n>))
+        hold
+          back false
+      save drop, add(drop, 1)
+    save at, add(at, 1)
+  back true
+
+test <crashes are shrunk: to the lines and words the failure needs, the indentation kept>
+  want hold, is-equal(shrink-input(shrink-fixture, fails), <  boom\nanchor>)
+
+test <crashes are shrunk: to a program no single line or word can leave>
+  host small, shrink-input(shrink-fixture, fails)
+  want hold, no-line-can-leave(small)
+  want hold, no-word-can-leave(small)
+
+test <crashes are shrunk: within its attempt limit, answering what it reached>
+  host calls, make list
+  save counted
+    task
+      take text, like text
+      like boolean
+      calls/push(text)
+      back fails(text)
+  host small, shrink-input(shrink-fixture, counted, 3)
+  want hold, not(is-above(calls/length, 3))
+  want hold, fails(small)
+
+test <crashes are shrunk: leaves a program that does not crash as it is>
+  want hold, is-equal(minimize-crash(<task answer\n  like number\n  back 42\n>), <task answer\n  like number\n  back 42\n>)
+
+test <crashes are shrunk: and the hunt reports the shrunk program, saying what it was shrunk from>
+  host p, project()
+  host result, hunt(p/files, p/root, 1, child(<<require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\nx\nb', error: 'TypeError: boom\n  at y', generation: 0}], codesSeen: [], corpusGrew: 0, shrunk: [{signature: 'TypeError: boom', input: 'x', from: 'a\nx\nb'}]}))>>))
+  want hold, is-equal(result/crashes/found/length, 1)
+  host first, like dynamic
+    get(result/crashes/found, 0)
+  want hold, is-equal(first/signature, <TypeError: boom>)
+  want hold, is-equal(first/input, <x>)
+  want hold, is-equal(first/from, <a\nx\nb>)
+  want hold, matches(make(pattern, <<TypeError: boom {2}\(shrunk from 3 lines to 1\)\n\s+\| x>>), render-hunt(result))
+
+test <crashes are shrunk: and a campaign the watchdog stops while it shrinks keeps the crash it found, unshrunk, beside the hang>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(fuzz-timeout-sec, 1), bind(fuzz-entry, child(<<const fs = require('fs'); fs.writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\nx', error: 'TypeError: boom', generation: 0}], codesSeen: [], corpusGrew: 0})); fs.writeFileSync(process.argv[2], 'x'); for (;;) {}>>))))
+  want hold, is-equal(result/hangs/length, 1)
+  host hang, like dynamic
+    get(result/hangs, 0)
+  want hold, is-equal(hang/input, <x>)
+  want hold, is-equal(result/crashes/found/length, 1)
+  host first, like dynamic
+    get(result/crashes/found, 0)
+  want hold, is-equal(first/signature, <TypeError: boom>)
+  want hold, is-equal(first/input, <a\nx>)
+  want hold, is-absent(first/from)
+  want hold, is-equal(result/fuzz/runs, 5)
+  want hold, is-equal(result/findings, 2)
+
+# ---- the compile budget ----
+
+# The compile budget is held: on the corpus, the fastest of each file's three compiles, and on every fuzzed input,
+# timed twice
+
+# the details of the corpus's perf violations
+task perf-details
+  take result, like hunt-result
+  like list, like text
+
+  host details, make list
+  walk result/corpus/violations
+    take one, like dynamic
+    fork test, is-equal(one/violation/oracle, <perf>)
+      hold
+        details/push(one/violation/detail)
+  back details
+
+test <the compile budget: fails a corpus file whose every compile is over it>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(perf-budget-ms, 0), bind(fuzz-entry, child(writes-report-body))))
+  host perf, perf-details(result)
+  want hold, is-equal(perf/length, 1)
+  want hold, matches(make(pattern, <<compile took \d+ms, the fastest of three \(budget 0ms\)>>), get(perf, 0))
+  want hold, not(result/ok)
+
+test <the compile budget: passes it when the corpus compiles inside it>
+  host p, project()
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(perf-budget-ms, 60000), bind(fuzz-entry, child(writes-report-body))))
+  want hold, is-equal(result/corpus/violations/length, 0)
+  want hold, result/ok
+
+test <the compile budget: hands it to each fuzz campaign, and a slow input it reports is a finding>
+  host p, project()
+  # the budget is the sixth argument after `-e`, and this child reports it back as the slow input's time
+  host result, hunt-seed-compiler(make(hunt-ask, bind(root, p/root), bind(resolve, none), bind(files, p/files), bind(runs, 5), bind(seeds, 1), bind(perf-budget-ms, 60000), bind(fuzz-entry, child(<<require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [], codesSeen: [], corpusGrew: 0, slow: [{input: 'slow one', ms: Number(process.argv[6]) + 1}]}))>>))))
+  want hold, is-equal(result/slow/length, 1)
+  host first, like dynamic
+    get(result/slow, 0)
+  want hold, is-equal(first/input, <slow one>)
+  want hold, is-equal(first/ms, 60001)
+  want hold, is-equal(result/findings, 1)
+  want hold, matches(make(pattern, <<1 SLOW INPUT\(S\), over the compile budget:\n {4}- 60001ms\n\s+\| slow one>>), render-hunt(result))
+
+# ---- the default fuzz corpus ----
+
+host old-syntax, make pattern, <<\bmark \d|\bwave (true|false)\b|\bbust\b|\bsend kink\b|\bmark async\b>>
+
+# whether a program compiles clean with every load reaching nothing
+task compiles-clean
+  take text, like text
+  like boolean
+
+  host out, hunt-compiling/compile(make(fuzz-source, bind(file, <fuzz.tree>), bind(text, text)), make(compile-choice, bind(resolve, none)))
+  back out/ok
+
+test <the default fuzz corpus: is current syntax, so mutants start from programs the compiler accepts>
+  take entry, like text
+    walk fuzz-corpus()
+  want hold, not(matches(old-syntax, entry))
+  want hold, compiles-clean(entry)

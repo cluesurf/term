@@ -1,0 +1,134 @@
+# `save z, like list, like text` with no value, then a later `save z, make(list)`: the reader dropped the declared type
+# (save-of's no-value branch never read it), so the local took the type of whatever a later save gave it. TypeScript
+# emitted `let z: number[]`, Rust `Vec<Rc<dyn Any>>`, Swift `SeedList<Any>` and Kotlin `MutableList<Any>`, and a later
+# save of a value of another type (a text into a `like number`) compiled clean with the local retyped (item 1208). The
+# declared type now types the local on every backend and a later save is held to it.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load @term/base/text
+  find contains, name text-contains
+  find index-of
+  find substring
+
+load @term/base/text/util
+  find join
+
+form built
+  link ok, like boolean
+  link said, like text
+  link ts, like text
+  link rs, like text
+  link swift, like text
+  link kotlin, like text
+
+host head, <task f\n  take y, like text\n  like text\n\n  back y\n\n>
+
+# the text from `head` to the end, <> when `head` is not there
+task from-head
+  take text, like text
+  take head, like text
+  like text
+
+  host at, index-of(text, head)
+  fork test, is-below(at, 0)
+    hold
+      back <>
+  back substring(text, at, text/length)
+
+task compiled
+  take body, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(<{head}task run\n  take y, like text\n  like text\n\n{body}>, make(compile-choice, bind(file, </gate/code/main.tree>), bind(stdlib, env), bind(env, env)))
+
+# every backend's `run`, or what the TypeScript build said
+task built-by
+  take body, like text
+  like built
+
+  host ts, compiled(body, <node>)
+  fork test, not(ts/ok)
+    hold
+      back make(built, bind(ok, false), bind(said, join(ts/messages, < | >)), bind(ts, <>), bind(rs, <>), bind(swift, <>), bind(kotlin, <>))
+  host rs, compiled(body, <rust>)
+  host swift, compiled(body, <swift>)
+  host kotlin, compiled(body, <kotlin>)
+  back make(built, bind(ok, true), bind(said, <>), bind(ts, from-head(ts/emitted, <function run(>)), bind(rs, from-head(emit-text(rs, <rust>), <fn run(>)), bind(swift, from-head(emit-text(swift, <swift>), <func run(>)), bind(kotlin, from-head(emit-text(kotlin, <kotlin>), <fun run(>)))
+
+host text-list, <  save z, like list, like text\n  save z, make(list)\n  back y\n>
+
+test <like list, like text then make(list): builds>
+  want hold, built-by(text-list)/ok
+
+test <like list, like text then make(list): TypeScript declares string[]>
+  want hold, text-contains(built-by(text-list)/ts, <let z: string[]>)
+
+test <like list, like text then make(list): Rust declares a list of String>
+  want hold, text-contains(built-by(text-list)/rs, <Vec\<String\>>)
+
+test <like list, like text then make(list): Swift declares a list of String>
+  want hold, text-contains(built-by(text-list)/swift, <var z: SeedList\<String\>>)
+
+test <like list, like text then make(list): Kotlin declares a list of String>
+  want hold, text-contains(built-by(text-list)/kotlin, <var z: MutableList\<String\>>)
+
+host computed, <  save n, like number\n  save n, add(1, 2)\n  back y\n>
+
+test <like number then a computed number: builds, a number on every backend>
+  host out, built-by(computed)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <let n: number>)
+  want hold, text-contains(out/rs, <let mut n: i64>)
+  want hold, text-contains(out/swift, <var n: Int>)
+  want hold, text-contains(out/kotlin, <var n: Long>)
+
+test <like text then a call: builds, a text on every backend>
+  host out, built-by(<  save t, like text\n  save t, f(y)\n  back t\n>)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <let t: string>)
+  want hold, text-contains(out/rs, <let mut t: String>)
+  want hold, text-contains(out/swift, <var t: String>)
+  want hold, text-contains(out/kotlin, <var t: String>)
+
+# what the build for one env said, <> when it built
+task said-on
+  take body, like text
+  take env, like text
+  like text
+
+  host out, compiled(body, env)
+  fork test, out/ok
+    hold
+      back <>
+  back join(out/messages, < | >)
+
+host number-then-text, <  save n, like number\n  save n, \<hi\>\n  back y\n>
+
+test <like number then a text: refused on node, the declared type wins>
+  want hold, text-contains(said-on(number-then-text, <node>), <assignment: expected number, found text>)
+
+test <like number then a text: refused on rust>
+  want hold, text-contains(said-on(number-then-text, <rust>), <assignment: expected number, found text>)
+
+test <like number then a text: refused on swift>
+  want hold, text-contains(said-on(number-then-text, <swift>), <assignment: expected number, found text>)
+
+test <like number then a text: refused on kotlin>
+  want hold, text-contains(said-on(number-then-text, <kotlin>), <assignment: expected number, found text>)
+
+test <like list, like text then a number: refused>
+  want hold, text-contains(said-on(<  save z, like list, like text\n  save z, 5\n  back y\n>, <node>), <assignment: expected list, like text, found number>)
+
+test <like text then a number from a call: refused>
+  want hold, text-contains(said-on(<  save t, like text\n  save t, add(1, 2)\n  back y\n>, <node>), <assignment: expected text, found number>)
+
+test <no declared type: the first save still types the local>
+  host out, built-by(<  save q, 1\n  save q, add(q, 2)\n  back y\n>)
+  want hold, out/ok
+  want hold, text-contains(out/ts, <let q: number = 1>)

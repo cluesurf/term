@@ -1,0 +1,45 @@
+note <the notes demo's gate: `term hold` holds on test/assurance/notes and refuses every twin under test/assurance/twin>
+
+# Ported from hold.sh (item term-self-host-001-0734). Each twin breaks one law, so a twin that holds is a law not yet
+# enforced. hold.sh read every folder under twin/ and kept EXPECTED_HOLD, the twins known to hold, each with the item
+# that would make it refuse. It has been empty since 2026-10-21 (no-forged-permit by check/hide.ts and permit-reused by
+# check/sole.ts are refused since then, and raw-text, law 7, is refused at `safe-text-of-refusal` and `safe-text`), so
+# every twin is held to a refusal here. A twin that must hold for a while is a `skip` naming its item, by the twin's name.
+
+load @term/test/self
+  find run-self
+
+load @term/base/file/directory
+  find list, name folder-names
+  find exists, name folder-exists
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+host twin-folder, <test/assurance/twin>
+
+# the twins: every folder under twin/, by name in code point order, as the shell's glob gave them
+task twins
+  like list, like text
+
+  save found, make list
+  walk folder-names(twin-folder)
+    take name, like text
+    fork test, folder-exists(<{twin-folder}/{name}>)
+      hold
+        found/push(name)
+  back sort(found, from-texts)
+
+test <test/assurance/notes holds>
+  host ran, run-self(make(list, <hold>), <test/assurance/notes>)
+  want hold, is-equal(ran/code, 0)
+
+test <every twin is refused>
+  take twin, like text
+    walk twins()
+  host ran, run-self(make(list, <hold>), <{twin-folder}/{twin}>)
+  want hold, is-unequal(ran/code, 0)

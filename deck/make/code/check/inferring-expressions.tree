@@ -1020,7 +1020,7 @@ task arrange-arguments
                 fork test, is-below(at, filled)
                   hold
                     save needed, text-at(signature/names, at)
-                    say(st, make(type-mismatch), call-span, <"{callee}" needs "{needed}", which this call leaves out>)
+                    say-left-out(st, call-span, <"{callee}" needs "{needed}", which this call leaves out>, args)
                     # the positions kept aligned for the rest of the check: the refusal already stops the build
                     save filled-at, flags-with(filled-at, at, true)
                     push(left-out, at)
@@ -1036,7 +1036,7 @@ task arrange-arguments
         fork test, not(flag-at(signature/optional, at))
           hold
             save needed, text-at(signature/names, at)
-            say(st, make(type-mismatch), call-span, <"{callee}" needs "{needed}", which this call leaves out>)
+            say-left-out(st, call-span, <"{callee}" needs "{needed}", which this call leaves out>, args)
             save filled-at, flags-with(filled-at, at, true)
             push(left-out, at)
           miss
@@ -2048,6 +2048,49 @@ task say-hinted
       bind message, make(some, message)
       bind hint, make(some, hint)
   push(st/diagnostics, diagnose(kind, input))
+
+# a call that leaves out an argument while one of its arguments is a list or a form made with values: `make list, <x>`
+# and `make pair, <a>, <b>` take the parts beside the name as their values (item 0903), so a make written that way in
+# the middle of a call took the arguments after it (item 1186). Answers the hint the refusal adds, or empty text when
+# no argument is such a make. The tree keeps no mark of values beside the name against values under it, so a make with
+# values under its name gets the hint too, only ever on a call already refused
+task left-out-hint
+  take args, like list, like expression
+  like text
+  mark private
+
+  walk args
+    take arg
+    sift arg
+      case array
+        link arg-items
+        fork test, is-above(arg-items/length, 0)
+          hold
+            back <the values beside `make list` join the list (`make list, \<x\>` is the one-item list), so the arguments after it went into it. An empty list as an argument is `make(list)`>
+      case record
+        link name
+        link fields
+        fork test, is-above(fields/length, 0)
+          hold
+            back <the values beside `make {name}` join it, so the arguments after it went into it. Close it with `make({name}, ...)`>
+      miss
+        save nothing, 0
+  back <>
+
+# a call left out an argument: refused, with the hint of left-out-hint when it has one
+task say-left-out
+  take st, like infer-state
+  take at, like span
+  take message, like text
+  take args, like list, like expression
+  mark private
+
+  save hint, left-out-hint(args)
+  fork test, is-equal(hint, <>)
+    hold
+      say(st, make(type-mismatch), at, message)
+    miss
+      say-hinted(st, make(type-mismatch), at, message, hint)
 
 # the answer of an inference: a type and the node to keep
 task inferred-of

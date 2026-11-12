@@ -113,6 +113,9 @@ load ./bind
   find render-bind
   find bind-gap
 
+load ./ts-names
+  find is-primary
+
 load ./tag
   find tag-text
 
@@ -3072,6 +3075,25 @@ task caught-prop-by-key
   push(arms, <else -\> (__carrier.link as? Map\<*, *\>)?.get(__key)>)
   back <(kotlin.run \{ val __carrier = {carrier}; val __key = ({key}).toString(); when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)} \} \} ?: Unit)>
 
+# the target a member read is written after. A call written as more than one primary, a bind's text such as
+# `if (true) $a else $b`, is put in parentheses, or `.size` reads off its last operand only (item 1201)
+task kt-target
+  take target, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save written, kt-expr(target, st, facts)
+  sift target
+    case call
+      fork test, not(is-primary(written))
+        hold
+          back <({written})>
+    miss
+      save nothing, 0
+  back written
+
 task kt-member
   take node, like expression
   take st, like kotlin-state
@@ -3086,7 +3108,7 @@ task kt-member
       # a form's tag read as a field: its case's name, from the property the sealed class is given
       fork test, is-unequal(read(tag), <>)
         hold
-          back <{kt-expr(member-target, st, facts)}.termTag>
+          back <{kt-target(member-target, st, facts)}.termTag>
       # A PROP READ OFF A CAUGHT VALUE (`problem/link/actual`): read out of each exception form whose link has it
       sift caught-carrier-of(member-target)
         case some
@@ -3125,7 +3147,7 @@ task kt-member
       sift collection-read(node)
         case some
           link read-op
-          back <{kt-expr(read-op/target, st, facts)}.size.toLong()>
+          back <{kt-target(read-op/target, st, facts)}.size.toLong()>
         case none
           save nothing, 0
       sift string-read(node)
@@ -3157,20 +3179,20 @@ task kt-member
             hold
               fork test, inside
                 hold
-                  back <{kt-expr(member-target, st, facts)}.data[{narrowed}]>
-              back <{kt-expr(member-target, st, facts)}.getLong({narrowed})>
-          back <{kt-expr(member-target, st, facts)}[{narrowed}]>
+                  back <{kt-target(member-target, st, facts)}.data[{narrowed}]>
+              back <{kt-target(member-target, st, facts)}.getLong({narrowed})>
+          back <{kt-target(member-target, st, facts)}[{narrowed}]>
         case none
           save nothing, 0
       # a LITERAL index segment on an array target subscripts it
       fork test, and(is-digits(member-name), is-equal(expression-kind(member-target), <array>))
         hold
-          back <{kt-expr(member-target, st, facts)}[{member-name}]>
+          back <{kt-target(member-target, st, facts)}[{member-name}]>
       # a dock module's member with no `-` is the host's spelling (backend-names `host-spelled`)
       fork test, and(and(is-unequal(target-name, <>), facts/native-aliases/has(target-name)), host-spelled(member-name))
         hold
-          back <{kt-expr(member-target, st, facts)}.{member-name}>
-      back <{kt-expr(member-target, st, facts)}.{kotlin-camel(member-name)}>
+          back <{kt-target(member-target, st, facts)}.{member-name}>
+      back <{kt-target(member-target, st, facts)}.{kotlin-camel(member-name)}>
     miss
       back <>
 

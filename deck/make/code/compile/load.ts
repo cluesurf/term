@@ -161,6 +161,24 @@ export type WalkedModule = {
 
 export type WalkMemo = Map<string, WalkedModule>
 
+// how a build reads one module's imports, as the port's walk takes it (compile/loading.tree `collect-modules`'s `scan`):
+// read from the module's tree, through the build cache's scan of an unchanged module when there is one. The cache holds
+// this face's shape, so its scan is read and written through it. compile/compile.ts hands it to the driver
+export function portScan(
+  parsed: ParseMemo,
+  scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (
+    _source,
+    compute,
+  ) => compute(),
+): (source: Source) => port.ImportScan {
+  return source =>
+    toPortScan(
+      scanOf(source, () =>
+        fromPortScan(port.scanParsed(parsed(source))),
+      ),
+    )
+}
+
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use). `parsed`
 // omitted (the editor and the tests) makes a private memo, `scanOf` is the build cache's scan of an unchanged module,
 // and `walked` keeps each module's own part across walks
@@ -189,12 +207,7 @@ export function collectModules(
           how.form === 'some' ? how.value : undefined,
         ),
       ),
-    source =>
-      toPortScan(
-        scanOf(source, () =>
-          fromPortScan(port.scanParsed(parsed(source))),
-        ),
-      ),
+    portScan(parsed, scanOf),
     (walked ?? new Map()) as Map<string, port.WalkedModule>,
     walked !== undefined,
   )

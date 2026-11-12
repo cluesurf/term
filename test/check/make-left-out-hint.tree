@@ -1,0 +1,84 @@
+# `make list, <x>` takes the parts beside the name as its values (item 0903, test/check/make-beside-name.tree), so an
+# empty list written that way in the middle of a call takes the arguments after it: `count(<a>, make list, <b>)` hands
+# count [b] and leaves out its third argument. The refusal for the left-out argument then says why and names
+# `make(list)`, the empty list as an argument (item 1186, decision 1188 option A, trap T-0550). Any form made the same
+# way does it too: `make pair, <a>, <b>` fills the pair with both and leaves the call short, and
+# `make pattern, <a>, <b>` gives the one-slot pattern two values. Each refusal names `make(<form>, ...)`.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+
+load @term/base/text
+  find contains, name text-contains
+
+load @term/base/text/util
+  find join
+
+task built
+  take text, like text
+  like compile-outcome
+
+  back compile-text(text, make(compile-choice, bind(file, </gate/code/main.tree>), bind(lean, true), bind(stdlib, <node>)))
+
+task said
+  take text, like text
+  like text
+
+  back join(built(text)/messages, < | >)
+
+task hints
+  take text, like text
+  like text
+
+  save lines, make list
+  walk built(text)/notes
+    take one
+    lines/push(one/hint)
+  back join(lines, < | >)
+
+host count-head, <task count\n  take a, like text\n  take xs, like list, like text\n  take b, like text\n  like text\n\n  back \<\{a\} \{xs/length\} \{b\}\>\n\n>
+
+host pair-form, <form pair\n  slot left, like text\n  slot right, like text\n\ntask joined\n  take p, like pair\n  take t, like text\n  like text\n\n  back \<\{p/left\}\{p/right\}\{t\}\>\n\n>
+
+host pattern-head, <load @term/base/pattern\n  find pattern\n\ntask pick\n  take p, like pattern\n  take t, like text\n  like text\n\n  back t\n\n>
+
+host pair-head,<task pair\n  take a, like text\n  take b, like text\n  like text\n\n  back \<\{a\} \{b\}\>\n\n>
+
+test <an empty make list in the middle of the arguments: refused, with the make(list) hint>
+  host text, <{count-head}task probe\n  like text\n\n  back count(\<a\>, make list, \<b\>)\n>
+  want hold, text-contains(said(text), <"count" needs "b", which this call leaves out>)
+  want hold, text-contains(hints(text), <An empty list as an argument is `make(list)`>)
+
+test <the same in longhand, with a comma after each part>
+  host text, <{count-head}task probe\n  like text\n\n  back\n    call count, \<a\>, make list, \<b\>\n>
+  want hold, text-contains(said(text), <"count" needs "b", which this call leaves out>)
+  want hold, text-contains(hints(text), <An empty list as an argument is `make(list)`>)
+
+test <make(list) closes the empty list, and the call builds>
+  host text, <{count-head}task probe\n  like text\n\n  back count(\<a\>, make(list), \<b\>)\n>
+  want hold, is-equal(said(text), <>)
+
+test <a form made with values beside its name in the middle of the arguments: refused, with the make(pair, ...) hint>
+  host text, <{pair-form}task probe\n  like text\n\n  back joined(make pair, \<a\>, \<b\>)\n>
+  want hold, text-contains(said(text), <"joined" needs "t", which this call leaves out>)
+  want hold, text-contains(hints(text), <Close it with `make(pair, ...)`>)
+
+test <make(pair, a, b) closes the form, and the call builds>
+  host text, <{pair-form}task probe\n  like text\n\n  back joined(make(pair, \<a\>, \<b\>), \<c\>)\n>
+  want hold, is-equal(said(text), <>)
+
+test <make pattern, a beside a call's next argument: the extra value is refused, with the make(pattern, ...) hint>
+  host text, <{pattern-head}task probe\n  like text\n\n  back pick(make pattern, \<a\>, \<b\>)\n>
+  want hold, text-contains(said(text), <"pattern" has 1 slot (text) and this gives 2 values>)
+  want hold, text-contains(hints(text), <Close it with `make(pattern, ...)`>)
+
+test <make(pattern, a) closes the pattern, and the call builds>
+  host text, <{pattern-head}task probe\n  like text\n\n  back pick(make(pattern, \<a\>), \<b\>)\n>
+  want hold, is-equal(said(text), <>)
+
+test <a call that leaves out an argument with no list made with values: no make(list) hint>
+  host text, <{pair-head}task probe\n  like text\n\n  back pair(\<a\>)\n>
+  want hold, text-contains(said(text), <"pair" needs "b", which this call leaves out>)
+  want hold, not(text-contains(hints(text), <make(list)>))

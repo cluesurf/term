@@ -1,0 +1,100 @@
+note <a public task's text parameter is never taken as ASCII, a private one called only with ASCII keeps the fast count>
+
+# Ported from ascii-public-param.ts by statement (item term-self-host-001-1233), one test per `ok` in its order. The
+# ASCII text fact (ir/facts/ascii.tree) never takes a text parameter of a task that is not `mark private` as ASCII: such
+# a task is exported, so a caller the build cannot see may pass any text. Until term-self-host-001-0059 a public task
+# whose one caller in the build passed <abc> counted its parameter with `value.length` on TypeScript (`.len()`,
+# `.utf8.count`, `.length` on Rust, Swift, Kotlin), so an outside call with astral text read 6 for 4. A private task
+# called the same way keeps the fast path. The original's loop over its four backends is a test per backend here.
+
+load ../support/compiling
+  find compile-text
+  find compile-choice
+  find compile-outcome
+  find emit-text
+
+load ./shared/rust-native
+  find typescript-answer
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/pattern
+  find pattern
+  find matches
+
+host public-source, <load @term/base/text\n  find char-count\n\ntask size-of\n  take value, like text\n  like number\n\n  save n, char-count(value)\n  fork test, is-above(n, 2)\n    hold\n      back n\n  back add(n, 1)\n\ntask run\n  like number\n\n  back size-of(\<abc\>)\n>
+
+host private-source, <load @term/base/text\n  find char-count\n\ntask size-of\n  take value, like text\n  like number\n  mark private\n\n  save n, char-count(value)\n  fork test, is-above(n, 2)\n    hold\n      back n\n  back add(n, 1)\n\ntask run\n  like number\n\n  back size-of(\<abc\>)\n>
+
+# the count of `value` each backend writes: the code-point form, or the fast ASCII form
+host node-slow, make pattern, <<Array\.from\(value\)\.length>>
+host rust-slow, make pattern, <<value\.chars\(\)\.count\(\)>>
+host swift-slow, make pattern, <<value\.unicodeScalars\.count>>
+host kotlin-slow, make pattern, <<value\.codePointCount\(>>
+host node-fast, make pattern, <<n: number = value\.length>>
+host rust-fast, make pattern, <<let n = value\.len\(\)>>
+host swift-fast, make pattern, <<let n = value\.utf8\.count>>
+host kotlin-fast, make pattern, <<val n = value\.length\.toLong\(\)>>
+
+# an outside caller's astral text: 4 code points, 6 UTF-16 units
+host astral-main, <process.stdout.write(String(sizeOf("a\\u\{1F600\}b\\u\{1F600\}")))>
+
+# the program compiled under the stdlib and driver env of `env`
+task built
+  take source, like text
+  take env, like text
+  like compile-outcome
+
+  back compile-text(source, make(compile-choice, bind(file, <main.tree>), bind(stdlib, env), bind(env, env)))
+
+# what `env` writes of the program, the TypeScript for node, else why it was refused
+task emitted
+  take source, like text
+  take env, like text
+  like text
+
+  save out, built(source, env)
+  fork test, not(out/ok)
+    hold
+      back <NOT OK {out/messages/join(< | >)}>
+  fork test, is-equal(env, <node>)
+    hold
+      back out/emitted
+  back emit-text(out, env)
+
+test <node: a public task's text parameter is counted by code point>
+  host open, emitted(public-source, <node>)
+  want hold, matches(node-slow, open)
+  want hold, not(matches(node-fast, open))
+
+test <node: a private task called only with \<abc\> keeps the fast count>
+  want hold, matches(node-fast, emitted(private-source, <node>))
+
+test <rust: a public task's text parameter is counted by code point>
+  host open, emitted(public-source, <rust>)
+  want hold, matches(rust-slow, open)
+  want hold, not(matches(rust-fast, open))
+
+test <rust: a private task called only with \<abc\> keeps the fast count>
+  want hold, matches(rust-fast, emitted(private-source, <rust>))
+
+test <swift: a public task's text parameter is counted by code point>
+  host open, emitted(public-source, <swift>)
+  want hold, matches(swift-slow, open)
+  want hold, not(matches(swift-fast, open))
+
+test <swift: a private task called only with \<abc\> keeps the fast count>
+  want hold, matches(swift-fast, emitted(private-source, <swift>))
+
+test <kotlin: a public task's text parameter is counted by code point>
+  host open, emitted(public-source, <kotlin>)
+  want hold, matches(kotlin-slow, open)
+  want hold, not(matches(kotlin-fast, open))
+
+test <kotlin: a private task called only with \<abc\> keeps the fast count>
+  want hold, matches(kotlin-fast, emitted(private-source, <kotlin>))
+
+test <node: an outside call of sizeOf with astral text counts code points>
+  host folder, temp-folder(<term-ascii-public->)
+  want hold, is-equal(typescript-answer(built(public-source, <node>), astral-main, folder, <ascii>), <4>)

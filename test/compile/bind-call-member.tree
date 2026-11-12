@@ -1,0 +1,75 @@
+note <A member read straight off a call to a bind reads the bind's answer>
+
+# Item 1201. A bind's text is spliced in place of the call, and a text that is more than one primary, such as
+# `$result?.[$field] ?? []`, was written bare before the member read: `x?.[f] ?? [].length` reads the `[]`'s length, so
+# `<{units-of(result, field)/length}>` read the list itself and an empty build of it read empty text, with a clean
+# build. TypeScript, Swift and Kotlin each put a call written as more than one primary in parentheses before a member
+# read now (ts-emit.tree emit-member-target, swift-emit.tree swift-target, kotlin-emit.tree kt-target). Rust read the
+# answer already. tmp/self-host/1201/probe.ts holds all four backends.
+
+form spot
+  link size, like number
+
+bind pick
+  take a, like spot
+  take b, like spot
+  like spot
+  case node
+    text <$a ?? $b>
+  case browser
+    text <$a ?? $b>
+  case rust
+    text <if true \{ $a \} else \{ $b \}>
+  case swift
+    text <true ? $a : $b>
+  case kotlin
+    text <if (true) $a else $b>
+
+bind pick-list
+  take a, like list, like text
+  take b, like list, like text
+  like list, like text
+  case node
+    text <$a ?? $b>
+  case browser
+    text <$a ?? $b>
+  case rust
+    text <if true \{ $a \} else \{ $b \}>
+  case swift
+    text <true ? $a : $b>
+  case kotlin
+    text <if (true) $a else $b>
+
+task small
+  like spot
+
+  back make(spot, bind(size, 3))
+
+task large
+  like spot
+
+  back make(spot, bind(size, 7))
+
+test <a field read off a saved bind answer>
+  host got, pick(small(), large())
+  want hold, is-equal got/size, 3
+
+test <a field read straight off the bind call>
+  want hold, is-equal pick(small(), large())/size, 3
+
+test <a field read off the bind call as an argument>
+  want hold, is-equal add(pick(small(), large())/size, 1), 4
+
+test <a field read off the bind call in an interpolation>
+  want hold, is-equal <{pick(small(), large())/size}>, <3>
+
+test <a list length off the bind call in an interpolation>
+  host xs, make(list, <a>, <b>, <c>)
+  host ys, make(list, <d>)
+  want hold, is-equal <{pick-list(xs, ys)/length}>, <3>
+
+test <a list length off a saved bind answer in an interpolation>
+  host xs, make(list, <a>, <b>, <c>)
+  host ys, make(list, <d>)
+  host got, pick-list(xs, ys)
+  want hold, is-equal <{got/length}>, <3>

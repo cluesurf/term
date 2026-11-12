@@ -1,0 +1,373 @@
+note <the dev server serves the app shell, a compiled module and the client, pushes HMR over SSE, and answers only this machine>
+
+# Ported from server.ts by statement (item term-self-host-001-0585, decision 116), one test per `ok` in its order. The
+# real dev server (deck/call/code/dev/server.ts `startDevServer`, the subject, decision 106) starts on a two-module app
+# in a temporary folder, and is asked over real HTTP: the shell, the entry module as JavaScript, the client runtime, the
+# SSE channel's `connected`, then the HMR message an update of the entry pushes, then which hosts and origins it
+# answers. The original asked one server in that order, so the first test to need it runs that one session and keeps
+# what it saw, and each test reads its part. The last two tests drive the client's `apply-hmr` with no server, as the
+# original's step 5 did.
+
+load ../support/temp
+  find temp-folder
+  find remove-at-exit
+
+load @term/make/dev/hmr-client
+  find apply-hmr
+  find hmr-message
+  find hmr-environment
+  find hmr-change
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/list
+  find list
+  find get
+  find contains, name list-contains
+
+load @term/base/text
+  find split
+  find contains
+
+dock load
+  load <@term/call/code/dev/server>, name dev-server
+  load <node:timers/promises>, name dev-timers
+
+host dev-port, 39512
+
+# what startDevServer takes
+form dev-options
+  link root, like text
+  link entry, like text
+  link port, like number
+  link env, like text
+
+# what the one session saw, in the original's order
+form served
+  link shell, like text
+  link entry-url, like text
+  link module-status, like number
+  link module-type, like text
+  link module-code, like text
+  link client, like text
+  link first-type, like text
+  link result-type, like text
+  link pushed-type, like text
+  link rebound, like number
+  link localhost, like number
+  link alias, like number
+  link cross-site, like number
+  link same-origin, like number
+
+form served-state
+  mark shared
+  link kept, like list, like served
+
+host served-now, make(served-state, bind(kept, make list))
+
+# host native: a response to a GET of `url`
+bind fetched
+  take url, like text
+  like dynamic
+  mark async
+  case node
+    text <(await fetch($url))>
+
+bind body-text
+  take response, like dynamic
+  like text
+  mark async
+  case node
+    text <(await $response.text())>
+
+bind content-type
+  take response, like dynamic
+  like text
+  case node
+    text <($response.headers.get("content-type") ?? "")>
+
+# host native: the reader of a streamed body
+bind body-reader
+  take response, like dynamic
+  like dynamic
+  case node
+    text <$response.body.getReader()>
+
+bind read-chunk
+  take reader, like dynamic
+  like dynamic
+  mark async
+  case node
+    text <(await $reader.read())>
+
+bind new-decoder
+  take seed, like number
+  like dynamic
+  case node
+    text <new TextDecoder()>
+
+bind decoded
+  take decoder, like dynamic
+  take bytes, like dynamic
+  like text
+  case node
+    text <<$decoder.decode($bytes, { stream: true })>>
+
+bind cancel-reader
+  take reader, like dynamic
+  like void
+  mark async
+  case node
+    text <(await $reader.cancel())>
+
+# host value: the `type` of one SSE event's JSON
+bind type-of-event
+  take json, like text
+  like text
+  case node
+    text <String(JSON.parse($json).type)>
+
+# host native: Host cannot be set through fetch, so this goes through node:http, answering the status, 0 for no answer
+bind ask
+  take port, like number
+  take host, like text
+  take origin, like text
+  take at, like text
+  like number
+  mark async
+  case node
+    text <<(await new Promise((done) => { const request = process.getBuiltinModule("node:http").get({ host: "127.0.0.1", port: $port, path: $at, headers: $origin === "" ? { host: $host } : { host: $host, origin: $origin } }, (response) => { response.resume(); done(response.statusCode ?? 0); request.destroy() }); request.on("error", () => done(0)) }))>>
+
+# the `type` of the next SSE `data:` event, read for at most 50 chunks, the empty text when the stream ended first
+task next-event-type
+  take reader, like dynamic
+  like text
+  mark async
+
+  host decoder, new-decoder(0)
+  save buffer, <>
+  save reads, 0
+  walk test
+    hook test, is-below(reads, 50)
+    hook hold
+      save reads, add(reads, 1)
+      host chunk, read-chunk(reader)
+      fork test, chunk/done
+        hold
+          back <>
+      save buffer, <{buffer}{decoded(decoder, chunk/value)}>
+      host found, event-in(buffer)
+      fork test, is-unequal(found, <>)
+        hold
+          back type-of-event(found)
+  back <>
+
+# the first `data: <json>\n\n` event's json in a buffer, the empty text before one has come whole
+task event-in
+  take buffer, like text
+  like text
+
+  host parts, split(buffer, <data: >)
+  fork test, is-below(parts/length, 2)
+    hold
+      back <>
+  host ends, split(get(parts, 1), <\n\n>)
+  fork test, is-below(ends/length, 2)
+    hold
+      back <>
+  back get(ends, 0)
+
+# the entry module's url the shell names: `src="/@mod/...`, the empty text for none
+task entry-url-of
+  take shell, like text
+  like text
+
+  host parts, split(shell, <src="/@mod/>)
+  fork test, is-below(parts/length, 2)
+    hold
+      back <>
+  host rest, get(parts, 1)
+  host tail, get(split(rest, <">), 0)
+  back </@mod/{tail}>
+
+# the one session: started once, read by every server test
+task session
+  like served
+  mark async
+
+  fork test, is-above(served-now/kept/length, 0)
+    hold
+      back get(served-now/kept, 0)
+  host seen, run-session()
+  served-now/kept/push(seen)
+  back seen
+
+task run-session
+  like served
+  mark async
+
+  host dir, remove-at-exit(temp-folder(<seed-dev->))
+  write-file(<{dir}/deck.tree>, <deck @probe/dev\n  code \<0.0.0\>\n>)
+  write-file(<{dir}/helper.tree>, <task helper-value\n  like number\n  send back\n    code 42\n>)
+  host entry, <{dir}/entry.tree>
+  write-file(entry, <load ./helper\n  find helper-value\n\ntask main\n  like number\n  send back\n    call helper-value\n>)
+  host server, dev-server/start-dev-server(make(dev-options, bind(root, dir), bind(entry, entry), bind(port, dev-port), bind(env, <browser>)))
+  # the server needs a moment to bind its port
+  wait dev-timers/set-timeout(300)
+  host base, <http://localhost:{dev-port}>
+  host shell, body-text(fetched(<{base}/>))
+  host entry-url, entry-url-of(shell)
+  host module-response, fetched(<{base}{entry-url}>)
+  host module-code, body-text(module-response)
+  host client, body-text(fetched(<{base}/@seed/client.mjs>))
+  host stream, fetched(<{base}/@seed/hmr>)
+  host reader, body-reader(stream)
+  host first-type, next-event-type(reader)
+  # the entry is a root that accepts nothing, so its update is a full reload
+  host result, server/update(entry)
+  host pushed-type, next-event-type(reader)
+  cancel-reader(reader)
+  host near, <localhost:{dev-port}>
+  host rebound, ask(dev-port, <rebound.example:{dev-port}>, <>, </>)
+  host localhost, ask(dev-port, near, <>, </>)
+  host alias, ask(dev-port, <10.0.2.2:{dev-port}>, <>, </>)
+  host cross-site, ask(dev-port, near, <https://elsewhere.example>, </@seed/hmr>)
+  host same-origin, ask(dev-port, near, <http://{near}>, </@seed/hmr>)
+  server/close()
+  back make(served, bind(shell, shell), bind(entry-url, entry-url), bind(module-status, module-response/status), bind(module-type, content-type(module-response)), bind(module-code, module-code), bind(client, client), bind(first-type, first-type), bind(result-type, result/type), bind(pushed-type, pushed-type), bind(rebound, rebound), bind(localhost, localhost), bind(alias, alias), bind(cross-site, cross-site), bind(same-origin, same-origin))
+
+test <serves the app shell>
+  host seen, session()
+  want hold, contains(seen/shell, </@seed/client.mjs>)
+  want hold, contains(seen/shell, </@mod/>)
+
+test <shell references the entry module url>
+  host seen, session()
+  want hold, is-above(seen/entry-url/length, 0)
+
+test <serves a compiled module as javascript>
+  host seen, session()
+  want hold, is-equal(seen/module-status, 200)
+  want hold, contains(seen/module-type, <javascript>)
+  want hold, contains(seen/module-code, <function main>)
+
+test <serves the hmr client runtime>
+  host seen, session()
+  want hold, contains(seen/client, <EventSource>)
+  want hold, contains(seen/client, <applyHmr>)
+
+test <sse sends connected on open>
+  host seen, session()
+  want hold, is-equal(seen/first-type, <connected>)
+
+test <update of a non-accepting root decides full-reload>
+  host seen, session()
+  want hold, is-equal(seen/result-type, <full-reload>)
+
+test <sse pushes the hmr message to the client>
+  host seen, session()
+  want hold, is-equal(seen/pushed-type, <full-reload>)
+
+# only this machine may ask (native-dom-0018): a rebound DNS name and a cross-site page are refused, the loopback names
+# and the Android emulator's alias for this machine are not
+test <a rebound host is refused>
+  host seen, session()
+  want hold, is-equal(seen/rebound, 403)
+
+test <localhost is served>
+  host seen, session()
+  want hold, is-equal(seen/localhost, 200)
+
+test <the emulator alias for this machine is served>
+  host seen, session()
+  want hold, is-equal(seen/alias, 200)
+
+test <a cross-site page may not open the HMR stream>
+  host seen, session()
+  want hold, is-equal(seen/cross-site, 403)
+
+test <a same-machine origin may>
+  host seen, session()
+  want hold, is-equal(seen/same-origin, 200)
+
+# ---- the client, with no server ----
+
+# what the client asked of an environment, and the modules its accept callbacks were handed
+form asked
+  link calls, like list, like text
+  link accepted, like list, like dynamic
+
+# the module a re-import answers
+form fresh-module
+  link fresh, like boolean
+
+# one message through an environment that keeps each call, re-imports `{ fresh: true }`, and has an accept callback
+# for every boundary when `accepting`
+task drive
+  take message, like hmr-message
+  take accepting, like boolean
+  like asked
+  mark async
+
+  host calls, make list
+  host accepted, make list
+  save reload
+    task
+      like void
+      calls/push(<reload>)
+  save reimport
+    task
+      take url, like text
+      take stamp, like number
+      like dynamic
+      mark async
+      calls/push(<reimport {url}>)
+      back make(fresh-module, bind(fresh, true))
+  save accept
+    task
+      take module, like dynamic
+      like void
+      accepted/push(module)
+  save accept-of
+    task
+      take boundary, like text
+      like dynamic
+      fork test, accepting
+        hold
+          back accept
+      back nothing()
+  save log
+    task
+      take line, like text
+      like void
+      calls/push(<log>)
+  host environment, make(hmr-environment, bind(reload, reload), bind(reimport, reimport), bind(accept-of, accept-of), bind(log, log))
+  apply-hmr(message, environment)
+  back make(asked, bind(calls, calls), bind(accepted, accepted))
+
+# host value: the original's `undefined`
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+test <client applyHmr: full-reload triggers a reload>
+  host seen, drive(make(full-reload), false)
+  want hold, list-contains(seen/calls, <reload>)
+
+test <client applyHmr: update re-imports and runs the accept callback>
+  host change, make(hmr-change, bind(boundary, </z.mjs>), bind(accepted, </z.mjs>), bind(timestamp, 7))
+  host seen, drive(make(update, bind(updates, make(list, change))), true)
+  want hold, list-contains(seen/calls, <reimport /z.mjs>)
+  want hold, is-equal(seen/accepted/length, 1)
+  host module, like dynamic
+    get(seen/accepted, 0)
+  want hold, is-true(module/fresh)
+  want hold, not(list-contains(seen/calls, <reload>))
+
+bind is-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === true)>
