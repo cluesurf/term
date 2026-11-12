@@ -1,100 +1,80 @@
-# rust string implementation. Forwards to the linked text runtime shim, which wraps the platform's string API. Internal: reached only through the public string API.
+# rust string operations as declarative bindings over String's own methods, one host expression an op: the strings
+# shim's own expressions (decision 132 of term/self-host/change/001). Internal: reached only through the public string
+# API.
 
-dock load
-  load <global:strings>, name strings
-
-task string-upper
+bind string-upper
   take input, like text
   like text
-  send back
-    call strings/upper
-      read input
+  case rust
+    text <($input).to_uppercase()>
 
-task string-lower
+bind string-lower
   take input, like text
   like text
-  send back
-    call strings/lower
-      read input
+  case rust
+    text <($input).to_lowercase()>
 
-task string-trim
+bind string-trim
   take input, like text
   like text
-  send back
-    call strings/trim
-      read input
+  case rust
+    text <($input).trim().to_string()>
 
-task string-repeat
+bind string-repeat
   take input, like text
   take count, like number
   like text
-  send back
-    call strings/repeated
-      read input
-      read count
+  case rust
+    text <($input).repeat(($count) as usize)>
 
-task string-contains
+bind string-contains
   take input, like text
   take part, like text
   like boolean
-  send back
-    call strings/contains
-      read input
-      read part
+  case rust
+    text <($input).contains(($part).as_str())>
 
-task string-starts-with
+bind string-starts-with
   take input, like text
   take prefix, like text
   like boolean
-  send back
-    call strings/starts-with
-      read input
-      read prefix
+  case rust
+    text <($input).starts_with(($prefix).as_str())>
 
-task string-ends-with
+bind string-ends-with
   take input, like text
   take suffix, like text
   like boolean
-  send back
-    call strings/ends-with
-      read input
-      read suffix
+  case rust
+    text <($input).ends_with(($suffix).as_str())>
 
-task string-replace
+bind string-replace
   take input, like text
   take from, like text
   take to, like text
   like text
-  send back
-    call strings/replace
-      read input
-      read from
-      read to
+  case rust
+    text <($input).replace(($from).as_str(), ($to).as_str())>
 
-task string-slice
+# the code points from `start`, `end` less `start` of them
+bind string-slice
   take input, like text
   take start, like number
   take end, like number
   like text
-  send back
-    call strings/slice
-      read input
-      read start
-      read end
+  case rust
+    text <\{ let input__ = &$input; let start__ = ($start) as i64; let end__ = ($end) as i64; input__.chars().skip(start__ as usize).take((end__ - start__) as usize).collect::\<String\>() \}>
 
-task string-concat
+bind string-concat
   take input, like text
   take other, like text
   like text
-  send back
-    call strings/concat
-      read input
-      read other
+  case rust
+    text <format!("\{\}\{\}", $input, $other)>
 
-task string-to-text
+# a value as text: the host's own type question (a text, an i64, an f64 or a bool, boxed or not), else the empty text
+bind string-to-text
   take value
   like text
-  send back
-    call strings/from-value
-      read value
-
+  case rust
+    text <\{ let v: &dyn std::any::Any = &$value; let v: &dyn std::any::Any = match v.downcast_ref::\<std::rc::Rc\<dyn std::any::Any\>\>() \{ Some(boxed) =\> boxed.as_ref(), None =\> v \}; if let Some(s) = v.downcast_ref::\<String\>() \{ s.clone() \} else if let Some(n) = v.downcast_ref::\<i64\>() \{ n.to_string() \} else if let Some(n) = v.downcast_ref::\<f64\>() \{ n.to_string() \} else if let Some(b) = v.downcast_ref::\<bool\>() \{ b.to_string() \} else \{ String::new() \} \}>

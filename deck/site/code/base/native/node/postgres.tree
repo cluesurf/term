@@ -1,18 +1,125 @@
 
-# Node database impl: Postgres-backed, conforming to the abstract API in ../../postgres. Docks the `<global:postgres>` runtime
-# shim (which wraps the `pg` driver), so the driver and its connection plumbing never appear in userland.
+# Node database impl: Postgres-backed, conforming to the abstract API in ../../postgres. node:module is docked straight
+# and the `pg` driver's calls are declarative bindings, one host expression each, inlined at the use site, so no runtime
+# shim is linked and the driver and its connection plumbing never appear in userland.
+#
+# `pg` is required when a program CONNECTS, not when the module loads: a program whose imports reach the db module only
+# for a form (the blog's `post`, drawn in a terminal with a store that keeps nothing) never touches a database, and
+# requiring the driver at load made it fail where `pg` is not installed (terminal-target-0005, 2026-10-03).
 
 dock load
-  load <global:postgres>, name postgres
+  load <node:module>, name node-module
 
 load ../postgres
   find row
 
+bind module-address
+  like text
+  case node
+    text <import.meta.url>
+
+# the one pool a program connects, kept in the module's own cell
+bind make-cell
+  like dynamic
+  case node
+    text <(\{ pool: null as any \})>
+
+bind cell-pool
+  take cell, like dynamic
+  like dynamic
+  case node
+    text <($cell).pool>
+
+bind put-cell-pool
+  take cell, like dynamic
+  take pool, like dynamic
+  like dynamic
+  case node
+    text <(($cell).pool = $pool)>
+
+bind require-driver
+  take require, like dynamic
+  like dynamic
+  case node
+    text <($require)("pg")>
+
+bind open-pool
+  take driver, like dynamic
+  take config, like dynamic
+  like dynamic
+  case node
+    text <new ($driver).Pool($config)>
+
+bind url-config
+  take url, like text
+  like dynamic
+  case node
+    text <(\{ connectionString: $url \})>
+
+bind empty-config
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind pool-query
+  take pool, like dynamic
+  take sql, like text
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($pool).query($sql, $params)>
+
+bind result-rows
+  take result, like dynamic
+  like list
+  case node
+    text <($result).rows>
+
+bind host-field
+  take row, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <($row)?.[$name]>
+
+bind is-host-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value == null)>
+
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+host connection
+  call make-cell
+
 task connect
   take url, like text
   mark async
-  call postgres/connect
-    read url
+  save driver
+    call require-driver
+      call node-module/create-require
+        call module-address
+  save config
+    call empty-config
+  fork test
+    hook test
+      call is-unequal
+        read url
+        text <>
+    hook hold
+      save config
+        call url-config
+          read url
+  call put-cell-pool
+    read connection
+    call open-pool
+      read driver
+      read config
 
 task query
   take sql, like text
@@ -21,11 +128,16 @@ task query
       like unknown
   like list
   mark async
-  send back
-    call postgres/query
+  save result
+    call pool-query
+      call cell-pool
+        read connection
       read sql
       read params
       wait true
+  send back
+    call result-rows
+      read result
 
 task run
   take sql, like text
@@ -33,20 +145,32 @@ task run
     like list
       like unknown
   mark async
-  call postgres/run
+  call pool-query
+    call cell-pool
+      read connection
     read sql
     read params
     wait true
 
+# a field as text, empty when the row has none
 task field
   take row, like row
   take name, like text
   like text
   mark async
-  send back
-    call postgres/field
+  save value
+    call host-field
       read row
       read name
+  fork test
+    hook test
+      call is-host-null
+        read value
+    hook hold
+      send back, text <>
+  send back
+    call host-text
+      read value
 
 # a row here is a plain value, so there is nothing to let go (native-dom-0029: `release` frees a row in a cask's page)
 task release

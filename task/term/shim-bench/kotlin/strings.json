@@ -1,0 +1,175 @@
+{
+  "shim": "strings",
+  "candidate": "deck/base/code/native/kotlin/text/string.tree",
+  "rounds": 50,
+  "ops": [
+    {
+      "op": "upper",
+      "shim_op": "upper",
+      "term_op": "string-upper",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    },
+    {
+      "op": "lower",
+      "shim_op": "lower",
+      "term_op": "string-lower",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    },
+    {
+      "op": "trim",
+      "shim_op": "trim",
+      "term_op": "string-trim",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    },
+    {
+      "op": "repeated",
+      "shim_op": "repeated",
+      "term_op": "string-repeat",
+      "arity": 2,
+      "kind": "text",
+      "cases": "repeat-signed-pairs",
+      "args": [
+        "text",
+        "number"
+      ]
+    },
+    {
+      "op": "contains",
+      "shim_op": "contains",
+      "term_op": "string-contains",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "text-pairs",
+      "args": [
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "starts-with",
+      "shim_op": "starts-with",
+      "term_op": "string-starts-with",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "text-pairs",
+      "args": [
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "ends-with",
+      "shim_op": "ends-with",
+      "term_op": "string-ends-with",
+      "arity": 2,
+      "kind": "boolean",
+      "cases": "text-pairs",
+      "args": [
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "replace",
+      "shim_op": "replace",
+      "term_op": "string-replace",
+      "arity": 3,
+      "kind": "text",
+      "cases": "replace-triples",
+      "args": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "slice",
+      "shim_op": "slice",
+      "term_op": "string-slice",
+      "arity": 3,
+      "kind": "text",
+      "cases": "slice-triples",
+      "args": [
+        "text",
+        "number",
+        "number"
+      ]
+    },
+    {
+      "op": "concat",
+      "shim_op": "concat",
+      "term_op": "string-concat",
+      "arity": 2,
+      "kind": "text",
+      "cases": "text-pairs",
+      "args": [
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "slice-from",
+      "shim_op": "slice-from",
+      "term_op": "string-slice-from",
+      "arity": 2,
+      "kind": "text",
+      "cases": "slice-from-pairs",
+      "args": [
+        "text",
+        "number"
+      ]
+    },
+    {
+      "op": "index-of",
+      "shim_op": "index-of",
+      "term_op": "string-index-of",
+      "arity": 3,
+      "kind": "number",
+      "cases": "index-triples",
+      "args": [
+        "text",
+        "text",
+        "number"
+      ]
+    },
+    {
+      "op": "replace-first",
+      "shim_op": "replace-first",
+      "term_op": "string-replace-first",
+      "arity": 3,
+      "kind": "text",
+      "cases": "replace-triples",
+      "args": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    {
+      "op": "length",
+      "shim_op": "length",
+      "term_op": "string-length",
+      "arity": 1,
+      "kind": "number",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    }
+  ]
+}

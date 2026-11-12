@@ -1,0 +1,47 @@
+{
+  "env": "rust",
+  "shim": "hex",
+  "line_sha256": "1cf903d1db61c75a78a23d4c980f7ca975cd3c965b24cf34e8191131639a76b0",
+  "candidate": "deck/base/code/native/rust/text/hex.tree",
+  "candidate_sha256": "b66814eb85a38f33f5e64b4d52036a227d373e2c67b4320ae62f5867f8aa328e",
+  "runtime": "deck/base/code/native/rust/runtime/hex.rs",
+  "runtime_sha256": "4b4be295f3155865f56857eff81a78cc8eabd29947caf5ded2328a7f34212a00",
+  "measured": "2026-11-12T05:35",
+  "host": "rustc 1.96.0-nightly (ec818fda3 2026-03-02)",
+  "machine": "Apple M3 Pro cores 12",
+  "load": 26.95,
+  "trials": 7,
+  "rounds": 50,
+  "cases_per_op": 2048,
+  "rule": "best of 7, an op over 1.2 gross in two runs, or with any differ, is kept",
+  "ops": [
+    {
+      "op": "encode",
+      "shim_ns": 120.7,
+      "term_ns": 93.1,
+      "loop_ns": 28.6,
+      "gross_ratio": 0.77,
+      "net_ratio": 0.7,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    },
+    {
+      "op": "decode",
+      "shim_ns": 133.8,
+      "term_ns": 98.9,
+      "loop_ns": 30.6,
+      "gross_ratio": 0.74,
+      "net_ratio": 0.66,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    }
+  ]
+}

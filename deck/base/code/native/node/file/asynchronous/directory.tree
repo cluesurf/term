@@ -1,12 +1,110 @@
-# node asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is `fs.promises.readdir`.
-# Internal: reached only through the public file/directory API.
+# node asynchronous directory reading, over `fs.promises.readdir` with its entries' own kinds. A directory that cannot
+# be read adds nothing, so the public API stays total. Internal: reached only through the public file/directory API.
+# It docks no runtime shim (0212's runtime/walk-file.ts goes in the REMOVE batch), so no alias line meets the stdlib's
+# own `walk` and no second `walkFile` is declared (D026).
 
-# node's global is the alias `walk-file` (runtime/walk-file.ts), so no alias line meets the stdlib's own `walk` (D026)
 dock load
-  load <global:walk-file>, name walk-file
+  load <node:fs/promises>, name walk-fs
+  load <node:path>, name walk-path
 
 load @term/base/file/directory
   find walk-entry
+
+load @term/base/list
+  find push
+
+task folder-make
+  mark async
+  take path, like text
+  like void
+  fork
+    mark unsafe
+    call walk-fs/mkdir
+      read path
+      make object
+        bind recursive, true
+      wait true
+  halt take
+    take problem
+
+# the entries of one directory with their kinds, or none when it cannot be read
+task folder-entries
+  mark async
+  take path, like text
+  like list
+    like dynamic
+  fork
+    mark unsafe
+    save entries, like list, like dynamic
+      call walk-fs/readdir
+        read path
+        make object
+          bind with-file-types, true
+        wait true
+    send back, read entries
+  halt take
+    take problem
+    send back, make list
+
+# what an entry is, its links not followed
+task entry-kind
+  take entry, like dynamic
+  like text
+  fork test
+    hook test
+      call entry/is-directory
+    hook hold
+      send back, text <directory>
+  fork test
+    hook test
+      call entry/is-symbolic-link
+    hook hold
+      send back, text <link>
+  fork test
+    hook test
+      call entry/is-file
+    hook hold
+      send back, text <file>
+  send back, text <other>
+
+# one level, and every level below it when `deep`, each as its path relative to the walk's root
+task folder-list-into
+  mark async
+  take out, like list, like text
+  take base, like text
+  take prefix, like text
+  take deep, like boolean
+  like void
+  save entries
+    call folder-entries
+      read base
+  walk list, read entries
+    hook next
+      take site, name entry
+      save relative, read entry/name
+      fork test
+        hook test
+          call is-unequal
+            read prefix
+            text <>
+        hook hold
+          save relative, text <{prefix}/{entry/name}>
+      call push
+        read out
+        read relative
+      fork test
+        hook test
+          call and
+            read deep
+            call entry/is-directory
+        hook hold
+          call folder-list-into
+            read out
+            call walk-path/join
+              read base
+              read entry/name
+            read relative
+            read deep
 
 task folder-list
   mark async
@@ -17,19 +115,64 @@ task folder-list
     fall false
   like list
     like text
-  send back
-    call walk-file/dir-list
-      read path
-      read deep
-      wait true
-
-task folder-make
-  mark async
-  take path, like text
-  like void
-  call walk-file/dir-make
+  save out, like list, like text
+    make list
+  call folder-list-into
+    read out
     read path
-    wait true
+    text <>
+    read deep
+  send back, read out
+
+task folder-walk-into
+  mark async
+  take out, like list, like walk-entry
+  take base, like text
+  take level, like size
+  take depth, like size
+  like void
+  save entries
+    call folder-entries
+      read base
+  walk list, read entries
+    hook next
+      take site, name entry
+      save whole
+        call walk-path/join
+          read base
+          read entry/name
+      save kind
+        call entry-kind
+          read entry
+      call push
+        read out
+        make walk-entry
+          bind path, read whole
+          bind kind, read kind
+          bind depth, read level
+      fork test
+        hook test
+          call and
+            call is-equal
+              read kind
+              text <directory>
+            call or
+              call is-equal
+                read depth
+                code 0
+              call is-below
+                call add
+                  read level
+                  code 1
+                read depth
+        hook hold
+          call folder-walk-into
+            read out
+            read whole
+            call add
+              read level
+              code 1
+            read depth
 
 # every entry beneath `path`, with what it is and how far down it sits. `depth` 0 walks all the way down.
 task folder-walk
@@ -41,8 +184,11 @@ task folder-walk
     fall code 0
   like list
     like walk-entry
-  send back
-    call walk-file/dir-walk
-      read path
-      read depth
-      wait true
+  save out, like list, like walk-entry
+    make list
+  call folder-walk-into
+    read out
+    read path
+    code 0
+    read depth
+  send back, read out

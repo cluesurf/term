@@ -1,25 +1,46 @@
-# node file metadata. Forwards to the linked io runtime shim (the platform filesystem). Internal: reached only through the public file/metadata API.
+# node file metadata, over node:fs's statSync. A missing or unreadable path reads as size 0, neither a file nor a
+# directory, so the public file/metadata API stays total. Internal: reached only through the public file/metadata API.
 
 dock load
-  load <global:io>, name io
+  load <node:fs>, name metadata-fs
 
 task metadata-size
   take path, like text
   like number
-  send back
-    call io/file-size
-      read path
+  fork
+    mark unsafe
+    save stats
+      call metadata-fs/stat-sync
+        read path
+    send back, read stats/size
+  halt take
+    take problem
+    send back, code 0
 
 task metadata-is-directory
   take path, like text
   like boolean
-  send back
-    call io/is-directory
-      read path
+  fork
+    mark unsafe
+    save stats
+      call metadata-fs/stat-sync
+        read path
+    send back
+      call stats/is-directory
+  halt take
+    take problem
+    send back, false
 
 task metadata-is-file
   take path, like text
   like boolean
-  send back
-    call io/is-file
-      read path
+  fork
+    mark unsafe
+    save stats
+      call metadata-fs/stat-sync
+        read path
+    send back
+      call stats/is-file
+  halt take
+    take problem
+    send back, false

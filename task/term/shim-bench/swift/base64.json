@@ -1,0 +1,29 @@
+{
+  "shim": "base64",
+  "candidate": "deck/base/code/native/swift/text/base64.tree",
+  "rounds": 50,
+  "ops": [
+    {
+      "op": "encode",
+      "shim_op": "encode",
+      "term_op": "to-base64",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    },
+    {
+      "op": "decode",
+      "shim_op": "decode",
+      "term_op": "from-base64",
+      "arity": 1,
+      "kind": "text",
+      "cases": "base64-singles",
+      "args": [
+        "text"
+      ]
+    }
+  ]
+}

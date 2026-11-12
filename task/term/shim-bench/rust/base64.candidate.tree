@@ -1,0 +1,317 @@
+# The Term candidate for the rust base64 shim, kept for task/term/shim-bench.ts and the floor gate: both ops read over
+# 1.2 against runtime/base64.rs on two runs (rust/base64.baseline.json), so native/rust/text/base64.tree still docks
+# the shim (decision 132 point 2 of term/self-host/change/001). Term tasks over byte binds: the standard alphabet, padded
+# (RFC 4648 section 4), the base64 shim's rule. No crate, so a program still builds with a bare rustc. Decoding
+# malformed input, or bytes that are not UTF-8, gives the empty text, as the shim did. Never loaded by the stdlib.
+
+load @term/base/list
+  find push
+
+# the UTF-8 bytes of a text
+bind text-bytes
+  take input, like text
+  like list
+    like number
+  case rust
+    text <std::rc::Rc::new(std::cell::RefCell::new(($input).bytes().map(|byte| byte as i64).collect::\<Vec\<i64\>\>()))>
+
+# the text these UTF-8 bytes spell, or the empty text when they spell none
+bind text-of-bytes
+  take bytes
+    like list
+      like number
+  like text
+  case rust
+    text <String::from_utf8(($bytes).borrow().iter().map(|byte| *byte as u8).collect::\<Vec\<u8\>\>()).unwrap_or_default()>
+
+# 2 to the power `held`, for a count of bits under 63
+bind bit-span
+  take held, like number
+  like number
+  case rust
+    text <(1i64 \<\< (($held) as i64))>
+
+# the alphabet's letter (as a byte) for a six-bit index
+task letter-of
+  take index, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read index
+        code 26
+    hook hold
+      send back
+        call add
+          read index
+          code 65
+  fork test
+    hook test
+      call is-below
+        read index
+        code 52
+    hook hold
+      send back
+        call add
+          read index
+          code 71
+  fork test
+    hook test
+      call is-below
+        read index
+        code 62
+    hook hold
+      send back
+        call subtract
+          read index
+          code 4
+  fork test
+    hook test
+      call is-equal
+        read index
+        code 62
+    hook hold
+      send back, code 43
+  send back, code 47
+
+# the six-bit index of an alphabet letter (as a byte), or -1 for a byte outside the alphabet
+task index-of
+  take byte, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read byte
+          code 65
+        call is-maximum
+          read byte
+          code 90
+    hook hold
+      send back
+        call subtract
+          read byte
+          code 65
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read byte
+          code 97
+        call is-maximum
+          read byte
+          code 122
+    hook hold
+      send back
+        call subtract
+          read byte
+          code 71
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read byte
+          code 48
+        call is-maximum
+          read byte
+          code 57
+    hook hold
+      send back
+        call add
+          read byte
+          code 4
+  fork test
+    hook test
+      call is-equal
+        read byte
+        code 43
+    hook hold
+      send back, code 62
+  fork test
+    hook test
+      call is-equal
+        read byte
+        code 47
+    hook hold
+      send back, code 63
+  send back
+    call subtract
+      code 0
+      code 1
+
+task to-base64
+  take input, like text
+  like text
+  save bytes
+    call text-bytes
+      read input
+  save size, read bytes/length
+  save out, like list, like number
+    make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read size
+    hook step
+      save left
+        call subtract
+          read size
+          read i
+      save b, code 0
+      save c, code 0
+      fork test
+        hook test
+          call is-above
+            read left
+            code 1
+        hook hold
+          save at
+            call add
+              read i
+              code 1
+          save b, read bytes/{at}
+      fork test
+        hook test
+          call is-above
+            read left
+            code 2
+        hook hold
+          save at
+            call add
+              read i
+              code 2
+          save c, read bytes/{at}
+      save joined
+        call add
+          call add
+            call multiply
+              read bytes/{i}
+              code 65536
+            call multiply
+              read b
+              code 256
+          read c
+      call push
+        read out
+        call letter-of
+          call divide
+            read joined
+            code 262144
+      call push
+        read out
+        call letter-of
+          call modulo
+            call divide
+              read joined
+              code 4096
+            code 64
+      fork test
+        hook test
+          call is-above
+            read left
+            code 1
+        hook hold
+          call push
+            read out
+            call letter-of
+              call modulo
+                call divide
+                  read joined
+                  code 64
+                code 64
+        hook miss
+          call push
+            read out
+            code 61
+      fork test
+        hook test
+          call is-above
+            read left
+            code 2
+        hook hold
+          call push
+            read out
+            call letter-of
+              call modulo
+                read joined
+                code 64
+        hook miss
+          call push
+            read out
+            code 61
+      save i
+        call add
+          read i
+          code 3
+  send back
+    call text-of-bytes
+      read out
+
+task from-base64
+  take input, like text
+  like text
+  save out, like list, like number
+    make list
+  save joined, code 0
+  save held, code 0
+  save bytes
+    call text-bytes
+      read input
+  walk list, read bytes
+    hook next
+      take site, name byte
+      # the padding is skipped wherever it stands, as the shim filtered it out
+      fork test
+        hook test
+          call is-equal
+            read byte
+            code 61
+        hook hold
+          turn next
+      save index
+        call index-of
+          read byte
+      fork test
+        hook test
+          call is-below
+            read index
+            code 0
+        hook hold
+          send back, text <>
+      save joined
+        call add
+          call multiply
+            read joined
+            code 64
+          read index
+      save held
+        call add
+          read held
+          code 6
+      fork test
+        hook test
+          call is-minimum
+            read held
+            code 8
+        hook hold
+          save held
+            call subtract
+              read held
+              code 8
+          save span
+            call bit-span
+              read held
+          call push
+            read out
+            call divide
+              read joined
+              read span
+          save joined
+            call modulo
+              read joined
+              read span
+  send back
+    call text-of-bytes
+      read out

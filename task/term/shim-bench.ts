@@ -28,9 +28,9 @@
 // <work>/runtime/node/, the folder the runtime prelude tries before the stdlib's). rust, swift and kotlin (item
 // term-self-host-001-1063) emit the program for their own backend through `term make --emit <env> --build`: rustc -O
 // (a cargo --release project when the program names a crate, as the stdlib's text and file do), swiftc -O, kotlinc
-// to a jar run by java. Their program is typed: an op's arguments are floats (kind `float`, the only
-// kind a native spec takes until items 1064 to 1066 add theirs), read from a text file of one line a list, `|` between
-// the values, each written as JavaScript writes the number and read by the host's own parser. Kotlin's ops are warmed
+// to a jar run by java. Their program is typed: an op's arguments are floats (kind `float`), or, when the op names
+// `args`, floats, integers and texts (items 1064 to 1066, the typed program below), read from a text file of one line
+// a list, `|` between the values, each read by the host's own parser. Kotlin's ops are warmed
 // first, at least 10,000 calls each on both sides, so the JIT has compiled them before any trial is timed.
 //
 // Run from the Term root.
@@ -78,7 +78,9 @@ const RULE = 1.2
 const CASES_VARIABLE = 'TERM_SHIM_BENCH_CASES'
 
 type Kind = 'number' | 'boolean' | 'text' | 'dynamic' | 'float'
-type Op = { op: string; shim_op: string; term_op: string; arity: number; kind: Kind; cases: string }
+// `args`, on a native op only: each argument's kind (float, number or text), for an op whose arguments are not all
+// floats (items 1064 to 1066). Absent, every argument is a float, as fmath's are
+type Op = { op: string; shim_op: string; term_op: string; arity: number; kind: Kind; cases: string; args?: Kind[] }
 type Spec = { shim: string; candidate: string; rounds: number; ops: Op[] }
 
 type Row = {
@@ -179,6 +181,75 @@ function float(): number {
   }
 }
 
+// ---- the native integer and text cases (items 1064 to 1066): an i64 is a bigint, so the edges stay exact ----
+
+const I64_MAX = (1n << 63n) - 1n
+const I64_MIN = -(1n << 63n)
+// i64::MIN is left out: its absolute value has no i64 answer and the shim stops on it, which ends the program
+const INT_EDGES = [0n, 1n, -1n, 2n, -2n, I64_MAX, I64_MIN + 1n, 1n << 53n, (1n << 53n) + 1n, -(1n << 53n) - 1n, 4294967295n, 4294967296n]
+function bigInt(): bigint {
+  switch (int(0, 4)) {
+    case 0: return BigInt(int(-1000, 1000))
+    case 1: return BigInt(int(-1e9, 1e9)) * BigInt(int(1, 1e9))
+    case 2: return BigInt(Math.floor((random() * 2 - 1) * 2 ** 62)) * BigInt(pick([1, 2]))
+    case 3: return pick(INT_EDGES)
+    default: return BigInt(int(0, 100))
+  }
+}
+// a power whose exact answer fits an i64, or one of the answered-directly cases (0, 1 and -1 to any exponent, an
+// exponent past u32), never zero to a negative power, which stops
+function powerPair(): unknown[] {
+  for (;;) {
+    const roll = random()
+    if (roll < 0.1) return [pick([0n, 1n, -1n]), pick([0n, 1n, 2n, 3n, 4294967296n, 4294967297n, 1n << 40n]), 'plain']
+    if (roll < 0.25) {
+      const base = BigInt(pick([1, -1, 2, -2, 3, 7, -1000]))
+      return [base, BigInt(-int(1, 5)), 'plain']
+    }
+    const base = BigInt(int(-20, 20))
+    const exponent = BigInt(int(0, 64))
+    if (base === 0n && exponent < 0n) continue
+    const answer = base ** exponent
+    if (answer <= I64_MAX && answer >= I64_MIN) return [base, exponent, 'plain']
+  }
+}
+const WORDS = ['', 'a', 'ab', 'abc', 'hello', 'Hello World', '  padded  ', '\ttab\n', 'ß', 'İstanbul', 'ǅ', 'straße',
+  'é', 'é', '😀', '𝔸𝔹', 'naïve café', 'ΑΒΓ', 'ффф', '中文字', 'a|b', 'x,y', '0', '-12', 'MiXeD', 'ﬀ', '\u0000', 'aaa']
+function textValue(): string {
+  const roll = random()
+  if (roll < 0.6) return pick(WORDS)
+  if (roll < 0.9) return Array.from({ length: int(1, 3) }, () => pick(WORDS)).join(pick(['', ' ', '-']))
+  return Array.from({ length: int(0, 40) }, () => String.fromCodePoint(pick([65, 97, 32, 0xe9, 0x1f600]))).join('')
+}
+// a part of the text half the time, so contains, starts-with and ends-with answer true as often as false
+function partOf(text: string): string {
+  const runes = [...text]
+  if (random() < 0.5 || runes.length === 0) return textValue()
+  const start = int(0, runes.length - 1)
+  const end = int(start, runes.length)
+  return runes.slice(random() < 0.3 ? 0 : start, random() < 0.3 ? runes.length : end).join('')
+}
+const utf8 = (text: string): Buffer => Buffer.from(text, 'utf8')
+// valid hex of a text most of the time, then odd lengths, letters outside hex, upper case, bytes that are not UTF-8
+function hexText(): string {
+  switch (int(0, 5)) {
+    case 0: return utf8(textValue()).toString('hex').toUpperCase()
+    case 1: return utf8(textValue()).toString('hex').slice(1)
+    case 2: return pick(['zz', 'g0', '0x41', ' 41', 'ff', 'c3', 'c328', 'fffe'])
+    default: return utf8(textValue()).toString('hex')
+  }
+}
+// valid base64 of a text most of the time, then no padding, a letter outside the alphabet, padding inside, the URL
+// alphabet, bytes that are not UTF-8
+function base64Text(): string {
+  switch (int(0, 6)) {
+    case 0: return utf8(textValue()).toString('base64').replace(/=+$/, '')
+    case 1: return pick(['a$b', 'ab cd', '-_-_', '/w==', 'wyg=', '=QQ==', 'QQ=QQ', '////', 'YQ', 'Y'])
+    case 2: return utf8(textValue()).toString('base64').replace(/^(.)/, '=$1')
+    default: return utf8(textValue()).toString('base64')
+  }
+}
+
 // each case is its arguments, then 'plain' or 'record' (a case holding a record, counted apart when it differs)
 const many = (n: number, make: () => unknown[]): unknown[][] => Array.from({ length: n }, make)
 const GENERATORS: Record<string, (n: number) => unknown[][]> = {
@@ -208,6 +279,43 @@ const GENERATORS: Record<string, (n: number) => unknown[][]> = {
   'float-singles': n => many(n, () => [float(), 'plain']),
   // a second argument that is a small integer half the time: pow's integer exponents, atan2's axes
   'float-pairs': n => many(n, () => [float(), random() < 0.5 ? int(-5, 5) : float(), 'plain']),
+  // the native integer and text generators (items 1064 to 1066)
+  'int-singles': n => many(n, () => [bigInt(), 'plain']),
+  'int-pairs': n => many(n, () => [bigInt(), random() < 0.2 ? pick(INT_EDGES) : bigInt(), 'plain']),
+  'power-pairs': n => many(n, powerPair),
+  'text-singles': n => many(n, () => [textValue(), 'plain']),
+  'text-pairs': n => many(n, () => { const text = textValue(); return [text, partOf(text), 'plain'] }),
+  'replace-triples': n => many(n, () => { const text = textValue(); return [text, random() < 0.1 ? '' : partOf(text), textValue(), 'plain'] }),
+  'repeat-pairs': n => many(n, () => [textValue(), BigInt(int(0, 5)), 'plain']),
+  // a start inside the text or one past it, an end from one before the start to past the end
+  'slice-triples': n =>
+    many(n, () => {
+      const text = textValue()
+      const size = [...text].length
+      const start = int(0, size + 1)
+      return [text, BigInt(start), BigInt(Math.max(0, int(start - 1, size + 3))), 'plain']
+    }),
+  'hex-singles': n => many(n, () => [hexText(), 'plain']),
+  'base64-singles': n => many(n, () => [base64Text(), 'plain']),
+  // swift: a square root or logarithm of a number below 1 is NaN or an infinity, and Int() of it traps
+  'int-positive': n => many(n, () => { const v = bigInt(); return [v > 0n ? v : v === 0n ? 1n : -v, 'plain'] }),
+  // swift slices by characters and traps outside them: both ends inside the text's grapheme clusters, in order
+  'slice-graphemes': n =>
+    many(n, () => {
+      const text = textValue()
+      const size = [...new Intl.Segmenter().segment(text)].length
+      const start = int(0, size)
+      return [text, BigInt(start), BigInt(int(start, size)), 'plain']
+    }),
+  // kotlin raises on a pair that is not hex and on malformed base64: only the inputs it answers
+  'hex-valid-singles': n =>
+    many(n, () => [random() < 0.15 ? pick(['ff', 'c3', 'c328', 'fffe', 'c', 'ABC']) : utf8(textValue()).toString('hex').slice(random() < 0.2 ? 1 : 0), 'plain']),
+  'base64-valid-singles': n =>
+    many(n, () => [random() < 0.15 ? pick(['/w==', 'wyg=', '////', 'YQ', 'YWI']) : utf8(textValue()).toString('base64').replace(random() < 0.3 ? /=+$/ : /^$/, ''), 'plain']),
+  // an index-of: a text, a part of it half the time, a start from before the text to past it
+  'index-triples': n => many(n, () => { const text = textValue(); return [text, partOf(text), BigInt(int(-2, [...text].length + 2)), 'plain'] }),
+  'slice-from-pairs': n => many(n, () => { const text = textValue(); return [text, BigInt(int(-2, [...text].length + 2)), 'plain'] }),
+  'repeat-signed-pairs': n => many(n, () => [textValue(), BigInt(int(-3, 5)), 'plain']),
 }
 
 // the cases depend only on the shim's global, so two candidates for one shim meet the same cases
@@ -638,6 +746,326 @@ function nativeProgram(spec: Spec, label: string, load: string, native: NativeNa
   return out.join('\n')
 }
 
+// ---- the typed native program (items 1064 to 1066): an op whose arguments are integers or texts ----
+//
+// The same checks, timers, trials and lines as the float program above, with each argument a typed list of its own
+// kind. A float is written as floatText writes it, an integer as its decimal digits (exact past 2^53: the case is a
+// bigint), a text as its code points in decimal with `,` between (empty for the empty text), so no value can hold the
+// `|` between values or the newline between lines. Only the case parsing runs host code of the harness's own, before
+// any timing. Each op's sink reads its answer the same way on both sides: a number below 0, a boolean, a text equal to
+// the empty text.
+
+const TYPED: Partial<Record<Kind, string>> = { float: 'float', number: 'number', text: 'text' }
+const argsOf = (op: Op): Kind[] => op.args ?? Array.from({ length: op.arity }, () => 'float' as Kind)
+
+function valueText(kind: Kind, value: unknown): string {
+  if (kind === 'float') return floatText(value)
+  if (kind === 'number') {
+    if (typeof value === 'bigint') return String(value)
+    if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value)
+    return fail(`a native integer case holds ${String(value)}`)
+  }
+  if (typeof value !== 'string') return fail(`a native text case holds ${String(value)}`)
+  return [...value].map(rune => rune.codePointAt(0)).join(',')
+}
+
+// one line an argument, the ops in their order
+function typedCases(spec: Spec, cases: unknown[][][]): string {
+  return spec.ops.flatMap((op, index) => argsOf(op).map((kind, at) => cases[index]!.map(c => valueText(kind, c[at])).join('|'))).join('\n')
+}
+
+function typedSink(kind: Kind): string[] {
+  switch (kind) {
+    case 'boolean': return ['fork test, out', '  hold', '    save sink, add(sink, 1)']
+    case 'text': return ['fork test, is-equal(out, <>)', '  hold', '    save sink, add(sink, 1)']
+    default: return ['fork test, is-below(out, 0)', '  hold', '    save sink, add(sink, 1)']
+  }
+}
+
+const listsOf = (args: Kind[], prefix: string): string[] => args.map((kind, at) => `  take ${prefix}${at}, like list, like ${TYPED[kind]}`)
+const readsOf = (args: Kind[], indent: string): string[] => args.map((_, at) => `${indent}save x${at}, a${at}/{i}`)
+const callOf = (name: string, args: Kind[]): string => `${name}(${args.map((_, at) => `x${at}`).join(', ')})`
+
+function typedTimer(task: string, call: string, args: Kind[], kind: Kind): string {
+  return [
+    `task ${task}`,
+    ...listsOf(args, 'a'),
+    '  take rounds, like number',
+    '  like number',
+    '',
+    '  save sink, 0',
+    '  save start, read-nanoseconds()',
+    '  save r, 0',
+    '  walk test',
+    '    hook test, is-below(r, rounds)',
+    '    hook hold',
+    '      save i, 0',
+    '      walk test',
+    '        hook test, is-below(i, a0/length)',
+    '        hook hold',
+    ...readsOf(args, '          '),
+    `          save out, ${call}`,
+    ...typedSink(kind).map(line => `          ${line}`),
+    '          save i, add(i, 1)',
+    '      save r, add(r, 1)',
+    '  save took, subtract(read-nanoseconds(), start)',
+    '  fork test, is-equal(sink, -1)',
+    '    hold',
+    '      bench-log(<sink>)',
+    '  back took',
+    '',
+  ].join('\n')
+}
+
+function typedProgram(spec: Spec, label: string, load: string, native: NativeName): string {
+  for (const op of spec.ops) {
+    const args = argsOf(op)
+    if (args.length !== op.arity) fail(`${op.op}: args names ${args.length} kinds for arity ${op.arity}`)
+    if (args.length < 1) fail(`${op.op}: a native op takes one argument or more`)
+    for (const kind of args) if (!TYPED[kind]) fail(`${op.op}: a native argument is a float, a number or a text, not ${kind}`)
+    if (!['float', 'number', 'text', 'boolean'].includes(op.kind)) fail(`${op.op}: a native answer is a float, number, text or boolean`)
+  }
+  const alias = spec.shim
+  const out: string[] = [
+    `# Generated by task/term/shim-bench.ts: the ${label} shim against its Term candidate, ${SIZE} cases an op, best of`,
+    `# ${TRIALS} trials, in picoseconds a call. Do not edit.`,
+    '',
+    // the console's log under a name of its own: a bind a candidate defines as log (imath's) answers to its own name
+    // even when the program finds it under another, and met console's log at every call ("expected number, found text")
+    'load @term/base/console\n  find log, name bench-log\n',
+    'load @term/base/clock\n  find read-nanoseconds\n',
+    'load @term/base/list\n  find push\n',
+    'load @term/base/text\n  find split\n',
+    'load @term/base/file\n  find read, name read-cases\n',
+    'load @term/base/environment\n  find variable, name read-variable\n',
+    `dock load\n  load <global:${spec.shim}>, name ${alias}\n`,
+    `load ${load}`,
+    // each candidate task under its own name, so one named like a harness task (imath's log) never meets it
+    ...[...new Set(spec.ops.map(op => op.term_op))].map(found => `  find ${found}, name candidate-${found}`),
+    '',
+    // node and browser never run this program, and a bind must hold a case for every backend
+    'bind case-float',
+    '  take value, like text',
+    '  like float',
+    '  case node',
+    '    text <Number($value)>',
+    '  case browser',
+    '    text <Number($value)>',
+    '  case rust',
+    '    text <$value.parse::<f64>().unwrap_or(f64::NAN)>',
+    '  case swift',
+    '    text <(Double($value) ?? Double.nan)>',
+    '  case kotlin',
+    '    text <($value).toDouble()>',
+    '',
+    'bind case-integer',
+    '  take value, like text',
+    '  like number',
+    '  case node',
+    '    text <Number($value)>',
+    '  case browser',
+    '    text <Number($value)>',
+    '  case rust',
+    '    text <$value.parse::\\<i64\\>().unwrap_or(0)>',
+    '  case swift',
+    '    text <(Int($value) ?? 0)>',
+    '  case kotlin',
+    '    text <($value).toLong()>',
+    '',
+    'bind case-rune',
+    '  take code, like number',
+    '  like text',
+    '  case node',
+    '    text <String.fromCodePoint($code)>',
+    '  case browser',
+    '    text <String.fromCodePoint($code)>',
+    '  case rust',
+    '    text <char::from_u32($code as u32).map_or(String::new(), |rune| rune.to_string())>',
+    '  case swift',
+    '    text <(UnicodeScalar(Int($code)).map(String.init) ?? "")>',
+    '  case kotlin',
+    '    text <String(Character.toChars(($code).toInt()))>',
+    '',
+    'task floats-of',
+    '  take line, like text',
+    '  like list, like float',
+    '',
+    '  save found, like list, like float',
+    '    make list',
+    '  walk split(line, <|>)',
+    '    take one',
+    '    push(found, case-float(one))',
+    '  back found',
+    '',
+    'task numbers-of',
+    '  take line, like text',
+    '  like list, like number',
+    '',
+    '  save found, like list, like number',
+    '    make list',
+    '  walk split(line, <|>)',
+    '    take one',
+    '    push(found, case-integer(one))',
+    '  back found',
+    '',
+    '# a text from its code points, `,` between them',
+    'task text-of-codes',
+    '  take field, like text',
+    '  like text',
+    '',
+    '  save found, <>',
+    '  fork test, is-equal(field, <>)',
+    '    hold',
+    '      back found',
+    '  walk split(field, <,>)',
+    '    take one',
+    '    save found, <{found}{case-rune(case-integer(one))}>',
+    '  back found',
+    '',
+    'task texts-of',
+    '  take line, like text',
+    '  like list, like text',
+    '',
+    '  save found, like list, like text',
+    '    make list',
+    '  walk split(line, <|>)',
+    '    take one',
+    '    push(found, text-of-codes(one))',
+    '  back found',
+    '',
+  ]
+  const READER: Record<string, string> = { float: 'floats-of', number: 'numbers-of', text: 'texts-of' }
+  for (const op of spec.ops) {
+    const args = argsOf(op)
+    const shimCall = callOf(`${alias}/${op.shim_op}`, args)
+    const termCall = callOf(`candidate-${op.term_op}`, args)
+    const same = op.kind === 'float' ? 'or(is-equal(got, want), and(is-unequal(got, got), is-unequal(want, want)))' : 'is-equal(got, want)'
+    out.push(
+      [
+        '# every case once: the agreeing ones are kept for timing',
+        `task check-${op.op}`,
+        ...listsOf(args, 'a'),
+        ...listsOf(args, 'k'),
+        '  like text',
+        '',
+        '  save equal, 0',
+        '  save plain, 0',
+        '  save shown, 0',
+        '  save i, 0',
+        '  walk test',
+        '    hook test, is-below(i, a0/length)',
+        '    hook hold',
+        ...readsOf(args, '      '),
+        `      save want, ${shimCall}`,
+        `      save got, ${termCall}`,
+        `      fork test, ${same}`,
+        '        hold',
+        '          save equal, add(equal, 1)',
+        ...args.map((_, at) => `          push(k${at}, x${at})`),
+        '        miss',
+        '          save plain, add(plain, 1)',
+        '          fork test, is-below(shown, 4)',
+        '            hold',
+        `              bench-log(<  differ ${op.op} [${args.map((_, at) => `{x${at}}`).join(', ')}] shim {want} term {got}>)`,
+        '              save shown, add(shown, 1)',
+        '      save i, add(i, 1)',
+        '  back <cases {a0/length} equal {equal} disagree {plain} disagree-record 0 unsafe-answer 0>',
+        '',
+      ].join('\n'),
+    )
+    out.push(typedTimer(`time-shim-${op.op}`, shimCall, args, op.kind))
+    out.push(typedTimer(`time-term-${op.op}`, termCall, args, op.kind))
+    // the loop alone: every argument read, the first one sunk as its own kind
+    out.push(typedTimer(`time-base-${op.op}`, 'x0', args, args[0]!))
+  }
+  out.push(
+    [
+      'task best',
+      '  take a, like number',
+      '  take b, like number',
+      '  like number',
+      '',
+      '  fork test, or(is-below(a, 0), is-below(b, a))',
+      '    hold',
+      '      back b',
+      '  back a',
+      '',
+      'task per-call',
+      '  take took, like number',
+      '  take calls, like number',
+      '  like number',
+      '',
+      '  fork test, is-equal(calls, 0)',
+      '    hold',
+      '      back 0',
+      '  back divide(multiply(took, 1000), calls)',
+      '',
+    ].join('\n'),
+  )
+  const warm = WARM_CALLS[native]
+  const run = [
+    'task run',
+    '  mark async',
+    '',
+    `  bench-log(<shim ${label} rounds ${spec.rounds} trials ${TRIALS} warm ${warm}>)`,
+    `  save all, split(read-cases(read-variable(<${CASES_VARIABLE}>)), <\\n>)`,
+  ]
+  let line = 0
+  for (const op of spec.ops) {
+    const args = argsOf(op)
+    const name = op.op
+    args.forEach((kind, at) => {
+      run.push(`  save a${at}-${name}, ${READER[kind]}(all/${line})`)
+      run.push(`  save k${at}-${name}, like list, like ${TYPED[kind]}`, '    make list')
+      line += 1
+    })
+    const all = (prefix: string): string => args.map((_, at) => `${prefix}${at}-${name}`).join(', ')
+    run.push(`  save verdict-${name}, check-${name}(${all('a')}, ${all('k')})`)
+    if (warm > 0) {
+      run.push(
+        `  fork test, is-above(k0-${name}/length, 0)`,
+        '    hold',
+        `      save warm-${name}, 1`,
+        '      walk test',
+        `        hook test, is-below(multiply(warm-${name}, k0-${name}/length), ${warm})`,
+        '        hook hold',
+        `          save warm-${name}, add(warm-${name}, 1)`,
+        `      save warmed-${name}, add(time-shim-${name}(${all('k')}, warm-${name}), time-term-${name}(${all('k')}, warm-${name}))`,
+        `      save warmed-${name}, add(warmed-${name}, time-base-${name}(${all('k')}, warm-${name}))`,
+        `      fork test, is-equal(warmed-${name}, -1)`,
+        '        hold',
+        '          bench-log(<warm>)',
+      )
+    }
+    const kept = `${all('k')}, ${spec.rounds}`
+    run.push(
+      `  save shim-${name}, -1`,
+      `  save term-${name}, -1`,
+      `  save base-${name}, -1`,
+      `  save trial-${name}, 0`,
+      '  walk test',
+      `    hook test, is-below(trial-${name}, ${TRIALS})`,
+      '    hook hold',
+      `      fork test, is-equal(modulo(trial-${name}, 2), 0)`,
+      '        hold',
+      `          save shim-${name}, best(shim-${name}, time-shim-${name}(${kept}))`,
+      `          save term-${name}, best(term-${name}, time-term-${name}(${kept}))`,
+      '        miss',
+      `          save term-${name}, best(term-${name}, time-term-${name}(${kept}))`,
+      `          save shim-${name}, best(shim-${name}, time-shim-${name}(${kept}))`,
+      `      save base-${name}, best(base-${name}, time-base-${name}(${kept}))`,
+      `      save trial-${name}, add(trial-${name}, 1)`,
+      `  save calls-${name}, multiply(k0-${name}/length, ${spec.rounds})`,
+      `  bench-log(<op ${spec.shim}/${name} shim-ps {per-call(shim-${name}, calls-${name})} term-ps {per-call(term-${name}, calls-${name})} base-ps {per-call(base-${name}, calls-${name})} {verdict-${name}}>)`,
+    )
+  }
+  out.push(run.join('\n'), '')
+  return out.join('\n')
+}
+
+// a spec whose every op takes floats and answers a float is fmath's program, unchanged
+const isFloatSpec = (spec: Spec): boolean => spec.ops.every(op => op.kind === 'float' && argsOf(op).every(kind => kind === 'float'))
+
 // ---- the envs ----
 
 type Built = { program: string; cases: string }
@@ -872,9 +1300,13 @@ let built: Built | undefined
 if (LOGS.length === 0) {
   const load = env.place(candidate, spec, work)
   const file = join(work, 'bench.tree')
-  writeFileSync(file, env.native ? nativeProgram(spec, label, load, env.native) : program(spec, label, load))
+  const typed = env.native !== undefined && !isFloatSpec(spec)
+  writeFileSync(
+    file,
+    env.native ? (typed ? typedProgram(spec, label, load, env.native) : nativeProgram(spec, label, load, env.native)) : program(spec, label, load),
+  )
   const cases = join(work, env.native ? 'cases.txt' : 'cases.json')
-  writeFileSync(cases, env.native ? nativeCases(spec, makeCases(spec)) : JSON.stringify(makeCases(spec)))
+  writeFileSync(cases, env.native ? (typed ? typedCases(spec, makeCases(spec)) : nativeCases(spec, makeCases(spec))) : JSON.stringify(makeCases(spec)))
   built = { program: env.build(file, work), cases }
   writeFileSync(
     record,

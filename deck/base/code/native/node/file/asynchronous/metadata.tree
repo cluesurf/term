@@ -1,12 +1,32 @@
-# node asynchronous file metadata. Forwards to the linked `stat` runtime shim (`fs.promises.stat`), which builds
-# the record in one call rather than one call per field. Internal: reached only through the public file/metadata API.
+# node asynchronous file metadata, over `fs.promises.stat` (or `lstat` when a link is not followed), the whole record
+# from one call. Internal: reached only through the public file/metadata API.
 
 dock load
-  load <global:stat>, name stat
+  load <node:fs/promises>, name meta-fs
+  load <global:Math>, name meta-math
 
 load @term/base/file/metadata
   find file-metadata
 
+# the host's stats of a path, following a symbolic link or not
+task meta-stats
+  mark async
+  take path, like text
+  take follow, like boolean
+  like dynamic
+  fork test
+    hook test, read follow
+    hook hold
+      send back
+        call meta-fs/stat
+          read path
+          wait true
+  send back
+    call meta-fs/lstat
+      read path
+      wait true
+
+# a missing path reads as the zero record rather than raising: the public API is total
 task meta-read
   mark async
   take path, like text
@@ -15,8 +35,54 @@ task meta-read
     like boolean
     fall true
   like file-metadata
-  send back
-    call stat/meta-read
-      read path
-      read follow
-      wait true
+  fork
+    mark unsafe
+    save stats
+      call meta-stats
+        read path
+        read follow
+    save link
+      call stats/is-symbolic-link
+    save kind, text <other>
+    fork test
+      hook test
+        call stats/is-directory
+      hook hold
+        save kind, text <directory>
+      hook miss
+        fork test
+          hook test, read link
+          hook hold
+            save kind, text <link>
+          hook miss
+            fork test
+              hook test
+                call stats/is-file
+              hook hold
+                save kind, text <file>
+    send back
+      make file-metadata
+        bind size, read stats/size
+        bind kind, read kind
+        bind made
+          call meta-math/trunc
+            read stats/birthtime-ms
+        bind changed
+          call meta-math/trunc
+            read stats/mtime-ms
+        bind opened
+          call meta-math/trunc
+            read stats/atime-ms
+        bind mode, read stats/mode
+        bind link, read link
+  halt take
+    take problem
+    send back
+      make file-metadata
+        bind size, code 0
+        bind kind, text <other>
+        bind made, code 0
+        bind changed, code 0
+        bind opened, code 0
+        bind mode, code 0
+        bind link, false

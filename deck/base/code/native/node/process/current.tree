@@ -1,9 +1,7 @@
-
-# The current process. Forwards to the linked current runtime shim, which owns the signal-name mapping and the event
-# registration. Internal: reached only through the public process API.
+# The current process, over node's `process` global. Internal: reached only through the public process API.
 
 dock load
-  load <global:current>, name current
+  load <global:process>, name current-process
 
 load @term/base/process/current
   find process-info
@@ -11,16 +9,17 @@ load @term/base/process/current
 task read-process
   like process-info
 
+  # the program's own arguments, as on every backend: argv[0] is node and argv[1] the script
+  save argv, read current-process/argv
   send back
     make process-info
-      bind id
-        call current/id
+      bind id, read current-process/pid
       bind arguments
-        call current/arguments
+        call argv/slice
+          code 2
       bind directory
-        call current/directory
-      bind executable
-        call current/executable
+        call current-process/cwd
+      bind executable, read current-process/exec-path
 
 task exit-process
   take
@@ -28,13 +27,50 @@ task exit-process
     like size
     fall 0
 
-  call current/exit
+  call current-process/exit
     read code
 
+# node's name of a signal: `signal` is one of <terminate>, <interrupt>, <hangup>, and anything else has none
+task signal-name
+  take signal, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <terminate>
+    hook hold
+      send back, text <SIGTERM>
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <interrupt>
+    hook hold
+      send back, text <SIGINT>
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <hangup>
+    hook hold
+      send back, text <SIGHUP>
+  send back, text <>
+
+# a signal no name is given for is ignored
 task listen-process
   take signal, like text
   take handler, like task
 
-  call current/listen
-    read signal
-    read handler
+  save name
+    call signal-name
+      read signal
+  fork test
+    hook test
+      call is-unequal
+        read name
+        text <>
+    hook hold
+      call current-process/on
+        read name
+        read handler

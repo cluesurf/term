@@ -1,11 +1,72 @@
-# node HTTP client primitive. Internal: reached only through the public http API (network/http.tree), which builds
-# the response, orders its headers and raises `timeout` or `outage`, so every backend answers alike.
+# node HTTP client primitive, over the host fetch. Internal: reached only through the public http API
+# (network/http.tree), which builds the response, orders its headers and raises `timeout` or `outage`, so every
+# backend answers alike.
 
 load @term/base/hash
   find hash
 
+load @term/base/list
+  find push
+
 dock load
-  load <global:http>, name http
+  load <global:AbortSignal>, name http-abort
+  load <global:Math>, name http-math
+
+# the host fetch, awaited where it is used (inside the async `send-request`). A bind, not a dock: the emitter renames a
+# docked global `fetch` (`fetch_`), which the host does not have
+bind http-send
+  take url, like text
+  take init, like dynamic
+  like dynamic
+  case node
+    text <await fetch($url, $init)>
+
+# the request's headers as the plain record fetch takes
+bind http-headers
+  take header, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($header)>
+
+# the host's own text of a value, as String() gives it
+bind http-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# what fetch is handed: the method, the headers and the time limit, and the body only when there is one
+task http-init
+  take method, like text
+  take body, like text
+  take header, like dynamic
+  take timeout, like number
+  like dynamic
+  save signal
+    call http-abort/timeout
+      call http-math/max
+        code 0
+        read timeout
+  save headers
+    call http-headers
+      read header
+  fork test
+    hook test
+      call is-above
+        read body/length
+        code 0
+    hook hold
+      send back
+        make object
+          bind method, read method
+          bind headers, read headers
+          bind signal, read signal
+          bind body, read body
+  send back
+    make object
+      bind method, read method
+      bind headers, read headers
+      bind signal, read signal
 
 # `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
 # `outage` and the host's own message
@@ -21,11 +82,69 @@ task send-request
   take timeout, like number
   like list
     like text
-  send back
-    call http/request
+  save init
+    call http-init
       read method
-      read url
       read body
       read header
       read timeout
-      wait true
+  fork
+    mark unsafe
+    save response
+      call http-send
+        read url
+        read init
+    save content, like text
+      call response/text
+        wait true
+    save out, like list, like text
+      make list
+    call push
+      read out
+      text <ok>
+    call push
+      read out
+      call http-text-of
+        read response/status
+    call push
+      read out
+      read content
+    save each
+      task header-seen
+        take value, like text
+        take name, like dynamic
+        call push
+          read out
+          call name/to-lower-case
+        call push
+          read out
+          read value
+    save headers, read response/headers
+    call headers/for-each
+      read each
+    send back, read out
+  halt take
+    take problem
+    save kind, text <outage>
+    save name, read problem/name
+    fork test
+      hook test
+        call or
+          call is-equal
+            read name
+            text <TimeoutError>
+          call is-equal
+            read name
+            text <AbortError>
+      hook hold
+        save kind, text <timeout>
+    save failed, like list, like text
+      make list
+    call push
+      read failed
+      read kind
+    call push
+      read failed
+      call http-text-of
+        read problem
+    send back, read failed

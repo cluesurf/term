@@ -1,67 +1,171 @@
-# integer math over the linked imath runtime shim. Internal: reached only through the public math API.
+# integer math over the JVM's Long as declarative bindings, one host expression an op, and the decisions as Term tasks
+# (decision 132 of term/self-host/change/001): the imath shim's own expressions and its rule. Internal: reached only
+# through the public math API.
+#
+# the integer or a stop (note/project/term/proof/numbers.md): `abs(Long.MIN_VALUE)` is MIN_VALUE again on the JVM, a
+# different integer, so it stops instead, and a power multiplies by Math.multiplyExact, so a result past Long throws
+# instead of saturating. A negative exponent is the real result truncated toward zero: 0, except for a base of 1 or
+# -1, as on Rust and Swift. Each stop throws the shim's own ArithmeticException with its text.
 
-dock load
-  load <global:imath>, name imath
+bind is-long-minimum
+  take value, like number
+  like boolean
+  case kotlin
+    text <(($value) == Long.MIN_VALUE)>
+
+bind host-abs
+  take value, like number
+  like number
+  case kotlin
+    text <kotlin.math.abs($value)>
+
+# the stop: the shim's ArithmeticException, with its text
+bind stop-arithmetic
+  take reason, like text
+  like number
+  case kotlin
+    text <throw ArithmeticException($reason)>
 
 task abs
   take value, like number
   like number
+  fork test
+    hook test
+      call is-long-minimum
+        read value
+    hook hold
+      send back
+        call stop-arithmetic, text <excess: a number past Long>
   send back
-    call imath/abs
+    call host-abs
       read value
 
-task min
+bind min
   take a, like number
   take b, like number
   like number
-  send back
-    call imath/min
-      read a
-      read b
+  case kotlin
+    text <kotlin.comparisons.minOf($a, $b)>
 
-task max
+bind max
   take a, like number
   take b, like number
   like number
-  send back
-    call imath/max
-      read a
-      read b
+  case kotlin
+    text <kotlin.comparisons.maxOf($a, $b)>
+
+bind signum
+  take value, like number
+  like number
+  case kotlin
+    text <($value).compareTo(0L).toLong()>
+
+bind sqrt
+  take value, like number
+  like number
+  case kotlin
+    text <Math.sqrt(($value).toDouble()).toLong()>
+
+bind log
+  take value, like number
+  like number
+  case kotlin
+    text <kotlin.math.ln(($value).toDouble()).toLong()>
+
+bind sin
+  take value, like number
+  like number
+  case kotlin
+    text <kotlin.math.sin(($value).toDouble()).toLong()>
+
+# the product, or the host's ArithmeticException past Long
+bind multiplied
+  take a, like number
+  take b, like number
+  like number
+  case kotlin
+    text <Math.multiplyExact($a, $b)>
 
 task pow
   take base, like number
   take exponent, like number
   like number
-  send back
-    call imath/pow
-      read base
-      read exponent
-
-task signum
-  take value, like number
-  like number
-  send back
-    call imath/signum
-      read value
-
-task sqrt
-  take value, like number
-  like number
-  send back
-    call imath/sqrt
-      read value
-
-task log
-  take value, like number
-  like number
-  send back
-    call imath/log
-      read value
-
-task sin
-  take value, like number
-  like number
-  send back
-    call imath/sin
-      read value
-
+  fork test
+    hook test
+      call is-below
+        read exponent
+        code 0
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 1
+        hook hold
+          send back, code 1
+      fork test
+        hook test
+          call is-equal
+            read base
+            call subtract
+              code 0
+              code 1
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                call modulo
+                  read exponent
+                  code 2
+                code 0
+            hook hold
+              send back, code 1
+          send back
+            call subtract
+              code 0
+              code 1
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 0
+        hook hold
+          send back
+            call stop-arithmetic, text <defect: zero to a negative power>
+      send back, code 0
+  save result, code 1
+  save square, read base
+  save left, read exponent
+  walk test
+    hook test
+      call is-above
+        read left
+        code 0
+    hook step
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read left
+              code 2
+            code 1
+        hook hold
+          save result
+            call multiplied
+              read result
+              read square
+      save left
+        call divide
+          read left
+          code 2
+      fork test
+        hook test
+          call is-above
+            read left
+            code 0
+        hook hold
+          save square
+            call multiplied
+              read square
+              read square
+  send back, read result

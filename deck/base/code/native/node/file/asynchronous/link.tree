@@ -1,8 +1,8 @@
-# node asynchronous symbolic and hard links, over `fs/promises`. Internal: reached only through the public
-# file/link API.
+# node asynchronous symbolic and hard links, over `fs/promises`. A link that cannot be made does nothing, and one that
+# cannot be read reads as the empty text. Internal: reached only through the public file/link API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name link-fs
 
 task link-make
   mark async
@@ -13,17 +13,34 @@ task link-make
     like boolean
     fall false
   like void
-  call aio/link-make
-    read from
-    read to
-    read hard
-    wait true
+  fork
+    mark unsafe
+    fork test
+      hook test, read hard
+      hook hold
+        call link-fs/link
+          read from
+          read to
+          wait true
+      hook miss
+        call link-fs/symlink
+          read from
+          read to
+          wait true
+  halt take
+    take problem
 
 task link-read
   mark async
   take path, like text
   like text
-  send back
-    call aio/link-read
-      read path
-      wait true
+  fork
+    mark unsafe
+    save target, like text
+      call link-fs/readlink
+        read path
+        wait true
+    send back, read target
+  halt take
+    take problem
+    send back, text <>

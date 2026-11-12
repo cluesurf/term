@@ -1,18 +1,15 @@
-# kotlin base64 implementation. Forwards to the linked base64 runtime shim. Internal: reached only through the public base64 API.
+# kotlin base64 as declarative bindings over java.util.Base64, one host expression an op: the base64 shim's own
+# calls (decision 132 of term/self-host/change/001). Malformed input raises IllegalArgumentException, as the shim did.
+# Internal: reached only through the public base64 API.
 
-dock load
-  load <global:base64>, name base64
-
-task to-base64
+bind to-base64
   take input, like text
   like text
-  send back
-    call base64/encode
-      read input
+  case kotlin
+    text <java.util.Base64.getEncoder().encodeToString(($input).toByteArray(Charsets.UTF_8))>
 
-task from-base64
+bind from-base64
   take input, like text
   like text
-  send back
-    call base64/decode
-      read input
+  case kotlin
+    text <String(java.util.Base64.getDecoder().decode($input), Charsets.UTF_8)>

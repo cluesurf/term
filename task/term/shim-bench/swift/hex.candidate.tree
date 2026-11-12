@@ -1,0 +1,82 @@
+# The Term candidate for the swift hex shim, kept for task/term/shim-bench.ts and the floor gate: decode read over 1.2
+# against runtime/hex.swift on two runs (swift/hex.baseline.json), so native/swift/text/hex.tree docks the shim for it
+# (decision 132 point 2 of term/self-host/change/001). Encoding as a declarative binding over Foundation's Data, decoding as a Term task over host binds
+# (decision 132 of term/self-host/change/001), the hex shim's rule: two characters at a time, a pair that is not hex
+# skipped, an odd last character dropped, and bytes that are not UTF-8 give the empty text. The pairs are the host's
+# characters, as the shim's String.Index steps were. Never loaded by the stdlib.
+
+load @term/base/list
+  find push
+
+bind to-hex
+  take input, like text
+  like text
+  case swift
+    text <Data(($input).utf8).map \{ String(format: "%02x", $0) \}.joined()>
+
+# the text's characters, each as a text
+bind characters-of
+  take input, like text
+  like list
+    like text
+  case swift
+    text <SeedList\<String\>(Array($input).map \{ String($0) \})>
+
+# the byte two hex digits spell, or -1
+bind hex-byte
+  take pair, like text
+  like number
+  case swift
+    text <(UInt8($pair, radix: 16).map \{ Int($0) \} ?? -1)>
+
+# the text these UTF-8 bytes spell, or the empty text when they spell none
+bind text-of-bytes
+  take bytes
+    like list
+      like number
+  like text
+  case swift
+    text <(String(bytes: ($bytes).data.map \{ UInt8(truncatingIfNeeded: $0) \}, encoding: .utf8) ?? "")>
+
+task from-hex
+  take input, like text
+  like text
+  save characters
+    call characters-of
+      read input
+  save size, read characters/length
+  save bytes, like list, like number
+    make list
+  save i, code 0
+  walk test
+    hook test
+      call is-maximum
+        call add
+          read i
+          code 2
+        read size
+    hook step
+      save next
+        call add
+          read i
+          code 1
+      save first, read characters/{i}
+      save second, read characters/{next}
+      save byte
+        call hex-byte, text <{first}{second}>
+      fork test
+        hook test
+          call is-minimum
+            read byte
+            code 0
+        hook hold
+          call push
+            read bytes
+            read byte
+      save i
+        call add
+          read i
+          code 2
+  send back
+    call text-of-bytes
+      read bytes

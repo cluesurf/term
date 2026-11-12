@@ -5,8 +5,8 @@
 # client side (browser/host) mounts instead. One dispatcher, two boots. `seed boot` invokes the generated
 # `boot(url, port)`, which calls this.
 
-dock load
-  load <global:assets>, name files
+load ./asset-file
+  find read-asset
 
 load @term/site/dom/dom
   find view
@@ -114,7 +114,7 @@ task host
       take params, like hash, like text, like text
       like response
       save found
-        call files/read
+        call read-asset
           read request/path
       fork test
         hook test

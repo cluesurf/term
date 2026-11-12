@@ -1,8 +1,12 @@
 # node temporary files and directories, under the system temp directory. The name is a uuid, so no retry loop and
-# no mkdtemp. Internal: reached only through the public file/temporary API.
+# no mkdtemp: a collision cannot happen. A name that cannot be made reads as the empty text. Internal: reached only
+# through the public file/temporary API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name temporary-fs
+  load <node:os>, name temporary-os
+  load <node:path>, name temporary-path
+  load <node:crypto>, name temporary-crypto
 
 task temporary-make
   mark async
@@ -19,9 +23,31 @@ task temporary-make
     like text
     fall text <>
   like text
-  send back
-    call aio/temporary-make
-      read kind
-      read prefix
-      read suffix
-      wait true
+  save id, like text
+    call temporary-crypto/randomUUID
+  save at, like text
+    call temporary-path/join
+      call temporary-os/tmpdir
+      text <{prefix}{id}{suffix}>
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-equal
+          read kind
+          text <directory>
+      hook hold
+        call temporary-fs/mkdir
+          read at
+          make object
+            bind recursive, true
+          wait true
+      hook miss
+        call temporary-fs/write-file
+          read at
+          text <>
+          wait true
+  halt take
+    take problem
+    send back, text <>
+  send back, read at

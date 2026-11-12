@@ -1,58 +1,103 @@
-# node asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is `fs/promises` -- libuv's
-# threadpool behind a promise.
+# node asynchronous filesystem, over `fs/promises` (libuv's threadpool behind a promise), and watching, over
+# `fs.watch`. TOTAL, like the rest of the native surface: a failure reads as the empty / false / zero answer.
 #
 # Internal: reached only through the public file API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name file-fs
+  load <node:fs>, name file-sync-fs
+  load <node:path>, name file-path
+
+load @term/base/list
+  find push
+
+# the bytes of a node Buffer as a plain Uint8Array, and an empty one
+bind file-octets
+  take data, like dynamic
+  like bytes
+  case node
+    text <new Uint8Array($data)>
+
+bind file-no-octets
+  like bytes
+  case node
+    text <new Uint8Array()>
 
 task file-read
   mark async
   take path, like text
   like text
-  send back
-    call aio/file-read
-      read path
-      wait true
+  fork
+    mark unsafe
+    save data, like text
+      call file-fs/read-file
+        read path
+        text <utf8>
+        wait true
+    send back, read data
+  halt take
+    take problem
+    send back, text <>
 
 task file-read-bytes
   mark async
   take path, like text
   like bytes
-  send back
-    call aio/file-read-bytes
-      read path
-      wait true
+  fork
+    mark unsafe
+    save data
+      call file-fs/read-file
+        read path
+        wait true
+    send back
+      call file-octets
+        read data
+  halt take
+    take problem
+    send back
+      call file-no-octets
 
 task file-write
   mark async
   take path, like text
   take data, like text
   like void
-  call aio/file-write
-    read path
-    read data
-    wait true
+  fork
+    mark unsafe
+    call file-fs/write-file
+      read path
+      read data
+      wait true
+  halt take
+    take problem
 
 task file-write-bytes
   mark async
   take path, like text
   take data, like bytes
   like void
-  call aio/file-write-bytes
-    read path
-    read data
-    wait true
+  fork
+    mark unsafe
+    call file-fs/write-file
+      read path
+      read data
+      wait true
+  halt take
+    take problem
 
 task file-append
   mark async
   take path, like text
   take data, like text
   like void
-  call aio/file-append
-    read path
-    read data
-    wait true
+  fork
+    mark unsafe
+    call file-fs/append-file
+      read path
+      read data
+      wait true
+  halt take
+    take problem
 
 task file-copy
   mark async
@@ -63,21 +108,38 @@ task file-copy
     like boolean
     fall false
   like void
-  call aio/file-copy
-    read from
-    read to
-    read deep
-    wait true
+  fork
+    mark unsafe
+    fork test
+      hook test, read deep
+      hook hold
+        call file-fs/cp
+          read from
+          read to
+          make object
+            bind recursive, true
+          wait true
+      hook miss
+        call file-fs/copy-file
+          read from
+          read to
+          wait true
+  halt take
+    take problem
 
 task file-move
   mark async
   take from, like text
   take to, like text
   like void
-  call aio/file-move
-    read from
-    read to
-    wait true
+  fork
+    mark unsafe
+    call file-fs/rename
+      read from
+      read to
+      wait true
+  halt take
+    take problem
 
 task file-remove
   mark async
@@ -87,10 +149,16 @@ task file-remove
     like boolean
     fall false
   like void
-  call aio/file-remove
-    read path
-    read deep
-    wait true
+  fork
+    mark unsafe
+    call file-fs/rm
+      read path
+      make object
+        bind recursive, read deep
+        bind force, true
+      wait true
+  halt take
+    take problem
 
 # an empty `kind` asks only whether the path exists; <file>, <directory> and <link> ask what it is
 task file-test
@@ -101,57 +169,207 @@ task file-test
     like text
     fall text <>
   like boolean
-  send back
-    call aio/file-test
-      read path
-      read kind
-      wait true
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-equal
+          read kind
+          text <link>
+      hook hold
+        save linked
+          call file-fs/lstat
+            read path
+            wait true
+        send back
+          call linked/is-symbolic-link
+    save stats
+      call file-fs/stat
+        read path
+        wait true
+    fork test
+      hook test
+        call is-equal
+          read kind
+          text <file>
+      hook hold
+        send back
+          call stats/is-file
+    fork test
+      hook test
+        call is-equal
+          read kind
+          text <directory>
+      hook hold
+        send back
+          call stats/is-directory
+    send back, true
+  halt take
+    take problem
+    send back, false
 
 # ---- watching ----
 #
-# The pull shape the public file/watch API documents: open, await the next change, close. The `notify` crate
-# underneath is the ecosystem-standard watcher (FSEvents on macOS, inotify on Linux), not a polling loop.
-
-dock type
-  load <any>, name watch-dock
-
-# On node the global, its file (runtime/watch-file.ts) and its const are the dock alias `watch-file`, as Swift's `enum
-# watchFile` and Kotlin's `object watchFile` are: a global `watch` would redeclare this module's task `watch` (D026).
-dock load
-  load <global:watch-file>, name watch-file
+# The pull shape the public file/watch API documents: open, await the next change, close. node is the ONE backend where
+# a callback shape would have been natural, and it does not get one: the other three cannot hold it, so the shape all
+# four can hold is the shape all four get. What node contributes here is a queue in front of an event emitter.
 
 load @term/base/file/watch
   find watch-event
   find watcher
+
+# a watch: the host watcher, the changes no one has asked for yet, the answer of whoever waits for the next one
+# (`asked`), and whether it is closed
+form watch-dock
+  link watcher, like dynamic
+  link open, like boolean
+  link ready, like list, like watch-event
+  link waiting, like dynamic
+  link asked, like boolean
+  link closed, like boolean
+
+# a promise of the next change, its answer kept on the watch for whoever posts it
+bind watch-wait
+  take held, like dynamic
+  like dynamic
+  case node
+    text <((watchHeld: any): Promise\<any\> =\> new Promise\<any\>(answer =\> \{ watchHeld.waiting = answer \}))($held)>
+
+task watch-empty
+  like watch-event
+  send back
+    make watch-event
+      bind kind, text <>
+      bind path, text <>
+
+# hand the change to whoever is waiting, or hold it until someone asks
+task watch-post
+  take held, like watch-dock
+  take event, like watch-event
+  like void
+  fork test
+    hook test, read held/asked
+    hook hold
+      save answer, read held/waiting
+      save held/asked, false
+      call answer
+        read event
+    hook miss
+      call push
+        read held/ready
+        read event
 
 task watch-open
   mark async
   take path, like text
   take deep, like boolean
   like watcher
-  save raw
-    call watch-file/watch-open
-      read path
-      read deep
-      wait true
+  save held
+    make watch-dock
+      bind watcher, make void
+      bind open, false
+      bind ready, make list
+      bind waiting, make void
+      bind asked, false
+      bind closed, false
+  save on-change
+    task change-seen
+      take change, like text
+      take name, like dynamic
+      # node reports <rename> for both a create and a remove, so which one it was is whether the path is still
+      # there. Anything else is a content change.
+      save whole, read path
+      fork test
+        hook test, read name
+        hook hold
+          save whole
+            call file-path/join
+              read path
+              call name/to-string
+      save kind, text <change>
+      fork test
+        hook test
+          call is-equal
+            read change
+            text <rename>
+        hook hold
+          save kind, text <remove>
+          fork test
+            hook test
+              call file-sync-fs/exists-sync
+                read whole
+            hook hold
+              save kind, text <create>
+      call watch-post
+        read held
+        make watch-event
+          bind kind, read kind
+          bind path, read whole
+  fork
+    mark unsafe
+    save host-watcher
+      call file-sync-fs/watch
+        read path
+        make object
+          bind recursive, read deep
+        read on-change
+    save held/watcher, read host-watcher
+    save held/open, true
+  halt take
+    take problem
+    save held/closed, true
   send back
     make watcher
-      bind dock, read raw
+      bind dock, read held
       bind path, read path
 
+# the next change. A closed watcher answers with the empty event rather than waiting forever, so a loop over
+# `watch-next` ends after `watch-close`.
 task watch-next
   mark async
   take watcher, like watcher
   like watch-event
+  save held, like watch-dock
+    read watcher/dock
+  fork test
+    hook test
+      call is-above
+        read held/ready/length
+        code 0
+    hook hold
+      save first, read held/ready/0
+      save held/ready
+        call held/ready/drop-first
+          code 1
+      send back, read first
+  fork test
+    hook test, read held/closed
+    hook hold
+      send back
+        call watch-empty
+  save held/asked, true
   send back
-    call watch-file/watch-next
-      read watcher/dock
+    call watch-wait
+      read held
       wait true
 
 task watch-close
   mark async
   take watcher, like watcher
   like void
-  call watch-file/watch-close
+  save held, like watch-dock
     read watcher/dock
-    wait true
+  save held/closed, true
+  fork test
+    hook test, read held/open
+    hook hold
+      save host-watcher, read held/watcher
+      call host-watcher/close
+      save held/open, false
+  fork test
+    hook test, read held/asked
+    hook hold
+      save answer, read held/waiting
+      save held/asked, false
+      call answer
+        call watch-empty

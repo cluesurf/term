@@ -1,0 +1,47 @@
+{
+  "env": "swift",
+  "shim": "base64",
+  "line_sha256": "1cf903d1db61c75a78a23d4c980f7ca975cd3c965b24cf34e8191131639a76b0",
+  "candidate": "deck/base/code/native/swift/text/base64.tree",
+  "candidate_sha256": "47c3f75321a09387b7abf1476b60bb2a69426ebc2bb00d70f678885296a8e464",
+  "runtime": "deck/base/code/native/swift/runtime/base64.swift",
+  "runtime_sha256": "0c1fe2fb8958ee0fe39fa9cb88f44cbf45405ddeb98f62ae5d5fca9f5dbb2a9e",
+  "measured": "2026-11-12T05:41",
+  "host": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)",
+  "machine": "Apple M3 Pro cores 12",
+  "load": 19.78,
+  "trials": 7,
+  "rounds": 50,
+  "cases_per_op": 2048,
+  "rule": "best of 7, an op over 1.2 gross in two runs, or with any differ, is kept",
+  "ops": [
+    {
+      "op": "encode",
+      "shim_ns": 133.2,
+      "term_ns": 134.2,
+      "loop_ns": 5.1,
+      "gross_ratio": 1.01,
+      "net_ratio": 1.01,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    },
+    {
+      "op": "decode",
+      "shim_ns": 86,
+      "term_ns": 87.5,
+      "loop_ns": 6,
+      "gross_ratio": 1.02,
+      "net_ratio": 1.02,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    }
+  ]
+}

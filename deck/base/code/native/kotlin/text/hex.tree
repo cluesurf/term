@@ -1,4 +1,8 @@
-# kotlin hex implementation. Forwards to the linked hex runtime shim. Internal: reached only through the public hex API.
+# kotlin hex: decoding as a declarative binding of the hex shim's own expression (decision 132 of
+# term/self-host/change/001): two UTF-16 units at a time, each read as a base-16 number, so a pair that is not hex
+# raises NumberFormatException as the shim did. Encoding stays in the linked hex runtime shim: its Term version
+# (task/term/shim-bench/kotlin/hex.candidate.tree) read over 1.2 on two runs (kotlin/hex.baseline.json). Internal:
+# reached only through the public hex API.
 
 dock load
   load <global:hex>, name hex
@@ -10,9 +14,8 @@ task to-hex
     call hex/encode
       read input
 
-task from-hex
+bind from-hex
   take input, like text
   like text
-  send back
-    call hex/decode
-      read input
+  case kotlin
+    text <String(($input).chunked(2).map \{ it.toInt(16).toByte() \}.toByteArray(), Charsets.UTF_8)>

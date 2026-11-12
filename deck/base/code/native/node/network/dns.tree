@@ -1,21 +1,40 @@
-# node DNS implementation. Forwards to the linked dns runtime shim (node:dns lookup). Internal: reached only through the public dns API.
+# node DNS, over node's resolver (getaddrinfo, through node:dns/promises lookup). lookup respects the host's
+# resolution order (/etc/hosts, then DNS), so localhost and numeric IPs resolve without a network round trip. A name
+# that does not resolve raises the host's error, as before. Internal: reached only through the public dns API.
 
 dock load
-  load <global:dns>, name dns
+  load <node:dns/promises>, name dns-lookup
+
+load @term/base/list
+  find push
 
 task dns-resolve
   mark async
   take hostname, like text
   like list
     like text
-  send back
-    call dns/resolve
+  save results, like list, like dynamic
+    call dns-lookup/lookup
       read hostname
+      make object
+        bind all, true
+      wait true
+  save out, like list, like text
+    make list
+  walk list, read results
+    hook next
+      take site, name result
+      call push
+        read out
+        read result/address
+  send back, read out
 
 task dns-resolve-one
   mark async
   take hostname, like text
   like text
-  send back
-    call dns/resolve-one
+  save result
+    call dns-lookup/lookup
       read hostname
+      wait true
+  send back, read result/address

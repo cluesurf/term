@@ -1,0 +1,163 @@
+# Static assets for the node host: the file a `/base/<path>` request names, read from the build output under
+# `<cwd>/build/` (the `term make` output), `/base/X` mapping to `build/X`. node:fs and node:path are docked straight, the
+# text and process calls are declarative bindings, one host expression each, and the decisions are Term, so no runtime
+# shim is linked. Path traversal is stripped.
+#
+# A BINARY asset (images, fonts, media) cannot ride a text body unchanged, so its bytes are read and carried as base64,
+# and the transport decodes the same extensions back into bytes before sending. Text assets (css, js, json, svg, xml,
+# txt) pass as utf8, so the `.tree` response body stays a plain text field.
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+form asset-file
+  link found, like boolean
+  link body, like text
+
+# the request path past its `/base/` prefix
+bind strip-base-prefix
+  take value, like text
+  like text
+  case node
+    text <($value).replace(/^\\/+base\\/+/, "")>
+
+# every leading `../`, so a request cannot leave the build folder
+bind strip-climbing
+  take value, like text
+  like text
+  case node
+    text <($value).replace(/^(\\.\\.([/\\\\]|$))+/, "")>
+
+bind working-folder
+  like text
+  case node
+    text <process.cwd()>
+
+bind last-dot
+  take value, like text
+  like number
+  case node
+    text <($value).lastIndexOf(".")>
+
+bind lower-tail
+  take value, like text
+  take at, like number
+  like text
+  case node
+    text <($value).slice($at).toLowerCase()>
+
+# the extensions whose bytes are not utf8 text, read and carried as base64. The transport decodes by the same set
+bind is-binary-extension
+  take extension, like text
+  like boolean
+  case node
+    text <["png", "jpg", "jpeg", "gif", "webp", "ico", "avif", "bmp", "woff", "woff2", "ttf", "otf", "eot", "mp3", "wav", "ogg", "mp4", "webm", "mov", "pdf", "wasm"].includes($extension)>
+
+bind is-host-file
+  take stat, like dynamic
+  like boolean
+  case node
+    text <($stat).isFile()>
+
+bind base64-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <($bytes).toString("base64")>
+
+task missing-asset
+  like asset-file
+  send back
+    make asset-file
+      bind found, false
+      bind body, text <>
+
+# the extension past the last dot, lower case, or empty
+task extension-of
+  take value, like text
+  like text
+  save dot
+    call last-dot
+      read value
+  fork test
+    hook test
+      call is-minimum
+        read dot
+        code 0
+    hook hold
+      send back
+        call lower-tail
+          read value
+          call add
+            read dot
+            code 1
+  send back, text <>
+
+task read-asset
+  take url-path, like text
+  like asset-file
+  save safe
+    call strip-climbing
+      call node-path/normalize
+        call strip-base-prefix
+          read url-path
+  fork test
+    hook test
+      call or
+        call is-equal
+          read safe
+          text <>
+        call is-equal
+          read safe
+          text <.>
+    hook hold
+      send back
+        call missing-asset
+  save file
+    call node-path/join
+      call working-folder
+      text <build>
+      read safe
+  save extension
+    call extension-of
+      read safe
+  # unreadable reads as not found
+  save answer
+    call missing-asset
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call and
+          call node-fs/exists-sync
+            read file
+          call is-host-file
+            call node-fs/stat-sync
+              read file
+      hook hold
+        fork test
+          hook test
+            call is-binary-extension
+              read extension
+          hook hold
+            save answer
+              make asset-file
+                bind found, true
+                bind body
+                  call base64-of
+                    call node-fs/read-file-sync
+                      read file
+          hook miss
+            save answer
+              make asset-file
+                bind found, true
+                bind body
+                  call node-fs/read-file-sync
+                    read file
+                    text <utf8>
+  halt take
+    take problem
+    save answer
+      call missing-asset
+  send back, read answer

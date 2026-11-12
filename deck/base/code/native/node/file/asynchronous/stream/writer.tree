@@ -1,14 +1,16 @@
-# node asynchronous file write stream, over `fs/promises`. Internal: reached only through the public
-# file/stream/writer API.
-
-dock type
-  load <any>, name writer-dock
+# node asynchronous file write stream, over `fs/promises`: an open FileHandle and where the next write lands. A write
+# or close that fails does nothing. Internal: reached only through the public file/stream/writer API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name writer-fs
 
 load @term/base/file/stream/writer
   find writer
+
+# the open file and the next write's position
+form writer-dock
+  link file, like dynamic
+  link at, like number
 
 task writer-create
   mark async
@@ -18,14 +20,30 @@ task writer-create
     like boolean
     fall false
   like writer
-  save raw
-    call aio/writer-open
+  save flags, text <w>
+  fork test
+    hook test, read append
+    hook hold
+      save flags, text <a>
+  save opened
+    call writer-fs/open
       read path
-      read append
+      read flags
       wait true
+  save at, code 0
+  fork test
+    hook test, read append
+    hook hold
+      save stats
+        call opened/stat
+          wait true
+      save at, read stats/size
   send back
     make writer
-      bind dock, read raw
+      bind dock
+        make writer-dock
+          bind file, read opened
+          bind at, read at
       bind path, read path
 
 task writer-write
@@ -33,15 +51,34 @@ task writer-write
   take stream, like writer
   take data, like text
   like void
-  call aio/writer-push
+  save held, like writer-dock
     read stream/dock
-    read data
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    save put
+      call opened/write
+        read data
+        read held/at
+        text <utf8>
+        wait true
+    save held/at
+      call add
+        read held/at
+        read put/bytes-written
+  halt take
+    take problem
 
 task writer-close
   mark async
   take stream, like writer
   like void
-  call aio/writer-close
+  save held, like writer-dock
     read stream/dock
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    call opened/close
+      wait true
+  halt take
+    take problem

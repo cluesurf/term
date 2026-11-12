@@ -1,95 +1,157 @@
-# kotlin string implementation. Forwards to the linked text runtime shim, which wraps the platform's string API. Internal: reached only through the public string API.
+# kotlin string operations: the host's String calls as declarative bindings, one host expression an op, and the
+# strings shim's decisions and position walks as Term tasks over them (decision 132 of term/self-host/change/001).
+# Positions and lengths count CODE POINTS, as the emitter's TermText and every other backend do
+# (note/project/term/stdlib/semantics.md). Bounds clamp to the text and never count from the end, and trim strips the
+# same White_Space set as TermText. Each position is found by stepping through the string where it lies, so nothing is
+# converted to an array. The steps are the host's UTF-16 offsets. Internal: reached through the public string API and
+# native/kotlin/text.tree.
 
-dock load
-  load <global:strings>, name strings
-
-task string-upper
+bind string-upper
   take input, like text
   like text
-  send back
-    call strings/upper
-      read input
+  case kotlin
+    text <($input).uppercase()>
 
-task string-lower
+bind string-lower
   take input, like text
   like text
-  send back
-    call strings/lower
-      read input
+  case kotlin
+    text <($input).lowercase()>
 
-task string-trim
-  take input, like text
-  like text
-  send back
-    call strings/trim
-      read input
-
-task string-repeat
-  take input, like text
-  take count, like number
-  like text
-  send back
-    call strings/repeated
-      read input
-      read count
-
-task string-contains
+bind string-contains
   take input, like text
   take part, like text
   like boolean
-  send back
-    call strings/contains
-      read input
-      read part
+  case kotlin
+    text <($input).contains($part)>
 
-task string-starts-with
+bind string-starts-with
   take input, like text
   take prefix, like text
   like boolean
-  send back
-    call strings/starts-with
-      read input
-      read prefix
+  case kotlin
+    text <($input).startsWith($prefix)>
 
-task string-ends-with
+bind string-ends-with
   take input, like text
   take suffix, like text
   like boolean
-  send back
-    call strings/ends-with
-      read input
-      read suffix
+  case kotlin
+    text <($input).endsWith($suffix)>
 
-task string-replace
+bind string-replace
   take input, like text
   take from, like text
   take to, like text
   like text
-  send back
-    call strings/replace
-      read input
-      read from
-      read to
+  case kotlin
+    text <($input).replace($from, $to)>
 
-task string-slice
+bind string-replace-first
+  take input, like text
+  take from, like text
+  take to, like text
+  like text
+  case kotlin
+    text <($input).replaceFirst($from, $to)>
+
+bind string-concat
+  take input, like text
+  take other, like text
+  like text
+  case kotlin
+    text <(($input) + ($other))>
+
+bind string-split
+  take input, like text
+  take separator, like text
+  like list
+    like text
+  case kotlin
+    text <($input).split($separator).toMutableList()>
+
+bind string-join
+  take list
+    like list
+      like text
+  take separator, like text
+  like text
+  case kotlin
+    text <($list).joinToString($separator)>
+
+bind string-length
+  take input, like text
+  like number
+  case kotlin
+    text <($input).let \{ s -\> s.codePointCount(0, s.length).toLong() \}>
+
+bind host-repeat
+  take input, like text
+  take count, like number
+  like text
+  case kotlin
+    text <($input).repeat(($count).toInt())>
+
+# the text's length in UTF-16 units
+bind unit-length
+  take input, like text
+  like number
+  case kotlin
+    text <($input).length.toLong()>
+
+# the code point at a UTF-16 offset, and the one ending at it
+bind code-point-at
+  take input, like text
+  take at, like number
+  like number
+  case kotlin
+    text <($input).codePointAt(($at).toInt()).toLong()>
+
+bind code-point-before
+  take input, like text
+  take at, like number
+  like number
+  case kotlin
+    text <($input).codePointBefore(($at).toInt()).toLong()>
+
+# the UTF-16 units a code point takes, 1 or 2
+bind unit-count
+  take code, like number
+  like number
+  case kotlin
+    text <Character.charCount(($code).toInt()).toLong()>
+
+bind host-substring
   take input, like text
   take start, like number
   take end, like number
   like text
-  send back
-    call strings/slice
-      read input
-      read start
-      read end
+  case kotlin
+    text <($input).substring(($start).toInt(), ($end).toInt())>
 
-task string-concat
+bind host-substring-from
   take input, like text
-  take other, like text
+  take start, like number
   like text
-  send back
-    call strings/concat
-      read input
-      read other
+  case kotlin
+    text <($input).substring(($start).toInt())>
+
+# the UTF-16 offset of `search` from offset `start`, or -1
+bind host-index-of
+  take input, like text
+  take search, like text
+  take start, like number
+  like number
+  case kotlin
+    text <($input).indexOf($search, ($start).toInt()).toLong()>
+
+# the code points before a UTF-16 offset
+bind code-points-before
+  take input, like text
+  take end, like number
+  like number
+  case kotlin
+    text <($input).codePointCount(0, ($end).toInt()).toLong()>
 
 task string-to-text
   take value
@@ -97,3 +159,265 @@ task string-to-text
   send back
     call value/to-string
 
+# TermText's White_Space set
+task is-white
+  take c, like number
+  like boolean
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 9
+        call is-maximum
+          read c
+          code 13
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 8192
+        call is-maximum
+          read c
+          code 8202
+    hook hold
+      send back, true
+  send back
+    call or
+      call or
+        call or
+          call is-equal
+            read c
+            code 32
+          call is-equal
+            read c
+            code 133
+        call or
+          call is-equal
+            read c
+            code 160
+          call is-equal
+            read c
+            code 5760
+      call or
+        call or
+          call is-equal
+            read c
+            code 8232
+          call is-equal
+            read c
+            code 8233
+        call or
+          call or
+            call is-equal
+              read c
+              code 8239
+            call is-equal
+              read c
+              code 8287
+          call is-equal
+            read c
+            code 12288
+
+# the UTF-16 offset of code point `i`, clamped to the text
+task unit-of
+  take input, like text
+  take i, like number
+  like number
+  save size
+    call unit-length
+      read input
+  save u, code 0
+  save k, code 0
+  walk test
+    hook test
+      call and
+        call is-below
+          read k
+          read i
+        call is-below
+          read u
+          read size
+    hook step
+      save u
+        call add
+          read u
+          call unit-count
+            call code-point-at
+              read input
+              read u
+      save k
+        call add
+          read k
+          code 1
+  send back, read u
+
+task at-least-zero
+  take value, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read value
+        code 0
+    hook hold
+      send back, code 0
+  send back, read value
+
+task string-trim
+  take input, like text
+  like text
+  save size
+    call unit-length
+      read input
+  save a, code 0
+  walk test
+    hook test
+      call is-below
+        read a
+        read size
+    hook step
+      save c
+        call code-point-at
+          read input
+          read a
+      fork test
+        hook test
+          call not
+            call is-white
+              read c
+        hook hold
+          halt
+      save a
+        call add
+          read a
+          call unit-count
+            read c
+  save b, read size
+  walk test
+    hook test
+      call is-above
+        read b
+        read a
+    hook step
+      save c
+        call code-point-before
+          read input
+          read b
+      fork test
+        hook test
+          call not
+            call is-white
+              read c
+        hook hold
+          halt
+      save b
+        call subtract
+          read b
+          call unit-count
+            read c
+  send back
+    call host-substring
+      read input
+      read a
+      read b
+
+task string-repeat
+  take input, like text
+  take count, like number
+  like text
+  fork test
+    hook test
+      call is-above
+        read count
+        code 0
+    hook hold
+      send back
+        call host-repeat
+          read input
+          read count
+  send back, text <>
+
+# both bounds clamped to the text, and a start after the end swapped with it, as TermText.substring does
+task string-slice
+  take input, like text
+  take start, like number
+  take end, like number
+  like text
+  save x
+    call at-least-zero
+      read start
+  save y
+    call at-least-zero
+      read end
+  fork test
+    hook test
+      call is-above
+        read x
+        read y
+    hook hold
+      save t, read x
+      save x, read y
+      save y, read t
+  save a
+    call unit-of
+      read input
+      read x
+  save b
+    call add
+      read a
+      call unit-of
+        call host-substring-from
+          read input
+          read a
+        call subtract
+          read y
+          read x
+  send back
+    call host-substring
+      read input
+      read a
+      read b
+
+task string-slice-from
+  take input, like text
+  take start, like number
+  like text
+  send back
+    call host-substring-from
+      read input
+      call unit-of
+        read input
+        call at-least-zero
+          read start
+
+task string-index-of
+  take input, like text
+  take search, like text
+  take start, like number
+  like number
+  save r
+    call host-index-of
+      read input
+      read search
+      call unit-of
+        read input
+        call at-least-zero
+          read start
+  fork test
+    hook test
+      call is-below
+        read r
+        code 0
+    hook hold
+      send back
+        call subtract
+          code 0
+          code 1
+  send back
+    call code-points-before
+      read input
+      read r

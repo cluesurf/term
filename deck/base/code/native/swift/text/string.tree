@@ -1,100 +1,80 @@
-# swift string implementation. Forwards to the linked text runtime shim, which wraps the platform's string API. Internal: reached only through the public string API.
+# swift string operations as declarative bindings over String and Foundation, one host expression an op: the strings
+# shim's own expressions (decision 132 of term/self-host/change/001). Internal: reached only through the public string
+# API.
 
-dock load
-  load <global:strings>, name strings
-
-task string-upper
+bind string-upper
   take input, like text
   like text
-  send back
-    call strings/upper
-      read input
+  case swift
+    text <($input).uppercased()>
 
-task string-lower
+bind string-lower
   take input, like text
   like text
-  send back
-    call strings/lower
-      read input
+  case swift
+    text <($input).lowercased()>
 
-task string-trim
+bind string-trim
   take input, like text
   like text
-  send back
-    call strings/trim
-      read input
+  case swift
+    text <($input).trimmingCharacters(in: .whitespacesAndNewlines)>
 
-task string-repeat
+bind string-repeat
   take input, like text
   take count, like number
   like text
-  send back
-    call strings/repeated
-      read input
-      read count
+  case swift
+    text <String(repeating: $input, count: $count)>
 
-task string-contains
+bind string-contains
   take input, like text
   take part, like text
   like boolean
-  send back
-    call strings/contains
-      read input
-      read part
+  case swift
+    text <($input).contains($part)>
 
-task string-starts-with
+bind string-starts-with
   take input, like text
   take prefix, like text
   like boolean
-  send back
-    call strings/starts-with
-      read input
-      read prefix
+  case swift
+    text <($input).hasPrefix($prefix)>
 
-task string-ends-with
+bind string-ends-with
   take input, like text
   take suffix, like text
   like boolean
-  send back
-    call strings/ends-with
-      read input
-      read suffix
+  case swift
+    text <($input).hasSuffix($suffix)>
 
-task string-replace
+bind string-replace
   take input, like text
   take from, like text
   take to, like text
   like text
-  send back
-    call strings/replace
-      read input
-      read from
-      read to
+  case swift
+    text <($input).replacingOccurrences(of: $from, with: $to)>
 
-task string-slice
+# the characters from `start` up to `end`
+bind string-slice
   take input, like text
   take start, like number
   take end, like number
   like text
-  send back
-    call strings/slice
-      read input
-      read start
-      read end
+  case swift
+    text <String(Array($input)[($start)..\<($end)])>
 
-task string-concat
+bind string-concat
   take input, like text
   take other, like text
   like text
-  send back
-    call strings/concat
-      read input
-      read other
+  case swift
+    text <($input + $other)>
 
-task string-to-text
+# a value as text: the host's own type question (a text, an Int, a Double or a Bool), else the empty text
+bind string-to-text
   take value
   like text
-  send back
-    call strings/from-value
-      read value
-
+  case swift
+    text <\{ (held: Any) -\> String in if let s = held as? String \{ return s \}; if let n = held as? Int \{ return String(n) \}; if let n = held as? Double \{ return String(n) \}; if let b = held as? Bool \{ return String(b) \}; return "" \}($value)>

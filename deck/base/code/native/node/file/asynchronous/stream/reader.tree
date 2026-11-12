@@ -1,14 +1,39 @@
-# node asynchronous file read stream: an open FileHandle plus how much of the window is left, pulled a chunk at a
-# time. Internal: reached only through the public file/stream/reader API.
-
-dock type
-  load <any>, name reader-dock
+# node asynchronous file read stream: an open FileHandle, where the next chunk starts, how much of the window is left,
+# and one streaming decoder, pulled a chunk at a time. The decoder holds a character whose bytes a chunk boundary
+# splits until the next chunk completes it (decision 067 section 3, term-self-host-001-0380). Internal: reached only
+# through the public file/stream/reader API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name reader-fs
+  load <global:Buffer>, name reader-buffer
+  load <global:Math>, name reader-math
 
 load @term/base/file/stream/reader
   find reader
+
+# the open file, the next read's position, the bytes of the window still to read (`bounded` false reads to the end)
+# and the decoder
+form reader-dock
+  link file, like dynamic
+  link at, like number
+  link bounded, like boolean
+  link left, like number
+  link decoder, like dynamic
+
+# a UTF-8 decoder that keeps a leading byte order mark in the text, as Buffer's decode did
+bind reader-decoder
+  like dynamic
+  case node
+    text <new TextDecoder('utf-8', \{ ignoreBOM: true \})>
+
+# the text of a chunk's first `count` bytes, holding an incomplete last character for the next chunk
+bind reader-decode
+  take decoder, like dynamic
+  take buffer, like dynamic
+  take count, like number
+  like text
+  case node
+    text <$decoder.decode($buffer.subarray(0, $count), \{ stream: true \})>
 
 # `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end.
 task reader-create
@@ -23,31 +48,120 @@ task reader-create
     like size
     fall code 0
   like reader
-  save raw
-    call aio/reader-open
+  save opened
+    call reader-fs/open
       read path
-      read start
-      read size
+      text <r>
       wait true
   send back
     make reader
-      bind dock, read raw
+      bind dock
+        make reader-dock
+          bind file, read opened
+          bind at
+            call reader-math/max
+              code 0
+              read start
+          bind bounded
+            call is-above
+              read size
+              code 0
+          bind left, read size
+          bind decoder
+            call reader-decoder
       bind path, read path
 
-# the next chunk, or the empty text at the end of the stream
+# the next chunk, or the empty text at the end of the stream (or of the window). A chunk ends before an incomplete
+# character, whose bytes the decoder holds for the next one. At the end the held bytes are flushed (as U+FFFD, being
+# incomplete). A chunk that decoded to nothing while bytes were read reads on, so the empty text only means the end
 task reader-read
   mark async
   take stream, like reader
   like text
-  send back
-    call aio/reader-next
-      read stream/dock
-      wait true
+  save held, like reader-dock
+    read stream/dock
+  save opened, read held/file
+  save decoder, read held/decoder
+  fork
+    mark unsafe
+    walk test
+      hook test, true
+      hook step
+        fork test
+          hook test
+            call and
+              read held/bounded
+              call is-maximum
+                read held/left
+                code 0
+          hook hold
+            send back
+              call decoder/decode
+        save want, code 65536
+        fork test
+          hook test, read held/bounded
+          hook hold
+            save want
+              call reader-math/min
+                read held/left
+                code 65536
+        save buffer
+          call reader-buffer/alloc
+            read want
+        save got
+          call opened/read
+            read buffer
+            code 0
+            read want
+            read held/at
+            wait true
+        save count, read got/bytes-read
+        fork test
+          hook test
+            call is-equal
+              read count
+              code 0
+          hook hold
+            send back
+              call decoder/decode
+        save held/at
+          call add
+            read held/at
+            read count
+        fork test
+          hook test, read held/bounded
+          hook hold
+            save held/left
+              call subtract
+                read held/left
+                read count
+        save chunk
+          call reader-decode
+            read decoder
+            read buffer
+            read count
+        fork test
+          hook test
+            call is-unequal
+              read chunk
+              text <>
+          hook hold
+            send back, read chunk
+  halt take
+    take problem
+    send back, text <>
+  send back, text <>
 
 task reader-close
   mark async
   take stream, like reader
   like void
-  call aio/reader-close
+  save held, like reader-dock
     read stream/dock
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    call opened/close
+      wait true
+  halt take
+    take problem

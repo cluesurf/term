@@ -1,16 +1,61 @@
 # node asynchronous file handles, over `fs/promises`. An open file is the node FileHandle plus the cursor, which
-# is what sits in the private `dock` of the public `file` record.
+# is what sits in the private `dock` of the public `file` record. node's FileHandle does carry a position for `read()`
+# with no offset, but a `write` at a position does not move it, so the cursor is kept here for the same reason swift
+# and kotlin keep one. Every call but the open is total: a failure reads as the empty text or 0, or does nothing.
 #
 # Internal: reached only through the public file/handle API.
 
-dock type
-  load <any>, name file-dock
-
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name handle-fs
+  load <global:Buffer>, name handle-buffer
+  load <global:Math>, name handle-math
 
 load @term/base/file/handle
   find file
+
+# the open FileHandle and where the next read or write happens: the private `dock` of the public `file` record
+form file-dock
+  link file, like dynamic
+  link at, like number
+
+# the five independent booleans, folded into the one mode string node wants. This is the ONLY place in the
+# asynchronous surface a node mode string appears: it is a node spelling, not part of the API.
+task open-flags
+  take read, like boolean
+  take write, like boolean
+  take create, like boolean
+  take append, like boolean
+  take clear, like boolean
+  like text
+  fork test
+    hook test, read append
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          send back, text <a+>
+      send back, text <a>
+  fork test
+    hook test, read write
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          fork test
+            hook test, read create
+            hook hold
+              send back, text <w+>
+          send back, text <r+>
+      send back, text <w>
+  fork test
+    hook test, read clear
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          send back, text <w+>
+      send back, text <w>
+  send back, text <r>
 
 # `read` / `write` / `create` / `append` / `clear` are the five independent bits every platform's open flags are
 # built from, rather than a mode string one backend happens to spell "w+"
@@ -38,49 +83,112 @@ task handle-open
     like boolean
     fall false
   like file
-  save raw
-    call aio/handle-open
+  save opened
+    call handle-fs/open
       read path
-      read read
-      read write
-      read create
-      read append
-      read clear
+      call open-flags
+        read read
+        read write
+        read create
+        read append
+        read clear
       wait true
+  save at, code 0
+  fork test
+    hook test, read append
+    hook hold
+      save stats
+        call opened/stat
+          wait true
+      save at, read stats/size
   send back
     make file
-      bind dock, read raw
+      bind dock
+        make file-dock
+          bind file, read opened
+          bind at, read at
       bind path, read path
 
 task handle-close
   mark async
   take file, like file
   like void
-  call aio/handle-close
+  save held, like file-dock
     read file/dock
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    call opened/close
+      wait true
+  halt take
+    take problem
 
 task handle-read
   mark async
   take file, like file
   take size, like size
   like text
-  send back
-    call aio/handle-read
-      read file/dock
-      read size
-      wait true
+  fork test
+    hook test
+      call is-maximum
+        read size
+        code 0
+    hook hold
+      send back, text <>
+  save held, like file-dock
+    read file/dock
+  save opened, read held/file
+  fork
+    mark unsafe
+    save buffer
+      call handle-buffer/alloc
+        read size
+    save got
+      call opened/read
+        read buffer
+        code 0
+        read size
+        read held/at
+        wait true
+    save held/at
+      call add
+        read held/at
+        read got/bytes-read
+    save part
+      call buffer/subarray
+        code 0
+        read got/bytes-read
+    send back
+      call part/to-string
+        text <utf8>
+  halt take
+    take problem
+    send back, text <>
 
 task handle-write
   mark async
   take file, like file
   take data, like text
   like size
-  send back
-    call aio/handle-write
-      read file/dock
-      read data
-      wait true
+  save held, like file-dock
+    read file/dock
+  save opened, read held/file
+  fork
+    mark unsafe
+    save put
+      call opened/write
+        read data
+        read held/at
+        text <utf8>
+        wait true
+    save held/at
+      call add
+        read held/at
+        read put/bytes-written
+    send back, read put/bytes-written
+  halt take
+    take problem
+    send back, code 0
 
 # `frame` is <start> (absolute), <relative> (from the cursor) or <end> (back from the end)
 task handle-seek
@@ -92,19 +200,56 @@ task handle-seek
     like text
     fall text <start>
   like void
-  call aio/handle-seek
+  save held, like file-dock
     read file/dock
-    read offset
-    read frame
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-equal
+          read frame
+          text <relative>
+      hook hold
+        save held/at
+          call add
+            read held/at
+            read offset
+      hook miss
+        fork test
+          hook test
+            call is-equal
+              read frame
+              text <end>
+          hook hold
+            save stats
+              call opened/stat
+                wait true
+            save held/at
+              call subtract
+                read stats/size
+                read offset
+          hook miss
+            save held/at
+              call handle-math/max
+                code 0
+                read offset
+  halt take
+    take problem
 
 task handle-flush
   mark async
   take file, like file
   like void
-  call aio/handle-flush
+  save held, like file-dock
     read file/dock
-    wait true
+  save opened, read held/file
+  fork
+    mark unsafe
+    call opened/datasync
+      wait true
+  halt take
+    take problem
 
 task handle-clear
   mark async
@@ -114,7 +259,21 @@ task handle-clear
     like size
     fall code 0
   like void
-  call aio/handle-clear
+  save held, like file-dock
     read file/dock
-    read size
-    wait true
+  save opened, read held/file
+  save kept
+    call handle-math/max
+      code 0
+      read size
+  fork
+    mark unsafe
+    call opened/truncate
+      read kept
+      wait true
+    save held/at
+      call handle-math/min
+        read held/at
+        read kept
+  halt take
+    take problem

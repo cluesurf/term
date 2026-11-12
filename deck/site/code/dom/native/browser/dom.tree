@@ -35,10 +35,247 @@ load ../../view
 load ../../../report
   find report-raise
 
+load @term/base/text
+  find starts-with
+
+# floating-ui docked straight: `anchor` assembles its middleware and runs its autoUpdate loop
 dock load
-  load <global:resize>, name resize
-  load <global:position>, name position
-  load <global:fontset>, name fontset
+  load <@floating-ui/dom>, name floating
+
+# The host calls behind anchor, observe-size and the font-ready registry are declarative bindings, one host expression
+# each, inlined at the use site, and their decisions and bookkeeping are Term below, so no runtime shim is linked. An
+# argument read twice goes through an arrow's own parameters.
+
+bind host-list-of
+  take item, like dynamic
+  like dynamic
+  case browser
+    text <[$item]>
+
+bind host-push
+  take items, like dynamic
+  take item, like dynamic
+  like dynamic
+  case browser
+    text <($items).push($item)>
+
+bind shift-options
+  like dynamic
+  case browser
+    text <(\{ padding: 8 \})>
+
+bind position-options
+  take placement, like text
+  take middleware, like dynamic
+  like dynamic
+  case browser
+    text <(\{ placement: $placement, strategy: "fixed", middleware: $middleware \})>
+
+# position:fixed at the computed x and y, once the position is known
+bind place-panel
+  take panel, like dynamic
+  take pending, like dynamic
+  like dynamic
+  case browser
+    text <((panel: HTMLElement, pending: Promise\<\{ x: number, y: number \}\>) =\> pending.then(at =\> (panel.style.position = "fixed", panel.style.left = at.x + "px", panel.style.top = at.y + "px")))($panel, $pending)>
+
+# a ResizeObserver that calls the handler with the element's content-box width
+bind make-size-observer
+  take element, like dynamic
+  take handler, like dynamic
+  like dynamic
+  case browser
+    text <((element: HTMLElement, handler: (width: number) =\> unknown): ResizeObserver =\> new ResizeObserver(() =\> handler(element.clientWidth)))($element, $handler)>
+
+bind observe-element
+  take observer, like dynamic
+  take element, like dynamic
+  like dynamic
+  case browser
+    text <($observer).observe($element)>
+
+bind make-host-map
+  like dynamic
+  case browser
+    text <new Map()>
+
+bind make-host-set
+  like dynamic
+  case browser
+    text <new Set()>
+
+bind host-has
+  take collection, like dynamic
+  take key, like dynamic
+  like boolean
+  case browser
+    text <($collection).has($key)>
+
+bind host-get
+  take collection, like dynamic
+  take key, like dynamic
+  like dynamic
+  case browser
+    text <($collection).get($key)>
+
+bind host-put
+  take collection, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like dynamic
+  case browser
+    text <($collection).set($key, $value)>
+
+bind host-add
+  take collection, like dynamic
+  take value, like dynamic
+  like dynamic
+  case browser
+    text <($collection).add($value)>
+
+bind host-remove
+  take collection, like dynamic
+  take key, like dynamic
+  like boolean
+  case browser
+    text <($collection).delete($key)>
+
+# a snapshot of the set, so a subscriber may change the set inside its callback
+bind host-items
+  take collection, like dynamic
+  like list, like dynamic
+  case browser
+    text <Array.from($collection)>
+
+# JavaScript's falsy test, as the registry made it
+bind is-host-blank
+  take value, like text
+  like boolean
+  case browser
+    text <(!$value)>
+
+bind is-host-absent
+  take value, like dynamic
+  like boolean
+  case browser
+    text <(!$value)>
+
+# the server (and a browser without one) has no FontFaceSet, so nothing waits for a font there
+bind has-no-font-set
+  like boolean
+  case browser
+    text <(typeof document === "undefined" || !document.fonts)>
+
+bind has-no-font-face
+  like boolean
+  case browser
+    text <(typeof document === "undefined" || !document.fonts || typeof FontFace === "undefined")>
+
+bind has-no-window
+  like boolean
+  case browser
+    text <(typeof window === "undefined")>
+
+# `document.fonts.check` and `.load` take a CSS font shorthand, and `1em "<family>"` is the least valid one
+bind fonts-check
+  take family, like text
+  like boolean
+  case browser
+    text <document.fonts.check('1em "' + $family + '"')>
+
+bind fonts-load
+  take family, like text
+  take loaded, like dynamic
+  take failed, like dynamic
+  like dynamic
+  case browser
+    text <((loaded: (count: number) =\> unknown, failed: () =\> unknown) =\> document.fonts.load('1em "' + $family + '"').then(faces =\> loaded(faces.length), () =\> failed()))($loaded, $failed)>
+
+bind new-font-face
+  take family, like text
+  take url, like text
+  like dynamic
+  case browser
+    text <new FontFace($family, 'url("' + $url + '")')>
+
+bind add-font
+  take face, like dynamic
+  like dynamic
+  case browser
+    text <document.fonts.add($face)>
+
+bind load-face-quietly
+  take face, like dynamic
+  like dynamic
+  case browser
+    text <($face).load().catch(() =\> undefined)>
+
+bind host-slice-from
+  take value, like text
+  take at, like number
+  like text
+  case browser
+    text <($value).slice($at)>
+
+bind start-timer
+  take handler, like dynamic
+  take wait, like number
+  like dynamic
+  case browser
+    text <setTimeout($handler, $wait)>
+
+bind stop-timer
+  take timer, like dynamic
+  like dynamic
+  case browser
+    text <clearTimeout($timer)>
+
+bind host-now
+  like number
+  case browser
+    text <(typeof performance !== "undefined" ? performance.now() : Date.now())>
+
+bind host-maximum
+  take a, like number
+  take b, like number
+  like number
+  case browser
+    text <Math.max($a, $b)>
+
+bind next-microtask
+  take handler, like dynamic
+  like dynamic
+  case browser
+    text <Promise.resolve().then($handler)>
+
+bind call-host
+  take handler, like dynamic
+  like dynamic
+  case browser
+    text <($handler)()>
+
+bind report-deadline-throw
+  take family, like text
+  take problem, like dynamic
+  like dynamic
+  case browser
+    text <console.error('[fontset] deadline subscriber for "' + $family + '" threw', $problem)>
+
+# The font-ready registry's deadline state, per family. One shared timer per family fires at `first ask + threshold`
+# and wakes every subscriber on the same tick, so a page with many text nodes of one family keeps one timer, matching
+# React's `subscribeToFontDeadline`: the FIRST subscriber's threshold schedules it, and a late subscriber after it fired
+# is called on the next microtask
+host first-ask-at
+  call make-host-map
+
+host deadline-fired
+  call make-host-set
+
+host deadline-subscribers
+  call make-host-map
+
+host deadline-timer
+  call make-host-map
 
 task create-element
   take tag, like text
@@ -272,14 +509,41 @@ task anchor
   take flip, like boolean
   take shift, like boolean
   like task
+  save middleware
+    call host-list-of
+      call floating/offset
+        read offset
+  fork test
+    hook test
+      read flip
+    hook hold
+      call host-push
+        read middleware
+        call floating/flip
+  fork test
+    hook test
+      read shift
+    hook hold
+      call host-push
+        read middleware
+        call floating/shift
+          call shift-options
+  save apply
+    task apply
+      call place-panel
+        read panel/handle
+        call floating/compute-position
+          read reference/handle
+          read panel/handle
+          call position-options
+            read placement
+            read middleware
+  # autoUpdate runs `apply` at once and on every scroll, resize and layout shift, and answers the cleanup
   send back
-    call position/anchor
+    call floating/auto-update
       read reference/handle
       read panel/handle
-      read placement
-      read offset
-      read flip
-      read shift
+      read apply
 
 # serialize is a server (SSR) concern; on the client it is unused. Return empty.
 task serialize
@@ -301,8 +565,7 @@ task observe-size
     like task
       take width
       halt exception
-  call resize/observe-size
-    read node/handle
+  save resized
     task resized
       take width
       fork
@@ -314,6 +577,16 @@ task observe-size
         call report-raise
           text <observe-size>
           read problem
+  save observer
+    call make-size-observer
+      read node/handle
+      read resized
+  call observe-element
+    read observer
+    read node/handle
+  call resized
+    call measure-width
+      read node
 
 # the element's current content-box width
 task measure-width
@@ -328,9 +601,26 @@ task measure-width
 task check-font
   take family, like text
   like boolean
-  send back
-    call fontset/check
-      read family
+  # on the server, or for no family, there is nothing to wait for, so text is never hidden there
+  fork test
+    hook test
+      call or
+        call has-no-font-set
+        call is-host-blank
+          read family
+    hook hold
+      send back, true
+  # check throws on a malformed shorthand: that reads as not blocking, never as text hidden for good
+  save loaded, true
+  fork
+    mark unsafe
+    save loaded
+      call fonts-check
+        read family
+  halt take
+    take problem
+    save loaded, true
+  send back, read loaded
 
 # resolve this font family's load status, calling `handler` once with a terminal status ('ready' | 'error' |
 # 'timeout') -- 'timeout' after a hard 2s deadline so text is never hidden forever. wraps document.fonts.load.
@@ -340,8 +630,7 @@ task watch-font
     like task
       take status, like text
       halt exception
-  call fontset/watch
-    read family
+  save settled
     task settled
       take status, like text
       fork
@@ -353,6 +642,68 @@ task watch-font
         call report-raise
           text <watch-font>
           read problem
+  fork test
+    hook test
+      call or
+        call has-no-font-set
+        call is-host-blank
+          read family
+    hook hold
+      call settled
+        text <ready>
+    hook miss
+      # the handler hears one terminal status, whichever of the load and the 2 s timeout comes first
+      save heard
+        call make-host-set
+      save done
+        task done
+          take status, like text
+          fork test
+            hook test
+              call not
+                call host-has
+                  read heard
+                  text <done>
+            hook hold
+              call host-add
+                read heard
+                text <done>
+              call settled
+                read status
+      save timeout
+        task timeout
+          call done
+            text <timeout>
+      save timer
+        call start-timer
+          read timeout
+          code 2000
+      save loaded
+        task loaded
+          take count, like number
+          call stop-timer
+            read timer
+          fork test
+            hook test
+              call is-above
+                read count
+                code 0
+            hook hold
+              call done
+                text <ready>
+            hook miss
+              call done
+                text <error>
+      save failed
+        task failed
+          call stop-timer
+            read timer
+          call done
+            text <error>
+      call fonts-load
+        read family
+        read loaded
+        read failed
 
 # register a face: a FontFace added to document.fonts and asked to load. answers at once; `watch-font` says when the
 # face is drawable. `asset:<name>` is a URL relative to the page, as an app bundle's file is relative to the app.
@@ -360,22 +711,50 @@ task register-font
   take family, like text
   take source, like text
   like boolean
-  send back
-    call fontset/register
-      read family
-      read source
+  # no FontFaceSet (the server): true, as check-font is, since nothing is drawn there
+  fork test
+    hook test
+      call has-no-font-face
+    hook hold
+      send back, true
+  save url, read source
+  fork test
+    hook test
+      call starts-with
+        read source
+        text <asset:>
+    hook hold
+      save url
+        call host-slice-from
+          read source
+          code 6
+  # true when the browser took the face
+  save taken, true
+  fork
+    mark unsafe
+    save face
+      call new-font-face
+        read family
+        read url
+    call add-font
+      read face
+    call load-face-quietly
+      read face
+  halt take
+    take problem
+    save taken, false
+  send back, read taken
 
-# fallback deadline via the fontset runtime's shared per-family timer (document.fonts has no such notion; the timer +
-# subscriber bookkeeping lives in the runtime shim, matching check / watch)
+# fallback deadline: `handler` once `first ask + threshold` passes for this family, whatever the load did, so the
+# visibility machine can reveal the fallback face when the real font is slow. With no window (the server) it never
+# fires: the client render drives the real gate
 task watch-deadline
   take family, like text
   take threshold, like number
   take handler
     like task
       halt exception
-  call fontset/deadline
-    read family
-    read threshold
+  save passed
     task passed
       fork
         mark unsafe
@@ -385,6 +764,125 @@ task watch-deadline
         call report-raise
           text <watch-deadline>
           read problem
+  fork test
+    hook test
+      call not
+        call or
+          call has-no-window
+          call is-host-blank
+            read family
+    hook hold
+      call subscribe-deadline
+        read family
+        read threshold
+        read passed
+
+task subscribe-deadline
+  take family, like text
+  take threshold, like number
+  take passed, like dynamic
+  fork test
+    hook test
+      call not
+        call host-has
+          read first-ask-at
+          read family
+    hook hold
+      call host-put
+        read first-ask-at
+        read family
+        call host-now
+  # already fired: called on the next microtask, so every path is asynchronous alike
+  fork test
+    hook test
+      call host-has
+        read deadline-fired
+        read family
+    hook hold
+      call next-microtask
+        read passed
+    hook miss
+      save subscribers
+        call host-get
+          read deadline-subscribers
+          read family
+      fork test
+        hook test
+          call is-host-absent
+            read subscribers
+        hook hold
+          save subscribers
+            call make-host-set
+          call host-put
+            read deadline-subscribers
+            read family
+            read subscribers
+      call host-add
+        read subscribers
+        read passed
+      # the family-wide timer, scheduled by the first subscriber
+      fork test
+        hook test
+          call not
+            call host-has
+              read deadline-timer
+              read family
+        hook hold
+          save first-ask
+            call host-get
+              read first-ask-at
+              read family
+          save remaining
+            call host-maximum
+              code 0
+              call subtract
+                call add
+                  read first-ask
+                  read threshold
+                call host-now
+          save fire
+            task fire
+              call fire-deadline
+                read family
+          call host-put
+            read deadline-timer
+            read family
+            call start-timer
+              read fire
+              read remaining
+
+task fire-deadline
+  take family, like text
+  call host-add
+    read deadline-fired
+    read family
+  call host-remove
+    read deadline-timer
+    read family
+  save subscribers
+    call host-get
+      read deadline-subscribers
+      read family
+  fork test
+    hook test
+      call not
+        call is-host-absent
+          read subscribers
+    hook hold
+      walk list
+        call host-items
+          read subscribers
+        hook next
+          take site, name subscriber
+          fork
+            mark unsafe
+            call call-host
+              read subscriber
+          halt take
+            take problem
+            call report-deadline-throw
+              read family
+              read problem
 
 task append
   take parent, like view

@@ -1,18 +1,15 @@
-# swift base64 implementation. Forwards to the linked base64 runtime shim. Internal: reached only through the public base64 API.
+# swift base64 as declarative bindings over Foundation's Data, one host expression an op: the base64 shim's own
+# calls (decision 132 of term/self-host/change/001). Decoding malformed input, or bytes that are not UTF-8, gives the
+# empty text. Internal: reached only through the public base64 API.
 
-dock load
-  load <global:base64>, name base64
-
-task to-base64
+bind to-base64
   take input, like text
   like text
-  send back
-    call base64/encode
-      read input
+  case swift
+    text <Data(($input).utf8).base64EncodedString()>
 
-task from-base64
+bind from-base64
   take input, like text
   like text
-  send back
-    call base64/decode
-      read input
+  case swift
+    text <(Data(base64Encoded: $input).flatMap \{ String(data: $0, encoding: .utf8) \} ?? "")>

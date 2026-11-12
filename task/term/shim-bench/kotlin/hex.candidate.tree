@@ -1,0 +1,77 @@
+# The Term candidate for the kotlin hex shim, kept for task/term/shim-bench.ts and the floor gate: encode read over 1.2
+# against runtime/hex.kt on two runs (kotlin/hex.baseline.json), so native/kotlin/text/hex.tree docks the shim for it
+# (decision 132 point 2 of term/self-host/change/001). Encoding as a Term task over byte binds, two lower-case digits a byte, and decoding as a declarative
+# binding of the shim's own expression (decision 132 of term/self-host/change/001): two UTF-16 units at a time, each
+# read as a base-16 number, so a pair that is not hex raises NumberFormatException as the shim did. Never loaded by the stdlib.
+
+load @term/base/list
+  find push
+
+# the UTF-8 bytes of a text, each 0 to 255
+bind text-bytes
+  take input, like text
+  like list
+    like number
+  case kotlin
+    text <($input).toByteArray(Charsets.UTF_8).map \{ (it.toInt() and 255).toLong() \}.toMutableList()>
+
+# the text of these character codes, each under 65536
+bind text-of-codes
+  take codes
+    like list
+      like number
+  like text
+  case kotlin
+    text <($codes).let \{ c -\> String(CharArray(c.size) \{ c[it].toInt().toChar() \}) \}>
+
+# the code of a hex digit's character
+task digit-code
+  take digit, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read digit
+        code 10
+    hook hold
+      send back
+        call add
+          read digit
+          code 48
+  send back
+    call add
+      read digit
+      code 87
+
+task to-hex
+  take input, like text
+  like text
+  save out, like list, like number
+    make list
+  save bytes
+    call text-bytes
+      read input
+  walk list, read bytes
+    hook next
+      take site, name byte
+      call push
+        read out
+        call digit-code
+          call divide
+            read byte
+            code 16
+      call push
+        read out
+        call digit-code
+          call modulo
+            read byte
+            code 16
+  send back
+    call text-of-codes
+      read out
+
+bind from-hex
+  take input, like text
+  like text
+  case kotlin
+    text <String(($input).chunked(2).map \{ it.toInt(16).toByte() \}.toByteArray(), Charsets.UTF_8)>

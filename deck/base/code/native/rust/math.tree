@@ -1,67 +1,160 @@
-# integer math over the linked imath runtime shim. Internal: reached only through the public math API.
+# integer math over rust's i64 as declarative bindings, one host expression an op, and power's decisions as a Term
+# task (decision 132 of term/self-host/change/001): the imath shim's own expressions and its rule. Internal: reached
+# only through the public math API.
+#
+# the integer or a stop (note/project/term/proof/numbers.md): `abs(i64::MIN)` has no i64 answer, and a release build's
+# `.abs()` and `.pow()` wrap in silence, so the host's checked forms stop with `excess`. A negative exponent is the real
+# result truncated toward zero: 0, except for a base of 1 or -1, as on Kotlin and Swift.
 
-dock load
-  load <global:imath>, name imath
+load @term/base/stop
+  find abandon
 
-task abs
+bind abs
   take value, like number
   like number
-  send back
-    call imath/abs
-      read value
+  case rust
+    text <(($value) as i64).checked_abs().expect("excess: a number past i64")>
 
-task min
+bind min
   take a, like number
   take b, like number
   like number
-  send back
-    call imath/min
-      read a
-      read b
+  case rust
+    text <(($a) as i64).min(($b) as i64)>
 
-task max
+bind max
   take a, like number
   take b, like number
   like number
+  case rust
+    text <(($a) as i64).max(($b) as i64)>
+
+bind signum
+  take value, like number
+  like number
+  case rust
+    text <(($value) as i64).signum()>
+
+bind sqrt
+  take value, like number
+  like number
+  case rust
+    text <((($value) as i64) as f64).sqrt() as i64>
+
+bind log
+  take value, like number
+  like number
+  case rust
+    text <((($value) as i64) as f64).ln() as i64>
+
+bind sin
+  take value, like number
+  like number
+  case rust
+    text <((($value) as i64) as f64).sin() as i64>
+
+# the exact power for an exponent from 0 to u32's top, or the excess stop
+bind checked-power
+  take base, like number
+  take exponent, like number
+  like number
+  case rust
+    text <(($base) as i64).checked_pow(($exponent) as u32).expect("excess: a number past i64")>
+
+# the excess stop, for an answer no i64 holds
+bind stop-excess
+  take reason, like text
+  like number
+  case rust
+    text <panic!("excess: \{\}", $reason)>
+
+# 1 for an even exponent, -1 for an odd one: the power of -1
+task sign-of-parity
+  take exponent, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        call modulo
+          read exponent
+          code 2
+        code 0
+    hook hold
+      send back, code 1
   send back
-    call imath/max
-      read a
-      read b
+    call subtract
+      code 0
+      code 1
 
 task pow
   take base, like number
   take exponent, like number
   like number
+  fork test
+    hook test
+      call is-below
+        read exponent
+        code 0
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 1
+        hook hold
+          send back, code 1
+      fork test
+        hook test
+          call is-equal
+            read base
+            call subtract
+              code 0
+              code 1
+        hook hold
+          send back
+            call sign-of-parity
+              read exponent
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 0
+        hook hold
+          send back
+            call abandon, text <zero to a negative power>
+      send back, code 0
+  # an exponent past u32 is never computed: only 0, 1 and -1 survive one, and they are answered directly
+  fork test
+    hook test
+      call is-above
+        read exponent
+        code 4294967295
+    hook hold
+      fork test
+        hook test
+          call or
+            call is-equal
+              read base
+              code 0
+            call is-equal
+              read base
+              code 1
+        hook hold
+          send back, read base
+      fork test
+        hook test
+          call is-equal
+            read base
+            call subtract
+              code 0
+              code 1
+        hook hold
+          send back
+            call sign-of-parity
+              read exponent
+      send back
+        call stop-excess, text <a number past i64>
   send back
-    call imath/pow
+    call checked-power
       read base
       read exponent
-
-task signum
-  take value, like number
-  like number
-  send back
-    call imath/signum
-      read value
-
-task sqrt
-  take value, like number
-  like number
-  send back
-    call imath/sqrt
-      read value
-
-task log
-  take value, like number
-  like number
-  send back
-    call imath/log
-      read value
-
-task sin
-  take value, like number
-  like number
-  send back
-    call imath/sin
-      read value
-

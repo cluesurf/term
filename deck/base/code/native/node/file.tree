@@ -1,13 +1,15 @@
-
 # Node.js file system implementation. Internal: reached only through the public file API.
 
 dock load
   load <node:fs/promises>, name fs
   load <node:fs>, name fssync
-  load <global:io>, name io
 
 load @term/base/file/stat
   find path-info
+
+load ./file/metadata
+  find metadata-size
+  find metadata-is-directory
 
 task read-file
   mark async
@@ -92,8 +94,8 @@ task stat-file
   send back
     make path-info
       bind size
-        call io/file-size
+        call metadata-size
           read path
       bind directory
-        call io/is-directory
+        call metadata-is-directory
           read path

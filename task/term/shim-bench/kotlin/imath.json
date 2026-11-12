@@ -1,0 +1,98 @@
+{
+  "shim": "imath",
+  "candidate": "deck/base/code/native/kotlin/math.tree",
+  "rounds": 200,
+  "ops": [
+    {
+      "op": "abs",
+      "shim_op": "abs",
+      "term_op": "abs",
+      "arity": 1,
+      "kind": "number",
+      "cases": "int-singles",
+      "args": [
+        "number"
+      ]
+    },
+    {
+      "op": "min",
+      "shim_op": "min",
+      "term_op": "min",
+      "arity": 2,
+      "kind": "number",
+      "cases": "int-pairs",
+      "args": [
+        "number",
+        "number"
+      ]
+    },
+    {
+      "op": "max",
+      "shim_op": "max",
+      "term_op": "max",
+      "arity": 2,
+      "kind": "number",
+      "cases": "int-pairs",
+      "args": [
+        "number",
+        "number"
+      ]
+    },
+    {
+      "op": "pow",
+      "shim_op": "pow",
+      "term_op": "pow",
+      "arity": 2,
+      "kind": "number",
+      "cases": "power-pairs",
+      "args": [
+        "number",
+        "number"
+      ]
+    },
+    {
+      "op": "signum",
+      "shim_op": "signum",
+      "term_op": "signum",
+      "arity": 1,
+      "kind": "number",
+      "cases": "int-singles",
+      "args": [
+        "number"
+      ]
+    },
+    {
+      "op": "sqrt",
+      "shim_op": "sqrt",
+      "term_op": "sqrt",
+      "arity": 1,
+      "kind": "number",
+      "cases": "int-singles",
+      "args": [
+        "number"
+      ]
+    },
+    {
+      "op": "log",
+      "shim_op": "log",
+      "term_op": "log",
+      "arity": 1,
+      "kind": "number",
+      "cases": "int-singles",
+      "args": [
+        "number"
+      ]
+    },
+    {
+      "op": "sin",
+      "shim_op": "sin",
+      "term_op": "sin",
+      "arity": 1,
+      "kind": "number",
+      "cases": "int-singles",
+      "args": [
+        "number"
+      ]
+    }
+  ]
+}

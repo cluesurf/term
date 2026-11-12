@@ -1,41 +1,83 @@
-# node directory operations. Forwards to the linked io runtime shim (the platform filesystem). Internal: reached only through the public file/directory API.
+# node directory operations, over node:fs's *Sync calls. Each call absorbs the host error: a make or remove that
+# fails does nothing, and a list or walk that fails reads as no entries, so the public file/directory API stays total.
+# Internal: reached only through the public file/directory API.
 
 dock load
-  load <global:io>, name io
+  load <node:fs>, name directory-fs
+
+load @term/base/list
+  find push
+
+load ./metadata
+  find metadata-is-directory
 
 task directory-make
   take path, like text
   like void
-  send back
-    call io/dir-make
+  fork
+    mark unsafe
+    call directory-fs/mkdir-sync
       read path
+      make object
+        bind recursive, true
+  halt take
+    take problem
 
 task directory-remove
   take path, like text
   like void
-  send back
-    call io/dir-remove
+  fork
+    mark unsafe
+    call directory-fs/rm-sync
       read path
+      make object
+        bind recursive, true
+        bind force, true
+  halt take
+    take problem
 
 task directory-exists
   take path, like text
   like boolean
   send back
-    call io/is-directory
+    call metadata-is-directory
       read path
 
 task directory-list
   take path, like text
   like list
     like text
-  send back
-    call io/dir-list
-      read path
+  fork
+    mark unsafe
+    save names, like list, like text
+      call directory-fs/readdir-sync
+        read path
+    send back, read names
+  halt take
+    take problem
+    send back, make list
 
+# every entry beneath `path`, at every depth, each as `path` and its relative name joined by a slash
 task directory-walk
   take path, like text
   like list
     like text
-  send back
-    call io/dir-walk
-      read path
+  save out, like list, like text
+    make list
+  fork
+    mark unsafe
+    save names, like list, like text
+      call directory-fs/readdir-sync
+        read path
+        make object
+          bind recursive, true
+    walk list, read names
+      hook next
+        take site, name entry
+        call push
+          read out
+          text <{path}/{entry}>
+  halt take
+    take problem
+    send back, make list
+  send back, read out

@@ -1,14 +1,16 @@
-# swift hex implementation. Forwards to the linked hex runtime shim. Internal: reached only through the public hex API.
+# swift hex: encoding as a declarative binding over Foundation's Data, the hex shim's own expression (decision 132 of
+# term/self-host/change/001). Decoding stays in the linked hex runtime shim: its Term version
+# (task/term/shim-bench/swift/hex.candidate.tree) read over 1.2 on two runs (swift/hex.baseline.json). Internal: reached
+# only through the public hex API.
 
 dock load
   load <global:hex>, name hex
 
-task to-hex
+bind to-hex
   take input, like text
   like text
-  send back
-    call hex/encode
-      read input
+  case swift
+    text <Data(($input).utf8).map \{ String(format: "%02x", $0) \}.joined()>
 
 task from-hex
   take input, like text

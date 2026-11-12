@@ -1,15 +1,59 @@
-# node synchronous file handles, over fs's *Sync calls. A node descriptor carries no cursor of its own, so the
-# cursor lives in the shim, the same way it does on swift and kotlin. Internal: reached only through the public
-# file/synchronous API.
-
-dock type
-  load <any>, name grip-dock
+# node synchronous file handles, over node:fs's *Sync calls. A node descriptor carries no cursor of its own (every
+# readSync / writeSync takes a position), so the cursor lives in the handle's record here, the same way it does on swift
+# and kotlin. A close, read, write, flush or clear that fails reads as the empty text or 0, or does nothing. Internal:
+# reached only through the public file/synchronous API.
 
 dock load
-  load <global:grip>, name grip
+  load <node:fs>, name grip-fs
+  load <global:Buffer>, name grip-buffer
+  load <global:Math>, name grip-math
 
 load @term/base/file/synchronous
   find synchronous-file
+
+# the descriptor and where the next read or write happens
+form grip-dock
+  link fd, like number
+  link at, like number
+
+# the five independent booleans, folded into the one mode string node wants. This is the ONLY place a node mode
+# string appears in the synchronous surface: it is a node spelling, not part of the API.
+task grip-flags
+  take read, like boolean
+  take write, like boolean
+  take create, like boolean
+  take append, like boolean
+  take clear, like boolean
+  like text
+  fork test
+    hook test, read append
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          send back, text <a+>
+      send back, text <a>
+  fork test
+    hook test, read write
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          fork test
+            hook test, read create
+            hook hold
+              send back, text <w+>
+          send back, text <r+>
+      send back, text <w>
+  fork test
+    hook test, read clear
+    hook hold
+      fork test
+        hook test, read read
+        hook hold
+          send back, text <w+>
+      send back, text <w>
+  send back, text <r>
 
 task grip-open
   take path, like text
@@ -19,63 +63,174 @@ task grip-open
   take append, like boolean
   take clear, like boolean
   like synchronous-file
-  save raw
-    call grip/grip-open
+  save fd, like number
+    call grip-fs/open-sync
       read path
-      read read
-      read write
-      read create
-      read append
-      read clear
+      call grip-flags
+        read read
+        read write
+        read create
+        read append
+        read clear
+  save at, code 0
+  fork test
+    hook test, read append
+    hook hold
+      save stats
+        call grip-fs/fstat-sync
+          read fd
+      save at, read stats/size
   send back
     make synchronous-file
-      bind dock, read raw
+      bind dock
+        make grip-dock
+          bind fd, read fd
+          bind at, read at
       bind path, read path
 
 task grip-close
   take file, like synchronous-file
   like void
-  call grip/grip-close
+  save held, like grip-dock
     read file/dock
+  fork
+    mark unsafe
+    call grip-fs/close-sync
+      read held/fd
+  halt take
+    take problem
 
 task grip-read
   take file, like synchronous-file
   take size, like size
   like text
-  send back
-    call grip/grip-read
-      read file/dock
+  fork test
+    hook test
+      call is-maximum
+        read size
+        code 0
+    hook hold
+      send back, text <>
+  save held, like grip-dock
+    read file/dock
+  save buffer
+    call grip-buffer/alloc
       read size
+  fork
+    mark unsafe
+    save count, like number
+      call grip-fs/read-sync
+        read held/fd
+        read buffer
+        code 0
+        read size
+        read held/at
+    save held/at
+      call add
+        read held/at
+        read count
+    save part
+      call buffer/subarray
+        code 0
+        read count
+    send back
+      call part/to-string
+        text <utf8>
+  halt take
+    take problem
+    send back, text <>
 
 task grip-write
   take file, like synchronous-file
   take data, like text
   like size
-  send back
-    call grip/grip-write
-      read file/dock
-      read data
+  save held, like grip-dock
+    read file/dock
+  fork
+    mark unsafe
+    save count, like number
+      call grip-fs/write-sync
+        read held/fd
+        read data
+        read held/at
+        text <utf8>
+    save held/at
+      call add
+        read held/at
+        read count
+    send back, read count
+  halt take
+    take problem
+    send back, code 0
 
+# `frame` is <start> (absolute), <relative> (from the cursor) or <end> (back from the end)
 task grip-seek
   take file, like synchronous-file
   take offset, like size
   take frame, like text
   like void
-  call grip/grip-seek
+  save held, like grip-dock
     read file/dock
-    read offset
-    read frame
+  fork test
+    hook test
+      call is-equal
+        read frame
+        text <relative>
+    hook hold
+      save held/at
+        call add
+          read held/at
+          read offset
+    hook miss
+      fork test
+        hook test
+          call is-equal
+            read frame
+            text <end>
+        hook hold
+          save stats
+            call grip-fs/fstat-sync
+              read held/fd
+          save held/at
+            call subtract
+              read stats/size
+              read offset
+        hook miss
+          save held/at
+            call grip-math/max
+              code 0
+              read offset
 
 task grip-flush
   take file, like synchronous-file
   like void
-  call grip/grip-flush
+  save held, like grip-dock
     read file/dock
+  fork
+    mark unsafe
+    call grip-fs/fdatasync-sync
+      read held/fd
+  halt take
+    take problem
 
 task grip-clear
   take file, like synchronous-file
   take size, like size
   like void
-  call grip/grip-clear
+  save held, like grip-dock
     read file/dock
-    read size
+  save kept
+    call grip-math/max
+      code 0
+      read size
+  fork
+    mark unsafe
+    call grip-fs/ftruncate-sync
+      read held/fd
+      read kept
+    save held/at
+      call grip-math/min
+        read held/at
+        read kept
+  halt take
+    take problem

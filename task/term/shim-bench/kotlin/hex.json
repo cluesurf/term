@@ -1,0 +1,29 @@
+{
+  "shim": "hex",
+  "candidate": "task/term/shim-bench/kotlin/hex.candidate.tree",
+  "rounds": 50,
+  "ops": [
+    {
+      "op": "encode",
+      "shim_op": "encode",
+      "term_op": "to-hex",
+      "arity": 1,
+      "kind": "text",
+      "cases": "text-singles",
+      "args": [
+        "text"
+      ]
+    },
+    {
+      "op": "decode",
+      "shim_op": "decode",
+      "term_op": "from-hex",
+      "arity": 1,
+      "kind": "text",
+      "cases": "hex-valid-singles",
+      "args": [
+        "text"
+      ]
+    }
+  ]
+}

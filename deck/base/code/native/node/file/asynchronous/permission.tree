@@ -1,24 +1,35 @@
 # node asynchronous file permissions, over `fs/promises`. The mode is the raw unix mode, the same number chmod
-# takes. Internal: reached only through the public file/permission API.
+# takes. A path that cannot be read reads as mode 0, and a mode that cannot be written does nothing. Internal: reached
+# only through the public file/permission API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name permission-fs
 
 task permission-read
   mark async
   take path, like text
   like size
-  send back
-    call aio/permission-read
-      read path
-      wait true
+  fork
+    mark unsafe
+    save stats
+      call permission-fs/stat
+        read path
+        wait true
+    send back, read stats/mode
+  halt take
+    take problem
+    send back, code 0
 
 task permission-write
   mark async
   take path, like text
   take mode, like size
   like void
-  call aio/permission-write
-    read path
-    read mode
-    wait true
+  fork
+    mark unsafe
+    call permission-fs/chmod
+      read path
+      read mode
+      wait true
+  halt take
+    take problem

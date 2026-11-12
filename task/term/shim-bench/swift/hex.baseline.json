@@ -1,0 +1,47 @@
+{
+  "env": "swift",
+  "shim": "hex",
+  "line_sha256": "1cf903d1db61c75a78a23d4c980f7ca975cd3c965b24cf34e8191131639a76b0",
+  "candidate": "task/term/shim-bench/swift/hex.candidate.tree",
+  "candidate_sha256": "ee8ece743404035d6b8dce7c7d49335c159d09ca79b770c683c7cd1aef509d4e",
+  "runtime": "deck/base/code/native/swift/runtime/hex.swift",
+  "runtime_sha256": "9aed0e4785c0c6051c820e1a550a98fccd8326521227836f7274d37517dd3e98",
+  "measured": "2026-11-12T05:44",
+  "host": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)",
+  "machine": "Apple M3 Pro cores 12",
+  "load": 23.22,
+  "trials": 7,
+  "rounds": 50,
+  "cases_per_op": 2048,
+  "rule": "best of 7, an op over 1.2 gross in two runs, or with any differ, is kept",
+  "ops": [
+    {
+      "op": "encode",
+      "shim_ns": 6886.3,
+      "term_ns": 6847.1,
+      "loop_ns": 4.6,
+      "gross_ratio": 0.99,
+      "net_ratio": 0.99,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": null,
+      "state": "ported"
+    },
+    {
+      "op": "decode",
+      "shim_ns": 322.1,
+      "term_ns": 723.6,
+      "loop_ns": 4.6,
+      "gross_ratio": 2.25,
+      "net_ratio": 2.26,
+      "cases": 2048,
+      "equal": 2048,
+      "differ": 0,
+      "past_safe_range": 0,
+      "rerun_gross_ratio": 2.23,
+      "state": "kept"
+    }
+  ]
+}

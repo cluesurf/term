@@ -1,23 +1,45 @@
-# node asynchronous file ownership, over `fs/promises`. Internal: reached only through the public file/owner API.
+# node asynchronous file ownership, over `fs/promises`. A path that cannot be read reads as user 0 and group 0, and
+# an owner that cannot be written does nothing. Internal: reached only through the public file/owner API.
 
 dock load
-  load <global:aio>, name aio
+  load <node:fs/promises>, name owner-fs
 
 load @term/base/file/owner
   find file-owner
+
+# one of the two ids, each from its own stat as before, 0 when the path cannot be read
+task owner-id
+  mark async
+  take path, like text
+  take group, like boolean
+  like size
+  fork
+    mark unsafe
+    save stats
+      call owner-fs/stat
+        read path
+        wait true
+    fork test
+      hook test, read group
+      hook hold
+        send back, read stats/gid
+    send back, read stats/uid
+  halt take
+    take problem
+    send back, code 0
 
 task owner-read
   mark async
   take path, like text
   like file-owner
   save user
-    call aio/owner-user
+    call owner-id
       read path
-      wait true
+      false
   save group
-    call aio/owner-group
+    call owner-id
       read path
-      wait true
+      true
   send back
     make file-owner
       bind user, read user
@@ -29,8 +51,12 @@ task owner-write
   take user, like size
   take group, like size
   like void
-  call aio/owner-write
-    read path
-    read user
-    read group
-    wait true
+  fork
+    mark unsafe
+    call owner-fs/chown
+      read path
+      read user
+      read group
+      wait true
+  halt take
+    take problem

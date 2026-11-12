@@ -1,18 +1,16 @@
-# rust hex implementation. Forwards to the linked hex runtime shim. Internal: reached only through the public hex API.
+# rust hex as declarative bindings over the hex crate, one host expression an op: the hex shim's own expressions
+# (decision 132 of term/self-host/change/001). Decoding malformed hex, or bytes that are not UTF-8, gives the empty
+# text: the host's own Option fallback inside the one expression, since an optional does not cross a bind. Internal:
+# reached only through the public hex API.
 
-dock load
-  load <global:hex>, name hex
-
-task to-hex
+bind to-hex
   take input, like text
   like text
-  send back
-    call hex/encode
-      read input
+  case rust
+    text <::hex::encode(($input).as_bytes())>
 
-task from-hex
+bind from-hex
   take input, like text
   like text
-  send back
-    call hex/decode
-      read input
+  case rust
+    text <::hex::decode(($input).as_bytes()).ok().and_then(|bytes| String::from_utf8(bytes).ok()).unwrap_or_default()>

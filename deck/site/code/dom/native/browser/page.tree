@@ -13,8 +13,56 @@ load @term/base/maybe
 load ../../../report
   find report-raise
 
-dock load
-  load <global:title>, name title
+load @term/base/text
+  find starts-with
+
+# The document head's title and meta tags are reached through declarative bindings, one host expression each, inlined
+# at the use site, and the meta upsert's decisions are Term below, so no runtime shim is linked. A server render has no
+# document, so each write first asks for one.
+
+bind has-document
+  like boolean
+  case browser
+    text <(typeof document !== "undefined")>
+
+bind put-document-title
+  take text, like text
+  like text
+  case browser
+    text <(document.title = $text)>
+
+# the head's `<meta {attribute}="{name}">`, or null
+bind find-head-meta
+  take attribute, like text
+  take name, like text
+  like dynamic
+  case browser
+    text <document.head.querySelector('meta[' + $attribute + '="' + $name + '"]')>
+
+bind create-meta
+  like dynamic
+  case browser
+    text <document.createElement("meta")>
+
+bind put-host-attribute
+  take element, like dynamic
+  take key, like text
+  take value, like text
+  like dynamic
+  case browser
+    text <($element).setAttribute($key, $value)>
+
+bind append-to-head
+  take element, like dynamic
+  like dynamic
+  case browser
+    text <document.head.appendChild($element)>
+
+bind is-host-absent
+  take value, like dynamic
+  like boolean
+  case browser
+    text <!($value)>
 
 # page-shell is a server (SSR) concern; on the client the body is already the page
 task page-shell
@@ -27,15 +75,16 @@ task page-path
   like text
   send back, read place/pathname
 
-# set the document title. Delegates to the `<global:title>` runtime (`document.title = ...`) rather than a `.tree`
-# member-assignment (`save page/title`), which the compiler drops -- leaving `setTitle` undefined and crashing the
-# client. A method call into the runtime compiles cleanly and the cast prepends the runtime. The text is `text`, not
-# `title`: a parameter named `title` hid the docked runtime of that name, and the call read `.set` off the text
-# (`title.set is not a function`), which nobody saw while a titled page's bundle did not build at all (2026-10-04)
+# set the document title, through a binding (`document.title = ...`) rather than a `.tree` member-assignment
+# (`save page/title`), which the compiler dropped, leaving `setTitle` undefined and crashing the client (2026-10-04)
 task set-title
   take text, like text
-  call title/set
-    read text
+  fork test
+    hook test
+      call has-document
+    hook hold
+      call put-document-title
+        read text
 
 # a resource route's proxy: on the client, do a FULL navigation to the current path so the server fetches + streams the
 # asset (the page URL stays put, e.g. /vibe.pdf). proxy-target reports nothing -- the navigation already happened.
@@ -56,16 +105,59 @@ task page-status
   like number
   send back, code 200
 
-# upsert a SEO meta tag live (SPA navigation). Delegates to the `<global:title>` runtime, which reuses the existing
-# element for this key if present else creates + appends it (og:* / article:* -> `property`, the rest -> `name`). The
-# upsert lives in the runtime rather than a `.tree` body full of member calls + string concat (which the compiler
-# mishandles); a method call compiles cleanly.
+# og:* and article:* render as `property`, the rest as `name`, matching the SSR document shell
+task meta-attribute
+  take name, like text
+  like text
+  fork test
+    hook test
+      call starts-with
+        read name
+        text <og:>
+    hook hold
+      send back, text <property>
+  fork test
+    hook test
+      call starts-with
+        read name
+        text <article:>
+    hook hold
+      send back, text <property>
+  send back, text <name>
+
+# upsert a SEO meta tag live (SPA navigation): the element already there for this key, else a new one appended to the
+# head, then its content
 task set-meta
   take name, like text
   take content, like text
-  call title/set-meta
-    read name
-    read content
+  fork test
+    hook test
+      call has-document
+    hook hold
+      save attribute
+        call meta-attribute
+          read name
+      save element
+        call find-head-meta
+          read attribute
+          read name
+      fork test
+        hook test
+          call is-host-absent
+            read element
+        hook hold
+          save element
+            call create-meta
+          call put-host-attribute
+            read element
+            read attribute
+            read name
+          call append-to-head
+            read element
+      call put-host-attribute
+        read element
+        text <content>
+        read content
 
 # the navigation contract's stack, mirrored into the browser's History (native-navigation-0001): pushState for a new
 # entry, replaceState for the current one, history.back() for one step back

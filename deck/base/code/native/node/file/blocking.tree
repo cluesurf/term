@@ -1,48 +1,100 @@
-# node whole-path file calls that never await, over fs's *Sync calls through the linked `blocking` runtime shim, which
-# builds each record in one call. Internal: reached only through the public file/blocking API.
+# node whole-path file calls that never await, over node:fs's *Sync calls. `blocking-stat` and `blocking-list` build
+# each record from one host call. `changed` is `mtimeMs`, which keeps the fraction. Internal: reached only through the
+# public file/blocking API, which has already ruled out a missing path.
 
-# The dock ALIAS is the global's own name, `blocking`: on node a different alias is emitted as a second declaration
-# beside the shim's object and the module does not load (`walk` is `walk-file` for the reason that a stdlib task is
-# called `walk`, and no stdlib name is `blocking`). The shim file is runtime/blocking.<ext>.
 dock load
-  load <global:blocking>, name blocking
+  load <node:fs>, name blocking-fs
 
 load @term/base/file/blocking
   find stat-raw
   find entry-raw
 
+load @term/base/list
+  find push
+
 task blocking-read
   take path, like text
   like text
   send back
-    call blocking/read-path
+    call blocking-fs/read-file-sync
       read path
+      text <utf8>
 
+# a symbolic link is followed, so a link to nothing is not there
 task blocking-exists
   take path, like text
   like boolean
   send back
-    call blocking/exists-path
+    call blocking-fs/exists-sync
       read path
 
 task blocking-stat
   take path, like text
   like stat-raw
-  send back
-    call blocking/stat-path
+  save stats
+    call blocking-fs/stat-sync
       read path
+  save kind, text <other>
+  fork test
+    hook test
+      call stats/is-directory
+    hook hold
+      save kind, text <directory>
+    hook miss
+      fork test
+        hook test
+          call stats/is-file
+        hook hold
+          save kind, text <file>
+  send back
+    make stat-raw
+      bind kind, read kind
+      bind size, read stats/size
+      bind changed, read stats/mtime-ms
 
+# the platform's own order, no `.` or `..`, each kind the entry's own with links not followed
 task blocking-list
   take path, like text
   like list
     like entry-raw
-  send back
-    call blocking/list-path
+  save out, like list, like entry-raw
+    make list
+  save entries
+    call blocking-fs/readdir-sync
       read path
+      make object
+        bind with-file-types, true
+  walk list, read entries
+    hook next
+      take site, name entry
+      save kind, text <other>
+      fork test
+        hook test
+          call entry/is-directory
+        hook hold
+          save kind, text <directory>
+        hook miss
+          fork test
+            hook test
+              call entry/is-symbolic-link
+            hook hold
+              save kind, text <link>
+            hook miss
+              fork test
+                hook test
+                  call entry/is-file
+                hook hold
+                  save kind, text <file>
+      call push
+        read out
+        make entry-raw
+          bind name, read entry/name
+          bind kind, read kind
+  send back, read out
 
 task blocking-real
   take path, like text
   like text
   send back
-    call blocking/real-path
+    call blocking-fs/realpath-sync
       read path
