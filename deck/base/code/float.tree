@@ -6,7 +6,6 @@ load @term/base/native/{platform}/float
   find float-square-root
   find float-floor
   find float-ceiling
-  find float-round
   find float-power
   find float-absolute
   find float-sine
@@ -38,12 +37,46 @@ task round-up
     call float-ceiling
       read value
 
+# The integer nearest the value, as a float. A value exactly halfway goes toward positive infinity (ECMAScript's
+# Math.round), the same on every backend, and a zero answer keeps the value's sign: round(-0.5) and round(-0.2) are
+# -0.0. NaN and the infinities answer themselves. One Term rule, no host round (decision 145 of
+# term/self-host/change/001): value minus its floor is exact on doubles, so this equals Math.round on every double.
 task round
   take value, like float
   like float
-  send back
-    call float-round
+  save low
+    call float-floor
       read value
+  fork test
+    hook test
+      call is-below
+        bind a
+          call subtract
+            bind a, read value
+            bind b, read low
+        bind b, 0.5
+    hook hold
+      send back, read low
+  save high
+    call add
+      bind a, read low
+      bind b, 1.0
+  # a negative value rounding up to zero answers -0.0: the value times zero carries its sign
+  fork test
+    hook test
+      call and
+        call is-equal
+          bind a, read high
+          bind b, 0.0
+        call is-below
+          bind a, read value
+          bind b, 0.0
+    hook hold
+      send back
+        call multiply
+          bind a, read value
+          bind b, 0.0
+  send back, read high
 
 task power
   take base, like float

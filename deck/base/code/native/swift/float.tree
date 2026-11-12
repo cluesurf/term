@@ -20,13 +20,6 @@ bind float-ceiling
   case swift
     text <Foundation.ceil($value)>
 
-# half away from zero, Double's default rounding rule
-bind float-round
-  take value, like float
-  like float
-  case swift
-    text <($value).rounded()>
-
 bind float-power
   take base, like float
   take exponent, like float

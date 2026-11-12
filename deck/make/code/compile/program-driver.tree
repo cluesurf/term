@@ -102,6 +102,14 @@ load ./program-emit
   find emit-given
   find pending-emit
 
+# a console's routes as Term statements on Rust (decision 138 rules 2 and 3 of
+# term/self-host/change/001-finish-self-host, item term-self-host-001-1121)
+load ./console-lower
+  find console-lowered
+  find console-runtime-path
+  find has-command-hook
+  find lower-console
+
 load ../ir/cover
   find cover-target
 
@@ -454,6 +462,81 @@ task filed-in
       save one/span/file, make(some, unit-file)
   back one
 
+# ---- a console on Rust ----
+
+# the name a lowered console is shown by, as `term boot` names a booted one (work/boot/boot-running.tree
+# `bin-name-for`): the last segment of its deck's name, `.tree` off its end, else the folder its entry is in
+task console-name
+  take file, like text
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  like text
+  mark private
+
+  sift deck-of(file)
+    case some
+      link deck
+      save tail, substring(deck/name, add(last-index-of(deck/name, </>), 1))
+      fork test, is-above(tail/length, 5)
+        hold
+          fork test, is-equal(substring(tail, subtract(tail/length, 5)), <.tree>)
+            hold
+              save tail, substring(tail, 0, subtract(tail/length, 5))
+      fork test, is-unequal(tail, <>)
+        hold
+          back tail
+    case none
+      save nothing, 0
+  save folder, substring(file, 0, last-index-of(file, </>))
+  back substring(folder, add(last-index-of(folder, </>), 1))
+
+# the closure of a console's runtime before the entry's own, every file once, dependencies still first
+task sources-joined
+  take first, like list, like token-source
+  take then, like list, like token-source
+  like list, like token-source
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk first
+    take one
+    fork test, not(seen/has(one/file))
+      hold
+        save seen/{one/file}, true
+        push(out, one)
+  walk then
+    take one
+    fork test, not(seen/has(one/file))
+      hold
+        save seen/{one/file}, true
+        push(out, one)
+  back out
+
+task scopes-joined
+  take first, like list, like file-scope
+  take then, like list, like file-scope
+  like list, like file-scope
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk first
+    take one
+    fork test, not(seen/has(one/file))
+      hold
+        save seen/{one/file}, true
+        push(out, one)
+  walk then
+    take one
+    fork test, not(seen/has(one/file))
+      hold
+        save seen/{one/file}, true
+        push(out, one)
+  back out
+
 # ---- the five phases ----
 
 # A RUN AT ITS START: the input, and every later field empty. A field the original's input left absent is written only
@@ -570,6 +653,20 @@ task run-program
       bind expose, input/expose
       bind twins, input/twins
       bind choices, input/choices
+  # A CONSOLE ON RUST: the entry's command routes lowered to the table, the match and the run, before the gate binds a
+  # name (decision 138 rules 2 and 3, item term-self-host-001-1121). Node keeps its dock-route records (item 1122)
+  fork test, is-equal(input/env, <rust>)
+    hold
+      save lowered, lower-console(run/program, input/file, input/scopes, console-name(input/file, deck-of), <>)
+      fork test, is-above(lowered/refusals/length, 0)
+        hold
+          back driver-refusal(run, lowered/refusals)
+      save run/program, lowered/program
+      # the run is a root only of a program that was given one
+      fork test, and(lowered/lowered, input/has-roots)
+        hold
+          save root-name, <run>
+          save run/roots/{root-name}, true
   save gated, program-gate(run, gate-in)
   sift gated/bound
     case some
@@ -703,6 +800,24 @@ task load-graph
         fork test, not(is-equal(found/severity, make warning))
           hold
             push(load-errors, found)
+      # A CONSOLE ON RUST is given its runtime's closure beside its own, which the lowering's statements call into
+      # (compile/console-lower.tree, decision 138 rules 2 and 3, item term-self-host-001-1121). Node is not: it keeps its
+      # dock-route records (item 1122)
+      fork test, and(is-equal(reading/env, <rust>), has-command-hook(source/text))
+        hold
+          sift reading/resolve-source(console-runtime-path(), source/file)
+            case some
+              link runtime
+              save more, collected-of(runtime, reading)
+              save sources, sources-joined(as-token-sources(more/sources), sources)
+              save scopes, scopes-joined(as-scopes(scope-list(more/scope)), scopes)
+              walk more/diagnostics
+                take found
+                fork test, not(is-equal(found/severity, make warning))
+                  hold
+                    push(load-errors, found)
+            case none
+              save nothing, 0
       # and a module the build's env has no native for, refused at its `{platform}` load by name
       fork test, and(is-equal(load-errors/length, 0), not(is-equal(reading/env, <>)))
         hold

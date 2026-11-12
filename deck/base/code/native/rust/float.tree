@@ -20,13 +20,6 @@ bind float-ceiling
   case rust
     text <(($value) as f64).ceil()>
 
-# half away from zero, as f64::round rounds
-bind float-round
-  take value, like float
-  like float
-  case rust
-    text <(($value) as f64).round()>
-
 bind float-power
   take base, like float
   take exponent, like float

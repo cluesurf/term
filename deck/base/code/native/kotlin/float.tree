@@ -20,13 +20,6 @@ bind float-ceiling
   case kotlin
     text <kotlin.math.ceil($value)>
 
-# half to even, as kotlin.math.round rounds (the shim's rule, kept)
-bind float-round
-  take value, like float
-  like float
-  case kotlin
-    text <kotlin.math.round($value)>
-
 bind float-power
   take base, like float
   take exponent, like float

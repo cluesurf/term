@@ -1,0 +1,144 @@
+# float round on every backend (decision 145 of term/self-host/change/001): a value exactly halfway goes toward
+# positive infinity, a zero answer keeps the value's sign, NaN and the infinities answer themselves. The sign of a zero
+# is read as the sign of one divided by it, an infinity of that sign on every backend.
+#
+# Run with: term test
+
+load @term/base/float
+  find round
+  find is-not-a-number
+
+test <round sends 2.5 to 3>
+  want hold
+    call is-equal
+      call round, 2.5
+      3.0
+
+test <round sends -2.5 to -2>
+  want hold
+    call is-equal
+      call round, -2.5
+      -2.0
+
+test <round sends 0.5 to 1>
+  want hold
+    call is-equal
+      call round, 0.5
+      1.0
+
+test <round sends 1.5 to 2>
+  want hold
+    call is-equal
+      call round, 1.5
+      2.0
+
+test <round sends -0.5 to a negative zero>
+  save r
+    call round, -0.5
+  want hold
+    call and
+      call is-equal
+        read r
+        0.0
+      call is-below
+        call divide
+          1.0
+          read r
+        0.0
+
+test <round sends -0.2 to a negative zero>
+  save r
+    call round, -0.2
+  want hold
+    call and
+      call is-equal
+        read r
+        0.0
+      call is-below
+        call divide
+          1.0
+          read r
+        0.0
+
+test <round sends the double below one half to a positive zero>
+  save r
+    call round, 0.49999999999999994
+  want hold
+    call and
+      call is-equal
+        read r
+        0.0
+      call is-above
+        call divide
+          1.0
+          read r
+        0.0
+
+test <round sends the double above minus one half to a negative zero>
+  save r
+    call round, -0.49999999999999994
+  want hold
+    call and
+      call is-equal
+        read r
+        0.0
+      call is-below
+        call divide
+          1.0
+          read r
+        0.0
+
+test <round sends 2.4 to 2>
+  want hold
+    call is-equal
+      call round, 2.4
+      2.0
+
+test <round sends -2.6 to -3>
+  want hold
+    call is-equal
+      call round, -2.6
+      -3.0
+
+test <round keeps a negative zero>
+  save z
+    call multiply
+      -1.0
+      0.0
+  save r
+    call round
+      read z
+  want hold
+    call is-below
+      call divide
+        1.0
+        read r
+      0.0
+
+test <round answers NaN and the infinities with themselves>
+  save nan
+    call divide
+      0.0
+      0.0
+  save big
+    call divide
+      1.0
+      0.0
+  save small
+    call divide
+      -1.0
+      0.0
+  want hold
+    call and
+      call is-not-a-number
+        call round
+          read nan
+      call and
+        call is-equal
+          call round
+            read big
+          read big
+        call is-equal
+          call round
+            read small
+          read small

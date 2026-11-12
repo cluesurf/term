@@ -24,13 +24,6 @@ task float-ceiling
     call math/ceil
       read value
 
-task float-round
-  take value, like float
-  like float
-  send back
-    call math/round
-      read value
-
 task float-power
   take base, like float
   take exponent, like float

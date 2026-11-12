@@ -1,0 +1,942 @@
+# THE CONSOLE LOWERING (decision 138 rules 2 and 3 of term/self-host/change/001-finish-self-host, item
+# term-self-host-001-1121): for an entry whose dock holds hook routes (a console, `hook tool` / `hook greet` / `task
+# greet`), the routes the parse already gives (node.tree `dock-route`) become three Term statements of the entry, before
+# the emitters, so every backend reads the same ones and none writes dispatch text of its own:
+#
+#   host console-routes, console-table-of(...)       the routes as data, in the plain route form (work/hook/route.tree)
+#   task console-call(task-name, values)              the match from a task name to a direct typed call of that task,
+#                                                     each handed value converted to the parameter's own type
+#   task run                                          the entry: this process's command line decided, its outcome
+#                                                     written, the task called, the exit code
+#
+# Each call lands in the console runtime, @term/call/work/hook/console (`console-decide`, `console-answer`, the
+# converters, `console-exit`), which compile/program-driver.tree loads beside the entry's own closure for such an
+# entry. It is ON FOR RUST ONLY: node keeps its dock-route records, read by work/hook/running.tree through
+# host/dock.mjs, until it moves onto this path (decision 138 rule 3, item 1122).
+#
+# The table as node's adapter (work/hook/parsing.tree `plain-route`) writes it, but for the bound task's parameters,
+# which are read here from the task itself (its names in order, so `params-given` is true), since the match calls it by
+# position. A parameter whose type has no conversion (text, number, boolean, a list of text, and a maybe of each) is
+# refused at the build, never left to fail at run time. A program that defines `run`, `console-routes` or
+# `console-call` itself, or whose closure has no console runtime, is left as it was.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find char-at
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+  find position
+
+load ./import-scope
+  find file-scope
+  find scope-find
+
+load ./node
+  find dock-call
+  find dock-route
+  find dock-take
+  find expression
+  find function-param
+  find statement
+  find statement-branch
+  find type
+
+# the lowered program, and the parameters it refused
+form console-lowered
+  link program, like list, like statement
+  link refusals, like list, like diagnostic
+  # whether the program was given the table, the match and the run
+  link lowered, like boolean
+
+# the module every lowered console calls into, which the driver loads beside the entry for one
+task console-runtime-path
+  like text
+
+  back <@term/call/work/hook/console>
+
+# whether a module's text holds a console: a top-level `hook <word>` (a command), never a web route's `hook /path`
+task has-command-hook
+  take text, like text
+  like boolean
+
+  walk split(text, <\n>)
+    take line
+    fork test, starts-with(line, <hook >)
+      hold
+        save next, char-at(line, 5)
+        fork test, and(and(is-unequal(next, </>), is-unequal(next, <\<>)), is-unequal(next, < >))
+          hold
+            back true
+  back false
+
+# ---- the expressions and statements it writes ----
+
+task variable
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task text-value
+  take value, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/string
+      bind value, value
+      bind span, at
+
+task number-value
+  take value, like number
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, value
+      bind span, at
+
+task flag-value
+  take value, like boolean
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/boolean
+      bind value, value
+      bind span, at
+
+task call-of
+  take name, like text
+  take args, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/call
+      bind callee, variable(name, at)
+      bind args, args
+      bind span, at
+
+task list-of
+  take items, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/array
+      bind items, items
+      bind span, at
+
+task texts-of
+  take words, like list, like text
+  take at, like span
+  like expression
+  mark private
+
+  save items, make list
+  walk words
+    take word
+    push(items, text-value(word, at))
+  back list-of(items, at)
+
+task no-expressions
+  like list, like expression
+  mark private
+
+  back make list
+
+task one-value
+  take first, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+task two
+  take first, like expression
+  take second, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  push(out, second)
+  back out
+
+task three
+  take first, like expression
+  take second, like expression
+  take third, like expression
+  like list, like expression
+  mark private
+
+  save out, two(first, second)
+  push(out, third)
+  back out
+
+task expression-statement
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/expression
+      bind expr, value
+      bind span, at
+
+task return-value
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/return
+      bind value, make(some, value)
+      bind span, at
+
+task local
+  take name, like text
+  take value, like expression
+  take mutable, like boolean
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/let
+      bind name, name
+      bind init, value
+      bind mutable, mutable
+      bind span, at
+
+task assigned
+  take name, like text
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/assign
+      bind target, variable(name, at)
+      bind op, make set
+      bind value, value
+      bind span, at
+
+task text-equal
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/binary
+      bind op, make equal
+      bind left, left
+      bind right, right
+      bind span, at
+
+task typed-parameter
+  take name, like text
+  take kind, like type
+  like function-param
+  mark private
+
+  back
+    make function-param
+      bind name, name
+      bind type, make(some, kind)
+
+# ---- the table ----
+
+# a take's default, as the plain form's literal
+task fallback-of
+  take one, like dock-take
+  take at, like span
+  like expression
+  mark private
+
+  sift one/fallback
+    case some
+      link literal
+      sift literal
+        case text
+          link value
+          back call-of(<console-literal-text>, one-value(text-value(value, at)), at)
+        case number
+          link value
+          back call-of(<console-literal-number>, one-value(number-value(value, at)), at)
+        case flag
+          link value
+          back call-of(<console-literal-flag>, one-value(flag-value(value, at)), at)
+    case none
+      back call-of(<console-no-literal>, no-expressions(), at)
+
+# a take in the plain form (work/hook/parsing.tree `plain-take`): its type's kind, a maybe take's item's kind beside it,
+# every field it left out written
+task take-of
+  take one, like dock-take
+  take at, like span
+  like expression
+  mark private
+
+  save kind, <>
+  save item-kind, <>
+  save optional, false
+  sift one/type
+    case some
+      link whole
+      save kind, whole/kind
+      sift whole
+        case named
+          link name
+          link args
+          fork test, and(is-equal(name, <maybe>), is-above(args/length, 0))
+            hold
+              save item, get(args, 0)
+              save item-kind, item/kind
+              save optional, true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  save parts, make list
+  push(parts, text-value(one/name, at))
+  push(parts, text-value(kind, at))
+  push(parts, text-value(item-kind, at))
+  push(parts, flag-value(optional, at))
+  push(parts, flag-value(one/required, at))
+  push(parts, text-value(one/short, at))
+  push(parts, texts-of(one/aliases, at))
+  push(parts, flag-value(one/masked, at))
+  push(parts, text-value(one/note, at))
+  push(parts, fallback-of(one, at))
+  push(parts, flag-value(one/variadic, at))
+  push(parts, flag-value(one/positional, at))
+  push(parts, flag-value(one/passes, at))
+  push(parts, texts-of(one/choices, at))
+  back call-of(<console-take>, parts, at)
+
+# a statement's task name, the empty text for one that is no task. Read here, never in an arm over the function case:
+# inside it the case's fields (`name`, `params`, `span`) are locals by their own names (T-0945)
+task task-name-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back one/name
+    miss
+      back <>
+
+task task-span-of
+  take one, like statement
+  like span
+  mark private
+
+  sift one
+    case function
+      back one/span
+    miss
+      back zero-span()
+
+task params-of
+  take one, like statement
+  like list, like function-param
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      walk one/params
+        take each
+        push(out, each)
+    miss
+      save nothing, 0
+  back out
+
+# the files the entry's `find` of a name reached, and the files those re-export with `bear`
+task found-files
+  take scopes, like list, like file-scope
+  take wanted, like text
+  take home-file, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk scopes
+    take scope
+    fork test, is-equal(scope/file, home-file)
+      hold
+        walk scope/finds
+          take found
+          fork test, is-equal(found/name, wanted)
+            hold
+              walk found/targets
+                take target
+                push(out, target)
+  save direct, make list
+  walk out
+    take one
+    push(direct, one)
+  walk scopes
+    take scope
+    walk direct
+      take one
+      fork test, is-equal(scope/file, one)
+        hold
+          walk scope/bears
+            take beared
+            push(out, beared)
+  back out
+
+# the task a route binds, as the entry sees it: the entry file's own, else the one its `find` of that name reached
+# (directly or through a `bear`). Never another module's task that only shares the name
+task task-named
+  take program, like list, like statement
+  take wanted, like text
+  take home-file, like text
+  take scopes, like list, like file-scope
+  like maybe, like statement
+  mark private
+
+  walk program
+    take one
+    fork test, and(is-equal(task-name-of(one), wanted), is-in-file(task-span-of(one), home-file))
+      hold
+        back make(some, one)
+  save files, found-files(scopes, wanted, home-file)
+  walk files
+    take file
+    walk program
+      take one
+      fork test, and(is-equal(task-name-of(one), wanted), is-in-file(task-span-of(one), file))
+        hold
+          back make(some, one)
+  back make none
+
+task make-position
+  like position
+  mark private
+
+  back
+    make position
+      bind line, 0
+      bind column, 0
+
+task zero-span
+  like span
+  mark private
+
+  back
+    make span
+      bind start, make-position()
+      bind end, make-position()
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# the parameter names of a task, in order
+task param-names
+  take task, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk params-of(task)
+    take one
+    push(out, one/name)
+  back out
+
+# a route in the plain form, its children likewise: its first call's task, with that task's parameter names when the
+# program defines it
+task route-of
+  take one, like dock-route
+  take program, like list, like statement
+  take file, like text
+  take scopes, like list, like file-scope
+  take at, like span
+  like expression
+  mark private
+
+  save takes, make list
+  walk one/takes
+    take each
+    push(takes, take-of(each, at))
+  save children, make list
+  walk one/children
+    take child
+    push(children, route-of(child, program, file, scopes, at))
+  save task-name, <>
+  save params, make list
+  save params-given, false
+  save calls, one/calls
+  fork test, is-above(calls/length, 0)
+    hold
+      save first, get(calls, 0)
+      save task-name, first/name
+      sift task-named(program, task-name, file, scopes)
+        case some
+          link task
+          save params, param-names(task)
+          save params-given, true
+        case none
+          save nothing, 0
+  save args, make list
+  push(args, text-value(one/path, at))
+  push(args, text-value(one/note, at))
+  push(args, list-of(takes, at))
+  push(args, text-value(task-name, at))
+  push(args, texts-of(params, at))
+  push(args, flag-value(params-given, at))
+  push(args, flag-value(one/passes, at))
+  push(args, list-of(children, at))
+  back call-of(<console-route>, args, at)
+
+# ---- the match ----
+
+# the converter a parameter's type is handed by, or the empty text for a type that has none
+task converter-of
+  take given-type, like type
+  like text
+  mark private
+
+  sift given-type
+    case string
+      back <console-text>
+    case number
+      back <console-number>
+    case boolean
+      back <console-flag>
+    case array
+      link element
+      sift element
+        case string
+          back <console-texts>
+        miss
+          back <>
+    case named
+      link name
+      link args
+      fork test, and(is-equal(name, <maybe>), is-equal(args/length, 1))
+        hold
+          save item, get(args, 0)
+          sift item
+            case string
+              back <console-maybe-text>
+            case number
+              back <console-maybe-number>
+            case boolean
+              back <console-maybe-flag>
+            case array
+              link element
+              sift element
+                case string
+                  back <console-maybe-texts>
+                miss
+                  back <>
+            miss
+              back <>
+      fork test, and(is-equal(name, <list>), is-equal(args/length, 1))
+        hold
+          save item, get(args, 0)
+          sift item
+            case string
+              back <console-texts>
+            miss
+              back <>
+      back <>
+    miss
+      back <>
+
+# whether a task answers a whole number, which the run takes as its exit code
+task answers-number
+  take task, like statement
+  like boolean
+  mark private
+
+  sift task
+    case function
+      sift task/result
+        case some
+          link answer-type
+          sift answer-type
+            case number
+              back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+task is-async
+  take task, like statement
+  like boolean
+  mark private
+
+  sift task
+    case function
+      back task/async
+    miss
+      back false
+
+# the arm of one bound task: `if (task-name == "<name>") { return <name>(console-text(values, 0), ...) }`, or the call
+# and `return 0` for a task whose answer is not a whole number. A parameter with no converter is a refusal
+task arm-of
+  take task, like statement
+  take at, like span
+  take file, like text
+  take refusals, like list, like diagnostic
+  like maybe, like statement-branch
+  mark private
+
+  save called-name, task-name-of(task)
+  save args, make list
+  save refused, false
+  save index, 0
+  walk params-of(task)
+    take one
+    save converter, <>
+    sift one/type
+      case some
+        link param-type
+        save converter, converter-of(param-type)
+      case none
+        save nothing, 0
+    fork test, is-equal(converter, <>)
+      hold
+        save refused, true
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, at
+            bind message, make(some, <the console's command for task {called-name} hands its parameter {one/name} a value no console conversion gives: a command's task takes text, number, boolean, a list of text, or a maybe of one>)
+            bind hint, make(some, <give {one/name} one of those types, and convert it in the task>)
+        save problem, make not-implemented
+        push(refusals, diagnose(problem, input))
+      miss
+        push(args, call-of(converter, two(variable(<values>, at), number-value(index, at)), at))
+    save index, add(index, 1)
+  fork test, is-equal(called-name, <>)
+    hold
+      back make none
+  fork test, refused
+    hold
+      back make none
+  save called, call-of(called-name, args, at)
+  save body, make list
+  fork test, answers-number(task)
+    hold
+      push(body, return-value(called, at))
+    miss
+      push(body, expression-statement(called, at))
+      push(body, return-value(number-value(0, at), at))
+  save branch
+    make statement-branch
+      bind cond, text-equal(variable(<task-name>, at), text-value(called-name, at), at)
+      bind body, body
+  back make(some, branch)
+
+# every task name the routes bind, once each, in the routes' order
+task bound-names
+  take routes, like list, like dock-route
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  walk routes
+    take one
+    walk one/calls
+      take called
+      save seen, false
+      walk out
+        take had
+        fork test, is-equal(had, called/name)
+          hold
+            save seen, true
+      fork test, not(seen)
+        hold
+          push(out, called/name)
+    bound-names(one/children, out)
+  back out
+
+# ---- the pass ----
+
+# a command route of the entry file: a dock that is no page and no web path
+task is-command
+  take one, like statement
+  take file, like text
+  like boolean
+  mark private
+
+  sift one
+    case dock
+      link route
+      link span
+      fork test, not(is-in-file(span, file))
+        hold
+          back false
+      fork test, route/page
+        hold
+          back false
+      back not(starts-with(route/path, </>))
+    miss
+      back false
+
+task defines
+  take program, like list, like statement
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk program
+    take one
+    fork test, is-equal(defined-name(one), wanted)
+      hold
+        back true
+  back false
+
+task defined-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back one/name
+    case let
+      back one/name
+    miss
+      back <>
+
+task statement-span
+  take one, like statement
+  like span
+  mark private
+
+  sift one
+    case function
+      back one/span
+    case let
+      back one/span
+    miss
+      back zero-span()
+
+task no-refusals
+  like list, like diagnostic
+  mark private
+
+  back make list
+
+task unchanged
+  take program, like list, like statement
+  like console-lowered
+  mark private
+
+  back
+    make console-lowered
+      bind program, program
+      bind refusals, no-refusals()
+      bind lowered, false
+
+task taken-names
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <run>)
+  push(out, <console-routes>)
+  push(out, <console-call>)
+  back out
+
+# THE LOWERING: the entry's command routes as the table, the match and the run, appended to the program. `name` is the
+# name the console is shown by (its deck's, as `term boot` names it), `mark` its version, the empty text for none
+task lower-console
+  take program, like list, like statement
+  take file, like text
+  take scopes, like list, like file-scope
+  take name, like text
+  take mark, like text
+  like console-lowered
+
+  save routes, make list
+  save at, zero-span()
+  walk program
+    take one
+    fork test, is-command(one, file)
+      hold
+        sift one
+          case dock
+            link route
+            link span
+            fork test, is-equal(routes/length, 0)
+              hold
+                save at, span
+            push(routes, route)
+          miss
+            save nothing, 0
+  fork test, is-equal(routes/length, 0)
+    hold
+      back unchanged(program)
+  # the runtime is in the closure (the driver loaded it), and the entry has none of these names of its own
+  fork test, not(defines(program, <console-decide>))
+    hold
+      back unchanged(program)
+  walk taken-names()
+    take taken
+    walk program
+      take one
+      fork test, and(is-equal(defined-name(one), taken), is-in-file(statement-span(one), file))
+        hold
+          back unchanged(program)
+
+  # host console-routes, console-table-of(make list(route, ...))
+  save tables, make list
+  walk routes
+    take one
+    push(tables, route-of(one, program, file, scopes, at))
+  save table, local(<console-routes>, call-of(<console-table-of>, one-value(list-of(tables, at)), at), false, at)
+
+  # task console-call: one arm per bound task the program defines
+  save refusals, make list
+  save branches, make list
+  save waits, false
+  save no-names, make list
+  walk bound-names(routes, no-names)
+    take bound
+    sift task-named(program, bound, file, scopes)
+      case some
+        link task
+        fork test, is-async(task)
+          hold
+            save waits, true
+        sift arm-of(task, at, file, refusals)
+          case some
+            link arm
+            push(branches, arm)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+  fork test, is-above(refusals/length, 0)
+    hold
+      back
+        make console-lowered
+          bind program, program
+          bind refusals, refusals
+          bind lowered, false
+  save call-body, make list
+  fork test, is-above(branches/length, 0)
+    hold
+      save chosen
+        make statement/if
+          bind branches, branches
+          bind span, at
+      push(call-body, chosen)
+  # a name no arm binds: the decision only names a task a route binds, so this is a route whose task is not defined
+  push(call-body, return-value(number-value(2, at), at))
+  save handed-type
+    make type/named
+      bind name, <handed>
+  save values-type
+    make type/array
+      bind element, handed-type
+  save name-type, make type/string
+  save code-type, make type/number
+  save call-params, make list
+  push(call-params, typed-parameter(<task-name>, name-type))
+  push(call-params, typed-parameter(<values>, values-type))
+  save no-generics, make list
+  save call-task
+    make statement/function
+      bind name, <console-call>
+      bind params, call-params
+      bind body, call-body
+      bind result, make(some, code-type)
+      bind generics, no-generics
+      bind async, waits
+      bind span, at
+
+  # task run: the line decided, its outcome written, the task called, the exit code
+  save decided, call-of(<console-decide>, three(text-value(name, at), text-value(mark, at), variable(<console-routes>, at)), at)
+  save run-body, make list
+  push(run-body, local(<decided>, decided, false, at))
+  push(run-body, local(<code>, call-of(<console-answer>, one-value(variable(<decided>, at)), at), true, at))
+  save call-line, make list
+  push(call-line, assigned(<code>, call-of(<console-call>, two(call-of(<console-called>, one-value(variable(<decided>, at)), at), call-of(<console-values>, one-value(variable(<decided>, at)), at)), at), at))
+  save calling
+    make statement-branch
+      bind cond, call-of(<console-is-call>, one-value(variable(<decided>, at)), at)
+      bind body, call-line
+  save calls, make list
+  push(calls, calling)
+  save maybe-call
+    make statement/if
+      bind branches, calls
+      bind span, at
+  push(run-body, maybe-call)
+  push(run-body, expression-statement(call-of(<console-exit>, one-value(variable(<code>, at)), at), at))
+  save no-params, make list
+  save run-generics, make list
+  save run-task
+    make statement/function
+      bind name, <run>
+      bind params, no-params
+      bind body, run-body
+      bind generics, run-generics
+      bind async, waits
+      bind span, at
+
+  save out, make list
+  walk program
+    take one
+    push(out, one)
+  push(out, table)
+  push(out, call-task)
+  push(out, run-task)
+  back
+    make console-lowered
+      bind program, out
+      bind refusals, no-refusals()
+      bind lowered, true

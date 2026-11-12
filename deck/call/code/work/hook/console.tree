@@ -1,0 +1,449 @@
+# THE RUN OF A CONSOLE THE COMPILER LOWERED (decision 138 rules 1 to 3 of term/self-host/change/001-finish-self-host,
+# item term-self-host-001-1121). For an entry whose dock holds hook routes, compile/console-lower.tree writes the routes
+# as a module-level `host` of the plain route form (work/hook/route.tree), a match from a task name to a direct typed
+# call, and the entry's `run`, and every one of those calls lands here: the routes built, the command line read and
+# decided by work/hook/deciding.tree, the outcome written, the handed values converted to the task's own types, and
+# the exit code. Every host touch is @term/base's (the arguments, a variable, the home and working folders, the
+# clock, the exit) or the item library's (work/item/emit: what the output opens, the raw writes), so the whole closure
+# builds on every backend. Node keeps work/hook/running.tree until it moves onto this path too (decision 138 rule 3).
+#
+# What it answers as node's run (work/hook/running.tree over work/hook/usage.tree) answers: the same decision, the same
+# writes, a line written as console.log writes it (the line and its end), a refusal's closing at the clock read after
+# its opening and failed item are out, and the exit code: help and the version 0, a bare line 2, a refusal 2, a
+# called task's own whole-number answer, 0 for any other answer.
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
+load @term/base/text
+  find char-count
+  find char-code-at
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find directory, name working-directory
+
+load @term/base/environment/path
+  find known-directory
+
+load @term/base/time
+  find now
+
+load @term/base/process/current
+  find read, name read-process
+  find exit, name exit-process
+
+load @term/call/work/hook/route
+  find route
+  find route-take
+  find route-literal
+
+load @term/call/work/hook/route-parsing
+  find arg-value
+
+load @term/call/work/hook/deciding
+  find decide
+  find line-ask
+  find outcome
+  find handed
+
+load @term/call/work/hook/refusal
+  find refusal-view
+  find refusal-close
+  find refusal-closed
+  find said
+
+load @term/call/work/item/emit
+  find open-output
+  find print-data
+  find print-raw-error
+
+load @term/call/work/item/run
+  find run-options
+
+load @term/call/work/item/standard
+  find make-standard
+
+# THE ROUTE TABLE the compiler writes as one module-level `host`: a record whose one field is the routes, so on Rust it
+# is one process-wide static built on first read (decision 138 rule 4, amended by item 1124: a record with owned lists)
+form console-table
+  link routes, like list, like route
+
+# ---- what the written table is built of ----
+
+task console-table-of
+  take routes, like list, like route
+  like console-table
+  back make console-table, routes(routes)
+
+task console-route
+  take path, like text
+  take note, like text
+  take takes, like list, like route-take
+  take task-name, like text
+  take params, like list, like text
+  take params-given, like boolean
+  take passes, like boolean
+  take children, like list, like route
+  like route
+  back make route, path(path), note(note), takes(takes), task-name(task-name), params(params), params-given(params-given), passes(passes), children(children)
+
+task console-take
+  take name, like text
+  take kind, like text
+  take item-kind, like text
+  take optional, like boolean
+  take required, like boolean
+  take short, like text
+  take aliases, like list, like text
+  take masked, like boolean
+  take note, like text
+  take fallback, like maybe, like route-literal
+  take variadic, like boolean
+  take positional, like boolean
+  take passes, like boolean
+  take choices, like list, like text
+  like route-take
+  back make route-take, name(name), kind(kind), item-kind(item-kind), optional(optional), required(required), short(short), aliases(aliases), masked(masked), note(note), fallback(fallback), variadic(variadic), positional(positional), passes(passes), choices(choices)
+
+task console-no-literal
+  like maybe, like route-literal
+  back make none
+
+task console-literal-text
+  take value, like text
+  like maybe, like route-literal
+  save written, make literal-text, value(value)
+  back make(some, written)
+
+task console-literal-number
+  take value, like number
+  like maybe, like route-literal
+  save written, make literal-number, value(value)
+  back make(some, written)
+
+task console-literal-flag
+  take value, like boolean
+  like maybe, like route-literal
+  save written, make literal-flag, value(value)
+  back make(some, written)
+
+# ---- what the run reads from the host ----
+
+# how deep in other Term runs this one is: TERM_DEPTH's whole number, 0 when it is unset, empty or not one (node reads
+# `Math.max(0, Number(TERM_DEPTH) || 0)`, which agrees on every whole number)
+task console-depth
+  like number
+  fork test, not(has-variable(<TERM_DEPTH>))
+    hold
+      back 0
+  save word, variable(<TERM_DEPTH>)
+  save size, char-count(word)
+  fork test, is-equal(size, 0)
+    hold
+      back 0
+  save total, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(word, at)
+      fork test, or(is-below(code, 48), is-above(code, 57))
+        hold
+          back 0
+      save total, add(multiply(total, 10), subtract(code, 48))
+      save at, add(at, 1)
+  back total
+
+# what a refusal reads from the host, as the printer read it when it opened a run: the output the flags' defaults open
+# at this depth, the home and working folders, and the clock the run opens at
+task console-view
+  like refusal-view
+  save options, make run-options, depth(console-depth())
+  save output, open-output(options, make-standard())
+  back make refusal-view, output(output), home(known-directory(<home>)), root(working-directory()), clock(now())
+
+# the name the console is shown by: TERM_LINE_NAME when it is set and not empty, else the one the compiler wrote
+task console-name
+  take given, like text
+  like text
+  save shown, variable(<TERM_LINE_NAME>)
+  fork test, is-equal(shown, <>)
+    hold
+      back given
+  back shown
+
+# ---- the run ----
+
+# THE DECISION over this process's own command line
+task console-decide
+  take name, like text
+  take mark, like text
+  take table, like console-table
+  like outcome
+  save started, read-process()
+  save ask, make line-ask, name(console-name(name)), mark(mark), routes(table/routes), argv(started/arguments), words-own(false), view(console-view())
+  back decide(ask)
+
+# one write, as node's run makes it: a line as console.log writes it, raw text as it is
+task console-write
+  take one, like said
+  like void
+  sift one
+    case said-line
+      link stream
+      link line
+      fork test, is-equal(stream, <out>)
+        hold
+          print-data(<{line}\n>)
+        miss
+          print-raw-error(<{line}\n>)
+    case said-raw
+      link stream
+      link written
+      fork test, is-equal(stream, <out>)
+        hold
+          print-data(written)
+        miss
+          print-raw-error(written)
+
+task console-write-all
+  take writes, like list, like said
+  like void
+  walk writes
+    take one
+    console-write(one)
+
+# the outcome's writes and its exit code. A call writes nothing here and answers 0: the run calls the task
+task console-answer
+  take decided, like outcome
+  like number
+  sift decided
+    case outcome-said
+      link writes
+      link code
+      console-write-all(writes)
+      back code
+    case outcome-refuse
+      link writes
+      link closing
+      console-write-all(writes)
+      # the closing at the clock read now, once the opening and the failed item are out
+      save closed, refusal-closed(closing, now())
+      console-write-all(closed/writes)
+      back closed/code
+    case outcome-hand
+      # only a console handed a `refuse` words its own refusal, and a lowered console has none
+      back 2
+    case outcome-call
+      back 0
+
+task console-is-call
+  take decided, like outcome
+  like boolean
+  sift decided
+    case outcome-call
+      back true
+    miss
+      back false
+
+task console-called
+  take decided, like outcome
+  like text
+  sift decided
+    case outcome-call
+      link task-name
+      back task-name
+    miss
+      back <>
+
+task no-handed
+  like list, like handed
+  back make list
+
+task console-values
+  take decided, like outcome
+  like list, like handed
+  sift decided
+    case outcome-call
+      link values
+      back values
+    miss
+      back no-handed()
+
+# the process ends with the run's exit code
+task console-exit
+  take code, like number
+  like void
+  exit-process(code)
+
+# ---- a handed value in the task's own type ----
+
+# the value at `at`, none past the end
+task handed-at
+  take values, like list, like handed
+  take at, like number
+  like maybe, like arg-value
+  fork test, not(is-below(at, values/length))
+    hold
+      back make none
+  save one, values/{at}
+  sift one
+    case handed-plain
+      link given
+      back make(some, given)
+    case handed-some
+      link given
+      back make(some, given)
+    case handed-none
+      back make none
+
+task text-of-arg
+  take value, like arg-value
+  like text
+  sift value
+    case arg-text
+      link given
+      back given
+    case arg-number
+      link amount
+      back <{amount}>
+    case arg-flag
+      link on
+      back <{on}>
+    miss
+      back <>
+
+task number-of-arg
+  take value, like arg-value
+  like number
+  sift value
+    case arg-number
+      link amount
+      back amount
+    miss
+      back 0
+
+task flag-of-arg
+  take value, like arg-value
+  like boolean
+  sift value
+    case arg-flag
+      link on
+      back on
+    miss
+      back false
+
+task no-console-texts
+  like list, like text
+  back make list
+
+task texts-of-arg
+  take value, like arg-value
+  like list, like text
+  sift value
+    case arg-list
+      link items
+      back items
+    case arg-text
+      link given
+      save one, no-console-texts()
+      one/push given
+      back one
+    miss
+      back no-console-texts()
+
+task console-text
+  take values, like list, like handed
+  take at, like number
+  like text
+  sift handed-at(values, at)
+    case some
+      link given
+      back text-of-arg(given)
+    case none
+      back <>
+
+task console-number
+  take values, like list, like handed
+  take at, like number
+  like number
+  sift handed-at(values, at)
+    case some
+      link given
+      back number-of-arg(given)
+    case none
+      back 0
+
+task console-flag
+  take values, like list, like handed
+  take at, like number
+  like boolean
+  sift handed-at(values, at)
+    case some
+      link given
+      back flag-of-arg(given)
+    case none
+      back false
+
+task console-texts
+  take values, like list, like handed
+  take at, like number
+  like list, like text
+  sift handed-at(values, at)
+    case some
+      link given
+      back texts-of-arg(given)
+    case none
+      back no-console-texts()
+
+task console-maybe-text
+  take values, like list, like handed
+  take at, like number
+  like maybe, like text
+  sift handed-at(values, at)
+    case some
+      link given
+      save held, text-of-arg(given)
+      back make(some, held)
+    case none
+      back make none
+
+task console-maybe-number
+  take values, like list, like handed
+  take at, like number
+  like maybe, like number
+  sift handed-at(values, at)
+    case some
+      link given
+      save held, number-of-arg(given)
+      back make(some, held)
+    case none
+      back make none
+
+task console-maybe-flag
+  take values, like list, like handed
+  take at, like number
+  like maybe, like boolean
+  sift handed-at(values, at)
+    case some
+      link given
+      save held, flag-of-arg(given)
+      back make(some, held)
+    case none
+      back make none
+
+task console-maybe-texts
+  take values, like list, like handed
+  take at, like number
+  like maybe, like list, like text
+  sift handed-at(values, at)
+    case some
+      link given
+      save held, texts-of-arg(given)
+      back make(some, held)
+    case none
+      back make none

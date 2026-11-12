@@ -1,0 +1,98 @@
+note <the compile driver's Term entry: a compile-request in, a compile-result out, its TypeScript written by emit-typescript>
+
+# compile/program-entry.tree's compile-text over small programs, with no resolver and with the Term resolver record over
+# the stdlib. tmp/self-host/1236/entry-pair.ts pairs it with compile/compile.ts over whole packages.
+
+load ../../code/compile/program-entry
+  find compile-request
+  find compile-result
+  find result-kind
+  find compile-resolver-of
+  find text-request
+  find compile-text
+  find emit-typescript
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+
+load @term/base/environment
+  find directory
+
+# a request for a program read longhand, with no resolver
+task plain-request
+  take text, like text
+  like compile-request
+
+  back text-request(<suite.tree>, text)
+
+# the same, resolving its loads through the stdlib the Term resolver finds from where the test runs
+task stdlib-request
+  take text, like text
+  like compile-request
+
+  save request, text-request(<{directory()}/suite.tree>, text)
+  host resolver, compile-resolver-of(directory(), <file://{directory()}/suite.tree>, make none)
+  save request/resolver, make(some, resolver)
+  back request
+
+# the TypeScript a result already holds, <> when it holds none
+task written-of
+  take result, like compile-result
+  like text
+
+  sift result/written
+    case some
+      link text
+      back text
+    case none
+      back <>
+
+test <a program compiles, and its TypeScript is written from the result>
+  host result, compile-text(plain-request(<task greeting\n  like text\n  send back, text \<hi\>\n>))
+  want hold, result/ok
+  want hold, is-equal(result/kind, make emit-result)
+  want hold, contains(emit-typescript(result), <greeting>)
+
+test <a program that does not check is refused with its diagnostics, and has no TypeScript>
+  host result, compile-text(plain-request(<task broken\n  like number\n  send back, text \<hi\>\n>))
+  want hold, not(result/ok)
+  want hold, is-equal(result/kind, make refused-result)
+  want hold, is-above(result/diagnostics/length, 0)
+  want hold, is-equal(emit-typescript(result), <>)
+
+test <the editor path writes its TypeScript at once>
+  save request, plain-request(<task greeting\n  like text\n  send back, text \<hi\>\n>)
+  save request/optimize, false
+  host result, compile-text(request)
+  want hold, result/ok
+  want hold, contains(written-of(result), <greeting>)
+
+test <the roll alone answers the roll and no TypeScript>
+  save request, plain-request(<task greeting\n  like text\n  send back, text \<hi\>\n>)
+  save request/roll, true
+  save request/roll-only, true
+  host result, compile-text(request)
+  want hold, result/ok
+  want hold, is-equal(result/kind, make roll-result)
+  want hold, is-equal(emit-typescript(result), <>)
+
+test <two compiles with fresh state write the same TypeScript>
+  host text, <task greeting\n  like text\n  send back, text \<hi\>\n>
+  host first, compile-text(plain-request(text))
+  host second, compile-text(plain-request(text))
+  want hold, is-equal(emit-typescript(first), emit-typescript(second))
+
+test <a load of the stdlib resolves through the Term resolver record>
+  host result, compile-text(stdlib-request(<load @term/base/text\n  find char-count\n\ntask size\n  take value, like text\n  like number\n  send back\n    call char-count\n      read value\n>))
+  want hold, result/ok
+  want hold, contains(emit-typescript(result), <size>)
+
+test <a load nothing resolves is refused at the load>
+  host result, compile-text(stdlib-request(<load ./not-a-module\n  find nothing\n\ntask size\n  like number\n  send back, code 1\n>))
+  want hold, not(result/ok)
