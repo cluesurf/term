@@ -38,13 +38,15 @@ import { startOciServer } from '../../deck/deck/test/oci-server'
 import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
-// the installer term.surf serves at /load
+// the installer term.surf serves at /load lives in the parent checkout, so this test runs only where
+// TERM_PARENT_ROOT names it
+const PARENT = process.env['TERM_PARENT_ROOT']
+if (!PARENT) {
+  console.log('skip needs TERM_PARENT_ROOT, the parent checkout that holds mesh/site/term.surf/home/public/load')
+  process.exit(0)
+}
 const LOADER = join(
-  TERM,
-  '..',
-  '..',
-  '..',
-  '..',
+  PARENT,
   'mesh',
   'site',
   'term.surf',
