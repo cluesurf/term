@@ -10,6 +10,12 @@
 # The three maps, the counters and the memoized text hash are the records below, `mark shared`, one per cache, and the
 # text hash's one per process the face holds.
 #
+# Since item term-self-host-001-1237 (decision 142 rule 4) the cache-io is made here too (`store-cache-io`) from the
+# store's two text tasks: what a stored entry must hold to be read back (`usable-entry`), the import scan's own reviver,
+# the bigint tag and the unit's copy, the last three as binds, since JSON and `structuredClone` are the host's. The
+# writes-off view is here as well (`without-writes`, `clean-writes`): a dirty file's entries stay in memory and never reach
+# the store (decision 098 rule 6). compile/cache.ts keeps the class its callers construct and hands the store in.
+#
 # Two levels, both keyed by source content, never mtime, so a touched but unchanged file is a hit and an edit that
 # reverts to a prior state reuses that state:
 #   - mill: the parse, template expansion and mill of one module, reused while its text is unchanged
@@ -105,6 +111,9 @@ form compile-cache
   link io, like cache-io
   # the process's memoized text hash, shared by every cache
   link hashes, like text-hashes
+  # whether the store's writes are held back now (`without-writes`): a fresh answer is kept by neither the store nor
+  # the maps
+  link held, like boolean
 
 host text-hash-cap, code 67108864
 
@@ -136,6 +145,7 @@ task make-compile-cache
       bind output-cap, output-cap
       bind io, io
       bind hashes, hashes
+      bind held, false
 
 # A TEXT'S LENGTH IN UTF-16 UNITS, the length a key field is prefixed with. The keys are the original's on every
 # backend, so a store one compiler wrote is read by every other.
@@ -399,3 +409,301 @@ task output-replace
   evict-to(cache/outputs, cache/output-cap)
   write-entry(kind, versioned, value)
   back true
+
+# ---- the store's entries (item 1237) ----
+
+# THE PERSISTENT STORE AS THE FACE HANDS IT: an entry of a kind under a key, read and written as text, or no store at
+# all (the browser), when nothing is read and nothing is written, not even turned into text
+form entry-store
+  link present, like boolean
+  link read
+    like task
+      take kind, like text
+      take key, like text
+      like maybe, like text
+  link write
+    like task
+      take kind, like text
+      take key, like text
+      take value, like text
+      like boolean
+
+# A STORED ENTRY READ BACK, undefined when it does not parse. JSON has no integer wider than a double, so a bigint (an
+# integer literal past 2^53) is stored tagged and revived from its tag. An import scan holds no `null` of its own: JSON
+# wrote each `undefined` alias as one, so each is read back as `undefined` (the dev-loop bench, 2026-10-05). A corrupt
+# entry is a miss, never a crash: a full disk, a killed process or a half-synced share can leave a cut file, and the build
+# was going to compute the value anyway. Natively there is no store, so no entry is read
+bind stored-entry-parse
+  take text, like text
+  take shape, like text
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return $shape === 'scan' ? JSON.parse($text, (_k, v) =\> v === null ? undefined : v) : JSON.parse($text, (_k, v) =\> v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v['$' + 'bigint'] === 'string' && Object.keys(v).length === 1 ? BigInt(v['$' + 'bigint']) : v) \} catch \{ return undefined \} \})()>
+  case browser
+    text <(() =\> \{ try \{ return $shape === 'scan' ? JSON.parse($text, (_k, v) =\> v === null ? undefined : v) : JSON.parse($text, (_k, v) =\> v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v['$' + 'bigint'] === 'string' && Object.keys(v).length === 1 ? BigInt(v['$' + 'bigint']) : v) \} catch \{ return undefined \} \})()>
+  case rust
+    text <$text>
+  case swift
+    text <$text>
+  case kotlin
+    text <$text>
+
+# an entry as the store keeps it: JSON, each bigint under its tag
+bind stored-entry-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value, (_k, v) =\> typeof v === 'bigint' ? \{ ['$' + 'bigint']: v.toString() \} : v)>
+  case browser
+    text <JSON.stringify($value, (_k, v) =\> typeof v === 'bigint' ? \{ ['$' + 'bigint']: v.toString() \} : v)>
+  case rust
+    text <format!("\{:?\}", $value)>
+  case swift
+    text <String(describing: $value)>
+  case kotlin
+    text <$value.toString()>
+
+# whether a host value is the absent one
+bind stored-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+  case browser
+    text <($value === undefined)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# whether a host value is a record (an object, an array among them), never null
+bind stored-is-record
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== null && typeof $value === 'object')>
+  case browser
+    text <($value !== null && typeof $value === 'object')>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# what a record's field holds: `list` for an array, else the host's own name of its type (`boolean`, `string`, ...)
+bind stored-field-kind
+  take value, like dynamic
+  take field, like text
+  like text
+  case node
+    text <(Array.isArray($value[$field]) ? 'list' : typeof $value[$field])>
+  case browser
+    text <(Array.isArray($value[$field]) ? 'list' : typeof $value[$field])>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# whether a record's field is `true`
+bind stored-field-flag
+  take value, like dynamic
+  take field, like text
+  like boolean
+  case node
+    text <($value[$field] === true)>
+  case browser
+    text <($value[$field] === true)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# a milled unit as its caller gets it: a fresh copy of an ok unit's program and twins, so the caller may rewrite the
+# program (the checker does) without changing the cached one, and a failed unit as it is. Natively a value is a copy
+bind cloned-unit
+  take unit, like dynamic
+  like dynamic
+  case node
+    text <($unit.ok ? \{ ok: true, program: structuredClone($unit.program), ...($unit.twins ? \{ twins: structuredClone($unit.twins) \} : \{\}) \} : $unit)>
+  case browser
+    text <($unit.ok ? \{ ok: true, program: structuredClone($unit.program), ...($unit.twins ? \{ twins: structuredClone($unit.twins) \} : \{\}) \} : $unit)>
+  case rust
+    text <$unit>
+  case swift
+    text <$unit>
+  case kotlin
+    text <$unit>
+
+# `run`, then `after` whether `run` answered or raised, and what `run` answered. What `run` raised passes on as it was
+# raised, so a caller that throws its own value through a held cache (compile/cache.ts `unitStored`) still catches it
+bind run-then
+  take run, like dynamic
+  take after, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return $run() \} finally \{ $after() \} \})()>
+  case browser
+    text <(() =\> \{ try \{ return $run() \} finally \{ $after() \} \})()>
+  case rust
+    text <\{ let kept = ($run)(); ($after)(); kept \}>
+  case swift
+    text <\{ defer \{ _ = ($after)() \}; return ($run)() \}()>
+  case kotlin
+    text <try \{ ($run)() \} finally \{ ($after)() \}>
+
+# WHETHER A STORED ENTRY HAS THE SHAPE ITS KIND READS (note/project/term/incremental-best-in-class.md, step 14). A torn or
+# flipped entry fails gzip's checksum and a cut one fails to parse, and both are misses already. One that parses to the
+# wrong shape, a `{}` where a unit's build belongs, was handed back as a hit, and the first read of a field it lacked
+# crashed the build. It is a miss too, and the build that follows writes a good entry over it
+task usable-entry
+  take shape, like text
+  take value, like dynamic
+  like boolean
+
+  fork test, not(stored-is-record(value))
+    hold
+      back false
+  fork test, is-equal(shape, <mill>)
+    hold
+      fork test, not(is-equal(stored-field-kind(value, <ok>), <boolean>))
+        hold
+          back false
+      fork test, stored-field-flag(value, <ok>)
+        hold
+          back is-equal(stored-field-kind(value, <program>), <list>)
+      back is-equal(stored-field-kind(value, <diagnostics>), <list>)
+  fork test, is-equal(shape, <scan>)
+    hold
+      back and(is-equal(stored-field-kind(value, <paths>), <list>), is-equal(stored-field-kind(value, <finds>), <list>))
+  # stored with each deck's root as a token (compile/separate.ts `portableBy`), read back by the build
+  fork test, is-equal(shape, <unit>)
+    hold
+      back is-equal(stored-field-kind(value, <portable>), <string>)
+  back true
+
+# THE CACHE'S IO OVER A STORE: an entry read as its shape reads it (none when there is no store, no entry, or one that
+# does not parse or has the wrong shape), a fresh entry written as text, and a milled unit handed back as a copy
+task store-cache-io
+  take version-of
+    like task
+      take kind, like text
+      like text
+  take store, like entry-store
+  like cache-io
+
+  save read-stored, store/read
+  save write-stored, store/write
+  save present, store/present
+  save read-entry
+    task
+      take kind, like text
+      take key, like text
+      take shape, like text
+      like maybe, like unknown
+      fork test, not(present)
+        hold
+          back make none
+      sift read-stored(kind, key)
+        case some
+          link text
+          save value, stored-entry-parse(text, shape)
+          fork test, stored-absent(value)
+            hold
+              back make none
+          fork test, not(usable-entry(shape, value))
+            hold
+              back make none
+          back make(some, value)
+        case none
+          back make none
+  save write-entry
+    task
+      take kind, like text
+      take key, like text
+      take value, like unknown
+      like boolean
+      fork test, not(present)
+        hold
+          back true
+      back write-stored(kind, key, stored-entry-text(value))
+  save clone-unit
+    task
+      take unit, like unknown
+      like unknown
+      back cloned-unit(unit)
+  back
+    make cache-io
+      bind version-of, version-of
+      bind read-entry, read-entry
+      bind write-entry, write-entry
+      bind clone-unit, clone-unit
+
+# ---- the writes-off view (decision 098 rule 6, item 1237) ----
+
+# `run` WITH THE STORE'S WRITES HELD BACK: every read passes through (memory, then the store), and an answer built is
+# kept by neither, not even the cache's memory, which `milled-unit`, `scanned` and `output` fill just before they write:
+# a held answer left there would answer the same key once the file is clean, and the store would never take it. The
+# caller keeps such answers (the build graph's unit memo). The build is synchronous, so nothing else writes through this
+# cache meanwhile. What the editor's unsaved text compiles to never reaches the store. Already held (a unit's build
+# milling one of its own dirty files), `run` runs as it is
+task without-writes
+  take cache, like compile-cache
+  take run
+    like task
+      like unknown
+  like unknown
+
+  fork test, cache/held
+    hold
+      back run()
+  save io, cache/io
+  save forget
+    task
+      take kind, like text
+      take key, like text
+      take value, like unknown
+      like boolean
+      cache/mills/remove(key)
+      cache/scans/remove(key)
+      cache/outputs/remove(key)
+      back true
+  save held-io
+    make cache-io
+      bind version-of, io/version-of
+      bind read-entry, io/read-entry
+      bind write-entry, forget
+      bind clone-unit, io/clone-unit
+  save cache/io, held-io
+  save cache/held, true
+  save restore
+    task
+      like boolean
+      save cache/io, io
+      save cache/held, false
+      back true
+  back run-then(run, restore)
+
+# a mill or scan entry of one file: written when the file is clean (the disk holds the text compiled), else held back
+task clean-writes
+  take cache, like compile-cache
+  take clean
+    like task
+      take file, like text
+      like boolean
+  take file, like text
+  take run
+    like task
+      like unknown
+  like unknown
+
+  fork test, clean(file)
+    hold
+      back run()
+  back without-writes(cache, run)

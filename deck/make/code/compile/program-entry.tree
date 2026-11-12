@@ -2,9 +2,9 @@
 # not a program is answered whole (compile/side-files.tree), and a program is loaded, built and answered through
 # compile/program-driver.tree. The TypeScript of a result is `emit-typescript`, a task on the result, never a getter.
 #
-# Ported from compile/compile.ts's `compile` without a cache, with its `readingOf`, `givenOf`, `milledModule`,
-# `builtResult`, `answerResult` and `emitResult` (decision 142 rule 3 of term/self-host/change/001-finish-self-host, item
-# 1236). compile.ts stays as the face, and keeps the cached path, the per-module mode and the twins' mutants until 1237.
+# Ported from compile/compile.ts's `compile` with its `readingOf`, `givenOf`, `milledModule`, `builtResult`,
+# `answerResult` and `emitResult` (decision 142 rules 3 and 4 of term/self-host/change/001-finish-self-host, items 1236
+# and 1237). compile.ts stays as the face: it forwards every compile but the per-module mode here, and keeps that mode.
 # The decisions:
 #   - the request's lookups are tasks every request carries, `no-deck`, `no-role` and `no-lean` where the caller knows
 #     none: each answers what compile.ts answered for an absent option (none, the empty text, false)
@@ -13,8 +13,19 @@
 #     are rewritten for, and the code-root cache the package resolvers read manifests through. A relative load
 #     resolves against its file and stays inside the file's package or the root, as deck/call/code/make.ts
 #     `projectResolver` confines one. `compile-resolver-of` makes the record a project build would: its `link/`
-#     packages, the stdlib and the stdlib's siblings. Not ported here: projectResolver's `@/` alias, its own-package and
-#     project fallbacks, its second link root, and its memo of each answer
+#     packages, a second `link/` root (the CLI's install), the stdlib and the stdlib's siblings, then the project being
+#     built, each answer remembered by projectResolver's key. Not ported yet: projectResolver's `@/` alias, its
+#     own-package fallback and the app's shadow of a face implementation, which read a manifest's declared name, and
+#     deck/call/code/manifest-read.tree is the one reader of that (item 1237's escalation)
+#   - THE CACHED PATH (item 1237): a request carrying a `cache` (compile/cache-store.tree's record) mills each module
+#     through its mill level, scans each through its scan entries in compile/load.ts's stored shape (an absent alias
+#     `undefined`, so a scan the separate build stored is read here and the reverse), and answers through its output
+#     level under compile/program-driver.tree's graph key, or the roll-only key. The stored answer is the result with its
+#     TypeScript written in place of the pending emit, written when the store first takes it, as compile.ts's getter was
+#   - a TypeScript caller hands what it holds as host values in `hands` (`caller-hands`): its resolver function, its
+#     parse memo, its walk memo, the twins' mutant rewrite, the cache view's clean test and the census hook. compile.ts
+#     forwards with them, so its callers keep their resolver and one parse memo for a batch build
+#   - `milled-module` is compile.ts `milledModule`, which compile/separate.ts still calls through the face
 #   - the run's state is one `compile-state` (the driver's state, the overload bound, the checker's switches, the parse
 #     memo), fresh when the request carries none. On TypeScript three phase faces still read the process's own
 #     instances: check/infer.ts reads check/overload.ts's bound and check/strict.ts's switches, and check/holds.ts and
@@ -26,13 +37,16 @@
 #     where check/hold-walk.tree reads it per goal. The compile is synchronous, so no other compile sees it
 #   - the roll of a full build is the warnings phase's list of `roll-kind`, and the fast roll is compile/roll.ts's own
 #     roll (`fast-roll`), since program-types still docks it
-#   - compile.ts's census hook (`termCensusKeep`) is the face's alone
+#   - compile.ts's census hook (`termCensusKeep`) is the face's alone: it comes in `hands` as `on-load`
 
 load @term/base/list
   find list
 
 load @term/base/maybe
   find maybe
+
+load @term/base/hash
+  find hash
 
 load @term/base/text
   find starts-with
@@ -86,16 +100,22 @@ load ./program-driver
   find load-graph
   find run-graph-job
   find run-mill-job
+  find graph-key
+  find roll-only-key
 
 load ./side-files
   find side-file
   find side-answer
+
+load ./unit-mill
+  find writes-fuse
 
 load ./loading
   find source, name module-source
   find load-how
   find import-scan
   find scan-parsed
+  find walked-module
 
 load ./loading-parses
   find parse-memo
@@ -104,6 +124,11 @@ load ./loading-parses
 
 load ./cache-store
   find make-text-hashes
+  find compile-cache
+  find milled-unit
+  find scanned
+  find output
+  find clean-writes
 
 load ./native-env
   find native-env
@@ -132,6 +157,8 @@ load ../check/eliminate
 load ../package-paths
   find join-two
   find dirname-of
+  find package-rest
+  find resolve-package-path
 
 load ../package-paths-disk
   find path-exists
@@ -153,12 +180,16 @@ load ../package-paths-disk
 
 # THE BUILD'S RESOLVER, as a record: the package resolvers a package path is asked of, in order, the root a relative
 # load may not leave when no `deck.tree` is nearer its file, the native env each abstract load is rewritten for first
-# (none: as written), and the code-root cache the package resolvers read each manifest through
+# (none: as written), the code-root cache the package resolvers read each manifest through, and what it has answered:
+# each whole resolution by its key and each folder's package root. Nothing in them is forgotten: files do not change
+# during a compile
 form compile-resolver
   link root, like text
   link packages, like list, like package-resolver
   link env, like maybe, like native-env
   link code-roots, like code-roots
+  link answers, like hash, like text, like maybe, like module-source
+  link package-roots, like hash, like text, like text
 
 # what a coverage build measures: the entry file alone, its keys relative to its folder, or a target
 form cover-choice
@@ -222,6 +253,47 @@ form compile-request
   link state
     like maybe, like compile-state
     fall make none
+  # the build cache (item 1237): none compiles every module afresh
+  link cache
+    like maybe, like compile-cache
+    fall make none
+  # what a TypeScript caller holds as host values, each in place of the request's own
+  link hands
+    like maybe, like caller-hands
+    fall make none
+
+# WHAT A TYPESCRIPT CALLER HOLDS AS HOST VALUES, handed as they are (compile.ts forwarding its options): whether it
+# gave a resolver and the resolver itself, its parse memo, its walk memo and whether it keeps it across walks, the
+# twins' mutant rewrite and whether it gave one, the clean test of a cache view (decision 098 rule 6), and the census
+# hook, called with the loaded graph
+form caller-hands
+  link has-resolve, like boolean
+  link resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like module-source
+  link parse
+    like task
+      take unit, like token-source
+      like parse-result
+  link walked, like hash, like text, like walked-module
+  link keeps-walked, like boolean
+  link adjusted, like boolean
+  link adjust
+    like task
+      take twins, like list, like twin
+      like list, like twin
+  link clean
+    like task
+      take file, like text
+      like boolean
+  link on-load
+    like task
+      take file, like text
+      take graph, like dynamic
+      like boolean
 
 # ---- what it answers ----
 
@@ -270,10 +342,14 @@ form compile-result
     need false
   link twins, like maybe, like list, like twin
   link cover, like maybe, like list, like text
-  # the TypeScript already written (a data module, the editor path's raw emit), or the emit it is written from
+  # the TypeScript already written (a data module, the editor path's raw emit, a stored answer), or the emit it is
+  # written from
   link written, like maybe, like text
   link pending, like maybe, like pending-emit
   link emit-options, like entry-emit-options
+  # whether the program is the optimized build's, whose TypeScript is written when first read and carries the wake,
+  # kept apart from `pending` since a stored answer holds its TypeScript written
+  link optimized, like boolean
 
 # ---- the lookups a request carries when the caller knows none ----
 
@@ -435,6 +511,71 @@ bind entry-cause-message
   case kotlin
     text <$cause.toString()>
 
+# A RESULT AS THE STORE TAKES IT: its TypeScript written in place of the pending emit, when it is first read, as
+# compile.ts's getter was. The store's JSON reads it, so the emit runs when the store first takes the answer, and not at
+# all where no store does. Natively the emit stays pending
+bind entry-lazy-written
+  take result, like dynamic
+  take emit, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ const held = $result; const emit = $emit; let written; held.pending = \{ form: 'none' \}; Object.defineProperty(held, 'written', \{ enumerable: true, configurable: true, get: () =\> (written ??= \{ form: 'some', value: emit() \}), set: value =\> \{ written = value \} \}); return held \})()>
+  case browser
+    text <(() =\> \{ const held = $result; const emit = $emit; let written; held.pending = \{ form: 'none' \}; Object.defineProperty(held, 'written', \{ enumerable: true, configurable: true, get: () =\> (written ??= \{ form: 'some', value: emit() \}), set: value =\> \{ written = value \} \}); return held \})()>
+  case rust
+    text <$result>
+  case swift
+    text <$result>
+  case kotlin
+    text <$result>
+
+# AN IMPORT SCAN AS THE STORE HOLDS IT (compile/load.ts `fromPortScan`): each absent alias `undefined`, the shape
+# compile/separate.ts stores under the same key, so either build reads the other's scan. Natively there is no store
+bind scan-stored-shape
+  take scan, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$scan, finds: $scan.finds.map(find =\> (\{ ...find, aliases: find.aliases.map(alias =\> alias.form === 'some' ? alias.value : undefined) \})) \})>
+  case browser
+    text <(\{ ...$scan, finds: $scan.finds.map(find =\> (\{ ...find, aliases: find.aliases.map(alias =\> alias.form === 'some' ? alias.value : undefined) \})) \})>
+  case rust
+    text <$scan>
+  case swift
+    text <$scan>
+  case kotlin
+    text <$scan>
+
+# a stored scan as the walk reads it (compile/load.ts `toPortScan`): JSON's reviver left a hole where an alias was
+# absent, which `Array.from` visits and `map` would skip
+bind scan-read-shape
+  take stored, like dynamic
+  like import-scan
+  case node
+    text <(\{ ...$stored, finds: $stored.finds.map(find =\> (\{ ...find, aliases: Array.from(find.aliases, alias =\> alias === undefined ? \{ form: 'none' \} : \{ form: 'some', value: alias \}) \})) \})>
+  case browser
+    text <(\{ ...$stored, finds: $stored.finds.map(find =\> (\{ ...find, aliases: Array.from(find.aliases, alias =\> alias === undefined ? \{ form: 'none' \} : \{ form: 'some', value: alias \}) \})) \})>
+  case rust
+    text <$stored>
+  case swift
+    text <$stored>
+  case kotlin
+    text <$stored>
+
+# the character between the parts of a mill key, which no path, role or template key holds (U+0000)
+bind mill-key-gap
+  take seed, like number
+  like text
+  case node
+    text <<'\u0000'>>
+  case browser
+    text <<'\u0000'>>
+  case rust
+    text <<String::from("\u{0}")>>
+  case swift
+    text <<"\u{0}">>
+  case kotlin
+    text <<"\u0000">>
+
 # a module as the import walk holds it and as the parser does: one shape, a file and its text, on TypeScript
 task module-source-of
   take value, like dynamic
@@ -457,15 +598,26 @@ task driver-milled-of
 
   back value
 
+# an answer the output level handed back, as the entry answers it
+task stored-result-of
+  take value, like dynamic
+  like compile-result
+  mark private
+
+  back value
+
 # ---- the resolver ----
 
-# THE RECORD A PROJECT BUILD RESOLVES THROUGH: the project's `link/` packages, then the stdlib and the packages beside
-# it, each found from `url` (the compiler's own module address, or `TERM_STDLIB`), relative loads kept inside `root`
-# when no package is nearer, and abstract native loads rewritten for `env`
+# THE RECORD A PROJECT BUILD RESOLVES THROUGH: the project's `link/` packages, then those of `fallback` (a second link
+# root, the CLI's install, so an app that has not run `term link` still resolves through the install's links; `<>` or
+# the root itself is none), then the stdlib and the packages beside it, each found from `url` (the compiler's own module
+# address, or `TERM_STDLIB`), relative loads kept inside `root` when no package is nearer, and abstract native loads
+# rewritten for `env`
 task compile-resolver-of
   take root, like text
   take url, like text
   take env, like maybe, like native-env
+  take fallback, like text, fall <>
   like compile-resolver
 
   save roots, make-code-roots()
@@ -476,6 +628,9 @@ task compile-resolver-of
       back code-root-on-disk(roots, dir)
   save packages, make list
   packages/push(link-resolver-of(root, code-root-of))
+  fork test, and(not(is-equal(fallback, <>)), not(is-equal(fallback, root)))
+    hold
+      packages/push(link-resolver-of(fallback, code-root-of))
   sift stdlib-resolver-from(url, code-root-of)
     case some
       link stdlib
@@ -494,6 +649,8 @@ task compile-resolver-of
       bind packages, packages
       bind env, env
       bind code-roots, roots
+      bind answers, make hash
+      bind package-roots, make hash
 
 # a path as `path.resolve` gives it: under the working directory when it is relative
 task absolute-path
@@ -567,19 +724,30 @@ task package-root-of
   like text
   mark private
 
-  save dir, dirname-of(file)
+  save start, dirname-of(file)
+  save known, resolver/package-roots
+  fork test, has(known, start)
+    hold
+      back get-or-default(known, start, <>)
+  save found, safe-real(resolver/root)
+  save dir, start
+  save going, true
   walk test
-    hook test, true
+    hook test, going
     hook hold
       fork test, path-exists(join-two(dir, <deck.tree>))
         hold
-          back safe-real(dir)
-      save up, dirname-of(dir)
-      fork test, is-equal(up, dir)
-        hold
-          back safe-real(resolver/root)
-      save dir, up
-  back safe-real(resolver/root)
+          save found, safe-real(dir)
+          save going, false
+        miss
+          save up, dirname-of(dir)
+          fork test, is-equal(up, dir)
+            hold
+              save going, false
+            miss
+              save dir, up
+  known/set(start, found)
+  back found
 
 # a file a resolver found, canonicalized through `realpath` and read: none for a folder or a file that is not there
 task read-found
@@ -636,8 +804,75 @@ task loaded-module
           bind file, loaded/file
           bind text, loaded/text
 
-# one path, as written or rewritten for the env: relative to its file inside the boundary, else asked of each package
+# A PACKAGE PATH AGAINST THE PROJECT BEING BUILT, when nothing else claims its name: the project's code root, then its
+# root, by the package path rule (make.ts `inPackage(rootReal, ...)`). The read is reported with the file it shadows
+task in-project
+  take resolver, like compile-resolver
+  take rest, like text
+  take base, like maybe, like text
+  like maybe, like module-source
+  mark private
+
+  save roots, resolver/code-roots
+  save code-root-of
+    task
+      take dir, like text
+      like text
+      back code-root-on-disk(roots, dir)
+  save hit, resolve-package-path(safe-real(resolver/root), rest, base, path-exists, code-root-of)
+  sift hit/file
+    case some
+      link file
+      sift read-found(file)
+        case some
+          link read
+          sift hit/shadowed
+            case some
+              link other
+              save shadowing
+                make module-source
+                  bind file, read/file
+                  bind text, read/text
+                  bind shadowed, other
+              back make(some, shadowing)
+            case none
+              back make(some, read)
+        case none
+          back make none
+    case none
+      back make none
+
+# ONE PATH, as written or rewritten for the env, remembered: a relative path by the importer's folder, a package path by
+# the importer's package (the fallbacks read it), and a `base` is part of the question (make.ts `projectResolver`'s memo)
 task resolve-once
+  take resolver, like compile-resolver
+  take path, like text
+  take from, like text
+  take how, like maybe, like load-how
+  like maybe, like module-source
+  mark private
+
+  save gap, mill-key-gap(0)
+  save key, <{package-root-of(resolver, from)}{gap}{path}>
+  fork test, or(starts-with(path, <./>), starts-with(path, <../>))
+    hold
+      save key, <{dirname-of(from)}{gap}{path}>
+  sift how
+    case some
+      link asked
+      save key, <{key}{gap}base:{asked/base}>
+    case none
+      save nothing, 0
+  save answers, resolver/answers
+  fork test, has(answers, key)
+    hold
+      back get-or-default(answers, key, make none)
+  save found, resolve-uncached(resolver, path, from, how)
+  answers/set(key, found)
+  back found
+
+# one path: relative to its file inside the boundary, else asked of each package, then the project being built
+task resolve-uncached
   take resolver, like compile-resolver
   take path, like text
   take from, like text
@@ -675,7 +910,11 @@ task resolve-once
         back make(some, found)
       case none
         save nothing, 0
-  back make none
+  save named, package-rest(path)
+  fork test, not(named/found)
+    hold
+      back make none
+  back in-project(resolver, named/rest, base)
 
 # WHAT A LOAD NAMES, from the file it is in, with how it asks: every native candidate of the env in turn, else the path
 # as written (compile/native.ts `withNativeEnv`)
@@ -733,8 +972,17 @@ task state-of
 
 # ---- what the driver is handed (compile.ts `readingOf` and `givenOf`) ----
 
+# whether every file is clean, where the caller hands no cache view
+task all-clean
+  take file, like text
+  like boolean
+  mark private
+
+  back true
+
 # WHAT COMPILE READS OF ITS OPTIONS, as the driver takes it: one parse memo for the load and the build, the import walk's
-# resolver and scan and a walk memo of its own, every option with whether it was given, and the mill with no cache
+# resolver and scan and its walk memo, every option with whether it was given, and the mill, through the request's cache
+# when it carries one. What the caller hands as host values takes the place of the request's own
 task reading-of
   take request, like compile-request
   take state, like compile-state
@@ -742,10 +990,28 @@ task reading-of
 
   save memo, state/parsed
   save resolver, request/resolver
+  save cache, request/cache
+  save hands, request/hands
   save has-resolve, false
   sift resolver
     case some
       save has-resolve, true
+    case none
+      save nothing, 0
+  save walked, make hash
+  save keeps-walked, false
+  save adjusted, false
+  save clean, all-clean
+  sift hands
+    case some
+      link handed
+      fork test, handed/has-resolve
+        hold
+          save has-resolve, true
+      save walked, handed/walked
+      save keeps-walked, handed/keeps-walked
+      save adjusted, handed/adjusted
+      save clean, handed/clean
     case none
       save nothing, 0
   save resolve-load
@@ -754,6 +1020,15 @@ task reading-of
       take from, like text
       take how, like maybe, like load-how
       like maybe, like module-source
+      sift hands
+        case some
+          link handed
+          fork test, handed/has-resolve
+            hold
+              save resolve, handed/resolve
+              back resolve(path, from, how)
+        case none
+          save nothing, 0
       sift resolver
         case some
           link held
@@ -776,18 +1051,45 @@ task reading-of
     task
       take unit, like token-source
       like parse-result
-      back parse-remembered(memo, module-source-of(unit))
+      sift hands
+        case some
+          link handed
+          save parse, handed/parse
+          back parse(unit)
+        case none
+          back parse-remembered(memo, module-source-of(unit))
+  # through the cache, the scan is stored in compile/load.ts's shape and read back in the walk's
   save scan
     task
       take given, like module-source
       like import-scan
-      save read, parsed(token-source-of(given))
-      back scan-parsed(read)
+      sift cache
+        case some
+          link held
+          save compute
+            task
+              like unknown
+              save read, parsed(token-source-of(given))
+              back scan-stored-shape(scan-parsed(read))
+          save scanning
+            task
+              like unknown
+              back scanned(held, given/file, given/text, compute)
+          back scan-read-shape(clean-writes(held, clean, given/file, scanning))
+        case none
+          save read, parsed(token-source-of(given))
+          back scan-parsed(read)
   save adjust
     task
       take twins, like list, like twin
       like list, like twin
       back twins
+  sift hands
+    case some
+      link handed
+      save adjust, handed/adjust
+    case none
+      save nothing, 0
   save role-of, request/role-of
   save lean-of, request/lean-of
   save milled
@@ -796,14 +1098,17 @@ task reading-of
       take templates, like hash, like text, like dynamic
       take template-key, like text
       like driver-milled
-      save job
-        make mill-job
+      save ask
+        make mill-ask
           bind unit, unit
           bind parsed, parsed
           bind templates, templates
-          bind role, entry-mill-role(role-of(unit/file))
+          bind template-key, template-key
+          bind cache, cache
+          bind clean, clean
+          bind role, role-of(unit/file)
           bind lean, lean-of(unit/file)
-      back driver-milled-of(entry-stored-form(run-mill-job(job)))
+      back milled-module(ask)
   save cover-whole, false
   save cover, make none
   sift request/cover
@@ -833,8 +1138,8 @@ task reading-of
       bind resolve-source, resolve-source
       bind parsed, parsed
       bind scan, scan
-      bind walked, make hash
-      bind keeps-walked, false
+      bind walked, walked
+      bind keeps-walked, keeps-walked
       bind role-of, role-of
       bind lean-of, lean-of
       bind has-env, not(is-equal(request/env, <>))
@@ -849,7 +1154,7 @@ task reading-of
       bind roll-fast, request/roll-fast
       bind choices, request/twins
       bind expose, request/expose-twins
-      bind adjusted, false
+      bind adjusted, adjusted
       bind adjust, adjust
       bind cover-whole, cover-whole
       bind cover, cover
@@ -893,6 +1198,69 @@ task given-of
       bind foreign, foreign
       bind state, state/driver
 
+# ---- one module milled (compile.ts `milledModule`, item 1237) ----
+
+# what milling one module takes: the module, the build's parse, the graph's templates and their fingerprint (`<>` when
+# none is defined), the cache and its clean test, and the role (`<>` for none) and lean the build reads it with
+form mill-ask
+  link unit, like token-source
+  link parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  link templates, like hash, like text, like dynamic
+  link template-key, like text
+  link cache, like maybe, like compile-cache
+  link clean
+    like task
+      take file, like text
+      like boolean
+  link role, like text
+  link lean, like boolean
+
+# ONE MODULE MILLED, through the mill cache when there is one. The merged build and compile/separate.ts both mill here,
+# so a module is one cache entry whichever path asked for it. A MODULE MILLS TO ITS STORED FORM, whichever path asked:
+# the mill writes keys holding nothing and shares one type object between nodes, and the store's JSON drops both, so a
+# unit's stored bytes hung on whether its process milled the module or read another's mill (item 0432). The key is the
+# file, then the template fingerprint where the unit can use a template (a document, or a text naming `fuse`), then the
+# role, `lean:` before them all for a `mark lean` file
+task milled-module
+  take ask, like mill-ask
+  like driver-milled
+
+  save unit, ask/unit
+  save job
+    make mill-job
+      bind unit, unit
+      bind parsed, ask/parsed
+      bind templates, ask/templates
+      bind role, entry-mill-role(ask/role)
+      bind lean, ask/lean
+  save mill
+    task
+      like unknown
+      back entry-stored-form(run-mill-job(job))
+  sift ask/cache
+    case some
+      link cache
+      save lean-key, <>
+      fork test, ask/lean
+        hold
+          save lean-key, <lean:>
+      save template-part, <>
+      fork test, or(is-equal(ask/role, <view>), writes-fuse(unit/text))
+        hold
+          save template-part, ask/template-key
+      save gap, mill-key-gap(0)
+      save key, <{lean-key}{unit/file}{gap}{template-part}{gap}{ask/role}>
+      save cached
+        task
+          like unknown
+          back milled-unit(cache, key, unit/text, mill)
+      back driver-milled-of(clean-writes(cache, ask/clean, unit/file, cached))
+    case none
+      back driver-milled-of(mill())
+
 # ---- the result (compile.ts `builtResult`, `answerResult`, `emitResult`) ----
 
 # a result of one kind holding nothing yet
@@ -930,6 +1298,7 @@ task blank-result
       bind written, make none
       bind pending, make none
       bind emit-options, options
+      bind optimized, false
 
 task refused-result
   take found, like list, like diagnostic
@@ -990,6 +1359,7 @@ task emitted-result
     case optimized-emit
       save result/pending, make(some, pending)
       save result/wake, run/wake
+      save result/optimized, true
     case modules-emit
       halt <the per-module emit is compile.ts's alone (decision 142 rule 3)>
   save result/cover, pending/cover
@@ -1123,23 +1493,69 @@ task compile-under
     case none
       save nothing, 0
   save loaded, load-graph(source, reading)
+  sift request/hands
+    case some
+      link handed
+      save on-load, handed/on-load
+      on-load(source/file, loaded/graph)
+    case none
+      save nothing, 0
   sift loaded/refused
     case some
       link found
       back refused-result(found, request)
     case none
       save nothing, 0
+  save given, given-of(request, state)
   save job
     make graph-job
       bind source, source
       bind reading, reading
       bind graph, loaded/graph
-      bind given, given-of(request, state)
+      bind given, given
+  sift request/cache
+    case some
+      link cache
+      # the roll alone has its own small entry beside the full one
+      save key, graph-key(source, reading, loaded/graph, given)
+      fork test, request/roll-only
+        hold
+          save key, roll-only-key(key, request/roll-fast)
+      save build
+        task
+          like unknown
+          save full, built-result(run-graph-job(job), request)
+          fork test, request/roll-only
+            hold
+              back roll-alone(full, request)
+          back stored-result(full)
+      back stored-result-of(output(cache, key, build, <output>))
+    case none
+      save nothing, 0
   save full, built-result(run-graph-job(job), request)
   fork test, request/roll-only
     hold
       back roll-alone(full, request)
   back full
+
+# A RESULT AS THE OUTPUT LEVEL KEEPS IT: an optimized build's TypeScript written in place of its pending emit when the
+# store first reads it (`entry-lazy-written`), so a stored answer carries the text, not a second copy of the program
+task stored-result
+  take result, like compile-result
+  like compile-result
+  mark private
+
+  sift result/pending
+    case some
+      link pending
+      save options, result/emit-options
+      save emit
+        task
+          like text
+          back pending-typescript(pending, options)
+      back stored-result-of(entry-lazy-written(result, emit))
+    case none
+      back result
 
 # ONE COMPILE: the request's file compiled with no cache, the proof budget set around it when the request names one
 task compile-text

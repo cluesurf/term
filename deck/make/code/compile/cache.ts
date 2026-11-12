@@ -8,10 +8,11 @@
 // never serves a stale hit.
 //
 // THE STATE AND EVERY DECISION ARE TERM, compile/cache-store.tree (item term-self-host-001-0107): the three maps, the
-// counters, the least-recently-used order, every key, and the memoized text hash. This file is the face. It keeps the
-// `CompileCache` API its callers construct, and only what Term cannot hold, handed to the port as `cache-io`: the
-// store, the entry's JSON (`JSON.stringify` with the bigint tag, `JSON.parse` with the reviver and the shape test, so
-// the bytes on disk are the original's, spec.md 4.15), and the clone a milled unit is handed back as.
+// counters, the least-recently-used order, every key, and the memoized text hash. Since item term-self-host-001-1237
+// (decision 142 rule 4) the entry's JSON, the shape test, the unit's copy and the writes-off view are Term there too
+// (`store-cache-io`, `usable-entry`, `without-writes`, `clean-writes`). This file is the face. It keeps the `CompileCache`
+// API its callers construct and hands the port the store, as two tasks over text. `storeBigint` and `reviveBigint` stay
+// for compile/separate.ts, which writes and reads its own unit entries.
 
 import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
@@ -24,7 +25,10 @@ import {
   output as outputPort,
   outputReplace as outputReplacePort,
   scanned as scannedPort,
+  storeCacheIo,
   versionFor,
+  withoutWrites as withoutWritesPort,
+  cleanWrites,
 } from '@term/make/code/compile/cache-store'
 import type { CompileCache as CacheState } from '@term/make/code/compile/cache-store'
 
@@ -77,15 +81,14 @@ import type { CompileCache as CacheState } from '@term/make/code/compile/cache-s
 // (locator, print) list its trace holds (decision 103 item 4, item term-self-host-001-0526), so every stored key moves.
 // '24': a list, hash or form with a loose element on one side only is refused (decision 011 of term/compiler, item
 // term-self-host-001-0740), so a stored answer of a program that fitted before may no longer stand.
-export const CACHE_EPOCH = '24'
+// '25': an output entry is compile/program-entry.tree's `compile-result`, not compile.ts's `CompileResult` (item
+// term-self-host-001-1237), so an output stored at '24' has another shape under the same key.
+export const CACHE_EPOCH = '25'
 
-// A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
-// full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share
-// can still leave a truncated file, and `JSON.parse` on one throws `Unexpected end of JSON input` out of the
-// middle of a build. That is what a cache is least allowed to do, because the build was going to recompute the
-// value anyway and the error names the cache rather than anything the author wrote.
 // a bigint (an integer literal past 2^53) is stored tagged, the way program-json.ts renders it, since JSON has no
-// integer wider than a double and `Number()` would store a different integer
+// integer wider than a double and `Number()` would store a different integer. The cache's own entries are tagged and
+// revived in compile/cache-store.tree (`stored-entry-text`, `stored-entry-parse`). These two are compile/separate.ts's,
+// for the unit entries it writes and reads itself
 const BIGINT_TAG = '$bigint'
 
 export function storeBigint(_key: string, value: unknown): unknown {
@@ -108,72 +111,6 @@ export function reviveBigint(_key: string, value: unknown): unknown {
   }
 
   return value
-}
-
-function readEntry<T>(
-  stored: string | undefined,
-  kind = 'output',
-): T | undefined {
-  if (stored === undefined) {
-    return undefined
-  }
-
-  try {
-    const value = JSON.parse(stored, reviveBigint) as unknown
-
-    return usable(kind, value) ? (value as T) : undefined
-  } catch {
-    return undefined
-  }
-}
-
-// WHETHER A STORED ENTRY HAS THE SHAPE ITS KIND READS (note/project/term/incremental-best-in-class.md, step 14). A torn or
-// flipped entry fails gzip's checksum and a cut one fails to parse, and both are misses already. One that parses to the
-// wrong shape, a `{}` where a unit's build belongs, was handed back as a hit, and the first read of a field it lacked
-// crashed the build. It is a miss too, and the build that follows writes a good entry over it
-function usable(kind: string, value: unknown): boolean {
-  if (value === null || typeof value !== 'object') {
-    return false
-  }
-
-  const entry = value as Record<string, unknown>
-
-  switch (kind) {
-    case 'mill':
-      return (
-        typeof entry.ok === 'boolean' &&
-        (entry.ok
-          ? Array.isArray(entry.program)
-          : Array.isArray(entry.diagnostics))
-      )
-    case 'scan':
-      return Array.isArray(entry.paths) && Array.isArray(entry.finds)
-    case 'unit':
-      // stored with each deck's root as a token (compile/separate.ts `portableBy`), read back by the build
-      return typeof entry.portable === 'string'
-    default:
-      return true
-  }
-}
-
-// A stored import scan, read back as it was built. JSON writes an `undefined` in an array as `null`, and a scan's
-// `aliases` holds `undefined` for every `find` with no `name`, so read back plainly each one became an alias called
-// `null` and the module's imports bound nothing (`the name "replace" is not defined`, found by the dev-loop bench on
-// 2026-10-05). A scan holds no `null` of its own, so every one is an `undefined` that was written
-function readScan<T>(stored: string | undefined): T | undefined {
-  if (stored === undefined) {
-    return undefined
-  }
-
-  try {
-    const value = JSON.parse(stored, (_key, value: unknown) =>
-      value === null ? undefined : value,
-    ) as unknown
-
-    return usable('scan', value) ? (value as T) : undefined
-  } catch {
-    return undefined
-  }
 }
 
 // THE CONTENT HASH IS TERM: `hashKey` is deck/make/code/term/hash.tree (SHA-256 cut to 128 bits, decision 080), and the key of every field list and the memo
@@ -214,18 +151,8 @@ export type CacheStore = {
 export const MILL_CACHE_CAP = 8192
 export const OUTPUT_CACHE_CAP = 32
 
-function cloneUnit(unit: MilledUnit): MilledUnit {
-  return unit.ok
-    ? {
-        ok: true,
-        program: structuredClone(unit.program),
-        ...(unit.twins ? { twins: structuredClone(unit.twins) } : {}),
-      }
-    : unit
-}
-
 export class CompileCache {
-  // the port's record: the three maps, the counters, the caps and the injected host IO
+  // the port's record: the three maps, the counters, the caps, the held flag and the IO made over the store
   readonly state: CacheState
 
   // `store` persists entries across processes (optional). `version` is folded into every key (the compiler version +
@@ -239,27 +166,24 @@ export class CompileCache {
     outputCap: number = OUTPUT_CACHE_CAP,
   ) {
     this.state = makeCompileCache(
-      {
-        versionOf:
-          typeof version === 'string' ? () => version : version,
-        readEntry: (kind: string, key: string, shape: string) => {
-          const stored = store?.load(kind, key)
-          const value =
-            shape === 'scan'
-              ? readScan<unknown>(stored)
-              : readEntry<unknown>(stored, shape)
+      storeCacheIo(
+        typeof version === 'string' ? () => version : version,
+        {
+          present: store !== undefined,
+          read: (kind: string, key: string) => {
+            const stored = store?.load(kind, key)
 
-          return value === undefined
-            ? { form: 'none' }
-            : { form: 'some', value }
-        },
-        writeEntry: (kind: string, key: string, value: unknown) => {
-          store?.save(kind, key, JSON.stringify(value, storeBigint))
+            return stored === undefined
+              ? { form: 'none' }
+              : { form: 'some', value: stored }
+          },
+          write: (kind: string, key: string, value: string) => {
+            store?.save(kind, key, value)
 
-          return true
-        },
-        cloneUnit: (unit: unknown) => cloneUnit(unit as MilledUnit),
-      } as never,
+            return true
+          },
+        } as never,
+      ),
       millCap,
       outputCap,
       TEXT_HASHES,
@@ -330,32 +254,12 @@ export class CompileCache {
   }
 }
 
-// `run` with the store's writes held back: every read passes through (memory, then the store), and an answer built is
-// kept by neither, not even the cache's memory, which the port fills just before it writes: a held answer left there
-// would answer the same key once the file is clean, and the store would never take it. The caller keeps such answers
-// (the build graph's unit memo). The build is synchronous, so nothing else writes through this cache meanwhile. What the
-// editor's unsaved text compiles to never reaches the store (decision 098 rule 6 of term/self-host/change/001-finish-self-host)
+// `run` with the store's writes held back, in compile/cache-store.tree `without-writes`: every read passes through, and
+// an answer built is kept by neither the store nor the cache's memory. The caller keeps such answers (the build
+// graph's unit memo). What the editor's unsaved text compiles to never reaches the store (decision 098 rule 6 of
+// term/self-host/change/001-finish-self-host)
 export function withoutWrites<T>(cache: CompileCache, run: () => T): T {
-  const io = cache.state.io
-  // already held (a unit's build milling one of its own dirty files)
-  if ((io as { held?: boolean }).held === true) {return run()}
-
-  const state = cache.state as unknown as Record<'mills' | 'scans' | 'outputs', Map<string, unknown>>
-  const forget = (_kind: string, key: string): boolean => {
-    state.mills.delete(key)
-    state.scans.delete(key)
-    state.outputs.delete(key)
-
-    return true
-  }
-
-  cache.state.io = { ...io, writeEntry: forget, held: true } as never
-
-  try {
-    return run()
-  } finally {
-    cache.state.io = io
-  }
+  return withoutWritesPort(cache.state, run) as T
 }
 
 // THE STORE AS A DOCUMENT REQUEST SEES IT (decision 098 rule 6): the same cache, whose mill and scan entries of a file
@@ -377,17 +281,21 @@ export function cleanView(
   return view
 }
 
-// a mill or scan entry of one file: written when the cache is no view or the file is clean (compile.ts calls the
-// port on the state, so it asks here)
+// whether a cache's mill and scan entries of a file go to the store: always, unless the cache is a clean view and the
+// file is not clean. compile/compile.ts hands it to the entry with the cache's state
+export function cleanOf(cache: CompileCache): (file: string) => boolean {
+  return (
+    (cache as { isClean?: (file: string) => boolean }).isClean ??
+    (() => true)
+  )
+}
+
+// a mill or scan entry of one file, in compile/cache-store.tree `clean-writes`: written when the cache is no view or the
+// file is clean
 export function writesOf<T>(
   cache: CompileCache,
   file: string,
   run: () => T,
 ): T {
-  const isClean = (cache as { isClean?: (file: string) => boolean })
-    .isClean
-
-  return isClean === undefined || isClean(file)
-    ? run()
-    : withoutWrites(cache, run)
+  return cleanWrites(cache.state, cleanOf(cache), file, run) as T
 }

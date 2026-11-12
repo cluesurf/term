@@ -11,6 +11,13 @@
 // runs (`graph-job` and `mill-job`, item term-self-host-001-0950), and the positional
 // `compileProgram` compile/separate.ts calls. It reads the options into the port's `compile-reading` and hands it the
 // host values a phase takes as they are (`driver-given`)
+//
+// EVERY COMPILE BUT THE PER-MODULE MODE IS compile/program-entry.tree's `compile-text` since item term-self-host-001-1237
+// (decision 142 rule 4): `compile` reads its options into a `compile-request`, hands what it holds as host values in
+// the request's `hands` (the resolver, the parse and walk memos, the twins' mutant rewrite, the cache view's clean test,
+// the census hook) and its process's instances in `state`, and turns the `compile-result` into a `CompileResult`. The
+// per-module mode (the dev server's per-module URLs, its `Map` of modules) stays here until its callers port, and
+// `milledModule` is the entry's `milled-module`, which compile/separate.ts mills through
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Template } from '@term/make/code/compile/template'
@@ -37,7 +44,6 @@ import {
   loadGraph as loadGraphPort,
   rollOnlyKey as rollOnlyKeyPort,
   runGraphJob as runGraphJobPort,
-  runMillJob as runMillJobPort,
   runProgram as runProgramPort,
 } from '@term/make/code/compile/program-driver'
 import type {
@@ -47,12 +53,22 @@ import type {
   DriverMilled,
   GraphBuilt,
 } from '@term/make/code/compile/program-driver'
+import {
+  compileText as compileTextPort,
+  emitTypescript as entryTypescriptPort,
+  milledModule as milledModulePort,
+} from '@term/make/code/compile/program-entry'
+import type { CompileResult as EntryResult } from '@term/make/code/compile/program-entry'
+import { freshParseMemo } from '@term/make/code/compile/loading-parses'
 import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 import type {
   RollKind,
   RollValue,
 } from '@term/make/code/compile/rolling'
-import { keepOverloadBound } from '@term/make/code/check/overload'
+import {
+  keepOverloadBound,
+  overloadBound,
+} from '@term/make/code/check/overload'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches } from '@term/make/code/check/strict'
@@ -72,15 +88,13 @@ import type {
   WalkMemo,
 } from '@term/make/code/compile/load'
 import {
-  reviveBigint,
-  storeBigint,
+  cleanOf,
   TEXT_HASHES,
   writesOf,
   type CompileCache,
 } from '@term/make/code/compile/cache'
 import { refineState } from '@term/make/code/check/refine'
 import {
-  milledUnit as cachedMill,
   output as cachedOutput,
   scanned as cachedScan,
 } from '@term/make/code/compile/cache-store'
@@ -276,9 +290,257 @@ export function isLookStylesheet(source: {
   return isLookPort(source)
 }
 
+const none = { form: 'none' } as const
+const some = <T>(value: T) => ({ form: 'some', value }) as const
+
+// a census run keeps the program this build loaded, its texts as read (task/term/census-keep.cjs, preloaded only under
+// TERM_CENSUS_KEEP; decision 096 rule 8 of note/project/term/self-host/change/001-finish-self-host). A global, so
+// this face stays browser-safe
+function censusOf():
+  | { sources?: (entry: string, sources: unknown) => void }
+  | undefined {
+  return (
+    globalThis as {
+      termCensusKeep?: {
+        sources?: (entry: string, sources: unknown) => void
+      }
+    }
+  ).termCensusKeep
+}
+
+// the parse memo a request's state carries, which the entry never reads while `hands` gives the caller's own
+const UNREAD_PARSES = freshParseMemo(1)
+
 export function compile(
   source: { file: string; text: string },
   options?: CompileOptions,
+): CompileResult {
+  if (options?.modules) {
+    return compileModules(source, options)
+  }
+
+  return resultOf(compileTextPort(requestOf(source, options) as never))
+}
+
+// each answer's result, made once: an output-level hit hands back the answer it kept, so it is the same result object
+// a caller got before, as compile.ts's cache handed back the result it kept (test/compile/cache.ts)
+const RESULTS = new WeakMap<object, CompileResult>()
+
+// WHAT `compile` ASKS THE ENTRY, from its options: each option as the request spells it, the caller's host values in
+// `hands`, and the process's own instances in `state` (check/refine.ts's prover, this face's text hashes,
+// check/overload.ts's bound and check/strict.ts's switches), which the phases still docked read (decision 142 rule 2)
+function requestOf(
+  source: { file: string; text: string },
+  options?: CompileOptions,
+): unknown {
+  const resolve = options?.resolve
+  const cache = options?.cache
+  const cover = options?.cover
+  const census = censusOf()
+
+  return {
+    file: source.file,
+    source: some(source.text),
+    resolver: none,
+    deckOf: deckTask(options?.deckOf),
+    roleOf: (file: string) => options?.roleOf?.(file) ?? '',
+    leanOf: (file: string) => options?.leanOf?.(file) ?? false,
+    library: options?.library === true,
+    optimize: options?.optimize !== false,
+    env: options?.env ?? '',
+    treeShake:
+      options?.treeShake === undefined ? none : some(options.treeShake),
+    entryPoints: options?.entryPoints ?? [],
+    roll: options?.roll === true,
+    rollOnly: options?.rollOnly === true,
+    rollFast: options?.rollFast === true,
+    twins: twinChoiceList(options?.twins ?? {}),
+    exposeTwins: options?.exposeTwins === true,
+    cover:
+      cover === undefined
+        ? none
+        : cover === true
+          ? some({ kind: 'cover-entry-file' })
+          : some({ kind: 'cover-target-of', target: cover }),
+    budget: '',
+    state: some({
+      driver: { refine: refineState, hashes: TEXT_HASHES },
+      bound: overloadBound,
+      switches: checkerSwitches,
+      parsed: UNREAD_PARSES,
+    }),
+    cache: cache ? some(cache.state) : none,
+    hands: some({
+      hasResolve: resolve !== undefined,
+      resolve: (
+        path: string,
+        from: string,
+        how: Maybe<{ base?: string }>,
+      ) => {
+        const found = resolve?.(
+          path,
+          from,
+          how.form === 'some' ? how.value : undefined,
+        )
+
+        return found ? some(found) : none
+      },
+      parse: options?.parsed ?? makeParseMemo(),
+      // a fresh memo per walk when the caller keeps none (compile/load.ts `collectModules`)
+      walked: options?.walked ?? new Map(),
+      keepsWalked: options?.walked !== undefined,
+      adjusted: options?.adjustTwins !== undefined,
+      adjust: options?.adjustTwins ?? ((twins: Twin[]) => twins),
+      clean: cache ? cleanOf(cache) : () => true,
+      onLoad: (file: string, graph: unknown) => {
+        census?.sources?.(
+          file,
+          (graph as { sources?: unknown } | undefined)?.sources,
+        )
+
+        return true
+      },
+    }),
+  }
+}
+
+// THE ENTRY'S ANSWER AS `compile` ANSWERED: a refusal, a file that is not a program, the roll alone, or a built
+// program with each key where compile.ts wrote it and an optimized build's TypeScript written when it is first read
+function resultOf(answer: EntryResult): CompileResult {
+  const known = RESULTS.get(answer as object)
+
+  if (known) {
+    return known
+  }
+
+  const made = shapedResult(answer)
+
+  RESULTS.set(answer as object, made)
+
+  return made
+}
+
+function shapedResult(answer: EntryResult): CompileResult {
+  const held = answer as unknown as {
+    ok: boolean
+    kind: string
+    diagnostics: Diagnostic[]
+    program: Program
+    warnings: Diagnostic[]
+    css: Maybe<string>
+    style: Maybe<string>
+    styleDark: Maybe<string>
+    openClaims: string[]
+    obligations?: Tally
+    kernel: Maybe<NonNullable<Extract<CompileResult, { ok: true }>['kernel']>>
+    uncertified: Maybe<number>
+    roll: Maybe<RollKind[]>
+    fastRoll: Maybe<Roll>
+    wake?: WakeGroup[]
+    twins: Maybe<Twin[]>
+    cover: Maybe<string[]>
+    written: Maybe<string>
+    optimized: boolean
+  }
+  const valueOf = <T>(maybe: Maybe<T>): T | undefined =>
+    maybe.form === 'some' ? maybe.value : undefined
+
+  if (!held.ok) {
+    return { ok: false, diagnostics: held.diagnostics }
+  }
+
+  switch (held.kind) {
+    case 'look_result':
+      return {
+        ok: true,
+        program: [],
+        typescript: '',
+        css: valueOf(held.css),
+        style: valueOf(held.style),
+        styleDark: valueOf(held.styleDark),
+        warnings: [],
+      }
+    case 'data_result':
+      return {
+        ok: true,
+        program: [],
+        typescript: valueOf(held.written) ?? '',
+        warnings: [],
+      }
+    case 'mill_result':
+      return { ok: true, program: [], typescript: '', warnings: [] }
+
+    case 'roll_result': {
+      const roll =
+        held.roll.form === 'some'
+          ? rollOfKinds(held.roll.value)
+          : valueOf(held.fastRoll)
+
+      // the fast roll of a whole build carries the entry's own warnings and the twins as the build's result did, and
+      // the roll alone neither
+      return {
+        ok: true,
+        program: [],
+        typescript: '',
+        warnings: held.warnings,
+        ...(roll ? { roll } : {}),
+        ...(held.twins.form === 'some' ? { twins: held.twins.value } : {}),
+      }
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    ok: true,
+    program: held.program,
+  }
+
+  if (!held.optimized) {
+    result.typescript = valueOf(held.written) ?? ''
+  }
+
+  if (held.cover.form === 'some') {
+    result.cover = held.cover.value
+  }
+
+  result.warnings = held.warnings
+
+  if (held.openClaims.length) {
+    result.openClaims = held.openClaims
+  }
+
+  result.obligations = held.obligations
+  result.kernel = valueOf(held.kernel)
+  result.uncertified = valueOf(held.uncertified)
+
+  if (held.roll.form === 'some') {
+    result.roll = rollOfKinds(held.roll.value)
+  }
+
+  if (held.optimized) {
+    // what wakes the hive, computed once in the warnings: the TypeScript getter below and every native driver
+    // (`emitRust(result.program, { wake: result.wake })`) read this one value (term/hive decision 002)
+    result.wake = held.wake
+
+    let typescript: string | undefined
+
+    Object.defineProperty(result, 'typescript', {
+      enumerable: true,
+      get: () => (typescript ??= entryTypescriptPort(answer)),
+    })
+  }
+
+  if (held.twins.form === 'some') {
+    result.twins = held.twins.value
+  }
+
+  return result as CompileResult
+}
+
+// THE PER-MODULE MODE (`options.modules`), as compile.ts built it: one emitted ESM module per source file, through the
+// mill level of the cache and never its output level, whose JSON cannot hold the `Map` of modules
+function compileModules(
+  source: { file: string; text: string },
+  options: CompileOptions,
 ): CompileResult {
   const side = sideFile(source, options)
 
@@ -288,18 +550,8 @@ export function compile(
 
   const reading = readingOf(options)
   const loaded = loadGraphPort(source, reading)
-  // a census run keeps the program this build loaded, its texts as read (task/term/census-keep.cjs, preloaded only under
-  // TERM_CENSUS_KEEP; decision 096 rule 8 of note/project/term/self-host/change/001-finish-self-host). A global, so
-  // this face stays browser-safe
-  const census = (
-    globalThis as {
-      termCensusKeep?: {
-        sources?: (entry: string, sources: unknown) => void
-      }
-    }
-  ).termCensusKeep
 
-  census?.sources?.(
+  censusOf()?.sources?.(
     source.file,
     (loaded.graph as { sources?: unknown } | undefined)?.sources,
   )
@@ -354,16 +606,8 @@ export function compile(
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`, so per-module mode skips
-  // the output level (and still gets mill-level reuse). The cache is Term (compile/cache-store.tree, item 0107), and
-  // the build is the `graph-job` above, handed to it as the task that runs the job
-  return cache && !options?.modules
-    ? (cachedOutput(
-        cache.state,
-        graphKey,
-        build,
-        'output',
-      ) as CompileResult)
-    : build()
+  // the output level (and still gets mill-level reuse)
+  return build()
 }
 
 // A FILE THAT IS NOT A PROGRAM, answered whole: a look stylesheet, a data file or a mill definition, in
@@ -543,8 +787,9 @@ export function entryWarnings(
   return entryWarningsPort(source, sources, parsed, templates!)
 }
 
-// One module milled, through the mill cache when there is one. The merged build and compile/separate.ts both mill
-// here, so a module is one cache entry whichever path asked for it.
+// One module milled, through the mill cache when there is one: compile/program-entry.tree `milled-module` (item
+// term-self-host-001-1237), the key, the template gate and the stored form there. The merged build and
+// compile/separate.ts both mill there, so a module is one cache entry whichever path asked for it.
 export function milledModule(
   unit: { file: string; text: string },
   options: {
@@ -560,37 +805,19 @@ export function milledModule(
   | { ok: true; program: Program; twins?: Twin[] }
   | { ok: false; diagnostics: Diagnostic[] } {
   const { parsed, templates, templateKey, cache, role, lean } = options
-  // `mark lean` changes what the unit mills to, so it is in the key, prefixed so it cannot be read as a role's end
-  const leanKey = lean ? 'lean:' : ''
-  // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT THAT CAN USE IT: one with a `fuse`, or a document
-  const usesTemplates = role === 'view' || /\bfuse\b/.test(unit.text)
-  // A MODULE MILLS TO ITS STORED FORM, whichever path asked: the mill writes keys holding nothing (`result` on a task
-  // with no `like`, a parameter's `fallback`) and shares one type object between nodes, and the store's JSON drops
-  // both. A pass that later writes such a key put it in the key's milled place on a fresh mill and at the end on a
-  // stored one, so a unit's stored bytes hung on whether its process milled the module or read another's mill
-  // (item term-self-host-001-0432, a pool build under TERM_CACHE_VERIFY=hits)
-  // what the mill captures, one `mill-job` (decision 031 section 6), run on a miss
-  const job = { unit, parsed, templates, role, lean }
-  const mill = () =>
-    JSON.parse(
-      JSON.stringify(runMillJobPort(job), storeBigint),
-      reviveBigint,
-    ) as
-      | { ok: true; program: Program; twins?: Twin[] }
-      | { ok: false; diagnostics: Diagnostic[] }
 
-  return cache
-    ? (writesOf(cache, unit.file, () =>
-        cachedMill(
-          cache.state,
-          `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`,
-          unit.text,
-          mill,
-        ),
-      ) as
-        | { ok: true; program: Program; twins?: Twin[] }
-        | { ok: false; diagnostics: Diagnostic[] })
-    : mill()
+  return milledModulePort({
+    unit,
+    parsed,
+    templates,
+    templateKey,
+    cache: cache ? some(cache.state) : none,
+    clean: cache ? cleanOf(cache) : () => true,
+    role: role ?? '',
+    lean,
+  } as never) as unknown as
+    | { ok: true; program: Program; twins?: Twin[] }
+    | { ok: false; diagnostics: Diagnostic[] }
 }
 
 // What `compileProgram` is handed: the milled program and how to build it
