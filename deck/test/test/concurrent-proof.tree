@@ -24,6 +24,23 @@ load ../code/expression-grammar
 
 load @term/base/list
   find list
+  find join
+
+load @term/base/text/string
+  find to-text
+
+# the verdicts as one text, `true,false,...`, each read by to-text, which every backend answers for a value of unknown
+# type. `<{verdicts}>` interpolated the list itself, which is TypeScript's own join: Rust has no Display for a list
+# of `Rc<dyn Any>` and refused the program (E0599), and Swift prints a list in its own way (item 1244)
+task verdict-text
+  take verdicts, like list, like unknown
+  like text
+
+  host parts, make list
+  walk verdicts
+    take verdict
+    parts/push(to-text(verdict))
+  back join(parts, <,>)
 
 task max-formula
   take inputs, like list, like smt-term
@@ -68,6 +85,5 @@ test <twelve proofs at most eight at once answer in input order, as one after an
     take job
     serial/push(prove-job(job, job))
   host concurrent, map-concurrent(jobs, prove-job, 8)
-  host expected, make list(true, false, true, false, true, false, true, false, true, false, true, false)
-  want hold, is-equal(<{concurrent}>, <{expected}>)
-  want hold, is-equal(<{serial}>, <{concurrent}>)
+  want hold, is-equal(verdict-text(concurrent), <true,false,true,false,true,false,true,false,true,false,true,false>)
+  want hold, is-equal(verdict-text(serial), verdict-text(concurrent))

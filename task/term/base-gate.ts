@@ -64,6 +64,27 @@ const TOOLS = join(TERM, 'deck/test')
 const MAKE = join(TERM, 'deck/make')
 const TEST_DIRS = [join(BASE, 'test'), join(TERM, 'test/tree'), join(TOOLS, 'test'), join(MAKE, 'test')]
 
+// THE RUN IS THE ONE `term test` GIVES A FILE (item 1240). `term test` runs a package's tests with the package root as
+// the working folder (report-running.tree spawns its child with `cwd: root`), so a suite names its fixtures from there
+// (deck/test/test/corpus.tree reads `test/corpus-fixture`, deck/make/test/kotlin-bare-error.tree `./code`). The gate ran
+// every leg from the Term root, and each such read found nothing: corpus.tree failed 3 of 4 on all five legs. Each file
+// now runs in the root of the package that owns its test folder, on every leg
+const PACKAGE_OF: [string, string][] = [
+  [join(BASE, 'test'), BASE],
+  [join(TERM, 'test/tree'), TERM],
+  [join(TOOLS, 'test'), TOOLS],
+  [join(MAKE, 'test'), MAKE],
+]
+
+const packageOf = (file: string): string => PACKAGE_OF.find(([dir]) => file.startsWith(`${dir}/`))?.[1] ?? TERM
+
+// and the two variables `term test` hands each child (report-running.tree `spawn-reported`, decision 111): the program
+// the runner is and its script, which deck/test/code/self.tree runs to start `term` on a fixture project. Without them
+// self.tree raised on its first read, 5 of 5 on every leg. The native legs inherit them from this process
+const SELF_ENTRY = join(TERM, 'host/line.js')
+process.env.TERM_TEST_SELF ??= process.execPath
+process.env.TERM_TEST_SELF_ENTRY ??= SELF_ENTRY
+
 // whether a file is read LEAN, asked of the role.tree of the package it sits in, as `term make` and `term test` ask it:
 // @term/test and @term/make read their code and tests lean, the stdlib reads nothing lean. A lean file read as
 // longhand mills wrong
@@ -82,8 +103,21 @@ const NATIVES: Native[] = ['rust', 'swift', 'kotlin']
 // test files whose subject the page has and node does not (the origin-private file system, raw sockets, child
 // processes, the host's core count and platform names), so the browser leg cannot run them here. Each is a named skip,
 // never a pass. test/machine.tree: @term/base/machine answers node:os facts (count-cores, read-platform,
-// read-architecture) for the parallel walk's pool, and a page has no os module, so it has no binding (T048, item 0026)
-const BROWSER_GAP = ['test/file/', 'test/tree/file.tree', 'tcp.tree', 'udp.tree', 'process-run', 'edge-os.tree', 'test/find/', 'test/machine.tree']
+// read-architecture) for the parallel walk's pool, and a page has no os module, so it has no binding (T048, item 0026).
+// deck/test/test/corpus.tree lists a folder's files (@term/base/file/directory has no browser native), and
+// deck/test/test/self.tree starts `term` as a child process (item 1240)
+const BROWSER_GAP = [
+  'test/file/',
+  'test/tree/file.tree',
+  'tcp.tree',
+  'udp.tree',
+  'process-run',
+  'edge-os.tree',
+  'test/find/',
+  'test/machine.tree',
+  'deck/test/test/corpus.tree',
+  'deck/test/test/self.tree',
+]
 // a file one native target cannot answer, each a named skip there with its reason, never a pass (D025, item 0190)
 const NATIVE_FILE_GAP: { env: Native; file: string; reason: string }[] = [
   // @term/base/find reaches its driver through native/node/find/send only; the native hosts come with the OS backends
@@ -205,8 +239,17 @@ function walk(dir: string, into: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
     const path = join(dir, name)
 
+    // the folders `term test` never enters (walk-folder in deck/call/code/work/testing/test-command.tree): `.base` and
+    // `node_modules` whole, and a folder with its own deck.tree, a fixture project a suite runs or reads, not tests of
+    // this package (decisions 104 and 107). The gate walked into them: self-fixture/test/probe.tree ran as a suite of
+    // its own and failed (its tests read what self.tree's child is started with), and a dangling pnpm link under
+    // self-fixture/.base crashed the walk (T-1075, item 1241)
+    if (name === '.base' || name === 'node_modules') {
+      continue
+    }
+
     if (statSync(path).isDirectory()) {
-      if (!existsSync(join(path, 'draft.tree'))) {
+      if (!existsSync(join(path, 'draft.tree')) && !existsSync(join(path, 'deck.tree'))) {
         walk(path, into)
       }
     } else if (name.endsWith('.tree')) {
@@ -316,6 +359,11 @@ async function runNode(file: string, prep: Prepared, env: 'node' | 'browser' = '
     timer = setTimeout(() => done({ fail: `run: no answer within ${RUN_MS / 1000}s (an await that never settles)` }), RUN_MS)
   })
 
+  // in the package root, as `term test` runs it (PACKAGE_OF). The legs run one file at a time, so the folder is this
+  // file's for the whole run, and the gate's own folder comes back after it
+  const home = process.cwd()
+  process.chdir(packageOf(file))
+
   try {
     const report = import(pathToFileURL(out).href).then(mod => (mod as Record<string, () => unknown>).gateReport!())
 
@@ -324,6 +372,7 @@ async function runNode(file: string, prep: Prepared, env: 'node' | 'browser' = '
     return { fail: `run: ${String(error).slice(0, 160)}` }
   } finally {
     clearTimeout(timer)
+    process.chdir(home)
   }
 }
 
@@ -370,6 +419,24 @@ function missingShim(sources: Source[], env: Native): string | undefined {
   return undefined
 }
 
+// a module of the closure that docks a compiler file by its TypeScript source path (`dock load` / `load
+// <@term/make/code/compile/compile>`): deck/test's compiler-fuzzing, compiler-type-shape, cross-emission and
+// diagnostic-gap test the TypeScript compiler as a node module. No emitted program imports a compiler file (decision
+// 135), so a native or page build has nothing to bind: the native emitters wrote the specifier as an import (rust
+// `use @term`, swift `import @term`, kotlin `import @term`) and the toolchain refused it. A named skip, never a pass,
+// until the compiler is a Term library the program loads (item 1242)
+function compilerDock(sources: Source[]): string | undefined {
+  for (const unit of sources) {
+    const docked = /^\s*load <(@term\/make\/[^>]+)>/m.exec(unit.text)
+
+    if (docked) {
+      return `${relative(TERM, unit.file)} docks the TypeScript compiler file ${docked[1]}, which only node runs (decision 135)`
+    }
+  }
+
+  return undefined
+}
+
 // the program, its prelude and its main, as `term test --env` and `term make --build` build one
 // (deck/call/code/work/testing/native-testing.tree `run-native-test-file`, deck/call/code/native-build.ts)
 function front(file: string, text: string, env: Native): { source: string; main: string } | { fail: string } | { skip: string } {
@@ -381,6 +448,12 @@ function front(file: string, text: string, env: Native): { source: string; main:
 
     if (unshimmed) {
       return { skip: `the ${unshimmed} binding has a node runtime and no ${env} one` }
+    }
+
+    const compiler = compilerDock(sources)
+
+    if (compiler) {
+      return { skip: compiler }
     }
 
     // the build of record: compile() with tree-shake on, as every built program is (decision item 1145). BG_NO_SIMPLIFY=1
@@ -423,7 +496,8 @@ function front(file: string, text: string, env: Native): { source: string; main:
 // ---------------------------------------------------------------- toolchains
 
 // `main` is compile/native-main.ts's main for `gate-report`, the one `term make --build` appends
-type Job = { key: string; source: string; main: string }
+// `cwd` is the package root the program runs in, as the node leg runs (PACKAGE_OF)
+type Job = { key: string; source: string; main: string; cwd: string }
 type Outcome = { key: string; out?: string; fail?: string }
 
 const firstError = (text: string, pattern: RegExp): string =>
@@ -525,7 +599,7 @@ async function runRust(batch: Job[]): Promise<Outcome[]> {
       continue
     }
 
-    const ran = spawnSync(join(env.CARGO_TARGET_DIR, 'debug', bin), [], { encoding: 'utf8', timeout: RUN_MS })
+    const ran = spawnSync(join(env.CARGO_TARGET_DIR, 'debug', bin), [], { encoding: 'utf8', timeout: RUN_MS, cwd: job.cwd })
     outcomes.push(
       ran.status === 0
         ? { key: job.key, out: lastLine(ran.stdout) }
@@ -554,7 +628,7 @@ async function runSwift(batch: Job[]): Promise<Outcome[]> {
         if (error) {
           outcomes.push({ key: job.key, fail: `build: ${firstError(String(stderr), /error:/)}` })
         } else {
-          const ran = spawnSync(exe, [], { encoding: 'utf8', timeout: RUN_MS })
+          const ran = spawnSync(exe, [], { encoding: 'utf8', timeout: RUN_MS, cwd: job.cwd })
           outcomes.push(
             ran.status === 0
               ? { key: job.key, out: lastLine(ran.stdout) }
@@ -643,6 +717,7 @@ async function runKotlin(batch: Job[]): Promise<Outcome[]> {
     const ran = spawnSync('java', ['--enable-native-access=ALL-UNNAMED', '-cp', classpath, facade.get(file)!], {
       encoding: 'utf8',
       timeout: RUN_MS,
+      cwd: job.cwd,
     })
     outcomes.push(
       ran.status === 0
@@ -759,6 +834,23 @@ async function main(): Promise<void> {
         continue
       }
 
+      // a compiler file docked by its source path: its binds have a node case only (cross-emission's
+      // `cross-no-resolve` read SEED_UNSUPPORTED_BIND_cross_no_resolve on the page), as on the natives
+      // (a closure the reader refuses is runNode's to name, as before)
+      let compiler: string | undefined
+
+      try {
+        compiler = compilerDock(collectModules({ file: row.file, text: row.prep.text }, withNativeEnv('browser', resolver)).sources)
+      } catch {
+        compiler = undefined
+      }
+
+      if (compiler) {
+        bump('browser', 'skip')
+        lines.push(`skip   browser ${rel}  ${compiler}`)
+        continue
+      }
+
       doing = `browser ${rel}`
       const got = await runNode(row.file, row.prep, 'browser')
 
@@ -815,7 +907,7 @@ async function main(): Promise<void> {
         continue
       }
 
-      batch.push({ key: rel, source: built.source, main: built.main })
+      batch.push({ key: rel, source: built.source, main: built.main, cwd: packageOf(row.file) })
     }
 
     const outcomes = env === 'rust' ? await runRust(batch) : env === 'swift' ? await runSwift(batch) : await runKotlin(batch)

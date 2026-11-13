@@ -18,6 +18,29 @@ note <children a test keeps running beside it: a server, a daemon, a program in 
 # refuses a socket as its input ("tcgetattr/ioctl: Operation not supported on socket"), which is what node's piped stdin
 # is, so `pty-command` puts a `cat` in front of it: script then reads a pipe, and the pseudo-terminal is sized with
 # `stty` inside it before the program starts. Linux's util-linux `script` runs its program from a `-c` text, quoted here.
+#
+# Item term-self-host-001-1351: what terminal-pty needs past that, still without Python or a native pty binding.
+# `start-pty` runs the program in a pseudo-terminal through two small sh files it writes into a temporary folder, and
+# answers a `held-pty`: the child, the folder, the terminal's slave device (`tty`) and the program's own pid. `script`
+# keeps a flushed copy of everything the terminal shows in the folder's `out`, so `wait-for-text` waits on the raw
+# stream, no newline needed (the first ESC[2J), and `press-key` answers what had come when it typed. `resize-pty` sets
+# the slave's size with `stty` and sends the program WINCH, as a window drag does. `signal-program` signals the program
+# alone, never script's group, and the code it ends with comes back through script (143 for TERM). With `jobs` the
+# program runs in a process group of its own in the terminal's foreground, under a job-control shell: a stop (ctrl-z) is
+# seen, `[stopped]` is written, and the group is resumed 0.3 s later, as `fg` does. The shell is `dash` where there is
+# one: macOS `sh` (bash 3.2) with `set -m` hands the job the terminal but never wakes when it stops. A program that ends
+# ends script, and the `cat` in front of script is stopped then, so the child ends with the program's code.
+
+load ./temp
+  find temp-folder
+
+load @term/base/file
+  find read, name read-file
+  find write, name write-file
+  find exists, name file-exists
+
+load @term/base/process/tool
+  find find-tool
 
 load @term/base/process
   find child
@@ -33,6 +56,7 @@ load @term/base/process/child
 
 load @term/base/process/run
   find run-result
+  find run, name run-command
 
 load @term/base/clock
   find sleep
@@ -44,6 +68,8 @@ load @term/base/list
 load @term/base/text
   find contains, name text-contains
   find replace-all
+  find substring
+  find trim
 
 dock load
   load <global:process>, name children-process
@@ -346,3 +372,205 @@ task pty-command
   command/push(<sh>)
   command/push(<{size}; exec {shell-line(argument-list)}>)
   back command
+
+# the folder's run.sh, run inside the pseudo-terminal as `<shell> run.sh <folder> <columns> <rows> <jobs 1 or 0>
+# <program words>`: it sizes the terminal, writes the slave's name to `tty`, and runs the program through a `sh` that
+# writes its own pid to `pid` and then becomes the program, so `pid` is the program's. With jobs 1, `set -m` first: the
+# program leads its own group in the foreground, and while it is stopped the shell writes [stopped], waits 0.3 s and
+# resumes it with `fg`. The shell's own stderr goes to /dev/null after `set -m` (job control takes its terminal from
+# it), so no job notice or "Terminated" line reaches the screen, and the program gets the terminal back as its stderr.
+# It exits with the program's code, 128 plus the signal's number for a signal
+host pty-run, <<d=$1; shift; stty cols "$1" rows "$2"; shift 2; j=$1; shift; tty > "$d/tty.part"; mv "$d/tty.part" "$d/tty"; if [ "$j" = 1 ]; then set -m; fi; exec 3>&2 2>/dev/null; sh -c 'exec 2>&3 3>&-; printf "%s\n" $$ > "$1.part"; mv "$1.part" "$1"; shift; exec "$@"' sh "$d/pid" "$@"; s=$?; if [ "$j" = 1 ]; then while kill -0 %1; do printf '[stopped]\n'; sleep 0.3; fg %1 > /dev/null; s=$?; done; fi; exit $s>>
+
+# the folder's start.sh on macOS, run as `sh start.sh <folder> <run.sh's words>`: a `cat` (which writes its pid to
+# `cat`) relays this child's input to `script` through a pipe, never node's socket, and `script -qF` keeps a flushed
+# copy of the terminal's output in `out`. When the program has ended, the `cat` is stopped and the code is script's
+host pty-start-mac, <<d=$1; shift; sh -c 'echo $$ > "$0/cat"; exec cat' "$d" | { script -qF "$d/out" "$@"; s=$?; while [ ! -s "$d/cat" ]; do sleep 0.05; done; kill "$(cat "$d/cat")" 2>/dev/null; exit $s; }>>
+
+# the same on Linux, run as `sh start.sh <folder> <run.sh's words as one quoted line>`: util-linux `script -qfec`
+host pty-start-linux, <<d=$1; sh -c 'echo $$ > "$0/cat"; exec cat' "$d" | { script -qfec "$2" "$d/out"; s=$?; while [ ! -s "$d/cat" ]; do sleep 0.05; done; kill "$(cat "$d/cat")" 2>/dev/null; exit $s; }>>
+
+# a program in a pseudo-terminal: the child that runs it, the folder its files are in, the terminal's slave device and
+# the program's own pid (<> for either when the program never started)
+form held-pty
+  mark shared
+  link child, like held-child
+  link folder, like text
+  link tty, like text
+  link pid, like text
+
+# the command `start-pty` runs for `argument-list` in `folder`, with `shell` for run.sh, on `on` (<darwin> or another)
+task pty-start-command
+  take folder, like text
+  take argument-list, like list, like text
+  take columns, like number
+  take rows, like number
+  take jobs, like boolean
+  take shell, like text
+  take on, like text
+  like list, like text
+
+  save job, <0>
+  fork test, jobs
+    hold
+      save job, <1>
+  save words, make list(shell, <{folder}/run.sh>, folder, <{columns}>, <{rows}>, job)
+  walk argument-list
+    take part, like text
+    words/push(part)
+  save command, make list(<sh>, <{folder}/start.sh>, folder)
+  fork test, is-equal(on, <darwin>)
+    hold
+      walk words
+        take part, like text
+        command/push(part)
+      back command
+  command/push(shell-line(words))
+  back command
+
+# a file's text without its surrounding space, <> when it is not there
+task read-trimmed
+  mark async
+  mark private
+  take path, like text
+  like text
+
+  fork test, not(file-exists(path))
+    hold
+      back <>
+  back trim(read-file(path))
+
+# start `argument-list` (the command first) in a pseudo-terminal of `columns` by `rows`, as a child (`start-child`), and
+# wait up to 10 s for the program to start, which its pid file says. `jobs` runs it under job control. `on` is the
+# system (<> for this one's)
+task start-pty
+  mark async
+  take argument-list, like list, like text
+  take columns, like number, fall 80
+  take rows, like number, fall 24
+  take jobs, like boolean, fall false
+  take environment
+    like hash, like text, like text
+    need false
+  take on, like text, fall <>
+  like held-pty
+
+  save system, on
+  fork test, is-equal(system, <>)
+    hold
+      save system, platform()
+  save folder, temp-folder(<children-pty->)
+  save shell, <dash>
+  fork test, is-equal(find-tool(<dash>), <>)
+    hold
+      save shell, <sh>
+  write-file(<{folder}/run.sh>, pty-run)
+  save start, pty-start-linux
+  fork test, is-equal(system, <darwin>)
+    hold
+      save start, pty-start-mac
+  write-file(<{folder}/start.sh>, start)
+  save held, start-child(pty-start-command(folder, argument-list, columns, rows, jobs, shell, system), <>, environment)
+  save pid-file, <{folder}/pid>
+  save at, 0
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      fork test, or(file-exists(pid-file), is-above(at, 400))
+        hold
+          save going, false
+        miss
+          sleep(25)
+          save at, add(at, 1)
+  back make(held-pty, bind(child, held), bind(folder, folder), bind(tty, read-trimmed(<{folder}/tty>)), bind(pid, read-trimmed(pid-file)))
+
+# everything the terminal has shown so far, as it came: every byte, newline or not
+task pty-output
+  mark async
+  take pty, like held-pty
+  like text
+
+  save path, <{pty/folder}/out>
+  fork test, not(file-exists(path))
+    hold
+      back <>
+  back read-file(path)
+
+# wait until what the terminal shows past its first `after` characters holds `has`, looking every 25 ms, within `limit`
+# milliseconds. It answers all the terminal has shown, or <> past the limit (the child's `late` then reads true, and
+# the child is stopped hard, as `wait-for-line` does). No newline is needed: it reads the raw stream
+task wait-for-text
+  mark async
+  take pty, like held-pty
+  take has, like text
+  take limit, like number, fall 30000
+  take after, like number, fall 0
+  like text
+
+  save until, add(read-nanoseconds(), multiply(limit, 1000000))
+  save held, pty/child
+  save held/late, false
+  save found, <>
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save seen, pty-output(pty)
+      fork test, and(is-above(seen/length, after), text-contains(substring(seen, after), has))
+        hold
+          save found, seen
+          save going, false
+        miss
+          fork test, is-above(read-nanoseconds(), until)
+            hold
+              save held/late, true
+              stop-process(held/process, <hard>)
+              save going, false
+            miss
+              sleep(25)
+  back found
+
+# type `key` into the terminal, and answer what it had shown when the key was sent
+task press-key
+  mark async
+  take pty, like held-pty
+  take key, like text
+  like text
+
+  save before, pty-output(pty)
+  write-process(pty/child/process, key)
+  back before
+
+# make the terminal `columns` by `rows` (`stty` on its slave) and tell the program (WINCH), as a window drag does. It
+# answers whether both were done
+task resize-pty
+  mark async
+  take pty, like held-pty
+  take columns, like number
+  take rows, like number
+  take on, like text, fall <>
+  like boolean
+
+  save system, on
+  fork test, is-equal(system, <>)
+    hold
+      save system, platform()
+  save flag, <-F>
+  fork test, is-equal(system, <darwin>)
+    hold
+      save flag, <-f>
+  save sized, run-command(<stty>, make list(flag, pty/tty, <cols>, <{columns}>, <rows>, <{rows}>))
+  save told, run-command(<kill>, make list(<-WINCH>, pty/pid))
+  back and(is-equal(sized/code, 0), is-equal(told/code, 0))
+
+# send `signal` (a name `kill` knows: <TERM>, <INT>, <HUP>) to the program alone, as `kill` would, never to script or
+# its group. It answers whether it was sent
+task signal-program
+  mark async
+  take pty, like held-pty
+  take signal, like text, fall <TERM>
+  like boolean
+
+  save sent, run-command(<kill>, make list(<-{signal}>, pty/pid))
+  back is-equal(sent/code, 0)

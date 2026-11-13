@@ -1,0 +1,1332 @@
+note <the persisted build graph: a fresh process starts from the snapshot the last build wrote, and one that does not hold is ignored whole>
+
+# Ported from graph-snapshot.ts by statement (item term-self-host-001-0705), one test per `ok` in its order (decision
+# 077 section 7, decision 079, item term-self-host-001-0410). A fresh process starts from the snapshot the last build
+# wrote (work/build/build-graph.tree `load-snapshot`, `save-snapshot`), and the snapshot is ADVISORY: one that is
+# corrupt, cut short, another compiler's, another root's or that finds a package's folder listed differently is ignored
+# whole, so it costs time and never an answer. Each fresh build here is a new graph (a new session, as a new process
+# has) over the same project, compared with a clean build of the same sources (a fresh copy, no snapshot): every
+# artifact under host/ byte for byte and every problem. build-graph is the subject (decision 106), docked.
+#
+# The original is one story, each step on the state the one before left. Here the story runs once, by the first test
+# that asks, in the original's order, and keeps what each step saw: each test judges one of those readings. The original
+# ran itself twice with --child for its two writers; here each writer is this file's last test, the same bare build
+# request, run alone (`--case`) in a `term test` child of its own, skipped in every other run. A child runs another
+# bundle, so another compiler fingerprint and, left to itself, another snapshot file (build-graph.tree
+# `compiler-fingerprint`). So the story hands each writer its own `snapshot-path(root)`, its store and its root, and the
+# writers race on the story's file (decision 156): "both finish", "no temp file" and "the newest three" mean what they
+# meant. GRAPH_MODULE, a person's way to run a draft, is left out.
+#
+# Diverges (decision 156 rule 3): in the original the build after the race TOOK the raced snapshot, since its writers
+# shared the story's fingerprint. Here the story's build rightly refuses the writers' fingerprint, so "the raced
+# snapshot decodes whole" (format 2 header and sum, read at the story's path before it builds) stands in for that take,
+# followed as before by the build equal to clean and its own snapshot taken.
+
+load @term/base/test/temp
+  find temp-folder
+
+load @term/base/environment
+  find variable
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+  find replace-all
+  find char-at
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find push
+  find sort
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/json
+  find parse, name json-read
+
+load @term/base/time
+  find now
+
+load @term/base/cryptography/digest
+  find digest-sha256-text
+
+load @term/test/self
+  find run-self
+
+load @term/base/task
+  find gather
+
+load ../support/judging
+  find make-record
+  find set-field
+  find read-at
+
+load ../support/walking
+  find kind-of
+  find fields-of
+  find field-of
+  find json-of
+
+dock load
+  load <@term/call/code/work/build/build-graph>, name graph-port
+  load <node:fs>, name snapshot-file
+  load <node:path>, name snapshot-place
+
+bind floor-of
+  take value, like number
+  like number
+  case node
+    text <Math.floor($value)>
+
+# the whole seconds of a time in milliseconds
+task whole-seconds
+  take ms, like number
+  like number
+
+  back floor-of(divide(ms, 1000))
+
+# host value: the fields of a stat node:fs gives
+bind file-ino
+  take stat, like dynamic
+  like number
+  case node
+    text <$stat.ino>
+
+bind file-mtime-ms
+  take stat, like dynamic
+  like number
+  case node
+    text <$stat.mtimeMs>
+
+bind file-size
+  take stat, like dynamic
+  like number
+  case node
+    text <$stat.size>
+
+bind file-atime
+  take stat, like dynamic
+  like dynamic
+  case node
+    text <$stat.atime>
+
+bind file-mtime
+  take stat, like dynamic
+  like dynamic
+  case node
+    text <$stat.mtime>
+
+bind is-folder
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+bind recursive
+  take seed, like number
+  like dynamic
+  case node
+    text <(\{ recursive: true \})>
+
+bind undefined-value
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+host head-line, <# term graph 2\n>
+
+# a written body starts past the header and the 32 hex digits of its sum and their line break
+task body-start
+  like number
+
+  back add(char-count(head-line), 33)
+
+# the snapshot's text past its header and sum, read as JSON
+task body-of
+  take text, like text
+  like dynamic
+
+  back json-read(substring(text, body-start()))
+
+task sum-of
+  take body, like text
+  like text
+
+  back substring(digest-sha256-text(body), 0, 32)
+
+# ---- the project ----
+
+# what the store and the project hold for one run of the story
+form story-place
+  link root, like text
+  link home, like text
+  link clean-home, like text
+  link fresh, like text
+  link path, like text
+
+task helper-text
+  take place, like story-place
+  take answer, like number
+  like text
+
+  back <{place/fresh}load @term/base/text\n  find trim\n\ntask answer\n  take who, like text\n  like number\n  save said, trim(who)\n  back {answer}\n>
+
+task real-temp
+  take prefix, like text
+  like text
+
+  back snapshot-file/realpath-sync(temp-folder(prefix))
+
+# a line no earlier run wrote, so the store a previous run filled holds none of this project's units
+task story-place-made
+  like story-place
+
+  host root, real-temp(<graph-snapshot->)
+  host home, real-temp(<graph-snapshot-home->)
+  host clean-home, real-temp(<graph-snapshot-clean-home->)
+  host fresh, <# run {snapshot-place/basename(root)} at {now()}\n>
+  host made, make(story-place, bind(root, root), bind(home, home), bind(clean-home, clean-home), bind(fresh, fresh), bind(path, <>))
+  snapshot-file/mkdir-sync(snapshot-place/join(root, <code>), recursive(0))
+  snapshot-file/write-file-sync(snapshot-place/join(root, <deck.tree>), <deck @probe/snapshot\n  mark \<0.0.1\>\n>)
+  snapshot-file/write-file-sync(snapshot-place/join(root, <code>, <helper.tree>), helper-text(made, 31))
+  snapshot-file/write-file-sync(snapshot-place/join(root, <code>, <base.tree>), <{fresh}load ./helper\n  find answer\n\ntask main\n  like number\n  back answer(\<a\>)\n>)
+  snapshot-file/write-file-sync(snapshot-place/join(root, <code>, <other.tree>), <{fresh}load ./helper\n  find answer\n\ntask other\n  like number\n  back answer(\<b\>)\n>)
+  save made/path, graph-port/snapshot-path(root)
+  back made
+
+# one artifact under host/, its text with the project's root spelled <root>
+form artifact
+  link file, like text
+  link text, like text
+
+# a build's answer: how many entries it built, its problems as name|message, and every artifact under host/
+form answer
+  link built, like number
+  link problems, like list, like text
+  link artifacts, like list, like artifact
+
+task artifacts-under
+  take at, like text
+  take folder, like text
+  take out, like list, like artifact
+  like void
+
+  walk snapshot-file/readdir-sync(folder)
+    take name, like text
+    save full, snapshot-place/join(folder, name)
+    fork test, is-folder(snapshot-file/stat-sync(full))
+      hold
+        artifacts-under(at, full, out)
+      miss
+        out/push(make(artifact, bind(file, snapshot-place/relative(at, full)), bind(text, replace-all(snapshot-file/read-file-sync(full, <utf8>), at, <\<root\>>))))
+
+task artifacts-of
+  take at, like text
+  like list, like artifact
+
+  save out, make list
+  save host, snapshot-place/join(at, <host>)
+  fork test, snapshot-file/exists-sync(host)
+    hold
+      artifacts-under(at, host, out)
+  back out
+
+# TERM_CACHE_HOME set to `value` for a run, the value it had put back after
+form kept-variable
+  link name, like text
+  link had, like boolean
+  link value, like text
+
+task keep-variable
+  take name, like text
+  like kept-variable
+
+  back make(kept-variable, bind(name, name), bind(had, has-variable(name)), bind(value, variable(name)))
+
+task put-back
+  take kept, like kept-variable
+  like void
+
+  fork test, kept/had
+    hold
+      set-variable(kept/name, kept/value)
+    miss
+      remove-variable(kept/name)
+
+# the project request the CLI makes, `precomputed` where the parallel pass's answers go
+task ask-of
+  take precomputed, like dynamic
+  like dynamic
+
+  back make-record(make list(<mode>, <project>, <file>, <>, <platform>, <node>, <precomputed>, precomputed, <explain>, undefined-value(0)))
+
+# one project request by a new graph over `at`, with `cache-home` as the store
+task build
+  take at, like text
+  take cache-home, like text
+  take precomputed, like dynamic
+  like answer
+
+  save kept, keep-variable(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, cache-home)
+  host answered, field-of(graph-port/build-request(graph-port/make-build-graph(at), ask-of(precomputed)), <build>)
+  put-back(kept)
+  save problems, make list
+  walk field-of(answered, <problems>)
+    take problem, like dynamic
+    save said, field-of(problem, <diagnostic>)
+    problems/push(<{field-of(said, <name>)}|{field-of(said, <message>)}>)
+  back make(answer, bind(built, field-of(answered, <built>)), bind(problems, problems), bind(artifacts, artifacts-of(at)))
+
+task copy-into
+  take from, like text
+  take to, like text
+  like void
+
+  snapshot-file/cp-sync(from, to, recursive(0))
+
+# the same sources built clean: a fresh copy, no snapshot
+task clean
+  take place, like story-place
+  like answer
+
+  save copy, real-temp(<graph-snapshot-clean->)
+  copy-into(snapshot-place/join(place/root, <deck.tree>), snapshot-place/join(copy, <deck.tree>))
+  fork test, snapshot-file/exists-sync(snapshot-place/join(place/root, <role.tree>))
+    hold
+      copy-into(snapshot-place/join(place/root, <role.tree>), snapshot-place/join(copy, <role.tree>))
+  copy-into(snapshot-place/join(place/root, <code>), snapshot-place/join(copy, <code>))
+  save made, build(copy, place/clean-home, undefined-value(0))
+  save renamed, make list
+  walk made/artifacts
+    take one, like artifact
+    renamed/push(make(artifact, bind(file, one/file), bind(text, replace-all(one/text, copy, <\<root\>>))))
+  back make(answer, bind(built, made/built), bind(problems, made/problems), bind(artifacts, renamed))
+
+task artifact-in
+  take artifacts, like list, like artifact
+  take file, like text
+  like text
+
+  walk artifacts
+    take one, like artifact
+    fork test, is-equal(one/file, file)
+      hold
+        back one/text
+  back <\emissing>
+
+task has-artifact
+  take artifacts, like list, like artifact
+  take file, like text
+  like boolean
+
+  walk artifacts
+    take one, like artifact
+    fork test, is-equal(one/file, file)
+      hold
+        back true
+  back false
+
+# <> when the two builds agree, else the first difference: the problems, or an artifact differing, extra or missing
+task same
+  take a, like answer
+  take b, like answer
+  like text
+
+  fork test, is-unequal(a/problems/join(<\n>), b/problems/join(<\n>))
+    hold
+      back <problems {a/problems/length} vs {b/problems/length}>
+  save files, make list
+  walk a/artifacts
+    take one, like artifact
+    files/push(one/file)
+  walk b/artifacts
+    take one, like artifact
+    fork test, not(has-artifact(a/artifacts, one/file))
+      hold
+        files/push(one/file)
+  walk files
+    take file, like text
+    fork test, is-unequal(artifact-in(a/artifacts, file), artifact-in(b/artifacts, file))
+      hold
+        save how, <missing>
+        fork test, has-artifact(a/artifacts, file)
+          hold
+            save how, <extra>
+            fork test, has-artifact(b/artifacts, file)
+              hold
+                save how, <differs>
+        back <artifact {file} {how}>
+  back <>
+
+task same-as-clean
+  take place, like story-place
+  take built, like answer
+  like text
+
+  back same(built, clean(place))
+
+# whether a new session takes the snapshot as it stands
+task takes
+  take place, like story-place
+  like boolean
+
+  save kept, keep-variable(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, place/home)
+  host taken, graph-port/load-snapshot(field-of(graph-port/make-build-graph(place/root), <session>), now())
+  put-back(kept)
+  back taken
+
+# a build that writes the snapshot again, as it stands
+task settle
+  take place, like story-place
+  like answer
+
+  back build(place/root, place/home, undefined-value(0))
+
+task read-text
+  take path, like text
+  like text
+
+  back snapshot-file/read-file-sync(path, <utf8>)
+
+task write-text
+  take path, like text
+  take text, like text
+  like void
+
+  snapshot-file/write-file-sync(path, text)
+
+# the snapshot's body rewritten by `change`, with its sum made right again: only the check under test can refuse it
+task rewrite
+  take place, like story-place
+  take change
+    like task
+      take body, like dynamic
+      like void
+  like void
+
+  host body, body-of(read-text(place/path))
+  change(body)
+  host out, json-of(body)
+  write-text(place/path, <{head-line}{sum-of(out)}\n{out}>)
+
+# a written body's path at an index: a path under the project's root is written relative to it
+task path-at
+  take place, like story-place
+  take body, like dynamic
+  take key, like text
+  like text
+
+  host spelled, read-at(field-of(body, <paths>), parse-integer(key))
+  fork test, starts-with(spelled, </>)
+    hold
+      back spelled
+  back snapshot-place/join(place/root, spelled)
+
+# a variable set for a run, or taken out of it
+form setting
+  link name, like text
+  link value, like text, fall <>
+  link unset, like boolean, fall false
+
+task apply-settings
+  take settings, like list, like setting
+  like void
+
+  walk settings
+    take one, like setting
+    fork test, one/unset
+      hold
+        remove-variable(one/name)
+      miss
+        set-variable(one/name, one/value)
+
+task kept-settings
+  take settings, like list, like setting
+  like list, like kept-variable
+
+  save out, make list
+  walk settings
+    take one, like setting
+    out/push(keep-variable(one/name))
+  back out
+
+# THE LAUNCH-ONLY VARIABLES: whether the snapshot is taken with the settings in place, each put back after
+task takes-with
+  take place, like story-place
+  take settings, like list, like setting
+  like boolean
+
+  save kept, kept-settings(settings)
+  apply-settings(settings)
+  save taken, takes(place)
+  walk kept
+    take one, like kept-variable
+    put-back(one)
+  back taken
+
+task settle-with
+  take place, like story-place
+  take settings, like list, like setting
+  like void
+
+  save kept, kept-settings(settings)
+  apply-settings(settings)
+  settle(place)
+  walk kept
+    take one, like kept-variable
+    put-back(one)
+
+task set-to
+  take name, like text
+  take value, like text
+  like setting
+
+  back make(setting, bind(name, name), bind(value, value))
+
+task unset
+  take name, like text
+  like setting
+
+  back make(setting, bind(name, name), bind(unset, true))
+
+# the edit `during` makes once, from inside a build, and whether it made it
+form edit-state
+  mark shared
+  link done, like boolean
+
+# AN EDIT DURING THE BUILD (item term-self-host-001-0466): the edit is made from inside the build: `precomputed` is
+# asked for each entry the build compiles, after the roles are read and the earlier entries' artifacts are written
+task during
+  take place, like story-place
+  take edit
+    like task
+      take file, like text
+      like boolean
+  like boolean
+
+  save state, make(edit-state, bind(done, false))
+  save asked
+    task
+      take file, like text
+      like dynamic
+      fork test, not(state/done)
+        hold
+          save state/done, edit(file)
+      back undefined-value(0)
+  build(place/root, place/home, make-record(make list(<get>, asked)))
+  back state/done
+
+# the folders the snapshot lists, by key
+task listed-keys
+  take body, like dynamic
+  take field, like text
+  like list, like text
+
+  back fields-of(field-of(body, field))
+
+task first-key
+  take body, like dynamic
+  take field, like text
+  like text
+
+  back listed-keys(body, field)/0
+
+task file-stat
+  take path, like text
+  like dynamic
+
+  back snapshot-file/stat-sync(path)
+
+task touch-at
+  take path, like text
+  take seconds, like number
+  like void
+
+  snapshot-file/utimes-sync(path, seconds, seconds)
+
+# This file's path, put together, never written whole in it: `term test <filter>` also collects every file whose TEXT
+# holds the filter, so a file that spelled it would be collected by a child run of another (T-0705)
+task own-file
+  like text
+
+  save folder, <test/call>
+  save stem, <graph-snapshot>
+  back <{folder}/{stem}.tree>
+
+# what a writer said: its exit code and the snapshot path it wrote to
+form writer-said
+  link code, like number
+  link path, like text
+
+# A writer of the two-writer case: this file's last test, alone (`--case`), in a `term test` child of its own run from
+# where this test runs (the Term root). It is handed the story's root, store and snapshot path (decision 156), and says
+# the path it wrote to in a file. A writer that skipped, or ran no test, built nothing and never counts as finished
+task writer
+  mark async
+  take place, like story-place
+  take name, like text
+  like writer-said
+
+  save said, snapshot-place/join(place/home, <writer-{name}.txt>)
+  save environment, make hash
+  save environment/GRAPH_SNAPSHOT_ROOT, place/root
+  save environment/GRAPH_SNAPSHOT_HOME, place/home
+  save environment/GRAPH_SNAPSHOT_PATH, place/path
+  save environment/GRAPH_SNAPSHOT_SAID, said
+  save made, run-self(make(list, <test>, own-file(), <--case>, <two-writer child>, <--env>, <node>, <--color>, <never>, <--no-motion>), <>, 600000, environment)
+  save code, made/code
+  fork test, not(text-contains(<{made/output}{made/error}>, <1 passed>))
+    hold
+      save code, -1
+  save path, <>
+  fork test, snapshot-file/exists-sync(said)
+    hold
+      save path, read-text(said)
+  back make(writer-said, bind(code, code), bind(path, path))
+
+# ---- the story ----
+
+# what every step saw, in the original's order. A field is a reading the test judges, never the judgment
+form story
+  mark shared
+  link first-built, like number
+  link first-clean, like text
+  link written, like boolean
+  link first-taken, like boolean
+  link noop-built, like number
+  link noop-clean, like text
+  link corrupt-taken, like boolean
+  link corrupt-clean, like text
+  link corrupt-rewritten, like boolean
+  link truncated-taken, like boolean
+  link header-taken, like boolean
+  link compiler-taken, like boolean
+  link root-taken, like boolean
+  link environment-taken, like boolean
+  link other-pane-taken, like boolean
+  link no-terminal-taken, like boolean
+  link term-setting-taken, like boolean
+  link folder-count, like number
+  link folder-stamp-taken, like boolean
+  link folder-listed-taken, like boolean
+  link manifest-taken, like boolean
+  link rebuilt-taken, like boolean
+  link added-taken, like boolean
+  link added-clean, like text
+  link setting-taken, like boolean
+  link touched-taken, like boolean
+  link touched-clean, like text
+  link removed-clean, like text
+  link longhand-problems, like list, like text
+  link longhand-clean, like text
+  link role-edited, like boolean
+  link role-problems, like list, like text
+  link role-clean, like text
+  link shim-edited, like boolean
+  link shim-text, like text
+  link shim-clean, like text
+  link racy-size-before, like number
+  link racy-size-after, like number
+  link racy-time-before, like number
+  link racy-time-after, like number
+  link racy-ino-before, like number
+  link racy-ino-after, like number
+  link racy-built, like number
+  link racy-clean, like text
+  link writer-codes, like list, like number
+  link writer-paths, like list, like text
+  link story-path, like text
+  link snapshot-folder, like list, like text
+  link raced-header, like boolean
+  link raced-sum, like boolean
+  link raced-root, like boolean
+  link raced-decoded, like boolean
+  link raced-clean, like text
+  link raced-taken, like boolean
+  link held-form, like text
+  link held-canonical, like text
+  link decoded-canonical, like text
+  link raw, like text
+  link written-paths, like list, like text
+  link helper-path, like text
+  link framed-texts, like list, like text
+  link helper-now, like text
+  link edit-size-before, like number
+  link edit-size-after, like number
+  link edit-time-before, like number
+  link edit-time-after, like number
+  link edit-ino-before, like number
+  link edit-ino-after, like number
+  link still-taken, like boolean
+  link changed-built, like number
+  link changed-clean, like text
+  link format-one-taken, like boolean
+  link kept-snapshots, like list, like text
+  link want-snapshots, like list, like text
+
+form story-held
+  mark shared
+  link held, like hash, like text, like story
+
+host story-cache, make(story-held, bind(held, make hash))
+
+# a value with its keys sorted, as JSON writes it, so two bodies compare field for field
+task canonical
+  take value, like dynamic
+  like text
+
+  host kind, kind-of(value)
+  fork test, is-equal(kind, <list>)
+    hold
+      save parts, make list
+      walk value
+        take one, like dynamic
+        parts/push(canonical(one))
+      back <[{parts/join(<,>)}]>
+  fork test, is-equal(kind, <object>)
+    hold
+      save parts, make list
+      walk sort(fields-of(value), from-texts)
+        take field, like text
+        host held, field-of(value, field)
+        fork test, is-unequal(kind-of(held), <undefined>)
+          hold
+            parts/push(<{json-of(field)}:{canonical(held)}>)
+      back <\{{parts/join(<,>)}\}>
+  back json-of(value)
+
+# a decoded body's entry for a file, void where the body or its entries are none
+task entry-of
+  take decoded, like dynamic
+  take file, like text
+  like dynamic
+
+  fork test, is-unequal(kind-of(decoded), <object>)
+    hold
+      back undefined-value(0)
+  host entries, field-of(decoded, <entries>)
+  fork test, is-unequal(kind-of(entries), <object>)
+    hold
+      back undefined-value(0)
+  back field-of(entries, file)
+
+# a decoded body with the fields that differ between a read and a write blanked
+task blank
+  take body, like dynamic
+  like dynamic
+
+  fork test, is-unequal(kind-of(body), <object>)
+    hold
+      back body
+  host copy, make-record(make list)
+  walk fields-of(body)
+    take field, like text
+    set-field(copy, field, field-of(body, field))
+  set-field(copy, <generation>, 0)
+  set-field(copy, <taken>, 0)
+  set-field(copy, <stable>, <>)
+  back copy
+
+task story-made
+  mark async
+  like story
+
+  host place, story-place-made()
+  host path, place/path
+  host helper, snapshot-place/join(place/root, <code>, <helper.tree>)
+  save s, make(story, bind(first-built, 0), bind(first-clean, <>), bind(written, false), bind(first-taken, false), bind(noop-built, 0), bind(noop-clean, <>), bind(corrupt-taken, false), bind(corrupt-clean, <>), bind(corrupt-rewritten, false), bind(truncated-taken, false), bind(header-taken, false), bind(compiler-taken, false), bind(root-taken, false), bind(environment-taken, false), bind(other-pane-taken, false), bind(no-terminal-taken, false), bind(term-setting-taken, false), bind(folder-count, 0), bind(folder-stamp-taken, false), bind(folder-listed-taken, false), bind(manifest-taken, false), bind(rebuilt-taken, false), bind(added-taken, false), bind(added-clean, <>), bind(setting-taken, false), bind(touched-taken, false), bind(touched-clean, <>), bind(removed-clean, <>), bind(longhand-problems, make list), bind(longhand-clean, <>), bind(role-edited, false), bind(role-problems, make list), bind(role-clean, <>), bind(shim-edited, false), bind(shim-text, <>), bind(shim-clean, <>), bind(racy-size-before, 0), bind(racy-size-after, 0), bind(racy-time-before, 0), bind(racy-time-after, 0), bind(racy-ino-before, 0), bind(racy-ino-after, 0), bind(racy-built, 0), bind(racy-clean, <>), bind(writer-codes, make list), bind(writer-paths, make list), bind(story-path, <>), bind(snapshot-folder, make list), bind(raced-header, false), bind(raced-sum, false), bind(raced-root, false), bind(raced-decoded, false), bind(raced-clean, <>), bind(raced-taken, false), bind(held-form, <>), bind(held-canonical, <>), bind(decoded-canonical, <>), bind(raw, <>), bind(written-paths, make list), bind(helper-path, helper), bind(framed-texts, make list), bind(helper-now, <>), bind(edit-size-before, 0), bind(edit-size-after, 0), bind(edit-time-before, 0), bind(edit-time-after, 0), bind(edit-ino-before, 0), bind(edit-ino-after, 0), bind(still-taken, false), bind(changed-built, 0), bind(changed-clean, <>), bind(format-one-taken, false), bind(kept-snapshots, make list), bind(want-snapshots, make list))
+
+  save first, settle(place)
+  save s/first-built, first/built
+  save s/first-clean, same-as-clean(place, first)
+  save s/written, snapshot-file/exists-sync(path)
+  save s/first-taken, takes(place)
+  save noop, settle(place)
+  save s/noop-built, noop/built
+  save s/noop-clean, same-as-clean(place, noop)
+
+  # corrupt: one character of the body changed, so its sum no longer holds
+  host whole, read-text(path)
+  host at, subtract(char-count(whole), 40)
+  save swapped, <x>
+  fork test, is-equal(char-at(whole, at), <x>)
+    hold
+      save swapped, <y>
+  write-text(path, <{substring(whole, 0, at)}{swapped}{substring(whole, add(at, 1))}>)
+  save s/corrupt-taken, takes(place)
+  save s/corrupt-clean, same-as-clean(place, settle(place))
+  save s/corrupt-rewritten, takes(place)
+
+  write-text(path, substring(whole, 0, floor-of(divide(char-count(whole), 2))))
+  save s/truncated-taken, takes(place)
+  write-text(path, head-line)
+  save s/header-taken, takes(place)
+  settle(place)
+
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      set-field(body, <fingerprint>, <another compiler>)
+  save s/compiler-taken, takes(place)
+  settle(place)
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      set-field(body, <root>, </another/root>)
+  save s/root-taken, takes(place)
+  settle(place)
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      set-field(body, <env>, <{field-of(body, <env>)}\nTERM_OTHER=1>)
+  save s/environment-taken, takes(place)
+  settle(place)
+
+  # THE LAUNCH-ONLY VARIABLES (call/code/launch-only.ts, item term-self-host-001-0476): a terminal emulator's own say
+  # only how the process was started, so a snapshot written in one terminal pane is taken in another
+  settle-with(place, make list(set-to(<TERM_SESSION_ID>, <w0t0p0:pane-one>), set-to(<TERM_PROGRAM>, <iTerm.app>), set-to(<TERM_PROGRAM_VERSION>, <3.5.0>), set-to(<TERM_FEATURES>, <T3LrMSc7>)))
+  save s/other-pane-taken, takes-with(place, make list(set-to(<TERM_SESSION_ID>, <w1t2p0:pane-two>), set-to(<TERM_PROGRAM>, <Apple_Terminal>), set-to(<TERM_PROGRAM_VERSION>, <455>), unset(<TERM_FEATURES>)))
+  save s/no-terminal-taken, takes-with(place, make list(unset(<TERM_SESSION_ID>), unset(<TERM_PROGRAM>), unset(<TERM_PROGRAM_VERSION>), unset(<TERM_FEATURES>)))
+  save s/term-setting-taken, takes-with(place, make list(set-to(<TERM_SESSION_ID>, <w1t2p0:pane-two>), set-to(<TERM_OTHER>, <1>)))
+  settle(place)
+
+  save s/folder-count, listed-keys(body-of(read-text(path)), <folders>)/length
+  # a folder whose stamp moved is listed again: the same names keep the snapshot, other names refuse it
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      set-field(field-of(field-of(body, <folders>), first-key(body, <folders>)), <stamp>, <moved since>)
+  save s/folder-stamp-taken, takes(place)
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      host listed, field-of(field-of(body, <folders>), first-key(body, <folders>))
+      set-field(listed, <stamp>, <moved since>)
+      set-field(listed, <hash>, <listed otherwise>)
+  save s/folder-listed-taken, takes(place)
+  settle(place)
+  rewrite
+    read place
+    task
+      take body, like dynamic
+      like void
+      save manifest, <>
+      walk listed-keys(body, <decks>)
+        take key, like text
+        fork test, and(is-equal(manifest, <>), ends-with(path-at(place, body, key), <deck.tree>))
+          hold
+            save manifest, key
+      host deck, field-of(field-of(body, <decks>), manifest)
+      set-field(deck, <stamp>, <moved since>)
+      set-field(deck, <hash>, <another manifest>)
+  save s/manifest-taken, takes(place)
+  settle(place)
+  save s/rebuilt-taken, takes(place)
+
+  # a file added, or a project setting moved, would start the session over at its first turn: the snapshot is refused
+  host added, snapshot-place/join(place/root, <code>, <added.tree>)
+  write-text(added, <{place/fresh}task added\n  like number\n  back 1\n>)
+  save s/added-taken, takes(place)
+  save s/added-clean, same-as-clean(place, settle(place))
+  snapshot-file/rm-sync(added)
+  settle(place)
+  write-text(snapshot-place/join(place/root, <deck.tree>), <deck @probe/snapshot\n  mark \<0.0.2\>\n>)
+  save s/setting-taken, takes(place)
+  settle(place)
+
+  # an artifact touched or removed: the snapshot still holds, and the entry standing behind it builds again
+  save unit, <>
+  walk artifacts-of(place/root)
+    take one, like artifact
+    fork test, and(is-equal(unit, <>), text-contains(one/file, <.unit>))
+      hold
+        save unit, one/file
+  write-text(snapshot-place/join(place/root, unit), <// touched\n>)
+  save s/touched-taken, takes(place)
+  save s/touched-clean, same-as-clean(place, settle(place))
+  snapshot-file/rm-sync(snapshot-place/join(place/root, unit))
+  save s/removed-clean, same-as-clean(place, settle(place))
+
+  # read lean, a call-shaped part whose head is a parameter of the callee and a task is refused (label-or-call); read
+  # longhand, it is the call, and builds. The edit adds `mark lean`: an entry refused keeps no outcome, so only an entry
+  # that built can be replayed wrongly
+  host role-file, snapshot-place/join(place/root, <role.tree>)
+  host lean-file, snapshot-place/join(place/root, <code>, <lean.tree>)
+  write-text(role-file, <role code\n  take @/code/**/*.tree\n>)
+  write-text(lean-file, <{place/fresh}task name\n  take x, like text\n  like text\n  back \<named\>\n\ntask greet\n  take name, like text\n  like text\n  back name\n\ntask shout\n  like text\n  back greet(name(\<x\>))\n>)
+  save lean-build, settle(place)
+  save s/longhand-problems, lean-build/problems
+  save s/longhand-clean, same-as-clean(place, lean-build)
+  write-text(helper, helper-text(place, 34))
+  # a build that takes no snapshot: no stamp of a setting is asked before the build reads it, unless asked at its start
+  write-text(path, head-line)
+  # edited once lean.tree is built under it: other.tree is compiled after it
+  save edit-role
+    task
+      take file, like text
+      like boolean
+      fork test, ends-with(file, </other.tree>)
+        hold
+          write-text(role-file, <role code\n  mark lean\n  take @/code/**/*.tree\n>)
+          back true
+      back false
+  save s/role-edited, during(place, edit-role)
+  save after-role, settle(place)
+  save s/role-problems, after-role/problems
+  save s/role-clean, same-as-clean(place, after-role)
+  host shim-file, snapshot-place/join(place/root, <host>, <code>, <base.ts>)
+  write-text(helper, helper-text(place, 35))
+  save edit-shim
+    task
+      take file, like text
+      like boolean
+      fork test, ends-with(file, </other.tree>)
+        hold
+          write-text(shim-file, <// edited during the build\n>)
+          back true
+      back false
+  save s/shim-edited, during(place, edit-shim)
+  save s/shim-text, read-text(shim-file)
+  save s/shim-clean, same-as-clean(place, settle(place))
+  snapshot-file/rm-sync(role-file)
+  snapshot-file/rm-sync(lean-file)
+  settle(place)
+
+  # THE RACY STAMP: an edit in the second of the build, the same size and the same modification time, inode kept. The
+  # file is written just before the build, so its time is the build's, and edited just after it with its stamp put back.
+  # A whole millisecond, so putting the time back is exact
+  host racy-time, divide(now(), 1000)
+  write-text(helper, helper-text(place, 31))
+  touch-at(helper, racy-time)
+  settle(place)
+  host racy-before, file-stat(helper)
+  write-text(helper, helper-text(place, 32))
+  touch-at(helper, racy-time)
+  host racy-after, file-stat(helper)
+  save s/racy-size-before, file-size(racy-before)
+  save s/racy-size-after, file-size(racy-after)
+  save s/racy-time-before, file-mtime-ms(racy-before)
+  save s/racy-time-after, file-mtime-ms(racy-after)
+  save s/racy-ino-before, file-ino(racy-before)
+  save s/racy-ino-after, file-ino(racy-after)
+  save racy, settle(place)
+  save s/racy-built, racy/built
+  save s/racy-clean, same-as-clean(place, racy)
+
+  # TWO WRITERS AT ONCE: two processes build the same project after an edit, each writing its snapshot
+  write-text(helper, helper-text(place, 33))
+  save works, make list
+  works/push
+    task first-writer
+      mark async
+      like writer-said
+      back writer(place, <one>)
+  works/push
+    task second-writer
+      mark async
+      like writer-said
+      back writer(place, <two>)
+  save writers, gather(works)
+  save codes, make list
+  save paths, make list
+  walk writers
+    take one, like writer-said
+    codes/push(one/code)
+    paths/push(one/path)
+  save s/writer-codes, codes
+  save s/writer-paths, paths
+  save s/story-path, path
+  save s/snapshot-folder, snapshot-file/readdir-sync(snapshot-place/dirname(path))
+  # the file the writers raced on, read at the story's path before the story builds: its header, its sum, its root
+  # and the decoder's reading of it whole
+  fork test, snapshot-file/exists-sync(path)
+    hold
+      host raced-text, read-text(path)
+      save s/raced-header, starts-with(raced-text, head-line)
+      save s/raced-sum, is-equal(substring(raced-text, char-count(head-line), subtract(body-start(), 1)), sum-of(substring(raced-text, body-start())))
+      save s/raced-root, is-equal(field-of(body-of(raced-text), <root>), place/root)
+      save s/raced-decoded, is-equal(kind-of(graph-port/decoded-snapshot(place/root)), <object>)
+  save raced, settle(place)
+  save s/raced-clean, same-as-clean(place, raced)
+  save s/raced-taken, takes(place)
+
+  # FORMAT 2 (decision 083). The body written decodes to the body the session holds, field for field. A helper an hour
+  # old, so its stamp is older than any racy line: only its text can tell an edit
+  save kept, keep-variable(<TERM_CACHE_HOME>)
+  set-variable(<TERM_CACHE_HOME>, place/home)
+  host hour, subtract(whole-seconds(now()), 3600)
+  write-text(helper, helper-text(place, 35))
+  touch-at(helper, hour)
+  host graph, graph-port/make-build-graph(place/root)
+  graph-port/build-request(graph, ask-of(undefined-value(0)))
+  host held, graph-port/snapshot-body(field-of(graph, <session>), now())
+  host decoded, graph-port/decoded-snapshot(place/root)
+  save s/held-form, field-of(held, <form>)
+  save s/held-canonical, canonical(blank(field-of(held, <value>)))
+  save s/decoded-canonical, canonical(blank(decoded))
+  host raw, read-text(path)
+  save s/raw, raw
+  save s/written-paths, field-of(body-of(raw), <paths>)
+  # the helper's unused binding is a warning, framed in its file: its text is the file's, read back from the disk
+  save framed, make list
+  host entry, entry-of(decoded, helper)
+  fork test, is-equal(kind-of(entry), <object>)
+    hold
+      host problems, field-of(entry, <problems>)
+      fork test, is-equal(kind-of(problems), <list>)
+        hold
+          walk problems
+            take problem, like dynamic
+            save written-text, <\enone>
+            fork test, is-equal(kind-of(field-of(problem, <text>)), <string>)
+              hold
+                save written-text, field-of(problem, <text>)
+            framed/push(written-text)
+  save s/framed-texts, framed
+  save s/helper-now, read-text(helper)
+  put-back(kept)
+
+  # the helper's text changed after the write with its stamp kept (same size, same time, inode kept): its problem's
+  # text reads otherwise, so its entry is not taken and builds again, equal to clean
+  host edit-before, file-stat(helper)
+  write-text(helper, helper-text(place, 36))
+  snapshot-file/utimes-sync(helper, file-atime(edit-before), file-mtime(edit-before))
+  host edit-after, file-stat(helper)
+  save s/edit-size-before, file-size(edit-before)
+  save s/edit-size-after, file-size(edit-after)
+  save s/edit-time-before, file-mtime-ms(edit-before)
+  save s/edit-time-after, file-mtime-ms(edit-after)
+  save s/edit-ino-before, file-ino(edit-before)
+  save s/edit-ino-after, file-ino(edit-after)
+  save s/still-taken, takes(place)
+  save changed, settle(place)
+  save s/changed-built, changed/built
+  save s/changed-clean, same-as-clean(place, changed)
+
+  # a format 1 file, whole and summed, is refused
+  host format-two, read-text(path)
+  write-text(path, <# term graph 1\n{substring(format-two, char-count(head-line))}>)
+  save s/format-one-taken, takes(place)
+  settle(place)
+
+  # only the newest three snapshots of the project are kept
+  host folder, snapshot-place/dirname(path)
+  save old, make list
+  walk make list(0, 1, 2, 3)
+    take k, like number
+    host file, snapshot-place/join(folder, <old-{k}>)
+    write-text(file, <old\n>)
+    touch-at(file, add(subtract(whole-seconds(now()), 7200), multiply(k, 60)))
+    old/push(file)
+  write-text(helper, helper-text(place, 37))
+  settle(place)
+  save s/kept-snapshots, sort(snapshot-file/readdir-sync(folder), from-texts)
+  save s/want-snapshots, sort(make(list, snapshot-place/relative(folder, path), snapshot-place/relative(folder, old/2), snapshot-place/relative(folder, old/3)), from-texts)
+  back s
+
+# the story, run by the first test that asks
+task story-of
+  mark async
+  like story
+
+  save key, <one>
+  fork test, story-cache/held/has(key)
+    hold
+      back story-cache/held/{key}
+  # inside a writer child the story never runs again, whatever collected this file
+  fork test, is-unequal(variable(<GRAPH_SNAPSHOT_ROOT>), <>)
+    hold
+      halt <the story runs only in the run that started it, never in a writer child>
+  save made, story-made()
+  save story-cache/held/{key}, made
+  back made
+
+task holding
+  take items, like list, like text
+  take word, like text
+  like boolean
+
+  walk items
+    take one, like text
+    fork test, text-contains(one, word)
+      hold
+        back true
+  back false
+
+task none-ending
+  take items, like list, like text
+  take tail, like text
+  like boolean
+
+  walk items
+    take one, like text
+    fork test, ends-with(one, tail)
+      hold
+        back false
+  back true
+
+task each-once
+  take items, like list, like text
+  like boolean
+
+  save seen, make list
+  walk items
+    take one, like text
+    walk seen
+      take earlier, like text
+      fork test, is-equal(earlier, one)
+        hold
+          back false
+    seen/push(one)
+  back true
+
+test <the first build builds>
+  host s, story-of()
+  want hold, is-above(s/first-built, 0)
+
+test <the first build is clean>
+  host s, story-of()
+  want hold, is-equal(s/first-clean, <>)
+
+test <it writes a snapshot>
+  host s, story-of()
+  want hold, s/written
+
+test <a new session takes it>
+  host s, story-of()
+  want hold, s/first-taken
+
+test <a no-op from the snapshot builds nothing and equals clean>
+  host s, story-of()
+  want hold, is-equal(s/noop-built, 0)
+  want hold, is-equal(s/noop-clean, <>)
+
+test <a corrupt snapshot is refused>
+  host s, story-of()
+  want hold, not(s/corrupt-taken)
+
+test <a build over it equals clean>
+  host s, story-of()
+  want hold, is-equal(s/corrupt-clean, <>)
+
+test <and writes a whole one again>
+  host s, story-of()
+  want hold, s/corrupt-rewritten
+
+test <a truncated snapshot is refused>
+  host s, story-of()
+  want hold, not(s/truncated-taken)
+
+test <a snapshot of its header alone is refused>
+  host s, story-of()
+  want hold, not(s/header-taken)
+
+test <another compiler's snapshot is refused>
+  host s, story-of()
+  want hold, not(s/compiler-taken)
+
+test <another root's snapshot is refused>
+  host s, story-of()
+  want hold, not(s/root-taken)
+
+test <another environment's snapshot is refused>
+  host s, story-of()
+  want hold, not(s/environment-taken)
+
+test <a snapshot written under one TERM_SESSION_ID is taken under another (and another terminal program)>
+  host s, story-of()
+  want hold, s/other-pane-taken
+
+test <and with no terminal variables at all>
+  host s, story-of()
+  want hold, s/no-terminal-taken
+
+test <while a Term setting written beside them still refuses it>
+  host s, story-of()
+  want hold, not(s/term-setting-taken)
+
+test <it records the folders of the packages it reaches>
+  host s, story-of()
+  want hold, is-above(s/folder-count, 0)
+
+test <a package folder touched but listed alike keeps the snapshot>
+  host s, story-of()
+  want hold, s/folder-stamp-taken
+
+test <a package folder listed otherwise refuses the snapshot>
+  host s, story-of()
+  want hold, not(s/folder-listed-taken)
+
+test <a package manifest that moved refuses the snapshot>
+  host s, story-of()
+  want hold, not(s/manifest-taken)
+
+test <the snapshot is taken again after a build>
+  host s, story-of()
+  want hold, s/rebuilt-taken
+
+test <a file added refuses the snapshot>
+  host s, story-of()
+  want hold, not(s/added-taken)
+
+test <a build with the file added equals clean>
+  host s, story-of()
+  want hold, is-equal(s/added-clean, <>)
+
+test <a project setting moved refuses the snapshot>
+  host s, story-of()
+  want hold, not(s/setting-taken)
+
+test <a touched artifact leaves the snapshot taken>
+  host s, story-of()
+  want hold, s/touched-taken
+
+test <a touched artifact is written again, equal to clean>
+  host s, story-of()
+  want hold, is-equal(s/touched-clean, <>)
+
+test <a removed artifact is written again, equal to clean>
+  host s, story-of()
+  want hold, is-equal(s/removed-clean, <>)
+
+test <a longhand role builds the label-or-call file, equal to clean>
+  host s, story-of()
+  want hold, not(holding(s/longhand-problems, <also a call>))
+  want hold, is-equal(s/longhand-clean, <>)
+
+test <the role is edited inside the build>
+  host s, story-of()
+  want hold, s/role-edited
+
+test <a role edited during the build: the next process refuses the file as lean, equal to clean>
+  host s, story-of()
+  want hold, holding(s/role-problems, <also a call>)
+  want hold, is-equal(s/role-clean, <>)
+
+test <the artifact is edited inside the build, after its entry wrote it>
+  host s, story-of()
+  want hold, s/shim-edited
+  want hold, is-equal(s/shim-text, <// edited during the build\n>)
+
+test <an artifact edited after the build wrote it: the next process equals clean>
+  host s, story-of()
+  want hold, is-equal(s/shim-clean, <>)
+
+test <the racy edit keeps the stamp>
+  host s, story-of()
+  want hold, is-equal(s/racy-size-after, s/racy-size-before)
+  want hold, is-equal(s/racy-time-after, s/racy-time-before)
+  want hold, is-equal(s/racy-ino-after, s/racy-ino-before)
+
+test <a racy edit is built, equal to clean>
+  host s, story-of()
+  want hold, is-above(s/racy-built, 0)
+  want hold, is-equal(s/racy-clean, <>)
+
+test <two writers both finish>
+  host s, story-of()
+  want hold, is-equal(s/writer-codes/length, 2)
+  want hold, is-equal(s/writer-codes/0, 0)
+  want hold, is-equal(s/writer-codes/1, 0)
+  want hold, is-equal(s/writer-paths/0, s/story-path)
+  want hold, is-equal(s/writer-paths/1, s/story-path)
+
+test <two writers leave no temp file>
+  host s, story-of()
+  want hold, none-ending(s/snapshot-folder, <.tmp>)
+
+# In place of the original's take after the race (decision 156 rule 3, Diverges): the writers ran another bundle, so
+# the story refuses their fingerprint, and what holds is that two writers left one whole file at the story's path
+test <the raced snapshot decodes whole>
+  host s, story-of()
+  want hold, s/raced-header
+  want hold, s/raced-sum
+  want hold, s/raced-root
+  want hold, s/raced-decoded
+
+test <a build after two writers equals clean>
+  host s, story-of()
+  want hold, is-equal(s/raced-clean, <>)
+
+test <and its snapshot is taken>
+  host s, story-of()
+  want hold, s/raced-taken
+
+test <the written body decodes to the session's>
+  host s, story-of()
+  want hold, is-equal(s/held-form, <some>)
+  want hold, is-equal(s/decoded-canonical, s/held-canonical)
+
+test <the snapshot is format 2>
+  host s, story-of()
+  want hold, starts-with(s/raw, head-line)
+
+test <each path is written once>
+  host s, story-of()
+  want hold, each-once(s/written-paths)
+  want hold, not(text-contains(substring(s/raw, body-start()), <"{s/helper-path}">))
+
+test <a problem's text is filled from the disk>
+  host s, story-of()
+  want hold, is-above(s/framed-texts/length, 0)
+  want hold, is-equal(s/framed-texts/0, s/helper-now)
+  want hold, not(text-contains(s/raw, <task answer>))
+
+test <the edit keeps the stamp>
+  host s, story-of()
+  want hold, is-equal(s/edit-size-after, s/edit-size-before)
+  want hold, is-equal(s/edit-time-after, s/edit-time-before)
+  want hold, is-equal(s/edit-ino-after, s/edit-ino-before)
+
+test <the snapshot is still taken>
+  host s, story-of()
+  want hold, s/still-taken
+
+test <the entry whose file reads otherwise builds again, equal to clean>
+  host s, story-of()
+  want hold, is-above(s/changed-built, 0)
+  want hold, is-equal(s/changed-clean, <>)
+
+test <a format 1 snapshot is refused>
+  host s, story-of()
+  want hold, not(s/format-one-taken)
+
+test <the newest three snapshots are kept>
+  host s, story-of()
+  want hold, is-equal(s/kept-snapshots/join(< >), s/want-snapshots/join(< >))
+
+# The writer itself, the original's --child: skipped in every run but a writer child's. It builds with the store the
+# story's process had, by a graph handed the story's snapshot path (decision 156), and says the path it wrote
+test <a two-writer child: one project request by a new graph>
+  host root, variable(<GRAPH_SNAPSHOT_ROOT>)
+  fork test, is-equal(root, <>)
+    hold
+      skip <run only as a writer child of the two-writer case>
+  set-variable(<TERM_CACHE_HOME>, variable(<GRAPH_SNAPSHOT_HOME>))
+  host path, variable(<GRAPH_SNAPSHOT_PATH>)
+  graph-port/build-request(graph-port/make-build-graph(root, 20000, path), ask-of(undefined-value(0)))
+  write-text(variable(<GRAPH_SNAPSHOT_SAID>), path)
+  want hold, is-unequal(path, <>)
+  want hold, snapshot-file/exists-sync(path)

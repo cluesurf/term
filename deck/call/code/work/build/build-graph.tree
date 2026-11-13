@@ -169,6 +169,9 @@ form build-graph
   # or a file came or went), so a request makes neither
   link finder, like deck-finder
   link reader, like role-reader
+  # THE SNAPSHOT'S PATH HANDED IN (decision 156): every take, write and reclaim of this graph's snapshot reads and
+  # writes this file. The empty text, as every shipped caller leaves it, is `snapshot-path(root)`, asked at each use
+  link snapshot-at, like text
 
 # an entry's or a document's answer: whether it built, its problems as a project build frames them (errors, then its
 # own warnings), a grammar's refusals, and the compiler's answer (its program, surface and units), undefined when refused
@@ -187,9 +190,10 @@ form build-answer
 task make-build-graph
   take root, like text
   take unit-cap, like number, fall 20000
+  take snapshot-at, like text, fall <>
   like build-graph
 
-  back make(build-graph, bind(root, root), bind(session, make-build-session(root)), bind(overlay, make hash), bind(unit-cap, unit-cap), bind(importers, make hash), bind(generation, 0), bind(begun, 0), bind(turned, false), bind(finder, make-deck-finder()), bind(reader, make-role-reader(root)))
+  back make(build-graph, bind(root, root), bind(session, make-build-session(root)), bind(overlay, make hash), bind(unit-cap, unit-cap), bind(importers, make hash), bind(generation, 0), bind(begun, 0), bind(turned, false), bind(finder, make-deck-finder()), bind(reader, make-role-reader(root)), bind(snapshot-at, snapshot-at))
 
 # the editor's text of a file, shadowing the disk until it is dropped. A file new to the overlay that the disk does not
 # hold can answer a relative load that found nothing before, so every walk with such a load is forgotten
@@ -315,7 +319,7 @@ task request-project
       separate-module/flushHeld(store, clean-test(graph))
   save built, compile-project-separate(graph/root, graph/session, store, ask/platform, ask/precomputed, ask/explain)
   index-importers(graph)
-  save-snapshot(graph/session, started)
+  save-snapshot(graph/session, started, graph/snapshot-at)
   back built
 
 # A project request begun by its caller (decision 094 rule 3): the file list forgotten and found again once (decision
@@ -332,7 +336,7 @@ task begin-project
   save graph/begun, started
   sift graph/session/known
     case none
-      back load-snapshot(graph/session, started, platform)
+      back load-snapshot(graph/session, started, platform, graph/snapshot-at)
     case some
       back false
 
@@ -828,6 +832,19 @@ task snapshot-path
   parts/push(hash-key(compiler-fingerprint()))
   back project-home(root, parts)
 
+# the file a session's snapshot is taken from and written to: the path its graph was handed (decision 156), or the
+# project's for the running compiler when it was handed the empty text
+task snapshot-held-at
+  take root, like text
+  take snapshot-at, like text
+  like text
+  mark private
+
+  fork test, is-equal(snapshot-at, <>)
+    hold
+      back snapshot-path(root)
+  back snapshot-at
+
 # the running compiler: every cache kind's version (the epoch, the package version and the compiler's sources) and the
 # running bundle's size and modification time, so a rebuilt CLI never reads an older one's outcomes
 task compiler-fingerprint
@@ -1077,11 +1094,12 @@ task load-snapshot
   take session, like build-session
   take started, like number
   take platform, like text, fall <node>
+  take snapshot-at, like text, fall <>
   like boolean
 
   fork
     mark unsafe
-    back take-snapshot(session, started, platform)
+    back take-snapshot(session, started, platform, snapshot-at)
   halt take
     take problem
     back false
@@ -1090,6 +1108,7 @@ task take-snapshot
   take session, like build-session
   take started, like number
   take platform, like text
+  take snapshot-at, like text
   like boolean
   mark private
 
@@ -1098,7 +1117,7 @@ task take-snapshot
       back false
     case none
       save nothing, 0
-  save path, snapshot-path(session/root)
+  save path, snapshot-held-at(session/root, snapshot-at)
   fork test, not(node-file/exists-sync(path))
     hold
       back false
@@ -1283,10 +1302,11 @@ task carried-files
 task save-snapshot
   take session, like build-session
   take started, like number
+  take snapshot-at, like text, fall <>
 
   fork
     mark unsafe
-    write-snapshot(session, started)
+    write-snapshot(session, started, snapshot-at)
   halt take
     take problem
     save nothing, 0
@@ -1384,12 +1404,13 @@ task snapshot-body
 task write-snapshot
   take session, like build-session
   take started, like number
+  take snapshot-at, like text
   mark private
 
   sift snapshot-body(session, started)
     case some
       link body
-      write-coded(session, encode-body(body), started)
+      write-coded(session, encode-body(body), started, snapshot-at)
     case none
       save nothing, 0
 
@@ -1398,11 +1419,12 @@ task write-coded
   take session, like build-session
   take coded, like coded-graph
   take started, like number
+  take snapshot-at, like text
   mark private
 
   save root, session/root
   save stable, hash-key(host-global/JSON/stringify(coded))
-  save path, snapshot-path(root)
+  save path, snapshot-held-at(root, snapshot-at)
   fork test, and(is-equal(stable, session/snapshot-sum), node-file/exists-sync(path))
     hold
       back

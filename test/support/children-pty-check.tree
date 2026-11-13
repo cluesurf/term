@@ -1,0 +1,150 @@
+note <the pseudo-terminal abilities terminal-pty needs: the raw stream, the slave's size, a signal to the program alone, job control>
+
+# Tests of the pseudo-terminal half of test/support/children.tree (item term-self-host-001-1351), beside it rather than
+# in it (T-0878). Each program is a small `sh` or `sleep` run by `start-pty`, through `script`, with no Python. Every
+# case skips where `script` is not installed.
+
+load ./children
+  find start-pty
+  find pty-start-command
+  find pty-output
+  find wait-for-text
+  find press-key
+  find resize-pty
+  find signal-program
+  find write-child
+  find wait-child
+  find stop-child
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/clock
+  find read-nanoseconds
+
+load @term/base/text
+  find contains, name text-contains
+  find starts-with
+
+load @term/base/rune
+  find rune-to-text
+
+# milliseconds since `start`, a reading of read-nanoseconds
+task since
+  take start, like number
+  like number
+
+  back divide(subtract(read-nanoseconds(), start), 1000000)
+
+# `sh -c` over a script, as a program's argument list
+task sh-of
+  take script, like text
+  like list, like text
+
+  back make list(<sh>, <-c>, script)
+
+test <the command hands the words through on macOS and quotes them on Linux, after run.sh's own>
+  host mac, pty-start-command(</f>, make(list, <printf>, <a b>), 30, 6, true, <dash>, <darwin>)
+  want hold, is-equal(mac, make list(<sh>, </f/start.sh>, </f>, <dash>, </f/run.sh>, </f>, <30>, <6>, <1>, <printf>, <a b>))
+  host linux, pty-start-command(</f>, make(list, <printf>, <a b>), 30, 6, false, <sh>, <linux>)
+  want hold, is-equal(linux, make list(<sh>, </f/start.sh>, </f>, <'sh' '/f/run.sh' '/f' '30' '6' '0' 'printf' 'a b'>))
+
+# ability 1: the first ESC[2J has no newline after it, and the program writes none for 20 s, so only a wait on the raw
+# stream sees it in time
+test <a wait on the raw stream sees text with no newline after it, at once>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host clear, <{rune-to-text(27)}[2J>
+  host start, read-nanoseconds()
+  host pty, start-pty(sh-of(<printf 'go\\033[2J'; sleep 20; echo late>), 30, 6)
+  host seen, wait-for-text(pty, clear, 8000)
+  want hold, text-contains(seen, <go{clear}>)
+  want hold, not(pty/child/late)
+  want hold, is-below(since(start), 8000)
+  stop-child(pty/child)
+
+test <a wait past its first characters looks only at what came after them>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host pty, start-pty(sh-of(<printf 'one '; sleep 1; printf 'two '; sleep 1; printf 'one '; sleep 20>), 30, 6)
+  host first, wait-for-text(pty, <one>, 8000)
+  host second, wait-for-text(pty, <one>, 8000, first/length)
+  want hold, text-contains(first, <one>)
+  want hold, text-contains(second, <two one>)
+  stop-child(pty/child)
+
+test <a wait whose text never comes is late within its limit, and stops the child>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host start, read-nanoseconds()
+  host pty, start-pty(sh-of(<printf 'ready'; sleep 30>), 30, 6)
+  want hold, is-equal(wait-for-text(pty, <never>, 600), <>)
+  want hold, pty/child/late
+  want hold, is-below(since(start), 8000)
+  want hold, is-equal(wait-child(pty/child)/code, 137)
+
+# ability 2: the slave's name is known, and stty on it plus WINCH resizes the live terminal: the program's WINCH trap
+# reads the new size
+test <the terminal says its slave device, and a resize reaches the running program>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host pty, start-pty(sh-of(<trap 'stty size' WINCH; stty size; while true; do sleep 0.1; done>), 30, 6)
+  want hold, starts-with(pty/tty, </dev/>)
+  want hold, is-unequal(pty/pid, <>)
+  host first, wait-for-text(pty, <6 30>, 8000)
+  want hold, text-contains(first, <6 30>)
+  want hold, resize-pty(pty, 10, 6)
+  want hold, text-contains(wait-for-text(pty, <6 10>, 8000, first/length), <6 10>)
+  stop-child(pty/child)
+
+# ability 3: TERM to the program alone. Script was not signalled, so it exits by itself (signal 0) with the program's
+# code, 143. A TERM to the child's group would end it by the signal itself (signal 15)
+test <a signal reaches the program alone, and its code comes back through script>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host pty, start-pty(make(list, <sleep>, <30>), 30, 6)
+  want hold, is-unequal(pty/pid, <>)
+  host start, read-nanoseconds()
+  want hold, signal-program(pty, <TERM>)
+  host ended, wait-child(pty/child)
+  want hold, is-equal(ended/code, 143)
+  want hold, is-equal(ended/signal, 0)
+  want hold, is-below(since(start), 5000)
+
+# ability 4: ctrl-z stops the program in its own foreground group, [stopped] is written after the stop key, the group
+# is resumed and reads a line again, and ctrl-d ends it with 0. `press-key` answers what had come when ctrl-z was sent
+test <ctrl-z stops the program, [stopped] is said, and it is resumed>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host pty, start-pty(sh-of(<echo ready; while read line; do echo "got $line"; done>), 30, 6, true)
+  want hold, text-contains(wait-for-text(pty, <ready>, 8000), <ready>)
+  host before, press-key(pty, rune-to-text(26))
+  want hold, text-contains(before, <ready>)
+  want hold, not(text-contains(before, <[stopped]>))
+  want hold, text-contains(wait-for-text(pty, <[stopped]>, 8000, before/length), <[stopped]>)
+  host resumed, pty-output(pty)
+  write-child(pty/child, <abc\n>)
+  want hold, text-contains(wait-for-text(pty, <got abc>, 8000, resumed/length), <got abc>)
+  press-key(pty, rune-to-text(4))
+  want hold, is-equal(wait-child(pty/child)/code, 0)
+
+# without job control the same ctrl-z is lost: the program shares the session leader's group, which is orphaned, and
+# the kernel discards a stop there, so the program reads on and no [stopped] comes
+test <without jobs ctrl-z stops nothing>
+  fork test, is-equal(find-tool(<script>), <>)
+    hold
+      skip <script is not installed>
+  host pty, start-pty(sh-of(<echo ready; while read line; do echo "got $line"; done>), 30, 6)
+  want hold, text-contains(wait-for-text(pty, <ready>, 8000), <ready>)
+  host before, press-key(pty, rune-to-text(26))
+  write-child(pty/child, <abc\n>)
+  host after, wait-for-text(pty, <got>, 8000, before/length)
+  want hold, text-contains(after, <got>)
+  want hold, not(text-contains(after, <[stopped]>))
+  stop-child(pty/child)

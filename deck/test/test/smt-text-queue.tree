@@ -16,6 +16,23 @@ load ../code/concurrency
 
 load @term/base/list
   find list
+  find join
+
+load @term/base/text/string
+  find to-text
+
+# the answers as one text, `true,true,...`, each read by to-text, which every backend answers for a value of unknown
+# type. `<{answers}>` interpolated the list itself, which is TypeScript's own join: Rust has no Display for a list of
+# `Rc<dyn Any>` and refused the program (E0599), and Swift prints a list in its own way (item 1244)
+task answer-text
+  take answers, like list, like unknown
+  like text
+
+  host parts, make list
+  walk answers
+    take answer
+    parts/push(to-text(answer))
+  back join(parts, <,>)
 
 # job `index`: is `a = index` satisfiable, and does its model give `a` that index
 task ask-own
@@ -34,5 +51,5 @@ test <forty queries at once on one context each answer their own query>
   host expected, make list
   walk jobs
     take job
-    expected/push(true)
-  want hold, is-equal(<{answers}>, <{expected}>)
+    expected/push(<true>)
+  want hold, is-equal(answer-text(answers), join(expected, <,>))
